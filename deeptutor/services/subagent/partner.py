@@ -82,6 +82,16 @@ class PartnerBackend(SubagentBackend):
         if not pid:
             return ConsultResult(success=False, error="No partner is bound to this connection.")
 
+        # Re-check on every consult: a connection may outlive the grant that
+        # created it, and stale metadata must never remain an authorization path.
+        from deeptutor.multi_user.partner_access import assert_partner_allowed
+
+        try:
+            assert_partner_allowed(pid)
+        except Exception as exc:
+            detail = getattr(exc, "detail", None) or str(exc)
+            return ConsultResult(success=False, error=str(detail))
+
         from deeptutor.services.partners import get_partner_manager
 
         manager = get_partner_manager()

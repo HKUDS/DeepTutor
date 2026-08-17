@@ -22,4 +22,7 @@ async def test_idle_background_runtime_is_released(monkeypatch) -> None:
 
     assert "book-1" not in engine._runtimes
     assert runtime.worker is None
-    assert runtime.stream is None
+    # The runtime no longer holds an event stream at all — streams live in
+    # ``event_hub`` so background progress survives the request that queued it.
+    assert not hasattr(runtime, "stream")
+    assert runtime.in_flight == {}

@@ -29,12 +29,10 @@ def _safe_id(node_id: str, used: set[str]) -> str:
     return candidate
 
 
-def _escape_label(text: str, *, max_len: int = 48) -> str:
-    """Mermaid-safe label: collapse whitespace and escape quotes."""
+def _escape_label(text: str) -> str:
+    """Return a complete, single-line Mermaid-safe label."""
     cleaned = " ".join((text or "").split())
     cleaned = cleaned.replace('"', "'")
-    if len(cleaned) > max_len:
-        cleaned = cleaned[: max_len - 1] + "…"
     return cleaned or "concept"
 
 
@@ -43,7 +41,8 @@ def render_mermaid(graph: ConceptGraph) -> str:
 
     When nodes carry ``chapter_id`` (chapter-level mind map produced by
     ``_build_chapter_map``), each node is rendered with a chapter number
-    prefix and a slightly shorter label to keep the diagram readable.
+    prefix. Labels stay complete; the frontend provides a scrollable viewport
+    for diagrams wider or taller than the available card.
     The virtual book-title root (no ``chapter_id``) gets a stadium shape
     ``(["..."])`` to stand out visually.
     """
@@ -63,10 +62,10 @@ def render_mermaid(graph: ConceptGraph) -> str:
         if chapter_mode and node.chapter_id:
             chapter_seq += 1
             num = str(chapter_seq).zfill(2)
-            label = _escape_label(node.label, max_len=28)
+            label = _escape_label(node.label)
             lines.append(f'  {sid}["{num} · {label}"]')
         elif chapter_mode and not node.chapter_id:
-            label = _escape_label(node.label, max_len=36)
+            label = _escape_label(node.label)
             lines.append(f'  {sid}(["{label}"])')
         else:
             lines.append(f'  {sid}["{_escape_label(node.label)}"]')

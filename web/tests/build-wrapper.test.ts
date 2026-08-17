@@ -24,7 +24,11 @@ test("the build wrapper restores every generated checked-in input", () => {
       `wrapper must snapshot ${name}`,
     );
   }
-  assert.match(source, /restoreAll\(snapshots\)/, "wrapper must restore snapshots");
+  assert.match(
+    source,
+    /restoreAll\(snapshots\)/,
+    "wrapper must restore snapshots",
+  );
   assert.match(
     source,
     /stdio: "inherit"/,

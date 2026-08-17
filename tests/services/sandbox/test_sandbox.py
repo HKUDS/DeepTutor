@@ -10,7 +10,13 @@ from deeptutor.services.sandbox.backends import BwrapBackend, RestrictedSubproce
 from deeptutor.services.sandbox.config import SandboxSettings, build_backend
 from deeptutor.services.sandbox.quota import QuotaExceeded, UserExecQuota
 from deeptutor.services.sandbox.service import SandboxService
-from deeptutor.services.sandbox.spec import ExecRequest, ExecResult, IsolationLevel, ResourceLimits
+from deeptutor.services.sandbox.spec import (
+    ExecRequest,
+    ExecResult,
+    IsolationLevel,
+    Mount,
+    ResourceLimits,
+)
 
 
 def test_backend_selection_runner_url() -> None:
@@ -59,6 +65,102 @@ def test_bwrap_binds_usr_local_when_available(tmp_path, monkeypatch: pytest.Monk
     assert argv[usr_index - 1 : usr_index + 2] == ["--ro-bind", str(usr), str(usr)]
     assert str(usr_local) in argv
     assert str(missing) not in argv
+
+
+def _bwrap_setenv(argv: list[str]) -> dict[str, str]:
+    return {
+        argv[index + 1]: argv[index + 2] for index, item in enumerate(argv) if item == "--setenv"
+    }
+
+
+def test_bwrap_mounts_only_the_active_virtualenv_read_only(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    venv = workspace / ".venv"
+    (venv / "bin").mkdir(parents=True)
+
+    argv = BwrapBackend(venv_path=venv)._build_argv(
+        ExecRequest(
+            command="python -c 'import pptx'",
+            env={"PATH": "/custom/bin:/usr/bin", "VIRTUAL_ENV": "/untrusted"},
+        )
+    )
+    resolved_venv = str(venv.resolve())
+    ro_binds = [
+        tuple(argv[index + 1 : index + 3]) for index, item in enumerate(argv) if item == "--ro-bind"
+    ]
+    env = _bwrap_setenv(argv)
+
+    assert (resolved_venv, resolved_venv) in ro_binds
+    assert (str(workspace.resolve()), str(workspace.resolve())) not in ro_binds
+    assert env["VIRTUAL_ENV"] == resolved_venv
+    assert env["PATH"] == f"{resolved_venv}/bin:/custom/bin:/usr/bin"
+
+
+def test_bwrap_mounts_only_the_uv_python_runtime_roots(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    venv = tmp_path / "workspace" / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    runtime = tmp_path / "uv" / "cpython-3.12.13-linux-x86_64"
+    runtime_alias = tmp_path / "uv" / "cpython-3.12-linux-x86_64"
+    (runtime / "bin").mkdir(parents=True)
+    (runtime / "lib").mkdir()
+    runtime_alias.symlink_to(runtime, target_is_directory=True)
+
+    monkeypatch.setattr("sys.prefix", str(venv))
+    monkeypatch.setattr("sys.base_prefix", str(runtime))
+    monkeypatch.setattr("sys.base_exec_prefix", str(runtime))
+    monkeypatch.setattr("sys._base_executable", str(runtime_alias / "bin" / "python3.12"))
+
+    argv = BwrapBackend()._build_argv(ExecRequest(command="python -V"))
+    ro_binds = [
+        tuple(argv[index + 1 : index + 3]) for index, item in enumerate(argv) if item == "--ro-bind"
+    ]
+
+    resolved_runtime = str(runtime.resolve())
+    assert (resolved_runtime, resolved_runtime) in ro_binds
+    assert (resolved_runtime, str(runtime_alias.absolute())) in ro_binds
+    assert (str(venv.resolve()), str(venv.resolve())) in ro_binds
+    assert (str((tmp_path / "uv").resolve()), str((tmp_path / "uv").resolve())) not in ro_binds
+    assert (str(tmp_path.resolve()), str(tmp_path.resolve())) not in ro_binds
+
+
+def test_bwrap_virtualenv_mount_overrides_a_writable_parent_mount(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    venv = workspace / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    resolved_workspace = str(workspace.resolve())
+    resolved_venv = str(venv.resolve())
+
+    argv = BwrapBackend(venv_path=venv)._build_argv(
+        ExecRequest(
+            command="true",
+            mounts=(Mount(resolved_workspace, resolved_workspace, read_only=False),),
+        )
+    )
+
+    writable_index = argv.index(resolved_workspace)
+    venv_index = argv.index(resolved_venv)
+    assert argv[writable_index - 1 : writable_index + 2] == [
+        "--bind",
+        resolved_workspace,
+        resolved_workspace,
+    ]
+    assert argv[venv_index - 1 : venv_index + 2] == [
+        "--ro-bind",
+        resolved_venv,
+        resolved_venv,
+    ]
+    assert venv_index > writable_index
+
+
+def test_bwrap_can_disable_virtualenv_inheritance() -> None:
+    argv = BwrapBackend(inherit_virtualenv=False)._build_argv(
+        ExecRequest(command="true", env={"PATH": "/custom/bin"})
+    )
+    env = _bwrap_setenv(argv)
+
+    assert env == {"PATH": "/custom/bin"}
 
 
 @pytest.mark.asyncio

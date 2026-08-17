@@ -1,0 +1,10 @@
+# Reader-facing brief handed to the shared visualize / animation pipeline.
+# Lives here rather than in Python so it follows the book's language like
+# every other block's prompt does.
+brief: "Build an {interaction} HTML page for the chapter \"{chapter_title}\"{focus_clause}. The page should let the learner manipulate state, drag/click controls, or step through a guided demo to internalise the concept."
+
+# Quoted on purpose — the English clause needs its leading space.
+focus_clause: " focusing on {focus}"
+
+context_summary: "Chapter summary: {chapter_summary}"
+context_objectives: "Learning objectives:"

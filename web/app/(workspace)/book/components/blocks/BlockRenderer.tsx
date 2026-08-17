@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Loader2,
+  Pencil,
   RefreshCw,
   Trash2,
   ArrowUp,
@@ -11,12 +12,13 @@ import {
   Replace,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { Block, BlockType } from "@/lib/book-types";
+import type { Block, BlockType, QuizAttempt } from "@/lib/book-types";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 
+import BlockBodyEditor from "./BlockBodyEditor";
 import TextBlock from "./TextBlock";
 import CalloutBlock from "./CalloutBlock";
-import QuizBlock from "./QuizBlock";
+import QuizBlock, { type QuizAttemptArgs } from "./QuizBlock";
 import UserNoteBlock from "./UserNoteBlock";
 import FigureBlock from "./FigureBlock";
 import InteractiveBlock from "./InteractiveBlock";
@@ -28,6 +30,21 @@ import DeepDiveBlock from "./DeepDiveBlock";
 import ConceptGraphBlock from "./ConceptGraphBlock";
 import SectionBlock from "./SectionBlock";
 import PlaceholderBlock from "./PlaceholderBlock";
+
+// How long a destructive control stays armed before it forgets.
+const CONFIRM_WINDOW_MS = 3500;
+
+// Blocks that are a single run of prose, so a plain text box can edit them
+// without destroying structure the renderer depends on. Mirrors
+// `_EDITABLE_BLOCK_TYPES` on the backend.
+const EDITABLE_BODY_TYPES: BlockType[] = ["text", "callout"];
+
+/** Where a block keeps its prose — `text` blocks use both keys, historically. */
+function bodyKeyFor(block: Block): "body" | "content" {
+  return block.type === "text" && "content" in (block.payload || {})
+    ? "content"
+    : "body";
+}
 
 const CHANGEABLE_TYPES: BlockType[] = [
   "text",
@@ -50,10 +67,14 @@ export interface BlockRendererProps {
   onMove?: (block: Block, direction: "up" | "down") => void;
   onChangeType?: (block: Block, newType: BlockType) => void;
   onDeepDive?: (topic: string, blockId: string) => Promise<void> | void;
-  onQuizAttempt?: (
-    block: Block,
-    args: { questionId?: string; userAnswer?: string; isCorrect: boolean },
-  ) => void;
+  onOpenPage?: (pageId: string) => void;
+  onQuizAttempt?: (block: Block, args: QuizAttemptArgs) => void;
+  onRequestSupplement?: (block: Block) => void;
+  supplementing?: boolean;
+  /** Previous quiz answers, passed through to `QuizBlock`. */
+  attempts?: QuizAttempt[];
+  /** Save edited prose. Omit to render the block read-only. */
+  onUpdateBody?: (block: Block, body: string) => Promise<void> | void;
   pendingDeepDiveTopic?: string | null;
   bookId?: string;
   currentPageId?: string;
@@ -67,7 +88,12 @@ export default function BlockRenderer({
   onMove,
   onChangeType,
   onDeepDive,
+  onOpenPage,
   onQuizAttempt,
+  onRequestSupplement,
+  supplementing = false,
+  attempts,
+  onUpdateBody,
   pendingDeepDiveTopic,
   bookId,
   currentPageId,
@@ -75,6 +101,17 @@ export default function BlockRenderer({
 }: BlockRendererProps) {
   const { t } = useTranslation();
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [editingBody, setEditingBody] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // The delete control lives in a toolbar that only exists while the pointer is
+  // over the block. Auto-disarm so an armed state can never outlive the
+  // interaction that created it and surprise the next click.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const timer = setTimeout(() => setConfirmDelete(false), CONFIRM_WINDOW_MS);
+    return () => clearTimeout(timer);
+  }, [confirmDelete]);
 
   if (block.status === "pending" || block.status === "generating") {
     return (
@@ -127,10 +164,30 @@ export default function BlockRenderer({
       body = <CalloutBlock block={block} />;
       break;
     case "quiz":
-      body = <QuizBlock block={block} onAttempt={onQuizAttempt} />;
+      body = (
+        <QuizBlock
+          block={block}
+          onAttempt={onQuizAttempt}
+          attempts={attempts}
+          onRequestSupplement={
+            onRequestSupplement ? () => onRequestSupplement(block) : undefined
+          }
+          supplementing={supplementing}
+        />
+      );
       break;
     case "user_note":
-      body = <UserNoteBlock block={block} />;
+      body = (
+        <UserNoteBlock
+          block={block}
+          onSave={
+            onUpdateBody ? (value) => onUpdateBody(block, value) : undefined
+          }
+          // A note the reader just inserted is empty by definition — drop
+          // them straight into it rather than making them find the pencil.
+          autoEdit={!String(block.payload?.body || "").trim()}
+        />
+      );
       break;
     case "figure":
       body = <FigureBlock block={block} />;
@@ -155,6 +212,7 @@ export default function BlockRenderer({
         <DeepDiveBlock
           block={block}
           onDeepDive={onDeepDive}
+          onOpenPage={onOpenPage}
           pendingTopic={pendingDeepDiveTopic}
         />
       );
@@ -173,7 +231,29 @@ export default function BlockRenderer({
       body = <PlaceholderBlock block={block} />;
   }
 
-  const hasActions = !!onRegenerate || !!onDelete || !!onMove || !!onChangeType;
+  const canEditBody =
+    !!onUpdateBody && EDITABLE_BODY_TYPES.includes(block.type);
+  const currentBody = String(
+    (block.payload as Record<string, unknown> | undefined)?.[
+      bodyKeyFor(block)
+    ] ?? "",
+  );
+
+  if (editingBody && onUpdateBody) {
+    body = (
+      <BlockBodyEditor
+        initialValue={currentBody}
+        onSave={async (value) => {
+          await onUpdateBody(block, value);
+          setEditingBody(false);
+        }}
+        onCancel={() => setEditingBody(false)}
+      />
+    );
+  }
+
+  const hasActions =
+    !!onRegenerate || !!onDelete || !!onMove || !!onChangeType || canEditBody;
 
   const bridgeText = String(
     (block.payload as Record<string, unknown> | undefined)?.bridge_text ?? "",
@@ -236,6 +316,15 @@ export default function BlockRenderer({
               )}
             </div>
           )}
+          {canEditBody && !editingBody && (
+            <button
+              onClick={() => setEditingBody(true)}
+              className="pointer-events-auto rounded p-1 hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+              title={t("Edit text")}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
           {onRegenerate && (
             <button
               onClick={() => onRegenerate(block)}
@@ -247,9 +336,25 @@ export default function BlockRenderer({
           )}
           {onDelete && (
             <button
-              onClick={() => onDelete(block)}
-              className="pointer-events-auto rounded p-1 hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
-              title={t("Delete")}
+              onClick={() => {
+                if (confirmDelete) {
+                  setConfirmDelete(false);
+                  onDelete(block);
+                } else {
+                  setConfirmDelete(true);
+                }
+              }}
+              onBlur={() => setConfirmDelete(false)}
+              className={`pointer-events-auto rounded p-1 ${
+                confirmDelete
+                  ? "bg-rose-500/15 text-rose-600 dark:text-rose-300"
+                  : "hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+              }`}
+              title={
+                confirmDelete
+                  ? t("Click again to delete this block")
+                  : t("Delete")
+              }
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>

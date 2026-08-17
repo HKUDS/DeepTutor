@@ -19,28 +19,69 @@ import type {
   Block,
   BlockType,
   Book,
+  BookDepth,
   BookDetail,
   BookProposal,
   Page,
   Spine,
 } from "@/lib/book-types";
 import {
+  RESET_BOOK_PROGRESS,
   emptyBookProgress,
   progressHasActivity,
   progressIsComplete,
   reduceBookEvent,
 } from "@/lib/book-progress";
+import {
+  bookEventKind,
+  bookEventPageId,
+  useBookStream,
+} from "@/lib/use-book-stream";
 
 import BookChatPanel from "./components/BookChatPanel";
 import BookCreator from "./components/BookCreator";
 import BookHealthBanner from "./components/BookHealthBanner";
 import BookLibrary from "./components/BookLibrary";
+import BookPausedBanner from "./components/BookPausedBanner";
 import BookProgressTimeline from "./components/BookProgressTimeline";
 import BookSidebar from "./components/BookSidebar";
 import PageReader from "./components/PageReader";
 import SpineEditor from "./components/SpineEditor";
+import type { QuizAttemptArgs } from "./components/blocks/QuizBlock";
 
 type View = "list" | "creator" | "spine" | "reader";
+
+// Blocks land one at a time during compilation. Coalescing a burst into a
+// single fetch keeps a page that is actively generating from issuing one
+// request per block, while still feeling immediate to a reader watching it.
+const PAGE_REFRESH_DEBOUNCE_MS = 250;
+
+// Book-level events arrive in bursts too — several stages finishing together,
+// or the whole recent history replayed when a subscriber (re)connects. One
+// burst should cost one refresh, not one per event.
+const BOOK_REFRESH_DEBOUNCE_MS = 300;
+
+/** A page fetched as a summary has its blocks stripped; hydrate before reading. */
+function needsHydration(page: Page | null): boolean {
+  return !!page && page.blocks.length === 0 && (page.block_count ?? 0) > 0;
+}
+
+/** Events that only change one chapter — refetch that page alone. */
+const PAGE_SCOPED_EVENTS = new Set([
+  "page_planned",
+  "page_compile_started",
+  "block_ready",
+  "block_error",
+  "page_compiled",
+]);
+
+/** Events that change the book itself — chapter list, status, or both. */
+const BOOK_SCOPED_EVENTS = new Set([
+  "spine_ready",
+  "overview_ready",
+  "book_ready",
+  "compilation_paused",
+]);
 
 export default function BookPage() {
   // `useSearchParams()` requires a Suspense boundary during static prerender
@@ -49,7 +90,7 @@ export default function BookPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-full items-center justify-center text-[var(--muted-foreground)]">
+        <div className="flex h-full w-full items-center justify-center text-[var(--muted-foreground)]">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> <BookLoadingText />
         </div>
       }
@@ -70,7 +111,6 @@ function BookPageInner() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loadingBooks, setLoadingBooks] = useState(false);
   const [view, setView] = useState<View>("list");
-  const [toast, setToast] = useState("");
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [detail, setDetail] = useState<BookDetail | null>(null);
@@ -96,6 +136,10 @@ function BookPageInner() {
   >(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [rebuildingBook, setRebuildingBook] = useState(false);
+  const [resumingBook, setResumingBook] = useState(false);
+  const [supplementingBlockId, setSupplementingBlockId] = useState<
+    string | null
+  >(null);
 
   // Phase 5 — live BookEngine progress timeline state.
   const [progress, dispatchProgress] = useReducer(
@@ -105,6 +149,23 @@ function BookPageInner() {
   );
 
   // ── Data loaders ───────────────────────────────────────────────────
+
+  /** Run a mutation, surfacing failures instead of dropping them. */
+  const guard = useCallback(
+    async (action: string, run: () => Promise<void>): Promise<void> => {
+      try {
+        await run();
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        notify(t("{{action}} failed: {{reason}}", { action, reason }), {
+          tone: "error",
+          durationMs: 8000,
+        });
+        console.error(`${action} failed:`, err);
+      }
+    },
+    [t],
+  );
 
   const refreshBooks = useCallback(async () => {
     setLoadingBooks(true);
@@ -116,54 +177,151 @@ function BookPageInner() {
     }
   }, []);
 
+  /**
+   * Load a book without its block payloads.
+   *
+   * Only the page being read needs its blocks; fetching every page's rendered
+   * content to draw a sidebar meant a multi-chapter book cost hundreds of
+   * kilobytes per refresh. `hydratePage` fills in the one page that matters.
+   */
   const loadBookDetail = useCallback(async (id: string) => {
-    const data = await bookApi.get(id);
+    const data = await bookApi.get(id, { includeBlocks: false });
     setDetail(data);
     return data;
+  }, []);
+
+  /** Replace one page in-place, leaving the rest of the book untouched. */
+  const mergePage = useCallback((page: Page) => {
+    setDetail((current) => {
+      if (!current || current.book.id !== page.book_id) return current;
+      const index = current.pages.findIndex((p) => p.id === page.id);
+      if (index < 0) return current;
+      const pages = [...current.pages];
+      pages[index] = page;
+      return { ...current, pages };
+    });
+  }, []);
+
+  const hydratePage = useCallback(
+    async (pageId: string) => {
+      if (!selectedBookId) return;
+      try {
+        const { page } = await bookApi.getPage(selectedBookId, pageId);
+        mergePage(page);
+      } catch (err) {
+        console.error("hydratePage failed:", err);
+      }
+    },
+    [selectedBookId, mergePage],
+  );
+
+  // Debounced per page, so a burst of block events costs one fetch.
+  const pageRefreshTimers = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>(),
+  );
+  const schedulePageRefresh = useCallback(
+    (pageId: string) => {
+      const timers = pageRefreshTimers.current;
+      const pending = timers.get(pageId);
+      if (pending) clearTimeout(pending);
+      timers.set(
+        pageId,
+        setTimeout(() => {
+          timers.delete(pageId);
+          void hydratePage(pageId);
+        }, PAGE_REFRESH_DEBOUNCE_MS),
+      );
+    },
+    [hydratePage],
+  );
+
+  const bookRefreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const scheduleBookRefresh = useCallback(() => {
+    if (bookRefreshTimer.current) clearTimeout(bookRefreshTimer.current);
+    bookRefreshTimer.current = setTimeout(() => {
+      bookRefreshTimer.current = undefined;
+      if (selectedBookId) void loadBookDetail(selectedBookId);
+      void refreshBooks();
+    }, BOOK_REFRESH_DEBOUNCE_MS);
+  }, [selectedBookId, loadBookDetail, refreshBooks]);
+
+  useEffect(() => {
+    const timers = pageRefreshTimers.current;
+    return () => {
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+      if (bookRefreshTimer.current) clearTimeout(bookRefreshTimer.current);
+    };
   }, []);
 
   useEffect(() => {
     void refreshBooks();
   }, [refreshBooks]);
 
+  // The generation timeline describes one book's run. Clear it when the reader
+  // moves to another book, or the previous book's stages stay on screen.
   useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 3500);
-    return () => clearTimeout(timer);
-  }, [toast]);
+    dispatchProgress(RESET_BOOK_PROGRESS);
+  }, [selectedBookId]);
 
-  // ── Live WS event handling ─────────────────────────────────────────
+  // ── Live event handling ────────────────────────────────────────────
 
-  const handleBookOperationEvent = useCallback(
+  const handleBookEvent = useCallback(
     (event: BookWsEvent) => {
-      // Each long-running operation owns its WebSocket. Feed those streamed
-      // events into the shared timeline and refresh persisted milestones.
       dispatchProgress(event);
 
-      const meta =
-        (event.metadata as Record<string, unknown> | undefined) || {};
-      const kind = String(
-        (event.content as string) || (meta.kind as string) || "",
-      );
-      if (
-        selectedBookId &&
-        (kind === "block_ready" ||
-          kind === "block_error" ||
-          kind === "page_compiled" ||
-          kind === "page_planned" ||
-          kind === "spine_ready")
-      ) {
-        void loadBookDetail(selectedBookId);
+      const kind = bookEventKind(event);
+      const pageId = bookEventPageId(event);
+
+      // Page-scoped: refetch just that chapter. Refetching the whole book on
+      // every block was the single most expensive thing this screen did.
+      if (pageId && PAGE_SCOPED_EVENTS.has(kind)) {
+        schedulePageRefresh(pageId);
+        return;
       }
+
+      // Book-scoped: the chapter list or the book's own state moved.
+      if (BOOK_SCOPED_EVENTS.has(kind)) {
+        scheduleBookRefresh();
+      }
+
+      // Deliberately no toast here: `compilation_paused` is replayed to every
+      // new subscriber, so a book that was paused once and resumed would pop a
+      // stale alert on each reconnect. Pausing is durable state, and
+      // BookPausedBanner renders it from `book.status`, which the refresh
+      // above has just brought up to date.
     },
-    [selectedBookId, loadBookDetail],
+    [scheduleBookRefresh, schedulePageRefresh],
   );
+
+  // One connection per open book, independent of any action in flight —
+  // background compilation keeps streaming long after the call that queued it.
+  useBookStream(selectedBookId, handleBookEvent);
+
+  // Ideation runs before the book exists, so it has no stream of its own to
+  // subscribe to; those events arrive on the creating socket instead.
+  const handleCreationEvent = useCallback((event: BookWsEvent) => {
+    dispatchProgress(event);
+  }, []);
 
   // ── Selectors ──────────────────────────────────────────────────────
 
   const selectedPage: Page | null = useMemo(() => {
     if (!detail || !selectedPageId) return null;
     return detail.pages.find((p) => p.id === selectedPageId) || null;
+  }, [detail, selectedPageId]);
+
+  // Reading order is the page order — the sidebar shows the same sequence.
+  const pageNeighbours = useMemo(() => {
+    if (!detail || !selectedPageId) return { previous: null, next: null };
+    const index = detail.pages.findIndex((p) => p.id === selectedPageId);
+    if (index < 0) return { previous: null, next: null };
+    return {
+      previous: detail.pages[index - 1] || null,
+      next: detail.pages[index + 1] || null,
+    };
   }, [detail, selectedPageId]);
 
   const selectedPageChatSessionId = useMemo(() => {
@@ -187,7 +345,7 @@ function BookPageInner() {
   const lastDeepLinkedBookId = useRef<string | null>(null);
 
   const handleSelectBook = useCallback(
-    async (id: string | null) => {
+    async (id: string | null, openPageId?: string | null) => {
       if (!id) {
         setSelectedBookId(null);
         setDetail(null);
@@ -196,66 +354,97 @@ function BookPageInner() {
       }
       setSelectedBookId(id);
       const data = await loadBookDetail(id);
+      const hasReadableContent = data.pages.some(
+        (p) => p.status !== "pending" || (p.block_count ?? p.blocks.length) > 0,
+      );
       if (data.book.status === "draft" && data.book.proposal) {
         setPendingBook(data.book);
         setPendingProposal(data.book.proposal);
         setView("creator");
-      } else if (data.book.status === "spine_ready" && data.spine) {
+      } else if (
+        data.book.status === "spine_ready" &&
+        data.spine &&
+        !hasReadableContent
+      ) {
+        // Spine confirmed but nothing built yet — the editor is still the right
+        // place. Once any chapter exists, the reader is.
         setView("spine");
       } else {
-        const firstReady = data.pages.find((p) => p.status === "ready");
-        const firstAny = data.pages[0] || null;
-        setSelectedPageId((firstReady || firstAny)?.id || null);
+        // Resume where the reader left off — that's what `current_page_id` is
+        // for, and until now nothing ever read it.
+        const requested =
+          (openPageId && data.pages.find((p) => p.id === openPageId)) || null;
+        const resumed =
+          data.pages.find((p) => p.id === data.progress.current_page_id) ||
+          null;
+        const firstReady = data.pages.find((p) => p.status === "ready") || null;
+        const target =
+          requested || resumed || firstReady || data.pages[0] || null;
+        setSelectedPageId(target?.id || null);
         setView("reader");
       }
     },
     [loadBookDetail],
   );
 
-  // Allow deep-linking via /book?book=<id> (e.g. from the global sidebar).
+  // Deep links: /book?book=<id>[&page=<id>] — used by the global sidebar and
+  // by the overview chapter index (which previously pointed at /book/<id>, a
+  // route that does not exist, so every entry 404'd).
   const searchParams = useSearchParams();
   const requestedBookId = searchParams?.get("book") || null;
+  const requestedPageId = searchParams?.get("page") || null;
   useEffect(() => {
     if (!requestedBookId) return;
     if (requestedBookId === selectedBookId) return;
     if (requestedBookId === lastDeepLinkedBookId.current) return;
     lastDeepLinkedBookId.current = requestedBookId;
-    void handleSelectBook(requestedBookId);
-  }, [requestedBookId, selectedBookId, handleSelectBook]);
+    void handleSelectBook(requestedBookId, requestedPageId);
+  }, [requestedBookId, requestedPageId, selectedBookId, handleSelectBook]);
 
-  const handleDeleteBook = async (id: string) => {
-    if (!confirm(t("Delete this book? This cannot be undone."))) return;
-    await bookApi.delete(id);
-    if (selectedBookId === id) {
-      setSelectedBookId(null);
-      setDetail(null);
-      setView("list");
-    }
-    await refreshBooks();
-  };
-
-  const handleRebuildBook = async () => {
-    if (!detail) return;
-    if (
-      !confirm(
-        t(
-          "Rebuild this book using the current chapter structure? Existing generated pages will be replaced.",
-        ),
-      )
-    ) {
-      return;
-    }
-    setRebuildingBook(true);
-    try {
-      await bookApi.rebuild(detail.book.id, true);
-      const refreshed = await loadBookDetail(detail.book.id);
-      setSelectedPageId(refreshed.pages[0]?.id || null);
-      setView("reader");
+  const handleDeleteBook = async (id: string) =>
+    guard("Delete book", async () => {
+      // The library card already requires a second click to confirm.
+      await bookApi.delete(id);
+      if (selectedBookId === id) {
+        setSelectedBookId(null);
+        setDetail(null);
+        setView("list");
+      }
       await refreshBooks();
+    });
+
+  const handleResumeBook = async () => {
+    if (!detail) return;
+    setResumingBook(true);
+    try {
+      await bookApi.resume(detail.book.id);
+      await loadBookDetail(detail.book.id);
+      await refreshBooks();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notify(t("Could not resume: {{message}}", { message: msg }), {
+        tone: "error",
+        durationMs: 8000,
+      });
     } finally {
-      setRebuildingBook(false);
+      setResumingBook(false);
     }
   };
+
+  const handleRebuildBook = async () =>
+    guard("Rebuild book", async () => {
+      if (!detail) return;
+      setRebuildingBook(true);
+      try {
+        await bookApi.rebuild(detail.book.id, true);
+        const refreshed = await loadBookDetail(detail.book.id);
+        setSelectedPageId(refreshed.pages[0]?.id || null);
+        setView("reader");
+        await refreshBooks();
+      } finally {
+        setRebuildingBook(false);
+      }
+    });
 
   const handleCreate = async (payload: {
     user_intent: string;
@@ -266,10 +455,11 @@ function BookPageInner() {
     question_categories: number[];
     question_entries: number[];
     language: string;
+    depth: BookDepth;
   }) => {
     setCreating(true);
     try {
-      const result = await bookApi.create(payload, handleBookOperationEvent);
+      const result = await bookApi.create(payload, handleCreationEvent);
       setPendingBook(result.book);
       setPendingProposal(result.proposal);
       setSelectedBookId(result.book.id);
@@ -283,11 +473,10 @@ function BookPageInner() {
     if (!pendingBook) return;
     setConfirmingProposal(true);
     try {
-      const result = await bookApi.confirmProposal(
-        pendingBook.id,
-        edited,
-        handleBookOperationEvent,
-      );
+      // No per-action event callback: the book now has a stream of its own,
+      // and `useBookStream` is already listening. Passing one too would feed
+      // the timeline every event twice.
+      const result = await bookApi.confirmProposal(pendingBook.id, edited);
       setPendingBook(result.book);
       setPendingProposal(null);
       await loadBookDetail(result.book.id);
@@ -298,11 +487,11 @@ function BookPageInner() {
     }
   };
 
-  const handleConfirmSpine = async (spine: Spine) => {
+  const handleConfirmSpine = async (spine: Spine, autoCompile: boolean) => {
     if (!detail) return;
     setConfirmingSpine(true);
     try {
-      await bookApi.confirmSpine(detail.book.id, spine, true);
+      await bookApi.confirmSpine(detail.book.id, spine, autoCompile);
       const refreshed = await loadBookDetail(detail.book.id);
       const firstPage = refreshed.pages[0] || null;
       setSelectedPageId(firstPage?.id || null);
@@ -321,167 +510,284 @@ function BookPageInner() {
       if (!selectedBookId) return;
       setCompilingPageId(pageId);
       try {
-        await bookApi.compilePage(
+        // Progress arrives on the book's stream; this call just awaits the
+        // finished page. The engine coalesces it with any run already in
+        // flight, so opening a page the worker reached first is free.
+        const { page } = await bookApi.compilePage(
           selectedBookId,
           pageId,
           force,
-          handleBookOperationEvent,
         );
+        mergePage(page);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        notify(`Compile failed: ${msg}`, { tone: "error", durationMs: 8000 });
+        notify(t("Compile failed: {{message}}", { message: msg }), {
+          tone: "error",
+          durationMs: 8000,
+        });
         console.error("compilePage failed:", err);
+        void hydratePage(pageId);
       } finally {
         setCompilingPageId((current) => (current === pageId ? null : current));
-        await loadBookDetail(selectedBookId);
       }
     },
-    [selectedBookId, loadBookDetail, handleBookOperationEvent],
+    [selectedBookId, mergePage, hydratePage, t],
   );
 
-  const handleSelectPage = (pageId: string) => {
-    setSelectedPageId(pageId);
-    if (!detail) return;
-    const page = detail.pages.find((p) => p.id === pageId);
-    if (page && page.status !== "ready" && page.status !== "generating") {
-      void compilePage(pageId);
+  const handleSelectPage = useCallback(
+    (pageId: string) => {
+      setSelectedPageId(pageId);
+      if (!detail) return;
+
+      const page = detail.pages.find((p) => p.id === pageId);
+      if (!page) return;
+      // Hydration is handled by the reader effect below, which fires for
+      // every route into a page — including the one that opens the book.
+      if (page.status !== "ready" && page.status !== "generating") {
+        void compilePage(pageId);
+      }
+    },
+    [detail, compilePage],
+  );
+
+  // A ?page= change on a book that is already open just moves the reader.
+  const lastDeepLinkedPageId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!requestedPageId || !requestedBookId) return;
+    if (requestedBookId !== selectedBookId) return;
+    if (requestedPageId === lastDeepLinkedPageId.current) return;
+    lastDeepLinkedPageId.current = requestedPageId;
+    if (requestedPageId !== selectedPageId) handleSelectPage(requestedPageId);
+    // Consume the parameter so following the same link again re-triggers it.
+    router.replace(`/book?book=${encodeURIComponent(requestedBookId)}`, {
+      scroll: false,
+    });
+  }, [
+    requestedPageId,
+    requestedBookId,
+    selectedBookId,
+    selectedPageId,
+    handleSelectPage,
+    router,
+  ]);
+
+  // Opening a book lands on a page without going through `handleSelectPage`,
+  // so hydrate and record the visit here too. The ref keeps recording a visit
+  // from re-triggering itself when the updated progress comes back.
+  const recordedVisitRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (view !== "reader" || !selectedBookId || !selectedPage) return;
+    if (needsHydration(selectedPage)) void hydratePage(selectedPage.id);
+
+    const key = `${selectedBookId}:${selectedPage.id}`;
+    if (recordedVisitRef.current === key) return;
+    recordedVisitRef.current = key;
+    const bookId = selectedBookId;
+    void bookApi
+      .markVisited(bookId, selectedPage.id)
+      .then(({ progress }) =>
+        setDetail((current) =>
+          current && current.book.id === bookId
+            ? { ...current, progress }
+            : current,
+        ),
+      )
+      .catch(() => {
+        // Position tracking is best-effort.
+      });
+  }, [view, selectedBookId, selectedPage, hydratePage]);
+
+  const handleUpdateBody = async (block: Block, body: string) => {
+    if (!detail || !selectedPage) return;
+    const pageId = selectedPage.id;
+    try {
+      await bookApi.updateBlock({
+        book_id: detail.book.id,
+        page_id: pageId,
+        block_id: block.id,
+        body,
+      });
+      await hydratePage(pageId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notify(t("Could not save your edit: {{message}}", { message: msg }), {
+        tone: "error",
+        durationMs: 8000,
+      });
+      throw err;
     }
   };
 
+  const handleToggleBookmark = async () =>
+    guard("Bookmark", async () => {
+      if (!detail || !selectedPage) return;
+      const bookId = detail.book.id;
+      const { progress } = await bookApi.toggleBookmark(
+        bookId,
+        selectedPage.id,
+      );
+      setDetail((current) =>
+        current && current.book.id === bookId
+          ? { ...current, progress }
+          : current,
+      );
+    });
+
   const handleRegenerateBlock = async (block: Block) => {
     if (!detail || !selectedPage) return;
+    const pageId = selectedPage.id;
     try {
-      await bookApi.regenerateBlock(
-        detail.book.id,
-        selectedPage.id,
-        block.id,
-        undefined,
-        handleBookOperationEvent,
-      );
+      await bookApi.regenerateBlock(detail.book.id, pageId, block.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      notify(`Regenerate block failed: ${msg}`, {
+      notify(t("Regenerate block failed: {{message}}", { message: msg }), {
         tone: "error",
         durationMs: 8000,
       });
       console.error("regenerateBlock failed:", err);
     } finally {
-      await loadBookDetail(detail.book.id);
+      await hydratePage(pageId);
     }
   };
 
-  const handleDeleteBlock = async (block: Block) => {
-    if (!detail || !selectedPage) return;
-    if (!confirm(t("Delete this {{type}} block?", { type: block.type })))
-      return;
-    await bookApi.deleteBlock(detail.book.id, selectedPage.id, block.id);
-    await loadBookDetail(detail.book.id);
-  };
-
-  const handleMoveBlock = async (block: Block, direction: "up" | "down") => {
-    if (!detail || !selectedPage) return;
-    const idx = selectedPage.blocks.findIndex((b) => b.id === block.id);
-    if (idx < 0) return;
-    const newPos = direction === "up" ? idx - 1 : idx + 1;
-    if (newPos < 0 || newPos >= selectedPage.blocks.length) return;
-    await bookApi.moveBlock(detail.book.id, selectedPage.id, block.id, newPos);
-    await loadBookDetail(detail.book.id);
-  };
-
-  const handleChangeBlockType = async (block: Block, newType: BlockType) => {
-    if (!detail || !selectedPage) return;
-    await bookApi.changeBlockType({
-      book_id: detail.book.id,
-      page_id: selectedPage.id,
-      block_id: block.id,
-      new_type: newType,
+  const handleDeleteBlock = async (block: Block) =>
+    guard("Delete block", async () => {
+      if (!detail || !selectedPage) return;
+      await bookApi.deleteBlock(detail.book.id, selectedPage.id, block.id);
+      await hydratePage(selectedPage.id);
     });
-    await loadBookDetail(detail.book.id);
-  };
 
-  const handleInsertBlock = async (block_type: BlockType) => {
-    if (!detail || !selectedPage) return;
-    await bookApi.insertBlock({
-      book_id: detail.book.id,
-      page_id: selectedPage.id,
-      block_type,
+  const handleMoveBlock = async (block: Block, direction: "up" | "down") =>
+    guard("Move block", async () => {
+      if (!detail || !selectedPage) return;
+      const idx = selectedPage.blocks.findIndex((b) => b.id === block.id);
+      if (idx < 0) return;
+      const newPos = direction === "up" ? idx - 1 : idx + 1;
+      if (newPos < 0 || newPos >= selectedPage.blocks.length) return;
+      await bookApi.moveBlock(
+        detail.book.id,
+        selectedPage.id,
+        block.id,
+        newPos,
+      );
+      await hydratePage(selectedPage.id);
     });
-    await loadBookDetail(detail.book.id);
-  };
 
-  const handleDeepDive = async (topic: string, blockId: string) => {
-    if (!detail || !selectedPage) return;
-    setPendingDeepDiveTopic(topic);
-    try {
-      const result = await bookApi.deepDive({
+  const handleChangeBlockType = async (block: Block, newType: BlockType) =>
+    guard("Change block type", async () => {
+      if (!detail || !selectedPage) return;
+      await bookApi.changeBlockType({
         book_id: detail.book.id,
-        parent_page_id: selectedPage.id,
-        topic,
-        block_id: blockId,
+        page_id: selectedPage.id,
+        block_id: block.id,
+        new_type: newType,
       });
-      const refreshed = await loadBookDetail(detail.book.id);
-      const newPage = refreshed.pages.find((p) => p.id === result.page.id);
-      if (newPage) {
-        setSelectedPageId(newPage.id);
-      }
-    } finally {
-      setPendingDeepDiveTopic(null);
-    }
-  };
-
-  const handleQuizAttempt = async (
-    block: Block,
-    args: { questionId?: string; userAnswer?: string; isCorrect: boolean },
-  ) => {
-    if (!detail || !selectedPage) return;
-    await bookApi.recordQuizAttempt({
-      book_id: detail.book.id,
-      page_id: selectedPage.id,
-      block_id: block.id,
-      question_id: args.questionId,
-      user_answer: args.userAnswer,
-      is_correct: args.isCorrect,
+      await hydratePage(selectedPage.id);
     });
-    if (!args.isCorrect) {
-      const topic =
-        (block.params?.topic as string | undefined) ||
-        selectedPage.title ||
-        "this topic";
+
+  const handleInsertBlock = async (block_type: BlockType) =>
+    guard("Insert block", async () => {
+      if (!detail || !selectedPage) return;
+      await bookApi.insertBlock({
+        book_id: detail.book.id,
+        page_id: selectedPage.id,
+        block_type,
+      });
+      await hydratePage(selectedPage.id);
+    });
+
+  const handleDeepDive = async (topic: string, blockId: string) =>
+    guard("Deep dive", async () => {
+      if (!detail || !selectedPage) return;
+      setPendingDeepDiveTopic(topic);
       try {
-        await bookApi.supplement(detail.book.id, selectedPage.id, topic);
-      } catch {
-        // best-effort
+        const result = await bookApi.deepDive({
+          book_id: detail.book.id,
+          parent_page_id: selectedPage.id,
+          topic,
+          block_id: blockId,
+        });
+        // A deep dive adds a page, so the chapter list itself changed.
+        const refreshed = await loadBookDetail(detail.book.id);
+        const newPage = refreshed.pages.find((p) => p.id === result.page.id);
+        if (newPage) {
+          setSelectedPageId(newPage.id);
+          mergePage(result.page);
+        }
+      } finally {
+        setPendingDeepDiveTopic(null);
       }
-      await loadBookDetail(detail.book.id);
+    });
+
+  const handleQuizAttempt = async (block: Block, args: QuizAttemptArgs) =>
+    guard("Record answer", async () => {
+      if (!detail || !selectedPage) return;
+      const bookId = detail.book.id;
+      const { progress } = await bookApi.recordQuizAttempt({
+        book_id: bookId,
+        page_id: selectedPage.id,
+        block_id: block.id,
+        question_id: args.questionId,
+        user_answer: args.userAnswer,
+        is_correct: args.isCorrect,
+      });
+      setDetail((current) =>
+        current && current.book.id === bookId
+          ? { ...current, progress }
+          : current,
+      );
+    });
+
+  /**
+   * Add a remediation callout + explanation + easier quiz for a topic.
+   *
+   * Explicitly requested, never automatic. This grows the page by three
+   * generated blocks, and having that happen unannounced under the reader —
+   * once per wrong click, with nothing stopping a second round — was both
+   * startling and expensive.
+   */
+  const handleRequestSupplement = async (block: Block) => {
+    if (!detail || !selectedPage) return;
+    const pageId = selectedPage.id;
+    const topic =
+      (block.params?.topic as string | undefined) || selectedPage.title || "";
+    setSupplementingBlockId(block.id);
+    try {
+      await bookApi.supplement(detail.book.id, pageId, topic);
+      await hydratePage(pageId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notify(t("Could not add extra practice: {{message}}", { message: msg }), {
+        tone: "error",
+        durationMs: 8000,
+      });
+    } finally {
+      setSupplementingBlockId(null);
     }
   };
 
-  const handlePageChatSession = async (sessionId: string) => {
-    if (!detail || !selectedPage || !sessionId) return;
-    const existing =
-      detail.book.metadata?.page_chat_sessions?.[selectedPage.id];
-    if (existing === sessionId) return;
-    const result = await bookApi.setPageChatSession(
-      detail.book.id,
-      selectedPage.id,
-      sessionId,
-    );
-    setDetail((current) =>
-      current && current.book.id === result.book.id
-        ? { ...current, book: result.book }
-        : current,
-    );
-  };
+  const handlePageChatSession = async (sessionId: string) =>
+    guard("Link chat session", async () => {
+      if (!detail || !selectedPage || !sessionId) return;
+      const existing =
+        detail.book.metadata?.page_chat_sessions?.[selectedPage.id];
+      if (existing === sessionId) return;
+      const result = await bookApi.setPageChatSession(
+        detail.book.id,
+        selectedPage.id,
+        sessionId,
+      );
+      setDetail((current) =>
+        current && current.book.id === result.book.id
+          ? { ...current, book: result.book }
+          : current,
+      );
+    });
 
   // ── Render ─────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen w-full">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 rounded-lg bg-red-500/90 px-4 py-2 text-sm text-white shadow-lg">
-          {toast}
-        </div>
-      )}
+    <div className="flex h-full w-full">
       {view !== "list" && (
         <BookSidebar
           book={detail?.book || pendingBook || null}
@@ -491,6 +797,8 @@ function BookPageInner() {
           onSelectPage={handleSelectPage}
           onRebuild={detail ? () => void handleRebuildBook() : undefined}
           rebuilding={rebuildingBook}
+          visitedPageIds={detail?.progress.visited_page_ids}
+          bookmarkedPageIds={detail?.progress.bookmarked_page_ids}
         />
       )}
 
@@ -522,6 +830,7 @@ function BookPageInner() {
                 </div>
               )}
               <BookCreator
+                book={pendingBook}
                 onCreate={handleCreate}
                 loading={creating}
                 proposal={pendingProposal}
@@ -535,50 +844,83 @@ function BookPageInner() {
             <div className="flex h-full flex-col overflow-hidden">
               <div className="flex-1 overflow-hidden">
                 <SpineEditor
+                  key={`${detail.spine.book_id}:${detail.spine.version}`}
                   spine={detail.spine}
                   onConfirm={handleConfirmSpine}
                   loading={confirmingSpine}
+                  depth={detail.book.depth}
                 />
               </div>
             </div>
           )}
 
           {view === "reader" && (
-            <>
+            // Column layout so banners push the reader down instead of
+            // overflowing it — `PageReader` fills whatever height is left.
+            <div className="flex h-full flex-col overflow-hidden">
+              <BookPausedBanner
+                book={detail?.book || null}
+                onResume={() => void handleResumeBook()}
+                resuming={resumingBook}
+              />
               <BookHealthBanner
                 bookId={selectedBookId}
                 refreshKey={detail?.book.updated_at}
+                explorationFailed={!!detail?.book.metadata?.exploration_failed}
                 onRecompile={(pageId) => {
                   setSelectedPageId(pageId);
                   void compilePage(pageId, true);
                 }}
               />
-              <PageReader
-                page={selectedPage}
-                bookId={detail?.book.id}
-                bookLanguage={detail?.book.language}
-                loading={
-                  !!compilingPageId && compilingPageId === selectedPage?.id
-                }
-                onRegenerateBlock={(block) => void handleRegenerateBlock(block)}
-                onDeleteBlock={(block) => void handleDeleteBlock(block)}
-                onMoveBlock={(block, dir) => void handleMoveBlock(block, dir)}
-                onChangeBlockType={(block, t) =>
-                  void handleChangeBlockType(block, t)
-                }
-                onInsertBlock={(t) => handleInsertBlock(t)}
-                onDeepDive={(topic, blockId) => handleDeepDive(topic, blockId)}
-                onQuizAttempt={(block, args) =>
-                  void handleQuizAttempt(block, args)
-                }
-                pendingDeepDiveTopic={pendingDeepDiveTopic}
-                onRecompile={
-                  selectedPage
-                    ? () => void compilePage(selectedPage.id, true)
-                    : undefined
-                }
-              />
-            </>
+              <div className="min-h-0 flex-1">
+                <PageReader
+                  page={selectedPage}
+                  bookId={detail?.book.id}
+                  bookLanguage={detail?.book.language}
+                  loading={
+                    !!compilingPageId && compilingPageId === selectedPage?.id
+                  }
+                  onRegenerateBlock={(block) =>
+                    void handleRegenerateBlock(block)
+                  }
+                  onDeleteBlock={(block) => void handleDeleteBlock(block)}
+                  onMoveBlock={(block, dir) => void handleMoveBlock(block, dir)}
+                  onChangeBlockType={(block, t) =>
+                    void handleChangeBlockType(block, t)
+                  }
+                  onInsertBlock={(t) => handleInsertBlock(t)}
+                  onDeepDive={(topic, blockId) =>
+                    handleDeepDive(topic, blockId)
+                  }
+                  onOpenPage={(pageId) => handleSelectPage(pageId)}
+                  onQuizAttempt={(block, args) =>
+                    void handleQuizAttempt(block, args)
+                  }
+                  onRequestSupplement={(block) =>
+                    void handleRequestSupplement(block)
+                  }
+                  supplementingBlockId={supplementingBlockId}
+                  onUpdateBody={handleUpdateBody}
+                  attempts={detail?.progress.quiz_attempts}
+                  previousPage={pageNeighbours.previous}
+                  nextPage={pageNeighbours.next}
+                  onNavigate={handleSelectPage}
+                  bookmarked={
+                    !!selectedPage &&
+                    !!detail?.progress.bookmarked_page_ids.includes(
+                      selectedPage.id,
+                    )
+                  }
+                  onToggleBookmark={() => void handleToggleBookmark()}
+                  pendingDeepDiveTopic={pendingDeepDiveTopic}
+                  onRecompile={
+                    selectedPage
+                      ? () => void compilePage(selectedPage.id, true)
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
           )}
 
           {view === "spine" && !detail?.spine && (

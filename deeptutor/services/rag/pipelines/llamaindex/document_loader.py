@@ -11,6 +11,7 @@ into the multimodal ``ImageNode`` path below.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from dataclasses import dataclass
 import logging
@@ -67,7 +68,11 @@ class LlamaIndexDocumentLoader:
         for file_path_str in classification.parser_files:
             file_path = Path(file_path_str)
             self.logger.info(f"Parsing document: {file_path.name}")
-            text, extracted_images = self._parse_document(file_path)
+            # MinerU cloud parsing blocks end to end (upload + 300s polling +
+            # archive download) on a synchronous httpx.Client — running it on
+            # the event loop stalls every other request for the whole PDF
+            # (same class of bug as upstream #761/#777). Hand it to a thread.
+            text, extracted_images = await asyncio.to_thread(self._parse_document, file_path)
             self._append_if_nonempty(documents, file_path, text)
             image_sources.extend(extracted_images)
 

@@ -396,10 +396,15 @@ export default function BookChatPanel({
       content: userContent,
       session_id: sessionIdRef.current,
       capability: "chat",
-      tools: book.knowledge_bases?.length ? ["rag"] : [],
+      // No `tools` field: the backend back-fills the reader's own Settings
+      // selection when it is absent (turn_runtime treats an explicit list —
+      // including []) as a deliberate override), and `rag` mounts itself from
+      // `knowledge_bases`. Pinning ["rag"] here disabled every other tool the
+      // reader had switched on.
       knowledge_bases: book.knowledge_bases || [],
       attachments: attachments.map(outgoingAttachment),
-      language: appLanguage,
+      // The book, not the UI chrome, decides the language of this conversation.
+      language: book.language || appLanguage,
       book_references: [{ book_id: book.id, page_ids: [page.id] }],
     };
     sendWithRetry(client, payload);

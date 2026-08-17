@@ -2,15 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  Bookmark,
+  BookmarkCheck,
   Loader2,
   RefreshCcw,
   Plus,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { Block, BlockType, Page } from "@/lib/book-types";
+import type { Block, BlockType, Page, QuizAttempt } from "@/lib/book-types";
 import BlockRenderer from "./blocks/BlockRenderer";
+import type { QuizAttemptArgs } from "./blocks/QuizBlock";
 import PageOutlineNav from "./PageOutlineNav";
 
 const INSERTABLE_TYPES: BlockType[] = [
@@ -35,15 +40,25 @@ export interface PageReaderProps {
   onChangeBlockType?: (block: Block, newType: BlockType) => void;
   onInsertBlock?: (block_type: BlockType) => Promise<void> | void;
   onDeepDive?: (topic: string, blockId: string) => Promise<void> | void;
-  onQuizAttempt?: (
-    block: Block,
-    args: { questionId?: string; userAnswer?: string; isCorrect: boolean },
-  ) => void;
+  onOpenPage?: (pageId: string) => void;
+  onQuizAttempt?: (block: Block, args: QuizAttemptArgs) => void;
+  /** Reader asked for extra practice on a quiz they got wrong. */
+  onRequestSupplement?: (block: Block) => void;
+  supplementingBlockId?: string | null;
+  onUpdateBody?: (block: Block, body: string) => Promise<void> | void;
+  /** Previous quiz answers, so they survive leaving and returning. */
+  attempts?: QuizAttempt[];
   onRecompile?: () => void;
   pendingDeepDiveTopic?: string | null;
   loading?: boolean;
   bookId?: string;
   bookLanguage?: string;
+  // ── Chapter navigation ──
+  previousPage?: Page | null;
+  nextPage?: Page | null;
+  onNavigate?: (pageId: string) => void;
+  bookmarked?: boolean;
+  onToggleBookmark?: () => void;
 }
 
 export default function PageReader({
@@ -54,12 +69,22 @@ export default function PageReader({
   onChangeBlockType,
   onInsertBlock,
   onDeepDive,
+  onOpenPage,
   onQuizAttempt,
+  onRequestSupplement,
+  supplementingBlockId,
+  onUpdateBody,
+  attempts,
   onRecompile,
   pendingDeepDiveTopic,
   loading = false,
   bookId,
   bookLanguage,
+  previousPage,
+  nextPage,
+  onNavigate,
+  bookmarked = false,
+  onToggleBookmark,
 }: PageReaderProps) {
   const { t } = useTranslation();
   const [showInsertMenu, setShowInsertMenu] = useState(false);
@@ -104,6 +129,29 @@ export default function PageReader({
     scrollContainer.addEventListener("scroll", handler, { passive: true });
     return () => scrollContainer.removeEventListener("scroll", handler);
   }, [scrollContainer, userToggled]);
+
+  useEffect(() => {
+    if (!onNavigate) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      // Never steal arrow keys from a field the reader is typing in.
+      if (
+        target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft" && previousPage) {
+        onNavigate(previousPage.id);
+      } else if (event.key === "ArrowRight" && nextPage) {
+        onNavigate(nextPage.id);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onNavigate, previousPage, nextPage]);
 
   if (!page) {
     return (
@@ -153,6 +201,27 @@ export default function PageReader({
               <span className="rounded-full bg-[var(--muted)] px-2.5 py-0.5 text-[11px] uppercase tracking-wider text-[var(--muted-foreground)]">
                 {t(page.status)}
               </span>
+            )}
+            {onToggleBookmark && (
+              <button
+                type="button"
+                onClick={onToggleBookmark}
+                title={
+                  bookmarked ? t("Remove bookmark") : t("Bookmark this chapter")
+                }
+                aria-pressed={bookmarked}
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+                  bookmarked
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {bookmarked ? (
+                  <BookmarkCheck className="h-3.5 w-3.5" />
+                ) : (
+                  <Bookmark className="h-3.5 w-3.5" />
+                )}
+              </button>
             )}
             {!headerCollapsed && onRecompile && (
               <button
@@ -272,7 +341,12 @@ export default function PageReader({
                   onMove={onMoveBlock}
                   onChangeType={onChangeBlockType}
                   onDeepDive={onDeepDive}
+                  onOpenPage={onOpenPage}
                   onQuizAttempt={onQuizAttempt}
+                  onRequestSupplement={onRequestSupplement}
+                  supplementing={supplementingBlockId === block.id}
+                  onUpdateBody={onUpdateBody}
+                  attempts={attempts}
                   pendingDeepDiveTopic={pendingDeepDiveTopic}
                   bookId={bookId}
                   currentPageId={page.id}
@@ -327,6 +401,28 @@ export default function PageReader({
         )}
       </div>
 
+      {(previousPage || nextPage) && onNavigate && (
+        <footer className="border-t border-[var(--border)] bg-[var(--card)]/60 px-8 py-2.5">
+          <div className="mx-auto flex w-full max-w-[78ch] items-center justify-between gap-3">
+            <NavButton
+              page={previousPage}
+              direction="previous"
+              label={t("Previous chapter")}
+              onNavigate={onNavigate}
+            />
+            <span className="shrink-0 text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/70">
+              {t("← / → to turn pages")}
+            </span>
+            <NavButton
+              page={nextPage}
+              direction="next"
+              label={t("Next chapter")}
+              onNavigate={onNavigate}
+            />
+          </div>
+        </footer>
+      )}
+
       {/* Floating outline lives outside the scroll container so it stays
           pinned to the viewport regardless of page scrolling. */}
       <PageOutlineNav
@@ -336,5 +432,39 @@ export default function PageReader({
         language={bookLanguage}
       />
     </div>
+  );
+}
+
+function NavButton({
+  page,
+  direction,
+  label,
+  onNavigate,
+}: {
+  page: Page | null | undefined;
+  direction: "previous" | "next";
+  label: string;
+  onNavigate: (pageId: string) => void;
+}) {
+  if (!page) return <span className="min-w-0 flex-1" />;
+  const isNext = direction === "next";
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(page.id)}
+      className={`group inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] ${
+        isNext ? "justify-end text-right" : "justify-start text-left"
+      }`}
+      title={page.title}
+    >
+      {!isNext && <ChevronLeft className="h-3.5 w-3.5 shrink-0" />}
+      <span className="min-w-0">
+        <span className="block text-[10px] uppercase tracking-wider opacity-70">
+          {label}
+        </span>
+        <span className="block truncate">{page.title}</span>
+      </span>
+      {isNext && <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+    </button>
   );
 }

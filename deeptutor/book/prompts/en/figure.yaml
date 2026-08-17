@@ -1,0 +1,10 @@
+# Reader-facing brief handed to the shared visualize / animation pipeline.
+# Lives here rather than in Python so it follows the book's language like
+# every other block's prompt does.
+brief: "Create a {variant} figure for the chapter \"{chapter_title}\"{focus_clause}. The figure should help a learner build intuition about the core relationships covered above."
+
+# Quoted on purpose — the English clause needs its leading space.
+focus_clause: " focusing on {focus}"
+
+context_summary: "Chapter summary: {chapter_summary}"
+context_objectives: "Learning objectives:"

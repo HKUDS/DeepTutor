@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -263,3 +264,43 @@ def test_needs_reindex_takes_precedence(tmp_path: Path, monkeypatch: pytest.Monk
 
     info = manager.get_info("kb7")
     assert info["status"] == "needs_reindex"
+
+
+def test_get_info_does_not_reparse_docstore_on_repeat_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``kb list`` / the knowledge API must not re-parse docstore.json per call.
+
+    Regression test for issue #859: probing every index version parses the
+    multi-MB LlamaIndex docstore.json, and get_info used to probe the same
+    versions two or three times per KB (scan, failure summary, active-match
+    re-probe). With the docstore-count cache and version reuse, a second
+    get_info call must not read the file again at all.
+    """
+    _patch_active_embedding(monkeypatch)
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.update_kb_status(name="kb-perf", status="ready")
+    _create_ready_version(tmp_path / "kb-perf")
+
+    from deeptutor.services.rag import index_probe as probe_module
+
+    real_read = probe_module._read_json
+    reads: list[str] = []
+
+    def counting_read(path: Path) -> dict[str, Any] | None:
+        reads.append(str(path))
+        return real_read(path)
+
+    monkeypatch.setattr(probe_module, "_read_json", counting_read)
+
+    info = manager.get_info("kb-perf")
+    assert info["status"] == "ready"
+    assert info["statistics"]["active_match"] is True
+    parses_after_first_call = len(reads)
+    assert parses_after_first_call == 1  # one docstore.json read for the probe
+
+    info_again = manager.get_info("kb-perf")
+    assert info_again["status"] == "ready"
+    assert info_again["statistics"]["active_match"] is True
+    # Cached count + reused version probes: no re-read of the docstore.
+    assert len(reads) == parses_after_first_call

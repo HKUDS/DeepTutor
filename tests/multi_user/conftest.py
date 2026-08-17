@@ -56,6 +56,15 @@ def mu_isolated_root(tmp_path, monkeypatch) -> Path:
 
     monkeypatch.setattr(grants, "GRANTS_DIR", system_root / "grants")
 
+    # The ``auth.json`` bootstrap admin is process-global state rather than a
+    # path, and it now takes part in the first-user promotion decision (#849).
+    # Clear it so a developer with real credentials configured sees the same
+    # results as CI; tests that need one patch these back explicitly.
+    from deeptutor.services import auth as auth_service
+
+    monkeypatch.setattr(auth_service, "AUTH_USERNAME", "")
+    monkeypatch.setattr(auth_service, "AUTH_PASSWORD_HASH", "")
+
     admin_root.mkdir(parents=True, exist_ok=True)
     return tmp_path
 

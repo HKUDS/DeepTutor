@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
 import Link from "next/link";
 import { Compass } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
+import { renderConceptGraphMermaid } from "@/lib/concept-graph";
 import type { Block, ConceptGraph } from "@/lib/book-types";
 
 export interface ConceptGraphBlockProps {
@@ -64,17 +64,15 @@ export default function ConceptGraphBlock({
     (block.payload?.code as
       | { language?: string; content?: string }
       | undefined) || {};
-  const mermaidSrc = String(code.content || "").trim();
   const graph = asGraph(block.payload?.graph);
+  const mermaidSrc = graph
+    ? renderConceptGraphMermaid(graph)
+    : String(code.content || "").trim();
   const index = asIndex(block.payload?.index);
 
-  const fenced = useMemo(
-    () =>
-      mermaidSrc
-        ? `\`\`\`mermaid\n${mermaidSrc}\n\`\`\``
-        : '```mermaid\ngraph TD\n  empty["(no concepts yet)"]\n```',
-    [mermaidSrc],
-  );
+  const fenced = mermaidSrc
+    ? `\`\`\`mermaid\n${mermaidSrc}\n\`\`\``
+    : '```mermaid\ngraph TD\n  empty["(no concepts yet)"]\n```';
 
   const chapterNodes = graph?.nodes.filter((n) => n.chapter_id) ?? [];
   const isChapterMap = chapterNodes.length > 0;
@@ -125,7 +123,7 @@ export default function ConceptGraphBlock({
                 <span className="text-[10px] font-mono text-[var(--muted-foreground)]">
                   {String(idx + 1).padStart(2, "0")}
                 </span>
-                <span className="line-clamp-2 text-xs font-medium leading-snug text-[var(--foreground)]">
+                <span className="text-xs font-medium leading-snug text-[var(--foreground)]">
                   {chapter.title}
                 </span>
               </span>
@@ -134,7 +132,8 @@ export default function ConceptGraphBlock({
               return (
                 <li key={chapter.id}>
                   <Link
-                    href={`/book/${bookId}?page=${chapter.page_id}`}
+                    href={`/book?book=${encodeURIComponent(bookId)}&page=${encodeURIComponent(chapter.page_id)}`}
+                    title={chapter.title}
                     className="block rounded-md px-2 py-1.5 hover:bg-[var(--background)]"
                   >
                     {label}
@@ -145,6 +144,7 @@ export default function ConceptGraphBlock({
             return (
               <li
                 key={chapter.id}
+                title={chapter.title}
                 className="rounded-md px-2 py-1.5 text-[var(--foreground)]"
               >
                 {label}

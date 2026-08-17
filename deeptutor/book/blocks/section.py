@@ -34,6 +34,20 @@ from .base import BlockContext, BlockGenerator, GenerationFailure
 logger = logging.getLogger(__name__)
 
 
+def _subsection_token_budget(target_words: int) -> int:
+    """Token ceiling that actually fits *target_words*.
+
+    A flat cap silently truncated the deeper settings: asking for 1.6x the prose
+    and leaving the ceiling at 1200 tokens produced a section that stops
+    mid-sentence. Budget generously — the model stops when it is done, so a
+    high ceiling costs nothing on shorter sections, while too low a one is
+    unrecoverable. CJK needs more tokens per word than English, hence the
+    deliberately loose ratio.
+    """
+    words = max(1, int(target_words or 0))
+    return max(1200, min(8000, int(words * 3.0) + 400))
+
+
 _DEFAULT_SUBSECTION_WORDS = 320
 
 
@@ -289,7 +303,7 @@ class SectionGenerator(BlockGenerator):
             body = await llm_text(
                 user_prompt=user_prompt,
                 system_prompt=get_book_prompt(prompts, "subsection_system"),
-                max_tokens=1200,
+                max_tokens=_subsection_token_budget(target_words),
                 temperature=0.5,
                 language=ctx.language,
             )

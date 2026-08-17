@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 import zipfile
 
+import httpx
 import pytest
 
 from deeptutor.services.parsing.engines import factory
+from deeptutor.services.parsing.engines.docling.config import DoclingConfig
 from deeptutor.services.parsing.types import ParserError
 
 
@@ -84,6 +86,116 @@ def test_mineru_cloud_readiness_needs_token() -> None:
 
     assert mineru_readiness(MinerUConfig(mode="cloud", api_token="")).reason == "not_configured"
     assert mineru_readiness(MinerUConfig(mode="cloud", api_token="tok")).ready is True
+
+
+def test_docling_signature_distinguishes_local_and_remote() -> None:
+    parser = factory.get_parser("docling")
+    from deeptutor.services.parsing.engines.docling.config import DoclingConfig
+
+    local = parser.signature(DoclingConfig(mode="local")).hash()
+    remote = parser.signature(DoclingConfig(mode="remote", api_base_url="http://host:5001")).hash()
+    other_host = parser.signature(
+        DoclingConfig(mode="remote", api_base_url="http://other:5001")
+    ).hash()
+    assert local != remote
+    assert remote != other_host
+
+
+def test_docling_remote_readiness_needs_no_local_package() -> None:
+    parser = factory.get_parser("docling")
+    from deeptutor.services.parsing.engines.docling.config import DoclingConfig
+
+    # Remote mode is ready with a URL set — even if the docling package is absent.
+    assert parser.is_ready(DoclingConfig(mode="remote", api_base_url="http://host:5001")).ready
+    blocked = parser.is_ready(DoclingConfig(mode="remote", api_base_url=""))
+    assert blocked.ready is False
+    assert blocked.reason == "not_configured"
+
+
+def test_docling_remote_parse_writes_markdown(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    workdir = tmp_path / "parsed"
+    workdir.mkdir()
+
+    captured: dict = {}
+
+    class _FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, endpoint, files=None, data=None):
+            captured["endpoint"] = endpoint
+            captured["files"] = files
+            captured["data"] = data
+            return _FakeResponse(
+                {
+                    "status": "success",
+                    "document": {"md_content": "# Extracted via Docling serve\n"},
+                }
+            )
+
+    class _FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    monkeypatch.setattr(httpx, "Client", _FakeClient)
+    parser = factory.get_parser("docling")
+    parser.parse(pdf, workdir, config=DoclingConfig(mode="remote", api_base_url="http://host:5001"))
+
+    # Remote parse goes to /v1/convert/file with markdown output requested and
+    # the parsed markdown written to <stem>.md.
+    assert captured["endpoint"] == "/v1/convert/file"
+    assert captured["data"]["to_formats"] == "md"
+    assert captured["files"]["files"][1].closed
+    assert (workdir / "doc.md").read_text(encoding="utf-8") == "# Extracted via Docling serve\n"
+
+
+def test_docling_remote_business_error_raises(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    workdir = tmp_path / "parsed"
+    workdir.mkdir()
+
+    class _FailingResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"status": "failure", "errors": [{"error": "bad file"}], "document": None}
+
+    class _FailingClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def post(self, *args, **kwargs):
+            return _FailingResponse()
+
+    monkeypatch.setattr(httpx, "Client", _FailingClient)
+    parser = factory.get_parser("docling")
+    with pytest.raises(ParserError, match="bad file"):
+        parser.parse(
+            pdf, workdir, config=DoclingConfig(mode="remote", api_base_url="http://host:5001")
+        )
+    assert not (workdir / "doc.md").exists()
 
 
 def test_mineru_local_model_download_gate(monkeypatch: pytest.MonkeyPatch) -> None:
