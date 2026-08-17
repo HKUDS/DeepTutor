@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
+import logging
 
 from deeptutor.services.base_sync import BaseSourceSyncService, is_stale
 from deeptutor.services.github_source.sync import SYNC_INTERVAL_HOURS
@@ -38,19 +38,23 @@ class GitHubSourceSyncService(BaseSourceSyncService):
             sid = source.get("id", "?")
             try:
                 result = await sync_source(
-                    kb_name=kb_name, source=source,
-                    base_dir=base_dir, client=self._client,
+                    kb_name=kb_name,
+                    source=source,
+                    base_dir=base_dir,
+                    client=self._client,
                 )
                 if not result.ok:
                     manager.update_github_source_state(
-                        kb_name=kb_name, source_id=sid,
+                        kb_name=kb_name,
+                        source_id=sid,
                         last_sync_status="error",
                         last_sync_error=result.error,
                         last_synced_at=datetime.now(timezone.utc).isoformat(),
                     )
             except Exception as exc:
                 manager.update_github_source_state(
-                    kb_name=kb_name, source_id=sid,
+                    kb_name=kb_name,
+                    source_id=sid,
                     last_sync_status="error",
                     last_sync_error=str(exc),
                     last_synced_at=datetime.now(timezone.utc).isoformat(),
