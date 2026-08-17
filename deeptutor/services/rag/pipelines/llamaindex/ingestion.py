@@ -15,6 +15,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import BaseNode
 
 from . import vector_store
+from .config import should_show_progress
 
 
 def build_ingestion_pipeline() -> IngestionPipeline:
@@ -60,7 +61,9 @@ def _has_precomputed_embedding(document: Any) -> bool:
         return True
 
 
-def documents_to_nodes(documents: list[Any], *, show_progress: bool = True) -> list[Any]:
+def documents_to_nodes(
+    documents: list[Any], *, show_progress: bool = should_show_progress()
+) -> list[Any]:
     """Convert LlamaIndex documents into embedded nodes.
 
     Pre-embedded nodes, such as ImageNode instances produced by the document
@@ -80,7 +83,7 @@ def documents_to_nodes(documents: list[Any], *, show_progress: bool = True) -> l
 
 
 def create_index_from_documents(
-    documents: list[Any], storage_dir: Path, *, show_progress: bool = True
+    documents: list[Any], storage_dir: Path, *, show_progress: bool = should_show_progress()
 ) -> tuple[VectorStoreIndex, int]:
     """Create and persist a VectorStoreIndex from documents.
 
@@ -97,7 +100,7 @@ def create_index_from_documents(
 
 
 def insert_documents_into_index(
-    index: Any, documents: list[Any], *, show_progress: bool = True
+    index: Any, documents: list[Any], *, show_progress: bool = should_show_progress()
 ) -> int:
     """Transform documents once, then insert nodes into an existing index."""
     nodes = documents_to_nodes(documents, show_progress=show_progress)
