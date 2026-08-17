@@ -115,6 +115,9 @@ const nextConfig = {
   // their total size is not coupled to this in-memory clone limit.
   experimental: {
     proxyClientMaxBodySize: 210 * 1024 * 1024,
+    // Agentic reads and full-draft edits routinely exceed Next's 30-second
+    // rewrite default; the browser remains responsible for cancelling them.
+    proxyTimeout: 30 * 60 * 1000,
   },
 
   // Move dev indicator to bottom-right corner
