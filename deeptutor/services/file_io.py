@@ -6,7 +6,32 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 from typing import Any
+
+
+def _atomic_replace(src: Path, dst: Path, *, max_retries: int = 5) -> None:
+    """Replace *dst* with *src*, retrying on transient ``PermissionError``.
+
+    On Windows the destination file is occasionally locked by another process
+    (antivirus, indexer, or a concurrent reader), which makes ``Path.replace``
+    raise ``PermissionError``. A short exponential backoff recovers in most
+    cases without losing the already-written content.
+    """
+    delay = 0.2
+    last_err: PermissionError | None = None
+    for attempt in range(max_retries):
+        try:
+            src.replace(dst)
+            return
+        except PermissionError as exc:  # pragma: no cover - platform specific
+            last_err = exc
+            if attempt == max_retries - 1:
+                break
+            time.sleep(delay)
+            delay = min(delay * 2, 1.6)
+    assert last_err is not None
+    raise last_err
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -29,7 +54,7 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
                 os.fsync(handle.fileno())
             except OSError:
                 pass
-        temporary_path.replace(path)
+        _atomic_replace(temporary_path, path)
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
@@ -54,7 +79,7 @@ def atomic_write_text(path: Path, text: str) -> None:
                 os.fsync(handle.fileno())
             except OSError:
                 pass
-        temporary_path.replace(path)
+        _atomic_replace(temporary_path, path)
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
