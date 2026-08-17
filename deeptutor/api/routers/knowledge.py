@@ -1325,10 +1325,13 @@ async def update_graphrag_pipeline_config(payload: GraphRagConfigUpdate):
 
 
 class LightRagConfigUpdate(BaseModel):
-    """Partial update for LightRAG query knobs (omitted fields kept)."""
+    """Partial update for LightRAG query + indexing knobs (omitted fields kept)."""
 
     top_k: int | None = None
     response_type: str | None = None
+    max_concurrent_files: int | None = None
+    llm_model_max_async: int | None = None
+    entity_extract_max_gleaning: int | None = None
 
 
 @router.get("/rag-pipelines/lightrag/config")

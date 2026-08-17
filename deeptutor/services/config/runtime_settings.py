@@ -278,15 +278,20 @@ DEFAULT_GRAPHRAG_SETTINGS: dict[str, Any] = {
     "dynamic_community_selection": False,
 }
 
-# LightRAG retrieval knobs (HKUDS/LightRAG via RAG-Anything). ``top_k`` is the
-# number of entities/relations the query pulls; ``response_type`` mirrors
+# LightRAG retrieval + indexing knobs (HKUDS/LightRAG via RAG-Anything). ``top_k``
+# is the number of entities/relations the query pulls; ``response_type`` mirrors
 # GraphRAG's. These ride into ``QueryParam`` via the engine's aquery() call;
 # wiring is defensive (an older RAG-Anything that rejects a kwarg degrades to a
-# mode-only query).
+# mode-only query). ``max_concurrent_files`` maps to RAGAnythingConfig's batch
+# knob; ``llm_model_max_async`` / ``entity_extract_max_gleaning`` ride into
+# LightRAG's own constructor via RAGAnything's ``lightrag_kwargs`` passthrough.
 DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
     "version": 1,
     "top_k": 60,
     "response_type": "Multiple Paragraphs",
+    "max_concurrent_files": 1,
+    "llm_model_max_async": 4,
+    "entity_extract_max_gleaning": 1,
 }
 
 IGNORE_PROCESS_OVERRIDES_ENV = "DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES"
@@ -833,6 +838,15 @@ class RuntimeSettingsService:
             "version": 1,
             "top_k": _coerce_clamped_int(settings.get("top_k"), 60, 1, 200),
             "response_type": self._normalize_response_type(settings.get("response_type")),
+            "max_concurrent_files": _coerce_clamped_int(
+                settings.get("max_concurrent_files"), 1, 1, 16
+            ),
+            "llm_model_max_async": _coerce_clamped_int(
+                settings.get("llm_model_max_async"), 4, 1, 32
+            ),
+            "entity_extract_max_gleaning": _coerce_clamped_int(
+                settings.get("entity_extract_max_gleaning"), 1, 0, 5
+            ),
         }
 
     def _normalize_document_parsing(self, settings: dict[str, Any]) -> dict[str, Any]:

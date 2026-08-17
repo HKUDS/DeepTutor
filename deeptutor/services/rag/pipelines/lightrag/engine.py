@@ -23,6 +23,8 @@ from .config import (
     build_embedding_func,
     build_llm_model_func,
     build_vision_model_func,
+    indexing_kwargs_from_settings,
+    lightrag_kwargs_from_settings,
     normalize_mode,
     query_kwargs_from_settings,
 )
@@ -39,13 +41,14 @@ def build_rag(working_dir: Path, *, io_bridge: OwnerLoopBridge | None = None) ->
     """
     from raganything import RAGAnything, RAGAnythingConfig
 
-    config = RAGAnythingConfig(working_dir=str(working_dir))
+    config = RAGAnythingConfig(working_dir=str(working_dir), **indexing_kwargs_from_settings())
     adapter_kwargs = {"io_bridge": io_bridge} if io_bridge is not None else {}
     rag = RAGAnything(
         config=config,
         llm_model_func=build_llm_model_func(**adapter_kwargs),
         vision_model_func=build_vision_model_func(**adapter_kwargs),
         embedding_func=build_embedding_func(**adapter_kwargs),
+        lightrag_kwargs=lightrag_kwargs_from_settings(),
     )
     # DeepTutor always feeds RAG-Anything a pre-parsed ``content_list`` (the
     # parse layer runs upstream via DeepTutor's own ParseService), so
