@@ -25,12 +25,15 @@ import {
   Flag,
   Keyboard,
   Languages,
+  Link2,
   ListChecks,
   Loader2,
   MousePointerClick,
+  MoreHorizontal,
   Pencil,
   Trash2,
   Type,
+  Unlink2,
   Volume2,
   X,
 } from "lucide-react";
@@ -66,6 +69,7 @@ import {
 import DictionaryPanel from "@/components/common/DictionaryPanel";
 import MiniDictionaryTooltip from "@/components/common/MiniDictionaryTooltip";
 import TranslationTaskBoardPanel from "@/components/translation/TranslationTaskBoard";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import {
   translationTaskApi,
   type TranslationChapterSummary,
@@ -74,24 +78,30 @@ import {
 import { apiFetch } from "@/lib/api";
 import {
   BILINGUAL_CLICK_LOOKUP_STORAGE_KEY,
-  BILINGUAL_DUAL_PANE_MEDIA_QUERY,
+  BILINGUAL_DUAL_PANE_MIN_CONTAINER_WIDTH_PX,
   BILINGUAL_FONT_FAMILY_STORAGE_KEY,
   BILINGUAL_FONT_SIZE_STORAGE_KEY,
   BILINGUAL_READER_MODE_STORAGE_KEY,
   BILINGUAL_THEME_STORAGE_KEY,
+  breaksDualScrollLink,
+  isParagraphSideTap,
   parseBilingualFontFamily,
   parseBilingualFontSize,
   parseBilingualReaderMode,
   parseBilingualTheme,
+  paragraphSwipeFromPoints,
   parseStoredBoolean,
   readerShortcutFromKeyboardEvent,
+  nextReaderToolbarVisible,
   scrollPaneToGroup,
   shouldIgnoreLookupTarget,
+  supportsDualPaneAtContainerWidth,
   visibleGroupFromElements,
   wordRangeAtPoint,
   type BilingualFontFamily,
   type BilingualFontSize,
   type BilingualReaderMode,
+  type BilingualReaderShortcut,
   type BilingualTheme,
 } from "@/lib/bilingual-reader-ux";
 import {
@@ -171,6 +181,15 @@ const FONT_SIZE_STYLES: Record<BilingualFontSize, { en: string; zh: string }> = 
   "2xl": { en: "text-[22px] leading-[2.1]", zh: "text-[20px] leading-[2.1]" },
 };
 
+const KEYBOARD_HINT_STORAGE_KEY = "deeptutor.bilingual-reader.shortcut-hint-shown";
+const TOUCH_LOOKUP_TAP_MAX_DURATION_MS = 320;
+const TOUCH_LOOKUP_MOVE_TOLERANCE_PX = 10;
+const TOUCH_LOOKUP_CLICK_GUARD_MS = 420;
+
+function paragraphSwipeEdgeInset(width: number): number {
+  return Math.max(36, Math.min(88, Math.round(width * 0.14)));
+}
+
 function rangePointFromOffsets(container: HTMLElement, start: number, end: number): Range | null {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   let cursor = 0;
@@ -219,6 +238,17 @@ function dictionarySeedFromGroup(group: { en: string[] } | undefined): string {
     "it", "its", "this", "that", "these", "those", "he", "she", "they", "we",
   ]);
   return words.find((word) => word.length >= 4 && !stopWords.has(word.toLowerCase())) || words[0] || "";
+}
+
+function paragraphLineRectAtY(paragraph: HTMLParagraphElement, y: number) {
+  const range = document.createRange();
+  range.selectNodeContents(paragraph);
+  const rects = Array.from(range.getClientRects());
+  return (
+    rects.find((rect) => y >= rect.top - 4 && y <= rect.bottom + 4) ||
+    rects[rects.length - 1] ||
+    null
+  );
 }
 
 const DIFFICULTY_CLASSES: Record<VocabularyBand, string> = {
@@ -309,7 +339,9 @@ export function BilingualReader({
         : window.localStorage.getItem(BILINGUAL_FONT_FAMILY_STORAGE_KEY),
     ),
   );
-  const [dualPaneSupported, setDualPaneSupported] = useState(false);
+  const [readerContainerWidth, setReaderContainerWidth] = useState<number | null>(null);
+  const [dualScrollLinked, setDualScrollLinked] = useState(true);
+  const [keyboardHint, setKeyboardHint] = useState<string | null>(null);
   const [expandAll, setExpandAll] = useState(false);
   const [manualOpenGroups, setManualOpenGroups] = useState<Set<number>>(new Set());
   const [manualClosedGroups, setManualClosedGroups] = useState<Set<number>>(new Set());
@@ -321,6 +353,9 @@ export function BilingualReader({
       ? false
       : parseStoredBoolean(window.localStorage.getItem(BILINGUAL_CLICK_LOOKUP_STORAGE_KEY)),
   );
+  const layout = useResponsiveLayout();
+  const [mobileToolbarVisible, setMobileToolbarVisible] = useState(true);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [annotations, setAnnotations] = useState<BilingualAnnotation[]>([]);
   const [bookmarks, setBookmarks] = useState<BilingualBookmark[]>([]);
@@ -332,7 +367,10 @@ export function BilingualReader({
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportStyle, setExportStyle] = useState<BilingualExportStyle>("folded");
   const [exportFontFamily, setExportFontFamily] = useState("Noto Serif CJK TC");
+  const [exportFontAssetId, setExportFontAssetId] = useState("");
+  const [fontFileName, setFontFileName] = useState("");
   const [exportCss, setExportCss] = useState("");
+  const [uploadingFont, setUploadingFont] = useState(false);
   const [showAppearanceModal, setShowAppearanceModal] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [chapterTaskSummaries, setChapterTaskSummaries] = useState<TranslationChapterSummary[]>([]);
@@ -349,10 +387,17 @@ export function BilingualReader({
   const englishPaneRef = useRef<HTMLDivElement>(null);
   const chinesePaneRef = useRef<HTMLDivElement>(null);
   const dualSyncGuardRef = useRef(0);
+  const dualScrollLinkedRef = useRef(true);
+  const dualPointerScrollRef = useRef<{ x: number; y: number } | null>(null);
+  const keyboardHintTimerRef = useRef<number | null>(null);
+  const keyboardHintShownRef = useRef(false);
   const pendingPositionRef = useRef<BilingualReadingPosition | null>(null);
   const pendingGroupJumpRef = useRef(false);
   const scrollPercentRef = useRef(0);
   const visibleGroupRef = useRef(0);
+  const lastScrollTopRef = useRef(0);
+  const toolbarStopTimerRef = useRef<number | null>(null);
+  const paragraphSwipeRef = useRef<{ x: number; y: number } | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const sectionRequestRef = useRef(0);
   const [dictPopover, setDictPopover] = useState<{
@@ -372,11 +417,22 @@ export function BilingualReader({
   const dictAbortRef = useRef<AbortController | null>(null);
   const lastSelectionRef = useRef("");
   const miniLookupRef = useRef<{ word: string; at: number }>({ word: "", at: 0 });
+  const touchLookupRef = useRef<
+    { x: number; y: number; startedAt: number; moved: boolean; target: EventTarget | null } | null
+  >(null);
+  const suppressTouchSelectionRef = useRef(0);
+  const suppressTouchLookupClickRef = useRef(0);
   const lastPronunciationAccentRef = useRef<WordPronunciationAccent>("en-US");
   const lastCompletedChapterCountRef = useRef<number | null>(null);
 
+  const dualPaneSupported = supportsDualPaneAtContainerWidth(readerContainerWidth);
+  const focusedReading = layout === "mobile";
   const readerMode: BilingualReaderMode =
-    preferredReaderMode === "dual" && !dualPaneSupported ? "inline" : preferredReaderMode;
+    focusedReading
+      ? "inline"
+      : preferredReaderMode === "dual" && !dualPaneSupported
+        ? "inline"
+        : preferredReaderMode;
 
   useEffect(() => {
     return subscribePronunciationState(setAudioState);
@@ -403,11 +459,31 @@ export function BilingualReader({
   }, [clickLookupEnabled]);
 
   useEffect(() => {
-    const query = window.matchMedia(BILINGUAL_DUAL_PANE_MEDIA_QUERY);
-    const update = () => setDualPaneSupported(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
+    const element = contentRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const updateWidth = (width: number) => setReaderContainerWidth(width);
+    updateWidth(element.clientWidth);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) updateWidth(entry.contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [loading, pairing?.aligned]);
+
+  useEffect(() => {
+    dualScrollLinkedRef.current = dualScrollLinked;
+  }, [dualScrollLinked]);
+
+  useEffect(() => {
+    try {
+      keyboardHintShownRef.current =
+        window.sessionStorage.getItem(KEYBOARD_HINT_STORAGE_KEY) === "true";
+    } catch {
+      keyboardHintShownRef.current = false;
+    }
+    return () => {
+      if (keyboardHintTimerRef.current !== null) window.clearTimeout(keyboardHintTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -446,7 +522,7 @@ export function BilingualReader({
           initialChapter = positionData.position.chapter_index;
           pendingPositionRef.current = positionData.position;
         }
-        loadChapter(initialChapter, { recordHistory: false });
+        loadChapter(initialChapter, { recordHistory: false }, pairingData.chapter_map);
         void loadAnnotations();
         void loadTaskSummaries();
       })
@@ -497,10 +573,14 @@ export function BilingualReader({
   }, [chapterIndex, pairing?.chapter_map, pairingId]);
 
   const loadChapter = useCallback(
-    (index: number, options: { recordHistory?: boolean } = {}) => {
-      const entry = pairing?.chapter_map?.[index];
+    (
+      index: number,
+      options: { recordHistory?: boolean } = {},
+      chapterMap: ChapterMapEntry[] | undefined = pairing?.chapter_map,
+    ) => {
+      const entry = chapterMap?.[index];
       if (!entry) return;
-      const clamped = Math.max(0, Math.min(index, (pairing?.chapter_map?.length || 1) - 1));
+      const clamped = Math.max(0, Math.min(index, (chapterMap?.length || 1) - 1));
       const requestId = ++sectionRequestRef.current;
       if (options.recordHistory !== false) {
         pendingPositionRef.current = null;
@@ -657,10 +737,80 @@ export function BilingualReader({
     }
   };
 
+  const alignDualPanes = useCallback(
+    (groupIndex = visibleGroupRef.current, behavior: ScrollBehavior = "smooth") => {
+      if (readerMode !== "dual") return;
+      dualSyncGuardRef.current = performance.now() + 120;
+      scrollPaneToGroup(englishPaneRef.current, groupIndex, behavior, 48);
+      scrollPaneToGroup(chinesePaneRef.current, groupIndex, behavior, 48);
+    },
+    [readerMode],
+  );
+
+  const setDualScrollMode = useCallback(
+    (linked: boolean) => {
+      dualScrollLinkedRef.current = linked;
+      setDualScrollLinked(linked);
+      // Restoring the link is a mode change, not a reading navigation. Align
+      // immediately so linked scroll handlers cannot race a smooth animation.
+      if (linked) alignDualPanes(visibleGroupRef.current, "auto");
+    },
+    [alignDualPanes],
+  );
+
+  const breakDualScrollLinkFromGesture = useCallback(() => {
+    if (!dualScrollLinkedRef.current) return;
+    dualScrollLinkedRef.current = false;
+    setDualScrollLinked(false);
+  }, []);
+
+  const handleDualPaneWheel = useCallback(() => {
+    if (readerMode === "dual") breakDualScrollLinkFromGesture();
+  }, [breakDualScrollLinkFromGesture, readerMode]);
+
+  const handleDualPanePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    dualPointerScrollRef.current = { x: event.clientX, y: event.clientY };
+  }, []);
+
+  const handleDualPanePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = dualPointerScrollRef.current;
+      if (!start || readerMode !== "dual") return;
+      if (
+        breaksDualScrollLink({
+          dx: event.clientX - start.x,
+          dy: event.clientY - start.y,
+        })
+      ) {
+        breakDualScrollLinkFromGesture();
+      }
+    },
+    [breakDualScrollLinkFromGesture, readerMode],
+  );
+
+  const handleDualPanePointerEnd = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = dualPointerScrollRef.current;
+      dualPointerScrollRef.current = null;
+      if (!start || readerMode !== "dual") return;
+      if (
+        breaksDualScrollLink({
+          dx: event.clientX - start.x,
+          dy: event.clientY - start.y,
+        })
+      ) {
+        breakDualScrollLinkFromGesture();
+      }
+    },
+    [breakDualScrollLinkFromGesture, readerMode],
+  );
+
   useEffect(() => {
     if (readerMode !== "dual") {
       const content = inlinePaneRef.current;
       if (!content) return;
+      lastScrollTopRef.current = content.scrollTop;
       const handleScroll = () => {
         const maxScroll = Math.max(1, content.scrollHeight - content.clientHeight);
         scrollPercentRef.current = Math.max(0, Math.min(100, (content.scrollTop / maxScroll) * 100));
@@ -673,13 +823,28 @@ export function BilingualReader({
         );
         visibleGroupRef.current = visible;
         setActiveGroup(visible);
+        setMobileToolbarVisible((current) =>
+          nextReaderToolbarVisible(current, content.scrollTop - lastScrollTopRef.current),
+        );
+        lastScrollTopRef.current = content.scrollTop;
         if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = window.setTimeout(savePosition, 1000);
+        if (toolbarStopTimerRef.current !== null) {
+          window.clearTimeout(toolbarStopTimerRef.current);
+        }
+        toolbarStopTimerRef.current = window.setTimeout(() => {
+          setMobileToolbarVisible(true);
+          toolbarStopTimerRef.current = null;
+        }, 500);
       };
       content.addEventListener("scroll", handleScroll, { passive: true });
       return () => {
         content.removeEventListener("scroll", handleScroll);
         if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+        if (toolbarStopTimerRef.current !== null) {
+          window.clearTimeout(toolbarStopTimerRef.current);
+          toolbarStopTimerRef.current = null;
+        }
       };
     }
 
@@ -695,11 +860,15 @@ export function BilingualReader({
         source.clientHeight,
         visibleGroupRef.current,
       );
-      if (visible !== visibleGroupRef.current) {
+      if (dualScrollLinkedRef.current && visible !== visibleGroupRef.current) {
         visibleGroupRef.current = visible;
         setActiveGroup(visible);
         dualSyncGuardRef.current = performance.now() + 100;
         scrollPaneToGroup(other, visible, "auto", 48);
+      }
+      if (!dualScrollLinkedRef.current && visible !== visibleGroupRef.current) {
+        visibleGroupRef.current = visible;
+        setActiveGroup(visible);
       }
       if (source === english) {
         const maxScroll = Math.max(1, english.scrollHeight - english.clientHeight);
@@ -724,6 +893,8 @@ export function BilingualReader({
     setManualClosedGroups(new Set());
     setHoveredGroup(null);
     setPinnedHoverGroup(null);
+    dualScrollLinkedRef.current = true;
+    setDualScrollLinked(true);
     if (readerMode === "dual") {
       scrollPaneToGroup(englishPaneRef.current, visibleGroupRef.current, "auto", 48);
       scrollPaneToGroup(chinesePaneRef.current, visibleGroupRef.current, "auto", 48);
@@ -752,6 +923,7 @@ export function BilingualReader({
           style: exportStyle,
           font_family: exportFontFamily,
           custom_css: exportCss,
+          font_asset_id: exportFontAssetId,
         }),
       });
       if (!response.ok) throw new Error(t("Export failed."));
@@ -770,6 +942,22 @@ export function BilingualReader({
       onErrorToast(err instanceof Error ? err.message : t("Export failed."));
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleFontUpload = async (file: File | null) => {
+    if (!file) return;
+    setUploadingFont(true);
+    try {
+      const uploaded = await bilingualApi.uploadFont(pairingId, file, exportFontFamily);
+      setExportFontAssetId(uploaded.font_asset_id);
+      setExportFontFamily(uploaded.family);
+      setFontFileName(file.name);
+      onToast(t("Font embedded."));
+    } catch (err) {
+      onErrorToast(err instanceof Error ? err.message : t("Font upload failed."));
+    } finally {
+      setUploadingFont(false);
     }
   };
 
@@ -1036,14 +1224,15 @@ export function BilingualReader({
         initialMode: "dictionary",
         groupIndex,
         anchor,
-        presentation: "mini",
+        presentation: layout === "mobile" ? "full" : "mini",
       });
       handleDictionaryLookup(word, paragraph.textContent || "");
     },
-    [handleDictionaryLookup],
+    [handleDictionaryLookup, layout],
   );
 
   const handleTextSelection = useCallback(() => {
+    if (layout === "mobile" && suppressTouchSelectionRef.current > Date.now()) return;
     const selection = window.getSelection();
     const text = selection?.toString().trim() || "";
     if (!text) {
@@ -1087,23 +1276,33 @@ export function BilingualReader({
     } else {
       handleTranslateText(text);
     }
-  }, [handleDictionaryLookup, handleTranslateText]);
+  }, [handleDictionaryLookup, handleTranslateText, layout]);
 
   useEffect(() => {
     const content = contentRef.current;
     if (!content) return;
+    let selectionTimer: number | null = null;
     const onMouseUp = () => {
       window.setTimeout(handleTextSelection, 10);
     };
+    const onSelectionChange = () => {
+      if (selectionTimer !== null) window.clearTimeout(selectionTimer);
+      selectionTimer = window.setTimeout(handleTextSelection, 180);
+    };
     const onClick = (event: MouseEvent) => {
+      const now = Date.now();
+      if (suppressTouchLookupClickRef.current > now) return;
       if (!clickLookupEnabled || window.getSelection()?.toString().trim()) return;
       openWordLookupAtPoint(event.clientX, event.clientY, event.target);
     };
     content.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("selectionchange", onSelectionChange);
     content.addEventListener("click", onClick);
     return () => {
       content.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("selectionchange", onSelectionChange);
       content.removeEventListener("click", onClick);
+      if (selectionTimer !== null) window.clearTimeout(selectionTimer);
     };
   }, [clickLookupEnabled, handleTextSelection, openWordLookupAtPoint]);
 
@@ -1169,6 +1368,109 @@ export function BilingualReader({
     [activeGroup, readerMode, section],
   );
 
+  const handleGroupSelect = useCallback(
+    (groupIndex: number) => {
+      visibleGroupRef.current = groupIndex;
+      setActiveGroup(groupIndex);
+      if (readerMode === "dual" && !dualScrollLinkedRef.current) {
+        setDualScrollMode(true);
+      }
+    },
+    [readerMode, setDualScrollMode],
+  );
+
+  const handleContentTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    suppressTouchSelectionRef.current = Date.now() + 600;
+    touchLookupRef.current = null;
+    paragraphSwipeRef.current = null;
+    if (event.touches.length !== 1 || dictPopover || showMoreMenu || flagTarget !== null) return;
+    if (
+      showBookmarks ||
+      showTaskBoard ||
+      showAppearanceModal ||
+      showShortcutsModal ||
+      reviewOpen ||
+      showReview
+    ) {
+      return;
+    }
+    const touch = event.touches[0];
+    const width = contentRef.current?.clientWidth || window.innerWidth;
+    touchLookupRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      startedAt: Date.now(),
+      moved: false,
+      target: event.target,
+    };
+    const edgeInset = paragraphSwipeEdgeInset(width);
+    if (touch.clientX <= edgeInset || touch.clientX >= width - edgeInset) return;
+    paragraphSwipeRef.current = { x: touch.clientX, y: touch.clientY };
+  }, []);
+
+  const handleContentTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const lookup = touchLookupRef.current;
+    if (!lookup || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    if (
+      Math.abs(touch.clientX - lookup.x) > TOUCH_LOOKUP_MOVE_TOLERANCE_PX ||
+      Math.abs(touch.clientY - lookup.y) > TOUCH_LOOKUP_MOVE_TOLERANCE_PX
+    ) {
+      touchLookupRef.current = { ...lookup, moved: true };
+    }
+  }, []);
+
+  const handleContentTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const lookup = touchLookupRef.current;
+    const start = paragraphSwipeRef.current;
+    paragraphSwipeRef.current = null;
+    touchLookupRef.current = null;
+    const end = event.changedTouches[0];
+    if (!end) return;
+
+    const now = Date.now();
+    const swipeWidth = readerContainerWidth || window.innerWidth;
+    if (start) {
+      const direction = paragraphSwipeFromPoints(
+        start,
+        { x: end.clientX, y: end.clientY },
+        swipeWidth,
+        {
+          edgeInset: paragraphSwipeEdgeInset(swipeWidth),
+          minDistance: Math.max(44, Math.round(swipeWidth * 0.09)),
+          maxVertical: 28,
+        },
+      );
+      if (direction === "next") {
+        moveGroup(1);
+        suppressTouchLookupClickRef.current = now + TOUCH_LOOKUP_CLICK_GUARD_MS;
+        return;
+      }
+      if (direction === "previous") {
+        moveGroup(-1);
+        suppressTouchLookupClickRef.current = now + TOUCH_LOOKUP_CLICK_GUARD_MS;
+        return;
+      }
+    }
+
+    if (!lookup) return;
+    const tapDuration = now - lookup.startedAt;
+    const isQuickTap = !lookup.moved && tapDuration <= TOUCH_LOOKUP_TAP_MAX_DURATION_MS;
+
+    if (clickLookupEnabled && isQuickTap) {
+      openWordLookupAtPoint(end.clientX, end.clientY, lookup.target);
+      suppressTouchLookupClickRef.current = now + TOUCH_LOOKUP_CLICK_GUARD_MS;
+      suppressTouchSelectionRef.current = now + 700;
+      return;
+    }
+
+    if (lookup.moved || tapDuration > TOUCH_LOOKUP_TAP_MAX_DURATION_MS) {
+      suppressTouchLookupClickRef.current = now + TOUCH_LOOKUP_CLICK_GUARD_MS;
+      suppressTouchSelectionRef.current = now + 700;
+    }
+  }, [readerContainerWidth, clickLookupEnabled, moveGroup, openWordLookupAtPoint]);
+
   const toggleTranslation = useCallback(
     (groupIndex = activeGroup) => {
       if (readerMode === "hover") {
@@ -1223,6 +1525,36 @@ export function BilingualReader({
     handleDictionaryLookup(word, paragraph?.textContent || section.groups[activeGroup]?.en.join(" ") || "");
   }, [activeGroup, dictPopover?.word, handleDictionaryLookup, readerMode, section]);
 
+  const showKeyboardHint = useCallback(
+    (shortcut: BilingualReaderShortcut) => {
+      if (keyboardHintShownRef.current) return;
+      keyboardHintShownRef.current = true;
+      try {
+        window.sessionStorage.setItem(KEYBOARD_HINT_STORAGE_KEY, "true");
+      } catch {
+        // The hint remains one-time for this component instance.
+      }
+      const labels: Record<BilingualReaderShortcut, string> = {
+        "previous-group": t("Previous paragraph"),
+        "next-group": t("Next paragraph"),
+        "toggle-translation": t("Toggle paragraph translation"),
+        lookup: t("Dictionary lookup"),
+        bookmark: t("Add bookmark"),
+        pronounce: t("Play US pronunciation (P)"),
+        "pronounce-uk": t("Play UK pronunciation (Shift+P)"),
+        "toggle-shortcuts": t("Help & Shortcuts (?)"),
+        "close-modal": t("Close"),
+      };
+      setKeyboardHint(labels[shortcut]);
+      if (keyboardHintTimerRef.current !== null) window.clearTimeout(keyboardHintTimerRef.current);
+      keyboardHintTimerRef.current = window.setTimeout(() => {
+        setKeyboardHint(null);
+        keyboardHintTimerRef.current = null;
+      }, 2200);
+    },
+    [t],
+  );
+
   useEffect(() => {
     const modalOpen =
       flagTarget !== null ||
@@ -1231,11 +1563,13 @@ export function BilingualReader({
       showBookmarks ||
       showTaskBoard ||
       showAppearanceModal ||
-      showShortcutsModal;
+      showShortcutsModal ||
+      showMoreMenu;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const shortcut = readerShortcutFromKeyboardEvent(event, { modalOpen });
       if (!shortcut) return;
+      showKeyboardHint(shortcut);
 
       if (shortcut === "close-modal") {
         if (showShortcutsModal) setShowShortcutsModal(false);
@@ -1283,9 +1617,11 @@ export function BilingualReader({
     moveGroup,
     showAppearanceModal,
     showBookmarks,
+    showKeyboardHint,
     showReview,
     showShortcutsModal,
     showTaskBoard,
+    showMoreMenu,
     reviewOpen,
     toggleTranslation,
   ]);
@@ -1362,8 +1698,11 @@ export function BilingualReader({
       .map((a) => a.group_index),
   );
   const peekGroup = pinnedHoverGroup ?? hoveredGroup;
+  const compactParagraphFocus = readerMode === "inline" && (focusedReading || !dualPaneSupported);
   const groupIsOpen = (index: number) =>
-    manualClosedGroups.has(index)
+    compactParagraphFocus
+      ? index === activeGroup && !manualClosedGroups.has(index)
+      : manualClosedGroups.has(index)
       ? false
       : manualOpenGroups.has(index) || expandAll;
   const difficultyWords =
@@ -1395,17 +1734,16 @@ export function BilingualReader({
             pane={pane}
             open={groupIsOpen(gi)}
             active={activeGroup === gi}
+            focusedReading={compactParagraphFocus}
             isBookmarked={bookmarkedGroupSet.has(gi)}
             fontSize={fontSize}
             fontFamily={fontFamily}
             peekVisible={readerMode === "hover" && peekGroup === gi}
             isFlagged={flaggedGroups.has(gi)}
             difficultyByWord={difficultyByWord}
-            onSelect={() => {
-              setActiveGroup(gi);
-              visibleGroupRef.current = gi;
-            }}
+            onSelect={() => handleGroupSelect(gi)}
             onToggle={() => toggleTranslation(gi)}
+            onSideTap={() => toggleTranslation(gi)}
             onFlag={() => setFlagTarget(gi)}
             onPointerEnter={() => setHoveredGroup(gi)}
             onPointerLeave={() => setHoveredGroup((current) => (current === gi ? null : current))}
@@ -1455,7 +1793,7 @@ export function BilingualReader({
         <button
           onClick={() => void handleNavigateHistory("back")}
           disabled={!navigation?.can_back}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+          className="hidden rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30 md:block"
           title={t("Back")}
         >
           <ArrowLeft size={16} />
@@ -1463,21 +1801,21 @@ export function BilingualReader({
         <button
           onClick={() => void handleNavigateHistory("forward")}
           disabled={!navigation?.can_forward}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+          className="hidden rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30 md:block"
           title={t("Forward")}
         >
           <ArrowRight size={16} />
         </button>
         <button
           onClick={() => void handleAddBookmark()}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          className="hidden rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:block"
           title={t("Add bookmark") + " (B)"}
         >
           <BookmarkPlus size={16} />
         </button>
         <button
           onClick={() => setShowBookmarks((value) => !value)}
-          className={`rounded-md p-1.5 hover:bg-[var(--muted)] ${
+          className={`hidden rounded-md p-1.5 hover:bg-[var(--muted)] md:block ${
             showBookmarks
               ? "text-[var(--primary)]"
               : "text-[var(--muted-foreground)]"
@@ -1488,7 +1826,7 @@ export function BilingualReader({
         </button>
         <button
           onClick={() => setShowTaskBoard((value) => !value)}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          className="hidden rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:block"
           title={t("Translate this chapter")}
         >
           <ListChecks size={16} />
@@ -1496,13 +1834,13 @@ export function BilingualReader({
         <button
           type="button"
           onClick={() => setReviewOpen(true)}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          className="hidden rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:block"
           title={t("Today: review 10 words")}
           aria-label={t("Today: review 10 words")}
         >
           <Brain size={16} />
         </button>
-        {readerMode === "inline" && (
+        {readerMode === "inline" && !focusedReading && (
           <button
             onClick={() => setExpandAll((v) => !v)}
             className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
@@ -1511,7 +1849,7 @@ export function BilingualReader({
             {expandAll ? <ChevronsDownUp size={15} /> : <ChevronsUpDown size={15} />}
           </button>
         )}
-        {annotations.length > 0 && (
+        {annotations.length > 0 && !focusedReading && (
           <button
             onClick={() => setShowReview(true)}
             className="flex items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-500/20"
@@ -1524,7 +1862,7 @@ export function BilingualReader({
         <button
           type="button"
           onClick={() => setShowExportDialog(true)}
-          className="flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+          className="hidden items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50 md:flex"
         >
           <Download size={14} />
           {t("Export EPUB")}
@@ -1532,7 +1870,7 @@ export function BilingualReader({
       </div>
 
       {/* Chapter navigation and modes bar */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-1.5 bg-[var(--background)]/80">
+      <div className="hidden items-center gap-2 border-b border-[var(--border)] px-4 py-1.5 bg-[var(--background)]/80 md:flex">
         <div
           data-reader-control
           className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--muted)] p-0.5"
@@ -1564,6 +1902,26 @@ export function BilingualReader({
             </button>
           ))}
         </div>
+        {readerMode === "dual" && (
+          <button
+            type="button"
+            data-reader-control
+            onClick={() => setDualScrollMode(!dualScrollLinked)}
+            aria-pressed={dualScrollLinked}
+            aria-label={t(dualScrollLinked ? "Linked scrolling" : "Independent scrolling")}
+            title={`${t(dualScrollLinked ? "Linked scrolling" : "Independent scrolling")} · ${BILINGUAL_DUAL_PANE_MIN_CONTAINER_WIDTH_PX}px+`}
+            className={`flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2 text-xs transition ${
+              dualScrollLinked
+                ? "border-[var(--primary)]/50 bg-[var(--primary)]/10 text-[var(--primary)]"
+                : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            }`}
+          >
+            {dualScrollLinked ? <Link2 size={14} /> : <Unlink2 size={14} />}
+            <span className="hidden xl:inline">
+              {t(dualScrollLinked ? "Linked scrolling" : "Independent scrolling")}
+            </span>
+          </button>
+        )}
         <button
           type="button"
           data-reader-control
@@ -1635,8 +1993,12 @@ export function BilingualReader({
       {/* Content surface */}
       <div
         ref={contentRef}
-        className="relative min-h-0 flex-1 pb-16"
+        data-reader-surface="true"
+        className="relative min-h-0 flex-1 pb-28 md:pb-20"
         onMouseLeave={() => setHoveredGroup(null)}
+        onTouchStart={handleContentTouchStart}
+        onTouchMove={handleContentTouchMove}
+        onTouchEnd={handleContentTouchEnd}
       >
         {sectionLoading ? (
           <div className="flex h-full justify-center py-12">
@@ -1649,6 +2011,11 @@ export function BilingualReader({
                 ref={englishPaneRef}
                 aria-label={t("English pane")}
                 className="relative h-full overflow-y-auto px-6 py-6"
+                onWheel={handleDualPaneWheel}
+                onPointerDown={handleDualPanePointerDown}
+                onPointerMove={handleDualPanePointerMove}
+                onPointerUp={handleDualPanePointerEnd}
+                onPointerCancel={handleDualPanePointerEnd}
               >
                 <div className="mx-auto max-w-2xl space-y-4">{renderGroups("english")}</div>
               </div>
@@ -1656,6 +2023,11 @@ export function BilingualReader({
                 ref={chinesePaneRef}
                 aria-label={t("Chinese pane")}
                 className="relative h-full overflow-y-auto bg-[var(--muted)]/20 px-6 py-6"
+                onWheel={handleDualPaneWheel}
+                onPointerDown={handleDualPanePointerDown}
+                onPointerMove={handleDualPanePointerMove}
+                onPointerUp={handleDualPanePointerEnd}
+                onPointerCancel={handleDualPanePointerEnd}
               >
                 <div className="mx-auto max-w-2xl space-y-4">{renderGroups("chinese")}</div>
               </div>
@@ -1704,7 +2076,103 @@ export function BilingualReader({
         )}
       </div>
 
-      {/* Floating Bottom Action Bar for iPad / iPhone / Keyboard Readers */}
+      {keyboardHint && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed left-1/2 z-50 -translate-x-1/2 rounded-full border border-[var(--border)] bg-[var(--background)]/95 px-4 py-2 text-xs font-medium text-[var(--foreground)] shadow-xl backdrop-blur"
+          style={{ bottom: "calc(max(12px, env(safe-area-inset-bottom, 12px)) + 64px)" }}
+        >
+          {keyboardHint}
+        </div>
+      )}
+
+      {layout === "mobile" && showMoreMenu && (
+        <button
+          type="button"
+          aria-label={t("Close")}
+          className="fixed inset-0 z-30 bg-black/20 backdrop-blur-[1px]"
+          onClick={() => setShowMoreMenu(false)}
+        />
+      )}
+
+      {/* One-hand mobile toolbar; low-frequency actions stay in More. */}
+      {layout === "mobile" && (
+        <div
+          className="fixed z-40 select-none transition-transform duration-200 ease-out"
+          style={{
+            left: "max(12px, env(safe-area-inset-left, 12px))",
+            right: "max(12px, env(safe-area-inset-right, 12px))",
+            bottom: "max(10px, env(safe-area-inset-bottom, 10px))",
+            transform: mobileToolbarVisible || showMoreMenu ? "translateY(0)" : "translateY(calc(100% + 18px))",
+            touchAction: "manipulation",
+          }}
+          data-reader-control
+        >
+          {showMoreMenu && (
+            <div className="absolute bottom-full right-0 mb-2 w-44 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl">
+              {[
+                { icon: Bookmark, label: t("Bookmarks"), onClick: () => setShowBookmarks(true) },
+                { icon: Type, label: t("Appearance & Typography"), onClick: () => setShowAppearanceModal(true) },
+                { icon: ListChecks, label: t("Translate this chapter"), onClick: () => setShowTaskBoard(true) },
+                { icon: Brain, label: t("Today: review 10 words"), onClick: () => setReviewOpen(true) },
+                { icon: Download, label: t("Export EPUB"), onClick: () => setShowExportDialog(true) },
+                {
+                  icon: MousePointerClick,
+                  label: t("Tap words"),
+                  active: clickLookupEnabled,
+                  onClick: () => setClickLookupEnabled((value) => !value),
+                },
+              ].map(({ icon: Icon, label, onClick, active = false }) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={active}
+                  className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--foreground)] transition hover:bg-[var(--muted)] active:bg-[var(--muted)]"
+                  onClick={() => {
+                    onClick();
+                    setShowMoreMenu(false);
+                  }}
+                >
+                  <Icon size={14} className="text-[var(--muted-foreground)]" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div
+            role="toolbar"
+            aria-label={t("Reading toolbar")}
+            className="grid grid-cols-5 gap-1 rounded-xl border border-[var(--border)] bg-[var(--background)]/94 p-1.5 shadow-2xl backdrop-blur-lg"
+          >
+            {[
+              { icon: Languages, label: t("Translation"), active: groupIsOpen(activeGroup), onClick: () => toggleTranslation() },
+              { icon: BookOpen, label: t("Dictionary lookup"), active: !!dictPopover, onClick: lookupFromKeyboard },
+              { icon: isPronouncing ? AudioLines : Volume2, label: t("Pronounce"), active: isPronouncing, onClick: () => handlePronounce("en-US") },
+              { icon: Bookmark, label: t("Add bookmark"), active: isCurrentGroupBookmarked, onClick: () => void handleAddBookmark() },
+              { icon: MoreHorizontal, label: t("More"), active: showMoreMenu, onClick: () => setShowMoreMenu((value) => !value) },
+            ].map(({ icon: Icon, label, active, onClick }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={onClick}
+                aria-pressed={active}
+                className={`flex h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium transition ${
+                  active
+                    ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] active:bg-[var(--muted)]"
+                }`}
+              >
+                <Icon size={17} className="shrink-0" />
+                <span className="max-w-full truncate">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Floating desktop action bar for keyboard readers */}
+      {layout !== "mobile" && (
       <div
         className="fixed bottom-3 left-1/2 z-40 -translate-x-1/2 select-none"
         style={{
@@ -1835,6 +2303,7 @@ export function BilingualReader({
           )}
         </div>
       </div>
+      )}
 
       {/* Appearance Modal */}
       {showAppearanceModal && (
@@ -2024,14 +2493,117 @@ export function BilingualReader({
         />
       )}
 
+      {/* EPUB export modal */}
+      {showExportDialog && (
+        <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-[var(--border)] bg-[var(--background)] p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <h3 className="text-base font-semibold">{t("Export bilingual EPUB")}</h3>
+              <button
+                type="button"
+                onClick={() => setShowExportDialog(false)}
+                aria-label={t("Close")}
+                className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    { value: "folded", icon: ChevronsUpDown, label: t("Folded") },
+                    { value: "alternating", icon: FileText, label: t("Alternating") },
+                    { value: "two_column", icon: Columns2, label: t("Two columns") },
+                  ] as Array<{ value: BilingualExportStyle; icon: typeof FileText; label: string }>
+                ).map(({ value, icon: Icon, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setExportStyle(value)}
+                    aria-pressed={exportStyle === value}
+                    className={`flex h-20 flex-col items-center justify-center gap-2 rounded-lg border text-xs transition ${
+                      exportStyle === value
+                        ? "border-[var(--primary)] bg-[var(--primary)]/10 font-semibold text-[var(--primary)]"
+                        : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                    }`}
+                  >
+                    <Icon size={18} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <label className="block space-y-1.5 text-xs font-medium">
+                {t("Font family")}
+                <input
+                  value={exportFontFamily}
+                  onChange={(event) => setExportFontFamily(event.target.value)}
+                  maxLength={300}
+                  className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm font-normal text-[var(--foreground)]"
+                />
+              </label>
+              <div className="space-y-1.5 text-xs font-medium">
+                {t("Embedded font")}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept=".woff2,.woff,.otf,.ttf"
+                    onChange={(event) => void handleFontUpload(event.target.files?.[0] ?? null)}
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-xs font-normal file:mr-2 file:rounded file:border-0 file:bg-[var(--muted)] file:px-2 file:py-1"
+                  />
+                  {uploadingFont && <Loader2 size={14} className="animate-spin" />}
+                </div>
+                {fontFileName && (
+                  <div className="text-[11px] text-[var(--muted-foreground)]">{fontFileName}</div>
+                )}
+              </div>
+              <label className="block space-y-1.5 text-xs font-medium">
+                {t("Custom CSS")}
+                <textarea
+                  value={exportCss}
+                  onChange={(event) => setExportCss(event.target.value)}
+                  rows={5}
+                  spellCheck={false}
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] p-3 font-mono text-xs font-normal text-[var(--foreground)]"
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExportDialog(false)}
+                  className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs"
+                >
+                  {t("Cancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport()}
+                  disabled={exporting}
+                  className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+                >
+                  {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  {t("Export")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Task board modal */}
       {showTaskBoard && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowTaskBoard(false);
+          }}
+        >
           <div className="flex h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-[var(--background)] shadow-2xl">
             <TranslationTaskBoardPanel
               sourceType="bilingual"
               sourceId={pairingId}
               chapterId={currentChapter?.id}
+              onClose={() => setShowTaskBoard(false)}
               onBoardLoaded={handleTaskBoardChange}
               onGroupTranslated={handleGroupTranslated}
             />
@@ -2470,6 +3042,7 @@ function BilingualGroup({
   pane,
   open,
   active,
+  focusedReading,
   isBookmarked,
   fontSize,
   fontFamily,
@@ -2478,6 +3051,7 @@ function BilingualGroup({
   difficultyByWord,
   onSelect,
   onToggle,
+  onSideTap,
   onFlag,
   onPointerEnter,
   onPointerLeave,
@@ -2489,6 +3063,7 @@ function BilingualGroup({
   pane: "combined" | "english" | "chinese";
   open: boolean;
   active: boolean;
+  focusedReading: boolean;
   isBookmarked: boolean;
   fontSize: BilingualFontSize;
   fontFamily: BilingualFontFamily;
@@ -2497,6 +3072,7 @@ function BilingualGroup({
   difficultyByWord: Map<string, VocabularyBand>;
   onSelect: () => void;
   onToggle: () => void;
+  onSideTap: () => void;
   onFlag: () => void;
   onPointerEnter: () => void;
   onPointerLeave: () => void;
@@ -2505,7 +3081,28 @@ function BilingualGroup({
   const { t } = useTranslation();
   const activeClass = active
     ? "rounded-xl bg-[var(--primary)]/8 shadow-[inset_4px_0_0_0_var(--primary)] ring-1 ring-[var(--primary)]/20"
-    : "rounded-xl hover:bg-[var(--muted)]/20";
+    : focusedReading
+      ? "rounded-xl opacity-70"
+      : "rounded-xl hover:bg-[var(--muted)]/20";
+  const handleTap = (event: React.MouseEvent<HTMLDivElement>) => {
+    onSelect();
+    if (pane !== "combined" || shouldIgnoreLookupTarget(event.target)) return;
+    if (window.getSelection()?.toString().trim()) return;
+
+    const target = event.target instanceof Element ? event.target : null;
+    const paragraphs = Array.from(event.currentTarget.querySelectorAll("p"));
+    const paragraph =
+      target?.closest("p") ||
+      paragraphs.find((item) => {
+        const rect = item.getBoundingClientRect();
+        return event.clientY >= rect.top && event.clientY <= rect.bottom;
+      });
+    if (!(paragraph instanceof HTMLParagraphElement)) return;
+    const line = paragraphLineRectAtY(paragraph, event.clientY);
+    if (line && isParagraphSideTap({ x: event.clientX, y: event.clientY }, line)) {
+      onSideTap();
+    }
+  };
 
   const fontClass = fontFamily === "serif" ? "font-serif" : "font-sans";
   const sizeStyles = FONT_SIZE_STYLES[fontSize];
@@ -2523,7 +3120,7 @@ function BilingualGroup({
         className={`group/para relative px-3.5 py-2.5 transition-all duration-150 cursor-pointer ${activeClass}`}
         data-group-index={index}
         data-active={active || undefined}
-        onClick={onSelect}
+        onClick={handleTap}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
       >
@@ -2558,7 +3155,7 @@ function BilingualGroup({
         className={`group/para relative px-3.5 py-2.5 transition-all duration-150 cursor-pointer ${activeClass}`}
         data-group-index={index}
         data-active={active || undefined}
-        onClick={onSelect}
+        onClick={handleTap}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
       >
@@ -2599,7 +3196,7 @@ function BilingualGroup({
       className={`group/para relative space-y-1 px-3 py-2 transition-all duration-150 cursor-pointer ${activeClass}`}
       data-group-index={index}
       data-active={active || undefined}
-      onClick={onSelect}
+      onClick={handleTap}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
     >

@@ -18,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   chineseRevealClassName,
+  nextDictionarySheetExpanded,
   positionDictionaryPopover,
   type DictionaryAnchorRect,
 } from "@/lib/dictionary-ui";
@@ -531,12 +532,40 @@ function PanelContent({
 
 function MobileSheet(props: DictionaryPanelProps) {
   const { onClose } = props;
+  const { t } = useTranslation();
   const vh = useDynamicViewportHeight();
   const [expanded, setExpanded] = useState(false);
+  const dragStartYRef = useRef<number | null>(null);
+  const [dragDeltaY, setDragDeltaY] = useState(0);
 
-  const collapsedH = Math.round((vh || 600) * 0.38);
-  const expandedH = Math.round((vh || 600) * 0.85);
+  const collapsedH = Math.round((vh || 600) * 0.48);
+  const expandedH = Math.round((vh || 600) * 0.88);
   const height = expanded ? expandedH : collapsedH;
+
+  const finishDrag = () => {
+    dragStartYRef.current = null;
+    setDragDeltaY(0);
+  };
+
+  const handleDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 && event.pointerType === "mouse") return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStartYRef.current = event.clientY;
+    setDragDeltaY(0);
+  };
+
+  const handleDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const startY = dragStartYRef.current;
+    if (startY === null) return;
+    const delta = event.clientY - startY;
+    setDragDeltaY(delta);
+    const next = nextDictionarySheetExpanded(expanded, delta, vh || window.innerHeight);
+    if (next !== expanded) {
+      setExpanded(next);
+      dragStartYRef.current = event.clientY;
+      setDragDeltaY(0);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -547,18 +576,39 @@ function MobileSheet(props: DictionaryPanelProps) {
   }, [onClose]);
 
   return createPortal(
-    <div
-      className="fixed bottom-0 left-0 right-0 z-[200] flex flex-col overflow-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
-      style={{
-        height,
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        transition: "height 250ms cubic-bezier(0.22, 1, 0.36, 1)",
-        animation: "dt-sheet-up 250ms cubic-bezier(0.22, 1, 0.36, 1)",
-        pointerEvents: "auto",
-      }}
-    >
+    <>
+      <button
+        type="button"
+        aria-label={t("Close dictionary")}
+        onClick={onClose}
+        className="fixed inset-0 z-[199] cursor-default bg-black/10"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={props.word}
+        className="fixed bottom-0 left-0 right-0 z-[200] flex flex-col overflow-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
+        style={{
+          height,
+          transform: dragDeltaY ? `translateY(${Math.max(-24, dragDeltaY)}px)` : undefined,
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          transition: "height 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+          animation: "dt-sheet-up 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+          pointerEvents: "auto",
+        }}
+      >
       {/* Drag handle */}
-      <div className="flex shrink-0 justify-center pt-2 pb-1">
+      <div
+        className="flex h-8 shrink-0 cursor-grab touch-none items-center justify-center active:cursor-grabbing"
+        role="separator"
+        aria-label={t("Drag to expand dictionary")}
+        aria-orientation="horizontal"
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+        onLostPointerCapture={finishDrag}
+      >
         <div className="h-1 w-9 rounded-full bg-[var(--muted-foreground)]/30" />
       </div>
       <div className="min-h-0 flex-1">
@@ -580,7 +630,8 @@ function MobileSheet(props: DictionaryPanelProps) {
           onPronounce={props.onPronounce}
         />
       </div>
-    </div>,
+      </div>
+    </>,
     document.body,
   );
 }

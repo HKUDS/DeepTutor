@@ -2,12 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CheckCircle2, CircleDot, Clock, ListChecks, Loader2, Play, RefreshCw, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleDot,
+  Clock,
+  ListChecks,
+  Loader2,
+  Play,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  X,
+  XCircle,
+} from "lucide-react";
 import {
   translationTaskApi,
   type TranslationSourceType,
   type TranslationTask,
   type TranslationTaskBoard as Board,
+  type TranslationTaskEvent,
+  type TranslationTaskStatus,
+  type TranslationGlossaryEntry,
 } from "@/lib/translation-tasks-api";
 
 interface TranslationTaskBoardProps {
@@ -15,8 +30,45 @@ interface TranslationTaskBoardProps {
   sourceId?: string;
   chapterId?: string;
   compact?: boolean;
+  onClose?: () => void;
   onBoardLoaded?: (board: Board) => void;
   onGroupTranslated?: (task: TranslationTask & { translation?: string }) => void;
+}
+
+function nextSummary(
+  summary: Board["summary"],
+  oldStatus: TranslationTaskStatus,
+  status: TranslationTaskStatus,
+) {
+  const delta = (key: keyof Board["summary"], value: number) =>
+    Math.max(0, Number(summary[key] || 0) + value);
+  return {
+    ...summary,
+    [oldStatus]: delta(oldStatus as keyof Board["summary"], -1),
+    [status]: delta(status as keyof Board["summary"], 1),
+    [`filtered_${oldStatus}`]: delta(`filtered_${oldStatus}` as keyof Board["summary"], -1),
+    [`filtered_${status}`]: delta(`filtered_${status}` as keyof Board["summary"], 1),
+  };
+}
+
+function applyTask(board: Board, task: TranslationTask): Board {
+  const previous = board.tasks.find((item) => item.id === task.id);
+  if (previous?.status === task.status) {
+    return {
+      ...board,
+      tasks: board.tasks.map((item) => (item.id === task.id ? task : item)),
+    };
+  }
+  const oldStatus = previous?.status;
+  return {
+    ...board,
+    summary: oldStatus
+      ? nextSummary(board.summary, oldStatus, task.status)
+      : board.summary,
+    tasks: board.tasks.some((item) => item.id === task.id)
+      ? board.tasks.map((item) => (item.id === task.id ? task : item))
+      : [task, ...board.tasks],
+  };
 }
 
 export default function TranslationTaskBoardPanel({
@@ -24,6 +76,7 @@ export default function TranslationTaskBoardPanel({
   sourceId,
   chapterId,
   compact = false,
+  onClose,
   onBoardLoaded,
   onGroupTranslated,
 }: TranslationTaskBoardProps) {
@@ -31,8 +84,11 @@ export default function TranslationTaskBoardPanel({
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [savingGlossary, setSavingGlossary] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [glossaryDraft, setGlossaryDraft] = useState<TranslationGlossaryEntry[] | null>(null);
   const boardLoadedRef = useRef(onBoardLoaded);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     boardLoadedRef.current = onBoardLoaded;
@@ -40,6 +96,7 @@ export default function TranslationTaskBoardPanel({
 
   const applyBoard = useCallback((next: Board) => {
     setBoard(next);
+    setGlossaryDraft(null);
     boardLoadedRef.current?.(next);
   }, []);
 
@@ -47,8 +104,7 @@ export default function TranslationTaskBoardPanel({
     setLoading(true);
     setError(null);
     try {
-      const next = await translationTaskApi.list({ sourceType, sourceId, chapterId });
-      applyBoard(next);
+      applyBoard(await translationTaskApi.list({ sourceType, sourceId, chapterId }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -60,41 +116,83 @@ export default function TranslationTaskBoardPanel({
     void load();
   }, [load]);
 
+  const closeStream = useCallback(() => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+  }, []);
+
   useEffect(() => {
-    if (!board?.summary.is_running) return;
-    const timer = window.setTimeout(() => {
-      void translationTaskApi
-        .list({ sourceType, sourceId, chapterId })
-        .then((next) => {
-          applyBoard(next);
-        })
-        .catch(() => undefined);
-    }, 2000);
-    return () => window.clearTimeout(timer);
-  }, [applyBoard, board, chapterId, sourceId, sourceType]);
+    closeStream();
+  }, [chapterId, closeStream, sourceId, sourceType]);
+
+  const close = useCallback(() => {
+    closeStream();
+    onClose?.();
+  }, [closeStream, onClose]);
+
+  useEffect(() => closeStream, [closeStream]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [close]);
+
+  const handleEvent = useCallback(
+    (event: TranslationTaskEvent) => {
+      if (event.parse_error) {
+        setError(t("Ignoring an invalid translation stream event."));
+        return;
+      }
+      if (event.type === "snapshot" && event.board) {
+        setBoard(event.board);
+        return;
+      }
+      if (event.task) {
+        setBoard((current) => (current ? applyTask(current, event.task!) : current));
+        if (event.type === "group_translated") onGroupTranslated?.(event.task);
+      }
+    },
+    [onGroupTranslated, t],
+  );
 
   const handlePlanAndRun = async () => {
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
     setRunning(true);
     setError(null);
     try {
       if (sourceType && sourceId) {
         await translationTaskApi.plan(sourceType, sourceId);
       }
-      await translationTaskApi.stream({
+      const started = await translationTaskApi.run({
         sourceType,
         sourceId,
         chapterId,
         limit: compact ? 4 : 8,
-        onEvent: (event) => {
-          if (event.board) applyBoard(event.board);
-          if (event.type === "group_translated" && event.task) {
-            onGroupTranslated?.(event.task);
-          }
-        },
       });
+      setBoard(started);
+      if (started.started && started.run_id) {
+        await translationTaskApi.streamRun(started.run_id, {
+          signal: controller.signal,
+          onEvent: handleEvent,
+        });
+      }
+      const latest = await translationTaskApi.list({ sourceType, sourceId, chapterId });
+      applyBoard(latest);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        setError(err instanceof Error ? err.message : String(err));
+        try {
+          applyBoard(await translationTaskApi.list({ sourceType, sourceId, chapterId }));
+        } catch {
+          // Keep the visible partial board on refresh failure.
+        }
+      }
     } finally {
+      streamAbortRef.current = null;
       setRunning(false);
     }
   };
@@ -110,6 +208,20 @@ export default function TranslationTaskBoardPanel({
     }
   };
 
+  const saveGlossary = async () => {
+    if (!sourceType || !sourceId || !glossaryDraft) return;
+    setSavingGlossary(true);
+    try {
+      applyBoard(
+        await translationTaskApi.updateGlossary(sourceType, sourceId, glossaryDraft),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingGlossary(false);
+    }
+  };
+
   const statusIcon = (status: string) => {
     if (status === "completed") return <CheckCircle2 className="size-3.5 text-emerald-600" />;
     if (status === "running") return <Loader2 className="size-3.5 animate-spin text-blue-600" />;
@@ -119,6 +231,7 @@ export default function TranslationTaskBoardPanel({
 
   const visibleTasks = useMemo(() => board?.tasks.slice(0, compact ? 8 : 100) ?? [], [board, compact]);
   const summary = board?.summary;
+  const glossary = glossaryDraft ?? board?.glossary ?? [];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -126,7 +239,7 @@ export default function TranslationTaskBoardPanel({
         <div className="flex items-center gap-2 text-sm font-semibold">
           <ListChecks className="size-4" />
           {t("Translation Tasks")}
-          {summary?.is_running && <Loader2 className="size-3.5 animate-spin text-blue-600" />}
+          {running && <Loader2 className="size-3.5 animate-spin text-blue-600" />}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -147,6 +260,17 @@ export default function TranslationTaskBoardPanel({
             <RefreshCw className="size-3.5" />
             {t("Retry failed")}
           </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={close}
+              autoFocus
+              aria-label={t("Close")}
+              className="rounded-lg border border-[var(--border)] p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
       </div>
       {error ? (
@@ -172,6 +296,66 @@ export default function TranslationTaskBoardPanel({
               </div>
             ))}
           </div>
+          {!compact && glossary.length > 0 && (
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
+              <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2 text-xs font-semibold">
+                <span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5" />{t("Terminology")}</span>
+                <button type="button" onClick={() => void saveGlossary()} disabled={savingGlossary || !glossaryDraft} className="flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 disabled:opacity-50">
+                  {savingGlossary ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
+                  {t("Save")}
+                </button>
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {glossary.map((entry, index) => {
+                  const decision = entry.decision ?? (entry.approved ? "approved" : "candidate");
+                  return (
+                    <div key={entry.term} className="grid grid-cols-1 gap-2 border-b border-[var(--border)] px-3 py-2 text-xs last:border-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_110px]">
+                      <div className="min-w-0 truncate font-medium" title={entry.term}>{entry.term}</div>
+                      <input
+                        value={entry.translation}
+                        onChange={(event) => {
+                          const next = [...glossary];
+                          next[index] = { ...entry, translation: event.target.value };
+                          setGlossaryDraft(next);
+                        }}
+                        className="h-8 min-w-0 rounded border border-[var(--border)] bg-[var(--background)] px-2"
+                      />
+                      <label className="flex items-center gap-1.5 text-[var(--muted-foreground)]">
+                        <input
+                          type="checkbox"
+                          checked={entry.protected}
+                          onChange={(event) => {
+                            const next = [...glossary];
+                            next[index] = { ...entry, protected: event.target.checked };
+                            setGlossaryDraft(next);
+                          }}
+                        />
+                        {t("Locked")}
+                      </label>
+                      <select
+                        value={decision}
+                        onChange={(event) => {
+                          const nextDecision = event.target.value as TranslationGlossaryEntry["decision"];
+                          const next = [...glossary];
+                          next[index] = {
+                            ...entry,
+                            decision: nextDecision,
+                            approved: nextDecision === "approved",
+                          };
+                          setGlossaryDraft(next);
+                        }}
+                        className="h-8 rounded border border-[var(--border)] bg-[var(--background)] px-1"
+                      >
+                        <option value="candidate">{t("Candidate")}</option>
+                        <option value="approved">{t("Approved")}</option>
+                        <option value="rejected">{t("Rejected")}</option>
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {!compact && board.sources.length > 0 && (
             <div className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
               {board.sources.map((source) => (

@@ -46,6 +46,17 @@ export function positionDictionaryPopover(
   return { left, top, placement };
 }
 
+export function nextDictionarySheetExpanded(
+  current: boolean,
+  dragDeltaY: number,
+  viewportHeight: number,
+): boolean {
+  const threshold = Math.max(36, Math.round(viewportHeight * 0.08));
+  if (dragDeltaY <= -threshold) return true;
+  if (dragDeltaY >= threshold) return false;
+  return current;
+}
+
 export function chineseRevealClassName(revealed: boolean): string {
   const base =
     "mt-0.5 block w-fit rounded text-left text-sm font-normal leading-relaxed " +

@@ -1,6 +1,7 @@
 """Tests for the bilingual EPUB merge/generation module."""
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
 import zipfile
 
 import pytest
@@ -85,3 +86,78 @@ def test_css_injected(en_epub: Path, zh_epub: Path, tmp_path: Path):
         # CSS is injected either inline or into a linked stylesheet.
         # Since our minimal EPUB has no CSS, it should be inline.
         assert "zh-details" in ch0
+
+
+@pytest.mark.parametrize(
+    "style,expected_class",
+    [
+        ("folded", "zh-details"),
+        ("alternating", "zh-alternate"),
+        ("two_column", "bilingual-row"),
+    ],
+)
+def test_epub_export_styles(
+    en_epub: Path,
+    zh_epub: Path,
+    tmp_path: Path,
+    style: str,
+    expected_class: str,
+):
+    output = tmp_path / f"{style}.epub"
+    build_bilingual_epub(
+        en_epub,
+        zh_epub,
+        [["ch0", "chapter0.xhtml", "chapter0.xhtml"]],
+        output,
+        style=style,
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        chapter = archive.read("chapter0.xhtml").decode("utf-8")
+        ET.fromstring(chapter)
+        assert expected_class in chapter
+        assert "The cat sat on the mat." in chapter
+        assert "貓坐在墊子上。" in chapter
+
+
+def test_epub_export_injects_custom_font_and_stylesheet(
+    en_epub: Path, zh_epub: Path, tmp_path: Path
+):
+    output = tmp_path / "custom.epub"
+    custom_css = ".zh-alternate { color: rgb(12, 34, 56); } .en-column::after { content: '<'; }"
+    build_bilingual_epub(
+        en_epub,
+        zh_epub,
+        [["ch0", "chapter0.xhtml", "chapter0.xhtml"]],
+        output,
+        style="alternating",
+        font_family="Reader Serif",
+        custom_css=custom_css,
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        chapter = archive.read("chapter0.xhtml").decode("utf-8")
+        stylesheet = archive.read("bilingual.css").decode("utf-8")
+        ET.fromstring(chapter)
+        assert 'href="bilingual.css"' in chapter
+        assert '"Reader Serif"' in stylesheet
+        assert ".zh-alternate { color: rgb(12, 34, 56); }" in stylesheet
+        assert "\\3c " in stylesheet
+
+
+def test_epub_export_uses_task_translation_overrides(
+    en_epub: Path, zh_epub: Path, tmp_path: Path
+):
+    output = tmp_path / "overrides.epub"
+    build_bilingual_epub(
+        en_epub,
+        zh_epub,
+        [["ch0", "chapter0.xhtml", "chapter0.xhtml"]],
+        output,
+        translation_overrides={"ch0": [None, "机器生成译文"]},
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        chapter = archive.read("chapter0.xhtml").decode("utf-8")
+        ET.fromstring(chapter)
+        assert "机器生成译文" in chapter

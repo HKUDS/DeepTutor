@@ -17,6 +17,7 @@ from deeptutor.immersive_reading.models import (
 )
 from deeptutor.immersive_reading.service import ImmersiveReadingService
 from deeptutor.services.llm.exceptions import LLMAPIError, LLMParseError
+from deeptutor.services.translation.protection import TranslationProtectionError
 
 
 def _minimal_epub_bytes() -> bytes:
@@ -666,7 +667,20 @@ async def test_translate_uses_native_ollama_path(
 
     monkeypatch.setattr(reading_service, "_ollama_native_chat", _native_chat)
 
-    result = await reading_service.translate("complex", "Chinese")
+    result = await reading_service.translate(
+        "complex",
+        "Chinese",
+        glossary=[
+            {
+                "term": "DeepSolver",
+                "translation": "深度求解器",
+                "kind": "proper_noun",
+                "frequency": 4,
+                "protected": False,
+                "approved": True,
+            }
+        ],
+    )
 
     assert result == "复杂的"
     # Used the configured (Ollama) model, not a cloud one.
@@ -677,6 +691,18 @@ async def test_translate_uses_native_ollama_path(
     assert captured["messages"][0]["role"] == "system"
     assert "faithfully" in captured["messages"][0]["content"]
     assert "Chinese" in captured["messages"][1]["content"]
+    prompt = captured["messages"][1]["content"]
+    glossary_json = prompt.split(
+        "Glossary JSON (source, translation, protected; obey each entry):\n", 1
+    )[1].split("\n\nText:", 1)[0]
+    assert json.loads(glossary_json) == [
+        {
+            "source": "DeepSolver",
+            "translation": "深度求解器",
+            "protected": False,
+        }
+    ]
+    assert "Preserve fenced code blocks" in captured["messages"][1]["content"]
 
 
 @pytest.mark.asyncio
@@ -754,6 +780,41 @@ async def test_translate_falls_back_to_complete_for_cloud(
     assert called["temperature"] == 0.1
     assert "Russian" in called["prompt"]
     # Did NOT touch the Ollama readiness probe.
+
+
+@pytest.mark.asyncio
+async def test_translate_retries_once_and_never_returns_broken_protection(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    from types import SimpleNamespace
+
+    import deeptutor.immersive_reading.service as service_module
+
+    monkeypatch.setattr(
+        service_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(
+            model="glm-4-flash",
+            binding="zhipu",
+            provider_name="zhipu",
+            base_url="",
+        ),
+    )
+    calls = 0
+
+    async def broken_placeholders(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return "丢失 [[DT-KEEP-0]] [[DT-KEEP-0]]"
+
+    monkeypatch.setattr(service_module, "complete", broken_placeholders)
+
+    with pytest.raises(TranslationProtectionError):
+        await reading_service.translate(
+            "Use `fetch_user()` carefully.", "Chinese"
+        )
+
+    assert calls == 2
 
 
 def test_render_reference_can_scope_to_selected_sections(

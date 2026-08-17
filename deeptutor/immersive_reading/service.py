@@ -69,8 +69,13 @@ from deeptutor.services.llm.exceptions import (
     LLMParseError,
     LLMTimeoutError,
 )
-from deeptutor.services.translation.glossary import build_translation_guardrail
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.translation.glossary import build_translation_guardrail
+from deeptutor.services.translation.protection import (
+    TranslationProtectionError,
+    protect_translation_text,
+    restore_translation_text,
+)
 from deeptutor.tools.web_search import web_search
 from deeptutor.utils.json_parser import parse_json_response
 
@@ -2039,10 +2044,11 @@ class ImmersiveReadingService:
         if pending is not None:
             return await asyncio.shield(pending)
 
-        try:
-            coro = self._translate_uncached(selected, target_language, glossary or [])
-        except TypeError:
-            coro = self._translate_uncached(selected, target_language)
+        coro = (
+            self._translate_uncached(selected, target_language, glossary)
+            if glossary
+            else self._translate_uncached(selected, target_language)
+        )
         task = asyncio.create_task(coro)
         self._translation_tasks[cache_key] = task
         try:
@@ -2061,8 +2067,10 @@ class ImmersiveReadingService:
         self,
         selected: str,
         target_language: str,
-        glossary: list[dict[str, Any]],
+        glossary: list[dict[str, Any]] | None = None,
     ) -> str:
+        glossary = glossary or []
+        selected, protected_fragments = protect_translation_text(selected, glossary)
         cfg = get_llm_config()
         system_prompt = (
             "Translate the supplied book passage faithfully. Preserve paragraph breaks, names, tone, "
@@ -2103,7 +2111,37 @@ class ImmersiveReadingService:
                 system_prompt=system_prompt,
                 temperature=0.1,
             )
-        return clean_thinking_tags(raw, getattr(cfg, "binding", None), cfg.model).strip()
+        cleaned = clean_thinking_tags(raw, getattr(cfg, "binding", None), cfg.model).strip()
+        try:
+            return restore_translation_text(cleaned, protected_fragments)
+        except TranslationProtectionError:
+            # One retry is deliberate: protected output is rejected before the
+            # translation is written to any chapter or task sink.
+            if is_ollama:
+                raw = await self._ollama_native_chat(
+                    model,
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    think=False,
+                    temperature=0.1,
+                    num_predict=512
+                    if len(selected) <= 200
+                    else 1024
+                    if len(selected) <= 1000
+                    else 4096,
+                )
+            else:
+                raw = await complete(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    temperature=0.1,
+                )
+            cleaned = clean_thinking_tags(
+                raw, getattr(cfg, "binding", None), cfg.model
+            ).strip()
+            return restore_translation_text(cleaned, protected_fragments)
 
     async def lookup_dictionary(self, word: str, context: str = "") -> dict[str, Any]:
         selected = word.strip()
