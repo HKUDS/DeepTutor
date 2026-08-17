@@ -49,8 +49,8 @@ const SvgPreview = dynamic(
   () => import("@/components/chat/preview/previewers/SvgPreview"),
   { loading: PreviewLoading, ssr: false },
 );
-const KbDocPreview = dynamic(
-  () => import("@/components/knowledge/KbDocPreview"),
+const MarkdownPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/MarkdownPreview"),
   { loading: PreviewLoading, ssr: false },
 );
 const TextPreview = dynamic(
@@ -88,12 +88,6 @@ interface KbFilePreviewProps {
    *  reaching for the file list's own toggle button. */
   fileListCollapsed?: boolean;
   onToggleFileList?: () => void;
-  /** KB name — forwarded to the markdown preview for internal link resolution. */
-  kbName?: string;
-  /** Path of the file being previewed (forwarded to the markdown preview). */
-  filePath?: string;
-  /** Called when an internal doc link is clicked (forwarded to the markdown preview). */
-  onNavigate?: (path: string) => void;
 }
 
 /**
@@ -111,9 +105,6 @@ export default function KbFilePreview({
   metaSuffix,
   fileListCollapsed,
   onToggleFileList,
-  kbName,
-  filePath,
-  onNavigate,
 }: KbFilePreviewProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -323,12 +314,7 @@ export default function KbFilePreview({
           <SvgPreview url={previewUrl} filename={source.filename} />
         ) : kind === "markdown" ? (
           <div className="h-full overflow-y-auto">
-            <KbDocPreview
-              url={previewUrl}
-              kbName={kbName}
-              filePath={filePath}
-              onNavigate={onNavigate}
-            />
+            <MarkdownPreview url={previewUrl} />
           </div>
         ) : kind === "code" || kind === "text" ? (
           <div className="h-full overflow-y-auto">
