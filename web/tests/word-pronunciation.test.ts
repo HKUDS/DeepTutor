@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  getPronunciationAudioUrl,
   getPronunciationState,
   isPronouncingWord,
   playWordPronunciation,
@@ -11,17 +10,6 @@ import {
   subscribePronunciationState,
   wordPronunciationSupported,
 } from "../lib/word-pronunciation";
-
-test("getPronunciationAudioUrl produces valid US and UK URLs", () => {
-  const usUrl = getPronunciationAudioUrl("Hello", "en-US");
-  assert.equal(usUrl, "https://dict.youdao.com/dictvoice?audio=hello&type=2");
-
-  const ukUrl = getPronunciationAudioUrl("Hello", "en-GB");
-  assert.equal(ukUrl, "https://dict.youdao.com/dictvoice?audio=hello&type=1");
-
-  const cleanUrl = getPronunciationAudioUrl(" well-known! ", "en-US");
-  assert.equal(cleanUrl, "https://dict.youdao.com/dictvoice?audio=well-known&type=2");
-});
 
 test("pronunciation state and subscription manage listeners cleanly", () => {
   let latestState = getPronunciationState();

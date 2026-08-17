@@ -84,6 +84,7 @@ export default function TranslationTaskBoardPanel({
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [runningRunId, setRunningRunId] = useState<string | null>(null);
   const [savingGlossary, setSavingGlossary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [glossaryDraft, setGlossaryDraft] = useState<TranslationGlossaryEntry[] | null>(null);
@@ -123,6 +124,8 @@ export default function TranslationTaskBoardPanel({
 
   useEffect(() => {
     closeStream();
+    setRunning(false);
+    setRunningRunId(null);
   }, [chapterId, closeStream, sourceId, sourceType]);
 
   const close = useCallback(() => {
@@ -150,12 +153,18 @@ export default function TranslationTaskBoardPanel({
         setBoard(event.board);
         return;
       }
+      if (event.type === "run_cancelled" || event.type === "run_completed") {
+        setRunning(false);
+        if (event.run_id === runningRunId) {
+          setRunningRunId(null);
+        }
+      }
       if (event.task) {
         setBoard((current) => (current ? applyTask(current, event.task!) : current));
         if (event.type === "group_translated") onGroupTranslated?.(event.task);
       }
     },
-    [onGroupTranslated, t],
+    [onGroupTranslated, t, runningRunId],
   );
 
   const handlePlanAndRun = async () => {
@@ -173,7 +182,8 @@ export default function TranslationTaskBoardPanel({
         chapterId,
         limit: compact ? 4 : 8,
       });
-      setBoard(started);
+      setRunningRunId(started.run_id);
+      applyBoard(started);
       if (started.started && started.run_id) {
         await translationTaskApi.streamRun(started.run_id, {
           signal: controller.signal,
@@ -193,6 +203,23 @@ export default function TranslationTaskBoardPanel({
       }
     } finally {
       streamAbortRef.current = null;
+      setRunning(false);
+      setRunningRunId(null);
+    }
+  };
+
+  const handleCancelRun = async () => {
+    if (!runningRunId) return;
+    setError(null);
+    try {
+      setRunning(true);
+      closeStream();
+      await translationTaskApi.cancelRun(runningRunId);
+      setRunningRunId(null);
+      applyBoard(await translationTaskApi.list({ sourceType, sourceId, chapterId }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setRunning(false);
     }
   };
@@ -250,6 +277,15 @@ export default function TranslationTaskBoardPanel({
           >
             {running || summary?.is_running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
             {chapterId ? t("Run this chapter") : t("Start translation")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCancelRun()}
+            disabled={runningRunId === null || running === false}
+            className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50"
+          >
+            <XCircle className="size-3.5" />
+            {t("Cancel run")}
           </button>
           <button
             type="button"

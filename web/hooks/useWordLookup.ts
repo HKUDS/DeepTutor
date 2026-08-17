@@ -87,7 +87,7 @@ export function useWordLookup(
             context_note:
               msg ||
               t(
-                "Local dictionary unavailable. Run `ollama serve` then `ollama pull qwen3.5:2b`.",
+                "Local dictionary service unavailable. Start Ollama and ensure model is installed.",
               ),
           });
         } else if (status === 504) {
@@ -127,6 +127,8 @@ export function useWordLookup(
     const controller = new AbortController();
     abortRef.current = controller;
     const reqId = ++reqIdRef.current;
+    let jobId: string | null = null;
+    let translation = "";
     const targetLang = "Chinese";
 
     // Client-side cache: instant display for previously translated text.
@@ -143,28 +145,81 @@ export function useWordLookup(
 
     setLoading(true);
     try {
-      const res = await immersiveReadingApi.translate(popover.word, targetLang);
-      if (controller.signal.aborted || reqId !== reqIdRef.current) return;
-      setCachedTranslation(popover.word, targetLang, res.translation);
+      const job = await immersiveReadingApi.translateJob(popover.word, targetLang, []);
+      jobId = job.job_id;
       setResult({
         word: popover.word,
         phonetic: "",
         definitions: [],
-        context_note: res.translation,
+        context_note: translation,
+      });
+      await immersiveReadingApi.translateJobStream(
+        jobId,
+        (event) => {
+          if (reqId !== reqIdRef.current || controller.signal.aborted) {
+            return;
+          }
+          if (event.type === "delta" && event.delta) {
+            translation += event.delta;
+            setResult({
+              word: popover.word,
+              phonetic: "",
+              definitions: [],
+              context_note: translation,
+            });
+            return;
+          }
+          if (event.type === "completed") {
+            const completed = event.translation || translation;
+            translation = completed || "";
+            setCachedTranslation(popover.word, targetLang, translation);
+            setResult({
+              word: popover.word,
+              phonetic: "",
+              definitions: [],
+              context_note: translation,
+            });
+            return;
+          }
+          if (event.type === "failed" || event.type === "cancelled") {
+            if (!translation) {
+              const status = 500;
+              throw new ApiRequestError(event.error || "Translation failed.", status);
+            }
+          }
+        },
+        controller.signal,
+      );
+      if (controller.signal.aborted || reqId !== reqIdRef.current) return;
+      if (translation) {
+        setCachedTranslation(popover.word, targetLang, translation);
+      }
+      setResult({
+        word: popover.word,
+        phonetic: "",
+        definitions: [],
+        context_note: translation,
       });
     } catch (err) {
       if (controller.signal.aborted || reqId !== reqIdRef.current) return;
+      const cancelAndIgnore = err instanceof DOMException && err.name === "AbortError";
+      if (cancelAndIgnore && jobId) {
+        void immersiveReadingApi
+          .translateJobCancel(jobId)
+          .catch(() => undefined);
+      }
+      if (cancelAndIgnore) return;
       const status = err instanceof ApiRequestError ? err.status : undefined;
       const msg = err instanceof Error ? err.message : String(err);
       let errorNote: string;
       if (status === 504) {
         errorNote = t("Translation timed out. The model may still be loading.");
       } else if (status === 503) {
-        errorNote = msg || t("Translation service unavailable. Please try again.");
+        errorNote = msg || t("Local translation service unavailable. Start Ollama to enable translation.");
       } else if (status === 429) {
         errorNote = t("Rate limit exceeded. Please wait a moment.");
       } else if (status && status >= 500) {
-        errorNote = t("Translation service unavailable. Please try again.");
+        errorNote = t("Local translation service unavailable. Please try again.");
       } else {
         errorNote = t("Translation failed.") + (msg ? ` ${msg}` : "");
       }
@@ -174,6 +229,7 @@ export function useWordLookup(
         definitions: [],
         context_note: errorNote,
       });
+      translation = "";
     } finally {
       if (reqId === reqIdRef.current) setLoading(false);
     }

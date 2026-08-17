@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -31,6 +32,9 @@ def reading_service(tmp_path, monkeypatch) -> ImmersiveReadingService:
     service = ImmersiveReadingService()
     service._translation_cache.clear()
     service._translation_tasks.clear()
+    service._translation_jobs.clear()
+    service._translation_jobs_lock = asyncio.Lock()
+    service._translation_cache_db_initialized = False
     service._ollama_models_cache = None
     return service
 

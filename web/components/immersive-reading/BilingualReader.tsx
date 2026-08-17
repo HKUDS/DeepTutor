@@ -1150,10 +1150,11 @@ export function BilingualReader({
       const controller = new AbortController();
       dictAbortRef.current = controller;
       const reqId = ++dictReqIdRef.current;
+      const targetLanguage = "Chinese";
       setDictLoading(true);
       setDictError(null);
 
-      const cached = getCachedTranslation(text, "zh");
+      const cached = getCachedTranslation(text, targetLanguage);
       if (cached) {
         setDictResult({
           word: text,
@@ -1166,10 +1167,54 @@ export function BilingualReader({
         return;
       }
 
+      let jobId: string | null = null;
+      let translation = "";
+      let jobError: ApiRequestError | null = null;
+
       try {
-        const { translation } = await immersiveReadingApi.translate(text, "zh", controller.signal);
-        if (dictReqIdRef.current === reqId) {
-          setCachedTranslation(text, "zh", translation);
+        const job = await immersiveReadingApi.translateJob(text, targetLanguage, []);
+        jobId = job.job_id;
+        await immersiveReadingApi.translateJobStream(
+          jobId,
+          (event) => {
+            if (dictReqIdRef.current !== reqId || controller.signal.aborted) {
+              return;
+            }
+
+            if (event.type === "delta" && event.delta) {
+              translation += event.delta;
+              setDictResult({
+                word: text,
+                phonetic: "",
+                definitions: [],
+                chinese: translation,
+                context_note: translation,
+              });
+              return;
+            }
+
+            if (event.type === "completed") {
+              translation = event.translation || translation;
+              return;
+            }
+
+            if (event.type === "failed" || event.type === "cancelled") {
+              jobError = new ApiRequestError(
+                event.error || "Translation failed.",
+                event.type === "failed" ? 500 : 499,
+              );
+            }
+          },
+          controller.signal,
+        );
+
+        if (jobError) throw jobError;
+
+        if (dictReqIdRef.current === reqId && !controller.signal.aborted) {
+          if (!translation) {
+            throw new ApiRequestError("Translation produced no content.", 500);
+          }
+          setCachedTranslation(text, targetLanguage, translation);
           setDictResult({
             word: text,
             phonetic: "",
@@ -1177,18 +1222,33 @@ export function BilingualReader({
             chinese: translation,
             context_note: translation,
           });
-          setDictLoading(false);
         }
       } catch (cause) {
         if (dictReqIdRef.current === reqId) {
+          if (controller.signal.aborted && jobId) {
+            void immersiveReadingApi.translateJobCancel(jobId).catch(() => undefined);
+            return;
+          }
+
           setDictResult(null);
-          setDictError(
-            cause instanceof ApiRequestError
-              ? cause.message
-              : cause instanceof Error
-                ? cause.message
-                : t("Translation failed."),
-          );
+          const status = cause instanceof ApiRequestError ? cause.status : undefined;
+          const msg = cause instanceof Error ? cause.message : String(cause);
+          if (status === 504) {
+            setDictError(t("Translation timed out. The model may still be loading."));
+          } else if (status === 503) {
+            setDictError(
+              msg || t("Local translation service unavailable. Start Ollama to enable translation."),
+            );
+          } else if (status === 429) {
+            setDictError(t("Rate limit exceeded. Please wait a moment."));
+          } else if (status && status >= 500) {
+            setDictError(t("Local translation service unavailable. Please try again."));
+          } else {
+            setDictError(t("Translation failed.") + (msg ? ` ${msg}` : ""));
+          }
+        }
+      } finally {
+        if (dictReqIdRef.current === reqId) {
           setDictLoading(false);
         }
       }
