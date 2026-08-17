@@ -8,17 +8,26 @@ execution, retries, and the board contract live here.
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
+from collections import Counter, deque
 import html
 import json
 from pathlib import Path
 import re
 import time
 from typing import Any, Literal
+import uuid
 
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.path_service import get_path_service
+
+from .glossary import (
+    extract_glossary_candidates,
+    merge_glossary,
+    review_glossary_candidates,
+    terms_for_text,
+)
+from .repository import TranslationStateRepository
 
 TranslationSourceType = Literal["bilingual", "kb_document"]
 _PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
@@ -112,37 +121,53 @@ class TranslationTaskService:
     """Persistent, process-local task board shared by all translation sources."""
 
     def __init__(self, state_path: Path | None = None):
-        self._state_path = state_path or (
+        state_path = state_path or (
             get_path_service().workspace_root / "translation" / "tasks.json"
         )
-        self._lock = asyncio.Lock()
+        self._repository = TranslationStateRepository(state_path)
+        self._execution_lock = asyncio.Lock()
+        self._run_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._listeners: set[asyncio.Queue[dict[str, Any]]] = set()
+        self._run_events: dict[str, deque[dict[str, Any]]] = {}
         self._recover_interrupted_tasks()
 
     def _load(self) -> dict[str, Any]:
-        state = _read_json(self._state_path, {})
-        state.setdefault("version", 1)
-        state.setdefault("tasks", [])
-        state.setdefault("sources", {})
-        state.setdefault("is_running", False)
-        state.setdefault("last_run_at", 0)
+        state = self._repository.read()
+        if state.get("version", 1) < 2:
+            state["version"] = 2
         return state
 
+    @property
+    def _state_path(self) -> Path:
+        return self._repository.path
+
     def _save(self, state: dict[str, Any]) -> None:
-        _write_json(self._state_path, state)
+        state["version"] = 2
+        with self._repository.transaction() as current:
+            current.clear()
+            current.update(state)
 
     def _recover_interrupted_tasks(self) -> None:
-        state = self._load()
-        changed = False
-        if state.get("is_running"):
-            state["is_running"] = False
-            changed = True
-        for task in state["tasks"]:
-            if task.get("status") != "running":
-                continue
-            task.update(status="queued", started_at=None, updated_at=time.time())
-            changed = True
-        if changed:
-            self._save(state)
+        with self._repository.transaction() as state:
+            changed = False
+            if state.get("is_running"):
+                state["is_running"] = False
+                changed = True
+            for task in state["tasks"]:
+                if task.get("status") != "running":
+                    continue
+                task.update(status="queued", started_at=None, updated_at=time.time())
+                changed = True
+            for run in state.setdefault("runs", {}).values():
+                if run.get("status") in {"queued", "running"}:
+                    run.update(
+                        status="failed",
+                        completed_at=time.time(),
+                        error="Interrupted by service restart",
+                    )
+            if changed or state.get("version", 1) < 2:
+                state["version"] = 2
+                changed = True
 
     def _board(
         self,
@@ -184,11 +209,13 @@ class TranslationTaskService:
                 "running": counts["running"],
                 "completed": counts["completed"],
                 "failed": counts["failed"],
+                "cancelled": counts["cancelled"],
                 "filtered_total": len(tasks),
                 "filtered_queued": filtered_counts["queued"],
                 "filtered_running": filtered_counts["running"],
                 "filtered_completed": filtered_counts["completed"],
                 "filtered_failed": filtered_counts["failed"],
+                "filtered_cancelled": filtered_counts["cancelled"],
                 "is_running": bool(state.get("is_running")),
                 "last_run_at": float(state.get("last_run_at") or 0),
             },
@@ -198,6 +225,9 @@ class TranslationTaskService:
             board["chapters"] = self._bilingual_chapter_summaries(source_id)
         if source_type == "kb_document" and source_id:
             board["documents"] = self._kb_document_summaries(source_id)
+        glossary_key = f"{source_type}:{source_id}"
+        if glossary_key in state.get("glossaries", {}):
+            board["glossary"] = state["glossaries"][glossary_key]
         return board
 
     @staticmethod
@@ -321,7 +351,32 @@ class TranslationTaskService:
             completed_at=old.get("completed_at"),
         )
 
-    def plan_bilingual(self, pairing_id: str, *, force: bool = False) -> dict[str, Any]:
+    @staticmethod
+    def _refresh_glossary(
+        state: dict[str, Any],
+        source_type: str,
+        source_id: str,
+        texts: list[str],
+        reviewed_glossary: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        key = f"{source_type}:{source_id}"
+        existing = state.setdefault("glossaries", {}).get(key, [])
+        candidates = (
+            reviewed_glossary
+            if reviewed_glossary is not None
+            else extract_glossary_candidates(texts)
+        )
+        merged = merge_glossary(existing, candidates)
+        state["glossaries"][key] = merged
+        return merged
+
+    def _plan_bilingual_unlocked(
+        self,
+        pairing_id: str,
+        *,
+        force: bool = False,
+        reviewed_glossary: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         root = _pairing_root(pairing_id)
         pairing = _read_json(root / "pairing.json")
         if not pairing:
@@ -351,6 +406,21 @@ class TranslationTaskService:
         new_tasks: list[dict[str, Any]] = []
         total_units = 0
         translated_units = 0
+        glossary = self._refresh_glossary(
+            state,
+            "bilingual",
+            pairing_id,
+            [
+                str(text)
+                for section in (
+                    _read_json(root / "sections" / f"{str(entry[0])}.json", {})
+                    for entry in chapter_map
+                )
+                for group in section.get("groups", [])
+                for text in group.get("en", [])
+            ],
+            reviewed_glossary,
+        )
 
         for chapter_index, entry in enumerate(chapter_map):
             chapter_id = str(entry[0])
@@ -391,6 +461,7 @@ class TranslationTaskService:
                     "chapter_id": chapter_id,
                     "group_index": group_index,
                     "source_text": source_text[:12_000],
+                    "glossary": terms_for_text(glossary, source_text),
                     "target_language": pairing.get("target_lang", "Chinese"),
                     "reason": reasons[0],
                     "priority": "high" if priority_window or "flagged" in reasons else "normal",
@@ -420,6 +491,20 @@ class TranslationTaskService:
         self._save(state)
         return self._board(source_type="bilingual", source_id=pairing_id)
 
+    def plan_bilingual(
+        self,
+        pairing_id: str,
+        *,
+        force: bool = False,
+        reviewed_glossary: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        with self._repository.locked():
+            return self._plan_bilingual_unlocked(
+                pairing_id,
+                force=force,
+                reviewed_glossary=reviewed_glossary,
+            )
+
     def _kb_document_root(self, kb_name: str) -> Path:
         normalized = validate_knowledge_base_name(kb_name)
         knowledge_root = get_path_service().get_knowledge_bases_root().resolve()
@@ -431,7 +516,14 @@ class TranslationTaskService:
             raise ValueError("Knowledge base not found")
         return raw_root
 
-    def plan_kb(self, kb_name: str, *, force: bool = False, limit: int = 200) -> dict[str, Any]:
+    def _plan_kb_unlocked(
+        self,
+        kb_name: str,
+        *,
+        force: bool = False,
+        limit: int = 200,
+        reviewed_glossary: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         document_root = self._kb_document_root(kb_name)
         documents = sorted(
             path
@@ -451,6 +543,8 @@ class TranslationTaskService:
             old_tasks = {}
         new_tasks: list[dict[str, Any]] = []
         translated_units = 0
+        source_documents: list[tuple[str, str]] = []
+        glossary = self._refresh_glossary(state, "kb_document", kb_name, [], reviewed_glossary)
         for document in documents[: max(1, min(limit, 500))]:
             relative = document.relative_to(document_root).as_posix()
             task_id = f"kb:{kb_name}:{relative}"
@@ -465,6 +559,7 @@ class TranslationTaskService:
             source_text = (
                 _html_to_text(raw) if document.suffix.lower() in {".html", ".htm"} else raw
             )
+            source_documents.append((relative, source_text))
             if not source_text.strip() or len(source_text) > 12_000:
                 continue
             now = time.time()
@@ -477,6 +572,7 @@ class TranslationTaskService:
                 "chapter_index": 0,
                 "group_index": 0,
                 "source_text": source_text[:12_000],
+                "glossary": terms_for_text(glossary, source_text),
                 "target_language": "Chinese",
                 "reason": "missing_translation",
                 "priority": "normal",
@@ -494,44 +590,151 @@ class TranslationTaskService:
         total_units = min(len(documents), 500)
         state["tasks"] = [item for item in state["tasks"] if item.get("id") not in old_tasks]
         state["tasks"].extend(new_tasks)
+        state["glossaries"][f"kb_document:{kb_name}"] = (
+            merge_glossary(
+                glossary, extract_glossary_candidates([text for _, text in source_documents])
+            )
+            if reviewed_glossary is None
+            else glossary
+        )
+        glossary = state["glossaries"][f"kb_document:{kb_name}"]
+        for task in new_tasks:
+            task["glossary"] = terms_for_text(glossary, str(task["source_text"]))
         self._update_source_stats(
             state, "kb_document", kb_name, kb_name, total_units, translated_units
         )
         self._save(state)
         return self._board(source_type="kb_document", source_id=kb_name)
 
-    def plan(self, source_type: str, source_id: str, *, force: bool = False) -> dict[str, Any]:
+    def plan_kb(
+        self,
+        kb_name: str,
+        *,
+        force: bool = False,
+        limit: int = 200,
+        reviewed_glossary: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        with self._repository.locked():
+            return self._plan_kb_unlocked(
+                kb_name,
+                force=force,
+                limit=limit,
+                reviewed_glossary=reviewed_glossary,
+            )
+
+    def plan(
+        self,
+        source_type: str,
+        source_id: str,
+        *,
+        force: bool = False,
+        reviewed_glossary: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         if source_type == "bilingual":
-            return self.plan_bilingual(source_id, force=force)
+            return self.plan_bilingual(source_id, force=force, reviewed_glossary=reviewed_glossary)
         if source_type == "kb_document":
-            return self.plan_kb(source_id, force=force)
+            return self.plan_kb(source_id, force=force, reviewed_glossary=reviewed_glossary)
         raise ValueError("Unsupported translation source type")
 
+    async def plan_with_review(
+        self, source_type: str, source_id: str, *, force: bool = False
+    ) -> dict[str, Any]:
+        texts: list[str] = []
+        target_language = "Chinese"
+        if source_type == "bilingual":
+            root = _pairing_root(source_id)
+            pairing = _read_json(root / "pairing.json") or {}
+            target_language = str(pairing.get("target_lang", "Chinese"))
+            texts = [
+                str(text)
+                for entry in _read_json(root / "chapter_map.json", [])
+                for group in _read_json(root / "sections" / f"{str(entry[0])}.json", {}).get(
+                    "groups", []
+                )
+                for text in group.get("en", [])
+            ]
+        elif source_type == "kb_document":
+            document_root = self._kb_document_root(source_id)
+            texts = [
+                path.read_text(encoding="utf-8", errors="replace")
+                for path in sorted(document_root.rglob("*"))
+                if path.is_file()
+                and path.suffix.lower() in _TEXT_SUFFIXES
+                and not any(part.startswith(".") for part in path.relative_to(document_root).parts)
+            ]
+        else:
+            raise ValueError("Unsupported translation source type")
+        reviewed = await review_glossary_candidates(
+            extract_glossary_candidates(texts), target_language
+        )
+        return await asyncio.to_thread(
+            self.plan,
+            source_type,
+            source_id,
+            force=force,
+            reviewed_glossary=reviewed,
+        )
+
     def retry(self, task_id: str) -> dict[str, Any]:
-        state = self._load()
-        task = next((item for item in state["tasks"] if item.get("id") == task_id), None)
-        if task is None:
-            raise ValueError("Translation task not found")
-        task.update(status="queued", error="", updated_at=time.time())
-        self._save(state)
+        with self._repository.transaction() as state:
+            task = next((item for item in state["tasks"] if item.get("id") == task_id), None)
+            if task is None:
+                raise ValueError("Translation task not found")
+            task.update(status="queued", error="", run_id=None, updated_at=time.time())
         return self._board(source_type=task["source_type"], source_id=task["source_id"])
+
+    def get_glossary(self, source_type: str, source_id: str) -> list[dict[str, Any]]:
+        if source_type not in {"bilingual", "kb_document"}:
+            raise ValueError("Unsupported translation source type")
+        state = self._load()
+        return list(state.get("glossaries", {}).get(f"{source_type}:{source_id}", []))
+
+    def update_glossary(
+        self, source_type: str, source_id: str, entries: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        if source_type not in {"bilingual", "kb_document"}:
+            raise ValueError("Unsupported translation source type")
+        normalized: list[dict[str, Any]] = []
+        for entry in entries[:500]:
+            term = str(entry.get("term", "")).strip()
+            translation = str(entry.get("translation", "")).strip()
+            if not term or len(term) > 300 or len(translation) > 500:
+                raise ValueError("Each glossary term is required and must be bounded")
+            decision = str(
+                entry.get("decision") or ("approved" if entry.get("approved") else "candidate")
+            )
+            if decision not in {"candidate", "approved", "rejected"}:
+                decision = "candidate"
+            normalized.append(
+                {
+                    "term": term,
+                    "translation": translation or term,
+                    "kind": str(entry.get("kind") or "custom")[:50],
+                    "frequency": max(0, int(entry.get("frequency", 0))),
+                    "protected": bool(entry.get("protected")),
+                    "decision": decision,
+                    "approved": decision == "approved",
+                }
+            )
+        key = f"{source_type}:{source_id}"
+        with self._repository.transaction() as state:
+            state.setdefault("glossaries", {})[key] = sorted(
+                normalized, key=lambda item: item["term"].casefold()
+            )
+        return self._board(source_type=source_type, source_id=source_id)
 
     def retry_failed(
         self, source_type: str | None = None, source_id: str | None = None
     ) -> dict[str, Any]:
-        state = self._load()
-        changed = False
-        for task in state["tasks"]:
-            if task.get("status") != "failed":
-                continue
-            if source_type and task.get("source_type") != source_type:
-                continue
-            if source_id and task.get("source_id") != source_id:
-                continue
-            task.update(status="queued", error="", updated_at=time.time())
-            changed = True
-        if changed:
-            self._save(state)
+        with self._repository.transaction() as state:
+            for task in state["tasks"]:
+                if task.get("status") != "failed":
+                    continue
+                if source_type and task.get("source_type") != source_type:
+                    continue
+                if source_id and task.get("source_id") != source_id:
+                    continue
+                task.update(status="queued", error="", updated_at=time.time())
         return self._board(source_type=source_type, source_id=source_id)
 
     def _apply_translation(self, task: dict[str, Any], translation: str) -> None:
@@ -570,7 +773,7 @@ class TranslationTaskService:
             return
         raise ValueError("Unsupported translation sink")
 
-    async def run(
+    def start_run(
         self,
         limit: int = 4,
         *,
@@ -578,16 +781,14 @@ class TranslationTaskService:
         source_id: str | None = None,
         chapter_id: str | None = None,
     ) -> dict[str, Any]:
-        from deeptutor.immersive_reading import get_immersive_reading_service
-
-        if self._lock.locked():
-            return self._board(source_type=source_type, source_id=source_id, chapter_id=chapter_id)
-        async with self._lock:
-            state = self._load()
-            if state.get("is_running"):
-                return self._board(
-                    source_type=source_type, source_id=source_id, chapter_id=chapter_id
-                )
+        run_id = uuid.uuid4().hex
+        now = time.time()
+        if len(self._run_events) >= 64:
+            self._run_events.pop(next(iter(self._run_events)))
+        with self._repository.transaction() as state:
+            if state.get("version", 1) < 2:
+                state["version"] = 2
+            state.setdefault("runs", {})
             candidates = [
                 task
                 for task in state["tasks"]
@@ -599,14 +800,6 @@ class TranslationTaskService:
                     or str(task.get("chapter_id") or task.get("title")) == chapter_id
                 )
             ]
-            if not candidates:
-                return self._board(
-                    source_type=source_type, source_id=source_id, chapter_id=chapter_id
-                )
-            state["is_running"] = True
-            state["last_run_at"] = time.time()
-            self._save(state)
-            translator = get_immersive_reading_service()
             selected = sorted(
                 candidates,
                 key=lambda task: (
@@ -615,37 +808,422 @@ class TranslationTaskService:
                     int(task.get("group_index", 0)),
                 ),
             )[: max(1, min(int(limit), 8))]
-            try:
-                for task_id in [task["id"] for task in selected]:
-                    state = self._load()
-                    task = next(item for item in state["tasks"] if item["id"] == task_id)
-                    task.update(status="running", started_at=time.time(), updated_at=time.time())
-                    self._save(state)
-                    try:
-                        translation = await translator.translate(
-                            str(task["source_text"]), str(task.get("target_language", "Chinese"))
-                        )
-                        await asyncio.to_thread(self._apply_translation, task, translation)
-                        task.update(
-                            status="completed",
+            selected_ids = [task["id"] for task in selected]
+            state["runs"][run_id] = {
+                "run_id": run_id,
+                "source_type": source_type,
+                "source_id": source_id,
+                "chapter_id": chapter_id,
+                "task_ids": selected_ids,
+                "status": "queued",
+                "sequence": 0,
+                "completed": 0,
+                "failed": 0,
+                "created_at": now,
+                "updated_at": now,
+                "started_at": None,
+                "completed_at": None,
+                "error": "",
+            }
+            for task in selected:
+                task.update(run_id=run_id, updated_at=now)
+        self._publish_run_event(run_id, "run_started", {"selected_task_ids": selected_ids})
+        return self.get_run(run_id)
+
+    def get_run(self, run_id: str) -> dict[str, Any]:
+        run = self._load()["runs"].get(run_id)
+        if run is None:
+            raise ValueError("Translation run not found")
+        return dict(run)
+
+    def _is_run_cancelled(self, run_id: str) -> bool:
+        return self._load().get("runs", {}).get(run_id, {}).get("status", "") == "cancelled"
+
+    def _mark_run_cancelled(self, run_id: str, error: str = "Cancelled by user") -> None:
+        with self._repository.transaction() as state:
+            run = state.get("runs", {}).get(run_id)
+            if not run:
+                return
+            if run.get("status") in {"completed", "failed", "cancelled"}:
+                return
+            task_ids = set(run.get("task_ids", []))
+            completed = 0
+            failed = 0
+            for task in state["tasks"]:
+                if task.get("id") not in task_ids:
+                    continue
+                if task.get("status") == "completed":
+                    completed += 1
+                if task.get("status") == "failed":
+                    failed += 1
+            run.update(
+                status="cancelled",
+                error=error,
+                updated_at=time.time(),
+                completed_at=time.time(),
+                completed=completed,
+                failed=failed,
+            )
+            for task in state["tasks"]:
+                if task.get("id") not in task_ids:
+                    continue
+                if task.get("status") in {"queued", "running"}:
+                    task.update(
+                        status="failed",
+                        error=error,
+                        updated_at=time.time(),
+                    )
+
+    def cancel_run(self, run_id: str) -> dict[str, Any]:
+        run = self.get_run(run_id)
+        if run.get("status") in {"completed", "failed", "cancelled"}:
+            return self._board(
+                source_type=run.get("source_type"),
+                source_id=run.get("source_id"),
+                chapter_id=run.get("chapter_id"),
+            )
+        self._mark_run_cancelled(run_id)
+        run = self.get_run(run_id)
+        active_task = self._run_tasks.get(run_id)
+        if active_task is not None and not active_task.done():
+            active_task.cancel()
+        else:
+            self._publish_run_event(
+                run_id,
+                "run_cancelled",
+                {
+                    "completed": int(run.get("completed", 0)),
+                    "failed": int(run.get("failed", 0)),
+                },
+                terminal=True,
+            )
+        return self._board(
+            source_type=run.get("source_type"),
+            source_id=run.get("source_id"),
+            chapter_id=run.get("chapter_id"),
+        )
+
+    async def run(
+        self,
+        limit: int = 4,
+        *,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        chapter_id: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        from deeptutor.immersive_reading import get_immersive_reading_service
+
+        if run_id is None:
+            created = self.start_run(
+                limit,
+                source_type=source_type,
+                source_id=source_id,
+                chapter_id=chapter_id,
+            )
+            if not created["task_ids"]:
+                return self._board(
+                    source_type=source_type, source_id=source_id, chapter_id=chapter_id
+                )
+            run_id = created["run_id"]
+        run_task = asyncio.current_task()
+        if run_task is not None:
+            self._run_tasks[run_id] = run_task
+        try:
+            async with self._execution_lock:
+                run = self.get_run(run_id)
+                task_ids = list(run.get("task_ids", []))
+                if not task_ids or run.get("status") in {"completed", "failed", "cancelled"}:
+                    return self._run_board(run)
+                with self._repository.transaction() as state:
+                    state["is_running"] = True
+                    state["last_run_at"] = time.time()
+                    state["runs"][run_id].update(status="running", started_at=time.time())
+                # Give newly created SSE subscribers a chance to register before the
+                # first model call, especially in fast tests and local fake models.
+                await asyncio.sleep(0)
+                try:
+                    translator = get_immersive_reading_service()
+                    for task_id in task_ids:
+                        if self._is_run_cancelled(run_id):
+                            break
+                        with self._repository.transaction() as state:
+                            task = next(
+                                item for item in state["tasks"] if item.get("id") == task_id
+                            )
+                            if task.get("status") not in {"queued", "running"}:
+                                continue
+                            key = f"{task.get('source_type')}:{task.get('source_id')}"
+                            current_glossary = state.get("glossaries", {}).get(key, [])
+                            if current_glossary:
+                                task["glossary"] = terms_for_text(
+                                    current_glossary, str(task.get("source_text", ""))
+                                )
+                            task.update(
+                                status="running",
+                                started_at=time.time(),
+                                updated_at=time.time(),
+                            )
+                        task_snapshot = dict(task)
+                        self._publish(task_snapshot, run_id=run_id, task_updated=True)
+                        translation: str | None = None
+                        error = ""
+                        try:
+                            selected_glossary = task.get("glossary") or []
+                            translation = (
+                                await translator.translate(
+                                    str(task["source_text"]),
+                                    str(task.get("target_language", "Chinese")),
+                                    glossary=selected_glossary,
+                                )
+                                if selected_glossary
+                                else await translator.translate(
+                                    str(task["source_text"]),
+                                    str(task.get("target_language", "Chinese")),
+                                )
+                            )
+                            await asyncio.to_thread(self._apply_translation, task, translation)
+                            task_snapshot = self._repository.update_task(
+                                task_id,
+                                dict(
+                                    status="completed",
+                                    translation=translation,
+                                    error="",
+                                    completed_at=time.time(),
+                                    updated_at=time.time(),
+                                ),
+                            )
+                        except asyncio.CancelledError:
+                            task_snapshot = self._repository.update_task(
+                                task_id,
+                                dict(
+                                    status="failed",
+                                    error="Cancelled by user",
+                                    attempts=int(task.get("attempts", 0)) + 1,
+                                    updated_at=time.time(),
+                                ),
+                            )
+                            self._publish(task_snapshot, run_id=run_id, task_updated=True)
+                            raise
+                        except Exception as exc:
+                            translation = None
+                            error = str(exc)[:1000]
+                            task_snapshot = self._repository.update_task(
+                                task_id,
+                                dict(
+                                    status="failed",
+                                    error=error,
+                                    attempts=int(task.get("attempts", 0)) + 1,
+                                    updated_at=time.time(),
+                                ),
+                            )
+                        self._publish(
+                            task_snapshot,
                             translation=translation,
-                            error="",
+                            run_id=run_id,
+                        )
+                except asyncio.CancelledError:
+                    self._mark_run_cancelled(run_id)
+                finally:
+                    run_status = self.get_run(run_id).get("status")
+                    cancelled = run_status == "cancelled"
+                    state = self._load()
+                    completed = sum(
+                        1
+                        for task in state["tasks"]
+                        if task.get("id") in task_ids and task.get("status") == "completed"
+                    )
+                    failed = sum(
+                        1
+                        for task in state["tasks"]
+                        if task.get("id") in task_ids and task.get("status") == "failed"
+                    )
+                    with self._repository.transaction() as current:
+                        current["is_running"] = False
+                        current["runs"][run_id].update(
+                            status=(
+                                "cancelled"
+                                if cancelled
+                                else (
+                                    "failed"
+                                    if failed and completed + failed < len(task_ids)
+                                    else "completed"
+                                )
+                            ),
+                            completed=completed,
+                            failed=failed,
                             completed_at=time.time(),
                             updated_at=time.time(),
+                            error="" if not cancelled else "Cancelled by user",
                         )
-                    except Exception as exc:
-                        task.update(
-                            status="failed",
-                            error=str(exc)[:1000],
-                            attempts=int(task.get("attempts", 0)) + 1,
-                            updated_at=time.time(),
+                    if not any(
+                        event.get("type") in {"run_completed", "run_cancelled"}
+                        for event in self._run_events.get(run_id, [])
+                    ):
+                        self._publish_run_event(
+                            run_id,
+                            "run_cancelled" if cancelled else "run_completed",
+                            {"completed": completed, "failed": failed},
+                            terminal=True,
                         )
-                    self._save(state)
+                return self._run_board(self.get_run(run_id))
+        finally:
+            if run_id in self._run_tasks:
+                self._run_tasks.pop(run_id, None)
+
+    def _run_board(self, run: dict[str, Any]) -> dict[str, Any]:
+        return self._board(
+            source_type=run.get("source_type"),
+            source_id=run.get("source_id"),
+            chapter_id=run.get("chapter_id"),
+        )
+
+    def _publish(
+        self,
+        task: dict[str, Any],
+        translation: str | None = None,
+        *,
+        run_id: str | None = None,
+        task_updated: bool = False,
+    ) -> None:
+        if not self._listeners:
+            return
+        public_task = self._public_task(task)
+        if translation is not None:
+            public_task["translation"] = translation
+        sequence = self._next_sequence(run_id or task.get("run_id"))
+        event = {
+            "type": (
+                "group_translated"
+                if translation is not None
+                else "task_updated"
+                if task_updated
+                else "task_updated"
+            ),
+            "task": public_task,
+            "run_id": run_id or task.get("run_id"),
+            "sequence": sequence,
+        }
+        run_key = run_id or task.get("run_id")
+        if run_key:
+            self._run_events.setdefault(run_key, deque(maxlen=512)).append(event)
+        for queue in list(self._listeners):
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            queue.put_nowait(event)
+
+    def _publish_run_event(
+        self,
+        run_id: str,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        terminal: bool = False,
+    ) -> None:
+        sequence = self._next_sequence(run_id)
+        event = {
+            "type": event_type,
+            "run_id": run_id,
+            "sequence": sequence,
+            **(payload or {}),
+        }
+        self._run_events.setdefault(run_id, deque(maxlen=512)).append(event)
+        for queue in list(self._listeners):
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            queue.put_nowait(event)
+
+    def _next_sequence(self, run_id: str | None) -> int:
+        if not run_id:
+            return 0
+        with self._repository.transaction() as state:
+            run = state["runs"].get(run_id)
+            if run is None:
+                return 0
+            run["sequence"] = int(run.get("sequence", 0)) + 1
+            return int(run["sequence"])
+
+    def subscribe(
+        self,
+        *,
+        run_id: str | None = None,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        chapter_id: str | None = None,
+    ):
+        """Yield task transitions for one filtered board without busy polling."""
+
+        async def iterator():
+            queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=256)
+            self._listeners.add(queue)
+            try:
+                replay = list(self._run_events.get(run_id, [])) if run_id else []
+                for event in replay:
+                    queue.put_nowait(event)
+                yield {
+                    "type": "snapshot",
+                    "run_id": run_id,
+                    "sequence": 0,
+                    "board": self._board(
+                        source_type=source_type,
+                        source_id=source_id,
+                        chapter_id=chapter_id,
+                    ),
+                }
+                terminal_run = self.get_run(run_id) if run_id else None
+                if (
+                    terminal_run
+                    and terminal_run.get("status") in {"completed", "failed", "cancelled"}
+                    and not any(
+                        event.get("type") in {"run_completed", "run_cancelled"} for event in replay
+                    )
+                ):
+                    yield {
+                        "type": (
+                            "run_cancelled"
+                            if terminal_run.get("status") == "cancelled"
+                            else "run_completed"
+                        ),
+                        "run_id": run_id,
+                        "sequence": int(terminal_run.get("sequence", 0)),
+                        "completed": int(terminal_run.get("completed", 0)),
+                        "failed": int(terminal_run.get("failed", 0)),
+                    }
+                    return
+                while True:
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        yield {"type": "heartbeat"}
+                        continue
+                    task = event.get("task", {})
+                    event_run_id = event.get("run_id")
+                    source_match = (
+                        source_type is None or task.get("source_type") == source_type
+                    ) and (source_id is None or task.get("source_id") == source_id)
+                    chapter_match = (
+                        chapter_id is None
+                        or str(task.get("chapter_id") or task.get("title")) == chapter_id
+                    )
+                    if run_id is not None and event_run_id != run_id:
+                        continue
+                    if not task and event_run_id and run_id and event_run_id != run_id:
+                        continue
+                    if task and not (source_match and chapter_match):
+                        continue
+                    yield event
+                    if event.get("type") in {"run_completed", "run_cancelled"}:
+                        break
             finally:
-                state = self._load()
-                state["is_running"] = False
-                self._save(state)
-            return self._board(source_type=source_type, source_id=source_id, chapter_id=chapter_id)
+                self._listeners.discard(queue)
+
+        return iterator()
 
 
 _translation_task_service: TranslationTaskService | None = None

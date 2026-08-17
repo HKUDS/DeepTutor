@@ -62,6 +62,12 @@ from deeptutor.services.llm.exceptions import (
     LLMTimeoutError,
 )
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.translation.glossary import build_translation_guardrail, is_hymt_model
+from deeptutor.services.translation.protection import (
+    TranslationProtectionError,
+    protect_translation_text,
+    restore_translation_text,
+)
 from deeptutor.tools.web_search import web_search
 from deeptutor.utils.json_parser import parse_json_response
 
@@ -1872,7 +1878,12 @@ class ImmersiveReadingService:
             raise ValueError("Vocabulary entry not found")
         _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in remaining])
 
-    async def translate(self, text: str, target_language: str) -> str:
+    async def translate(
+        self,
+        text: str,
+        target_language: str,
+        glossary: list[dict[str, Any]] | None = None,
+    ) -> str:
         selected = text.strip()
         if not selected:
             raise ValueError("Select some text to translate")
@@ -1885,6 +1896,7 @@ class ImmersiveReadingService:
                 target_language.strip().casefold(),
                 str(getattr(cfg, "provider_name", "") or ""),
                 str(cfg.model or ""),
+                json.dumps(glossary or [], ensure_ascii=False, sort_keys=True),
             )
         )
         cached = self._translation_cache.get(cache_key)
@@ -1896,7 +1908,12 @@ class ImmersiveReadingService:
         if pending is not None:
             return await asyncio.shield(pending)
 
-        task = asyncio.create_task(self._translate_uncached(selected, target_language))
+        coro = (
+            self._translate_uncached(selected, target_language, glossary)
+            if glossary
+            else self._translate_uncached(selected, target_language)
+        )
+        task = asyncio.create_task(coro)
         self._translation_tasks[cache_key] = task
         try:
             translated = await asyncio.shield(task)
@@ -1910,13 +1927,22 @@ class ImmersiveReadingService:
             self._translation_cache.popitem(last=False)
         return translated
 
-    async def _translate_uncached(self, selected: str, target_language: str) -> str:
+    async def _translate_uncached(
+        self,
+        selected: str,
+        target_language: str,
+        glossary: list[dict[str, Any]] | None = None,
+    ) -> str:
+        glossary = glossary or []
+        selected, protected_fragments = protect_translation_text(selected, glossary)
         cfg = get_llm_config()
         system_prompt = (
             "Translate the supplied book passage faithfully. Preserve paragraph breaks, names, tone, "
             "and uncertainty. Output only the translation, with no commentary."
         )
-        user_prompt = f"Target language: {target_language}\n\nText:\n{selected}"
+        user_prompt = (
+            f"{build_translation_guardrail(target_language, glossary)}\n\nText:\n{selected}"
+        )
         base_url = getattr(cfg, "base_url", "") or getattr(cfg, "effective_url", "") or ""
         # Local Ollama: use the native /api/chat endpoint directly. The
         # OpenAI-compatible /v1 path is unreliable with qwen3.x reasoning
@@ -1949,7 +1975,34 @@ class ImmersiveReadingService:
                 system_prompt=system_prompt,
                 temperature=0.1,
             )
-        return clean_thinking_tags(raw, getattr(cfg, "binding", None), cfg.model).strip()
+        cleaned = clean_thinking_tags(raw, getattr(cfg, "binding", None), cfg.model).strip()
+        try:
+            return restore_translation_text(cleaned, protected_fragments)
+        except TranslationProtectionError:
+            # Reject broken protected output before it reaches a task sink.
+            if is_ollama:
+                raw = await self._ollama_native_chat(
+                    model,
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    think=False,
+                    temperature=0.1,
+                    num_predict=512
+                    if len(selected) <= 200
+                    else 1024
+                    if len(selected) <= 1000
+                    else 4096,
+                )
+            else:
+                raw = await complete(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    temperature=0.1,
+                )
+            cleaned = clean_thinking_tags(raw, getattr(cfg, "binding", None), cfg.model).strip()
+            return restore_translation_text(cleaned, protected_fragments)
 
     async def query_selection(
         self, text: str, question: str, language: str
@@ -2070,7 +2123,9 @@ class ImmersiveReadingService:
         return models
 
     @staticmethod
-    def _resolve_ollama_model(preferred: str, installed: list[str]) -> str:
+    def _resolve_ollama_model(
+        preferred: str, installed: list[str], *, for_translation: bool = False
+    ) -> str:
         """Pick the best available Ollama model, preferring *preferred*.
 
         Falls back to a sibling of the same family (e.g. qwen3.5:2b when
@@ -2080,9 +2135,19 @@ class ImmersiveReadingService:
             return preferred
         if preferred in installed:
             return preferred
+        if for_translation and is_hymt_model(preferred):
+            hymt_match = next((model for model in installed if is_hymt_model(model)), None)
+            if hymt_match:
+                return hymt_match
         family = preferred.split(":", 1)[0]
         sibling = next((m for m in installed if m.split(":", 1)[0] == family), None)
-        return sibling or installed[0]
+        if sibling:
+            return sibling
+        if for_translation:
+            hymt_match = next((model for model in installed if is_hymt_model(model)), None)
+            if hymt_match:
+                return hymt_match
+        return installed[0]
 
     async def _ollama_native_chat(
         self,
