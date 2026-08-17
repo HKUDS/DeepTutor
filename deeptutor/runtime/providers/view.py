@@ -102,11 +102,17 @@ async def _build(
     preloaded_names: frozenset[str],
 ) -> ProviderToolView:
     from deeptutor.services.mcp import get_mcp_manager, load_loaded_tools
+    from deeptutor.services.mcp.pageindex_server import PAGEINDEX_SERVER_NAME
 
     manager = get_mcp_manager()
     await manager.ensure_started()
 
-    shared_pool = list(base_registry.deferred_tools())
+    shared_pool = [
+        tool
+        for tool in base_registry.deferred_tools()
+        if provider_identity(tool)[1] != PAGEINDEX_SERVER_NAME
+        or PAGEINDEX_SERVER_NAME in scope.implicit_provider_ids
+    ]
     owned_pool = await _owned_tools(manager, scope)
     cli_pool = _cli_app_tools(scope)
     if not shared_pool and not owned_pool and not cli_pool and not overlay_tools:
@@ -138,11 +144,13 @@ async def _build(
     # the selected KB and live only in this turn's registry.
     allowed = allowed.widen(tool.get_definition().name for tool in overlay_tools)
 
-    pool = tuple(
-        tool
-        for tool in (*shared_pool, *owned_pool, *cli_pool, *overlay_tools)
-        if allowed.allows(tool.get_definition().name)
-    )
+    candidates = (*shared_pool, *owned_pool, *cli_pool, *overlay_tools)
+    # Turn an administrator's otherwise-unrestricted grant into this turn's
+    # concrete provider pool. Besides keeping the dispatch gate honest, this
+    # prevents a remembered tool name from loading a resource-bound provider
+    # that was deliberately filtered above because its KB is not attached.
+    allowed = allowed.narrow(Allowlist.of(tool.get_definition().name for tool in candidates))
+    pool = tuple(tool for tool in candidates if allowed.allows(tool.get_definition().name))
     registry = ScopedToolRegistry(
         base=base_registry,
         # Owner-scoped tools live only in this turn's overlay — they are never

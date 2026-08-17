@@ -150,6 +150,20 @@ async def test_mcp_rows_keep_legacy_server_field(stub_registry) -> None:
 
 
 @pytest.mark.asyncio
+async def test_pageindex_mcp_is_not_a_configurable_tool(stub_registry) -> None:
+    stub_registry(
+        [
+            _McpTool("mcp_pageindex_get_tree", "pageindex"),
+            _McpTool("mcp_notion_search", "notion"),
+        ]
+    )
+
+    rows = (await tool_options_mod.build_tool_options())["mcp_tools"]
+
+    assert [row["name"] for row in rows] == ["mcp_notion_search"]
+
+
+@pytest.mark.asyncio
 async def test_unreadable_tool_is_skipped(stub_registry) -> None:
     """A server that fails mid-listing must not blank out the whole surface."""
     stub_registry([_BrokenTool("mcp_broken_thing"), _McpTool("mcp_notion_search", "notion")])

@@ -46,6 +46,7 @@ async def build_tool_options(
     )
     from deeptutor.runtime.registry.deferred_tools import provider_identity
     from deeptutor.runtime.registry.tool_registry import get_tool_registry
+    from deeptutor.services.mcp.pageindex_server import PAGEINDEX_SERVER_NAME
     from deeptutor.tools.builtin import CONFIGURABLE_BUILTIN_TOOL_NAMES
 
     exclude = exclude_builtin or set()
@@ -98,6 +99,10 @@ async def build_tool_options(
             continue
         kind, provider_id = provider_identity(tool)
         if (kind or "mcp") != "mcp":
+            continue
+        # PageIndex Cloud is authorised by attaching its KB, not by selecting
+        # the implementation-detail MCP server in a partner/admin picker.
+        if provider_id == PAGEINDEX_SERVER_NAME:
             continue
         mcp_tools.append(
             {
