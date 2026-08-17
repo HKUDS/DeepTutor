@@ -22,6 +22,7 @@ import {
   PanelLeftOpen,
   PenLine,
   Settings,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -115,6 +116,12 @@ const SECONDARY_NAV: NavEntry[] = [
     label: "Knowledge Center",
     icon: BookOpen,
     tooltipKey: "Knowledge tooltip",
+  },
+  {
+    href: "/translation-tasks",
+    label: "Translation Tasks",
+    icon: Workflow,
+    tooltipKey: "Translation tasks tooltip",
   },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
