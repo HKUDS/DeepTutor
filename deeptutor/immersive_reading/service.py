@@ -10,7 +10,6 @@ import asyncio
 from collections import OrderedDict
 from difflib import SequenceMatcher
 import hashlib
-import hmac
 from io import BytesIO
 import json
 import logging
@@ -31,6 +30,7 @@ from deeptutor.immersive_reading.epub_structure import (
     resolve_section_titles,
     section_needs_title,
 )
+from deeptutor.immersive_reading.kids import get_kids_manager
 from deeptutor.immersive_reading.models import (
     ChapterSearchCard,
     DictionaryDefinition,
@@ -39,11 +39,9 @@ from deeptutor.immersive_reading.models import (
     FocusAttempt,
     FocusAttemptRecord,
     FocusCheckResult,
-    KidsBookAssignment,
-    KidsLearningProgress,
-    KidsProfile,
     KidsQuizQuestion,
     KidsQuizResult,
+    MN4WritebackItem,
     ReadingCitation,
     ReadingDocument,
     ReadingProgress,
@@ -51,6 +49,11 @@ from deeptutor.immersive_reading.models import (
     SearchHit,
     SelectionQueryResult,
     VocabEntry,
+)
+from deeptutor.immersive_reading.storage import read_json as _read_json
+from deeptutor.immersive_reading.storage import write_json as _write_json
+from deeptutor.immersive_reading.translation import (
+    TranslationMixin,
 )
 from deeptutor.immersive_reading.vocabulary import (
     chapter_difficulty,
@@ -61,25 +64,17 @@ from deeptutor.immersive_reading.vocabulary import (
     vocabulary_csv,
 )
 from deeptutor.services.file_io import atomic_write_text
-from deeptutor.services.llm import clean_thinking_tags, complete, get_llm_config
+from deeptutor.services.llm import complete, get_llm_config
 from deeptutor.services.llm.context_window import resolve_effective_context_window
 from deeptutor.services.llm.exceptions import (
     LLMAPIError,
-    LLMConfigError,
     LLMModelNotFoundError,
     LLMParseError,
     LLMTimeoutError,
 )
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.translation.glossary import (
-    build_hymt_translation_prompt,
-    build_translation_guardrail,
     is_hymt_model,
-)
-from deeptutor.services.translation.protection import (
-    TranslationProtectionError,
-    protect_translation_text,
-    restore_translation_text,
 )
 from deeptutor.tools.web_search import web_search
 from deeptutor.utils.json_parser import parse_json_response
@@ -93,15 +88,11 @@ FOCUS_CHECK_MAX_TOKENS = 4000
 FOCUS_CHECK_PROMPT_VERSION = "focus-check-v4-structured"
 FOCUS_CHECK_PASS_THRESHOLD = 65
 FAST_INDEX_PROMPT_VERSION = "chapter-search-card-v1"
-IMMERSIVE_TRANSLATION_PROMPT_VERSION = "immersive-translate-v1"
 FAST_INDEX_CONCURRENCY = 4
 FAST_DEEP_MAX_TOKENS = 32_000
 FAST_ROUTER_CONFIDENCE_THRESHOLD = 0.62
 FAST_PASSAGE_CONFIDENCE_THRESHOLD = 0.55
 _DICT_CACHE_LIMIT = 500
-_TRANSLATION_CACHE_LIMIT = 500
-_TRANSLATION_JOB_EVENT_QUEUE_SIZE = 64
-_TRANSLATION_JOB_TTL_SECONDS = 60 * 60 * 24
 _OLLAMA_MODEL_CACHE_TTL_SECONDS = 60.0
 _SAFE_ID = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 _HEADING_RE = re.compile(
@@ -109,19 +100,6 @@ _HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 logger = logging.getLogger(__name__)
-
-
-def normalize_translation_target_language(target_language: str | None) -> str:
-    raw = (target_language or "").strip()
-    if not raw:
-        return "Chinese"
-
-    normalized = raw.casefold().replace("_", "-")
-    if normalized in {"zh", "zh-cn", "zh-hans", "zh-hant", "zh-cmn"}:
-        return "Chinese"
-    if normalized in {"en", "en-us", "en-gb", "en-au", "en-ca", "en-us"}:
-        return "English"
-    return raw
 
 
 def _trim_cover_whitespace(raw: bytes) -> bytes:
@@ -245,19 +223,6 @@ def _build_focus_prompts(content_type: str, *, language: str) -> list[str]:
     ]
 
 
-def _write_json(path: Path, payload: Any) -> None:
-    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, default=str))
-
-
-def _read_json(path: Path, default: Any = None) -> Any:
-    if not path.exists():
-        return default
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default
-
-
 def _clean_text(value: str) -> str:
     value = value.replace("\x00", "")
     value = re.sub(r"[ \t]+\n", "\n", value)
@@ -279,11 +244,9 @@ def _decode_text(raw: bytes) -> str:
             continue
     return raw.decode("latin-1", errors="replace")
 
-
-
-    async def export_offline_package(self, document_id: str) -> 'Path':
+    async def export_offline_package(self, document_id: str) -> "Path":
         """Generate a complete offline package (.zip) for PWA reading.
-        
+
         Includes:
         - manifest.json and progress.json
         - all section text files
@@ -292,12 +255,13 @@ def _decode_text(raw: bytes) -> str:
         - the book's cover image
         """
         import zipfile
+
         from deeptutor.immersive_reading.models import OfflineBookPackage
-        
+
         doc = self.load_document(document_id)
         if not doc:
             raise ValueError(f"Document {document_id} not found")
-            
+
         manifest_path = self._manifest_path(document_id)
         progress_path = self._progress_path(document_id)
         try:
@@ -305,25 +269,25 @@ def _decode_text(raw: bytes) -> str:
         except ValueError:
             cover_path = None
         sections_dir = self._document_root(document_id) / "sections"
-        
+
         package_file = self._document_root(document_id) / f"{document_id}_offline.zip"
-        
-        with zipfile.ZipFile(package_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+
+        with zipfile.ZipFile(package_file, "w", zipfile.ZIP_DEFLATED) as zf:
             if manifest_path.exists():
                 zf.write(manifest_path, arcname="manifest.json")
             if progress_path.exists():
                 zf.write(progress_path, arcname="progress.json")
             if cover_path and cover_path.exists():
                 zf.write(cover_path, arcname=f"cover_{document_id}.png")
-                
+
             if sections_dir.exists():
                 for sec_file in sections_dir.glob("*.txt"):
                     zf.write(sec_file, arcname=f"sections/{sec_file.name}")
-                    
+
             # TODO: ECDICT subset and translation memory are stubbed for now.
             zf.writestr("translations.json", "[]")
             zf.writestr("ecdict_subset.json", "[]")
-            
+
         package_info = OfflineBookPackage(
             document_id=document_id,
             title=doc.title,
@@ -663,7 +627,7 @@ def _fitz_sections(
         document.close()
 
 
-class ImmersiveReadingService:
+class ImmersiveReadingService(TranslationMixin):
     def __init__(self) -> None:
         self._fast_index_locks: dict[str, asyncio.Lock] = {}
         self._ecdict: ECDictionary | None = None
@@ -673,413 +637,6 @@ class ImmersiveReadingService:
         self._translation_jobs: dict[str, dict[str, Any]] = {}
         self._translation_jobs_lock = asyncio.Lock()
         self._translation_cache_db_initialized = False
-
-    @staticmethod
-    def _translation_cache_key_parts(
-        text: str,
-        target_language: str,
-        *,
-        glossary: list[dict[str, Any]] | None = None,
-    ) -> list[str]:
-        target_language = normalize_translation_target_language(target_language)
-        cfg = get_llm_config()
-        provider_name = str(
-            getattr(cfg, "provider_name", "") or getattr(cfg, "binding", "") or ""
-        ).strip().lower()
-        model = str(cfg.model or "").strip()
-        glossary_entries = [
-            {
-                "source": str(item.get("term") or item.get("source", "")).strip(),
-                "translation": str(item.get("translation", "")).strip(),
-                "protected": bool(item.get("protected", False)),
-            }
-            for item in glossary or []
-        ]
-        glossary_entries.sort(
-            key=lambda item: (item["source"], item["translation"], item["protected"])
-        )
-        glossary_payload = json.dumps(glossary_entries, ensure_ascii=False)
-        return [
-            text.casefold(),
-            target_language.strip().casefold(),
-            provider_name,
-            model,
-            IMMERSIVE_TRANSLATION_PROMPT_VERSION,
-            glossary_payload,
-        ]
-
-    def _translation_cache_key(
-        self,
-        text: str,
-        target_language: str,
-        glossary: list[dict[str, Any]] | None = None,
-    ) -> str:
-        material = "\n".join(self._translation_cache_key_parts(text, target_language, glossary=glossary))
-        return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-    def _translation_cache_db_path(self) -> Path:
-        return self._root() / "translation_cache.db"
-
-    def _ensure_translation_cache_db(self) -> None:
-        if self._translation_cache_db_initialized:
-            return
-        path = self._translation_cache_db_path()
-        try:
-            import sqlite3
-
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(path) as connection:
-                connection.execute("PRAGMA journal_mode = WAL")
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS translation_cache (
-                        cache_key TEXT PRIMARY KEY,
-                        source_hash TEXT NOT NULL,
-                        normalized_source TEXT NOT NULL,
-                        target_language TEXT NOT NULL,
-                        provider_name TEXT NOT NULL,
-                        model_name TEXT NOT NULL,
-                        prompt_version TEXT NOT NULL,
-                        glossary_version TEXT NOT NULL,
-                        translation TEXT NOT NULL,
-                        created_at REAL NOT NULL,
-                        updated_at REAL NOT NULL,
-                        hit_count INTEGER NOT NULL DEFAULT 1
-                    )
-                    """
-                )
-                connection.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_translation_cache_target ON translation_cache(target_language)"
-                )
-            self._translation_cache_db_initialized = True
-        except Exception as exc:
-            logger.debug("Translation cache DB init failed: %s", exc)
-            self._translation_cache_db_initialized = False
-
-    def _translation_cache_hit(
-        self, cache_key: str
-    ) -> tuple[str, int] | None:
-        if not cache_key:
-            return None
-        try:
-            import sqlite3
-
-            self._ensure_translation_cache_db()
-            with sqlite3.connect(self._translation_cache_db_path()) as connection:
-                connection.row_factory = sqlite3.Row
-                row = connection.execute(
-                    "SELECT translation, hit_count FROM translation_cache WHERE cache_key = ?",
-                    (cache_key,),
-                ).fetchone()
-            if row is None:
-                return None
-            translation = str(row["translation"] or "")
-            if not translation:
-                return None
-            connection = sqlite3.connect(self._translation_cache_db_path())
-            with connection:
-                connection.execute(
-                    "UPDATE translation_cache SET hit_count = hit_count + 1, updated_at = ? WHERE cache_key = ?",
-                    (time.time(), cache_key),
-                )
-            return (translation, int(row["hit_count"] or 0) + 1)
-        except Exception as exc:
-            logger.debug("Translation cache read failed for %s: %s", cache_key, exc)
-            return None
-
-    def _translation_cache_store(
-        self,
-        cache_key: str,
-        source: str,
-        target_language: str,
-        translation: str,
-        *,
-        glossary: list[dict[str, Any]] | None = None,
-    ) -> None:
-        if not cache_key:
-            return
-        try:
-            import sqlite3
-
-            self._ensure_translation_cache_db()
-            cfg = get_llm_config()
-            provider_name = (
-                str(getattr(cfg, "provider_name", "") or getattr(cfg, "binding", "") or "")
-                .strip()
-                .lower()
-            )
-            model_name = str(cfg.model or "")
-            glossary_entries = [
-                {
-                    "source": str(item.get("term") or item.get("source", "")).strip(),
-                    "translation": str(item.get("translation", "")).strip(),
-                    "protected": bool(item.get("protected", False)),
-                }
-                for item in glossary or []
-            ]
-            glossary_entries.sort(
-                key=lambda item: (item["source"], item["translation"], item["protected"])
-            )
-            glossary_payload = json.dumps(glossary_entries, ensure_ascii=False)
-            source_text = source.strip()
-            now = time.time()
-            with sqlite3.connect(self._translation_cache_db_path()) as connection:
-                connection.execute(
-                    """
-                    INSERT INTO translation_cache (
-                        cache_key,
-                        source_hash,
-                        normalized_source,
-                        target_language,
-                        provider_name,
-                        model_name,
-                        prompt_version,
-                        glossary_version,
-                        translation,
-                        created_at,
-                        updated_at,
-                        hit_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                    ON CONFLICT(cache_key) DO UPDATE SET
-                        source_hash = excluded.source_hash,
-                        normalized_source = excluded.normalized_source,
-                        target_language = excluded.target_language,
-                        provider_name = excluded.provider_name,
-                        model_name = excluded.model_name,
-                        prompt_version = excluded.prompt_version,
-                        glossary_version = excluded.glossary_version,
-                        translation = excluded.translation,
-                        updated_at = excluded.updated_at,
-                        hit_count = translation_cache.hit_count + 1
-                    """,
-                    (
-                        cache_key,
-                        hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
-                        source_text.casefold(),
-                        target_language.strip().casefold(),
-                        provider_name,
-                        model_name,
-                        IMMERSIVE_TRANSLATION_PROMPT_VERSION,
-                        glossary_payload,
-                        translation,
-                        now,
-                        now,
-                    ),
-                )
-        except Exception as exc:
-            logger.debug("Translation cache write failed for %s: %s", cache_key, exc)
-
-    async def _cleanup_stale_translation_jobs(self) -> None:
-        now = time.time()
-        async with self._translation_jobs_lock:
-            expired = [
-                job_id
-                for job_id, job in self._translation_jobs.items()
-                if job.get("status") in {"completed", "failed", "cancelled"}
-                and now - float(job.get("updated_at") or now) > _TRANSLATION_JOB_TTL_SECONDS
-            ]
-            for job_id in expired:
-                self._translation_jobs.pop(job_id, None)
-
-    async def _emit_translation_job_event(self, job_id: str, event: dict[str, Any]) -> None:
-        job = self._translation_jobs.get(job_id)
-        if not job:
-            return
-        event["job_id"] = job_id
-        event["time"] = time.time()
-        event["sequence"] = int(job.get("sequence", 0)) + 1
-        job["sequence"] = event["sequence"]
-        listeners: set[asyncio.Queue[dict[str, Any]]] = job.setdefault("listeners", set())
-        for listener in list(listeners):
-            try:
-                listener.put_nowait(event)
-            except asyncio.QueueFull:
-                logger.debug("Translation job event queue full for %s", job_id)
-
-    async def get_translation_job_status(self, job_id: str) -> dict[str, Any]:
-        await self._cleanup_stale_translation_jobs()
-        job = self._translation_jobs.get(job_id)
-        if job is None:
-            raise ValueError("Translation job not found")
-        return {
-            "job_id": job_id,
-            "status": job.get("status", "queued"),
-            "created_at": float(job.get("created_at") or 0),
-            "updated_at": float(job.get("updated_at") or job.get("created_at") or 0),
-            "result": job.get("result"),
-            "error": job.get("error", ""),
-            "cache_key": job.get("cache_key"),
-            "target_language": job.get("target_language"),
-        }
-
-    def _subscribe_translation_job(self, job_id: str) -> asyncio.Queue[dict[str, Any]]:
-        job = self._translation_jobs.get(job_id)
-        if job is None:
-            raise ValueError("Translation job not found")
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_TRANSLATION_JOB_EVENT_QUEUE_SIZE)
-        job.setdefault("listeners", set()).add(queue)
-        return queue
-
-    async def _unsubscribe_translation_job(self, job_id: str, queue: asyncio.Queue[dict[str, Any]]) -> None:
-        job = self._translation_jobs.get(job_id)
-        if not job:
-            return
-        listeners = job.setdefault("listeners", set())
-        listeners.discard(queue)
-
-    async def start_translation_job(
-        self,
-        text: str,
-        target_language: str,
-        glossary: list[dict[str, Any]] | None = None,
-    ) -> str:
-        target_language = normalize_translation_target_language(target_language)
-        selected = text.strip()
-        if not selected:
-            raise ValueError("Select some text to translate")
-        if len(selected) > 12_000:
-            raise ValueError("The selected passage is too long")
-
-        cache_key = self._translation_cache_key(selected, target_language, glossary=glossary)
-        now = time.time()
-        async with self._translation_jobs_lock:
-            existing = self._translation_jobs.get(cache_key)
-            if existing is not None and existing.get("status") in {"queued", "running", "completed"}:
-                existing["updated_at"] = now
-                return cache_key
-
-        job = {
-            "job_id": cache_key,
-            "cache_key": cache_key,
-            "text": selected,
-            "target_language": target_language,
-            "glossary": glossary or [],
-            "status": "queued",
-            "created_at": now,
-            "updated_at": now,
-            "result": None,
-            "error": "",
-            "sequence": 0,
-            "listeners": set(),
-            "task": None,
-        }
-        self._translation_jobs[cache_key] = job
-        job["task"] = asyncio.create_task(
-            self._run_translation_job(cache_key, selected, target_language, glossary)
-        )
-        return cache_key
-
-    async def cancel_translation_job(self, job_id: str) -> dict[str, Any]:
-        await self._cleanup_stale_translation_jobs()
-        job = self._translation_jobs.get(job_id)
-        if job is None:
-            raise ValueError("Translation job not found")
-        if job.get("status") in {"completed", "failed", "cancelled"}:
-            return {"job_id": job_id, "status": job.get("status"), "cancelled": False}
-        task = job.get("task")
-        job["status"] = "cancelled"
-        job["updated_at"] = time.time()
-        job["error"] = "cancelled_by_client"
-        if isinstance(task, asyncio.Task) and not task.done():
-            task.cancel()
-        await self._emit_translation_job_event(
-            job_id,
-            {"type": "cancelled", "status": "cancelled", "translation": None, "error": ""},
-        )
-        return {"job_id": job_id, "status": "cancelled", "cancelled": True}
-
-    async def _run_translation_job(
-        self,
-        job_id: str,
-        text: str,
-        target_language: str,
-        glossary: list[dict[str, Any]] | None,
-    ) -> None:
-        target_language = normalize_translation_target_language(target_language)
-        job = self._translation_jobs.get(job_id)
-        if job is None:
-            return
-        try:
-            job.update(status="running", updated_at=time.time())
-            await self._emit_translation_job_event(job_id, {"type": "started", "status": "running"})
-
-            cache_key = job.get("cache_key") or self._translation_cache_key(
-                text, target_language, glossary=glossary
-            )
-            cached = self._translation_cache.get(cache_key)
-            if cached is not None:
-                self._translation_cache.move_to_end(cache_key)
-            else:
-                db_hit = self._translation_cache_hit(cache_key)
-                if db_hit is not None:
-                    cached = db_hit[0]
-                    self._translation_cache[cache_key] = cached
-                    self._translation_cache.move_to_end(cache_key)
-
-            if cached is not None:
-                job.update(
-                    status="completed",
-                    result=cached,
-                    updated_at=time.time(),
-                )
-                await self._emit_translation_job_event(
-                    job_id,
-                    {"type": "completed", "status": "completed", "translation": cached},
-                )
-                return
-
-            async def emit_delta(delta: str) -> None:
-                if not delta:
-                    return
-                await self._emit_translation_job_event(
-                    job_id,
-                    {"type": "delta", "status": "running", "delta": delta},
-                )
-
-            translated = await self._translate_uncached(
-                text,
-                target_language,
-                glossary=glossary,
-                on_delta=emit_delta,
-            )
-            self._translation_cache[cache_key] = translated
-            self._translation_cache.move_to_end(cache_key)
-            while len(self._translation_cache) > _TRANSLATION_CACHE_LIMIT:
-                self._translation_cache.popitem(last=False)
-            self._translation_cache_store(
-                cache_key,
-                text,
-                target_language,
-                translated,
-                glossary=glossary,
-            )
-            job.update(
-                status="completed",
-                result=translated,
-                updated_at=time.time(),
-            )
-            await self._emit_translation_job_event(
-                job_id,
-                {"type": "completed", "status": "completed", "translation": translated},
-            )
-        except asyncio.CancelledError:
-            job.update(status="cancelled", updated_at=time.time())
-            await self._emit_translation_job_event(
-                job_id,
-                {"type": "cancelled", "status": "cancelled", "error": "cancelled"},
-            )
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Immersive reading translation job failed: %s", exc)
-            job.update(
-                status="failed",
-                error=str(exc),
-                updated_at=time.time(),
-            )
-            await self._emit_translation_job_event(
-                job_id,
-                {"type": "failed", "status": "failed", "error": str(exc)},
-            )
 
     def _root(self) -> Path:
         root = get_path_service().get_immersive_reading_dir()
@@ -2328,8 +1885,7 @@ class ImmersiveReadingService:
         self, pairing_id: str, chapter_id: str, group_index: int
     ) -> tuple[str, str]:
         section_path = (
-            get_path_service()
-            .get_immersive_reading_pairing_root(pairing_id)
+            get_path_service().get_immersive_reading_pairing_root(pairing_id)
             / "sections"
             / f"{chapter_id}.json"
         )
@@ -2427,10 +1983,12 @@ class ImmersiveReadingService:
         entries = [ensure_cards(item, entries) for item in entries]
         entry = next(item for item in entries if item.id == entry.id)
         _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in entries])
-        
+
         if document_id and "mn4" in document_id.lower():
             import hashlib
+
             from deeptutor.services.llm import get_llm_config
+
             cfg = get_llm_config()
             model_name = str(getattr(cfg, "model", ""))
             content_hash = hashlib.sha256(context_en.encode("utf-8")).hexdigest()
@@ -2439,9 +1997,9 @@ class ImmersiveReadingService:
                 source_object_id=entry.id,
                 content_hash=content_hash,
                 idempotency_key=f"word_{entry.id}_{now}",
-                model=model_name
+                model=model_name,
             )
-            
+
         return entry
 
     def list_vocabulary(
@@ -2511,166 +2069,6 @@ class ImmersiveReadingService:
         if len(remaining) == len(entries):
             raise ValueError("Vocabulary entry not found")
         _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in remaining])
-
-    async def translate(
-        self,
-        text: str,
-        target_language: str,
-        glossary: list[dict[str, Any]] | None = None,
-    ) -> str:
-        target_language = normalize_translation_target_language(target_language)
-        selected = text.strip()
-        if not selected:
-            raise ValueError("Select some text to translate")
-        if len(selected) > 12_000:
-            raise ValueError("The selected passage is too long")
-        glossary = glossary or None
-        cache_key = self._translation_cache_key(selected, target_language, glossary=glossary)
-        cached = self._translation_cache.get(cache_key)
-        if cached is not None:
-            self._translation_cache.move_to_end(cache_key)
-            return cached
-
-        db_hit = self._translation_cache_hit(cache_key)
-        if db_hit is not None:
-            cached = db_hit[0]
-            self._translation_cache[cache_key] = cached
-            self._translation_cache.move_to_end(cache_key)
-            while len(self._translation_cache) > _TRANSLATION_CACHE_LIMIT:
-                self._translation_cache.popitem(last=False)
-            return cached
-
-        pending = self._translation_tasks.get(cache_key)
-        if pending is not None:
-            return await asyncio.shield(pending)
-
-        coro = (
-            self._translate_uncached(selected, target_language, glossary)
-            if glossary
-            else self._translate_uncached(selected, target_language)
-        )
-        task = asyncio.create_task(coro)
-        self._translation_tasks[cache_key] = task
-        try:
-            translated = await asyncio.shield(task)
-        finally:
-            if self._translation_tasks.get(cache_key) is task:
-                self._translation_tasks.pop(cache_key, None)
-
-        self._translation_cache[cache_key] = translated
-        self._translation_cache.move_to_end(cache_key)
-        while len(self._translation_cache) > _TRANSLATION_CACHE_LIMIT:
-            self._translation_cache.popitem(last=False)
-        self._translation_cache_store(
-            cache_key,
-            selected,
-            target_language,
-            translated,
-            glossary=glossary,
-        )
-        return translated
-
-    async def _translate_uncached(
-        self,
-        selected: str,
-        target_language: str,
-        glossary: list[dict[str, Any]] | None = None,
-        on_delta: Any | None = None,
-    ) -> str:
-        target_language = normalize_translation_target_language(target_language)
-        glossary = glossary or []
-        selected, protected_fragments = protect_translation_text(selected, glossary)
-        cfg = get_llm_config()
-        provider_name = (
-            str(getattr(cfg, "provider_name", "") or getattr(cfg, "binding", "") or "").lower()
-        )
-        if provider_name != "ollama":
-            raise LLMConfigError(
-                "Immersive translation is in strict-local mode. Configure the LLM provider "
-                "as Ollama for bilingual reading translation.",
-                provider="immersive-reading",
-            )
-        base_url = getattr(cfg, "base_url", "") or getattr(cfg, "effective_url", "") or ""
-        if base_url and "11434" not in base_url and "localhost" not in base_url:
-            raise LLMConfigError(
-                "Immersive translation is in strict-local mode. Configure a local Ollama endpoint.",
-                provider="ollama",
-            )
-
-        model = await self._ensure_ollama_ready(for_translation=True)
-        if is_hymt_model(model):
-            user_prompt = build_hymt_translation_prompt(selected, target_language, glossary)
-            messages = [{"role": "user", "content": user_prompt}]
-            temperature = 0.7
-        else:
-            system_prompt = (
-                "Translate the supplied book passage faithfully. Preserve paragraph breaks, names, tone, "
-                "and uncertainty. Output only the translation, with no commentary."
-            )
-            user_prompt = (
-                f"{build_translation_guardrail(target_language, glossary)}\n\nText:\n{selected}"
-            )
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
-            temperature = 0.1
-
-        if on_delta is None:
-            raw = await self._ollama_native_chat(
-                model,
-                messages,
-                think=False,
-                temperature=temperature,
-                num_predict=512
-                if len(selected) <= 200
-                else 1024
-                if len(selected) <= 1000
-                else 4096,
-            )
-        else:
-            chunks: list[str] = []
-
-            async def _collect_delta(delta: str) -> None:
-                chunks.append(delta)
-                await on_delta(delta)
-
-            async for chunk in self._ollama_native_chat_stream(
-                model,
-                messages,
-                think=False,
-                temperature=temperature,
-                num_predict=512
-                if len(selected) <= 200
-                else 1024
-                if len(selected) <= 1000
-                else 4096,
-            ):
-                await _collect_delta(chunk)
-            raw = "".join(chunks)
-
-        # Strict local path: Ollama native endpoint only.
-        cleaned = clean_thinking_tags(raw, getattr(cfg, "binding", None), cfg.model).strip()
-        try:
-            return restore_translation_text(cleaned, protected_fragments)
-        except TranslationProtectionError:
-            # One retry is deliberate: protected output is rejected before the
-            # translation is written to any chapter or task sink.
-            raw = await self._ollama_native_chat(
-                model,
-                messages,
-                think=False,
-                temperature=temperature,
-                num_predict=512
-                if len(selected) <= 200
-                else 1024
-                if len(selected) <= 1000
-                else 4096,
-            )
-            cleaned = clean_thinking_tags(
-                raw, getattr(cfg, "binding", None), cfg.model
-            ).strip()
-            return restore_translation_text(cleaned, protected_fragments)
 
     async def lookup_dictionary(self, word: str, context: str = "") -> dict[str, Any]:
         """Compatibility wrapper for older callers.
@@ -2750,7 +2148,9 @@ class ImmersiveReadingService:
         if preferred_model is None:
             cfg = get_llm_config()
             preferred_model = str(cfg.model or "")
-        selected = self._resolve_ollama_model(preferred_model, models, for_translation=for_translation)
+        selected = self._resolve_ollama_model(
+            preferred_model, models, for_translation=for_translation
+        )
         if selected not in models:
             raise LLMModelNotFoundError(
                 f"Model {selected} is not installed. Run `ollama pull {selected}`.",
@@ -3832,17 +3232,16 @@ class ImmersiveReadingService:
         self._save_progress(progress)
         return progress
 
-
-
-    async def export_offline_package(self, document_id: str) -> 'Path':
+    async def export_offline_package(self, document_id: str) -> "Path":
         """Generate a complete offline package (.zip) for PWA reading."""
         import zipfile
+
         from deeptutor.immersive_reading.models import OfflineBookPackage
-        
+
         doc = self.load_document(document_id)
         if not doc:
             raise ValueError(f"Document {document_id} not found")
-            
+
         manifest_path = self._manifest_path(document_id)
         progress_path = self._progress_path(document_id)
         try:
@@ -3850,24 +3249,24 @@ class ImmersiveReadingService:
         except ValueError:
             cover_path = None
         sections_dir = self._document_root(document_id) / "sections"
-        
+
         package_file = self._document_root(document_id) / f"{document_id}_offline.zip"
-        
-        with zipfile.ZipFile(package_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+
+        with zipfile.ZipFile(package_file, "w", zipfile.ZIP_DEFLATED) as zf:
             if manifest_path.exists():
                 zf.write(manifest_path, arcname="manifest.json")
             if progress_path.exists():
                 zf.write(progress_path, arcname="progress.json")
             if cover_path and cover_path.exists():
                 zf.write(cover_path, arcname=f"cover_{document_id}.png")
-                
+
             if sections_dir.exists():
                 for sec_file in sections_dir.glob("*.txt"):
                     zf.write(sec_file, arcname=f"sections/{sec_file.name}")
-                    
+
             zf.writestr("translations.json", "[]")
             zf.writestr("ecdict_subset.json", "[]")
-            
+
         package_info = OfflineBookPackage(
             document_id=document_id,
             title=doc.title,
@@ -3877,14 +3276,14 @@ class ImmersiveReadingService:
         )
         return package_file
 
-
-
-    def _mn4_writebacks_path(self) -> 'Path':
+    def _mn4_writebacks_path(self) -> "Path":
         return self._root() / "mn4_writebacks.json"
-        
-    def list_mn4_writebacks(self) -> list['MN4WritebackItem']:
-        from deeptutor.immersive_reading.models import MN4WritebackItem
+
+    def list_mn4_writebacks(self) -> list["MN4WritebackItem"]:
         import json
+
+        from deeptutor.immersive_reading.models import MN4WritebackItem
+
         path = self._mn4_writebacks_path()
         if not path.exists():
             return []
@@ -3893,30 +3292,35 @@ class ImmersiveReadingService:
             return [MN4WritebackItem.model_validate(item) for item in data]
         except Exception:
             return []
-            
-    def save_mn4_writeback(self, item: 'MN4WritebackItem') -> None:
+
+    def save_mn4_writeback(self, item: "MN4WritebackItem") -> None:
         writebacks = self.list_mn4_writebacks()
         existing_idx = next((i for i, w in enumerate(writebacks) if w.id == item.id), None)
         if existing_idx is not None:
             writebacks[existing_idx] = item
         else:
             writebacks.append(item)
-            
+
         import json
+
         from deeptutor.services.file_io import atomic_write_text
+
         payload = [w.model_dump(mode="json") for w in writebacks]
-        atomic_write_text(self._mn4_writebacks_path(), json.dumps(payload, ensure_ascii=False, indent=2))
-        
+        atomic_write_text(
+            self._mn4_writebacks_path(), json.dumps(payload, ensure_ascii=False, indent=2)
+        )
+
     def create_mn4_writeback(
         self,
         source_type: str,
         source_object_id: str,
         content_hash: str,
         idempotency_key: str,
-        model: str
-    ) -> 'MN4WritebackItem':
+        model: str,
+    ) -> "MN4WritebackItem":
         """Create a pending MN4 writeback item instead of writing immediately to MN4."""
         from deeptutor.immersive_reading.models import MN4WritebackItem
+
         item = MN4WritebackItem(
             source_type=source_type,
             source_object_id=source_object_id,
@@ -3928,13 +3332,15 @@ class ImmersiveReadingService:
         self.save_mn4_writeback(item)
         return item
 
-
-
-    def _save_mn4_writebacks_bulk(self, items: list['MN4WritebackItem']) -> None:
+    def _save_mn4_writebacks_bulk(self, items: list["MN4WritebackItem"]) -> None:
         import json
+
         from deeptutor.services.file_io import atomic_write_text
+
         payload = [w.model_dump(mode="json") for w in items]
-        atomic_write_text(self._mn4_writebacks_path(), json.dumps(payload, ensure_ascii=False, indent=2))
+        atomic_write_text(
+            self._mn4_writebacks_path(), json.dumps(payload, ensure_ascii=False, indent=2)
+        )
 
     def update_mn4_writeback_status(self, ids: list[str], status: str) -> int:
         writebacks = self.list_mn4_writebacks()
@@ -3949,7 +3355,7 @@ class ImmersiveReadingService:
             self._save_mn4_writebacks_bulk(writebacks)
         return updated_count
 
-    def pull_mn4_writebacks(self) -> list['MN4WritebackItem']:
+    def pull_mn4_writebacks(self) -> list["MN4WritebackItem"]:
         """Pull approved items for sync and mark them as applying."""
         writebacks = self.list_mn4_writebacks()
         applying = []
@@ -3965,24 +3371,25 @@ class ImmersiveReadingService:
 
     def submit_mn4_receipts(self, receipts_data: list[dict[str, str]]) -> int:
         from deeptutor.immersive_reading.models import MN4WriteReceipt
+
         writebacks = self.list_mn4_writebacks()
         updated_count = 0
         now = time.time()
-        
+
         # Expect receipts_data to have {"writeback_id": "...", "remote_object_id": "...", "content_hash": "..."}
-        receipts_map = { r.get("writeback_id"): r for r in receipts_data if r.get("writeback_id") }
-        
+        receipts_map = {r.get("writeback_id"): r for r in receipts_data if r.get("writeback_id")}
+
         for w in writebacks:
             if w.id in receipts_map and w.status == "applying":
                 rd = receipts_map[w.id]
                 w.status = "applied"
                 w.receipt = MN4WriteReceipt(
                     remote_object_id=rd.get("remote_object_id", ""),
-                    content_hash=rd.get("content_hash", "")
+                    content_hash=rd.get("content_hash", ""),
                 )
                 w.updated_at = now
                 updated_count += 1
-                
+
         if updated_count > 0:
             self._save_mn4_writebacks_bulk(writebacks)
         return updated_count
@@ -3998,348 +3405,6 @@ def get_immersive_reading_service() -> ImmersiveReadingService:
     return _service
 
 
-def _hash_pin(pin: str) -> str:
-    """Hash a parent PIN using a salted comparison."""
-    import hashlib
-
-    salt = "deeptutor-kids-pin-v1"
-    return hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
-
-
-def _verify_pin(pin: str, pin_hash: str) -> bool:
-    if not pin_hash:
-        return False
-    return hmac.compare_digest(_hash_pin(pin), pin_hash)
-
-
-class KidsManager:
-    """Manages child profiles, book assignments, and per-profile progress.
-
-    All data is stored as JSON files under the immersive-reading root's
-    ``kids/`` subdirectory, scoped to the current user's workspace.
-    """
-
-    def __init__(self) -> None:
-        self._pin_failures: dict[str, list[float]] = {}
-
-    def _kids_root(self) -> Path:
-        root = get_path_service().get_immersive_reading_dir() / "kids"
-        root.mkdir(parents=True, exist_ok=True)
-        return root
-
-    def _profiles_path(self) -> Path:
-        return self._kids_root() / "profiles.json"
-
-    def _assignments_path(self) -> Path:
-        return self._kids_root() / "assignments.json"
-
-    def _progress_dir(self) -> Path:
-        d = self._kids_root() / "progress"
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    def _progress_path(self, profile_id: str, document_id: str) -> Path:
-        return self._progress_dir() / f"{profile_id}_{document_id}.json"
-
-    # ── Profiles ───────────────────────────────────────────────────────
-
-    def list_profiles(self) -> list[KidsProfile]:
-        data = _read_json(self._profiles_path(), [])
-        return [KidsProfile(**p) for p in data]
-
-    def get_profile(self, profile_id: str) -> KidsProfile | None:
-        return next((p for p in self.list_profiles() if p.id == profile_id), None)
-
-    def create_profile(
-        self,
-        name: str,
-        *,
-        avatar: str = "default",
-        birth_date: str = "",
-        help_language: str = "en",
-        narration_rate: float = 0.8,
-        daily_limit_minutes: int = 30,
-        parent_pin: str = "",
-    ) -> KidsProfile:
-        profiles = self.list_profiles()
-        profile = KidsProfile(
-            id=uuid.uuid4().hex[:12],
-            name=name.strip() or "Child",
-            avatar=avatar,
-            birth_date=birth_date,
-            help_language=help_language,
-            narration_rate=max(0.5, min(1.5, narration_rate)),
-            daily_limit_minutes=max(5, min(120, daily_limit_minutes)),
-            pin_hash=_hash_pin(parent_pin) if parent_pin else "",
-        )
-        profiles.append(profile)
-        _write_json(self._profiles_path(), [p.model_dump(mode="json") for p in profiles])
-        return profile
-
-    def update_profile(self, profile_id: str, **kwargs: Any) -> KidsProfile:
-        profiles = self.list_profiles()
-        idx = next((i for i, p in enumerate(profiles) if p.id == profile_id), None)
-        if idx is None:
-            raise ValueError("Profile not found")
-        p = profiles[idx]
-        for key in (
-            "name",
-            "avatar",
-            "birth_date",
-            "help_language",
-            "narration_rate",
-            "daily_limit_minutes",
-        ):
-            if key in kwargs and kwargs[key] is not None:
-                setattr(p, key, kwargs[key])
-        if "parent_pin" in kwargs and kwargs["parent_pin"]:
-            p.pin_hash = _hash_pin(kwargs["parent_pin"])
-        p.updated_at = time.time()
-        profiles[idx] = p
-        _write_json(self._profiles_path(), [pp.model_dump(mode="json") for pp in profiles])
-        return p
-
-    def delete_profile(self, profile_id: str) -> None:
-        profiles = [p for p in self.list_profiles() if p.id != profile_id]
-        _write_json(self._profiles_path(), [p.model_dump(mode="json") for p in profiles])
-        # Remove assignments and progress for this profile
-        assignments = self.list_assignments()
-        assignments = [a for a in assignments if a.profile_id != profile_id]
-        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
-        # Clean progress files
-        for f in self._progress_dir().glob(f"{profile_id}_*.json"):
-            f.unlink(missing_ok=True)
-
-    def verify_parent_pin(self, profile_id: str, pin: str) -> bool:
-        """Verify parent PIN with rate limiting."""
-        now = time.time()
-        failures = [t for t in self._pin_failures.get(profile_id, []) if now - t < 300]
-        if len(failures) >= 5:
-            return False
-        profile = self.get_profile(profile_id)
-        if profile is None:
-            return False
-        ok = _verify_pin(pin, profile.pin_hash)
-        if not ok:
-            failures.append(now)
-            self._pin_failures[profile_id] = failures
-        else:
-            self._pin_failures.pop(profile_id, None)
-        return ok
-
-    def has_pin(self, profile_id: str) -> bool:
-        p = self.get_profile(profile_id)
-        return bool(p and p.pin_hash)
-
-    # ── Assignments ────────────────────────────────────────────────────
-
-    def list_assignments(self, profile_id: str | None = None) -> list[KidsBookAssignment]:
-        data = _read_json(self._assignments_path(), [])
-        items = [KidsBookAssignment(**a) for a in data]
-        if profile_id:
-            items = [a for a in items if a.profile_id == profile_id]
-        return items
-
-    def assign_book(
-        self,
-        profile_id: str,
-        document_id: str,
-        *,
-        available_through_section_id: str = "",
-        available_through_section_index: int = 999,
-    ) -> KidsBookAssignment:
-        existing = self.list_assignments(profile_id)
-        match = next((a for a in existing if a.document_id == document_id), None)
-        if match:
-            match.status = "active"
-            match.available_through_section_id = available_through_section_id
-            match.available_through_section_index = available_through_section_index
-            match.updated_at = time.time()
-            self._save_assignments()
-            return match
-
-        ir_service = get_immersive_reading_service()
-        doc = ir_service.load_document(document_id)
-        title = doc.title if doc else document_id
-        sort_order = len(existing)
-        assignment = KidsBookAssignment(
-            id=uuid.uuid4().hex[:12],
-            profile_id=profile_id,
-            document_id=document_id,
-            document_title=title,
-            available_through_section_id=available_through_section_id,
-            available_through_section_index=available_through_section_index,
-            sort_order=sort_order,
-        )
-        existing.append(assignment)
-        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in existing])
-        return assignment
-
-    def unassign_book(self, profile_id: str, document_id: str) -> None:
-        assignments = [
-            a
-            for a in self.list_assignments()
-            if not (a.profile_id == profile_id and a.document_id == document_id)
-        ]
-        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
-
-    def update_assignment(
-        self, profile_id: str, document_id: str, **kwargs: Any
-    ) -> KidsBookAssignment:
-        assignments = self.list_assignments()
-        idx = next(
-            (
-                i
-                for i, a in enumerate(assignments)
-                if a.profile_id == profile_id and a.document_id == document_id
-            ),
-            None,
-        )
-        if idx is None:
-            raise ValueError("Assignment not found")
-        a = assignments[idx]
-        for key in (
-            "status",
-            "sort_order",
-            "is_next_read",
-            "available_through_section_id",
-            "available_through_section_index",
-        ):
-            if key in kwargs and kwargs[key] is not None:
-                setattr(a, key, kwargs[key])
-        a.updated_at = time.time()
-        assignments[idx] = a
-        _write_json(self._assignments_path(), [aa.model_dump(mode="json") for aa in assignments])
-        return a
-
-    def _save_assignments(self) -> None:
-        assignments = self.list_assignments()
-        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
-
-    def get_kids_library(self, profile_id: str) -> list[dict[str, Any]]:
-        """Return assigned books with progress for a child profile."""
-        assignments = [a for a in self.list_assignments(profile_id) if a.status == "active"]
-        assignments.sort(key=lambda a: a.sort_order)
-        ir_service = get_immersive_reading_service()
-        library: list[dict[str, Any]] = []
-        for a in assignments:
-            doc = ir_service.load_document(a.document_id)
-            if doc is None:
-                continue
-            progress = self.load_kids_progress(profile_id, a.document_id)
-            library.append(
-                {
-                    "assignment": a.model_dump(mode="json"),
-                    "document": ir_service._summary(doc),
-                    "progress": progress.model_dump(mode="json"),
-                }
-            )
-        return library
-
-    # ── Progress ───────────────────────────────────────────────────────
-
-    def load_kids_progress(self, profile_id: str, document_id: str) -> KidsLearningProgress:
-        data = _read_json(self._progress_path(profile_id, document_id))
-        if data:
-            return KidsLearningProgress(**data)
-        return KidsLearningProgress(profile_id=profile_id, document_id=document_id)
-
-    def update_kids_progress_record(
-        self,
-        profile_id: str,
-        document_id: str,
-        *,
-        section_id: str = "",
-        section_index: int = 0,
-        scroll_percent: float = 0.0,
-        epub_cfi: str = "",
-        section_href: str = "",
-        time_delta: float = 0.0,
-    ) -> KidsLearningProgress:
-        progress = self.load_kids_progress(profile_id, document_id)
-        if section_id:
-            progress.current_section_id = section_id
-            progress.current_section_index = section_index
-        progress.scroll_percent = max(0.0, min(100.0, scroll_percent))
-        if epub_cfi:
-            progress.epub_cfi = epub_cfi
-        if section_href:
-            progress.section_href = section_href
-        progress.time_spent_seconds += time_delta
-        progress.last_read_at = time.time()
-        progress.updated_at = time.time()
-        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
-        return progress
-
-    def mark_section_completed(
-        self, profile_id: str, document_id: str, section_id: str
-    ) -> KidsLearningProgress:
-        progress = self.load_kids_progress(profile_id, document_id)
-        if section_id not in progress.completed_section_ids:
-            progress.completed_section_ids.append(section_id)
-            progress.updated_at = time.time()
-            _write_json(
-                self._progress_path(profile_id, document_id), progress.model_dump(mode="json")
-            )
-        return progress
-
-    def add_stars(self, profile_id: str, document_id: str, stars: int) -> KidsLearningProgress:
-        progress = self.load_kids_progress(profile_id, document_id)
-        progress.total_stars += max(0, stars)
-        progress.updated_at = time.time()
-        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
-        return progress
-
-    def record_quiz(
-        self, profile_id: str, document_id: str, score: int, total: int
-    ) -> KidsLearningProgress:
-        progress = self.load_kids_progress(profile_id, document_id)
-        progress.quiz_attempts += 1
-        progress.quiz_best_score = max(progress.quiz_best_score, score)
-        progress.updated_at = time.time()
-        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
-        return progress
-
-    def get_report(self, profile_id: str) -> dict[str, Any]:
-        """Aggregate learning report for a child profile."""
-        profile = self.get_profile(profile_id)
-        if profile is None:
-            raise ValueError("Profile not found")
-        library = self.get_kids_library(profile_id)
-        total_stars = sum(item["progress"]["total_stars"] for item in library)
-        total_time = sum(item["progress"]["time_spent_seconds"] for item in library)
-        total_quizzes = sum(item["progress"]["quiz_attempts"] for item in library)
-        return {
-            "profile": profile.model_dump(mode="json"),
-            "books": library,
-            "total_stars": total_stars,
-            "total_time_seconds": total_time,
-            "total_quiz_attempts": total_quizzes,
-            "total_books": len(library),
-        }
-
-    def is_section_allowed(self, profile_id: str, document_id: str, section_index: int) -> bool:
-        """Check if a child is allowed to read a section based on assignment limits."""
-        assignments = self.list_assignments(profile_id)
-        assignment = next(
-            (a for a in assignments if a.document_id == document_id and a.status == "active"), None
-        )
-        if assignment is None:
-            return False
-        return section_index <= assignment.available_through_section_index
-
-
-# Singleton
-_kids_manager: KidsManager | None = None
-
-
-def get_kids_manager() -> KidsManager:
-    global _kids_manager
-    if _kids_manager is None:
-        _kids_manager = KidsManager()
-    return _kids_manager
-
-
 __all__ = [
     "CHUNK_CHAR_TARGET",
     "DESCRIPTION_CONTEXT_MIN",
@@ -4349,5 +3414,3 @@ __all__ = [
     "get_immersive_reading_service",
     "get_kids_manager",
 ]
-
-

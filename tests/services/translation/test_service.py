@@ -196,7 +196,9 @@ def test_glossary_candidates_are_extracted_and_injected_into_tasks(setup):
     task = next(item for item in board["tasks"] if item["title"] == "guide.md")
     assert {entry["term"] for entry in task["glossary"]} >= {"DeepSolver", "fetch_user()"}
     guardrail = build_translation_guardrail("Chinese", task["glossary"])
-    glossary_json = guardrail.split("Glossary JSON (source, translation, protected; obey each entry):\n", 1)[1]
+    glossary_json = guardrail.split(
+        "Glossary JSON (source, translation, protected; obey each entry):\n", 1
+    )[1]
     payload = json.loads(glossary_json)
     assert {"source": "DeepSolver", "translation": "DeepSolver", "protected": False} in payload
     assert {
@@ -210,9 +212,7 @@ def test_glossary_candidates_are_extracted_and_injected_into_tasks(setup):
 
 @pytest.mark.parametrize("failure", ["unavailable", "invalid_json", "timeout"])
 @pytest.mark.asyncio
-async def test_glossary_review_falls_back_on_model_failures(
-    monkeypatch, failure
-):
+async def test_glossary_review_falls_back_on_model_failures(monkeypatch, failure):
     if failure == "unavailable":
 
         async def model_failure(*args, **kwargs):
@@ -230,9 +230,7 @@ async def test_glossary_review_falls_back_on_model_failures(
         async def timeout(*_coro, **_kwargs):
             raise asyncio.TimeoutError()
 
-        monkeypatch.setattr(
-            "deeptutor.services.translation.glossary.asyncio.wait_for", timeout
-        )
+        monkeypatch.setattr("deeptutor.services.translation.glossary.asyncio.wait_for", timeout)
 
     reviewed = await review_glossary_candidates(
         [{"term": "DeepSolver", "translation": "DeepSolver"}], "Chinese"
@@ -404,9 +402,7 @@ async def test_bilingual_run_emits_one_group_translated_event_per_group(monkeypa
     assert snapshot["type"] == "snapshot"
 
     events = []
-    consumer = asyncio.ensure_future(
-        _collect_stream_events(stream, events, expected_groups=2)
-    )
+    consumer = asyncio.ensure_future(_collect_stream_events(stream, events, expected_groups=2))
     await service.run(source_type="bilingual", source_id=pairing_id)
     await asyncio.wait_for(consumer, timeout=2)
     translated = [event for event in events if event["type"] == "group_translated"]
@@ -517,7 +513,9 @@ async def test_glossary_edit_during_model_call_is_not_overwritten(monkeypatch, s
     )
     await service.run(source_type="kb_document", source_id="research", limit=2)
     glossary = service.get_glossary("kb_document", "research")
-    assert any(entry["term"] == "NewTerm" and entry["translation"] == "新术语" for entry in glossary)
+    assert any(
+        entry["term"] == "NewTerm" and entry["translation"] == "新术语" for entry in glossary
+    )
 
 
 @pytest.mark.asyncio
@@ -626,19 +624,16 @@ async def test_write_failure_marks_task_failed_and_preserves_source(monkeypatch,
 
 
 @pytest.mark.asyncio
-async def test_protection_failure_marks_task_failed_without_writing(
-    monkeypatch, setup
-):
+async def test_protection_failure_marks_task_failed_without_writing(monkeypatch, setup):
     from types import SimpleNamespace
 
-    import deeptutor.immersive_reading.service as reading_module
+    import deeptutor.immersive_reading.service as service_module
     from deeptutor.immersive_reading.service import ImmersiveReadingService
+    import deeptutor.immersive_reading.translation as reading_module
 
     fake_path, _pairing_service, service, pairing_id = setup
     section_path = (
-        fake_path.get_immersive_reading_pairing_root(pairing_id)
-        / "sections"
-        / "ch002.json"
+        fake_path.get_immersive_reading_pairing_root(pairing_id) / "sections" / "ch002.json"
     )
     section = json.loads(section_path.read_text(encoding="utf-8"))
     section["groups"][0]["en"] = ["Restore `fetch_user()` exactly."]
@@ -664,12 +659,18 @@ async def test_protection_failure_marks_task_failed_without_writing(
         return "丢失 [[DT-KEEP-0]] [[DT-KEEP-0]]"
 
     reader = ImmersiveReadingService()
-    async def _reachable(): return ["hy-mt2"]
+
+    async def _reachable():
+        return ["hy-mt2"]
+
     monkeypatch.setattr(reader, "_ensure_ollama_reachable", _reachable)
     monkeypatch.setattr(reader, "_ollama_native_chat", broken_placeholders)
     monkeypatch.setattr(
-        "deeptutor.immersive_reading.get_immersive_reading_service", lambda: reader
+        service_module,
+        "get_llm_config",
+        reading_module.get_llm_config,
     )
+    monkeypatch.setattr("deeptutor.immersive_reading.get_immersive_reading_service", lambda: reader)
 
     result = await service.run(source_type="bilingual", source_id=pairing_id, limit=1)
     failed_task = next(task for task in result["tasks"] if task["source_type"] == "bilingual")
@@ -705,11 +706,11 @@ def test_initialization_requeues_interrupted_running_tasks(setup):
 
 
 def test_hymt_model_detection_and_prompt_formatting():
-    from deeptutor.services.translation.glossary import (
-        is_hymt_model,
-        build_hymt_translation_prompt,
-    )
     from deeptutor.immersive_reading.service import ImmersiveReadingService
+    from deeptutor.services.translation.glossary import (
+        build_hymt_translation_prompt,
+        is_hymt_model,
+    )
 
     assert is_hymt_model("hy-mt2") is True
     assert is_hymt_model("Hy-MT2-1.8B") is True
@@ -721,7 +722,7 @@ def test_hymt_model_detection_and_prompt_formatting():
     zh_prompt = build_hymt_translation_prompt(
         "Deep learning is powerful.",
         "Chinese",
-        glossary=[{"term": "Deep learning", "translation": "深度学习", "approved": True}]
+        glossary=[{"term": "Deep learning", "translation": "深度学习", "approved": True}],
     )
     assert "参考下面的翻译：" in zh_prompt
     assert "Deep learning 翻译成 深度学习" in zh_prompt
@@ -732,7 +733,7 @@ def test_hymt_model_detection_and_prompt_formatting():
     en_prompt = build_hymt_translation_prompt(
         "今天天气真好。",
         "English",
-        glossary=[{"term": "今天", "translation": "today", "approved": True}]
+        glossary=[{"term": "今天", "translation": "today", "approved": True}],
     )
     assert "Reference the following translations:" in en_prompt
     assert "今天 translates to today" in en_prompt
@@ -740,6 +741,17 @@ def test_hymt_model_detection_and_prompt_formatting():
 
     # Translation model resolution prefers Hy-MT2 when available
     installed = ["qwen3.5:4b", "hy-mt2:1.8b", "llama3:8b"]
-    assert ImmersiveReadingService._resolve_ollama_model("qwen3.5:4b", installed, for_translation=True) == "qwen3.5:4b"
-    assert ImmersiveReadingService._resolve_ollama_model("hy-mt2", installed, for_translation=True) == "hy-mt2:1.8b"
-    assert ImmersiveReadingService._resolve_ollama_model("qwen3.5:4b", installed, for_translation=False) == "qwen3.5:4b"
+    assert (
+        ImmersiveReadingService._resolve_ollama_model("qwen3.5:4b", installed, for_translation=True)
+        == "qwen3.5:4b"
+    )
+    assert (
+        ImmersiveReadingService._resolve_ollama_model("hy-mt2", installed, for_translation=True)
+        == "hy-mt2:1.8b"
+    )
+    assert (
+        ImmersiveReadingService._resolve_ollama_model(
+            "qwen3.5:4b", installed, for_translation=False
+        )
+        == "qwen3.5:4b"
+    )

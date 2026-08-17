@@ -580,7 +580,7 @@ async def test_dictionary_lookup_falls_back_to_local_model_when_ecdict_misses(
                     "content": (
                         '{"word":"complex","phonetic":"/kəmpleks/","definitions":[{"part_of_speech":"","definition":"'
                         'Made up of multiple parts; not simple.","chinese":"","example":"","synonyms":[],"context_match":true}'
-                        "],\"context_note\":\"\"}"
+                        '],"context_note":""}'
                     )
                 }
             }
@@ -624,14 +624,16 @@ async def test_lookup_dictionary_delegates_to_lookup_word_for_strict_local_polic
     async def mock_lookup_word(word: str, context: str = ""):
         called_with.append((word, context))
         from deeptutor.immersive_reading.models import DictionaryResult
+
         return DictionaryResult(word=word, phonetic="", definitions=[], context_note="")
 
     monkeypatch.setattr(reading_service, "lookup_word", mock_lookup_word)
 
     result = await reading_service.lookup_dictionary("delegated", "some context")
-    
+
     assert called_with == [("delegated", "some context")]
     assert result["word"] == "delegated"
+
 
 def test_resolve_ollama_model_prefers_exact_then_sibling() -> None:
     installed = ["qwen3.5:2b", "llama3:8b"]
@@ -682,6 +684,7 @@ async def test_translate_uses_native_ollama_path(
     from types import SimpleNamespace
 
     import deeptutor.immersive_reading.service as service_module
+    import deeptutor.immersive_reading.translation as translation_module
 
     monkeypatch.setattr(
         service_module,
@@ -691,6 +694,15 @@ async def test_translate_uses_native_ollama_path(
             binding="ollama",
             provider_name="ollama",
             base_url="http://localhost:11434/v1",
+        ),
+    )
+    monkeypatch.setattr(
+        translation_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(
+            model="qwen3.5:4b",
+            provider_name="ollama",
+            binding="ollama",
         ),
     )
 
@@ -751,6 +763,15 @@ async def test_translate_uses_native_ollama_path(
 async def test_translate_reuses_completed_result(
     reading_service: ImmersiveReadingService, monkeypatch
 ) -> None:
+    from types import SimpleNamespace
+
+    import deeptutor.immersive_reading.translation as translation_module
+
+    monkeypatch.setattr(
+        translation_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(model="test-model", provider_name="test-provider"),
+    )
     calls = 0
 
     async def fake_translate(text: str, language: str) -> str:
@@ -769,6 +790,15 @@ async def test_translate_reuses_completed_result(
 async def test_translate_merges_concurrent_duplicate_requests(
     reading_service: ImmersiveReadingService, monkeypatch
 ) -> None:
+    from types import SimpleNamespace
+
+    import deeptutor.immersive_reading.translation as translation_module
+
+    monkeypatch.setattr(
+        translation_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(model="test-model", provider_name="test-provider"),
+    )
     calls = 0
 
     async def fake_translate(text: str, language: str) -> str:
@@ -828,6 +858,7 @@ async def test_translate_retries_once_and_never_returns_broken_protection(
     from types import SimpleNamespace
 
     import deeptutor.immersive_reading.service as service_module
+    import deeptutor.immersive_reading.translation as translation_module
 
     monkeypatch.setattr(
         service_module,
@@ -839,7 +870,17 @@ async def test_translate_retries_once_and_never_returns_broken_protection(
             base_url="",
         ),
     )
+    monkeypatch.setattr(
+        translation_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(
+            model="qwen3.5:4b",
+            provider_name="ollama",
+            binding="ollama",
+        ),
+    )
     calls = 0
+
     async def _ready(*_args, **_kwargs) -> str:
         return "qwen3.5:4b"
 
@@ -853,9 +894,7 @@ async def test_translate_retries_once_and_never_returns_broken_protection(
     monkeypatch.setattr(reading_service, "_ollama_native_chat", broken_placeholders)
 
     with pytest.raises(TranslationProtectionError):
-        await reading_service.translate(
-            "Use `fetch_user()` carefully.", "Chinese"
-        )
+        await reading_service.translate("Use `fetch_user()` carefully.", "Chinese")
 
     assert calls == 2
 
