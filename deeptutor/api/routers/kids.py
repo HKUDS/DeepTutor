@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
-from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
+from deeptutor.immersive_reading.models import KidsQuizResult
 from deeptutor.immersive_reading.service import get_kids_manager
 
 router = APIRouter()
@@ -333,7 +333,6 @@ async def get_kids_quiz(
                 for q in fallback_qs
             ]
             # Cache the fallback so submit can grade it
-            import hashlib
 
             from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
 
@@ -396,6 +395,7 @@ async def submit_kids_quiz(
     quiz_path = ir._kids_quiz_path(document_id, request.section_id)
     if quiz_path.exists():
         from deeptutor.immersive_reading.service import _read_json
+
         raw_cached = _read_json(quiz_path)
         if raw_cached and raw_cached.get("questions"):
             cached = KidsQuizResult(**raw_cached)
