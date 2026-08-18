@@ -56,7 +56,7 @@ import {
   type KnowledgeBase,
   type ProviderConnectionStatus,
 } from "@/lib/knowledge-helpers";
-import PageIndexConfigForm from "./PageIndexConfigForm";
+import { PageIndexConfigForm } from "./PageIndexSettingsModal";
 
 interface EngineDetailProps {
   provider: RagProviderSummary;

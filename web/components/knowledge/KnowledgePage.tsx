@@ -132,12 +132,7 @@ export default function KnowledgePage() {
   }, [router, searchParams, urlKb, urlEngine]);
 
   const handleCreate = useCallback(
-    async (params: {
-      name: string;
-      provider: string;
-      files: File[];
-      pageindexMode?: "flash" | "standard";
-    }) => {
+    async (params: { name: string; provider: string; files: File[] }) => {
       try {
         await createKb(params);
         openKb(params.name);
