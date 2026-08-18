@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  sync-and-build:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -43,17 +43,16 @@ jobs:
             ghcr.io/apprentus/deeptutor:latest
             ghcr.io/apprentus/deeptutor:${{ steps.version.outputs.version }}
 
+  deploy-staging:
+    needs: build
+    runs-on: [self-hosted, encore-staging]
+
+    steps:
       - name: Deploy to staging
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 65.109.97.136
-          username: encore
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          port: 54606
-          script: |
-            cd /opt/deeptutor
-            docker compose -f docker-compose.ghcr.yml down
-            docker pull ghcr.io/apprentus/deeptutor:latest
-            sed -i "s|ghcr.io/apprentus/deeptutor:.*|ghcr.io/apprentus/deeptutor:latest|" docker-compose.ghcr.yml
-            docker compose -f docker-compose.ghcr.yml up -d
-            echo "Staging deployed!"
+        run: |
+          cd /opt/deeptutor
+          docker compose -f docker-compose.ghcr.yml down
+          docker pull ghcr.io/apprentus/deeptutor:latest
+          sed -i "s|ghcr.io/apprentus/deeptutor:.*|ghcr.io/apprentus/deeptutor:latest|" docker-compose.ghcr.yml
+          docker compose -f docker-compose.ghcr.yml up -d
+          echo "Staging deployed!"
