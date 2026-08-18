@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 
 from deeptutor.services.rag.factory import get_pipeline, normalize_provider_name
-from deeptutor.services.rag.index_versioning import resolve_storage_dir_for_read
 from deeptutor.services.rag.pipelines.pageindex import storage
 from deeptutor.services.rag.pipelines.pageindex.pipeline import (
     PageIndexPipeline,
@@ -42,8 +41,7 @@ def _pipe(tmp_path, client) -> PageIndexPipeline:
 
 
 def _manifest(tmp_path, kb_name) -> dict:
-    sdir = resolve_storage_dir_for_read(Path(tmp_path) / kb_name, None)
-    return storage.read_manifest(sdir)
+    return storage.read_manifest(Path(tmp_path) / kb_name)
 
 
 def test_is_supported_file() -> None:
@@ -72,6 +70,7 @@ def test_initialize_submits_supported_and_skips_others(tmp_path) -> None:
     docs = _manifest(tmp_path, "kb1")["docs"]
     assert set(docs) == {"a.pdf", "b.docx"}
     assert docs["a.pdf"]["doc_id"] == "pi-a.pdf"
+    assert not list((tmp_path / "kb1").glob("version-*"))
 
 
 def test_initialize_no_supported_returns_false(tmp_path) -> None:
@@ -141,6 +140,20 @@ def test_document_map_exposes_manifest(tmp_path) -> None:
 
     assert pipe.document_map("kb") == {"a.pdf": "pi-a.pdf"}
     assert pipe.document_map("missing-kb") == {}
+
+
+def test_document_map_reads_legacy_version_manifest(tmp_path) -> None:
+    legacy = tmp_path / "kb" / "version-1"
+    legacy.mkdir(parents=True)
+    manifest = storage._empty_manifest()
+    storage.upsert_doc(manifest, "old.pdf", "pi-old")
+    storage.write_manifest(legacy, manifest)
+    (legacy / "meta.json").write_text(
+        json.dumps({"provider": "pageindex", "signature": "pageindex"}),
+        encoding="utf-8",
+    )
+
+    assert _pipe(tmp_path, FakeClient()).document_map("kb") == {"old.pdf": "pi-old"}
 
 
 def test_search_without_documents_still_requires_agent_loop(tmp_path) -> None:

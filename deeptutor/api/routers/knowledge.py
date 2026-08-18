@@ -2647,10 +2647,9 @@ async def create_knowledge_base(
 async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_hash: str) -> None:
     """Re-index a KB's raw documents against the currently-active embedding config.
 
-    Each ``(profile, model, dimension, base_url)`` combination gets its own
-    flat ``<kb>/version-N/`` storage directory. Prior versions are preserved
-    untouched so switching the active embedding model back to a
-    previously-indexed one reuses the existing version with no extra work.
+    Storage is provider-owned. LlamaIndex creates a flat ``version-N`` for each
+    embedding identity, while PageIndex rebuilds its model-insensitive root
+    manifest/Local Library.
     """
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
@@ -2794,9 +2793,9 @@ async def reindex_knowledge_base(
 ):
     """Re-index ``kb_name`` through its bound RAG provider.
 
-    LlamaIndex still keys versions by the active embedding model. The other
-    providers keep synthetic provider-keyed versions, so they should rebuild
-    without requiring an embedding-signature precheck.
+    LlamaIndex still keys versions by the active embedding model. Other
+    providers rebuild without requiring an embedding-signature precheck;
+    PageIndex replaces its model-insensitive root manifest/Local Library.
     """
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)

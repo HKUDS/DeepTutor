@@ -12,14 +12,17 @@ from deeptutor.knowledge.add_documents import (
 
 
 def _write_provider_version(kb_dir: Path, provider: str) -> None:
-    version_dir = kb_dir / "version-1"
-    version_dir.mkdir(parents=True)
     if provider == "pageindex":
-        (version_dir / "pageindex_docs.json").write_text(
+        kb_dir.mkdir(parents=True, exist_ok=True)
+        (kb_dir / "pageindex_docs.json").write_text(
             json.dumps({"provider": "pageindex", "docs": {"doc.pdf": {"doc_id": "doc-1"}}}),
             encoding="utf-8",
         )
-    elif provider == "graphrag":
+        return
+
+    version_dir = kb_dir / "version-1"
+    version_dir.mkdir(parents=True)
+    if provider == "graphrag":
         output_dir = version_dir / "output"
         output_dir.mkdir()
         (output_dir / "entities.parquet").write_bytes(b"placeholder")
