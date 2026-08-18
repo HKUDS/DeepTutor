@@ -14,6 +14,7 @@ from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
+from deeptutor.runtime.registry.deferred_tools import render_deferred_tools_manifest
 
 
 class FakeMCPTool(BaseTool):
@@ -181,3 +182,19 @@ def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) 
     note = pipe._pageindex_system_note()
     assert "manual.pdf (doc_id: pi-local)" in note
     assert "Read structure, then pages." in note
+
+
+def test_pageindex_tools_keep_cloud_and_oss_manifest_groups() -> None:
+    cloud = FakeMCPTool("unused", "get_page_content")
+    cloud._name = "pageindex_cloud_get_page_content"
+    cloud.provider_kind = "pageindex"
+    cloud.provider_id = "pageindex"
+    oss = FakeMCPTool("unused", "get_page_content")
+    oss._name = "pageindex_oss_get_page_content"
+    oss.provider_kind = "pageindex"
+    oss.provider_id = "pageindex-oss"
+
+    manifest = render_deferred_tools_manifest([cloud, oss])
+
+    assert "### PageIndex Cloud" in manifest
+    assert "### PageIndex OSS" in manifest

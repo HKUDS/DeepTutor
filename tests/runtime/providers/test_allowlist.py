@@ -19,7 +19,7 @@ def test_widen_keeps_unrestricted_unrestricted() -> None:
     into *only* the widening names, silently stripping an administrator down
     to a single resource-derived grant.
     """
-    widened = Allowlist.unrestricted().widen(["mcp_extra_search"])
+    widened = Allowlist.unrestricted().widen(["mcp_pageindex_search"])
     assert widened.is_unrestricted
     assert widened.allows("mcp_other_tool")
 

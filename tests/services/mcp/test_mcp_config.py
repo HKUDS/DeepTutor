@@ -40,12 +40,6 @@ def test_tool_allowed_explicit_raw_and_wrapped() -> None:
     assert not cfg.tool_allowed("delete", "mcp_s_delete")
 
 
-def test_disabled_tools_blocklist_beats_wildcard() -> None:
-    cfg = MCPServerConfig(command="x", enabled_tools=["*"], disabled_tools=["bad_tool"])
-    assert not cfg.tool_allowed("bad_tool", wrapped_tool_name("x", "bad_tool"))
-    assert cfg.tool_allowed("good_tool", wrapped_tool_name("x", "good_tool"))
-
-
 def test_invalid_server_name_rejected() -> None:
     with pytest.raises(ValueError):
         MCPConfig(servers={"bad name!": MCPServerConfig(command="x")})

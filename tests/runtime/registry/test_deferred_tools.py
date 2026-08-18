@@ -192,28 +192,6 @@ def test_provider_id_takes_precedence_over_legacy_server_name() -> None:
     assert "oldname" not in manifest
 
 
-def test_pageindex_sdk_tools_group_by_cloud_and_oss_mode() -> None:
-    tools = [
-        _ProviderTool(
-            "pageindex_cloud_get_page_content",
-            kind="pageindex",
-            provider="pageindex",
-            description="Read Cloud pages",
-        ),
-        _ProviderTool(
-            "pageindex_oss_get_page_content",
-            kind="pageindex",
-            provider="pageindex-oss",
-            description="Read local pages",
-        ),
-    ]
-
-    manifest = render_deferred_tools_manifest(tools)
-
-    assert "### PageIndex Cloud" in manifest
-    assert "### PageIndex OSS" in manifest
-
-
 def test_tool_without_provider_metadata_lands_in_other() -> None:
     manifest = render_deferred_tools_manifest([_FakeDeferredTool("mcp_orphan")])
     assert "### Other" in manifest
