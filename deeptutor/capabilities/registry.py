@@ -1,6 +1,12 @@
-"""Built-in loop-capability registry."""
+"""Built-in loop-capability registry plus optional entry-point plugins."""
 
 from __future__ import annotations
+
+from importlib.metadata import entry_points
+import inspect
+from typing import Any
+
+from loguru import logger
 
 from deeptutor.capabilities.explore_context import ExploreContextCapability
 from deeptutor.capabilities.ima import ImaCapability
@@ -12,6 +18,8 @@ from deeptutor.capabilities.setup import SetupCapability
 from deeptutor.capabilities.solve import SolveLoopCapability
 from deeptutor.capabilities.subagent import SubagentCapability
 from deeptutor.core.context import UnifiedContext
+
+LOOP_CAPABILITIES_GROUP = "deeptutor.loop_capabilities"
 
 LOOP_CAPABILITIES: tuple[LoopCapability, ...] = (
     MasteryLoopCapability(),
@@ -35,9 +43,84 @@ LOOP_CAPABILITIES: tuple[LoopCapability, ...] = (
 )
 
 
+def _coerce_loop_capability(loaded: object) -> LoopCapability | None:
+    """Turn an entry-point target into a loop-capability instance, or None."""
+    obj: Any = loaded
+    if inspect.isclass(obj):
+        try:
+            obj = obj()
+        except Exception:
+            return None
+    elif callable(obj) and getattr(obj, "owned_tools", None) is None:
+        try:
+            obj = obj()
+        except Exception:
+            return None
+        if inspect.isclass(obj):
+            try:
+                obj = obj()
+            except Exception:
+                return None
+    name = getattr(obj, "name", None)
+    if not isinstance(name, str) or not name.strip():
+        return None
+    tools = getattr(obj, "owned_tools", None)
+    try:
+        if tools is None:
+            return None
+        tuple(tools)
+    except TypeError:
+        return None
+    if not callable(getattr(obj, "is_active", None)):
+        return None
+    return obj
+
+
+def discover_external_loop_capabilities() -> tuple[LoopCapability, ...]:
+    """Load third-party loop capabilities from ``deeptutor.loop_capabilities``.
+
+    Built-in names (and earlier plugins) win. Broken or invalid entry points are
+    skipped with a warning so a bad plugin cannot take down the chat loop.
+    """
+    found: list[LoopCapability] = []
+    seen = {cap.name for cap in LOOP_CAPABILITIES}
+    try:
+        discovered = entry_points(group=LOOP_CAPABILITIES_GROUP)
+    except Exception as exc:
+        logger.warning("Failed to read {} entry points: {}", LOOP_CAPABILITIES_GROUP, exc)
+        return ()
+
+    for ep in discovered:
+        try:
+            cap = _coerce_loop_capability(ep.load())
+        except Exception as exc:
+            logger.warning("Failed to load loop capability plugin '{}': {}", ep.name, exc)
+            continue
+        if cap is None:
+            logger.warning(
+                "Ignoring loop capability plugin '{}': not a LoopCapability class or factory",
+                ep.name,
+            )
+            continue
+        if cap.name in seen:
+            logger.warning(
+                "Loop capability plugin '{}' shadowed by built-in or earlier plugin (ignored)",
+                cap.name,
+            )
+            continue
+        seen.add(cap.name)
+        found.append(cap)
+    return tuple(found)
+
+
+def all_loop_capabilities() -> tuple[LoopCapability, ...]:
+    """Built-ins first, then external entry-point plugins (no name shadowing)."""
+    return LOOP_CAPABILITIES + discover_external_loop_capabilities()
+
+
 def active_loop_capabilities(context: UnifiedContext) -> tuple[LoopCapability, ...]:
     """Return the loop capabilities active for this turn in stable registry order."""
-    return tuple(cap for cap in LOOP_CAPABILITIES if cap.is_active(context))
+    return tuple(cap for cap in all_loop_capabilities() if cap.is_active(context))
 
 
 def any_exclusive_capability_active(context: UnifiedContext) -> bool:
@@ -57,12 +140,15 @@ def capability_tool_owners() -> dict[str, str]:
     Static (independent of any turn) so the settings UI can group capability
     tools under their owner. Built-in/system tools are absent from the map.
     """
-    return {name: cap.name for cap in LOOP_CAPABILITIES for name in cap.owned_tools}
+    return {name: cap.name for cap in all_loop_capabilities() for name in cap.owned_tools}
 
 
 __all__ = [
     "LOOP_CAPABILITIES",
+    "LOOP_CAPABILITIES_GROUP",
+    "all_loop_capabilities",
     "active_loop_capabilities",
     "any_exclusive_capability_active",
     "capability_tool_owners",
+    "discover_external_loop_capabilities",
 ]
