@@ -65,7 +65,13 @@ def _is_reference_matter_title(title: str) -> bool:
     normalized = unicodedata.normalize("NFKC", title).casefold().strip()
     words = re.sub(r"[^a-z]+", " ", normalized).strip()
     compact = re.sub(r"[\s\W_]+", "", normalized)
-    return words in {"front matter", "contents", "table of contents", "toc", "index"} or compact in {
+    return words in {
+        "front matter",
+        "contents",
+        "table of contents",
+        "toc",
+        "index",
+    } or compact in {
         "目录",
         "目錄",
         "文档目录",
@@ -101,13 +107,19 @@ def _build_focus_prompts(content_type: str, *, language: str) -> list[str]:
     zh = language.startswith("zh")
     if content_type == "code_heavy":
         return [
-            "这节解决什么问题或实现什么功能？" if zh else "What problem does this section solve or what feature does it implement?",
-            "列出 1-2 个关键 API、命令或配置项" if zh else "List 1-2 key APIs, commands, or config options",
+            "这节解决什么问题或实现什么功能？"
+            if zh
+            else "What problem does this section solve or what feature does it implement?",
+            "列出 1-2 个关键 API、命令或配置项"
+            if zh
+            else "List 1-2 key APIs, commands, or config options",
             "你会怎么在实际中使用？" if zh else "How would you use this in practice?",
         ]
     return [
         "用自己的话概括核心概念" if zh else "Summarize the core concept in your own words",
-        "这个概念和什么相关或依赖什么？" if zh else "What does this concept relate to or depend on?",
+        "这个概念和什么相关或依赖什么？"
+        if zh
+        else "What does this concept relate to or depend on?",
         "它解决了什么问题？" if zh else "What problem does it solve?",
     ]
 
@@ -395,7 +407,14 @@ def _fitz_recursive_sections(
                 sections.append((node.title, "", start + 1, end, parent_idx, level))
                 for ci, chunk in enumerate(_split_near(body)):
                     sections.append(
-                        (f"{node.title} \\u2013 {ci + 1}", chunk, start + 1, end, this_idx, level + 1)
+                        (
+                            f"{node.title} \\u2013 {ci + 1}",
+                            chunk,
+                            start + 1,
+                            end,
+                            this_idx,
+                            level + 1,
+                        )
                     )
 
     # Handle front matter before the first TOC entry

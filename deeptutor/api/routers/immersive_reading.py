@@ -240,9 +240,7 @@ async def restart(document_id: str, request: RestartRequest) -> dict:
 @router.post("/documents/{document_id}/skip-section")
 async def skip_section(document_id: str, request: SkipSectionRequest) -> dict:
     try:
-        progress = get_immersive_reading_service().skip_section(
-            document_id, request.section_id
-        )
+        progress = get_immersive_reading_service().skip_section(document_id, request.section_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"progress": progress.model_dump(mode="json")}
