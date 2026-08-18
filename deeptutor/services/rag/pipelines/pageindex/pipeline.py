@@ -14,6 +14,10 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 from deeptutor.runtime.home import get_runtime_data_root
+from deeptutor.services.rag.index_versioning import (
+    resolve_storage_dir_for_read,
+    resolve_storage_dir_for_rebuild,
+)
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
 from . import storage
@@ -105,6 +109,7 @@ class PageIndexPipeline:
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         progress_callback = kwargs.get("progress_callback")
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        storage_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
         self.logger.info(
             "Initializing KB '%s' with %d file(s) using PageIndex", kb_name, len(file_paths)
         )
@@ -114,29 +119,32 @@ class PageIndexPipeline:
                 file_paths,
                 manifest,
                 progress_callback,
-                storage_dir=kb_dir,
+                storage_dir=storage_dir,
                 mode=self._processing_mode(kb_name),
             )
             if count == 0:
                 self.logger.error("PageIndex: no supported documents to index for '%s'", kb_name)
+                self._cleanup_failed_version_dir(storage_dir)
                 return False
-            storage.write_manifest(kb_dir, manifest)
+            storage.write_manifest(storage_dir, manifest)
+            storage.write_meta(storage_dir, provider=self.provider)
             self.logger.info("KB '%s' initialized with PageIndex (%d docs)", kb_name, count)
             return True
         except Exception as exc:
             self.logger.error("Failed to initialize PageIndex KB: %s", exc)
             self.logger.error(traceback.format_exc())
+            self._cleanup_failed_version_dir(storage_dir)
             raise
 
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         progress_callback = kwargs.get("progress_callback")
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        existing = storage.find_storage_dir(kb_dir, provider=self.provider)
+        existing = resolve_storage_dir_for_read(kb_dir, None)
         if existing is not None:
             storage_dir = existing
             manifest = storage.read_manifest(existing, provider=self.provider)
         else:
-            storage_dir = kb_dir
+            storage_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
             manifest = storage._empty_manifest(self.provider)
 
         self.logger.info("Adding %d document(s) to PageIndex KB '%s'", len(file_paths), kb_name)
@@ -153,6 +161,7 @@ class PageIndexPipeline:
                 return False
             storage_dir.mkdir(parents=True, exist_ok=True)
             storage.write_manifest(storage_dir, manifest)
+            storage.write_meta(storage_dir, provider=self.provider)
             self.logger.info("Added %d doc(s) to PageIndex KB '%s'", count, kb_name)
             return True
         except Exception as exc:
@@ -211,8 +220,9 @@ class PageIndexPipeline:
         Used by the chat layer to inject the doc list into the system prompt.
         """
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        storage_dir = storage.find_storage_dir(kb_dir, provider=self.provider)
-        manifest = storage.read_manifest(storage_dir, provider=self.provider)
+        manifest = storage.read_manifest(
+            resolve_storage_dir_for_read(kb_dir, None), provider=self.provider
+        )
         return {
             name: str(entry["doc_id"])
             for name, entry in storage.doc_entries(manifest).items()
@@ -228,7 +238,7 @@ class PageIndexPipeline:
         # Preserve the existing Cloud behavior. OSS data is already inside kb_dir.
         if self.provider == storage.CLOUD_PROVIDER:
             try:
-                storage_dir = storage.find_storage_dir(kb_dir, provider=self.provider)
+                storage_dir = resolve_storage_dir_for_read(kb_dir, None)
                 ids = storage.doc_ids(storage.read_manifest(storage_dir, provider=self.provider))
                 if ids:
                     client = self._get_client(storage_dir)
@@ -246,7 +256,7 @@ class PageIndexPipeline:
     async def remove_document(self, kb_name: str, file_name: str) -> bool:
         """Delete one indexed document and update the active manifest."""
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        storage_dir = storage.find_storage_dir(kb_dir, provider=self.provider)
+        storage_dir = resolve_storage_dir_for_read(kb_dir, None)
         if storage_dir is None:
             return False
         manifest = storage.read_manifest(storage_dir, provider=self.provider)
@@ -263,17 +273,27 @@ class PageIndexPipeline:
         await client.delete_document(str(entry["doc_id"]))
         storage.remove_doc(manifest, key)
         storage.write_manifest(storage_dir, manifest)
+        storage.write_meta(storage_dir, provider=self.provider)
         return True
 
     def sdk_client_for_read(self, kb_name: str) -> Any:
         """Return the SDK client bound to this KB's active Local Library."""
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        storage_dir = storage.find_storage_dir(kb_dir, provider=self.provider)
+        storage_dir = resolve_storage_dir_for_read(kb_dir, None)
         if storage_dir is None:
             raise RuntimeError(f"PageIndex knowledge base '{kb_name}' has no ready index")
         if self.provider == storage.OSS_PROVIDER and self._client is None:
             return PageIndexClient.local_read(storage.sdk_storage_path(storage_dir)).sdk_client
         return self._get_client(storage_dir).sdk_client
+
+    def _cleanup_failed_version_dir(self, storage_dir: Path) -> None:
+        try:
+            if storage_dir.is_dir() and not (storage_dir / storage.META_FILENAME).exists():
+                import shutil
+
+                shutil.rmtree(storage_dir)
+        except Exception as exc:  # pragma: no cover - best-effort
+            self.logger.warning("Could not clean up failed version dir %s: %s", storage_dir, exc)
 
 
 __all__ = [

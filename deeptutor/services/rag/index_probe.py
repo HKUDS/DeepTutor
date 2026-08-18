@@ -76,37 +76,10 @@ def inspect_provider_version(entry: dict[str, Any], provider: str | None) -> Pro
 
 def inspect_kb_versions(kb_dir: str | Path, provider: str | None) -> list[dict[str, Any]]:
     """Return version entries annotated with provider-probe readiness."""
-    resolved = normalize_provider_name(provider)
-    root = Path(kb_dir)
-    if resolved in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
-        from deeptutor.services.rag.pipelines.pageindex import storage
-
-        # PageIndex is model-insensitive and keeps one current index at the KB
-        # root. Surface that through the generic lifecycle contract without
-        # writing a synthetic version directory or meta.json.
-        if storage.manifest_path(root).is_file():
-            probe = inspect_provider_index(resolved, root)
-            entry: dict[str, Any] = {
-                "version": "current",
-                "signature": resolved,
-                "provider": resolved,
-                "storage_path": str(root),
-                "version_path": str(root),
-                "layout": "provider_root",
-                "ready": probe.ready,
-            }
-            if probe.failure_summary:
-                entry["failure_summary"] = probe.failure_summary
-            if probe.doc_count is not None:
-                entry["doc_count"] = probe.doc_count
-            if probe.diagnostics:
-                entry["probe_diagnostics"] = probe.diagnostics
-            return [entry]
-
     from deeptutor.services.rag.index_versioning import list_kb_versions
 
     versions: list[dict[str, Any]] = []
-    for entry in list_kb_versions(root):
+    for entry in list_kb_versions(Path(kb_dir)):
         adjusted = dict(entry)
         probe = inspect_provider_version(adjusted, provider)
         adjusted["ready"] = probe.ready

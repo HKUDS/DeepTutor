@@ -91,16 +91,27 @@ def test_ready_version_without_active_signature_marks_reindex(
     assert entry["embedding_mismatch"] is True
 
 
-def test_ready_pageindex_root_does_not_mark_reindex(
+def test_ready_non_embedding_provider_version_does_not_mark_reindex(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_active_embedding(monkeypatch, sig_hash="active-signature")
 
     kb_dir = tmp_path / "page-kb"
-    kb_dir.mkdir(parents=True)
-    (kb_dir / "pageindex_docs.json").write_text(
+    version_dir = kb_dir / "version-1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "pageindex_docs.json").write_text(
         json.dumps({"provider": "pageindex", "docs": {"a.pdf": {"doc_id": "doc-1"}}}),
+        encoding="utf-8",
+    )
+    (version_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "provider": "pageindex",
+                "signature": "pageindex",
+                "version": "version-1",
+            }
+        ),
         encoding="utf-8",
     )
     (tmp_path / "kb_config.json").write_text(

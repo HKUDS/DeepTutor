@@ -1,13 +1,16 @@
 """On-disk manifest for a PageIndex-backed knowledge base.
 
-PageIndex has no embeddings, so there is no model-specific index version. The
-manifest lives at the KB root and PageIndex OSS keeps its Local Library in the
-``pageindex/`` child directory. Older ``version-N`` manifests remain readable.
+PageIndex has no embeddings, so there is nothing to vectorise locally. The only
+local state is a lightweight manifest mapping each ingested file to its hosted
+``doc_id``. It is written into the KB's flat ``version-N`` directory (reusing
+``index_versioning`` with a ``None`` signature) so the Index-versions UI and the
+"is this KB initialised?" checks see a ready version just like LlamaIndex KBs —
+only the file contents differ (a doc-id map instead of a vector store).
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
@@ -18,6 +21,7 @@ from deeptutor.services.file_io import atomic_write_json
 logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = "pageindex_docs.json"
+META_FILENAME = "meta.json"
 SDK_STORAGE_DIRNAME = "pageindex"
 CLOUD_PROVIDER = "pageindex"
 OSS_PROVIDER = "pageindex-oss"
@@ -58,26 +62,21 @@ def write_manifest(storage_dir: Path, manifest: dict[str, Any]) -> None:
     atomic_write_json(manifest_path(storage_dir), manifest)
 
 
-def find_storage_dir(kb_dir: Path, *, provider: str) -> Path | None:
-    """Find the root manifest, falling back to the newest legacy version."""
-    root = Path(kb_dir)
+def write_meta(storage_dir: Path, *, provider: str = CLOUD_PROVIDER) -> None:
+    """Write a flat-layout ``meta.json`` so the version is listed as ready.
 
-    def matches(candidate: Path) -> bool:
-        if not manifest_path(candidate).is_file():
-            return False
-        manifest = read_manifest(candidate, provider=provider)
-        return str(manifest.get("provider") or provider) == provider
-
-    if matches(root):
-        return root
-
-    from deeptutor.services.rag.index_versioning import list_kb_versions
-
-    for entry in list_kb_versions(root):
-        candidate = Path(str(entry.get("storage_path") or ""))
-        if matches(candidate):
-            return candidate
-    return None
+    Mirrors ``index_versioning.write_version_meta`` but carries a synthetic
+    ``pageindex`` signature instead of an embedding hash.
+    """
+    target = Path(storage_dir)
+    payload = {
+        "version": target.name,
+        "signature": provider,
+        "provider": provider,
+        "layout": "flat",
+        "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
+    }
+    atomic_write_json(target / META_FILENAME, payload)
 
 
 def doc_entries(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -123,9 +122,9 @@ __all__ = [
     "OSS_PROVIDER",
     "SDK_STORAGE_DIRNAME",
     "manifest_path",
-    "find_storage_dir",
     "read_manifest",
     "write_manifest",
+    "write_meta",
     "doc_entries",
     "doc_ids",
     "upsert_doc",

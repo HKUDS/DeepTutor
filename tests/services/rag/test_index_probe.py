@@ -67,36 +67,39 @@ def test_kb_versions_overrule_fake_llamaindex_ready_marker(tmp_path: Path) -> No
 
 
 def test_pageindex_ready_requires_doc_ids(tmp_path: Path) -> None:
-    probe = inspect_provider_index("pageindex", tmp_path)
+    version_dir = tmp_path / "version-1"
+    version_dir.mkdir()
+    _write_meta(version_dir, provider="pageindex")
+
+    probe = inspect_provider_index("pageindex", version_dir)
     assert probe.ready is False
 
-    manifest = pageindex_storage.read_manifest(tmp_path)
+    manifest = pageindex_storage.read_manifest(version_dir)
     pageindex_storage.upsert_doc(manifest, "lesson.pdf", "doc-123")
-    pageindex_storage.write_manifest(tmp_path, manifest)
+    pageindex_storage.write_manifest(version_dir, manifest)
 
-    probe = inspect_provider_index("pageindex", tmp_path)
+    probe = inspect_provider_index("pageindex", version_dir)
     assert probe.ready is True
     assert probe.doc_count == 1
-    versions = inspect_kb_versions(tmp_path, "pageindex")
-    assert versions[0]["layout"] == "provider_root"
-    assert versions[0]["version"] == "current"
-    assert has_ready_provider_index(tmp_path, "pageindex") is True
 
 
 def test_pageindex_oss_requires_local_sdk_artifacts(tmp_path: Path) -> None:
-    manifest = pageindex_storage.read_manifest(tmp_path, provider="pageindex-oss")
+    version_dir = tmp_path / "version-1"
+    version_dir.mkdir()
+    _write_meta(version_dir, provider="pageindex-oss")
+    manifest = pageindex_storage.read_manifest(version_dir, provider="pageindex-oss")
     pageindex_storage.upsert_doc(manifest, "lesson.pdf", "pi-local")
-    pageindex_storage.write_manifest(tmp_path, manifest)
+    pageindex_storage.write_manifest(version_dir, manifest)
 
-    probe = inspect_provider_index("pageindex-oss", tmp_path)
+    probe = inspect_provider_index("pageindex-oss", version_dir)
     assert probe.ready is False
 
-    doc_dir = pageindex_storage.sdk_storage_path(tmp_path) / "docs" / "pi-local"
+    doc_dir = pageindex_storage.sdk_storage_path(version_dir) / "docs" / "pi-local"
     doc_dir.mkdir(parents=True)
     for name in ("doc.json", "tree.json", "pages.json"):
         (doc_dir / name).write_text("{}", encoding="utf-8")
 
-    probe = inspect_provider_index("pageindex-oss", tmp_path)
+    probe = inspect_provider_index("pageindex-oss", version_dir)
     assert probe.ready is True
     assert probe.doc_count == 1
 
