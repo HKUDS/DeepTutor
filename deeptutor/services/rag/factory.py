@@ -192,13 +192,8 @@ def list_pipelines() -> List[Dict[str, Any]]:
         pageindex_ready = False
 
     try:
-        from .pipelines.pageindex.client import (
-            is_pageindex_sdk_available,
-            resolve_oss_sdk_config,
-        )
+        from .pipelines.pageindex.client import resolve_oss_sdk_config
 
-        if not is_pageindex_sdk_available():
-            raise RuntimeError("Install pageindex==0.2.10.dev5.")
         resolve_oss_sdk_config()
         pageindex_oss_ready, pageindex_oss_reason = True, ""
     except Exception as exc:

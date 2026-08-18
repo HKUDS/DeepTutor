@@ -32,9 +32,6 @@ class FakeClient:
         self.modes.append(mode)
         return f"pi-{Path(file_path).name}"
 
-    async def wait_until_ready(self, doc_id, **_kwargs) -> dict:
-        return {"status": "completed", "retrieval_ready": True}
-
     async def delete_document(self, doc_id) -> bool:
         self.deleted.append(doc_id)
         return True

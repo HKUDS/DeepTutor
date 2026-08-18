@@ -191,7 +191,6 @@ class PageIndexPipeline:
             path = Path(fp)
             self.logger.info("PageIndex: submitting %s (%d/%d)", path.name, idx, total)
             doc_id = await client.submit_document(path, mode=mode)
-            await client.wait_until_ready(doc_id)
             size = path.stat().st_size if path.exists() else None
             storage.upsert_doc(manifest, path.name, doc_id, size=size)
             if progress_callback:

@@ -99,28 +99,15 @@ def _pageindex_preflight() -> dict:
 
 def _pageindex_oss_preflight() -> dict:
     try:
-        from .pipelines.pageindex.client import (
-            is_pageindex_sdk_available,
-            resolve_oss_sdk_config,
-        )
+        from .pipelines.pageindex.client import resolve_oss_sdk_config
 
-        installed = is_pageindex_sdk_available()
-    except Exception:
-        installed = False
-    try:
-        model, _backend = resolve_oss_sdk_config() if installed else ("", {})
+        model, _backend = resolve_oss_sdk_config()
         llm_ok, detail = bool(model), model
     except Exception as exc:
         llm_ok = False
         detail = str(exc)
     return _finalize(
         [
-            _check(
-                "package",
-                "PageIndex SDK installed",
-                installed,
-                "Installed." if installed else "Install pageindex==0.2.10.dev5.",
-            ),
             _check("chat", "Active LLM for indexing", llm_ok, detail),
         ]
     )

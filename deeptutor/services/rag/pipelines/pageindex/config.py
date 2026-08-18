@@ -16,31 +16,18 @@ class PageIndexConfig:
     api_key: str
 
 
-class PageIndexNotConfiguredError(RuntimeError):
-    """Raised when no PageIndex API key has been configured."""
-
-
-class PageIndexSDKNotAvailableError(RuntimeError):
-    """Raised when the pinned PageIndex SDK is unavailable."""
-
-
-class PageIndexOSSNotConfiguredError(RuntimeError):
-    """Raised when the active DeepTutor LLM cannot build an OSS index."""
-
-
 def get_pageindex_config(*, require_key: bool = True) -> PageIndexConfig:
     """Load the active PageIndex credential.
 
-    Raises :class:`PageIndexNotConfiguredError` when ``require_key`` and the key
-    is empty, so callers (indexing / retrieval) fail with a clear, actionable
-    message instead of an opaque 401 from the API.
+    Raises when ``require_key`` and the key is empty, so callers fail with a
+    clear, actionable message instead of an opaque 401 from the API.
     """
     from deeptutor.services.config import get_runtime_settings_service
 
     settings = get_runtime_settings_service().load_pageindex()
     api_key = str(settings.get("api_key") or "").strip()
     if require_key and not api_key:
-        raise PageIndexNotConfiguredError(
+        raise RuntimeError(
             "PageIndex API key is not configured. Add it under "
             "Knowledge → RAG pipeline settings before using a PageIndex knowledge base."
         )
@@ -55,25 +42,8 @@ def is_pageindex_configured() -> bool:
         return False
 
 
-def is_pageindex_oss_configured() -> bool:
-    """Whether the SDK and active DeepTutor LLM can build an OSS index."""
-    try:
-        from .client import is_pageindex_sdk_available, resolve_oss_sdk_config
-
-        if not is_pageindex_sdk_available():
-            return False
-        resolve_oss_sdk_config()
-        return True
-    except Exception:
-        return False
-
-
 __all__ = [
     "PageIndexConfig",
-    "PageIndexNotConfiguredError",
-    "PageIndexOSSNotConfiguredError",
-    "PageIndexSDKNotAvailableError",
     "get_pageindex_config",
     "is_pageindex_configured",
-    "is_pageindex_oss_configured",
 ]
