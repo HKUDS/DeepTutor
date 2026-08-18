@@ -89,7 +89,6 @@ class PageIndexSDKToolBundle:
 @dataclass(frozen=True)
 class PageIndexToolContext:
     provider: str
-    kb_name: str
     registry: ToolLookup
     tools: tuple[BaseTool, ...]
     instructions: str
@@ -158,7 +157,6 @@ async def build_pageindex_tool_context(
         registry = ScopedToolRegistry(base=base_registry, overlay=bundle.tools)
         return PageIndexToolContext(
             provider=provider,
-            kb_name=kb_name,
             registry=registry,
             tools=bundle.tools,
             instructions=bundle.instructions,

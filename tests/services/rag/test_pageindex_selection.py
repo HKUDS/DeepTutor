@@ -4,10 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.services.rag.pipelines.pageindex.selection import (
-    PageIndexOSSSelectionError,
-    validate_pageindex_oss_selection,
-)
+from deeptutor.services.rag.pipelines.pageindex.selection import validate_pageindex_oss_selection
 
 
 def _patch_selection(monkeypatch, providers: dict[str, str]) -> None:
@@ -23,7 +20,7 @@ def _patch_selection(monkeypatch, providers: dict[str, str]) -> None:
 
 def test_rejects_two_oss_kbs(monkeypatch) -> None:
     _patch_selection(monkeypatch, {"one": "pageindex-oss", "two": "pageindex-oss"})
-    with pytest.raises(PageIndexOSSSelectionError, match="at most one"):
+    with pytest.raises(ValueError, match="at most one"):
         validate_pageindex_oss_selection(["one", "two"])
 
 

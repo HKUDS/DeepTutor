@@ -3,10 +3,6 @@
 from __future__ import annotations
 
 
-class PageIndexOSSSelectionError(ValueError):
-    pass
-
-
 def validate_pageindex_oss_selection(knowledge_bases: list[str]) -> None:
     from deeptutor.multi_user.knowledge_access import resolve_kb
     from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER
@@ -25,10 +21,10 @@ def validate_pageindex_oss_selection(knowledge_bases: list[str]) -> None:
         if provider == PAGEINDEX_OSS_PROVIDER and name not in selected:
             selected.append(name)
     if len(selected) > 1:
-        raise PageIndexOSSSelectionError(
+        raise ValueError(
             "Select at most one PageIndex OSS knowledge base per request. "
             f"Selected: {', '.join(selected)}"
         )
 
 
-__all__ = ["PageIndexOSSSelectionError", "validate_pageindex_oss_selection"]
+__all__ = ["validate_pageindex_oss_selection"]

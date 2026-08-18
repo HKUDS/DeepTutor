@@ -25,7 +25,6 @@ META_FILENAME = "meta.json"
 SDK_STORAGE_DIRNAME = "pageindex"
 CLOUD_PROVIDER = "pageindex"
 OSS_PROVIDER = "pageindex-oss"
-PROVIDER = CLOUD_PROVIDER
 
 
 def _empty_manifest(provider: str = CLOUD_PROVIDER) -> dict[str, Any]:
@@ -121,7 +120,6 @@ __all__ = [
     "MANIFEST_FILENAME",
     "CLOUD_PROVIDER",
     "OSS_PROVIDER",
-    "PROVIDER",
     "SDK_STORAGE_DIRNAME",
     "manifest_path",
     "read_manifest",
