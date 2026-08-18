@@ -136,6 +136,28 @@ def _write_ready_llamaindex_version(kb_dir: Path) -> None:
     )
 
 
+def _write_upload_task_kb(tmp_path: Path) -> Path:
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    (kb_dir / "raw").mkdir(parents=True)
+    _write_ready_llamaindex_version(kb_dir)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return base_dir
+
+
 def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     monkeypatch.setattr(ima_config_module, "is_ima_configured", lambda: True)
     with TestClient(_build_app()) as client:
@@ -856,25 +878,7 @@ def test_upload_flips_ready_kb_to_processing_before_dispatch(monkeypatch, tmp_pa
 
 
 def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Path) -> None:
-    base_dir = tmp_path / "knowledge_bases"
-    kb_dir = base_dir / "kb"
-    raw_dir = kb_dir / "raw"
-    raw_dir.mkdir(parents=True)
-    _write_ready_llamaindex_version(kb_dir)
-    (base_dir / "kb_config.json").write_text(
-        json.dumps(
-            {
-                "knowledge_bases": {
-                    "kb": {
-                        "path": "kb",
-                        "rag_provider": "llamaindex",
-                        "status": "ready",
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+    base_dir = _write_upload_task_kb(tmp_path)
     source = tmp_path / "bad.txt"
     source.write_text("bad", encoding="utf-8")
 
@@ -906,6 +910,60 @@ def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Pat
     assert "parse failed loudly" in entry["last_error"]
     assert entry["progress"]["stage"] == "error"
     assert entry["progress"]["indexed_count"] == 0
+
+
+def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
+    monkeypatch, tmp_path: Path
+) -> None:
+    base_dir = _write_upload_task_kb(tmp_path)
+    source = tmp_path / "ok.txt"
+    source.write_text("ok", encoding="utf-8")
+
+    class _SuccessfulRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.RAGService",
+        _SuccessfulRagService,
+    )
+    updates: list[tuple[str, int, int]] = []
+    original_update = knowledge_router_module.ProgressTracker.update
+
+    def _record_update(self, stage, message="", current=0, total=0, **kwargs):
+        updates.append((message, current, total))
+        return original_update(
+            self,
+            stage,
+            message,
+            current=current,
+            total=total,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(knowledge_router_module.ProgressTracker, "update", _record_update)
+
+    asyncio.run(
+        knowledge_router_module.run_upload_processing_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            uploaded_file_paths=[str(source)],
+            task_id="upload-progress-test",
+            rag_provider="llamaindex",
+        )
+    )
+
+    assert updates == [
+        ("Validating 1 file(s)...", 0, 1),
+        ("Staged 1 new file(s)", 0, 1),
+        ("Indexing ok.txt", 0, 1),
+        ("Indexed ok.txt", 1, 1),
+        ("Saving metadata...", 1, 1),
+        ("Successfully processed 1 files!", 1, 1),
+    ]
 
 
 def test_list_files_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:

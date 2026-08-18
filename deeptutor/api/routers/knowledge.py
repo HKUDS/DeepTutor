@@ -952,7 +952,7 @@ async def run_upload_processing_task(
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Processing {len(uploaded_file_paths)} files...",
+                f"Validating {len(uploaded_file_paths)} file(s)...",
                 current=0,
                 total=len(uploaded_file_paths),
             )
@@ -973,6 +973,12 @@ async def run_upload_processing_task(
                 adder.add_documents, uploaded_file_paths, allow_duplicates=False
             )
             _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
+            progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                f"Staged {len(staged_files)} new file(s)",
+                current=0,
+                total=len(staged_files),
+            )
 
             if not staged_files:
                 _task_log(task_id, "No new files to process (all duplicates or invalid)")
@@ -1025,6 +1031,12 @@ async def run_upload_processing_task(
                 )
                 return
 
+            progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                "Saving metadata...",
+                current=index_result.processed_count,
+                total=len(staged_files),
+            )
             adder.update_metadata(index_result.processed_count)
 
             if folder_id and processed_files:
