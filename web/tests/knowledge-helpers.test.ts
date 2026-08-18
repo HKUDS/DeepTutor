@@ -3,11 +3,19 @@ import assert from "node:assert/strict";
 
 import {
   kbCanReindex,
+  providerUsesEmbeddingMetadata,
   resolveKnowledgeIndexFailure,
   taskFailureMessage,
   providerConnectionStatus,
   type KnowledgeBase,
 } from "../lib/knowledge-helpers";
+
+test("PageIndex providers do not expose embedding metadata", () => {
+  assert.equal(providerUsesEmbeddingMetadata("pageindex"), false);
+  assert.equal(providerUsesEmbeddingMetadata("pageindex-oss"), false);
+  assert.equal(providerUsesEmbeddingMetadata("llamaindex"), true);
+  assert.equal(providerUsesEmbeddingMetadata("graphrag"), true);
+});
 
 function kb(overrides: Partial<KnowledgeBase>): KnowledgeBase {
   return {

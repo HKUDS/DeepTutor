@@ -270,3 +270,49 @@ def test_submit_document_uses_sdk_wait() -> None:
 
     assert doc_id == "doc-1"
     assert calls == [("a.pdf", "flash", True)]
+
+
+def test_pageindex_ready_omits_embedding_identity(tmp_path, monkeypatch) -> None:
+    import deeptutor.knowledge.manager as manager_module
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+    from deeptutor.services.rag import embedding_signature as signature_module
+
+    pdf = tmp_path / "manual.pdf"
+    pdf.write_text("x")
+    asyncio.run(
+        PageIndexPipeline(
+            kb_base_dir=str(tmp_path),
+            client=FakeClient(),
+            provider="pageindex-oss",
+        ).initialize("page-kb", [str(pdf)])
+    )
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.config.setdefault("knowledge_bases", {})["page-kb"] = {
+        "path": "page-kb",
+        "rag_provider": "pageindex-oss",
+        "embedding_model": "stale-model",
+        "embedding_dim": 123,
+        "embedding_signature": "stale-signature",
+        "embedding_mismatch": True,
+    }
+    manager._save_config()
+    monkeypatch.setattr(manager_module, "_get_embedding_fingerprint", lambda: ("active", 456))
+    monkeypatch.setattr(
+        signature_module,
+        "signature_from_embedding_config",
+        lambda: type("Signature", (), {"hash": lambda self: "active-signature"})(),
+    )
+
+    manager.update_kb_status("page-kb", "ready")
+
+    entry = manager._load_config()["knowledge_bases"]["page-kb"]
+    assert (
+        not {
+            "embedding_model",
+            "embedding_dim",
+            "embedding_signature",
+            "embedding_mismatch",
+        }
+        & entry.keys()
+    )
+    assert manager.get_info("page-kb")["statistics"]["active_signature"] is None

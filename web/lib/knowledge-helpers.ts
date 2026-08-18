@@ -95,6 +95,9 @@ export interface KnowledgeBase {
 
 export type ProviderConnectionStatus = "ready" | "needs_key" | "unavailable";
 
+export const providerUsesEmbeddingMetadata = (provider?: string): boolean =>
+  provider !== "pageindex" && provider !== "pageindex-oss";
+
 export const providerConnectionStatus = (provider: {
   id: string;
   configured?: boolean;
