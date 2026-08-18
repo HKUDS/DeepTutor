@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 FastAPI = pytest.importorskip("fastapi").FastAPI
 TestClient = pytest.importorskip("fastapi.testclient").TestClient
@@ -15,10 +16,10 @@ from deeptutor.services.path_service import PathService
 
 @pytest.fixture
 def app_and_client(tmp_path, monkeypatch):
-    import deeptutor.immersive_reading.service as service_module
+    import deeptutor.api.routers.immersive_reading as ir_router
     import deeptutor.api.routers.kids as kids_router
     import deeptutor.api.routers.kids_admin as kids_admin_router
-    import deeptutor.api.routers.immersive_reading as ir_router
+    import deeptutor.immersive_reading.service as service_module
 
     paths = PathService(workspace_root=tmp_path / "data")
     monkeypatch.setattr(service_module, "get_path_service", lambda: paths)
@@ -32,8 +33,10 @@ def app_and_client(tmp_path, monkeypatch):
             max_tokens=4_096,
         ),
     )
+
     async def mock_llm_fail(**kwargs):
         raise ConnectionError("No network during test")
+
     monkeypatch.setattr(service_module, "complete", mock_llm_fail)
 
     ir_service = ImmersiveReadingService()
@@ -171,7 +174,7 @@ def test_kids_child_auth_and_chapter_gating(app_and_client) -> None:
     headers = {"Authorization": f"Bearer {token}"}
 
     # 3. Get book detail (allowed sections only: Front Matter, Chapter 1, Chapter 2)
-    res = client.get(f"/api/v1/kids/books/{doc["id"]}", headers=headers)
+    res = client.get(f"/api/v1/kids/books/{doc['id']}", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert data["document"]["title"] == "peter_rabbit"
@@ -179,13 +182,13 @@ def test_kids_child_auth_and_chapter_gating(app_and_client) -> None:
 
     # 4. Access allowed section (Chapter 1)
     sec_1 = doc["sections"][1]["id"]
-    res = client.get(f"/api/v1/kids/books/{doc["id"]}/sections/{sec_1}", headers=headers)
+    res = client.get(f"/api/v1/kids/books/{doc['id']}/sections/{sec_1}", headers=headers)
     assert res.status_code == 200
     assert "Peter runs away" in res.json()["content"]
 
     # 5. Access disallowed section (Chapter 3, index 3) -> 403
     sec_3 = doc["sections"][3]["id"]
-    res = client.get(f"/api/v1/kids/books/{doc["id"]}/sections/{sec_3}", headers=headers)
+    res = client.get(f"/api/v1/kids/books/{doc['id']}/sections/{sec_3}", headers=headers)
     assert res.status_code == 403
     assert "not available yet" in res.json()["detail"]
 
@@ -214,7 +217,7 @@ def test_kids_quiz_and_progress_flow(app_and_client) -> None:
 
     # 1. Update reading progress
     res = client.put(
-        f"/api/v1/kids/books/{doc["id"]}/progress",
+        f"/api/v1/kids/books/{doc['id']}/progress",
         headers=headers,
         json={
             "section_id": sec_1,
@@ -230,7 +233,7 @@ def test_kids_quiz_and_progress_flow(app_and_client) -> None:
 
     # 2. Get quiz (falls back to deterministic sight-words quiz)
     res = client.post(
-        f"/api/v1/kids/books/{doc["id"]}/quiz",
+        f"/api/v1/kids/books/{doc['id']}/quiz",
         headers=headers,
         json={"section_id": sec_1},
     )
@@ -243,12 +246,13 @@ def test_kids_quiz_and_progress_flow(app_and_client) -> None:
     # 3. Submit quiz with correct answers
     cached_quiz = ir_service._kids_quiz_path(doc["id"], sec_1)
     import json
+
     with open(cached_quiz) as f:
         q_data = json.load(f)
     correct_answers = [q["answer_index"] for q in q_data["questions"]]
 
     res = client.post(
-        f"/api/v1/kids/books/{doc["id"]}/quiz/submit",
+        f"/api/v1/kids/books/{doc['id']}/quiz/submit",
         headers=headers,
         json={"section_id": sec_1, "answers": correct_answers},
     )

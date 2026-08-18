@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path
+
 import pytest
 
 from deeptutor.immersive_reading.service import (
@@ -118,8 +119,7 @@ def test_profile_update_and_deletion(test_env) -> None:
 def test_book_assignment_and_chapter_gating(test_env) -> None:
     ir_service, kids_manager = test_env
     doc = ir_service.import_document(
-        "story.txt",
-        b"# Chapter 1\nContent 1\n# Chapter 2\nContent 2\n# Chapter 3\nContent 3"
+        "story.txt", b"# Chapter 1\nContent 1\n# Chapter 2\nContent 2\n# Chapter 3\nContent 3"
     )
     profile = kids_manager.create_profile(name="Leo", birth_date="2018-01-01")
 
@@ -152,7 +152,7 @@ def test_progress_stars_and_quiz_recording(test_env) -> None:
     ir_service, kids_manager = test_env
     doc = ir_service.import_document(
         "fairytale.txt",
-        b"# Chapter 1\nOnce upon a time in a magical forest.\n# Chapter 2\nThe brave little bird found a golden key."
+        b"# Chapter 1\nOnce upon a time in a magical forest.\n# Chapter 2\nThe brave little bird found a golden key.",
     )
     profile = kids_manager.create_profile(name="Amy", birth_date="2019-02-15")
     kids_manager.assign_book(profile.id, doc["id"])
