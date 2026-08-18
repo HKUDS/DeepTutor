@@ -17,7 +17,7 @@ import inspect
 import logging
 from dataclasses import dataclass, field
 from importlib.metadata import entry_points
-from typing import Any, Callable
+from typing import Any
 
 from deeptutor.core.capability_protocol import BaseCapability
 
