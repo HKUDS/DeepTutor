@@ -32,14 +32,12 @@ import {
   getLightRagConfig,
   getImaConfig,
   getLlamaIndexConfig,
-  getPageIndexConfig,
   setEngineActiveModel,
   testGraphRagModelCompatibility,
   updateGraphRagConfig,
   updateImaConfig,
   updateLightRagConfig,
   updateLlamaIndexConfig,
-  updatePageIndexConfig,
   type EnginePreflight,
   type GraphRagModelCompatibility,
   type GraphRagConfig,
@@ -47,7 +45,6 @@ import {
   type LightRagConfig,
   type LlamaIndexConfig,
   type ModelOptionsByKind,
-  type PageIndexConfig,
   type RagProviderSummary,
 } from "@/lib/knowledge-api";
 import { canApplyGraphRagModelCandidate } from "@/lib/graphrag-model-compatibility";
@@ -59,6 +56,7 @@ import {
   type KnowledgeBase,
   type ProviderConnectionStatus,
 } from "@/lib/knowledge-helpers";
+import PageIndexConfigForm from "./PageIndexConfigForm";
 
 interface EngineDetailProps {
   provider: RagProviderSummary;
@@ -519,116 +517,6 @@ function LlamaIndexForm({
           type="button"
           onClick={() => void save()}
           disabled={!dirty || saving}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {t("Save changes")}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* -------------------------- PageIndex config form ------------------------- */
-
-function PageIndexForm({
-  onChanged,
-  onError,
-}: {
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [config, setConfig] = useState<PageIndexConfig | null>(null);
-  const [apiKey, setApiKey] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getPageIndexConfig({ force: true })
-      .then((cfg) => {
-        if (cancelled) return;
-        setConfig(cfg);
-      })
-      .catch((err) =>
-        onError(err instanceof Error ? err.message : String(err)),
-      );
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const persist = async (payload: { api_key?: string }) => {
-    setSaving(true);
-    try {
-      const next = await updatePageIndexConfig(payload);
-      setConfig(next);
-      setApiKey("");
-      onChanged();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const keySet = config?.api_key_set ?? false;
-
-  return (
-    <div className="space-y-4 rounded-2xl border border-[var(--border)] p-4">
-      <p className="text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-        {t(
-          "PageIndex is a hosted, vectorless retrieval engine. Documents in a PageIndex knowledge base are uploaded to PageIndex's servers for processing. One key is shared by all your PageIndex knowledge bases.",
-        )}
-      </p>
-
-      <div>
-        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {t("API key")}
-        </label>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          disabled={saving}
-          placeholder={
-            keySet
-              ? t("•••••••• (configured — leave blank to keep)")
-              : t("Enter your PageIndex API key")
-          }
-          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-        />
-        {keySet && (
-          <button
-            type="button"
-            onClick={() => void persist({ api_key: "" })}
-            disabled={saving}
-            className="mt-1.5 text-[11px] font-medium text-red-600 transition-colors hover:text-red-700 disabled:opacity-40 dark:text-red-400"
-          >
-            {t("Remove stored key")}
-          </button>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <a
-          href="https://dash.pageindex.ai/api-keys"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-        >
-          {t("Get an API key")}
-          <ExternalLink className="h-3 w-3" />
-        </a>
-        <button
-          type="button"
-          onClick={() =>
-            void persist({
-              ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
-            })
-          }
-          disabled={saving}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -1518,7 +1406,7 @@ export default function EngineDetail({
         {/* PageIndex credentials */}
         {provider.id === "pageindex" && (
           <Section label={t("Credentials")} icon={KeyRound}>
-            <PageIndexForm onChanged={onChanged} onError={onError} />
+            <PageIndexConfigForm onChanged={onChanged} onError={onError} />
           </Section>
         )}
 
