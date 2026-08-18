@@ -14,6 +14,7 @@ from deeptutor.co_writer.storage import _atomic_write_json
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.rag.provider_binding import is_pageindex_kb
 from deeptutor.tools.rag_tool import rag_search
 from deeptutor.tools.web_search import web_search
 
@@ -89,23 +90,6 @@ def save_tool_call(call_id: str, tool_type: str, data: dict[str, Any]) -> str:
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return str(filepath)
-
-
-def is_pageindex_kb(kb_name: str | None) -> bool:
-    if not kb_name:
-        return False
-    try:
-        from deeptutor.multi_user.knowledge_access import resolve_kb
-        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
-        from deeptutor.services.rag.provider_binding import resolve_bound_provider
-
-        resource = resolve_kb(kb_name, require_write=False)
-        return resolve_bound_provider(str(resource.base_dir), resource.name) in {
-            PAGEINDEX_PROVIDER,
-            PAGEINDEX_OSS_PROVIDER,
-        }
-    except Exception:
-        return False
 
 
 class EditAgent(BaseAgent):

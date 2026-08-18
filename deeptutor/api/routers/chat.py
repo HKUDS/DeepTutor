@@ -16,6 +16,7 @@ from deeptutor.core.stream import StreamEventType
 from deeptutor.runtime.orchestrator import ChatOrchestrator
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm.config import get_llm_config
+from deeptutor.services.rag.provider_binding import is_pageindex_kb
 from deeptutor.services.settings.interface_settings import get_response_language
 
 config = load_config_with_main("main.yaml", PROJECT_ROOT)
@@ -23,21 +24,6 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _is_pageindex_kb(kb_name: str) -> bool:
-    try:
-        from deeptutor.multi_user.knowledge_access import resolve_kb
-        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
-        from deeptutor.services.rag.provider_binding import resolve_bound_provider
-
-        resource = resolve_kb(kb_name, require_write=False)
-        return resolve_bound_provider(str(resource.base_dir), resource.name) in {
-            PAGEINDEX_PROVIDER,
-            PAGEINDEX_OSS_PROVIDER,
-        }
-    except Exception:
-        return False
 
 
 async def _run_pageindex_chat(
@@ -192,7 +178,7 @@ async def websocket_chat(websocket: WebSocket):
                     content=message,
                 )
 
-                if enable_rag and kb_name and _is_pageindex_kb(kb_name):
+                if enable_rag and kb_name and is_pageindex_kb(kb_name):
                     await websocket.send_json(
                         {
                             "type": "status",
