@@ -263,7 +263,7 @@ def _text_sections(text: str) -> tuple[str, list[tuple[str, str, int, int, int, 
     and build a tree, then apply the same recursive splitting logic as EPUB/PDF.
     """
     lines = text.splitlines(keepends=True)
-    offsets: list[tuple[int, str]] = []
+    offsets: list[tuple[int, str, int]] = []
     cursor = 0
     for line in lines:
         match = _HEADING_RE.match(line.strip())
