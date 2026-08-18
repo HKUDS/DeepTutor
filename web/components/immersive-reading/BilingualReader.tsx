@@ -17,6 +17,7 @@ import {
   Languages,
   ListChecks,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Trash2,
   X,
@@ -48,6 +49,7 @@ import DictionaryPanel from "@/components/common/DictionaryPanel";
 import TranslationTaskBoardPanel from "@/components/translation/TranslationTaskBoard";
 import { translationTaskApi } from "@/lib/translation-tasks-api";
 import { apiFetch } from "@/lib/api";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 interface BilingualReaderProps {
   pairingId: string;
@@ -119,6 +121,9 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
   const dictReqIdRef = useRef(0);
   const dictAbortRef = useRef<AbortController | null>(null);
   const lastSelectionRef = useRef("");
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const layout = useResponsiveLayout();
+  const isMobile = layout === "mobile";
 
   useEffect(() => {
     let cancelled = false;
@@ -657,105 +662,249 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
       .map((a) => a.group_index),
   );
 
+  const closeMoreMenu = () => {
+    setShowMoreMenu(false);
+  };
+
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-2">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium">{pairing.en_title}</span>
-          <span className="truncate text-xs text-[var(--muted-foreground)]">
-            {currentChapter?.en_title || currentChapter?.id} · {chapterIndex + 1}/{chapters.length}
-            {currentChapterCompleted ? ` · ${t("Chapter translated")}` : ""}
-            {annotations.length > 0 && ` · ${annotations.length} ${t("flagged")}`}
-          </span>
-        </div>
-        <button
-          onClick={() => void handleNavigateHistory("back")}
-          disabled={!navigation?.can_back}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
-          title={t("Back")}
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <button
-          onClick={() => void handleNavigateHistory("forward")}
-          disabled={!navigation?.can_forward}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
-          title={t("Forward")}
-        >
-          <ArrowRight size={16} />
-        </button>
-        <button
-          onClick={() => void handleAddBookmark()}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-          title={t("Bookmark this position")}
-        >
-          <BookmarkPlus size={16} />
-        </button>
-        <button
-          onClick={() => setShowBookmarks((value) => !value)}
-          className={`rounded-md p-1.5 hover:bg-[var(--muted)] ${
-            showBookmarks
-              ? "text-[var(--primary)]"
-              : "text-[var(--muted-foreground)]"
-          }`}
-          title={t("Bookmarks")}
-        >
-          <Bookmark size={16} />
-        </button>
-        <button
-          onClick={() => setShowTaskBoard((value) => !value)}
-          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-          title={t("Translate this chapter")}
-        >
-          <ListChecks size={16} />
-        </button>
-        <button
-          onClick={() => setExpandAll((v) => !v)}
-          className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-          title={expandAll ? t("Collapse all") : t("Expand all")}
-        >
-          {expandAll ? <ChevronsDownUp size={15} /> : <ChevronsUpDown size={15} />}
-        </button>
-        {annotations.length > 0 && (
-          <button
-            onClick={() => setShowReview(true)}
-            className="flex items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-500/20"
-            title={t("Review flagged issues")}
+      <div className={`relative border-b border-[var(--border)] ${isMobile ? "px-3 pt-2 pb-1" : "px-4 py-2"}`}>
+        {isMobile ? (
+          <div
+            className="mx-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+            style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top, 0px))" }}
           >
-            <ClipboardList size={14} />
-            {annotations.length}
-          </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onBack}
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                aria-label={t("Back")}
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{pairing.en_title}</span>
+                <span className="block truncate text-xs text-[var(--muted-foreground)]">{currentChapter?.en_title || currentChapter?.id}</span>
+              </div>
+              <button
+                onClick={() => void handleAddBookmark()}
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                title={t("Bookmark this position")}
+                aria-label={t("Bookmark this position")}
+                data-testid="reader-bookmark-button"
+              >
+                <BookmarkPlus size={19} />
+              </button>
+              <button
+                onClick={() => setShowMoreMenu((value) => !value)}
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                data-testid="reader-mobile-more"
+                aria-label={t("More")}
+              >
+                <MoreHorizontal size={19} />
+              </button>
+            </div>
+            {showMoreMenu && (
+              <div className="fixed inset-0 z-20" onClick={closeMoreMenu} data-testid="reader-mobile-more-menu">
+                <div
+                  className="absolute right-4 top-[calc(70px+env(safe-area-inset-top))] z-20 w-[min(300px,calc(100vw-16px))] rounded-xl border border-[var(--border)] bg-[var(--background)] p-2 shadow-xl"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    onClick={() => {
+                      closeMoreMenu();
+                      void handleNavigateHistory("back");
+                    }}
+                    disabled={!navigation?.can_back}
+                    data-testid="reader-more-history-back"
+                    className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--muted)]"
+                  >
+                    <ArrowLeft size={16} />
+                    {t("History back")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      closeMoreMenu();
+                      void handleNavigateHistory("forward");
+                    }}
+                    disabled={!navigation?.can_forward}
+                    data-testid="reader-more-history-forward"
+                    className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--muted)]"
+                  >
+                    <ArrowRight size={16} />
+                    {t("History forward")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      closeMoreMenu();
+                      setShowBookmarks(true);
+                    }}
+                    data-testid="reader-more-bookmarks"
+                    className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm hover:bg-[var(--muted)]"
+                  >
+                    <Bookmark size={16} />
+                    {t("Bookmarks")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      closeMoreMenu();
+                      setShowTaskBoard(true);
+                    }}
+                    data-testid="reader-more-taskboard"
+                    className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm hover:bg-[var(--muted)]"
+                  >
+                    <ListChecks size={16} />
+                    {t("Translate this chapter")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      closeMoreMenu();
+                      setExpandAll((value) => !value);
+                    }}
+                    data-testid="reader-more-expand-chinese"
+                    className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm hover:bg-[var(--muted)]"
+                  >
+                    {expandAll ? <ChevronsDownUp size={16} /> : <ChevronsUpDown size={16} />}
+                    {expandAll ? t("Collapse Chinese") : t("Expand Chinese")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      closeMoreMenu();
+                      setShowReview(true);
+                    }}
+                    data-testid="reader-more-review"
+                    className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 text-sm hover:bg-[var(--muted)]"
+                  >
+                    <ClipboardList size={16} />
+                    {t("Review issues")}
+                    {annotations.length ? ` (${annotations.length})` : ""}
+                  </button>
+                  <button
+                    onClick={() => {
+                      closeMoreMenu();
+                      void handleExport();
+                    }}
+                    disabled={exporting}
+                    data-testid="reader-more-export"
+                    className="mt-1 flex min-h-[44px] w-full items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-medium text-[var(--primary-foreground)] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                    {t("Export EPUB")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onBack}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium">{pairing.en_title}</span>
+                <span className="truncate text-xs text-[var(--muted-foreground)]">
+                  {currentChapter?.en_title || currentChapter?.id} · {chapterIndex + 1}/{chapters.length}
+                  {currentChapterCompleted ? ` · ${t("Chapter translated")}` : ""}
+                  {annotations.length > 0 && ` · ${annotations.length} ${t("flagged")}`}
+                </span>
+              </div>
+              <button
+                onClick={() => void handleNavigateHistory("back")}
+                disabled={!navigation?.can_back}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+                title={t("Back")}
+              >
+                <ArrowLeft size={16} />
+              </button>
+              <button
+                onClick={() => void handleNavigateHistory("forward")}
+                disabled={!navigation?.can_forward}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+                title={t("Forward")}
+              >
+                <ArrowRight size={16} />
+              </button>
+              <button
+                onClick={() => void handleAddBookmark()}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                title={t("Bookmark this position")}
+              >
+                <BookmarkPlus size={16} />
+              </button>
+              <button
+                onClick={() => setShowBookmarks((value) => !value)}
+                className={`rounded-md p-1.5 hover:bg-[var(--muted)] ${
+                  showBookmarks ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
+                }`}
+                title={t("Bookmarks")}
+              >
+                <Bookmark size={16} />
+              </button>
+              <button
+                onClick={() => setShowTaskBoard((value) => !value)}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                title={t("Translate this chapter")}
+              >
+                <ListChecks size={16} />
+              </button>
+              <button
+                onClick={() => setExpandAll((v) => !v)}
+                className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                title={expandAll ? t("Collapse all") : t("Expand all")}
+              >
+                {expandAll ? <ChevronsDownUp size={15} /> : <ChevronsUpDown size={15} />}
+              </button>
+              {annotations.length > 0 && (
+                <button
+                  onClick={() => setShowReview(true)}
+                  className="flex items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-600 hover:bg-amber-500/20"
+                  title={t("Review flagged issues")}
+                >
+                  <ClipboardList size={14} />
+                  {annotations.length}
+                </button>
+              )}
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+              >
+                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {t("Export EPUB")}
+              </button>
+            </div>
+          </>
         )}
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
-        >
-          {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          {t("Export EPUB")}
-        </button>
       </div>
 
       {/* Chapter navigation */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-1.5">
+      <div className={`flex items-center gap-2 border-b border-[var(--border)] ${isMobile ? "px-3 py-2" : "px-4 py-1.5"}`}>
         <button
-          onClick={() => loadChapter(chapterIndex - 1)}
-          disabled={chapterIndex === 0}
-          className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+                onClick={() => loadChapter(chapterIndex - 1)}
+                disabled={chapterIndex === 0}
+                data-testid="reader-chapter-nav-prev"
+                className={
+            isMobile
+              ? "min-h-[44px] min-w-[44px] rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+              : "rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+          }
         >
           <ChevronLeft size={18} />
         </button>
         <select
           value={chapterIndex}
           onChange={(e) => loadChapter(Number(e.target.value))}
-          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+          data-testid="reader-chapter-select"
+          className={
+            isMobile
+              ? "h-11 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm"
+              : "min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+          }
         >
           {chapters.map((ch, i) => (
             <option key={ch.id} value={i}>
@@ -765,22 +914,32 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
           ))}
         </select>
         <button
-          onClick={() => loadChapter(chapterIndex + 1)}
-          disabled={chapterIndex >= chapters.length - 1}
-          className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+                onClick={() => loadChapter(chapterIndex + 1)}
+                disabled={chapterIndex >= chapters.length - 1}
+                data-testid="reader-chapter-nav-next"
+                className={
+            isMobile
+              ? "min-h-[44px] min-w-[44px] rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+              : "rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+          }
         >
           <ChevronRight size={18} />
         </button>
       </div>
 
      {/* Content */}
-     <div ref={contentRef} className="relative flex-1 overflow-y-auto px-4 py-6">
+      <div
+        ref={contentRef}
+        data-testid="reader-content"
+        className="immersive-selectable-text relative flex-1 overflow-y-auto overflow-x-hidden px-4 py-6"
+        style={{ WebkitUserSelect: "text", WebkitTouchCallout: "default", userSelect: "text", touchAction: "pan-y" }}
+      >
         {sectionLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="size-6 animate-spin text-[var(--muted-foreground)]" />
           </div>
         ) : section ? (
-          <div className="mx-auto max-w-2xl space-y-1">
+          <div className="mx-auto max-w-2xl space-y-1 overflow-x-hidden text-[16px] leading-relaxed">
             {section.en_title && (
               <h2 className="mb-4 text-xl font-bold">{section.en_title}</h2>
             )}
@@ -790,6 +949,7 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
                 group={group}
                 index={gi}
                 forceOpen={expandAll}
+                isMobile={isMobile}
                 isFlagged={flaggedGroups.has(gi)}
                 onFlag={() => setFlagTarget(gi)}
               />
@@ -797,8 +957,8 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
             {section.groups.length === 0 && (
               <p className="py-8 text-center text-[var(--muted-foreground)]">
                 {t("No aligned content in this chapter.")}
-              </p>
-            )}
+        </p>
+        )}
           </div>
         ) : (
           <p className="py-8 text-center text-[var(--muted-foreground)]">
@@ -977,12 +1137,14 @@ function BilingualGroup({
   group,
   index,
   forceOpen,
+  isMobile,
   isFlagged,
   onFlag,
 }: {
   group: import("@/lib/immersive-reading-api").BilingualAlignGroup;
   index: number;
   forceOpen: boolean;
+  isMobile: boolean;
   isFlagged: boolean;
   onFlag: () => void;
 }) {
@@ -997,13 +1159,21 @@ function BilingualGroup({
     return (
       <div className="group/para relative space-y-1" data-group-index={index}>
         {group.en.map((para, pi) => (
-          <p key={pi} className="leading-7 text-[var(--foreground)]">
+          <p
+            key={pi}
+            className="break-words leading-7 text-[15px] text-[var(--foreground)] md:text-base"
+          >
             {para}
           </p>
         ))}
         <button
           onClick={onFlag}
-          className="absolute -right-8 top-0 rounded p-1 text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--muted)] group-hover/para:opacity-100"
+          data-testid="reader-flag-btn"
+          className={
+            isMobile
+              ? "absolute right-1 top-0 min-h-[44px] min-w-[44px] rounded-lg p-2 text-[var(--muted-foreground)]"
+              : "absolute -right-8 top-0 rounded p-1 text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--muted)] group-hover/para:opacity-100"
+          }
           title={t("Flag issue")}
         >
           <Flag size={14} className={isFlagged ? "fill-amber-400 text-amber-500" : ""} />
@@ -1015,7 +1185,10 @@ function BilingualGroup({
   return (
     <div className="group/para relative space-y-0.5" data-group-index={index}>
       {group.en.map((para, pi) => (
-        <p key={pi} className="leading-7 text-[var(--foreground)]">
+          <p
+            key={pi}
+            className="break-words leading-7 text-[15px] text-[var(--foreground)] md:text-base"
+          >
           {para}
         </p>
       ))}
@@ -1031,7 +1204,7 @@ function BilingualGroup({
           {group.zh.map((para, pi) => (
             <p
               key={pi}
-              className="text-sm leading-7 text-[var(--foreground)]"
+              className="text-sm leading-7 break-words text-[var(--foreground)]"
               style={{ fontFamily: '"PingFang TC","Heiti TC","Microsoft JhengHei","Noto Serif CJK TC",serif' }}
             >
               {para}
@@ -1042,9 +1215,14 @@ function BilingualGroup({
       {group.low_confidence && group.shape !== "1:1" && (
         <span className="text-xs text-[var(--muted-foreground)]">({group.shape})</span>
       )}
-      <button
+        <button
         onClick={onFlag}
-        className="absolute -right-8 top-0 rounded p-1 text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--muted)] group-hover/para:opacity-100"
+        data-testid="reader-flag-btn"
+        className={
+          isMobile
+            ? "absolute right-1 top-0 min-h-[44px] min-w-[44px] rounded-lg p-2 text-[var(--muted-foreground)]"
+            : "absolute -right-8 top-0 rounded p-1 text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--muted)] group-hover/para:opacity-100"
+        }
         title={t("Flag issue")}
       >
         <Flag size={14} className={isFlagged ? "fill-amber-400 text-amber-500" : ""} />
@@ -1239,7 +1417,7 @@ function ReviewPanel({
               {t("Copy the report above and paste it to Codex to generate alignment fixes.")}
             </p>
           </div>
-        )}
+            )}
       </div>
     </div>
   );

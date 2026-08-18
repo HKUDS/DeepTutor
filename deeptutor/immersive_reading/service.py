@@ -2585,8 +2585,9 @@ class ImmersiveReadingService:
         # 3. Free Dictionary API - fallback for words absent from ECDICT.
         fast_result = await self._fast_dictionary_lookup(word)
         if fast_result is not None:
-            self._cache_put(word, fast_result)
-            return self._mark_context_match(fast_result, context) if context else fast_result
+            enriched_result = await self._enrich_with_chinese(fast_result)
+            self._cache_put(word, enriched_result)
+            return self._mark_context_match(enriched_result, context) if context else enriched_result
 
         # 4. Fallback: local Ollama LLM (slower but has Chinese + context).
         # Pre-flight check: verify Ollama is reachable and the model is available.

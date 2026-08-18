@@ -537,6 +537,16 @@
   color: var(--foreground);
 }
 
+/* iOS WebKit (including Chrome) needs explicit opt-in for native long-press
+ * text selection inside scrollable reading panes. Keep vertical scrolling
+ * available while preserving the selection handles and system callout. */
+.immersive-selectable-text {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: pan-y;
+}
+
 .prose details[open] > summary {
   @apply mb-2;
 }

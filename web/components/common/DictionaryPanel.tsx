@@ -65,6 +65,10 @@ export interface DictionaryPanelProps {
 /*  Shared content fragments                                            */
 /* ------------------------------------------------------------------ */
 
+function formatDictionaryText(text: string): string {
+  return text.replace(/\r\n/g, "\n").replace(/\n/g, "\n");
+}
+
 function CompactDefinition({ result }: { result: DictionaryResult }) {
   const { t } = useTranslation();
   const [revealChinese, setRevealChinese] = useState(false);
@@ -78,6 +82,16 @@ function CompactDefinition({ result }: { result: DictionaryResult }) {
           {result.context_note}
         </p>
       )}
+      {(primary?.chinese || result.chinese) && !revealChinese && (
+        <button
+          type="button"
+          onClick={() => setRevealChinese(true)}
+          className="inline-flex min-h-[32px] items-center gap-1 rounded-md px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] active:bg-[var(--muted)]"
+        >
+          <Languages size={12} />
+          {t("Show Chinese")}
+        </button>
+      )}
       {primary && (
       <div>
         <div className="mb-0.5 flex items-center gap-2">
@@ -90,10 +104,10 @@ function CompactDefinition({ result }: { result: DictionaryResult }) {
             </span>
           )}
         </div>
-        <p className="text-sm leading-relaxed text-[var(--foreground)]">
-          {primary.definition}
+        <p className="whitespace-pre-line text-sm leading-relaxed text-[var(--foreground)]">
+          {formatDictionaryText(primary.definition)}
         </p>
-        {primary.chinese && (
+        {revealChinese && primary.chinese && (
           <button
             type="button"
             onClick={() => setRevealChinese(true)}
@@ -101,12 +115,12 @@ function CompactDefinition({ result }: { result: DictionaryResult }) {
             title={revealChinese ? undefined : t("Tap to reveal")}
             className={chineseRevealClassName(revealChinese)}
           >
-            {primary.chinese}
+            {formatDictionaryText(primary.chinese)}
           </button>
         )}
       </div>
       )}
-      {result.chinese && (
+      {revealChinese && result.chinese && (
         <button
           type="button"
           onClick={() => setRevealChinese(true)}
@@ -114,7 +128,7 @@ function CompactDefinition({ result }: { result: DictionaryResult }) {
           title={revealChinese ? undefined : t("Tap to reveal")}
           className={chineseRevealClassName(revealChinese)}
         >
-          {result.chinese}
+          {formatDictionaryText(result.chinese)}
         </button>
       )}
     </div>
@@ -145,14 +159,14 @@ function FullDefinitions({ result }: { result: DictionaryResult }) {
           </button>
         </div>
       )}
-      {result.chinese && (
+      {revealChinese && result.chinese && (
         <button
           type="button"
           onClick={() => setRevealChinese((v) => !v)}
           aria-expanded={revealChinese}
           className={chineseRevealClassName(revealChinese)}
         >
-          {result.chinese}
+          {formatDictionaryText(result.chinese)}
         </button>
       )}
       {result.definitions.map((def, i) => (
@@ -174,10 +188,10 @@ function FullDefinitions({ result }: { result: DictionaryResult }) {
               </span>
             )}
           </div>
-          <p className="text-sm leading-relaxed text-[var(--foreground)]">
-            {def.definition}
+          <p className="whitespace-pre-line text-sm leading-relaxed text-[var(--foreground)]">
+            {formatDictionaryText(def.definition)}
           </p>
-          {def.chinese && (
+          {revealChinese && def.chinese && (
             <button
               type="button"
               onClick={() => setRevealChinese(true)}
@@ -185,7 +199,7 @@ function FullDefinitions({ result }: { result: DictionaryResult }) {
               title={revealChinese ? undefined : t("Tap to reveal")}
               className={chineseRevealClassName(revealChinese)}
             >
-              {def.chinese}
+              {formatDictionaryText(def.chinese)}
             </button>
           )}
           {def.example && (
@@ -276,6 +290,7 @@ function PanelContent({
         <button
           onClick={onClose}
           aria-label={t("Close")}
+          data-testid="dictionary-close"
           className="shrink-0 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
         >
           <X size={16} />
@@ -286,6 +301,7 @@ function PanelContent({
       <div className="flex shrink-0 gap-1 p-2">
         <button
           onClick={() => handleModeChange("dictionary")}
+          data-testid="dictionary-tab-dictionary"
           className={
             "flex flex-1 min-h-[36px] items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition " +
             (mode === "dictionary"
@@ -298,6 +314,7 @@ function PanelContent({
         </button>
         <button
           onClick={() => handleModeChange("translate")}
+          data-testid="dictionary-tab-translate"
           className={
             "flex flex-1 min-h-[36px] items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition " +
             (mode === "translate"
@@ -311,7 +328,11 @@ function PanelContent({
       </div>
 
       {/* Body */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2">
+      <div
+        data-testid="dictionary-content"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         {loading && (
           <div className="flex items-center gap-2 py-6 text-sm text-[var(--muted-foreground)]">
             <Loader2 className="size-4 animate-spin" />
@@ -339,9 +360,9 @@ function PanelContent({
 
         {!loading && !error && mode === "dictionary" && isDictResult && (
           expanded ? (
-            <FullDefinitions result={result!} />
+            <FullDefinitions key={`${result?.word}-full`} result={result!} />
           ) : (
-            <CompactDefinition result={result!} />
+            <CompactDefinition key={`${result?.word}-compact`} result={result!} />
           )
         )}
 
@@ -364,6 +385,7 @@ function PanelContent({
           {showExpandButton ? (
             <button
               onClick={onExpand}
+              data-testid="dictionary-expand"
               className="inline-flex min-h-[32px] items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[var(--muted)]"
             >
               <ChevronDown size={13} />
@@ -393,12 +415,131 @@ function PanelContent({
 
 function MobileSheet(props: DictionaryPanelProps) {
   const { onClose } = props;
+  const { t } = useTranslation();
   const vh = useDynamicViewportHeight();
   const [expanded, setExpanded] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const dragStartYRef = useRef(0);
+  const dragYRef = useRef(0);
+  const draggingRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragModeRef = useRef<"collapsed" | "expanded">("collapsed");
+  const sheetContentRef = useRef<HTMLDivElement>(null);
 
-  const collapsedH = Math.round((vh || 600) * 0.35);
-  const expandedH = Math.round((vh || 600) * 0.85);
-  const height = expanded ? expandedH : collapsedH;
+  const sheetIdMetrics = `${props.word}|${props.loading}|${props.error ?? ""}|${
+    props.result?.word ?? "pending"
+  }|${props.result?.definitions.length ?? 0}`;
+
+  useLayoutEffect(() => {
+    const content = sheetContentRef.current;
+    if (!content) return;
+
+    const measure = () => {
+      setContentHeight(content.scrollHeight);
+    };
+
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(content);
+    window.addEventListener("resize", measure);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [sheetIdMetrics]);
+
+  // Mobile sheet behavior: compact mode uses natural content height (up to
+  // 70% viewport), while pulled-up mode targets ~92% viewport.
+  const maxViewportHeight = vh > 0 ? vh : window.innerHeight;
+  const collapsedCap = Math.round(maxViewportHeight * 0.7);
+  const expandedCap = Math.round(maxViewportHeight * 0.92);
+  const handleHeight = 22;
+  const compactHeight = Math.max(
+    180,
+    Math.min(Math.max(contentHeight + handleHeight, 180), collapsedCap),
+  );
+  const height = expanded ? expandedCap : compactHeight;
+
+  useEffect(() => {
+    dragModeRef.current = expanded ? "expanded" : "collapsed";
+  }, [expanded]);
+
+  const clamp = (value: number) => {
+    if (dragModeRef.current === "collapsed") {
+      if (value > 160) return 160;
+      if (value < -120) return -120;
+      return value;
+    }
+    if (value > 220) return 220;
+    if (value < -100) return -100;
+    return value;
+  };
+
+  const beginDrag = (clientY: number) => {
+    dragStartYRef.current = clientY;
+    dragYRef.current = 0;
+    draggingRef.current = true;
+    setIsDragging(true);
+    setDragOffset(0);
+  };
+
+  const updateDrag = (clientY: number) => {
+    if (!draggingRef.current) return;
+    const delta = clamp(clientY - dragStartYRef.current);
+    dragYRef.current = delta;
+    setDragOffset(delta);
+  };
+
+  const finishDrag = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    const delta = dragYRef.current;
+    const shouldToggle = Math.abs(delta) <= 8;
+    setDragOffset(0);
+    dragYRef.current = 0;
+    setIsDragging(false);
+
+    if (shouldToggle) {
+      setExpanded((v) => !v);
+      return;
+    }
+
+    if (dragModeRef.current === "collapsed") {
+      if (delta > 86) onClose();
+      else if (delta < -48) setExpanded(true);
+      return;
+    }
+
+    if (delta > 70) setExpanded(false);
+  };
+
+  const onHandlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 && event.pointerType === "mouse") return;
+    beginDrag(event.clientY);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onHandlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!draggingRef.current) return;
+    updateDrag(event.clientY);
+  };
+
+    const onHandlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        /* release can fail if pointer is already released */
+      }
+      finishDrag();
+    };
+
+  const onHandlePointerCancel = () => {
+      draggingRef.current = false;
+      dragYRef.current = 0;
+      setDragOffset(0);
+      setIsDragging(false);
+    };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -409,23 +550,33 @@ function MobileSheet(props: DictionaryPanelProps) {
   }, [onClose]);
 
   return createPortal(
-    <div
-      className="fixed bottom-0 left-0 right-0 z-[200] flex flex-col overflow-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
-      style={{
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[200] flex flex-col overflow-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
+        data-testid="dictionary-sheet"
+        style={{
         height,
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        transition: "height 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+        transform: `translateY(${dragOffset}px)`,
+        transition: isDragging
+          ? "none"
+          : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1), height 220ms cubic-bezier(0.22, 1, 0.36, 1)",
         animation: "dt-sheet-up 250ms cubic-bezier(0.22, 1, 0.36, 1)",
-        // Let touch events above the sheet pass through to the page so the
-        // reading content stays scrollable while the dictionary is open.
-        pointerEvents: "auto",
+        touchAction: "none",
       }}
     >
       {/* Drag handle */}
-      <div className="flex shrink-0 justify-center pt-2 pb-1">
+      <button
+        type="button"
+        onPointerDown={onHandlePointerDown}
+        onPointerMove={onHandlePointerMove}
+        onPointerUp={onHandlePointerUp}
+        onPointerCancel={onHandlePointerCancel}
+        aria-label={expanded ? t("Collapse dictionary") : t("Expand dictionary")}
+        className="flex shrink-0 touch-manipulation justify-center pt-2 pb-1"
+      >
         <div className="h-1 w-9 rounded-full bg-[var(--muted-foreground)]/30" />
-      </div>
-      <div className="min-h-0 flex-1">
+      </button>
+      <div ref={sheetContentRef} className="min-h-0 flex-1">
         <PanelContent
           word={props.word}
           loading={props.loading}

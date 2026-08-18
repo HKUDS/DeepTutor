@@ -23,5 +23,12 @@ export default defineConfig({
       testMatch: "**/*.audit.ts",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "ios-reader-webkit",
+      testMatch: "**/*.audit.ts",
+      use: {
+        ...devices["iPhone 16 Pro"],
+      },
+    },
   ],
 });

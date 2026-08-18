@@ -1795,8 +1795,8 @@ const closeDictPopup = useCallback(() => {
           <article
             ref={articleRef}
             onMouseUp={handleSelection}
-            className="mx-auto w-full max-w-[860px] px-10 pb-24 pt-12"
-            style={{ WebkitTouchCallout: "none", userSelect: "text" } as CSSProperties}
+            className="immersive-selectable-text mx-auto w-full max-w-[860px] px-10 pb-24 pt-12"
+            style={{ WebkitUserSelect: "text", WebkitTouchCallout: "default", userSelect: "text", touchAction: "pan-y" } as CSSProperties}
           >
             <div className="mb-10 border-b border-[var(--border)] pb-8 text-center">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--primary)]">{t("Section {{current}} of {{total}}", { current: currentIndex + 1, total: document.sections.length })}</p>
