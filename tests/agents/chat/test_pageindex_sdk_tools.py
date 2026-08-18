@@ -115,6 +115,7 @@ def test_system_note_lists_documents(monkeypatch) -> None:
     pipe = _prepare(monkeypatch, {"kb1": {"a.pdf": "pi-1", "b.docx": "pi-2"}})
     note = pipe._kb_system_note(UnifiedContext(knowledge_bases=["kb1"]))
     assert "pageindex_cloud_*" in note
+    assert "Do not use rag to read these PageIndex knowledge bases" in note
     assert "a.pdf (doc_id: pi-1)" in note
     assert "b.docx (doc_id: pi-2)" in note
     # Pure-pageindex conversation: rag isn't mounted, so no rag wording at all.
@@ -182,6 +183,7 @@ def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) 
     note = pipe._pageindex_system_note()
     assert "manual.pdf (doc_id: pi-local)" in note
     assert "Read structure, then pages." in note
+    assert "Do not use rag to read these PageIndex knowledge bases" in note
 
 
 def test_pageindex_tools_keep_cloud_and_oss_manifest_groups() -> None:

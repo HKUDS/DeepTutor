@@ -1581,14 +1581,16 @@ class AgenticChatPipeline:
             if self.language == "zh":
                 blocks.append(
                     "\n以下知识库使用 PageIndex Cloud。使用已加载的 pageindex_cloud_* "
-                    "SDK 工具先查看文档结构、再读取相关页面；不要调用 rag。文档清单：\n"
+                    "SDK 工具先查看文档结构、再读取相关页面；不要使用 rag 读取这些 "
+                    "PageIndex 知识库。文档清单：\n"
                     f"{docs_block}\n\nPageIndex SDK 阅读说明：\n{instructions}"
                 )
             else:
                 blocks.append(
                     "\nThe following knowledge bases use PageIndex Cloud. Read them with "
                     "the preloaded pageindex_cloud_* SDK tools; inspect structure, then "
-                    "read relevant pages. Do not call rag. Documents:\n"
+                    "read relevant pages. Do not use rag to read these PageIndex knowledge "
+                    "bases. Documents:\n"
                     f"{docs_block}\n\nPageIndex SDK reading instructions:\n{instructions}"
                 )
         if oss_maps:
@@ -1597,14 +1599,16 @@ class AgenticChatPipeline:
             if self.language == "zh":
                 blocks.append(
                     "\n以下知识库使用 PageIndex OSS。使用已加载的 pageindex_oss_* 工具，"
-                    "在当前推理循环中先查看文档结构、再读取相关页面；不要调用 rag。文档清单：\n"
+                    "在当前推理循环中先查看文档结构、再读取相关页面；不要使用 rag 读取这些 "
+                    "PageIndex 知识库。文档清单：\n"
                     f"{docs_block}\n\nPageIndex SDK 阅读说明：\n{instructions}"
                 )
             else:
                 blocks.append(
                     "\nThe following knowledge bases use PageIndex OSS. Use the preloaded "
                     "pageindex_oss_* tools inside this reasoning loop; inspect structure, "
-                    "then read relevant pages. Do not call rag. Documents:\n"
+                    "then read relevant pages. Do not use rag to read these PageIndex knowledge "
+                    "bases. Documents:\n"
                     f"{docs_block}\n\nPageIndex SDK reading instructions:\n{instructions}"
                 )
         return "".join(blocks)
