@@ -135,4 +135,30 @@ Source extras (.[ extra ], defined in pyproject.toml):
 .[math-animator]  — Manim addon (powers `visualize` Manim renders + `deeptutor run math_animator`)
 .[dev]            — Test / lint tooling
 .[all]            — Everything above
+
+## GitHub Delivery Discipline
+
+### 工作前置
+
+- 非平凡工作编码前必须先确认重复 Issue/PR，并明确目标分支、依赖、验收边界和范围。
+- 在同一条交付线上，Issue、目标分支和 PR 边界必须在开始编码前同步更新。
+- 默认不允许在单个 Issue 上跨多个 PR 混合提交；若需拆分必须先定义 stack，并在 PR 描述里明确依赖关系与顺序。
+- 低风险文案/纯文本改动可豁免前置 Issue/PR，但豁免必须在编码前确认并记录。
+
+### Delivery flow（PR 与 Worktree）
+
+- 首个可构建提交后应尽早创建 Draft PR（不等待“做完后再整理/拆分”）。
+- 每项功能使用外部 worktree 承载，不允许在 dirty 的 `main` 叠加功能提交；主工作区仅用于检视与验证。
+- 禁止把完成后的综合分支通过临时 cherry-pick 反向制造交付；如有范围变化，必须先回填 Issue 与 PR 计划。
+
+### 交付追踪
+
+- PR 描述必须持续记录：
+  - 验收标准与更新状态（已完成/进行中/BLOCKED）
+  - 测试证据与阻塞项
+  - 截图、回归结果和关键回滚依据
+- PR 转 Ready 前必须同步：
+  - Issue 验收闭环
+  - 全量测试通过（或明确 BLOCKED 的证据与补救动作）
+  - 移动端与桌面端关键回归截图（或录像）
 ```
