@@ -42,10 +42,7 @@ async def rag_search(
         kb_base_dir = str(resource.base_dir)
         kb_name = resource.name
 
-    from deeptutor.services.rag.provider_binding import resolve_bound_provider
-
-    resolved_provider = provider or resolve_bound_provider(kb_base_dir, kb_name)
-    service = RAGService(kb_base_dir=kb_base_dir, provider=resolved_provider)
+    service = RAGService(kb_base_dir=kb_base_dir, provider=provider)
     return await service.search(
         query=query,
         kb_name=kb_name,

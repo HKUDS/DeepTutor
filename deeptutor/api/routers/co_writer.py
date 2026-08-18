@@ -26,7 +26,7 @@ from deeptutor.co_writer.storage import (
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm import clean_thinking_tags
-from deeptutor.services.rag.provider_binding import is_pageindex_kb
+from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
 from deeptutor.services.settings.interface_settings import get_response_language
 
 router = APIRouter()

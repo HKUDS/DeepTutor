@@ -14,7 +14,7 @@ from deeptutor.co_writer.storage import _atomic_write_json
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.path_service import get_path_service
-from deeptutor.services.rag.provider_binding import is_pageindex_kb
+from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
 from deeptutor.tools.rag_tool import rag_search
 from deeptutor.tools.web_search import web_search
 

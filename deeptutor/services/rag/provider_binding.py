@@ -13,12 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from deeptutor.services.rag.factory import (
-    DEFAULT_PROVIDER,
-    PAGEINDEX_OSS_PROVIDER,
-    PAGEINDEX_PROVIDER,
-    normalize_provider_name,
-)
+from deeptutor.services.rag.factory import DEFAULT_PROVIDER, normalize_provider_name
 
 
 def load_kb_config_entry(kb_base_dir: str | Path, kb_name: str) -> dict[str, Any]:
@@ -68,23 +63,8 @@ def resolve_bound_provider(kb_base_dir: str | Path, kb_name: str | None) -> str:
     return DEFAULT_PROVIDER
 
 
-def is_pageindex_kb(kb_name: str | None) -> bool:
-    """Return whether the accessible KB is backed by either PageIndex provider."""
-    if not kb_name:
-        return False
-    try:
-        from deeptutor.multi_user.knowledge_access import resolve_kb
-
-        resource = resolve_kb(kb_name, require_write=False)
-        provider = resolve_bound_provider(resource.base_dir, resource.name)
-        return provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
-    except Exception:
-        return False
-
-
 __all__ = [
     "load_kb_config_entry",
     "load_metadata_provider",
-    "is_pageindex_kb",
     "resolve_bound_provider",
 ]

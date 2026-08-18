@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
+
+import pytest
 
 from deeptutor.services.rag.pipelines.pageindex import tools as tools_mod
-from deeptutor.services.rag.pipelines.pageindex.sources import pageindex_sources_from_text
+from deeptutor.services.rag.pipelines.pageindex import validate_pageindex_oss_selection
 from deeptutor.services.rag.pipelines.pageindex.storage import CLOUD_PROVIDER, OSS_PROVIDER
-from deeptutor.services.rag.pipelines.pageindex.tools import PageIndexSDKTool
+from deeptutor.services.rag.pipelines.pageindex.tools import (
+    PageIndexSDKTool,
+    pageindex_sources_from_text,
+)
 
 
 class _SDKTool:
@@ -129,3 +135,28 @@ def test_structure_or_failure_does_not_invent_page_sources() -> None:
         )
         == []
     )
+
+
+def _patch_selection(monkeypatch, providers: dict[str, str]) -> None:
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb",
+        lambda name, **_kwargs: SimpleNamespace(base_dir="/kb", name=name),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.provider_binding.resolve_bound_provider",
+        lambda _base, name: providers[name],
+    )
+
+
+def test_rejects_two_oss_kbs(monkeypatch) -> None:
+    _patch_selection(monkeypatch, {"one": "pageindex-oss", "two": "pageindex-oss"})
+    with pytest.raises(ValueError, match="at most one"):
+        validate_pageindex_oss_selection(["one", "two"])
+
+
+def test_cloud_and_oss_can_coexist(monkeypatch) -> None:
+    _patch_selection(
+        monkeypatch,
+        {"cloud": "pageindex", "oss": "pageindex-oss", "vectors": "llamaindex"},
+    )
+    validate_pageindex_oss_selection(["cloud", "oss", "vectors"])

@@ -44,7 +44,7 @@ class ChatOrchestrator:
             context.session_id = str(uuid.uuid4())
 
         try:
-            from deeptutor.services.rag.pipelines.pageindex.selection import (
+            from deeptutor.services.rag.pipelines.pageindex import (
                 validate_pageindex_oss_selection,
             )
 

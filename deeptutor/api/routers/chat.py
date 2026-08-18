@@ -16,7 +16,7 @@ from deeptutor.core.stream import StreamEventType
 from deeptutor.runtime.orchestrator import ChatOrchestrator
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm.config import get_llm_config
-from deeptutor.services.rag.provider_binding import is_pageindex_kb
+from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
 from deeptutor.services.settings.interface_settings import get_response_language
 
 config = load_config_with_main("main.yaml", PROJECT_ROOT)

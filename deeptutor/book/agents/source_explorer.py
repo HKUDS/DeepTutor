@@ -195,7 +195,7 @@ class SourceExplorer(BaseAgent):
 
         intent = (inputs.user_intent or proposal.description or "").strip()
         kb_list = list(inputs.knowledge_bases or [])
-        from deeptutor.services.rag.pipelines.pageindex.selection import (
+        from deeptutor.services.rag.pipelines.pageindex import (
             validate_pageindex_oss_selection,
         )
 

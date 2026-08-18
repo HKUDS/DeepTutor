@@ -44,7 +44,6 @@ class TestPipelineFactory:
         assert {p["id"] for p in pipelines} == {
             DEFAULT_PROVIDER,
             "pageindex",
-            "pageindex-oss",
             "graphrag",
             "lightrag",
             "lightrag-server",
@@ -81,7 +80,6 @@ class TestRAGServiceClassHelpers:
         assert {p["id"] for p in providers} == {
             DEFAULT_PROVIDER,
             "pageindex",
-            "pageindex-oss",
             "graphrag",
             "lightrag",
             "lightrag-server",
@@ -123,22 +121,3 @@ class TestToolLayerExports:
 
         with pytest.raises(ValueError, match="non-empty"):
             asyncio.run(rag_search(query="", kb_name="any"))
-
-    def test_rag_service_guard_prevents_pageindex_pipeline(self, tmp_path, monkeypatch) -> None:
-        import asyncio
-
-        from deeptutor.tools.rag_tool import rag_search
-
-        def fail(*_args, **_kwargs):
-            pytest.fail("PageIndex reached a traditional RAG pipeline")
-
-        monkeypatch.setattr(RAGService, "_get_pipeline", fail)
-        result = asyncio.run(
-            rag_search(
-                query="ground this",
-                kb_name="page-kb",
-                provider="pageindex-oss",
-                kb_base_dir=str(tmp_path),
-            )
-        )
-        assert result["error_type"] == "reasoning_as_retrieval_required"
