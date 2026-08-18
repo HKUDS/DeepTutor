@@ -318,6 +318,7 @@ from deeptutor.api.routers import (
     chat,
     co_writer,
     dashboard,
+    immersive_reading,
     imports,
     knowledge,
     mastery_path,
@@ -391,6 +392,12 @@ app.include_router(
     notebook.router, prefix="/api/v1/notebook", tags=["notebook"], dependencies=_auth
 )
 app.include_router(book.router, prefix="/api/v1/book", tags=["book"], dependencies=_auth)
+app.include_router(
+    immersive_reading.router,
+    prefix="/api/v1/immersive-reading",
+    tags=["immersive-reading"],
+    dependencies=_auth,
+)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
     capabilities_settings.router,
