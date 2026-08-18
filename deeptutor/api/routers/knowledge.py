@@ -595,9 +595,9 @@ def _task_log(task_id: str, message: str, level: str = "info") -> None:
 
     log_method = getattr(logger, level, None)
     if callable(log_method):
-        log_method(f"[{task_id}] {message}")
+        log_method(f"[{task_id}] {message}", extra={PROCESS_LOG_PRIVATE_ATTR: True})
     else:
-        logger.info(f"[{task_id}] {message}")
+        logger.info(f"[{task_id}] {message}", extra={PROCESS_LOG_PRIVATE_ATTR: True})
 
 
 def _server_task_trace(task_id: str, trace: str) -> None:

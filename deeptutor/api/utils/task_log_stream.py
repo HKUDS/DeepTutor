@@ -346,6 +346,10 @@ def capture_task_logs(task_id: str):
     manager.ensure_task(task_id)
 
     def emit(event: ProcessLogEvent) -> None:
+        if event.logger in {"root", "asyncio"}:
+            return
+        if event.logger == "deeptutor.knowledge.progress_tracker":
+            return
         manager.emit_process_log(task_id, event)
 
     with bind_log_context(task_id=task_id, capability="knowledge", sink="ui"):
