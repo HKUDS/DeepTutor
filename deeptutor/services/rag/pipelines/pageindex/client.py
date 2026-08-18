@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
 import importlib.util
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,13 @@ def _sdk_types():
     from pageindex import PageIndexCloudClient, PageIndexLocalClient
 
     return PageIndexCloudClient, PageIndexLocalClient
+
+
+@lru_cache(maxsize=1)
+def _cloud_sdk_client(api_key: str):
+    """Reuse the SDK's MCP bridge until the global Cloud key changes."""
+    cloud_type, _ = _sdk_types()
+    return cloud_type(api_key)
 
 
 def _prefixed_model(prefix: str, model: str) -> str:
@@ -118,8 +126,7 @@ class PageIndexClient:
 
     @classmethod
     def cloud(cls, config: PageIndexConfig) -> "PageIndexClient":
-        cloud_type, _ = _sdk_types()
-        return cls(cloud_type(config.api_key))
+        return cls(_cloud_sdk_client(config.api_key))
 
     @classmethod
     def local(cls, storage_path: str | Path) -> "PageIndexClient":

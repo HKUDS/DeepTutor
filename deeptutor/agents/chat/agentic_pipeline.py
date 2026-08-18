@@ -483,17 +483,19 @@ class AgenticChatPipeline:
         """
         self._pageindex_docs = self._pageindex_doc_maps(context)
         self._pageindex_oss_docs: dict[str, dict[str, str]] = {}
+        self._pageindex_cloud_instructions = ""
         self._pageindex_oss_instructions = ""
-        oss_tools: list[Any] = []
+        pageindex_tools: list[Any] = []
         try:
-            oss_bundle = await self._pageindex_oss_tool_bundle(context)
-            if oss_bundle is not None:
-                oss_kb, bundle = oss_bundle
-                self._pageindex_oss_docs[oss_kb] = bundle.documents
-                self._pageindex_oss_instructions = bundle.instructions
-                oss_tools = list(bundle.tools)
+            for kb, bundle in await self._pageindex_sdk_tool_bundles(context):
+                if bundle.provider == "pageindex-oss":
+                    self._pageindex_oss_docs[kb] = bundle.documents
+                    self._pageindex_oss_instructions = bundle.instructions
+                else:
+                    self._pageindex_cloud_instructions = bundle.instructions
+                pageindex_tools.extend(bundle.tools)
         except Exception:
-            logger.warning("PageIndex OSS tool preparation failed", exc_info=True)
+            logger.warning("PageIndex SDK tool preparation failed", exc_info=True)
         try:
             view = await build_tool_view(
                 base_registry=self.registry,
@@ -506,8 +508,8 @@ class AgenticChatPipeline:
                         "the tools listed in the prompt can be called."
                     ),
                 ),
-                overlay_tools=oss_tools,
-                preloaded_names=[tool.name for tool in oss_tools],
+                overlay_tools=pageindex_tools,
+                preloaded_names=[tool.name for tool in pageindex_tools],
             )
         except Exception:
             # ``build_tool_view`` is contractually non-raising; this is defence
@@ -523,8 +525,6 @@ class AgenticChatPipeline:
 
     def _tool_scope(self, context: UnifiedContext) -> ToolScope:
         """Per-turn policy inputs for the provider layer."""
-        from deeptutor.services.mcp.pageindex_server import PAGEINDEX_SERVER_NAME
-
         raw_filter = context.metadata.get("mcp_tools_filter")
         return ToolScope(
             owner_id=self._current_owner_id(),
@@ -534,12 +534,6 @@ class AgenticChatPipeline:
                 frozenset(str(name) for name in raw_filter)
                 if isinstance(raw_filter, list)
                 else None
-            ),
-            # Attaching a PageIndex knowledge base authorises that server:
-            # access to the KB *is* the permission, and its tools are preloaded
-            # so retrieval works without a load_tools round-trip.
-            implicit_provider_ids=(
-                frozenset({PAGEINDEX_SERVER_NAME}) if self._pageindex_docs else frozenset()
             ),
             exclusive_capability=self._exclusive_capability_active(context),
         )
@@ -569,18 +563,36 @@ class AgenticChatPipeline:
                 logger.debug("pageindex doc-map resolution failed for %r", kb, exc_info=True)
         return out
 
-    async def _pageindex_oss_tool_bundle(self, context: UnifiedContext):
+    async def _pageindex_sdk_tool_bundles(self, context: UnifiedContext):
         from deeptutor.multi_user.knowledge_access import resolve_kb
-        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER
-        from deeptutor.services.rag.pipelines.pageindex.tools import build_oss_tool_bundle
+        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
+        from deeptutor.services.rag.pipelines.pageindex.tools import build_sdk_tool_bundle
         from deeptutor.services.rag.provider_binding import resolve_bound_provider
 
+        bundles = []
+        seen_providers: set[str] = set()
         for kb in self._selected_kbs(context):
             resource = resolve_kb(kb, require_write=False)
             base_dir = str(resource.base_dir)
-            if resolve_bound_provider(base_dir, resource.name) == PAGEINDEX_OSS_PROVIDER:
-                return kb, await build_oss_tool_bundle(resource.name, base_dir)
-        return None
+            provider = resolve_bound_provider(base_dir, resource.name)
+            if provider not in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+                continue
+            # Cloud tools are account-wide and OSS selection already permits at
+            # most one local library, so one SDK bundle per provider is enough.
+            if provider in seen_providers:
+                continue
+            bundles.append(
+                (
+                    kb,
+                    await build_sdk_tool_bundle(
+                        resource.name,
+                        base_dir,
+                        provider=provider,
+                    ),
+                )
+            )
+            seen_providers.add(provider)
+        return bundles
 
     def _deferred_tools_manifest(self) -> str:
         view = getattr(self, "_tool_view", None)
@@ -1508,7 +1520,7 @@ class AgenticChatPipeline:
         answerable without a tool round-trip.
 
         PageIndex KBs are excluded: ``_pageindex_system_note`` already lists
-        their documents, with the doc_ids its MCP tools need. Fails soft — a KB
+        their documents for the SDK tools. Fails soft — a KB
         whose files cannot be read costs the manifest, not the turn.
         """
         self._kb_manifests = []
@@ -1565,20 +1577,19 @@ class AgenticChatPipeline:
         blocks: list[str] = []
         if cloud_maps:
             docs_block = render_docs(cloud_maps)
+            instructions = str(getattr(self, "_pageindex_cloud_instructions", "") or "").strip()
             if self.language == "zh":
                 blocks.append(
-                    "\n以下知识库使用 PageIndex Cloud，其文档通过已加载的 "
-                    "PageIndex MCP 工具阅读：先用 mcp_pageindex_get_document_structure "
-                    "查看结构，再用 mcp_pageindex_get_page_content 读取相关页面。文档清单：\n"
-                    f"{docs_block}"
+                    "\n以下知识库使用 PageIndex Cloud。使用已加载的 pageindex_cloud_* "
+                    "SDK 工具先查看文档结构、再读取相关页面；不要调用 rag。文档清单：\n"
+                    f"{docs_block}\n\nPageIndex SDK 阅读说明：\n{instructions}"
                 )
             else:
                 blocks.append(
                     "\nThe following knowledge bases use PageIndex Cloud. Read them with "
-                    "the preloaded PageIndex MCP tools: first "
-                    "mcp_pageindex_get_document_structure, then "
-                    "mcp_pageindex_get_page_content. Documents:\n"
-                    f"{docs_block}"
+                    "the preloaded pageindex_cloud_* SDK tools; inspect structure, then "
+                    "read relevant pages. Do not call rag. Documents:\n"
+                    f"{docs_block}\n\nPageIndex SDK reading instructions:\n{instructions}"
                 )
         if oss_maps:
             docs_block = render_docs(oss_maps)

@@ -1,8 +1,8 @@
-"""Chat-side PageIndex MCP wiring.
+"""Chat-side PageIndex SDK tool wiring.
 
-Attaching a PageIndex KB grants the turn the built-in pageindex MCP server's
-tools (narrowed implicit grant), preloads them (no load_tools round-trip),
-and injects the KB's document list into the system prompt.
+Attaching a PageIndex KB overlays the SDK's tools for that turn, preloads them
+(no load_tools round-trip), and injects the KB's document list into the system
+prompt without publishing PageIndex into the global MCP registry.
 """
 
 from __future__ import annotations
@@ -49,12 +49,20 @@ class FakeManager:
     async def ensure_started(self) -> None:
         return None
 
+    async def ensure_scope(self, _owner: str) -> list[BaseTool]:
+        return []
+
 
 def _prepare(monkeypatch, docs: dict[str, dict[str, str]]) -> AgenticChatPipeline:
     pipe = AgenticChatPipeline(language="en")
-    pageindex_tool = FakeMCPTool("pageindex", "get_page_content")
     other_tool = FakeMCPTool("other", "do_thing")
-    pipe.registry = FakeRegistry([pageindex_tool, other_tool])
+    pipe.registry = FakeRegistry([other_tool])
+
+    pageindex_tool = FakeMCPTool("unused", "get_page_content")
+    pageindex_tool._name = "pageindex_cloud_get_page_content"
+    pageindex_tool.server_name = ""
+    pageindex_tool.provider_kind = "pageindex"
+    pageindex_tool.provider_id = "pageindex"
 
     monkeypatch.setattr("deeptutor.services.mcp.get_mcp_manager", lambda: FakeManager())
     monkeypatch.setattr("deeptutor.services.mcp.load_loaded_tools", lambda _sid: set())
@@ -62,21 +70,38 @@ def _prepare(monkeypatch, docs: dict[str, dict[str, str]]) -> AgenticChatPipelin
     monkeypatch.setattr("deeptutor.multi_user.tool_access.allowed_mcp_tools", lambda: set())
     monkeypatch.setattr(pipe, "_pageindex_doc_maps", lambda _ctx: docs)
 
+    async def bundles(_ctx):
+        if not docs:
+            return []
+        kb, documents = next(iter(docs.items()))
+        return [
+            (
+                kb,
+                SimpleNamespace(
+                    provider="pageindex",
+                    tools=(pageindex_tool,),
+                    documents=documents,
+                    instructions="Use structure, then pages.",
+                ),
+            )
+        ]
+
+    monkeypatch.setattr(pipe, "_pageindex_sdk_tool_bundles", bundles)
+
     ctx = UnifiedContext(knowledge_bases=list(docs))
     asyncio.run(pipe._prepare_deferred_tools(ctx))
     return pipe
 
 
-def test_pageindex_kb_grants_and_preloads_server_tools(monkeypatch) -> None:
+def test_pageindex_kb_preloads_turn_scoped_sdk_tools(monkeypatch) -> None:
     pipe = _prepare(monkeypatch, {"kb1": {"a.pdf": "pi-1"}})
 
     pool_names = {t.get_definition().name for t in pipe._deferred_pool}
-    # Implicit grant covers exactly the pageindex server, not other MCP tools.
-    assert pool_names == {"mcp_pageindex_get_page_content"}
+    assert pool_names == {"pageindex_cloud_get_page_content"}
     # Preloaded: schema present without a load_tools round-trip.
     assert pipe._deferred_loader is not None
     preloaded = {s["function"]["name"] for s in pipe._deferred_loader.initial_schemas()}
-    assert "mcp_pageindex_get_page_content" in preloaded
+    assert "pageindex_cloud_get_page_content" in preloaded
 
 
 def test_no_pageindex_kb_keeps_fail_closed(monkeypatch) -> None:
@@ -88,7 +113,7 @@ def test_no_pageindex_kb_keeps_fail_closed(monkeypatch) -> None:
 def test_system_note_lists_documents(monkeypatch) -> None:
     pipe = _prepare(monkeypatch, {"kb1": {"a.pdf": "pi-1", "b.docx": "pi-2"}})
     note = pipe._kb_system_note(UnifiedContext(knowledge_bases=["kb1"]))
-    assert "mcp_pageindex_get_document_structure" in note
+    assert "pageindex_cloud_*" in note
     assert "a.pdf (doc_id: pi-1)" in note
     assert "b.docx (doc_id: pi-2)" in note
     # Pure-pageindex conversation: rag isn't mounted, so no rag wording at all.
@@ -102,7 +127,7 @@ def test_rag_kbs_excludes_pageindex(monkeypatch) -> None:
     assert pipe._rag_kbs(ctx) == ["kb2"]
     note = pipe._kb_system_note(ctx)
     assert "Attached knowledge bases: kb2." in note
-    assert "kb1" in note  # listed in the PageIndex MCP block instead
+    assert "kb1" in note  # listed in the PageIndex SDK block instead
 
 
 def test_pageindex_kb_is_never_preseeded(monkeypatch) -> None:
@@ -131,14 +156,20 @@ def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) 
     monkeypatch.setattr("deeptutor.multi_user.tool_access.allowed_mcp_tools", lambda: set())
     monkeypatch.setattr(pipe, "_pageindex_doc_maps", lambda _ctx: {})
 
-    async def bundle(_ctx):
-        return "oss-kb", SimpleNamespace(
-            tools=(oss_tool,),
-            documents={"manual.pdf": "pi-local"},
-            instructions="Read structure, then pages.",
-        )
+    async def bundles(_ctx):
+        return [
+            (
+                "oss-kb",
+                SimpleNamespace(
+                    provider="pageindex-oss",
+                    tools=(oss_tool,),
+                    documents={"manual.pdf": "pi-local"},
+                    instructions="Read structure, then pages.",
+                ),
+            )
+        ]
 
-    monkeypatch.setattr(pipe, "_pageindex_oss_tool_bundle", bundle)
+    monkeypatch.setattr(pipe, "_pageindex_sdk_tool_bundles", bundles)
     ctx = UnifiedContext(knowledge_bases=["oss-kb", "vectors"])
     asyncio.run(pipe._prepare_deferred_tools(ctx))
 
