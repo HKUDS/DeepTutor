@@ -52,20 +52,20 @@ def test_missing_mcp_package_reports_real_cause_without_waiting_out_timeout(
     """The connect fails fast, names the module, and orphans no task exception."""
     monkeypatch.setattr(manager_mod, "_CONNECT_TIMEOUT_S", _PATCHED_TIMEOUT_S)
 
-    # The built-in pageindex entry's shape: a remote streamableHttp server. The
-    # transport is never opened, so no network is involved.
+    # A generic remote streamableHttp server. The transport is never opened, so
+    # no network is involved.
     cfg = MCPServerConfig(
         type="streamableHttp",
-        url="https://api.pageindex.ai/mcp",
+        url="https://mcp.example.com/mcp",
         headers={"Authorization": "Bearer test-key"},
     )
 
     async def scenario() -> tuple[float, manager_mod._ServerConnection]:
         mgr = MCPConnectionManager()
         started = time.monotonic()
-        await mgr._connect("pageindex", cfg)
+        await mgr._connect("remote", cfg)
         elapsed = time.monotonic() - started
-        conn = mgr._connections[(SHARED_OWNER, "pageindex")]
+        conn = mgr._connections[(SHARED_OWNER, "remote")]
         assert conn.task is not None
         await conn.task
         return elapsed, conn

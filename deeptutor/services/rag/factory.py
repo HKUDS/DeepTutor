@@ -249,7 +249,7 @@ def list_pipelines() -> List[Dict[str, Any]]:
         {
             "id": PAGEINDEX_PROVIDER,
             "name": "PageIndex Cloud",
-            "description": "Hosted, vectorless engine: the chat agent reads documents through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.",
+            "description": "Hosted, vectorless engine: the chat agent reads documents through PageIndex SDK tools. Requires an API key; PDF, Office, text and Markdown formats.",
             "configured": pageindex_ready,
             "requires_api_key": True,
         },

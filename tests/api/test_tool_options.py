@@ -150,7 +150,7 @@ async def test_mcp_rows_keep_legacy_server_field(stub_registry) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pageindex_mcp_is_not_a_configurable_tool(stub_registry) -> None:
+async def test_mcp_provider_named_pageindex_is_configurable_like_any_other(stub_registry) -> None:
     stub_registry(
         [
             _McpTool("mcp_pageindex_get_tree", "pageindex"),
@@ -160,7 +160,10 @@ async def test_pageindex_mcp_is_not_a_configurable_tool(stub_registry) -> None:
 
     rows = (await tool_options_mod.build_tool_options())["mcp_tools"]
 
-    assert [row["name"] for row in rows] == ["mcp_notion_search"]
+    assert [row["name"] for row in rows] == [
+        "mcp_pageindex_get_tree",
+        "mcp_notion_search",
+    ]
 
 
 @pytest.mark.asyncio

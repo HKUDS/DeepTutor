@@ -1,8 +1,8 @@
 """An allowlist of tool names with an explicit *unrestricted* state.
 
 The turn's provider authorisation has to combine several optional whitelists
-(a partner's configured filter, the caller's grant, an implicit
-resource-derived grant). Modelling "no restriction" as ``None`` inside bare
+(a partner's configured filter, the caller's grant, and owned-provider names).
+Modelling "no restriction" as ``None`` inside bare
 set arithmetic makes both directions of mistake easy and silent:
 
 * ``None | {"x"}`` raises, so a widening step crashes on an unrestricted

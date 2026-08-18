@@ -78,9 +78,9 @@ def test_every_source_of_context_lands_in_its_own_segment() -> None:
                 {"role": "system", "content": "SYSTEM PROMPT"},
                 {"role": "user", "content": "question"},
             ],
-            tool_schemas=[_schema("rag"), _schema("mcp_pageindex_get_page_content")],
+            tool_schemas=[_schema("rag"), _schema("pageindex_cloud_get_page_content")],
         ),
-        loaded_deferred_names={"mcp_pageindex_get_page_content"},
+        loaded_deferred_names={"pageindex_cloud_get_page_content"},
     )
 
     tokens = _tokens(budget)

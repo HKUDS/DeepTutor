@@ -217,9 +217,7 @@ CITABLE_TOOLS: frozenset[str] = frozenset(
 
 
 def _is_citable_tool(name: str) -> bool:
-    return name in CITABLE_TOOLS or name.startswith(
-        ("pageindex_cloud_", "pageindex_oss_", "mcp_pageindex_")
-    )
+    return name in CITABLE_TOOLS or name.startswith(("pageindex_cloud_", "pageindex_oss_"))
 
 
 # Token budget for the note summarization sidecar.

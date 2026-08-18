@@ -35,11 +35,9 @@ def test_typer_dependency_does_not_request_removed_all_extra(metadata_path: Path
 def test_mcp_client_is_a_core_dependency(metadata_path: Path) -> None:
     """`mcp` must install by default, not only via an extra (issue #792).
 
-    Both distributions ship ``deeptutor.services.mcp``, and the connection
-    manager overlays the built-in PageIndex MCP server onto the config whenever
-    a PageIndex API key is set. That happens on a plain install, so an
-    extra-gated ``mcp`` leaves the connection task dying with
-    ``ModuleNotFoundError`` on every turn.
+    Both distributions ship the configurable MCP tool surface. An extra-gated
+    client would leave ordinary configured servers failing with
+    ``ModuleNotFoundError`` on a plain install.
     """
     with metadata_path.open("rb") as file:
         dependencies = tomllib.load(file)["project"]["dependencies"]

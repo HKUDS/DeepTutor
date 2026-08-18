@@ -303,7 +303,7 @@ class CitationManager:
             tool_type_lower = tool_type.lower()
 
             if tool_type_lower in ("rag", "rag_naive", "rag_hybrid") or tool_type_lower.startswith(
-                ("pageindex_cloud_", "pageindex_oss_", "mcp_pageindex_")
+                ("pageindex_cloud_", "pageindex_oss_")
             ):
                 citation_info = self._extract_rag_citation(
                     citation_id, tool_type, raw_answer, tool_trace, tool_metadata
