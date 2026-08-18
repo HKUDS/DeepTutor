@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import mimetypes
 import time
 from typing import Any, Literal
 import uuid
@@ -15,6 +16,15 @@ from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
 from deeptutor.immersive_reading.service import MAX_UPLOAD_BYTES
+from deeptutor.services.llm.exceptions import (
+    LLMAuthenticationError,
+    LLMConfigError,
+    LLMError,
+    LLMModelNotFoundError,
+    LLMParseError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,6 +36,12 @@ _search_jobs: dict[str, dict[str, Any]] = {}
 
 class ProgressRequest(BaseModel):
     section_id: str
+    scroll_percent: float = Field(default=0, ge=0, le=100)
+
+
+class EpubProgressRequest(BaseModel):
+    epub_cfi: str = Field(default="", max_length=2000)
+    section_href: str = Field(default="", max_length=500)
     scroll_percent: float = Field(default=0, ge=0, le=100)
 
 
@@ -57,6 +73,19 @@ class QuerySelectionRequest(BaseModel):
     text: str = Field(min_length=1, max_length=12_000)
     question: str = Field(default="", max_length=4000)
     language: Literal["zh", "en"] = "en"
+
+
+class DictionaryRequest(BaseModel):
+    word: str = Field(min_length=1, max_length=200)
+    context: str = Field(default="", max_length=4000)
+
+
+class VocabRequest(BaseModel):
+    word: str = Field(min_length=1, max_length=200)
+    context: str = Field(default="", max_length=4000)
+    document_id: str = Field(default="", max_length=80)
+    document_title: str = Field(default="", max_length=500)
+    section_title: str = Field(default="", max_length=500)
 
 
 class FocusCheckRequest(BaseModel):
@@ -196,6 +225,16 @@ async def get_cover(document_id: str):
     return FileResponse(path, media_type="image/png", filename=f"{document_id}-cover.png")
 
 
+def _original_media_type(path, source_format: str) -> str:
+    fmt = (source_format or path.suffix.lstrip(".")).lower()
+    if fmt == "epub" or path.suffix.lower() == ".epub":
+        return "application/epub+zip"
+    if fmt == "pdf" or path.suffix.lower() == ".pdf":
+        return "application/pdf"
+    guessed, _ = mimetypes.guess_type(path.name)
+    return guessed or "application/octet-stream"
+
+
 @router.get("/documents/{document_id}/original")
 async def get_original(document_id: str):
     service = get_immersive_reading_service()
@@ -204,7 +243,13 @@ async def get_original(document_id: str):
         document = service.load_document(document_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return FileResponse(path, filename=document.source_filename if document else path.name)
+    source_format = document.source_format if document else path.suffix.lstrip(".")
+    return FileResponse(
+        path,
+        media_type=_original_media_type(path, source_format),
+        filename=document.source_filename if document else path.name,
+        content_disposition_type="inline",
+    )
 
 
 @router.get("/documents/{document_id}/sections/{section_id}")
@@ -213,6 +258,20 @@ async def get_section(document_id: str, section_id: str) -> dict:
         return get_immersive_reading_service().get_section(document_id, section_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/documents/{document_id}/epub-progress")
+async def update_epub_progress(document_id: str, request: EpubProgressRequest) -> dict:
+    try:
+        progress = get_immersive_reading_service().update_epub_progress(
+            document_id,
+            epub_cfi=request.epub_cfi,
+            section_href=request.section_href,
+            scroll_percent=request.scroll_percent,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"progress": progress.model_dump(mode="json")}
 
 
 @router.put("/documents/{document_id}/progress")
@@ -365,8 +424,25 @@ async def translate(request: TranslateRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LLMConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMTimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except LLMModelNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMAuthenticationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except LLMError as exc:
+        if getattr(exc, "status_code", None) == 503:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Translation failed: {exc}") from exc
+        logger.exception("Translation failed unexpectedly")
+        raise HTTPException(
+            status_code=500, detail="Translation failed. Please try again."
+        ) from exc
     return {"translation": translated}
 
 
@@ -381,6 +457,70 @@ async def query_selection(request: QuerySelectionRequest) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Selection query failed: {exc}") from exc
     return result.model_dump(mode="json")
+
+
+@router.post("/dictionary")
+async def dictionary_lookup(request: DictionaryRequest) -> dict:
+    """Context-aware dictionary lookup with offline-first fallbacks."""
+    try:
+        service = get_immersive_reading_service()
+        if hasattr(service, "lookup_word"):
+            result = await service.lookup_word(request.word, request.context)
+            return result.model_dump(mode="json")
+        return await service.lookup_dictionary(request.word, request.context)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LLMConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMTimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except LLMModelNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMParseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except LLMError as exc:
+        if getattr(exc, "status_code", None) == 503:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return result.model_dump(mode="json")
+
+
+@router.post("/vocabulary")
+async def add_vocabulary_word(request: VocabRequest) -> dict:
+    """Save a word to the global vocabulary book with dictionary lookup."""
+    try:
+        entry = await get_immersive_reading_service().add_word(
+            request.word,
+            context=request.context,
+            document_id=request.document_id,
+            document_title=request.document_title,
+            section_title=request.section_title,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Vocabulary lookup failed: {exc}") from exc
+    # The dictionary lookup is best-effort in the service layer; an empty
+    # definition list means the LLM lookup failed but the word was still saved.
+    lookup_warning = (
+        "" if entry.definitions else "Definition unavailable; word saved without meaning."
+    )
+    return {"entry": entry.model_dump(mode="json"), "lookup_warning": lookup_warning}
+
+
+@router.get("/vocabulary")
+async def list_vocabulary(document_id: str | None = None) -> dict:
+    entries = get_immersive_reading_service().list_vocabulary(document_id)
+    return {"entries": [item.model_dump(mode="json") for item in entries]}
+
+
+@router.delete("/vocabulary/{entry_id}")
+async def delete_vocabulary_word(entry_id: str) -> dict:
+    try:
+        get_immersive_reading_service().delete_word(entry_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"deleted": True, "entry_id": entry_id}
 
 
 class CharacterGraphRequest(BaseModel):
@@ -431,7 +571,6 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
         }
 
     content_hash = hashlib.sha256(combined.encode()).hexdigest()[:16]
-
     cache_path = (
         service._document_root(document_id) / f"character_graph_{request.scope}_{content_hash}.json"
     )
@@ -488,6 +627,367 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
         pass
 
     return payload
+
+
+# ── Bilingual paired reading ────────────────────────────────────────────
+
+import asyncio
+
+from deeptutor.immersive_reading.bilingual.service import get_pairing_service
+
+
+class PairRequest(BaseModel):
+    en_document_id: str
+    zh_document_id: str
+    target_lang: str | None = None
+    translator: str = ""
+
+
+class ChapterMapUpdateRequest(BaseModel):
+    chapter_map: list[Any]
+
+
+class AnnotationRequest(BaseModel):
+    chapter_id: str
+    group_index: int
+    issue_type: Literal[
+        "misalignment", "wrong_chapter", "missing_translation", "translation_error", "other"
+    ]
+    note: str = Field(default="", max_length=4000)
+
+
+class ResolveAnnotationRequest(BaseModel):
+    resolved: bool = True
+
+
+class AlignmentOverridesRequest(BaseModel):
+    overrides_json: str = Field(min_length=2, max_length=100_000)
+
+
+class ReadingPositionRequest(BaseModel):
+    chapter_index: int = Field(default=0, ge=0)
+    group_index: int = Field(default=0, ge=0)
+    epub_cfi: str = Field(default="", max_length=2000)
+    section_href: str = Field(default="", max_length=500)
+    scroll_percent: float = Field(default=0, ge=0, le=100)
+    text_fingerprint: str = Field(default="", max_length=500)
+
+
+class BookmarkRequest(BaseModel):
+    position: ReadingPositionRequest
+    title: str = Field(default="", max_length=200)
+    preview: str = Field(default="", max_length=300)
+
+
+class RenameBookmarkRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/bilingual/pair")
+async def bilingual_pair(request: PairRequest) -> dict[str, Any]:
+    """Create a bilingual pairing from two imported reading documents."""
+    try:
+        return get_pairing_service().pair_documents(
+            en_document_id=request.en_document_id,
+            zh_document_id=request.zh_document_id,
+            target_lang=request.target_lang,
+            translator=request.translator,
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/bilingual")
+async def bilingual_list_pairings() -> dict[str, Any]:
+    """List all bilingual pairings."""
+    return {"pairings": get_pairing_service().list_pairings()}
+
+
+@router.get("/bilingual/{pairing_id}")
+async def bilingual_get_pairing(pairing_id: str) -> dict[str, Any]:
+    """Get pairing details + chapter map."""
+    try:
+        return get_pairing_service().get_pairing(pairing_id)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/bilingual/{pairing_id}/chapter-map")
+async def bilingual_update_chapter_map(
+    pairing_id: str, request: ChapterMapUpdateRequest
+) -> dict[str, Any]:
+    """Replace the chapter map with a user-edited version."""
+    try:
+        return get_pairing_service().update_chapter_map(pairing_id, request.chapter_map)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/bilingual/{pairing_id}/align")
+async def bilingual_align(pairing_id: str, force: bool = False) -> dict[str, Any]:
+    """Run or re-run paragraph alignment for all mapped chapters."""
+    try:
+        return await asyncio.to_thread(get_pairing_service().align, pairing_id, force)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/bilingual/{pairing_id}/section/{chapter_id}")
+async def bilingual_get_section(pairing_id: str, chapter_id: str) -> dict[str, Any]:
+    """Get aligned paragraph pairs for one chapter."""
+    try:
+        return get_pairing_service().get_bilingual_section(pairing_id, chapter_id)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/bilingual/{pairing_id}/report")
+async def bilingual_get_report(pairing_id: str) -> dict[str, Any]:
+    """Get the alignment review report."""
+    try:
+        return {"report": get_pairing_service().get_report(pairing_id)}
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/bilingual/{pairing_id}/export")
+async def bilingual_export(pairing_id: str) -> FileResponse:
+    """Build and download a bilingual EPUB."""
+    try:
+        epub_path = await asyncio.to_thread(get_pairing_service().export_epub, pairing_id)
+        return FileResponse(
+            path=str(epub_path),
+            media_type="application/epub+zip",
+            filename=epub_path.name,
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/bilingual/{pairing_id}/reading-position")
+async def bilingual_get_reading_position(pairing_id: str) -> dict[str, Any]:
+    try:
+        return {"position": get_pairing_service().load_reading_position(pairing_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/bilingual/{pairing_id}/reading-position")
+async def bilingual_update_reading_position(
+    pairing_id: str, request: ReadingPositionRequest
+) -> dict[str, Any]:
+    try:
+        position = get_pairing_service().update_reading_position(pairing_id, request.model_dump())
+        return {"position": position}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/bilingual/{pairing_id}/bookmarks")
+async def bilingual_list_bookmarks(pairing_id: str) -> dict[str, Any]:
+    try:
+        return {"bookmarks": get_pairing_service().list_bookmarks(pairing_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/bilingual/{pairing_id}/bookmarks")
+async def bilingual_add_bookmark(pairing_id: str, request: BookmarkRequest) -> dict[str, Any]:
+    try:
+        return get_pairing_service().add_bookmark(
+            pairing_id,
+            request.position.model_dump(),
+            title=request.title,
+            preview=request.preview,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/bilingual/{pairing_id}/bookmarks/{bookmark_id}")
+async def bilingual_rename_bookmark(
+    pairing_id: str, bookmark_id: str, request: RenameBookmarkRequest
+) -> dict[str, Any]:
+    try:
+        return get_pairing_service().rename_bookmark(pairing_id, bookmark_id, request.title)
+    except ValueError as exc:
+        message = str(exc)
+        status = 404 if message == "Bookmark not found" else 400
+        raise HTTPException(status_code=status, detail=message) from exc
+
+
+@router.delete("/bilingual/{pairing_id}/bookmarks/{bookmark_id}")
+async def bilingual_delete_bookmark(pairing_id: str, bookmark_id: str) -> dict[str, Any]:
+    try:
+        get_pairing_service().delete_bookmark(pairing_id, bookmark_id)
+        return {"status": "deleted", "bookmark_id": bookmark_id}
+    except ValueError as exc:
+        message = str(exc)
+        status = 404 if message == "Bookmark not found" else 400
+        raise HTTPException(status_code=status, detail=message) from exc
+
+
+@router.get("/bilingual/{pairing_id}/navigation")
+async def bilingual_get_navigation(pairing_id: str) -> dict[str, Any]:
+    try:
+        return {"navigation": get_pairing_service().get_navigation(pairing_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/bilingual/{pairing_id}/navigation")
+async def bilingual_record_navigation(
+    pairing_id: str, request: ReadingPositionRequest
+) -> dict[str, Any]:
+    try:
+        navigation = get_pairing_service().record_navigation(pairing_id, request.model_dump())
+        return {"navigation": navigation}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/bilingual/{pairing_id}/navigation/back")
+async def bilingual_navigate_back(pairing_id: str) -> dict[str, Any]:
+    try:
+        position, navigation = get_pairing_service().navigate_back(pairing_id)
+        return {"position": position, "navigation": navigation}
+    except ValueError as exc:
+        message = str(exc)
+        status = 409 if message == "No back navigation destination" else 404
+        raise HTTPException(status_code=status, detail=message) from exc
+
+
+@router.post("/bilingual/{pairing_id}/navigation/forward")
+async def bilingual_navigate_forward(pairing_id: str) -> dict[str, Any]:
+    try:
+        position, navigation = get_pairing_service().navigate_forward(pairing_id)
+        return {"position": position, "navigation": navigation}
+    except ValueError as exc:
+        message = str(exc)
+        status = 409 if message == "No forward navigation destination" else 404
+        raise HTTPException(status_code=status, detail=message) from exc
+
+
+@router.get("/bilingual/{pairing_id}/annotations")
+async def bilingual_list_annotations(pairing_id: str, status: str | None = None) -> dict[str, Any]:
+    """List annotations, optionally filtered by status."""
+    try:
+        annotations = get_pairing_service().list_annotations(pairing_id, status)
+        return {"annotations": annotations}
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/bilingual/{pairing_id}/annotations")
+async def bilingual_add_annotation(pairing_id: str, request: AnnotationRequest) -> dict[str, Any]:
+    """Flag a paragraph-group alignment issue for review."""
+    try:
+        return get_pairing_service().add_annotation(
+            pairing_id=pairing_id,
+            chapter_id=request.chapter_id,
+            group_index=request.group_index,
+            issue_type=request.issue_type,
+            note=request.note,
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/bilingual/{pairing_id}/annotations/{annotation_id}")
+async def bilingual_resolve_annotation(
+    pairing_id: str, annotation_id: str, request: ResolveAnnotationRequest
+) -> dict[str, Any]:
+    """Mark an annotation as resolved or reopen it."""
+    try:
+        return get_pairing_service().resolve_annotation(pairing_id, annotation_id, request.resolved)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/bilingual/{pairing_id}/annotations/{annotation_id}")
+async def bilingual_delete_annotation(pairing_id: str, annotation_id: str) -> dict[str, Any]:
+    """Delete an annotation."""
+    try:
+        get_pairing_service().delete_annotation(pairing_id, annotation_id)
+        return {"status": "deleted"}
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/bilingual/{pairing_id}/review-report")
+async def bilingual_review_report(pairing_id: str) -> dict[str, Any]:
+    """Export all open annotations as a structured markdown report for Codex."""
+    try:
+        report_path = get_pairing_service().export_review_report(pairing_id)
+        return {"report": report_path.read_text(encoding="utf-8")}
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/bilingual/{pairing_id}/alignment-overrides")
+async def bilingual_save_overrides(
+    pairing_id: str, request: AlignmentOverridesRequest
+) -> dict[str, Any]:
+    """Save alignment overrides JSON (e.g. produced by Codex from the review report).
+
+    After saving, call POST /bilingual/{pairing_id}/align?force=true to re-align.
+    """
+    try:
+        return get_pairing_service().save_alignment_overrides(pairing_id, request.overrides_json)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/bilingual/{pairing_id}")
+async def bilingual_delete(pairing_id: str) -> dict[str, Any]:
+    """Delete a bilingual pairing."""
+    try:
+        get_pairing_service().delete_pairing(pairing_id)
+        return {"status": "deleted", "pairing_id": pairing_id}
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ── Kids experience mode ───────────────────────────────────────────────────

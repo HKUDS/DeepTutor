@@ -26,7 +26,13 @@ def reading_service(tmp_path, monkeypatch) -> ImmersiveReadingService:
             max_tokens=4_096,
         ),
     )
-    return ImmersiveReadingService()
+    # Clear the class-level dictionary cache so tests are isolated.
+    ImmersiveReadingService._dict_cache.clear()
+    service = ImmersiveReadingService()
+    service._translation_cache.clear()
+    service._translation_tasks.clear()
+    service._ollama_models_cache = None
+    return service
 
 
 @pytest.fixture

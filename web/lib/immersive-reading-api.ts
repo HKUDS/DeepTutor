@@ -155,6 +155,37 @@ export interface FocusCheckResult {
   progress: ReadingProgress;
 }
 
+export interface DictionaryDefinition {
+  part_of_speech: string;
+  definition: string;
+  chinese: string;
+  example: string;
+  synonyms: string[];
+  context_match: boolean;
+}
+
+export interface DictionaryResult {
+  word: string;
+  phonetic: string;
+  definitions: DictionaryDefinition[];
+  chinese?: string;
+  context_note: string;
+}
+
+export interface VocabEntry {
+  id: string;
+  word: string;
+  phonetic: string;
+  definitions: DictionaryDefinition[];
+  chinese?: string;
+  context_note: string;
+  document_id: string;
+  document_title: string;
+  section_title: string;
+  created_at: number;
+  mn4_exported: boolean;
+}
+
 export interface CharacterNode {
   id: string;
   name: string;
@@ -212,9 +243,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Keep the HTTP status text.
     }
-    throw new Error(String(detail));
+    throw new ApiRequestError(String(detail), response.status);
   }
   return (await response.json()) as T;
+}
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
 }
 
 export const immersiveReadingApi = {
@@ -250,6 +291,17 @@ export const immersiveReadingApi = {
       {
         method: "PUT",
         body: JSON.stringify({ section_id: sectionId, scroll_percent: scrollPercent }),
+      },
+    ),
+  epubProgress: (
+    documentId: string,
+    data: { epub_cfi?: string; section_href?: string; scroll_percent?: number },
+  ) =>
+    request<{ progress: ReadingProgress }>(
+      `/documents/${encodeURIComponent(documentId)}/epub-progress`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
       },
     ),
   restart: (documentId: string, resetFocusChecks: boolean) =>
@@ -326,17 +378,49 @@ export const immersiveReadingApi = {
     request<{ deleted: boolean }>(`/citations/${encodeURIComponent(citationId)}`, {
       method: "DELETE",
     }),
-  translate: (text: string, targetLanguage: string) =>
+  translate: (text: string, targetLanguage: string, signal?: AbortSignal) =>
     request<{ translation: string }>("/translate", {
       method: "POST",
       body: JSON.stringify({ text, target_language: targetLanguage }),
+      signal,
     }),
   query: (text: string, question: string, language: "zh" | "en") =>
     request<{ answer: string; citations: Array<Record<string, unknown>>; search_provider: string }>(
       "/query",
       { method: "POST", body: JSON.stringify({ text, question, language }) },
     ),
-  characterGraph: (
+ dictionary: (word: string, context: string = "", signal?: AbortSignal) =>
+   request<DictionaryResult>("/dictionary", {
+     method: "POST",
+     body: JSON.stringify({ word, context }),
+     signal,
+   }),
+  vocabulary: (documentId?: string) =>
+    request<{ entries: VocabEntry[] }>(
+      `/vocabulary${documentId ? `?document_id=${encodeURIComponent(documentId)}` : ""}`,
+    ),
+  addWord: (
+    word: string,
+    context: string,
+    documentId: string,
+    documentTitle: string,
+    sectionTitle: string,
+ ) =>
+   request<{ entry: VocabEntry; lookup_warning?: string }>("/vocabulary", {
+     method: "POST",
+     body: JSON.stringify({
+       word,
+       context,
+       document_id: documentId,
+       document_title: documentTitle,
+       section_title: sectionTitle,
+      }),
+    }),
+  deleteWord: (entryId: string) =>
+    request<{ deleted: boolean }>(`/vocabulary/${encodeURIComponent(entryId)}`, {
+      method: "DELETE",
+    }),
+ characterGraph: (
     documentId: string,
     sectionId: string,
     scope: "current" | "through_current" = "current",
@@ -347,10 +431,42 @@ export const immersiveReadingApi = {
       {
         method: "POST",
         body: JSON.stringify({
-          section_id: sectionId,
-          scope,
-          force_refresh: forceRefresh,
-        }),
+         section_id: sectionId,
+         scope,
+         force_refresh: forceRefresh,
+       }),
+     },
+   ),
+  setExperienceMode: (documentId: string, mode: "standard" | "kids") =>
+    request<{ experience_mode: string; progress_percent: number }>(
+      `/documents/${encodeURIComponent(documentId)}/experience-mode`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ mode }),
+      },
+    ),
+  kidsQuiz: (
+    documentId: string,
+    sectionId: string,
+    forceRefresh = false,
+  ) =>
+    request<KidsQuizResult>(
+      `/documents/${encodeURIComponent(documentId)}/kids-quiz`,
+      {
+        method: "POST",
+        body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }),
+      },
+    ),
+  kidsProgress: (
+    documentId: string,
+    sectionId: string,
+    data: { scroll_percent?: number; epub_cfi?: string; section_href?: string },
+  ) =>
+    request<{ progress: ReadingProgress }>(
+      `/documents/${encodeURIComponent(documentId)}/kids-progress`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ section_id: sectionId, ...data }),
       },
     ),
 };
@@ -369,6 +485,7 @@ export interface BilingualPairing {
   aligned: boolean;
   review_count: number;
   annotation_count?: number;
+  last_read_at?: number;
   created_at: number;
   updated_at: number;
   chapter_map?: ChapterMapEntry[];
@@ -398,6 +515,39 @@ export interface BilingualSection {
   groups: BilingualAlignGroup[];
   review: Array<Record<string, unknown>>;
 }
+
+export interface BilingualReadingPosition {
+  pairing_id: string;
+  chapter_id: string;
+  chapter_index: number;
+  group_index: number;
+  epub_cfi: string;
+  section_href: string;
+  scroll_percent: number;
+  text_fingerprint: string;
+  updated_at: number;
+}
+
+export interface BilingualBookmark extends BilingualReadingPosition {
+  id: string;
+  title: string;
+  chapter_title: string;
+  preview: string;
+  created_at: number;
+}
+
+export interface BilingualNavigation {
+  current: BilingualReadingPosition | null;
+  back_stack: BilingualReadingPosition[];
+  forward_stack: BilingualReadingPosition[];
+  can_back: boolean;
+  can_forward: boolean;
+}
+
+export type BilingualPositionInput = Omit<
+  BilingualReadingPosition,
+  "pairing_id" | "chapter_id" | "updated_at"
+>;
 
 export const bilingualApi = {
   pair: (enDocumentId: string, zhDocumentId: string, targetLang?: string, translator = "") =>
@@ -429,6 +579,58 @@ export const bilingualApi = {
     ),
   report: (pairingId: string) =>
     request<{ report: string }>(`/bilingual/${encodeURIComponent(pairingId)}/report`),
+  readingPosition: (pairingId: string) =>
+    request<{ position: BilingualReadingPosition | null }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/reading-position`,
+    ),
+  updateReadingPosition: (pairingId: string, position: BilingualPositionInput) =>
+    request<{ position: BilingualReadingPosition }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/reading-position`,
+      { method: "PUT", body: JSON.stringify(position) },
+    ),
+  bookmarks: (pairingId: string) =>
+    request<{ bookmarks: BilingualBookmark[] }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/bookmarks`,
+    ),
+  addBookmark: (
+    pairingId: string,
+    position: BilingualPositionInput,
+    title = "",
+    preview = "",
+  ) =>
+    request<BilingualBookmark>(`/bilingual/${encodeURIComponent(pairingId)}/bookmarks`, {
+      method: "POST",
+      body: JSON.stringify({ position, title, preview }),
+    }),
+  renameBookmark: (pairingId: string, bookmarkId: string, title: string) =>
+    request<BilingualBookmark>(
+      `/bilingual/${encodeURIComponent(pairingId)}/bookmarks/${encodeURIComponent(bookmarkId)}`,
+      { method: "PUT", body: JSON.stringify({ title }) },
+    ),
+  deleteBookmark: (pairingId: string, bookmarkId: string) =>
+    request<{ status: string }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/bookmarks/${encodeURIComponent(bookmarkId)}`,
+      { method: "DELETE" },
+    ),
+  navigation: (pairingId: string) =>
+    request<{ navigation: BilingualNavigation }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/navigation`,
+    ),
+  recordNavigation: (pairingId: string, position: BilingualPositionInput) =>
+    request<{ navigation: BilingualNavigation }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/navigation`,
+      { method: "POST", body: JSON.stringify(position) },
+    ),
+  navigateBack: (pairingId: string) =>
+    request<{ position: BilingualReadingPosition; navigation: BilingualNavigation }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/navigation/back`,
+      { method: "POST" },
+    ),
+  navigateForward: (pairingId: string) =>
+    request<{ position: BilingualReadingPosition; navigation: BilingualNavigation }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/navigation/forward`,
+      { method: "POST" },
+    ),
   exportUrl: (pairingId: string) =>
     apiUrl(`${BASE}/bilingual/${encodeURIComponent(pairingId)}/export`),
   delete: (pairingId: string) =>
@@ -487,41 +689,9 @@ export const annotationApi = {
     request<{ report: string }>(
       `/bilingual/${encodeURIComponent(pairingId)}/review-report`,
     ),
-  saveOverrides: (pairingId: string, overridesJson: string) =>
-    request<{ status: string }>(
-      `/bilingual/${encodeURIComponent(pairingId)}/alignment-overrides`,
-      { method: "PUT", body: JSON.stringify({ overrides_json: overridesJson }) },
-    ),
-  setExperienceMode: (documentId: string, mode: "standard" | "kids") =>
-    request<{ experience_mode: string; progress_percent: number }>(
-      `/documents/${encodeURIComponent(documentId)}/experience-mode`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ mode }),
-      },
-    ),
-  kidsQuiz: (
-    documentId: string,
-    sectionId: string,
-    forceRefresh = false,
-  ) =>
-    request<KidsQuizResult>(
-      `/documents/${encodeURIComponent(documentId)}/kids-quiz`,
-      {
-        method: "POST",
-        body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }),
-      },
-    ),
-  kidsProgress: (
-    documentId: string,
-    sectionId: string,
-    data: { scroll_percent?: number; epub_cfi?: string; section_href?: string },
-  ) =>
-    request<{ progress: ReadingProgress }>(
-      `/documents/${encodeURIComponent(documentId)}/kids-progress`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ section_id: sectionId, ...data }),
-      },
-    ),
+ saveOverrides: (pairingId: string, overridesJson: string) =>
+   request<{ status: string }>(
+     `/bilingual/${encodeURIComponent(pairingId)}/alignment-overrides`,
+     { method: "PUT", body: JSON.stringify({ overrides_json: overridesJson }) },
+   ),
 };

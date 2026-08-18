@@ -5,6 +5,9 @@ from __future__ import annotations
 import pytest
 
 from deeptutor.book.models import CharacterGraph, CharacterNode
+from deeptutor.immersive_reading.models import DictionaryResult
+from deeptutor.services.llm.exceptions import LLMAPIError, LLMTimeoutError
+from tests.immersive_reading.epub_fixtures import build_epub
 
 FastAPI = pytest.importorskip("fastapi").FastAPI
 TestClient = pytest.importorskip("fastapi.testclient").TestClient
@@ -160,3 +163,72 @@ def test_character_graph_rejects_unknown_section(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Section not found"
+
+
+def test_original_epub_is_served_inline_with_epub_mime(client: TestClient, reading_service) -> None:
+    document = reading_service.import_document("compass.epub", build_epub())
+
+    response = client.get(f"/api/v1/immersive-reading/documents/{document['id']}/original")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/epub+zip")
+    disposition = response.headers.get("content-disposition", "").lower()
+    assert "inline" in disposition
+    assert "attachment" not in disposition
+
+
+def test_epub_progress_endpoint_persists_cfi_and_href(client: TestClient, reading_service) -> None:
+    document = reading_service.import_document("compass.epub", build_epub())
+
+    response = client.put(
+        f"/api/v1/immersive-reading/documents/{document['id']}/epub-progress",
+        json={
+            "epub_cfi": "epubcfi(/6/8!/4/2/1:0)",
+            "section_href": "chapter-2.xhtml",
+            "scroll_percent": 33,
+        },
+    )
+
+    assert response.status_code == 200
+    progress = response.json()["progress"]
+    assert progress["epub_cfi"] == "epubcfi(/6/8!/4/2/1:0)"
+    assert progress["section_href"] == "chapter-2.xhtml"
+    assert progress["current_section_id"] == document["sections"][1]["id"]
+    assert progress["scroll_percent"] == 33
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (LLMAPIError("model missing", status_code=503, provider="ollama"), 503),
+        (LLMTimeoutError("timed out", provider="ollama"), 504),
+        (LLMAPIError("invalid json", status_code=None, provider="ollama"), 502),
+    ],
+)
+def test_dictionary_error_statuses(
+    client: TestClient, reading_service, monkeypatch, error, status
+) -> None:
+    async def fail(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(reading_service, "lookup_word", fail)
+    response = client.post(
+        "/api/v1/immersive-reading/dictionary",
+        json={"word": "technical"},
+    )
+    assert response.status_code == status
+
+
+def test_dictionary_success_keeps_dictionary_result_shape(
+    client: TestClient, reading_service, monkeypatch
+) -> None:
+    async def succeed(*_args, **_kwargs):
+        return DictionaryResult(word="technical")
+
+    monkeypatch.setattr(reading_service, "lookup_word", succeed)
+    response = client.post(
+        "/api/v1/immersive-reading/dictionary",
+        json={"word": "technical", "context": "technical manual"},
+    )
+    assert response.status_code == 200
+    assert response.json()["word"] == "technical"

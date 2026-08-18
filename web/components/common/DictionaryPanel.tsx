@@ -1,0 +1,565 @@
+"use client";
+
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  BookOpen,
+  ChevronDown,
+  CircleAlert,
+  Languages,
+  Loader2,
+  BookPlus,
+  RotateCw,
+  X,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  chineseRevealClassName,
+  positionDictionaryPopover,
+  type DictionaryAnchorRect,
+} from "@/lib/dictionary-ui";
+import type { DictionaryResult } from "@/lib/immersive-reading-api";
+import {
+  useResponsiveLayout,
+  useDynamicViewportHeight,
+} from "@/hooks/useResponsiveLayout";
+
+type DictMode = "dictionary" | "translate";
+
+/** Attach a click-outside listener that fires only after a short delay so
+ *  the gesture that opened the sheet doesn't immediately close it. */
+function useClickOutside(
+  ref: React.RefObject<HTMLElement | null>,
+  handler: () => void,
+) {
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) handler();
+    };
+    const timer = window.setTimeout(() => {
+      document.addEventListener("click", onClick, true);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [ref, handler]);
+}
+
+export interface DictionaryPanelProps {
+  word: string;
+  anchor: DictionaryAnchorRect;
+  loading: boolean;
+  result: DictionaryResult | null;
+  error?: string | null;
+  initialMode?: DictMode;
+  onLookup: () => void;
+  onTranslate: () => void;
+  onClose: () => void;
+  onModeChange?: (mode: DictMode) => void;
+  /** Optional "Save to vocabulary" action (immersive reading page). */
+  onSaveToVocabulary?: () => void;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared content fragments                                            */
+/* ------------------------------------------------------------------ */
+
+function CompactDefinition({ result }: { result: DictionaryResult }) {
+  const { t } = useTranslation();
+  const [revealChinese, setRevealChinese] = useState(false);
+  const primary =
+    result.definitions.find((d) => d.context_match) ?? result.definitions[0];
+
+  return (
+    <div className="space-y-1.5">
+      {result.context_note && (
+        <p className="text-xs italic leading-relaxed text-[var(--muted-foreground)]">
+          {result.context_note}
+        </p>
+      )}
+      {primary && (
+      <div>
+        <div className="mb-0.5 flex items-center gap-2">
+          <span className="text-xs italic text-[var(--muted-foreground)]">
+            {primary.part_of_speech}
+          </span>
+          {primary.context_match && (
+            <span className="rounded bg-[var(--primary)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--primary-foreground)]">
+              {t("In context")}
+            </span>
+          )}
+        </div>
+        <p className="text-sm leading-relaxed text-[var(--foreground)]">
+          {primary.definition}
+        </p>
+        {primary.chinese && (
+          <button
+            type="button"
+            onClick={() => setRevealChinese(true)}
+            aria-expanded={revealChinese}
+            title={revealChinese ? undefined : t("Tap to reveal")}
+            className={chineseRevealClassName(revealChinese)}
+          >
+            {primary.chinese}
+          </button>
+        )}
+      </div>
+      )}
+      {result.chinese && (
+        <button
+          type="button"
+          onClick={() => setRevealChinese(true)}
+          aria-expanded={revealChinese}
+          title={revealChinese ? undefined : t("Tap to reveal")}
+          className={chineseRevealClassName(revealChinese)}
+        >
+          {result.chinese}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function FullDefinitions({ result }: { result: DictionaryResult }) {
+  const { t } = useTranslation();
+  const [revealChinese, setRevealChinese] = useState(false);
+  const hasChinese = !!result.chinese || result.definitions.some((d) => d.chinese);
+
+  return (
+    <div className="space-y-3">
+      {result.context_note && (
+        <p className="text-xs italic leading-relaxed text-[var(--muted-foreground)]">
+          {result.context_note}
+        </p>
+      )}
+      {hasChinese && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setRevealChinese((v) => !v)}
+            title={revealChinese ? t("Hide Chinese") : t("Show Chinese")}
+            className="inline-flex min-h-[32px] items-center gap-1 rounded-md px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] active:bg-[var(--muted)]"
+          >
+            <Languages size={12} />
+            {revealChinese ? t("Hide Chinese") : t("Show Chinese")}
+          </button>
+        </div>
+      )}
+      {result.chinese && (
+        <button
+          type="button"
+          onClick={() => setRevealChinese((v) => !v)}
+          aria-expanded={revealChinese}
+          className={chineseRevealClassName(revealChinese)}
+        >
+          {result.chinese}
+        </button>
+      )}
+      {result.definitions.map((def, i) => (
+        <div
+          key={i}
+          className={
+            def.context_match
+              ? "rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-2.5"
+              : ""
+          }
+        >
+          <div className="mb-0.5 flex items-center gap-2">
+            <span className="text-xs italic text-[var(--muted-foreground)]">
+              {def.part_of_speech}
+            </span>
+            {def.context_match && (
+              <span className="rounded bg-[var(--primary)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--primary-foreground)]">
+                {t("In context")}
+              </span>
+            )}
+          </div>
+          <p className="text-sm leading-relaxed text-[var(--foreground)]">
+            {def.definition}
+          </p>
+          {def.chinese && (
+            <button
+              type="button"
+              onClick={() => setRevealChinese(true)}
+              aria-expanded={revealChinese}
+              title={revealChinese ? undefined : t("Tap to reveal")}
+              className={chineseRevealClassName(revealChinese)}
+            >
+              {def.chinese}
+            </button>
+          )}
+          {def.example && (
+            <p className="mt-1 text-xs italic text-[var(--muted-foreground)]">
+              &ldquo;{def.example}&rdquo;
+            </p>
+          )}
+          {def.synonyms.length > 0 && (
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              {t("Synonyms")}: {def.synonyms.join(", ")}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared panel body                                                   */
+/* ------------------------------------------------------------------ */
+
+interface ContentProps {
+  word: string;
+  loading: boolean;
+  result: DictionaryResult | null;
+  error?: string | null;
+  mode: DictMode;
+  expanded: boolean;
+  onModeChange: (mode: DictMode) => void;
+  onLookup: () => void;
+  onTranslate: () => void;
+  onExpand: () => void;
+  onClose: () => void;
+  onRetry?: () => void;
+  onSaveToVocabulary?: () => void;
+}
+
+function PanelContent({
+  word,
+  loading,
+  result,
+  error,
+  mode,
+  expanded,
+  onModeChange,
+  onLookup,
+  onTranslate,
+  onExpand,
+  onClose,
+  onRetry,
+  onSaveToVocabulary,
+}: ContentProps) {
+  const { t } = useTranslation();
+
+  const isDictResult =
+    !!result && (result.definitions.length > 0 || !!result.chinese);
+  const isTranslateResult =
+    !!result && result.definitions.length === 0 && !!result.context_note;
+  const hasResult =
+    !!result &&
+    (result.definitions.length > 0 || !!result.chinese || !!result.context_note);
+  const showExpandButton =
+    !expanded && isDictResult && result!.definitions.length > 1;
+
+  const handleModeChange = (next: DictMode) => {
+    if (next === mode) return;
+    onModeChange(next);
+    if (next === "dictionary" && !isDictResult) onLookup();
+    if (next === "translate" && !isTranslateResult) onTranslate();
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <BookOpen size={15} className="shrink-0 text-[var(--primary)]" />
+          <span className="truncate text-sm font-medium text-[var(--foreground)]">
+            {word}
+          </span>
+          {result?.phonetic && (
+            <span className="shrink-0 font-mono text-xs text-[var(--muted-foreground)]">
+              /{result.phonetic}/
+            </span>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          aria-label={t("Close")}
+          className="shrink-0 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Mode tabs */}
+      <div className="flex shrink-0 gap-1 p-2">
+        <button
+          onClick={() => handleModeChange("dictionary")}
+          className={
+            "flex flex-1 min-h-[36px] items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition " +
+            (mode === "dictionary"
+              ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]")
+          }
+        >
+          <BookOpen size={13} />
+          {t("Dictionary")}
+        </button>
+        <button
+          onClick={() => handleModeChange("translate")}
+          className={
+            "flex flex-1 min-h-[36px] items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition " +
+            (mode === "translate"
+              ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]")
+          }
+        >
+          <Languages size={13} />
+          {t("Translate")}
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2">
+        {loading && (
+          <div className="flex items-center gap-2 py-6 text-sm text-[var(--muted-foreground)]">
+            <Loader2 className="size-4 animate-spin" />
+            {t("Thinking...")}
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-500/25 bg-red-500/8 p-3 text-sm text-red-500">
+            <CircleAlert size={15} className="mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <span>{error}</span>
+              {onRetry && (
+                <button
+                  onClick={mode === "translate" ? onTranslate : onLookup}
+                  className="mt-1.5 inline-flex min-h-[28px] items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-red-500 hover:bg-red-500/10"
+                >
+                  <RotateCw size={12} />
+                  {t("Retry")}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && mode === "dictionary" && isDictResult && (
+          expanded ? (
+            <FullDefinitions result={result!} />
+          ) : (
+            <CompactDefinition result={result!} />
+          )
+        )}
+
+        {!loading && !error && mode === "translate" && isTranslateResult && (
+          <p className="text-sm leading-relaxed text-[var(--foreground)]">
+            {result!.context_note}
+          </p>
+        )}
+
+        {!loading && !error && !hasResult && (
+          <p className="py-4 text-center text-xs text-[var(--muted-foreground)]">
+            {t("No result")}
+          </p>
+        )}
+      </div>
+
+      {/* Footer: expand + save */}
+      <div className="shrink-0 border-t border-[var(--border)] px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          {showExpandButton ? (
+            <button
+              onClick={onExpand}
+              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-[var(--primary)] hover:bg-[var(--muted)]"
+            >
+              <ChevronDown size={13} />
+              {t("Expand")}
+            </button>
+          ) : (
+            <span />
+          )}
+          {onSaveToVocabulary && (
+            <button
+              onClick={onSaveToVocabulary}
+              className="inline-flex min-h-[32px] items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90"
+            >
+              <BookPlus size={13} />
+              {t("Save to vocabulary")}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mobile: bottom sheet                                                */
+/* ------------------------------------------------------------------ */
+
+function MobileSheet(props: DictionaryPanelProps) {
+  const { onClose } = props;
+  const vh = useDynamicViewportHeight();
+  const [expanded, setExpanded] = useState(false);
+
+  const collapsedH = Math.round((vh || 600) * 0.35);
+  const expandedH = Math.round((vh || 600) * 0.85);
+  const height = expanded ? expandedH : collapsedH;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed bottom-0 left-0 right-0 z-[200] flex flex-col overflow-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
+      style={{
+        height,
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        transition: "height 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+        animation: "dt-sheet-up 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+        // Let touch events above the sheet pass through to the page so the
+        // reading content stays scrollable while the dictionary is open.
+        pointerEvents: "auto",
+      }}
+    >
+      {/* Drag handle */}
+      <div className="flex shrink-0 justify-center pt-2 pb-1">
+        <div className="h-1 w-9 rounded-full bg-[var(--muted-foreground)]/30" />
+      </div>
+      <div className="min-h-0 flex-1">
+        <PanelContent
+          word={props.word}
+          loading={props.loading}
+          result={props.result}
+          error={props.error}
+          mode={props.initialMode ?? "dictionary"}
+          expanded={expanded}
+          onModeChange={props.onModeChange ?? (() => {})}
+          onLookup={props.onLookup}
+          onTranslate={props.onTranslate}
+          onExpand={() => setExpanded(true)}
+          onClose={onClose}
+          onRetry={() => {}}
+          onSaveToVocabulary={props.onSaveToVocabulary}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Desktop: anchored card or expanded right sidebar                    */
+/* ------------------------------------------------------------------ */
+
+function DesktopPanel(props: DictionaryPanelProps) {
+  const { anchor, onClose } = props;
+  const [expanded, setExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<ReturnType<
+    typeof positionDictionaryPopover
+  > | null>(null);
+
+  useLayoutEffect(() => {
+    if (expanded) return;
+    const update = () => {
+      const rect = cardRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPosition(
+        positionDictionaryPopover(
+          anchor,
+          { width: rect.width, height: rect.height },
+          { width: window.innerWidth, height: window.innerHeight },
+        ),
+      );
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [anchor, expanded, props.loading, props.result]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const content = (
+    <PanelContent
+      word={props.word}
+      loading={props.loading}
+      result={props.result}
+      error={props.error}
+      mode={props.initialMode ?? "dictionary"}
+      expanded={expanded}
+      onModeChange={props.onModeChange ?? (() => {})}
+      onLookup={props.onLookup}
+      onTranslate={props.onTranslate}
+      onExpand={() => setExpanded(true)}
+      onClose={onClose}
+      onRetry={() => {}}
+      onSaveToVocabulary={props.onSaveToVocabulary}
+    />
+  );
+
+  if (expanded) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[200]"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div
+          className="absolute bottom-0 right-0 top-0 flex w-[min(380px,calc(100vw-16px))] flex-col border-l border-[var(--border)] bg-[var(--background)] shadow-2xl"
+          style={{ animation: "dt-sidebar-in 220ms cubic-bezier(0.16,1,0.3,1)" }}
+        >
+          {content}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      className="fixed z-[200] w-[min(360px,calc(100vw-16px))]"
+      style={{
+        left: position?.left ?? 8,
+        top: position?.top ?? 8,
+        visibility: position ? "visible" : "hidden",
+        maxHeight: "min(60vh, 460px)",
+        animation: "dt-pop-in 180ms cubic-bezier(0.22,1,0.36,1)",
+      }}
+    >
+      <div className="flex max-h-[min(60vh,460px)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl">
+        {content}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Public component                                                    */
+/* ------------------------------------------------------------------ */
+
+export default function DictionaryPanel(props: DictionaryPanelProps) {
+  const layout = useResponsiveLayout();
+  const [mode, setMode] = useState<DictMode>(props.initialMode ?? "dictionary");
+
+  const enhancedProps: DictionaryPanelProps = {
+    ...props,
+    initialMode: mode,
+    onModeChange: setMode as (mode: DictMode) => void,
+  };
+
+  if (layout === "mobile") return <MobileSheet {...enhancedProps} />;
+  return <DesktopPanel {...enhancedProps} />;
+}

@@ -1,122 +1,27 @@
 """Character relationship graph extraction and rendering.
 
-Generates chapter-scoped character relationship graphs by:
+Converts requested reading text into a character relationship graph by:
 
-1. Collecting text from the requested chapter scope (current chapter only,
-   or all chapters up to and including the current one — never future
-   chapters).
-2. Asking the LLM to extract a structured JSON payload of characters and
+1. Asking the LLM to extract a structured JSON payload of characters and
    their relationships.
-3. Converting the structured data into a Mermaid ``graph LR`` source that
+2. Converting the structured data into a Mermaid ``graph LR`` source that
    the existing React ``<Mermaid>`` component renders.
-4. Caching by ``(book_id, chapter_id, scope, content_hash)`` so identical
-   source text does not trigger a re-extraction.
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
-import time
 
 from .blocks._llm_writer import llm_json
 from .models import (
-    Chapter,
     CharacterEdge,
     CharacterGraph,
     CharacterNode,
-    Page,
-    Spine,
 )
-from .storage import BookStorage, get_book_storage
 
 logger = logging.getLogger(__name__)
 
 MAX_NODES_CURRENT = 30
-MAX_NODES_CUMULATIVE = 50
-MAX_CONTEXT_CHARS = 20_000
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Text collection
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def _chapter_text(storage: BookStorage, book_id: str, spine: Spine, chapter: Chapter) -> str:
-    """Collect readable text from all pages belonging to *chapter*."""
-    parts: list[str] = []
-    for page_id in chapter.page_ids:
-        page = storage.load_page(book_id, page_id)
-        if page is None:
-            continue
-        page_text = _page_text(page)
-        if page_text:
-            parts.append(page_text)
-    return "\n\n".join(parts)
-
-
-def _page_text(page: Page) -> str:
-    """Flatten a page's blocks into plain text."""
-    parts: list[str] = []
-    for block in page.blocks:
-        payload = block.payload if isinstance(block.payload, dict) else {}
-        for key in ("content", "body", "text", "markdown", "intro"):
-            val = payload.get(key)
-            if isinstance(val, str) and val.strip():
-                parts.append(val.strip())
-        # sections
-        subs = payload.get("subsections")
-        if isinstance(subs, list):
-            for sub in subs:
-                if isinstance(sub, dict):
-                    body = sub.get("body") or sub.get("heading") or ""
-                    if isinstance(body, str) and body.strip():
-                        parts.append(body.strip())
-    return "\n".join(parts)
-
-
-def _hash_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-
-
-def collect_scope_text(
-    storage: BookStorage,
-    book_id: str,
-    spine: Spine,
-    chapter_id: str,
-    scope: str = "current",
-) -> tuple[str, list[str]]:
-    """Return (combined_text, included_chapter_ids) for the given scope.
-
-    ``scope="current"`` → only *chapter_id*.
-    ``scope="through_current"`` → all chapters with ``order <=`` the target
-    chapter's order, never future chapters.
-    """
-    target = spine.chapter_by_id(chapter_id)
-    if target is None:
-        return "", []
-
-    included_ids: list[str] = []
-    if scope == "through_current":
-        for ch in sorted(spine.chapters, key=lambda c: c.order):
-            if ch.order <= target.order:
-                included_ids.append(ch.id)
-    else:
-        included_ids = [chapter_id]
-
-    parts: list[str] = []
-    for ch_id in included_ids:
-        ch = spine.chapter_by_id(ch_id)
-        if ch is None:
-            continue
-        text = _chapter_text(storage, book_id, spine, ch)
-        if text.strip():
-            parts.append(f"[Chapter: {ch.title}]\n{text}")
-
-    combined = "\n\n---\n\n".join(parts)
-    if len(combined) > MAX_CONTEXT_CHARS:
-        combined = combined[:MAX_CONTEXT_CHARS] + "\n...[truncated]"
-    return combined, included_ids
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -308,75 +213,7 @@ def render_character_graph_mermaid(graph: CharacterGraph) -> str:
     return "\n".join(lines)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Public orchestration
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-async def generate_character_graph(
-    *,
-    book_id: str,
-    chapter_id: str,
-    scope: str = "current",
-    force_refresh: bool = False,
-    storage: BookStorage | None = None,
-) -> CharacterGraph:
-    """Generate (or load from cache) a character relationship graph.
-
-    The cache key is ``(book_id, chapter_id, scope, content_hash)``.
-    When ``force_refresh`` is ``True`` the cache is bypassed.
-    """
-    store = storage or get_book_storage()
-    spine = store.load_spine(book_id)
-    if spine is None:
-        return CharacterGraph(book_id=book_id, chapter_id=chapter_id, scope=scope)
-
-    # Collect text for the requested scope
-    text, included_ids = collect_scope_text(store, book_id, spine, chapter_id, scope)
-    content_hash = _hash_text(text)
-
-    # Check cache
-    if not force_refresh:
-        cached = store.load_character_graph(book_id, chapter_id, scope)
-        if cached is not None and cached.content_hash == content_hash:
-            return cached
-
-    if not text.strip():
-        return CharacterGraph(
-            book_id=book_id,
-            chapter_id=chapter_id,
-            scope=scope,
-            content_hash=content_hash,
-        )
-
-    # Determine language
-    book = store.load_book(book_id)
-    language = book.language if book else "en"
-
-    max_nodes = MAX_NODES_CUMULATIVE if scope == "through_current" else MAX_NODES_CURRENT
-
-    graph = await extract_character_graph(
-        text=text,
-        language=language,
-        included_chapter_ids=included_ids,
-        max_nodes=max_nodes,
-    )
-
-    graph.book_id = book_id
-    graph.chapter_id = chapter_id
-    graph.scope = scope
-    graph.content_hash = content_hash
-    graph.generated_at = time.time()
-
-    # Persist
-    store.save_character_graph(graph)
-
-    return graph
-
-
 __all__ = [
-    "generate_character_graph",
     "extract_character_graph",
     "render_character_graph_mermaid",
-    "collect_scope_text",
 ]

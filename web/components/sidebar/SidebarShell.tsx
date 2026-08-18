@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
+  BookMarked,
   BookOpen,
   BookText,
   Bot,
@@ -22,6 +23,7 @@ import {
   Rocket,
   PenLine,
   Settings,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -83,6 +85,13 @@ const PRIMARY_NAV: NavEntry[] = [
     requires: "llm",
   },
   {
+    href: "/immersive-reading",
+    label: "Immersive Reading",
+    icon: BookMarked,
+    tooltipKey: "Immersive Reading tooltip",
+    requires: "llm",
+  },
+  {
     href: "/space",
     label: "Learning Space",
     icon: LayoutGrid,
@@ -114,6 +123,12 @@ const SECONDARY_NAV: NavEntry[] = [
     label: "Immersive Reading",
     icon: Rocket,
     tooltipKey: "Immersive Reading tooltip",
+  },
+  {
+    href: "/translation-tasks",
+    label: "Translation Tasks",
+    icon: Workflow,
+    tooltipKey: "Translation tasks tooltip",
   },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -163,6 +163,43 @@ class SelectionQueryResult(BaseModel):
     search_provider: str = ""
 
 
+class DictionaryDefinition(BaseModel):
+    """One definition of a looked-up word."""
+
+    part_of_speech: str = ""
+    definition: str = ""
+    chinese: str = ""
+    example: str = ""
+    synonyms: list[str] = Field(default_factory=list)
+    context_match: bool = False
+
+
+class DictionaryResult(BaseModel):
+    """Context-aware dictionary lookup result."""
+
+    word: str = ""
+    phonetic: str = ""
+    definitions: list[DictionaryDefinition] = Field(default_factory=list)
+    chinese: str = ""
+    context_note: str = ""
+
+
+class VocabEntry(BaseModel):
+    """A word saved to the global vocabulary book from the reading view."""
+
+    id: str
+    word: str
+    phonetic: str = ""
+    definitions: list[DictionaryDefinition] = Field(default_factory=list)
+    chinese: str = ""
+    context_note: str = ""
+    document_id: str = ""
+    document_title: str = ""
+    section_title: str = ""
+    created_at: float = Field(default_factory=time.time)
+    mn4_exported: bool = False
+
+
 class KidsQuizQuestion(BaseModel):
     """One multiple-choice question for the child reading quiz."""
 
@@ -299,4 +336,7 @@ __all__ = [
     "ReadingSection",
     "SearchHit",
     "SelectionQueryResult",
+    "DictionaryDefinition",
+    "DictionaryResult",
+    "VocabEntry",
 ]
