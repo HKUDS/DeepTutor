@@ -12,11 +12,11 @@ Call sites already expect:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import importlib
+from importlib.metadata import entry_points
 import inspect
 import logging
-from dataclasses import dataclass, field
-from importlib.metadata import entry_points
 from typing import Any
 
 from deeptutor.core.capability_protocol import BaseCapability
@@ -126,9 +126,7 @@ def _coerce_manifest(ep_name: str, loaded: Any) -> PluginManifest | None:
     return None
 
 
-def _manifest_from_capability_class(
-    ep_name: str, cls: type[BaseCapability]
-) -> PluginManifest:
+def _manifest_from_capability_class(ep_name: str, cls: type[BaseCapability]) -> PluginManifest:
     m = cls.manifest
     return PluginManifest(
         name=m.name or ep_name,
@@ -139,9 +137,7 @@ def _manifest_from_capability_class(
     )
 
 
-def _manifest_from_capability_instance(
-    ep_name: str, cap: BaseCapability
-) -> PluginManifest:
+def _manifest_from_capability_instance(ep_name: str, cap: BaseCapability) -> PluginManifest:
     return PluginManifest(
         name=cap.manifest.name or ep_name,
         type="capability",
@@ -152,11 +148,7 @@ def _manifest_from_capability_instance(
 
 
 def _is_capability_class(obj: Any) -> bool:
-    return (
-        isinstance(obj, type)
-        and issubclass(obj, BaseCapability)
-        and obj is not BaseCapability
-    )
+    return isinstance(obj, type) and issubclass(obj, BaseCapability) and obj is not BaseCapability
 
 
 def _qualname(obj: Any) -> str:
