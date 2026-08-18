@@ -9,6 +9,7 @@ import {
   kbNeedsReindex,
   resolveKbStatus,
   resolveProgressPercent,
+  uploadPolicyForProvider,
   validateFiles,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
@@ -53,6 +54,9 @@ export default function KbDocumentsSection({
   const needsReindex = kbNeedsReindex(kb);
   const status = resolveKbStatus(kb);
   const isError = status === "error";
+  const provider =
+    kb.statistics?.rag_provider || kb.metadata?.rag_provider || "llamaindex";
+  const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
 
   const isUploadingHere = task?.kind === "upload" && task.executing;
   const isIndexingHere =
@@ -78,7 +82,7 @@ export default function KbDocumentsSection({
           )
         : null;
 
-  const selection = validateFiles(files, uploadPolicy, t);
+  const selection = validateFiles(files, policyForProvider, t);
   const canRetry = Boolean(onRetry) && isError && !isIndexingHere;
   // Unsupported files are skipped (shown in the drop zone), not blocking, so a
   // picked folder with mixed content still uploads its supported members.
@@ -171,7 +175,7 @@ export default function KbDocumentsSection({
       <FileDropZone
         files={files}
         onChange={setFiles}
-        uploadPolicy={uploadPolicy}
+        uploadPolicy={policyForProvider}
         disabled={!canUpload || isUploadingHere}
       />
 

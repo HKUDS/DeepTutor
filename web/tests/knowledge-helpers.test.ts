@@ -6,6 +6,7 @@ import {
   providerUsesEmbeddingMetadata,
   resolveKnowledgeIndexFailure,
   taskFailureMessage,
+  uploadPolicyForProvider,
   providerConnectionStatus,
   type KnowledgeBase,
 } from "../lib/knowledge-helpers";
@@ -15,6 +16,20 @@ test("PageIndex providers do not expose embedding metadata", () => {
   assert.equal(providerUsesEmbeddingMetadata("pageindex-oss"), false);
   assert.equal(providerUsesEmbeddingMetadata("llamaindex"), true);
   assert.equal(providerUsesEmbeddingMetadata("graphrag"), true);
+});
+
+test("PageIndex OSS upload policy accepts PDF only", () => {
+  const base = {
+    extensions: [".pdf", ".pptx", ".txt"],
+    accept: ".pdf,.pptx,.txt",
+    max_file_size_bytes: 100,
+  };
+  assert.deepEqual(uploadPolicyForProvider(base, "pageindex-oss"), {
+    extensions: [".pdf"],
+    accept: ".pdf",
+    max_file_size_bytes: 100,
+  });
+  assert.equal(uploadPolicyForProvider(base, "llamaindex"), base);
 });
 
 function kb(overrides: Partial<KnowledgeBase>): KnowledgeBase {

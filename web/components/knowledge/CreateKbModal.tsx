@@ -28,25 +28,13 @@ import {
   IMA_PROVIDER,
   linkSourceEnabled,
 } from "@/lib/ima-connection";
-import { validateFiles } from "@/lib/knowledge-helpers";
+import {
+  uploadPolicyForProvider,
+  validateFiles,
+} from "@/lib/knowledge-helpers";
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 
-// Mirrors SUPPORTED_EXTENSIONS in the backend pageindex pipeline (PageIndex POST /doc/).
-const PAGEINDEX_CLOUD_FORMATS = [
-  ".pdf",
-  ".md",
-  ".markdown",
-  ".txt",
-  ".docx",
-  ".doc",
-  ".pptx",
-  ".ppt",
-  ".xlsx",
-  ".xls",
-  ".csv",
-];
-const PAGEINDEX_OSS_FORMATS = [".pdf"];
 const OBSIDIAN_SOURCE = "obsidian";
 const LIGHTRAG_SERVER_PROVIDER = "lightrag-server";
 const EXAMPLE_INDEX_PATH = "/Users/you/knowledge_bases/my-kb";
@@ -214,17 +202,7 @@ export default function CreateKbModal({
   const effectiveServerMode =
     serverMode || activeProvider?.default_mode || serverModeOptions[0] || "";
 
-  const pageIndexFormats = isPageIndexOSS
-    ? PAGEINDEX_OSS_FORMATS
-    : PAGEINDEX_CLOUD_FORMATS;
-  const policyForProvider: KnowledgeUploadPolicy =
-    isPageIndexCloud || isPageIndexOSS
-    ? {
-        ...uploadPolicy,
-        extensions: pageIndexFormats,
-        accept: pageIndexFormats.join(","),
-      }
-    : uploadPolicy;
+  const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
 
   const selection = validateFiles(files, policyForProvider, t);
 
