@@ -7,6 +7,7 @@ import type { KnowledgeUploadPolicy } from "@/lib/knowledge-api";
 import {
   kbIsUploadable,
   kbNeedsReindex,
+  providerUsesEmbeddingMetadata,
   resolveKbStatus,
   resolveProgressPercent,
   uploadPolicyForProvider,
@@ -136,7 +137,9 @@ export default function KbDocumentsSection({
         </div>
         <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
           {t(
-            "Drop files here to add them to this knowledge base. New files are indexed against the active embedding model.",
+            providerUsesEmbeddingMetadata(provider)
+              ? "Drop files here to add them to this knowledge base. New files are indexed against the active embedding model."
+              : "Drop files here",
           )}
         </p>
       </div>
