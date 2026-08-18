@@ -90,7 +90,8 @@ class _SDKClient:
         return "SDK instructions"
 
 
-def test_cloud_bundle_comes_from_sdk_and_targets_manifest_docs(monkeypatch) -> None:
+@pytest.mark.parametrize("provider", [CLOUD_PROVIDER, OSS_PROVIDER])
+def test_bundle_uses_unscoped_sdk_instructions(monkeypatch, provider: str) -> None:
     sdk_client = _SDKClient()
 
     class _Pipeline:
@@ -105,13 +106,15 @@ def test_cloud_bundle_comes_from_sdk_and_targets_manifest_docs(monkeypatch) -> N
 
     monkeypatch.setattr(tools_mod, "PageIndexPipeline", _Pipeline)
 
-    bundle = asyncio.run(tools_mod.build_sdk_tool_bundle("hosted", "/kb", provider=CLOUD_PROVIDER))
+    bundle = asyncio.run(tools_mod.build_sdk_tool_bundle("hosted", "/kb", provider=provider))
 
     assert sdk_client.tool_calls == [{"include_management": False}]
-    assert sdk_client.instruction_calls == [["cloud-1"]]
-    assert bundle.provider == CLOUD_PROVIDER
+    assert sdk_client.instruction_calls == [None]
+    assert bundle.provider == provider
     assert bundle.instructions == "SDK instructions"
-    assert [tool.name for tool in bundle.tools] == ["pageindex_cloud_get_page_content"]
+    assert [tool.name for tool in bundle.tools] == [
+        f"{'pageindex_oss' if provider == OSS_PROVIDER else 'pageindex_cloud'}_get_page_content"
+    ]
 
 
 def test_structure_or_failure_does_not_invent_page_sources() -> None:

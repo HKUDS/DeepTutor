@@ -110,9 +110,12 @@ async def test_every_attached_kb_is_described(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.asyncio
 async def test_pageindex_kbs_are_not_described_twice(monkeypatch: pytest.MonkeyPatch) -> None:
-    """PageIndex's own note already lists its documents, with their doc_ids."""
+    """PageIndex discovery belongs to its tools, not the generic inventory."""
     pipeline = _pipeline(monkeypatch)
-    pipeline._pageindex_docs = {"hosted": {"paper.pdf": "doc-1"}}
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.pageindex.is_pageindex_kb",
+        lambda name: name == "hosted",
+    )
     asked = _stub_resolver(monkeypatch, {"course": _manifest("course", "a.pdf")})
     context = UnifiedContext(
         session_id="s1", user_message="how many?", knowledge_bases=["course", "hosted"]

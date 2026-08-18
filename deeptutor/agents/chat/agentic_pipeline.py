@@ -481,15 +481,14 @@ class AgenticChatPipeline:
         ``runtime.providers``. All the pipeline owns is translating the turn's
         context into a :class:`ToolScope`.
         """
-        self._pageindex_docs = self._pageindex_doc_maps(context)
-        self._pageindex_oss_docs: dict[str, dict[str, str]] = {}
+        self._pageindex_providers: set[str] = set()
         self._pageindex_cloud_instructions = ""
         self._pageindex_oss_instructions = ""
         pageindex_tools: list[Any] = []
         try:
             for kb, bundle in await self._pageindex_sdk_tool_bundles(context):
+                self._pageindex_providers.add(bundle.provider)
                 if bundle.provider == "pageindex-oss":
-                    self._pageindex_oss_docs[kb] = bundle.documents
                     self._pageindex_oss_instructions = bundle.instructions
                 else:
                     self._pageindex_cloud_instructions = bundle.instructions
@@ -537,31 +536,6 @@ class AgenticChatPipeline:
             ),
             exclusive_capability=self._exclusive_capability_active(context),
         )
-
-    def _pageindex_doc_maps(
-        self,
-        context: UnifiedContext,
-        provider: str = "pageindex",
-    ) -> dict[str, dict[str, str]]:
-        """kb_name -> {file: doc_id} for bound KBs on the pageindex provider."""
-        out: dict[str, dict[str, str]] = {}
-        for kb in self._selected_kbs(context):
-            try:
-                from deeptutor.multi_user.knowledge_access import resolve_kb
-                from deeptutor.services.rag.pipelines.pageindex.pipeline import PageIndexPipeline
-                from deeptutor.services.rag.provider_binding import resolve_bound_provider
-
-                resource = resolve_kb(kb, require_write=False)
-                base_dir = str(resource.base_dir)
-                if resolve_bound_provider(base_dir, resource.name) != provider:
-                    continue
-                out[kb] = PageIndexPipeline(
-                    kb_base_dir=base_dir,
-                    provider=provider,
-                ).document_map(resource.name)
-            except Exception:
-                logger.debug("pageindex doc-map resolution failed for %r", kb, exc_info=True)
-        return out
 
     async def _pageindex_sdk_tool_bundles(self, context: UnifiedContext):
         from deeptutor.multi_user.knowledge_access import resolve_kb
@@ -1445,12 +1419,10 @@ class AgenticChatPipeline:
         return [str(kb).strip() for kb in context.knowledge_bases if str(kb).strip()]
 
     def _rag_kbs(self, context: UnifiedContext) -> list[str]:
-        """Attached KBs served by the rag tool (PageIndex KBs are read via MCP)."""
-        pageindex = {
-            **(getattr(self, "_pageindex_docs", None) or {}),
-            **(getattr(self, "_pageindex_oss_docs", None) or {}),
-        }
-        return [kb for kb in self._selected_kbs(context) if kb not in pageindex]
+        """Attached KBs served by rag; PageIndex KBs use their SDK tools."""
+        from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
+
+        return [kb for kb in self._selected_kbs(context) if not is_pageindex_kb(kb)]
 
     def _capability_owned_kbs(self, context: UnifiedContext) -> set[str]:
         """Selected KBs consumed by an active capability's own tools (not rag).
@@ -1555,61 +1527,49 @@ class AgenticChatPipeline:
         return f"\n{note}" if note else ""
 
     def _pageindex_system_note(self) -> str:
-        """Doc list + retrieval instructions for attached PageIndex KBs.
+        """Retrieval instructions for attached PageIndex KBs.
 
         Populated by ``_prepare_deferred_tools`` once per turn, so the system
         prompt stays byte-stable for the whole turn (KB cache prefix).
         """
-        cloud_maps = getattr(self, "_pageindex_docs", None) or {}
-        oss_maps = getattr(self, "_pageindex_oss_docs", None) or {}
-        if not cloud_maps and not oss_maps:
+        providers = getattr(self, "_pageindex_providers", None) or set()
+        if not providers:
             return ""
 
-        def render_docs(doc_maps: dict[str, dict[str, str]]) -> str:
-            lines = []
-            for kb, doc_map in sorted(doc_maps.items()):
-                listed = "; ".join(
-                    f"{name} (doc_id: {doc_id})" for name, doc_id in sorted(doc_map.items())
-                )
-                lines.append(f"- {kb}: {listed or '(no indexed documents)'}")
-            return "\n".join(lines)
-
         blocks: list[str] = []
-        if cloud_maps:
-            docs_block = render_docs(cloud_maps)
+        if "pageindex" in providers:
             instructions = str(getattr(self, "_pageindex_cloud_instructions", "") or "").strip()
             if self.language == "zh":
                 blocks.append(
                     "\n以下知识库使用 PageIndex Cloud。使用已加载的 pageindex_cloud_* "
                     "SDK 工具先查看文档结构、再读取相关页面；不要使用 rag 读取这些 "
-                    "PageIndex 知识库。文档清单：\n"
-                    f"{docs_block}\n\nPageIndex SDK 阅读说明：\n{instructions}"
+                    "PageIndex 知识库。\n\nPageIndex SDK 阅读说明：\n"
+                    f"{instructions}"
                 )
             else:
                 blocks.append(
                     "\nThe following knowledge bases use PageIndex Cloud. Read them with "
                     "the preloaded pageindex_cloud_* SDK tools; inspect structure, then "
                     "read relevant pages. Do not use rag to read these PageIndex knowledge "
-                    "bases. Documents:\n"
-                    f"{docs_block}\n\nPageIndex SDK reading instructions:\n{instructions}"
+                    "bases.\n\nPageIndex SDK reading instructions:\n"
+                    f"{instructions}"
                 )
-        if oss_maps:
-            docs_block = render_docs(oss_maps)
+        if "pageindex-oss" in providers:
             instructions = str(getattr(self, "_pageindex_oss_instructions", "") or "").strip()
             if self.language == "zh":
                 blocks.append(
                     "\n以下知识库使用 PageIndex OSS。使用已加载的 pageindex_oss_* 工具，"
                     "在当前推理循环中先查看文档结构、再读取相关页面；不要使用 rag 读取这些 "
-                    "PageIndex 知识库。文档清单：\n"
-                    f"{docs_block}\n\nPageIndex SDK 阅读说明：\n{instructions}"
+                    "PageIndex 知识库。\n\nPageIndex SDK 阅读说明：\n"
+                    f"{instructions}"
                 )
             else:
                 blocks.append(
                     "\nThe following knowledge bases use PageIndex OSS. Use the preloaded "
                     "pageindex_oss_* tools inside this reasoning loop; inspect structure, "
                     "then read relevant pages. Do not use rag to read these PageIndex knowledge "
-                    "bases. Documents:\n"
-                    f"{docs_block}\n\nPageIndex SDK reading instructions:\n{instructions}"
+                    "bases.\n\nPageIndex SDK reading instructions:\n"
+                    f"{instructions}"
                 )
         return "".join(blocks)
 

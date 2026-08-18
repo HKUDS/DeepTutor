@@ -159,13 +159,12 @@ async def build_sdk_tool_bundle(
         pipeline = PageIndexPipeline(kb_base_dir=kb_base_dir, provider=provider)
         documents = pipeline.document_map(kb_name)
         client = pipeline.sdk_client_for_read(kb_name)
-        doc_ids = list(documents.values())
         sdk_tools = (
-            client.as_openai_tools(include_management=False, doc_id=doc_ids)
+            client.as_openai_tools(include_management=False)
             if provider == OSS_PROVIDER
             else _cloud_read_tools(client)
         )
-        instructions = client.agent_instructions(doc_id=doc_ids)
+        instructions = client.agent_instructions()
         return PageIndexSDKToolBundle(
             provider=provider,
             tools=tuple(

@@ -1,8 +1,8 @@
 """Chat-side PageIndex SDK tool wiring.
 
 Attaching a PageIndex KB overlays the SDK's tools for that turn, preloads them
-(no load_tools round-trip), and injects the KB's document list into the system
-prompt without publishing PageIndex into the global MCP registry.
+(no load_tools round-trip), and injects the SDK's reading instructions without
+publishing PageIndex into the global MCP registry.
 """
 
 from __future__ import annotations
@@ -55,6 +55,12 @@ class FakeManager:
 
 
 def _prepare(monkeypatch, docs: dict[str, dict[str, str]]) -> AgenticChatPipeline:
+    monkeypatch.setattr(
+        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        lambda: SimpleNamespace(
+            binding="openai", model="gpt-test", api_key="k", base_url="u", api_version=None
+        ),
+    )
     pipe = AgenticChatPipeline(language="en")
     other_tool = FakeMCPTool("other", "do_thing")
     pipe.registry = FakeRegistry([other_tool])
@@ -69,7 +75,10 @@ def _prepare(monkeypatch, docs: dict[str, dict[str, str]]) -> AgenticChatPipelin
     monkeypatch.setattr("deeptutor.services.mcp.load_loaded_tools", lambda _sid: set())
     # Non-admin user without an MCP grant: fail-closed empty whitelist.
     monkeypatch.setattr("deeptutor.multi_user.tool_access.allowed_mcp_tools", lambda: set())
-    monkeypatch.setattr(pipe, "_pageindex_doc_maps", lambda _ctx: docs)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.pageindex.is_pageindex_kb",
+        lambda name: name in docs,
+    )
 
     async def bundles(_ctx):
         if not docs:
@@ -111,13 +120,15 @@ def test_no_pageindex_kb_keeps_fail_closed(monkeypatch) -> None:
     assert pipe._deferred_loader is None
 
 
-def test_system_note_lists_documents(monkeypatch) -> None:
+def test_system_note_omits_document_metadata(monkeypatch) -> None:
     pipe = _prepare(monkeypatch, {"kb1": {"a.pdf": "pi-1", "b.docx": "pi-2"}})
     note = pipe._kb_system_note(UnifiedContext(knowledge_bases=["kb1"]))
     assert "pageindex_cloud_*" in note
     assert "Do not use rag to read these PageIndex knowledge bases" in note
-    assert "a.pdf (doc_id: pi-1)" in note
-    assert "b.docx (doc_id: pi-2)" in note
+    assert "Use structure, then pages." in note
+    assert "a.pdf" not in note
+    assert "b.docx" not in note
+    assert "doc_id" not in note
     # Pure-pageindex conversation: rag isn't mounted, so no rag wording at all.
     assert "calling rag" not in note
 
@@ -129,7 +140,7 @@ def test_rag_kbs_excludes_pageindex(monkeypatch) -> None:
     assert pipe._rag_kbs(ctx) == ["kb2"]
     note = pipe._kb_system_note(ctx)
     assert "Attached knowledge bases: kb2." in note
-    assert "kb1" in note  # listed in the PageIndex SDK block instead
+    assert "kb1" not in note
 
 
 def test_pageindex_kb_is_never_preseeded(monkeypatch) -> None:
@@ -147,6 +158,12 @@ def test_pageindex_kb_is_never_preseeded(monkeypatch) -> None:
 
 
 def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        lambda: SimpleNamespace(
+            binding="openai", model="gpt-test", api_key="k", base_url="u", api_version=None
+        ),
+    )
     pipe = AgenticChatPipeline(language="en")
     pipe.registry = FakeRegistry([])
     oss_tool = FakeMCPTool("pageindex_oss", "get_page_content")
@@ -156,7 +173,10 @@ def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) 
     monkeypatch.setattr("deeptutor.services.mcp.get_mcp_manager", lambda: FakeManager())
     monkeypatch.setattr("deeptutor.services.mcp.load_loaded_tools", lambda _sid: set())
     monkeypatch.setattr("deeptutor.multi_user.tool_access.allowed_mcp_tools", lambda: set())
-    monkeypatch.setattr(pipe, "_pageindex_doc_maps", lambda _ctx: {})
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.pageindex.is_pageindex_kb",
+        lambda name: name == "oss-kb",
+    )
 
     async def bundles(_ctx):
         return [
@@ -181,7 +201,8 @@ def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) 
         schema["function"]["name"] for schema in pipe._deferred_loader.initial_schemas()
     }
     note = pipe._pageindex_system_note()
-    assert "manual.pdf (doc_id: pi-local)" in note
+    assert "manual.pdf" not in note
+    assert "doc_id" not in note
     assert "Read structure, then pages." in note
     assert "Do not use rag to read these PageIndex knowledge bases" in note
 
