@@ -137,7 +137,15 @@ const nextConfig = {
   // follows whatever network this machine is on. Dev-only: `allowedDevOrigins`
   // has no effect on `next build`/`next start`, and anyone who can reach the
   // dev server on these addresses is already inside the LAN.
-  allowedDevOrigins: ["127.0.0.1", ...localNetworkHosts()],
+  allowedDevOrigins: [
+    "127.0.0.1",
+    ...localNetworkHosts(),
+    "8.163.58.44",
+    "srxai.duckdns.org",
+    ...(SYSTEM_SETTINGS.cors_origins || []).map((o) =>
+      o.replace(/^https?:\/\//, "").split(":")[0]
+    ),
+  ],
 
   // Turbopack configuration (used when running `npm run dev:turbo`)
   turbopack: {

@@ -2,8 +2,9 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
@@ -144,6 +145,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to start cron service: {e}")
 
+    # Start GitHub + web source sync services
+    try:
+        from deeptutor.services.github_source.sync_service import get_sync_service
+
+        await get_sync_service().start()
+    except Exception as e:
+        logger.warning(f"Failed to start GitHub source sync: {e}")
+
+    try:
+        from deeptutor.services.web_source.sync_service import get_web_sync_service
+
+        await get_web_sync_service().start()
+    except Exception as e:
+        logger.warning(f"Failed to start web source sync: {e}")
+
     # Ping PocketBase if configured — logs a warning (not an error) if unreachable
     try:
         from deeptutor.services.pocketbase_client import ping_pocketbase
@@ -181,6 +197,21 @@ async def lifespan(app: FastAPI):
         await get_cron_service().stop()
     except Exception as e:
         logger.warning(f"Failed to stop cron service: {e}")
+
+    # Stop GitHub + web source sync services
+    try:
+        from deeptutor.services.github_source.sync_service import get_sync_service
+
+        await get_sync_service().stop()
+    except Exception as e:
+        logger.warning(f"Failed to stop GitHub source sync: {e}")
+
+    try:
+        from deeptutor.services.web_source.sync_service import get_web_sync_service
+
+        await get_web_sync_service().stop()
+    except Exception as e:
+        logger.warning(f"Failed to stop web source sync: {e}")
 
     # Stop partners
     try:
@@ -241,6 +272,26 @@ app = FastAPI(
     # See: https://github.com/HKUDS/DeepTutor/issues/112
     redirect_slashes=False,
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all so 500s always return JSON, never Starlette's plain-text body."""
+    logger.error(
+        "Unhandled exception on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+        exc_info=True,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"{type(exc).__name__}: {exc}",
+            "type": type(exc).__name__,
+        },
+    )
+
 
 # Access logging is funneled through this one middleware. uvicorn's own
 # per-request access log is disabled on every launch path (run_server.py via
@@ -318,7 +369,10 @@ from deeptutor.api.routers import (
     chat,
     co_writer,
     dashboard,
+    immersive_reading,
     imports,
+    kids,
+    kids_admin,
     knowledge,
     mastery_path,
     mcp_settings,
@@ -391,6 +445,25 @@ app.include_router(
     notebook.router, prefix="/api/v1/notebook", tags=["notebook"], dependencies=_auth
 )
 app.include_router(book.router, prefix="/api/v1/book", tags=["book"], dependencies=_auth)
+app.include_router(
+    immersive_reading.router,
+    prefix="/api/v1/immersive-reading",
+    tags=["immersive-reading"],
+    dependencies=_auth,
+)
+# Kids parent-management endpoints require adult authentication.
+app.include_router(
+    kids_admin.router,
+    prefix="/api/v1/kids-admin",
+    tags=["kids-admin"],
+    dependencies=_auth,
+)
+# Kids child-facing endpoints use a lightweight device token, no adult auth.
+app.include_router(
+    kids.router,
+    prefix="/api/v1/kids",
+    tags=["kids"],
+)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
     capabilities_settings.router,

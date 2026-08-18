@@ -12,7 +12,7 @@ import json
 import logging
 from pathlib import Path
 import shutil
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from deeptutor.services.config import resolve_llm_runtime_config
 from deeptutor.services.file_io import atomic_write_json
@@ -28,6 +28,9 @@ from deeptutor.services.rag.service import RAGService
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_DIR = "./data/knowledge_bases"
+
+if TYPE_CHECKING:
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
 
 
 @dataclass(frozen=True)
@@ -336,6 +339,72 @@ class DocumentAdder:
         _write_metadata(self.metadata_file, metadata)
 
 
+async def _bootstrap_index_from_files(
+    kb_name: str,
+    source_files: list[str],
+    base_dir: str,
+    manager: "KnowledgeBaseManager",
+) -> int:
+    """Create a fresh index for an empty KB from the given source files.
+
+    Called when :class:`DocumentAdder` rejects an add because the KB has no
+    existing index (it was created empty, e.g. via the no-files fast path or
+    a web/GitHub source sync before any documents were indexed). Uses
+    :meth:`RAGService.initialize` to build the index in one batch, then
+    records file hashes so subsequent incremental adds can detect duplicates.
+    """
+    rag_service = RAGService(kb_base_dir=base_dir)
+    kb_dir = Path(base_dir) / kb_name
+    raw_dir = kb_dir / "raw"
+    metadata_file = kb_dir / "metadata.json"
+
+    success = await rag_service.initialize(kb_name=kb_name, file_paths=source_files)
+    if not success:
+        raise RuntimeError(
+            f"Failed to initialize index for KB '{kb_name}' from {len(source_files)} file(s)"
+        )
+
+    # Record hashes so future syncs detect unchanged files.
+    metadata = _read_metadata(metadata_file)
+    hashes = metadata.setdefault("file_hashes", {})
+    for fpath_str in source_files:
+        fpath = Path(fpath_str)
+        sha = hashlib.sha256()
+        with open(fpath, "rb") as fh:
+            for block in iter(lambda: fh.read(65536), b""):
+                sha.update(block)
+        hashes[_raw_hash_key(fpath, raw_dir)] = sha.hexdigest()
+    metadata["rag_provider"] = rag_service._resolve_provider(kb_name)
+    metadata["needs_reindex"] = False
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    metadata["last_updated"] = ts
+    metadata["last_indexed_at"] = ts
+    metadata["last_indexed_count"] = len(source_files)
+    metadata["last_indexed_action"] = "create"
+    _write_metadata(metadata_file, metadata)
+
+    indexed = len(source_files)
+    manager.update_kb_status(
+        name=kb_name,
+        status="ready",
+        progress={
+            "stage": "completed",
+            "message": f"Initialized index with {indexed} file(s).",
+            "percent": 100,
+            "current": indexed,
+            "total": max(indexed, 1),
+            "file_name": "",
+            "error": None,
+            "timestamp": datetime.now().isoformat(),
+            "indexed_count": indexed,
+            "index_changed": True,
+            "index_action": "create",
+        },
+    )
+    logger.info("Bootstrapped index for empty KB '%s' with %d file(s)", kb_name, indexed)
+    return indexed
+
+
 async def add_documents(
     kb_name: str,
     source_files: list[str],
@@ -364,12 +433,25 @@ async def add_documents(
             },
         )
 
-        adder = DocumentAdder(
-            kb_name=kb_name,
-            base_dir=base_dir,
-            api_key=api_key,
-            base_url=base_url,
-        )
+        try:
+            adder = DocumentAdder(
+                kb_name=kb_name,
+                base_dir=base_dir,
+                api_key=api_key,
+                base_url=base_url,
+            )
+        except ValueError as exc:
+            if "not initialized" not in str(exc).lower() or not source_files:
+                raise
+            # Empty KB (created without initial documents): bootstrap the
+            # index from these files instead of erroring.
+            return await _bootstrap_index_from_files(
+                kb_name=kb_name,
+                source_files=source_files,
+                base_dir=base_dir,
+                manager=manager,
+            )
+
         new_files = adder.add_documents(source_files, allow_duplicates=allow_duplicates)
         if not new_files:
             manager.update_kb_status(
