@@ -52,6 +52,28 @@ def test_vault_search_and_list_skip_internal_dirs(tmp_path: Path) -> None:
     assert all(".obsidian" not in p for p in V.list_notes(tmp_path))
 
 
+def test_vault_search_survives_undecodable_note(tmp_path: Path) -> None:
+    # Issue #915: one undecodable byte must not abort the whole vault search.
+    _seed_vault(tmp_path)
+    (tmp_path / "broken.md").write_bytes(b"hello \xe5\xaa world\n")
+    assert [h["path"] for h in V.search_notes(tmp_path, "light")] == ["notes/Photosynthesis.md"]
+
+
+def test_vault_read_tolerates_undecodable_bytes(tmp_path: Path) -> None:
+    # Issue #915: read_note should degrade (replacement char) instead of raising.
+    (tmp_path / "broken.md").write_bytes(b"# title\nhello \xe5\xaa world\n")
+    note = V.read_note(tmp_path, "broken")
+    assert "\ufffd" in note["body"]
+
+
+def test_vault_scans_survive_undecodable_note(tmp_path: Path) -> None:
+    # Issue #915: backlinks and tag collection iterate the same files.
+    _seed_vault(tmp_path)
+    (tmp_path / "broken.md").write_bytes(b"hello \xe5\xaa world\n")
+    assert [b["path"] for b in V.backlinks(tmp_path, "Photosynthesis")] == ["Index.md"]
+    assert {row["tag"] for row in V.collect_tags(tmp_path)} == {"biology"}
+
+
 def test_vault_links_and_backlinks_follow_wikilinks(tmp_path: Path) -> None:
     _seed_vault(tmp_path)
     assert V.outgoing_links(tmp_path, "Photosynthesis") == ["Chlorophyll"]
@@ -171,6 +193,20 @@ async def test_tools_round_trip_against_vault(tmp_path: Path) -> None:
 async def test_read_missing_note_is_graceful(tmp_path: Path) -> None:
     res = await ObsidianReadTool().execute(note="Nope", _vault_path=str(tmp_path))
     assert res.success is False  # VaultError surfaced as a clean failure
+
+
+@pytest.mark.asyncio
+async def test_read_note_with_date_frontmatter(tmp_path: Path) -> None:
+    # Issue #914: unquoted YAML dates parse to datetime.date, which json.dumps
+    # cannot serialize without default=str — obsidian_read must not crash.
+    (tmp_path / "dated.md").write_text(
+        "---\ntype: item-bank\ncreated: 2026-08-11\n---\n\n# Body\n\ntext\n",
+        encoding="utf-8",
+    )
+    res = await ObsidianReadTool().execute(note="dated.md", _vault_path=str(tmp_path))
+    assert res.success is True
+    payload = json.loads(res.content)
+    assert payload["frontmatter"]["created"] == "2026-08-11"
 
 
 # ---- exclusivity & registry --------------------------------------------------
