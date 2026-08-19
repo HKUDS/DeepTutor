@@ -265,3 +265,71 @@ def test_category_cascade_on_entry_delete(store: SQLiteSessionStore) -> None:
     asyncio.run(store.delete_notebook_entry(eid))
     cats = asyncio.run(store.list_categories())
     assert cats[0]["entry_count"] == 0
+
+
+# ── Turn deletion / parent-pointer splicing ───────────────────────
+
+
+def _seed_chat(store: SQLiteSessionStore, turns: int) -> tuple[str, list[int]]:
+    """Seed a linear multi-turn chat; returns (session_id, message_ids) where
+    message_ids alternate user/assistant per turn."""
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+    ids: list[int] = []
+    parent: int | None = None
+    for i in range(turns):
+        uid = asyncio.run(store.add_message(sid, "user", f"q{i + 1}", parent_message_id=parent))
+        ids.append(uid)
+        aid = asyncio.run(store.add_message(sid, "assistant", f"a{i + 1}", parent_message_id=uid))
+        ids.append(aid)
+        parent = aid
+    return sid, ids
+
+
+def test_delete_first_turn_reparents_descendants(store: SQLiteSessionStore) -> None:
+    sid, ids = _seed_chat(store, turns=2)
+    u1, _a1, u2, a2 = ids
+
+    result = asyncio.run(store.delete_turn_by_message(sid, u1))
+    assert result["deleted"] is True
+
+    remaining = asyncio.run(store.get_messages(sid))
+    assert [m["content"] for m in remaining] == ["q2", "a2"]
+    assert remaining[0]["parent_message_id"] is None
+    assert remaining[1]["parent_message_id"] == u2
+    # The surviving chain is fully connected root → leaf.
+    path = asyncio.run(store.get_message_path(sid, a2))
+    assert [m["content"] for m in path] == ["q2", "a2"]
+
+
+def test_delete_middle_turn_keeps_chain_connected(store: SQLiteSessionStore) -> None:
+    sid, ids = _seed_chat(store, turns=3)
+    u1, a1, u2, _a2, u3, a3 = ids
+
+    result = asyncio.run(store.delete_turn_by_message(sid, u2))
+    assert result["deleted"] is True
+
+    remaining = asyncio.run(store.get_messages(sid))
+    assert [m["content"] for m in remaining] == ["q1", "a1", "q3", "a3"]
+    by_content = {m["content"]: m for m in remaining}
+    assert by_content["q3"]["parent_message_id"] == a1
+
+    path = asyncio.run(store.get_message_path(sid, a3))
+    assert [m["content"] for m in path] == ["q1", "a1", "q3", "a3"]
+    # u1 stays the session root.
+    assert by_content["q1"]["parent_message_id"] is None
+    assert by_content["q1"]["id"] == u1
+
+
+def test_delete_last_turn_leaves_prefix_intact(store: SQLiteSessionStore) -> None:
+    sid, ids = _seed_chat(store, turns=2)
+    _u1, a1, u2, _a2 = ids
+
+    result = asyncio.run(store.delete_turn_by_message(sid, u2))
+    assert result["deleted"] is True
+
+    remaining = asyncio.run(store.get_messages(sid))
+    assert [m["content"] for m in remaining] == ["q1", "a1"]
+    assert remaining[0]["parent_message_id"] is None
+    assert remaining[1]["parent_message_id"] == remaining[0]["id"]
+    assert remaining[1]["id"] == a1
