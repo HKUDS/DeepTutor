@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Star, Trash2 } from "lucide-react";
 import {
   formatKnowledgeTimestamp,
+  providerUsesEmbeddingMetadata,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 
@@ -21,6 +22,7 @@ export default function KbSettingsSection({
   const { t } = useTranslation();
   const meta = kb.metadata || {};
   const provider = kb.statistics?.rag_provider || "llamaindex";
+  const pageIndexProvider = !providerUsesEmbeddingMetadata(provider);
   const embeddingLabel = meta.embedding_model
     ? typeof meta.embedding_dim === "number"
       ? `${meta.embedding_model} · ${meta.embedding_dim}${t("d")}`
@@ -44,7 +46,9 @@ export default function KbSettingsSection({
 
         <dl className="grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3 sm:grid-cols-2">
           <Field label={t("RAG provider")}>{provider}</Field>
-          <Field label={t("Embedding")}>{embeddingLabel}</Field>
+          {!pageIndexProvider && (
+            <Field label={t("Embedding")}>{embeddingLabel}</Field>
+          )}
           <Field label={t("Created")}>{created || "—"}</Field>
           <Field label={t("Updated")}>{updated || "—"}</Field>
           <Field label={t("Last indexed")}>{lastIndexed || "—"}</Field>

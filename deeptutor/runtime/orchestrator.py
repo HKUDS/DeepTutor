@@ -43,6 +43,31 @@ class ChatOrchestrator:
         if not context.session_id:
             context.session_id = str(uuid.uuid4())
 
+        try:
+            from deeptutor.services.rag.pipelines.pageindex import (
+                validate_pageindex_oss_selection,
+            )
+
+            validate_pageindex_oss_selection(context.knowledge_bases)
+        except ValueError as exc:
+            bus = StreamBus()
+            await bus.error(
+                str(exc),
+                source="orchestrator",
+                metadata={"turn_terminal": True, "status": "failed"},
+            )
+            await bus.emit(
+                StreamEvent(
+                    type=StreamEventType.DONE,
+                    source="orchestrator",
+                    metadata={"status": "failed"},
+                )
+            )
+            await bus.close()
+            async for event in bus.subscribe():
+                yield event
+            return
+
         cap_name = context.active_capability or "chat"
         capability = self._cap_registry.get(cap_name)
 

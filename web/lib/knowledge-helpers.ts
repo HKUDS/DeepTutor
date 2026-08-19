@@ -12,6 +12,33 @@ export const DEFAULT_UPLOAD_POLICY: KnowledgeUploadPolicy = {
   max_file_size_bytes: 200 * 1024 * 1024,
 };
 
+const PAGEINDEX_UPLOAD_EXTENSIONS: Record<string, string[]> = {
+  pageindex: [
+    ".pdf",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".docx",
+    ".doc",
+    ".pptx",
+    ".ppt",
+    ".xlsx",
+    ".xls",
+    ".csv",
+  ],
+  "pageindex-oss": [".pdf"],
+};
+
+export function uploadPolicyForProvider(
+  policy: KnowledgeUploadPolicy,
+  provider?: string,
+): KnowledgeUploadPolicy {
+  const extensions = PAGEINDEX_UPLOAD_EXTENSIONS[provider || ""];
+  return extensions
+    ? { ...policy, extensions, accept: extensions.join(",") }
+    : policy;
+}
+
 export interface ProgressInfo {
   task_id?: string;
   stage?: string;
@@ -94,6 +121,9 @@ export interface KnowledgeBase {
 }
 
 export type ProviderConnectionStatus = "ready" | "needs_key" | "unavailable";
+
+export const providerUsesEmbeddingMetadata = (provider?: string): boolean =>
+  provider !== "pageindex" && provider !== "pageindex-oss";
 
 export const providerConnectionStatus = (provider: {
   id: string;

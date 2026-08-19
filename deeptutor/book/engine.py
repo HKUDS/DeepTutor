@@ -476,6 +476,7 @@ class BookEngine:
                         book_id=book.id,
                         proposal=proposal,
                         inputs=inputs,
+                        stream=bus,
                     )
                     self.storage.save_exploration(book.id, exploration)
                     if (book.metadata or {}).get("exploration_failed"):

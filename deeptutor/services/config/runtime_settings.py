@@ -214,14 +214,13 @@ DEFAULT_MINERU_SETTINGS: dict[str, Any] = _DEFAULT_MINERU_ENGINE
 
 # PageIndex cloud RAG engine. A KB indexed with the ``pageindex`` provider
 # ships its documents to the hosted PageIndex service for tree building and
-# reasoning-based retrieval. Only an API key (per PageIndex account) and the
-# API base URL are needed; the same key is reused by every ``pageindex`` KB.
+# reasoning-based retrieval. The SDK owns the official endpoint; the same
+# deployment-level credential is reused by every ``pageindex`` KB.
 # Kept in its own JSON file so the credential lives beside other per-feature
 # settings and never leaks into model/network config.
 DEFAULT_PAGEINDEX_SETTINGS: dict[str, Any] = {
     "version": 1,
     "api_key": "",
-    "api_base_url": "https://api.pageindex.ai",
 }
 
 # Tencent IMA. The credential pair (``client_id`` + ``api_key``, issued at
@@ -751,16 +750,12 @@ class RuntimeSettingsService:
         payload = dict(settings)
         if value := self._process_env_value("PAGEINDEX_API_KEY"):
             payload["api_key"] = value
-        if value := self._process_env_value("PAGEINDEX_API_BASE_URL"):
-            payload["api_base_url"] = value
         return self._normalize_pageindex(payload)
 
     def _normalize_pageindex(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
             "version": 1,
             "api_key": _string(settings.get("api_key")),
-            "api_base_url": _string(settings.get("api_base_url")).rstrip("/")
-            or "https://api.pageindex.ai",
         }
 
     def _apply_ima_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:

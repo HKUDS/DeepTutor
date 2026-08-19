@@ -145,6 +145,10 @@ export default function BookChatPanel({
 
   useEffect(() => {
     let cancelled = false;
+    // The first turn creates its session server-side. Persisting that same id
+    // back onto the book rerenders this component, but it is not a session
+    // switch: resetting here would disconnect the turn before its reply arrives.
+    if (initialSessionId && initialSessionId === sessionIdRef.current) return;
     retryTimersRef.current.forEach((timer) => clearTimeout(timer));
     retryTimersRef.current.clear();
     clientRef.current?.disconnect();

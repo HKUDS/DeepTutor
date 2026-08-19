@@ -22,31 +22,37 @@ logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = "pageindex_docs.json"
 META_FILENAME = "meta.json"
-PROVIDER = "pageindex"
+SDK_STORAGE_DIRNAME = "pageindex"
+CLOUD_PROVIDER = "pageindex"
+OSS_PROVIDER = "pageindex-oss"
 
 
-def _empty_manifest() -> dict[str, Any]:
-    return {"provider": PROVIDER, "docs": {}}
+def _empty_manifest(provider: str = CLOUD_PROVIDER) -> dict[str, Any]:
+    return {"provider": provider, "docs": {}}
 
 
 def manifest_path(storage_dir: Path) -> Path:
     return Path(storage_dir) / MANIFEST_FILENAME
 
 
-def read_manifest(storage_dir: Path | None) -> dict[str, Any]:
+def read_manifest(
+    storage_dir: Path | None,
+    *,
+    provider: str = CLOUD_PROVIDER,
+) -> dict[str, Any]:
     if storage_dir is None:
-        return _empty_manifest()
+        return _empty_manifest(provider)
     path = manifest_path(storage_dir)
     if not path.exists():
-        return _empty_manifest()
+        return _empty_manifest(provider)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         logger.warning("Failed to read PageIndex manifest %s: %s", path, exc)
-        return _empty_manifest()
+        return _empty_manifest(provider)
     if not isinstance(data, dict):
-        return _empty_manifest()
-    data.setdefault("provider", PROVIDER)
+        return _empty_manifest(provider)
+    data.setdefault("provider", provider)
     if not isinstance(data.get("docs"), dict):
         data["docs"] = {}
     return data
@@ -56,7 +62,7 @@ def write_manifest(storage_dir: Path, manifest: dict[str, Any]) -> None:
     atomic_write_json(manifest_path(storage_dir), manifest)
 
 
-def write_meta(storage_dir: Path) -> None:
+def write_meta(storage_dir: Path, *, provider: str = CLOUD_PROVIDER) -> None:
     """Write a flat-layout ``meta.json`` so the version is listed as ready.
 
     Mirrors ``index_versioning.write_version_meta`` but carries a synthetic
@@ -65,8 +71,8 @@ def write_meta(storage_dir: Path) -> None:
     target = Path(storage_dir)
     payload = {
         "version": target.name,
-        "signature": PROVIDER,
-        "provider": PROVIDER,
+        "signature": provider,
+        "provider": provider,
         "layout": "flat",
         "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     }
@@ -101,9 +107,20 @@ def upsert_doc(
     }
 
 
+def remove_doc(manifest: dict[str, Any], file_name: str) -> dict[str, Any] | None:
+    entry = doc_entries(manifest).pop(file_name, None)
+    return entry if isinstance(entry, dict) else None
+
+
+def sdk_storage_path(storage_dir: Path) -> Path:
+    return Path(storage_dir) / SDK_STORAGE_DIRNAME
+
+
 __all__ = [
     "MANIFEST_FILENAME",
-    "PROVIDER",
+    "CLOUD_PROVIDER",
+    "OSS_PROVIDER",
+    "SDK_STORAGE_DIRNAME",
     "manifest_path",
     "read_manifest",
     "write_manifest",
@@ -111,4 +128,6 @@ __all__ = [
     "doc_entries",
     "doc_ids",
     "upsert_doc",
+    "remove_doc",
+    "sdk_storage_path",
 ]

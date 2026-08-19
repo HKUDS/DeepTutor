@@ -273,7 +273,7 @@ class DocumentAdder:
                     self.progress_tracker.update(
                         ProgressStage.PROCESSING_FILE,
                         f"Indexing {doc_file.name}",
-                        current=idx,
+                        current=len(processed_files),
                         total=total_files,
                     )
 
@@ -286,6 +286,13 @@ class DocumentAdder:
                     # requests once per indexed file (#777).
                     await asyncio.to_thread(self._record_successful_hash, doc_file)
                     logger.info(f"Processed: {doc_file.name}")
+                    if self.progress_tracker is not None:
+                        self.progress_tracker.update(
+                            ProgressStage.PROCESSING_FILE,
+                            f"Indexed {doc_file.name}",
+                            current=len(processed_files),
+                            total=total_files,
+                        )
                 else:
                     error = "Provider returned failure without details."
                     failures.append(DocumentIndexFailure(doc_file, error))

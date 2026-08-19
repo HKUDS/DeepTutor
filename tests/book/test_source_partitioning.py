@@ -12,6 +12,8 @@ over HTTP. Excluding every "connected" KB silently dropped those sources.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from deeptutor.book.agents.source_explorer import SourceExplorer, _balanced_slice
@@ -109,3 +111,39 @@ def test_within_a_source_the_best_chunks_still_win() -> None:
 def test_a_small_sweep_is_returned_whole() -> None:
     chunks = [_chunk("kb", "a", 1.0), _chunk("kb", "b", 2.0)]
     assert len(_balanced_slice(chunks, limit=24)) == 2
+
+
+@pytest.mark.asyncio
+async def test_pageindex_is_read_by_source_explorer_agent_not_rag(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb",
+        lambda name, **_kwargs: SimpleNamespace(base_dir="/kb", name=name),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.provider_binding.resolve_bound_provider",
+        lambda _base, _name: "pageindex-oss",
+    )
+
+    async def read(**_kwargs):
+        return SimpleNamespace(
+            text="Evidence from pages 3 and 7.",
+            sources=[{"type": "pageindex", "page": 3}],
+            tool_context=SimpleNamespace(provider="pageindex-oss"),
+        )
+
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.pageindex.reasoning.read_pageindex_with_agent",
+        read,
+    )
+
+    async def no_rag(**_kwargs):
+        pytest.fail("PageIndex SourceExplorer called rag_search")
+
+    monkeypatch.setattr("deeptutor.tools.rag_tool.rag_search", no_rag)
+    explorer = SourceExplorer(language="en")
+    chunks = await explorer._retrieve_kb_chunks(["revenue"], ["reports"])
+
+    assert len(chunks) == 1
+    assert chunks[0].kb_name == "reports"
+    assert chunks[0].text == "Evidence from pages 3 and 7."
+    assert chunks[0].metadata["sources"][0]["page"] == 3

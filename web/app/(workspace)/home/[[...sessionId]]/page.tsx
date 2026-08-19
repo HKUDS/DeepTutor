@@ -311,6 +311,10 @@ interface KnowledgeBase {
     type?: string;
     /** Backend of a connected subagent: "claude_code" | "codex" | "partner". */
     agent_kind?: string;
+    rag_provider?: string;
+  };
+  statistics?: {
+    rag_provider?: string;
   };
 }
 
@@ -1799,13 +1803,23 @@ export default function ChatPage() {
   const handleToggleKB = useCallback(
     (name: string) => {
       const current = state.knowledgeBases;
+      const providerOf = (kbName: string) => {
+        const kb = knowledgeBases.find((item) => item.name === kbName);
+        return kb?.metadata?.rag_provider || kb?.statistics?.rag_provider || "";
+      };
+      const selectingOss = providerOf(name) === "pageindex-oss";
       setKBs(
         current.includes(name)
           ? current.filter((kb) => kb !== name)
-          : [...current, name],
+          : [
+              ...(selectingOss
+                ? current.filter((kb) => providerOf(kb) !== "pageindex-oss")
+                : current),
+              name,
+            ],
       );
     },
-    [setKBs, state.knowledgeBases],
+    [knowledgeBases, setKBs, state.knowledgeBases],
   );
 
   // Real knowledge bases and connected subagents render as separate composer

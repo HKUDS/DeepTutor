@@ -46,15 +46,14 @@ from deeptutor.services.mcp.config import (
     MCPServerConfig,
     load_mcp_config,
 )
-from deeptutor.services.mcp.pageindex_server import with_builtin_servers
 
 logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT_S = 15
 _NAME_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
-#: Owner key for the deployment's own servers (the admin ``mcp.json`` plus
-#: injected built-ins). Connections are keyed by ``(owner, server_name)`` so a
+#: Owner key for the deployment's servers from the admin ``mcp.json``.
+#: Connections are keyed by ``(owner, server_name)`` so a
 #: future per-user server cannot collide with — or be routed into — another
 #: tenant's live session.
 SHARED_OWNER = "_shared"
@@ -167,7 +166,10 @@ class MCPToolAdapter(BaseTool):
         )
         return ToolResult(
             content=text,
-            metadata={"mcp_server": self._server_name, "mcp_tool": self._original_name},
+            metadata={
+                "mcp_server": self._server_name,
+                "mcp_tool": self._original_name,
+            },
         )
 
 
@@ -270,13 +272,13 @@ class MCPConnectionManager:
         async with self._lock_for(SHARED_OWNER):
             if self._started:
                 return
-            await self._sync_to_config(with_builtin_servers(load_mcp_config()))
+            await self._sync_to_config(load_mcp_config())
             self._started = True
 
     async def reload(self) -> None:
         """Re-read the persisted config and apply the diff to live connections."""
         async with self._lock_for(SHARED_OWNER):
-            await self._sync_to_config(with_builtin_servers(load_mcp_config()))
+            await self._sync_to_config(load_mcp_config())
             self._started = True
 
     async def shutdown(self) -> None:
