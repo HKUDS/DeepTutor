@@ -3070,5 +3070,21 @@
   "Generate a chapter on this": "Generate a chapter on this",
   "This book was written without reading your sources.": "This book was written without reading your sources.",
   "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.": "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.",
-  "Source sweep failed": "Source sweep failed"
+  "Source sweep failed": "Source sweep failed",
+  "Crawl paired documentation sites and keep bilingual pages aligned.": "Crawl paired documentation sites and keep bilingual pages aligned.",
+  "Cancel sync": "Cancel sync",
+  "Detect automatically": "Detect automatically",
+  "Paired source URL": "Paired source URL",
+  "Paired": "Paired",
+  "Document version": "Document version",
+  "Validation questions (one per line)": "Validation questions (one per line)",
+  "How do I configure authentication?": "How do I configure authentication?",
+  "Scheduled sync interval (hours)": "Scheduled sync interval (hours)",
+  "Scheduled": "Scheduled",
+  "Manual": "Manual",
+  "Version": "Version",
+  "Every": "Every",
+  "Next sync": "Next sync",
+  "Validation": "Validation",
+  "https://example.com/docs/": "https://example.com/docs/"
 }

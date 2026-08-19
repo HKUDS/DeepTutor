@@ -19,6 +19,7 @@ import {
   Lock,
   PanelLeftClose,
   PanelLeftOpen,
+  Rocket,
   PenLine,
   Settings,
   type LucideIcon,
@@ -107,6 +108,12 @@ const SECONDARY_NAV: NavEntry[] = [
     label: "Knowledge Center",
     icon: BookOpen,
     tooltipKey: "Knowledge tooltip",
+  },
+  {
+    href: "/immersive-reading",
+    label: "Immersive Reading",
+    icon: Rocket,
+    tooltipKey: "Immersive Reading tooltip",
   },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

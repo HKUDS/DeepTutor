@@ -85,7 +85,7 @@ test("ordinary users can edit only their owner-scoped Codex reasoning overrides"
   );
   assert.match(
     card,
-    /setCodexReasoningEffort\(\s*model\.model,\s*value \|\| null,?\s*\)/,
+    /setCodexReasoningEffort\(\s*model\.model,\s*value \|\| null/,
   );
 });
 
