@@ -80,6 +80,31 @@ export function buildVisiblePath(
   const siblingsByMessageId = new Map<number, SiblingInfo>();
   const guard = new Set<string>();
   let currentParent = ROOT_KEY;
+  if ((childrenByParent.get(ROOT_KEY)?.length ?? 0) === 0) {
+    // Orphaned tree (no root message): legacy rows whose parent was deleted,
+    // or local state right after DELETE_TURN. Seed from the oldest orphan.
+    const ids = new Set<number>();
+    for (const msg of allMessages) {
+      if (msg.id !== undefined) ids.add(msg.id);
+    }
+    let seeds = allMessages.filter(
+      (m) =>
+        m.id !== undefined &&
+        m.parentMessageId != null &&
+        !ids.has(m.parentMessageId),
+    );
+    // Pure cycles have no orphan entry; fall back to the oldest message.
+    if (seeds.length === 0) {
+      seeds = allMessages.filter((m) => m.id !== undefined);
+    }
+    if (seeds.length > 0) {
+      let oldest = seeds[0];
+      for (const s of seeds) {
+        if (siblingRank(s) < siblingRank(oldest)) oldest = s;
+      }
+      currentParent = parentKey(oldest.parentMessageId);
+    }
+  }
   // Bound the walk defensively against pathological data (loops).
   let safety = 10_000;
   while (safety > 0) {
