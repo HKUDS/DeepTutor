@@ -11,6 +11,7 @@ import {
   Bot,
   Brain,
   ChevronDown,
+  Ear,
   Github,
   HeartHandshake,
   House,
@@ -72,6 +73,13 @@ const PRIMARY_NAV: NavEntry[] = [
     label: "Co-Writer",
     icon: PenLine,
     tooltipKey: "Co-Writer tooltip",
+    requires: "llm",
+  },
+  {
+    href: "/whisper",
+    label: "Whisper",
+    icon: Ear,
+    tooltipKey: "Whisper tooltip",
     requires: "llm",
   },
   {
