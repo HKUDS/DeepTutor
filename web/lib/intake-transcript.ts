@@ -12,7 +12,7 @@ export type IntakeMessage = {
 export {
   looksLikeCrisisRedirect,
   parseRoomIdFromContent,
-} from "@/lib/whisper-transcript";
+} from "@/lib/psych-crisis-transcript";
 
 export function filterMessagesForSeat(
   messages: IntakeMessage[],

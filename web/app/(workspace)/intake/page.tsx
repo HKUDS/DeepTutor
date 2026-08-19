@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardList, Loader2 } from "lucide-react";
 import IntakeMessageList from "@/components/intake/IntakeMessageList";
-import WhisperComposer from "@/components/whisper/WhisperComposer";
-import WhisperRoomChip from "@/components/whisper/WhisperRoomChip";
+import IntakeComposer, {
+  type IntakeComposerSeat,
+} from "@/components/intake/IntakeComposer";
+import IntakeRoomChip from "@/components/intake/IntakeRoomChip";
 import {
   UnifiedWSClient,
   type StartTurnMessage,
@@ -19,7 +21,6 @@ import {
   type IntakeMessage,
   type IntakeSeat,
 } from "@/lib/intake-transcript";
-import type { WhisperSeat } from "@/lib/whisper-transcript";
 
 function newMessageId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -170,7 +171,8 @@ export default function IntakePage() {
   );
 
   const readOnly = seat === "supervisor";
-  const composerSeat: WhisperSeat = seat === "trainee" ? "trainee" : "visitor";
+  const composerSeat: IntakeComposerSeat =
+    seat === "trainee" ? "trainee" : "visitor";
   const traineeNeedsRoom = seat === "trainee" && !roomId;
   const roomLocked = crisisHit || roomClosed;
   const inputDisabled = roomLocked || readOnly;
@@ -295,7 +297,7 @@ export default function IntakePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {roomId ? <WhisperRoomChip roomId={roomId} /> : null}
+          {roomId ? <IntakeRoomChip roomId={roomId} /> : null}
           <button
             type="button"
             onClick={handleNewRoom}
@@ -376,7 +378,7 @@ export default function IntakePage() {
       </div>
 
       {!readOnly && (
-        <WhisperComposer
+        <IntakeComposer
           seat={composerSeat}
           draft={draft}
           busy={busy}

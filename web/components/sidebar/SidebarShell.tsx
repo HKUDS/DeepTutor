@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ClipboardList,
   GraduationCap,
-  Ear,
   Dumbbell,
   Eye,
   FlaskConical,
@@ -80,13 +79,6 @@ const PRIMARY_NAV: NavEntry[] = [
     label: "Co-Writer",
     icon: PenLine,
     tooltipKey: "Co-Writer tooltip",
-    requires: "llm",
-  },
-  {
-    href: "/whisper",
-    label: "Whisper",
-    icon: Ear,
-    tooltipKey: "Whisper tooltip",
     requires: "llm",
   },
   {

@@ -3,7 +3,7 @@
  * Reuses psych-academy redirect templates (same strings as whisper visitor).
  */
 
-export { looksLikeCrisisRedirect } from "@/lib/whisper-transcript";
+export { looksLikeCrisisRedirect } from "@/lib/psych-crisis-transcript";
 
 export function looksLikeCounselSessionEnded(text: string): boolean {
   const t = (text || "").toLowerCase();

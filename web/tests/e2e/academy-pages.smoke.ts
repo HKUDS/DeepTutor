@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Static shell smoke for all Psych Academy workspace pages.
+ * Static shell smoke for Psych Academy workspace pages (excludes /whisper — HKUDS #921).
  * No backend required — verifies routes render expected chrome.
  */
 const ACADEMY_SHELLS: Array<{
@@ -9,11 +9,6 @@ const ACADEMY_SHELLS: Array<{
   title: string;
   subtitle: RegExp;
 }> = [
-  {
-    path: "/whisper",
-    title: "Whisper",
-    subtitle: /Dual-seat supervision/i,
-  },
   {
     path: "/sim",
     title: "Sim",
@@ -56,15 +51,6 @@ test.describe("Academy pages :: static shells", () => {
       waitUntil: "domcontentloaded",
     });
     await expect(page.getByLabel("Counsel session id")).toHaveValue(counselId);
-  });
-
-  test("/whisper exposes visitor and trainee seats", async ({ page }) => {
-    await page.goto("/whisper", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("tablist", { name: "Seat" })).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByRole("tab", { name: "visitor" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "trainee" })).toBeVisible();
   });
 
   test("/sim exposes trainee counselor composer", async ({ page }) => {

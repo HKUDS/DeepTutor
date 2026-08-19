@@ -4,15 +4,14 @@ import type { KeyboardEvent } from "react";
 import { Loader2, Send } from "lucide-react";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useImeComposing } from "@/lib/use-ime-composing";
-import type { WhisperSeat } from "@/lib/whisper-transcript";
 
-type WhisperComposerProps = {
-  seat: WhisperSeat;
+export type IntakeComposerSeat = "visitor" | "trainee";
+
+type IntakeComposerProps = {
+  seat: IntakeComposerSeat;
   draft: string;
   busy: boolean;
-  /** Blocks Send / Enter submit (busy, crisis, closed, trainee without room). */
   sendDisabled: boolean;
-  /** Only lock the textarea for terminal room states — never for busy. */
   inputDisabled: boolean;
   showEndButton: boolean;
   endDisabled: boolean;
@@ -21,7 +20,7 @@ type WhisperComposerProps = {
   onEnd: () => void;
 };
 
-export default function WhisperComposer({
+export default function IntakeComposer({
   seat,
   draft,
   busy,
@@ -32,7 +31,7 @@ export default function WhisperComposer({
   onDraftChange,
   onSend,
   onEnd,
-}: WhisperComposerProps) {
+}: IntakeComposerProps) {
   const { isComposingRef, onCompositionStart, onCompositionEnd } =
     useImeComposing();
 

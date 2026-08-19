@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
-type WhisperRoomChipProps = {
+type IntakeRoomChipProps = {
   roomId: string;
 };
 
-export default function WhisperRoomChip({ roomId }: WhisperRoomChipProps) {
+export default function IntakeRoomChip({ roomId }: IntakeRoomChipProps) {
   const [copied, setCopied] = useState(false);
 
   async function copyRoomId() {
