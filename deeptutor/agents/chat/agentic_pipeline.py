@@ -925,6 +925,10 @@ class AgenticChatPipeline:
             reply_text=reply_text,
             answers=answers,
         )
+        # Neutral stop signal for loop plugins (e.g. crisis redirect): skip
+        # further LLM rounds; the outer capability emits the final message.
+        if context.metadata.get("end_loop"):
+            return False
         body_text = _format_user_reply_body(
             reply_text,
             answers,
