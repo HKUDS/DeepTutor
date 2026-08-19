@@ -261,7 +261,7 @@ export default function BlockRenderer({
   const showBridge = bridgeText.length > 0;
 
   return (
-    <div className="group relative">
+    <div className="group relative" data-block-id={block.id}>
       {showBridge && (
         <div className="mb-3 text-[var(--foreground)]">
           <MarkdownRenderer content={bridgeText} variant="prose" />
