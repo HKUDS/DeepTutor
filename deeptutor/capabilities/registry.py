@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from functools import cache
 from importlib.metadata import entry_points
 import inspect
+import logging
 from typing import Any
-
-from loguru import logger
 
 from deeptutor.capabilities.explore_context import ExploreContextCapability
 from deeptutor.capabilities.ima import ImaCapability
@@ -18,6 +18,8 @@ from deeptutor.capabilities.setup import SetupCapability
 from deeptutor.capabilities.solve import SolveLoopCapability
 from deeptutor.capabilities.subagent import SubagentCapability
 from deeptutor.core.context import UnifiedContext
+
+logger = logging.getLogger(__name__)
 
 LOOP_CAPABILITIES_GROUP = "deeptutor.loop_capabilities"
 
@@ -76,35 +78,46 @@ def _coerce_loop_capability(loaded: object) -> LoopCapability | None:
     return obj
 
 
+@cache
 def discover_external_loop_capabilities() -> tuple[LoopCapability, ...]:
     """Load third-party loop capabilities from ``deeptutor.loop_capabilities``.
 
     Built-in names (and earlier plugins) win. Broken or invalid entry points are
     skipped with a warning so a bad plugin cannot take down the chat loop.
+
+    Cached for the life of the process, for two reasons. Built-in capabilities
+    are module-level singletons, so plugins must be too — re-running discovery
+    per call would hand every caller a fresh instance and silently discard any
+    per-instance state. And ``active_loop_capabilities`` runs on every turn
+    while ``capability_tool_owners`` runs on every settings read, so an
+    uncached ``entry_points()`` would rescan installed distribution metadata
+    from disk on both hot paths. Installing a plugin means restarting the
+    server; tests reset the cache with ``discover_external_loop_capabilities
+    .cache_clear()``.
     """
     found: list[LoopCapability] = []
     seen = {cap.name for cap in LOOP_CAPABILITIES}
     try:
         discovered = entry_points(group=LOOP_CAPABILITIES_GROUP)
     except Exception as exc:
-        logger.warning("Failed to read {} entry points: {}", LOOP_CAPABILITIES_GROUP, exc)
+        logger.warning("Failed to read %s entry points: %s", LOOP_CAPABILITIES_GROUP, exc)
         return ()
 
     for ep in discovered:
         try:
             cap = _coerce_loop_capability(ep.load())
         except Exception as exc:
-            logger.warning("Failed to load loop capability plugin '{}': {}", ep.name, exc)
+            logger.warning("Failed to load loop capability plugin '%s': %s", ep.name, exc)
             continue
         if cap is None:
             logger.warning(
-                "Ignoring loop capability plugin '{}': not a LoopCapability class or factory",
+                "Ignoring loop capability plugin '%s': not a LoopCapability class or factory",
                 ep.name,
             )
             continue
         if cap.name in seen:
             logger.warning(
-                "Loop capability plugin '{}' shadowed by built-in or earlier plugin (ignored)",
+                "Loop capability plugin '%s' shadowed by built-in or earlier plugin (ignored)",
                 cap.name,
             )
             continue

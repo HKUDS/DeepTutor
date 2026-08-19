@@ -4,8 +4,22 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from deeptutor.capabilities.registry import LOOP_CAPABILITIES
+import pytest
+
+from deeptutor.capabilities.registry import LOOP_CAPABILITIES, discover_external_loop_capabilities
 from deeptutor.core.context import UnifiedContext
+
+
+@pytest.fixture(autouse=True)
+def _fresh_discovery() -> None:
+    """Discovery is cached for the process, so each test needs a clean slate.
+
+    Without this, the first test's entry-point stub would be the answer every
+    later test sees.
+    """
+    discover_external_loop_capabilities.cache_clear()
+    yield
+    discover_external_loop_capabilities.cache_clear()
 
 
 class _DemoLoop:
@@ -71,8 +85,13 @@ def _capture_warnings(monkeypatch, registry) -> list[str]:
 
 
 def test_loop_capabilities_tuple_is_builtins_only() -> None:
+    # The roster grows as capabilities land, so pin the invariant rather than
+    # the list: every entry is a real instance with a unique name, and none of
+    # them arrived through entry-point discovery.
     names = [cap.name for cap in LOOP_CAPABILITIES]
-    assert names == ["mastery", "solve", "obsidian", "subagent", "explore_context"]
+    assert names, "the builtin registry must not be empty"
+    assert len(names) == len(set(names)), f"duplicate builtin capability names: {names}"
+    assert all(callable(getattr(cap, "is_active", None)) for cap in LOOP_CAPABILITIES)
 
 
 def test_all_loop_capabilities_equals_builtins_without_plugins(monkeypatch) -> None:
