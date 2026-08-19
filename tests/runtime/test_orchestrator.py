@@ -302,4 +302,3 @@ class TestCompletionEventFields:
         assert output == ""
         assert meta["capability"] == "chat"
         assert "agent_output" not in meta or meta.get("agent_output") in (None, "")
-

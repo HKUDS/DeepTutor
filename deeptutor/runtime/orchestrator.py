@@ -23,9 +23,7 @@ from deeptutor.runtime.registry.tool_registry import get_tool_registry
 logger = logging.getLogger(__name__)
 
 
-def completion_event_fields(
-    context: UnifiedContext, cap_name: str
-) -> tuple[str, dict[str, Any]]:
+def completion_event_fields(context: UnifiedContext, cap_name: str) -> tuple[str, dict[str, Any]]:
     """Build CAPABILITY_COMPLETE ``agent_output`` + metadata.
 
     Capabilities may stash a body on ``context.metadata["agent_output"]``.
