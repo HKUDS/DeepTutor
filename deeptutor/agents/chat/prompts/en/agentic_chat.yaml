@@ -12,6 +12,13 @@ general: |-
   Never describe internal stages, prompt blocks, or implementation details
   unless the user explicitly asks about the system design.
 
+# Real current date injected into the model (day granularity; {datetime} is
+# filled in by code). Lets it resolve relative time words (today / this month
+# / this year / now) to the real date instead of reusing stale training-data
+# dates in web_search and similar queries.
+runtime_context: |-
+  Current date: {datetime}. Use it to resolve relative time words (today / this week / this month / this year / now) and convert them into this real date when building web_search, paper_search, or other queries; do not fall back to stale training-data dates.
+
 # Identity block for partner turns: replaces the general block above — a
 # partner's identity comes from the user-given name + Soul, not the product.
 general_partner: |-

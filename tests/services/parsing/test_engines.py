@@ -8,6 +8,7 @@ import pytest
 
 from deeptutor.services.parsing.engines import factory
 from deeptutor.services.parsing.engines.docling.config import DoclingConfig
+from deeptutor.services.parsing.engines.tika.config import TikaConfig
 from deeptutor.services.parsing.types import ParserError
 
 
@@ -19,6 +20,7 @@ def test_known_engines() -> None:
         "markitdown",
         "pymupdf4llm",
         "liteparse",
+        "tika",
     }
 
 
@@ -31,6 +33,7 @@ def test_list_engines_reports_metadata_and_availability() -> None:
         "markitdown",
         "pymupdf4llm",
         "liteparse",
+        "tika",
     }
     assert engines["text_only"]["available"] is True
     assert engines["text_only"]["needs_local_models"] is False
@@ -41,6 +44,8 @@ def test_list_engines_reports_metadata_and_availability() -> None:
     assert engines["markitdown"]["needs_local_models"] is False
     assert engines["pymupdf4llm"]["needs_local_models"] is False
     assert engines["liteparse"]["needs_local_models"] is False
+    assert engines["tika"]["available"] is True
+    assert engines["tika"]["needs_local_models"] is False
 
 
 def test_get_parser_unknown_raises() -> None:
@@ -195,6 +200,96 @@ def test_docling_remote_business_error_raises(tmp_path, monkeypatch: pytest.Monk
         parser.parse(
             pdf, workdir, config=DoclingConfig(mode="remote", api_base_url="http://host:5001")
         )
+    assert not (workdir / "doc.md").exists()
+
+
+def test_tika_signature_tracks_server_url() -> None:
+    parser = factory.get_parser("tika")
+    a = parser.signature(TikaConfig(server_url="http://host:9998")).hash()
+    b = parser.signature(TikaConfig(server_url="http://other:9998")).hash()
+    assert a != b
+
+
+def test_tika_readiness_needs_url() -> None:
+    parser = factory.get_parser("tika")
+    assert parser.is_available() is True
+    assert parser.is_ready(TikaConfig(server_url="http://host:9998")).ready
+    blocked = parser.is_ready(TikaConfig(server_url=""))
+    assert blocked.ready is False
+    assert blocked.reason == "not_configured"
+
+
+def test_tika_parse_writes_markdown(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = tmp_path / "doc.pdf"
+    src.write_bytes(b"%PDF-1.4 fake")
+    workdir = tmp_path / "parsed"
+    workdir.mkdir()
+
+    captured: dict = {}
+
+    class _FakeResponse:
+        text = "# Extracted via Tika\n"
+
+        def raise_for_status(self):
+            return None
+
+    class _FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def put(self, endpoint, content=None, headers=None):
+            captured["endpoint"] = endpoint
+            captured["headers"] = headers
+            return _FakeResponse()
+
+    monkeypatch.setattr(httpx, "Client", _FakeClient)
+    parser = factory.get_parser("tika")
+    parser.parse(src, workdir, config=TikaConfig(server_url="http://host:9998"))
+
+    assert captured["endpoint"] == "/tika"
+    assert captured["headers"]["Accept"] == "text/plain"
+    assert captured["headers"]["Content-Type"] == "application/octet-stream"
+    assert "doc.pdf" in captured["headers"]["Content-Disposition"]
+    assert (workdir / "doc.md").read_text(encoding="utf-8") == "# Extracted via Tika\n"
+
+
+def test_tika_http_error_raises(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = tmp_path / "doc.pdf"
+    src.write_bytes(b"%PDF-1.4 fake")
+    workdir = tmp_path / "parsed"
+    workdir.mkdir()
+
+    class _FailingResponse:
+        status_code = 422
+
+        def raise_for_status(self):
+            request = httpx.Request("PUT", "http://host:9998/tika")
+            response = httpx.Response(422, request=request)
+            raise httpx.HTTPStatusError("unprocessable", request=request, response=response)
+
+    class _FailingClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def put(self, *args, **kwargs):
+            return _FailingResponse()
+
+    monkeypatch.setattr(httpx, "Client", _FailingClient)
+    parser = factory.get_parser("tika")
+    with pytest.raises(ParserError, match="422"):
+        parser.parse(src, workdir, config=TikaConfig(server_url="http://host:9998"))
     assert not (workdir / "doc.md").exists()
 
 
