@@ -13,6 +13,8 @@ from typing import Any
 from .context import LOG_CONTEXT_FIELDS
 from .formatters import ContextFilter
 
+PROCESS_LOG_PRIVATE_ATTR = "deeptutor_process_log_private"
+
 
 @dataclass(frozen=True)
 class ProcessLogEvent:
@@ -68,6 +70,8 @@ class ProcessLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            if getattr(record, PROCESS_LOG_PRIVATE_ATTR, False):
+                return
             event = ProcessLogEvent.from_record(record)
             if self._task_id and event.context.get("task_id") != self._task_id:
                 return

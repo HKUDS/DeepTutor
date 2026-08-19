@@ -19,7 +19,6 @@ from telegram.request import HTTPXRequest
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_media_dir
 from deeptutor.partners.config.schema import DeliveryOverrides, StreamingSupport
 from deeptutor.partners.helpers import (
     is_markdown_table_separator_row,
@@ -801,7 +800,7 @@ class TelegramChannel(BaseChannel):
                 getattr(media_file, "mime_type", None),
                 getattr(media_file, "file_name", None),
             )
-            media_dir = get_media_dir("telegram")
+            media_dir = self.media_dir()
             unique_id = getattr(media_file, "file_unique_id", media_file.file_id)
             file_path = media_dir / f"{unique_id}{ext}"
             await file.download_to_drive(str(file_path))

@@ -47,5 +47,13 @@ export function formatRelativeTime(timestamp: number, locale: string): string {
     return formatter.format(Math.round(diffSeconds / 60), "minute");
   if (abs < 86400)
     return formatter.format(Math.round(diffSeconds / 3600), "hour");
-  return formatter.format(Math.round(diffSeconds / 86400), "day");
+  if (abs < 604800)
+    return formatter.format(Math.round(diffSeconds / 86400), "day");
+  // Past a week, days stop being readable — "31 days ago" is worse than
+  // "last month". Intl handles the plural and the wording per locale.
+  if (abs < 2592000)
+    return formatter.format(Math.round(diffSeconds / 604800), "week");
+  if (abs < 31536000)
+    return formatter.format(Math.round(diffSeconds / 2592000), "month");
+  return formatter.format(Math.round(diffSeconds / 31536000), "year");
 }

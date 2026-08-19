@@ -8,7 +8,10 @@ export interface TextBlockProps {
 }
 
 export default function TextBlock({ block }: TextBlockProps) {
-  const body = String(block.payload?.body ?? "");
+  // Generated text blocks store prose under `body`; the deterministically
+  // built overview blocks use `content`. Accept both — reading only one meant
+  // the overview intro and chapter index rendered as empty divs.
+  const body = String(block.payload?.body ?? block.payload?.content ?? "");
 
   return (
     <div className="text-[var(--foreground)]">

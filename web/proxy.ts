@@ -74,8 +74,13 @@ export function proxy(req: NextRequest): NextResponse {
 export const config = {
   // Run on every request except Next.js internals and the favicon. The /api/*
   // and /ws/* paths are explicitly handled above (rewritten to the backend);
+  // large knowledge create/upload requests are handled by dedicated App Router
+  // endpoints that stream directly to FastAPI. Excluding them here is crucial:
+  // merely entering Proxy makes Next clone and cap the multipart body.
   // the browser's /_next/image optimizer requests are excluded here, while the
   // optimizer's loopback fetch for the source image (e.g. /logo.png) is let
   // through the auth gate by isAuthExempt.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api/v1/knowledge/(?:create|[^/]+/upload)(?:/|$)).*)",
+  ],
 };

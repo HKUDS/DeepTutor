@@ -77,6 +77,15 @@ export interface StartTurnMessage {
   }[];
   /** Persistent mastery state to use independently of this chat session. */
   mastery_path_id?: string;
+  /** Immersive reading: the document open in the reader pane, if any. Its
+   *  presence is what activates the reading capability for the turn. */
+  reading_material_id?: string;
+  /** What the reader is showing right now — the locator on screen and any text
+   *  the user has selected. Advisory context, not a citation. */
+  reading_viewport?: {
+    locator?: number;
+    selection?: string;
+  };
   persona?: string;
   llm_selection?: LLMSelection | null;
   /** Edit-branching: when present (even as ``null``) the new user message

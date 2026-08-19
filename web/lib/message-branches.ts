@@ -39,6 +39,43 @@ function siblingRank(message: MessageItem): number {
   return id < 0 ? OPTIMISTIC_RANK_OFFSET - id : id;
 }
 
+/** Parent key the visible-path walk should start from.
+ *
+ *  Normally that is the session root. A session can also arrive with no root
+ *  message at all — legacy rows whose parent was deleted before turn deletion
+ *  re-parented descendants, or local state in the instant after DELETE_TURN.
+ *  Those rows are still real history, so the walk starts from the dangling
+ *  parent of the oldest orphan rather than rendering a blank page (#912).
+ */
+function walkStartKey(
+  allMessages: MessageItem[],
+  childrenByParent: Map<string, MessageItem[]>,
+): string {
+  if ((childrenByParent.get(ROOT_KEY)?.length ?? 0) > 0) return ROOT_KEY;
+
+  const known = new Set<number>();
+  for (const msg of allMessages) {
+    if (msg.id !== undefined) known.add(msg.id);
+  }
+  const orphans = allMessages.filter(
+    (m) =>
+      m.id !== undefined &&
+      m.parentMessageId != null &&
+      !known.has(m.parentMessageId),
+  );
+  // A pure cycle has no orphan entry point; fall back to the oldest message.
+  const seeds =
+    orphans.length > 0
+      ? orphans
+      : allMessages.filter((m) => m.id !== undefined);
+  if (seeds.length === 0) return ROOT_KEY;
+
+  const oldest = seeds.reduce((a, b) =>
+    siblingRank(b) < siblingRank(a) ? b : a,
+  );
+  return parentKey(oldest.parentMessageId);
+}
+
 export interface SiblingInfo {
   /** Number of alternative branches at this point, including this one. */
   total: number;
@@ -79,7 +116,7 @@ export function buildVisiblePath(
   const visible: MessageItem[] = [];
   const siblingsByMessageId = new Map<number, SiblingInfo>();
   const guard = new Set<string>();
-  let currentParent = ROOT_KEY;
+  let currentParent = walkStartKey(allMessages, childrenByParent);
   // Bound the walk defensively against pathological data (loops).
   let safety = 10_000;
   while (safety > 0) {

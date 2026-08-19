@@ -33,20 +33,36 @@ class QuizGenerator(BlockGenerator):
             topic = f"{topic}\n\n[Chapter context: {extra_context}]"
         question_types = [question_type] if question_type else []
 
+        # Straight to QuestionPipeline. AgentCoordinator is a documented legacy
+        # facade ("New code should prefer ... QuestionPipeline directly") kept
+        # for older WebSocket routes, and going through it cost us something
+        # real: it builds a throwaway StreamBus, so every progress event from
+        # the slowest block in the book was discarded. Publishing to the book's
+        # own stream means the reader sees the quiz being written.
         try:
-            from deeptutor.agents.question.coordinator import AgentCoordinator
+            from deeptutor.agents.question.pipeline import QuestionPipeline
+            from deeptutor.core.context import UnifiedContext
 
-            coordinator = AgentCoordinator(
-                kb_name=ctx.primary_kb,
-                language=ctx.language,
-                enable_idea_rag=ctx.rag_enabled and bool(ctx.primary_kb),
-            )
-            summary = await coordinator.generate_from_topic(
-                user_topic=topic,
-                num_questions=num_questions,
+            from ..event_hub import get_book_bus
+
+            # Mirrors the facade's `_active_kb_name`: no KB when RAG is off.
+            effective_kb = ctx.primary_kb if (ctx.rag_enabled and ctx.primary_kb) else None
+            pipeline = QuestionPipeline(language=ctx.language, kb_name=effective_kb)
+            result = await pipeline.run(
+                context=UnifiedContext(
+                    session_id=f"book-{ctx.book_id}",
+                    user_message=topic,
+                    active_capability="deep_question",
+                    knowledge_bases=[effective_kb] if effective_kb else [],
+                    language=ctx.language,
+                ),
+                user_message=topic,
+                num_questions=max(1, int(num_questions or 1)),
                 difficulty=difficulty,
                 question_types=question_types,
+                stream=get_book_bus(ctx.book_id),
             )
+            summary = dict(result.get("summary") or {})
         except Exception as exc:
             logger.warning(f"QuizGenerator failed: {exc}", exc_info=True)
             raise GenerationFailure(f"quiz generation failed: {exc}") from exc
@@ -72,8 +88,18 @@ class QuizGenerator(BlockGenerator):
             return []
         out: list[dict[str, Any]] = []
         for item in results:
-            if not isinstance(item, dict) or not item.get("success"):
+            if not isinstance(item, dict):
                 continue
+            # The legacy facade derived `success` from the absence of an error
+            # before handing the summary over; reading the pipeline directly,
+            # we apply the same rule here.
+            if "success" in item:
+                if not item["success"]:
+                    continue
+            else:
+                meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+                if meta.get("error"):
+                    continue
             qa = item.get("qa_pair") or {}
             if not isinstance(qa, dict):
                 continue

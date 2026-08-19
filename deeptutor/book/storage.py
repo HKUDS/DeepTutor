@@ -11,6 +11,7 @@ Layout (relative to ``data/user/workspace/book/``)::
     ├── spine.json       # Spine
     ├── progress.json    # Progress
     ├── inputs.json      # Captured BookInputs
+    ├── learning_captures.json  # Captured learning items
     ├── log.md           # Append-only operation log
     ├── pages/
     │   └── {page_id}.json
@@ -25,13 +26,23 @@ from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
+import re
 import shutil
 from typing import Any
 
 from deeptutor.services.file_io import atomic_write_text as _atomic_write_text
 from deeptutor.services.path_service import get_path_service
 
-from .models import Book, BookInputs, ExplorationReport, Page, Progress, Spine
+from .models import (
+    Book,
+    BookInputs,
+    ExplorationReport,
+    LearningCapture,
+    LearningCaptureStatus,
+    Page,
+    Progress,
+    Spine,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +55,24 @@ logger = logging.getLogger(__name__)
 def _atomic_write_json(path: Path, payload: Any) -> None:
     text = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
     _atomic_write_text(path, text)
+
+
+_SAFE_ID = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _safe_book_id(book_id: str) -> str:
+    """Reduce a caller-supplied id to something that cannot escape its root.
+
+    Book ids arrive in request bodies and are used verbatim as directory names.
+    Ids the engine mints are ``bk_<hex>``; anything containing a separator or a
+    dot segment is either a bug or an attempt to walk out of the workspace, and
+    neither should reach the filesystem. Mirrors the containment rule in
+    ``services/storage/attachment_store.py``.
+    """
+    cleaned = _SAFE_ID.sub("", (book_id or "").strip())
+    if not cleaned:
+        raise ValueError(f"Invalid book id: {book_id!r}")
+    return cleaned
 
 
 def _read_json(path: Path) -> Any | None:
@@ -75,10 +104,10 @@ class BookStorage:
     # ── Path helpers ─────────────────────────────────────────────────────
 
     def book_root(self, book_id: str) -> Path:
-        return self.path_service.get_book_root(book_id)
+        return self.path_service.get_book_root(_safe_book_id(book_id))
 
     def ensure_book_root(self, book_id: str) -> Path:
-        return self.path_service.ensure_book_root(book_id)
+        return self.path_service.ensure_book_root(_safe_book_id(book_id))
 
     def list_book_ids(self) -> list[str]:
         root = self.path_service.get_book_dir()
@@ -176,6 +205,61 @@ class BookStorage:
             self.path_service.get_book_progress_file(progress.book_id),
             progress.model_dump(mode="json"),
         )
+
+    # ── Learning Captures ───────────────────────────────────────────────
+
+    def get_learning_captures_path(self, book_id: str) -> Path:
+        return self.path_service.get_book_learning_captures_file(_safe_book_id(book_id))
+
+    def _sort_captures(self, captures: list[LearningCapture]) -> list[LearningCapture]:
+        return sorted(captures, key=lambda c: c.updated_at, reverse=True)
+
+    def load_learning_captures(
+        self, book_id: str, *, status: LearningCaptureStatus | None = None
+    ) -> list[LearningCapture]:
+        data = _read_json(self.get_learning_captures_path(book_id))
+        if not isinstance(data, list):
+            return []
+
+        captures: list[LearningCapture] = []
+        for raw in data:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                capture = LearningCapture.model_validate(raw)
+            except Exception as exc:
+                logger.warning("Failed to validate LearningCapture for %s: %s", book_id, exc)
+                continue
+            if status is not None and capture.status != status:
+                continue
+            captures.append(capture)
+
+        return self._sort_captures(captures)
+
+    def load_learning_capture(self, book_id: str, capture_id: str) -> LearningCapture | None:
+        for capture in self.load_learning_captures(book_id):
+            if capture.id == capture_id:
+                return capture
+        return None
+
+    def save_learning_captures(self, book_id: str, captures: list[LearningCapture]) -> None:
+        self.ensure_book_root(book_id)
+        _atomic_write_json(
+            self.get_learning_captures_path(book_id),
+            [capture.model_dump(mode="json") for capture in self._sort_captures(captures)],
+        )
+
+    def upsert_learning_capture(self, capture: LearningCapture) -> None:
+        captures = self.load_learning_captures(capture.book_id)
+        updated = False
+        for idx, existing in enumerate(captures):
+            if existing.id == capture.id:
+                captures[idx] = capture
+                updated = True
+                break
+        if not updated:
+            captures.append(capture)
+        self.save_learning_captures(capture.book_id, captures)
 
     def load_progress(self, book_id: str) -> Progress | None:
         data = _read_json(self.path_service.get_book_progress_file(book_id))

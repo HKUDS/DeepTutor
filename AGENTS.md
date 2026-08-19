@@ -129,7 +129,7 @@ pip install -e .           — Source install for development
 Source extras (.[ extra ], defined in pyproject.toml):
 .[cli]            — CLI-only dependency set
 .[server]         — Web/API server dependencies
-.[partners]       — Partner channel SDKs + MCP client  (legacy alias: .[tutorbot])
+.[partners]       — Partner channel SDKs  (legacy alias: .[tutorbot])
 .[matrix]         — Matrix channel for Partners (matrix-nio; needs libolm)
 .[matrix-e2e]     — Matrix with end-to-end encryption (matrix-nio[e2e])
 .[math-animator]  — Manim addon (powers `visualize` Manim renders + `deeptutor run math_animator`)

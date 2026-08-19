@@ -53,6 +53,7 @@ WorkspaceFeature = Literal[
     "co-writer",
     "chat",
     "book",
+    "reading",
 ]
 
 
@@ -366,6 +367,9 @@ class PathService:
 
     def get_book_page_file(self, book_id: str, page_id: str) -> Path:
         return self.get_book_pages_dir(book_id) / f"{page_id}.json"
+
+    def get_book_learning_captures_file(self, book_id: str) -> Path:
+        return self.get_book_root(book_id) / "learning_captures.json"
 
     def get_book_assets_dir(self, book_id: str) -> Path:
         return self.get_book_root(book_id) / "assets"

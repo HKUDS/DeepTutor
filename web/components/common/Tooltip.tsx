@@ -13,24 +13,34 @@ import type { ReactNode } from "react";
 export default function Tooltip({
   label,
   side = "bottom",
+  suppressed = false,
   children,
 }: {
   label: string;
   /** Which side of the trigger the label appears on. */
   side?: "top" | "bottom";
+  /**
+   * Hide the label while keeping the trigger mounted. Set this when the
+   * trigger has opened something of its own (a menu, a popover): the pointer
+   * is still over the button, so the tooltip would otherwise sit on top of
+   * the very surface it just opened.
+   */
+  suppressed?: boolean;
   children: ReactNode;
 }) {
   const place = side === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5";
   return (
     <span className="group/tip relative inline-flex">
       {children}
-      <span
-        role="tooltip"
-        aria-hidden
-        className={`pointer-events-none absolute left-1/2 z-[80] -translate-x-1/2 ${place} whitespace-nowrap rounded-md bg-[var(--foreground)] px-2 py-1 text-[11px] font-medium leading-none text-[var(--background)] opacity-0 shadow-md transition-opacity duration-100 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100 group-hover/tip:delay-150`}
-      >
-        {label}
-      </span>
+      {suppressed ? null : (
+        <span
+          role="tooltip"
+          aria-hidden
+          className={`pointer-events-none absolute left-1/2 z-[80] -translate-x-1/2 ${place} whitespace-nowrap rounded-md bg-[var(--foreground)] px-2 py-1 text-[11px] font-medium leading-none text-[var(--background)] opacity-0 shadow-md transition-opacity duration-100 group-focus-within/tip:opacity-100 group-hover/tip:opacity-100 group-hover/tip:delay-150`}
+        >
+          {label}
+        </span>
+      )}
     </span>
   );
 }

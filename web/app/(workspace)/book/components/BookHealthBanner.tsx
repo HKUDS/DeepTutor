@@ -9,6 +9,9 @@ export interface BookHealthBannerProps {
   bookId: string | null;
   refreshKey?: number;
   onRecompile?: (pageId: string) => void;
+  /** Retrieval failed while this book was planned — it was written from the
+   *  proposal alone, with none of the selected sources behind it. */
+  explorationFailed?: boolean;
 }
 
 interface KbDrift {
@@ -30,6 +33,7 @@ export default function BookHealthBanner({
   bookId,
   refreshKey,
   onRecompile,
+  explorationFailed = false,
 }: BookHealthBannerProps) {
   const { t } = useTranslation();
   const [kbDrift, setKbDrift] = useState<KbDrift | null>(null);
@@ -44,6 +48,10 @@ export default function BookHealthBanner({
       setLogHealth(null);
       return;
     }
+    // `refreshKey` is the book's `updated_at`, undefined until the book has
+    // loaded. Waiting for it avoids a duplicate check on every open — and this
+    // one is expensive: it stats every raw file in the book's knowledge bases.
+    if (refreshKey === undefined) return;
     setDismissed(false);
     (async () => {
       try {
@@ -76,7 +84,7 @@ export default function BookHealthBanner({
   const blockFailures = logHealth?.block_failures || 0;
   const hasLogIssues = blockFailures >= 3 || repeated.length > 0;
 
-  if (!hasDrift && !hasLogIssues) return null;
+  if (!hasDrift && !hasLogIssues && !explorationFailed) return null;
 
   // Convert technical signatures into a short human label.
   const humanizeSignature = (sig: string): string => {
@@ -101,6 +109,18 @@ export default function BookHealthBanner({
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <div className="flex-1 space-y-1.5">
+          {explorationFailed && (
+            <div>
+              <strong>
+                {t("This book was written without reading your sources.")}
+              </strong>{" "}
+              <span>
+                {t(
+                  "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.",
+                )}
+              </span>
+            </div>
+          )}
           {hasDrift && (
             <div>
               <strong>

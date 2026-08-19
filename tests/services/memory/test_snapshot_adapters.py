@@ -125,6 +125,36 @@ def test_non_admin_scope_sees_no_partners(tmp_path: Path, monkeypatch: pytest.Mo
     assert adapters.read_partner_entities() == []
 
 
+def test_non_admin_sees_only_assigned_private_partner_sessions(
+    partner_tree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+    from deeptutor.multi_user.paths import user_context
+
+    pdir = partner_tree / "partners" / "bot1"
+    pdir.mkdir(parents=True)
+    _write_session(pdir / "sessions", "admin", [("user", "admin secret")])
+    _write_session(pdir / "users" / "u1" / "sessions", "mine", [("user", "my chat")])
+    _write_session(pdir / "users" / "u2" / "sessions", "theirs", [("user", "their chat")])
+
+    import deeptutor.multi_user.partner_access as partner_access
+
+    monkeypatch.setattr(
+        partner_access,
+        "load_grant",
+        lambda uid: {"partners": [{"partner_id": "bot1"}]} if uid == "u1" else {},
+    )
+    root = (partner_tree / "users" / "u1").resolve()
+    user = CurrentUser("u1", "alice", "user", UserScope("user", "u1", root))
+    with user_context(user):
+        entities = adapters.read_partner_entities()
+
+    assert [entity.id for entity in entities] == ["bot1:mine"]
+    assert "my chat" in entities[0].content
+    assert "admin secret" not in entities[0].content
+    assert "their chat" not in entities[0].content
+
+
 def test_fingerprint_changes_when_conversation_grows(partner_tree: Path) -> None:
     pdir = partner_tree / "partners" / "bot1"
     pdir.mkdir(parents=True)
