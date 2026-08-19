@@ -136,28 +136,6 @@ def _write_ready_llamaindex_version(kb_dir: Path) -> None:
     )
 
 
-def _write_upload_task_kb(tmp_path: Path) -> Path:
-    base_dir = tmp_path / "knowledge_bases"
-    kb_dir = base_dir / "kb"
-    (kb_dir / "raw").mkdir(parents=True)
-    _write_ready_llamaindex_version(kb_dir)
-    (base_dir / "kb_config.json").write_text(
-        json.dumps(
-            {
-                "knowledge_bases": {
-                    "kb": {
-                        "path": "kb",
-                        "rag_provider": "llamaindex",
-                        "status": "ready",
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    return base_dir
-
-
 def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     monkeypatch.setattr(ima_config_module, "is_ima_configured", lambda: True)
     with TestClient(_build_app()) as client:
@@ -169,7 +147,6 @@ def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     assert set(by_id) == {
         "llamaindex",
         "pageindex",
-        "pageindex-oss",
         "graphrag",
         "lightrag",
         "lightrag-server",
@@ -179,7 +156,6 @@ def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     # LightRAG are optional local engines (no API key, configured = installed).
     assert by_id["llamaindex"]["requires_api_key"] is False
     assert by_id["pageindex"]["requires_api_key"] is True
-    assert by_id["pageindex-oss"]["requires_api_key"] is False
     assert by_id["graphrag"]["requires_api_key"] is False
     assert by_id["lightrag"]["requires_api_key"] is False
     # LightRAG Server is a thin HTTP client: always available, no API key gate
@@ -693,63 +669,6 @@ def test_create_preserves_known_nondefault_provider(monkeypatch, tmp_path: Path)
     assert manager.config["knowledge_bases"]["kb-page"]["rag_provider"] == "pageindex"
 
 
-def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
-    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
-    preflight = importlib.import_module("deeptutor.services.rag.preflight")
-    monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
-
-    async def _noop_init_task(*_args, **_kwargs):
-        return None
-
-    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
-    with TestClient(_build_app()) as client:
-        response = client.post(
-            "/api/v1/knowledge/create",
-            data={
-                "name": "kb-oss",
-                "rag_provider": "pageindex-oss",
-                "pageindex_mode": "standard",
-            },
-            files=[("files", ("demo.pdf", b"%PDF-1.4\n", "application/pdf"))],
-        )
-
-    assert response.status_code == 200
-    entry = manager.config["knowledge_bases"]["kb-oss"]
-    assert entry["rag_provider"] == "pageindex-oss"
-    assert entry["pageindex_mode"] == "standard"
-
-
-def test_create_pageindex_oss_rejects_non_pdf(monkeypatch, tmp_path: Path) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
-    preflight = importlib.import_module("deeptutor.services.rag.preflight")
-    monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
-
-    with TestClient(_build_app()) as client:
-        response = client.post(
-            "/api/v1/knowledge/create",
-            data={"name": "kb-oss-docx", "rag_provider": "pageindex-oss"},
-            files=[
-                (
-                    "files",
-                    (
-                        "demo.docx",
-                        b"placeholder",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    ),
-                )
-            ],
-        )
-
-    assert response.status_code == 400
-    assert "accept: .pdf" in response.json()["detail"]
-    assert "kb-oss-docx" not in manager.config["knowledge_bases"]
-
-
 def test_create_rejects_invalid_files_before_registering_kb(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
@@ -878,7 +797,25 @@ def test_upload_flips_ready_kb_to_processing_before_dispatch(monkeypatch, tmp_pa
 
 
 def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Path) -> None:
-    base_dir = _write_upload_task_kb(tmp_path)
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_ready_llamaindex_version(kb_dir)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     source = tmp_path / "bad.txt"
     source.write_text("bad", encoding="utf-8")
 
@@ -912,14 +849,38 @@ def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Pat
     assert entry["progress"]["indexed_count"] == 0
 
 
-def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
+def test_upload_task_with_folder_root_preserves_subfolder_structure(
     monkeypatch, tmp_path: Path
 ) -> None:
-    base_dir = _write_upload_task_kb(tmp_path)
-    source = tmp_path / "ok.txt"
-    source.write_text("ok", encoding="utf-8")
+    """A linked-folder sync (folder_root set) stages a nested file under the
+    same relative subpath in raw/, instead of flattening it to its basename
+    and colliding with a same-named file from another subfolder (#866)."""
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_ready_llamaindex_version(kb_dir)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    class _SuccessfulRagService:
+    linked_folder = tmp_path / "linked"
+    (linked_folder / "sub").mkdir(parents=True)
+    doc = linked_folder / "sub" / "note.md"
+    doc.write_text("hello", encoding="utf-8")
+
+    class _SucceedingRagService:
         def __init__(self, *_args, **_kwargs) -> None:
             pass
 
@@ -928,42 +889,22 @@ def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
 
     monkeypatch.setattr(
         "deeptutor.knowledge.add_documents.RAGService",
-        _SuccessfulRagService,
+        _SucceedingRagService,
     )
-    updates: list[tuple[str, int, int]] = []
-    original_update = knowledge_router_module.ProgressTracker.update
-
-    def _record_update(self, stage, message="", current=0, total=0, **kwargs):
-        updates.append((message, current, total))
-        return original_update(
-            self,
-            stage,
-            message,
-            current=current,
-            total=total,
-            **kwargs,
-        )
-
-    monkeypatch.setattr(knowledge_router_module.ProgressTracker, "update", _record_update)
 
     asyncio.run(
         knowledge_router_module.run_upload_processing_task(
             kb_name="kb",
             base_dir=str(base_dir),
-            uploaded_file_paths=[str(source)],
-            task_id="upload-progress-test",
+            uploaded_file_paths=[str(doc)],
+            task_id="folder-sync-test",
             rag_provider="llamaindex",
+            folder_root=str(linked_folder),
         )
     )
 
-    assert updates == [
-        ("Validating 1 file(s)...", 0, 1),
-        ("Staged 1 new file(s)", 0, 1),
-        ("Indexing ok.txt", 0, 1),
-        ("Indexed ok.txt", 1, 1),
-        ("Saving metadata...", 1, 1),
-        ("Successfully processed 1 files!", 1, 1),
-    ]
+    assert (raw_dir / "sub" / "note.md").read_text(encoding="utf-8") == "hello"
+    assert not (raw_dir / "note.md").exists()
 
 
 def test_list_files_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
@@ -1722,3 +1663,136 @@ def test_assert_not_connected_kb_blocks_connected_writes() -> None:
         assert excinfo.value.status_code == 409
     # An ordinary KB is writable — the guard is a no-op.
     guard("kb", {"path": "kb", "status": "ready"})
+
+
+def _write_upload_task_kb(tmp_path: Path) -> Path:
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    (kb_dir / "raw").mkdir(parents=True)
+    _write_ready_llamaindex_version(kb_dir)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return base_dir
+
+
+def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+    preflight = importlib.import_module("deeptutor.services.rag.preflight")
+    monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
+
+    async def _noop_init_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/create",
+            data={
+                "name": "kb-oss",
+                "rag_provider": "pageindex-oss",
+                "pageindex_mode": "standard",
+            },
+            files=[("files", ("demo.pdf", b"%PDF-1.4\n", "application/pdf"))],
+        )
+
+    assert response.status_code == 200
+    entry = manager.config["knowledge_bases"]["kb-oss"]
+    assert entry["rag_provider"] == "pageindex-oss"
+    assert entry["pageindex_mode"] == "standard"
+
+
+def test_create_pageindex_oss_rejects_non_pdf(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+    preflight = importlib.import_module("deeptutor.services.rag.preflight")
+    monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/create",
+            data={"name": "kb-oss-docx", "rag_provider": "pageindex-oss"},
+            files=[
+                (
+                    "files",
+                    (
+                        "demo.docx",
+                        b"placeholder",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ),
+                )
+            ],
+        )
+
+    assert response.status_code == 400
+    assert "accept: .pdf" in response.json()["detail"]
+    assert "kb-oss-docx" not in manager.config["knowledge_bases"]
+
+
+def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
+    monkeypatch, tmp_path: Path
+) -> None:
+    base_dir = _write_upload_task_kb(tmp_path)
+    source = tmp_path / "ok.txt"
+    source.write_text("ok", encoding="utf-8")
+
+    class _SuccessfulRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.RAGService",
+        _SuccessfulRagService,
+    )
+    updates: list[tuple[str, int, int]] = []
+    original_update = knowledge_router_module.ProgressTracker.update
+
+    def _record_update(self, stage, message="", current=0, total=0, **kwargs):
+        updates.append((message, current, total))
+        return original_update(
+            self,
+            stage,
+            message,
+            current=current,
+            total=total,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(knowledge_router_module.ProgressTracker, "update", _record_update)
+
+    asyncio.run(
+        knowledge_router_module.run_upload_processing_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            uploaded_file_paths=[str(source)],
+            task_id="upload-progress-test",
+            rag_provider="llamaindex",
+        )
+    )
+
+    assert updates == [
+        ("Validating 1 file(s)...", 0, 1),
+        ("Staged 1 new file(s)", 0, 1),
+        ("Indexing ok.txt", 0, 1),
+        ("Indexed ok.txt", 1, 1),
+        ("Saving metadata...", 1, 1),
+        ("Successfully processed 1 files!", 1, 1),
+    ]

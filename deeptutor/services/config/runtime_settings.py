@@ -100,6 +100,7 @@ DOCUMENT_PARSING_ENGINE_DOCLING = "docling"
 DOCUMENT_PARSING_ENGINE_MARKITDOWN = "markitdown"
 DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM = "pymupdf4llm"
 DOCUMENT_PARSING_ENGINE_LITEPARSE = "liteparse"
+DOCUMENT_PARSING_ENGINE_TIKA = "tika"
 _DOCUMENT_PARSING_ENGINES = frozenset(
     {
         DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
@@ -108,6 +109,7 @@ _DOCUMENT_PARSING_ENGINES = frozenset(
         DOCUMENT_PARSING_ENGINE_MARKITDOWN,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
         DOCUMENT_PARSING_ENGINE_LITEPARSE,
+        DOCUMENT_PARSING_ENGINE_TIKA,
     }
 )
 # Image formats PyMuPDF4LLM can write extracted page images as.
@@ -187,6 +189,11 @@ _DEFAULT_LITEPARSE_ENGINE: dict[str, Any] = {
     "max_pages": 0,
 }
 
+# Tika engine slice. Remote-only Apache Tika server; no local package or models.
+_DEFAULT_TIKA_ENGINE: dict[str, Any] = {
+    "server_url": "http://localhost:9998",
+}
+
 # Built-in text-only engine slice. It deliberately has no knobs: it reuses
 # DeepTutor's legacy text extractors for PDF / Office / text-like files.
 _DEFAULT_TEXT_ONLY_ENGINE: dict[str, Any] = {}
@@ -205,6 +212,7 @@ DEFAULT_DOCUMENT_PARSING_SETTINGS: dict[str, Any] = {
         DOCUMENT_PARSING_ENGINE_MARKITDOWN: _DEFAULT_MARKITDOWN_ENGINE,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _DEFAULT_PYMUPDF4LLM_ENGINE,
         DOCUMENT_PARSING_ENGINE_LITEPARSE: _DEFAULT_LITEPARSE_ENGINE,
+        DOCUMENT_PARSING_ENGINE_TIKA: _DEFAULT_TIKA_ENGINE,
     },
 }
 
@@ -444,6 +452,9 @@ class RuntimeSettingsService:
             )
             engines[DOCUMENT_PARSING_ENGINE_DOCLING] = self._apply_docling_process_overrides(
                 dict(engines[DOCUMENT_PARSING_ENGINE_DOCLING])
+            )
+            engines[DOCUMENT_PARSING_ENGINE_TIKA] = self._apply_tika_process_overrides(
+                dict(engines[DOCUMENT_PARSING_ENGINE_TIKA])
             )
             payload = {**payload, "engines": engines}
         return payload
@@ -867,6 +878,9 @@ class RuntimeSettingsService:
             DOCUMENT_PARSING_ENGINE_LITEPARSE: self._normalize_liteparse_engine(
                 engines_in.get(DOCUMENT_PARSING_ENGINE_LITEPARSE) or {}
             ),
+            DOCUMENT_PARSING_ENGINE_TIKA: self._normalize_tika_engine(
+                engines_in.get(DOCUMENT_PARSING_ENGINE_TIKA) or {}
+            ),
         }
 
         engine = _string(settings.get("engine")).lower().replace("-", "_").replace(" ", "_")
@@ -931,6 +945,18 @@ class RuntimeSettingsService:
         if value := self._process_env_value("DOCLING_API_TOKEN"):
             payload["api_token"] = value
         return self._normalize_docling_engine(payload)
+
+    def _normalize_tika_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "server_url": _string(settings.get("server_url")).rstrip("/")
+            or "http://localhost:9998",
+        }
+
+    def _apply_tika_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("TIKA_SERVER_URL"):
+            payload["server_url"] = value
+        return self._normalize_tika_engine(payload)
 
     def _normalize_markitdown_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -1177,6 +1203,7 @@ __all__ = [
     "DOCUMENT_PARSING_ENGINE_MINERU",
     "DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM",
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
+    "DOCUMENT_PARSING_ENGINE_TIKA",
     "DOCLING_MODE_LOCAL",
     "DOCLING_MODE_REMOTE",
     "LITEPARSE_IMAGE_MODES",

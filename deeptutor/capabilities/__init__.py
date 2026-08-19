@@ -14,6 +14,7 @@ from deeptutor.capabilities.protocol import KnowledgeCapability, LoopCapability,
 from deeptutor.capabilities.registry import (
     LOOP_CAPABILITIES,
     active_loop_capabilities,
+    all_loop_capabilities,
     any_exclusive_capability_active,
     capability_tool_owners,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "LoopCapability",
     "PromptBlock",
     "active_loop_capabilities",
+    "all_loop_capabilities",
     "any_exclusive_capability_active",
     "capability_tool_owners",
 ]
