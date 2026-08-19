@@ -64,28 +64,41 @@ def _hash_file(path: Path) -> str:
         return ""
 
 
+# Bumped whenever the formula below changes. A stored fingerprint carrying a
+# different scheme is not evidence of drift — it was computed a different way —
+# so detect_kb_drift re-baselines instead of marking every page stale.
+FINGERPRINT_SCHEME = "sha256-paths-v1"
+
+
+def _scheme_changed(stored: dict[str, str]) -> bool:
+    """Whether a stored baseline was written by a different fingerprint formula."""
+    return any(
+        value and not value.startswith(f"{FINGERPRINT_SCHEME}:") for value in stored.values()
+    )
+
+
+def digest_documents(documents: dict[str, str]) -> str:
+    """Collapse a per-document hash map into one KB fingerprint.
+
+    Keyed by path, so a pure rename changes the fingerprint even though the
+    bytes did not — the coarse check exists to answer "did this KB change".
+    """
+    if not documents:
+        return ""
+    payload = "|".join(f"{path}:{value}" for path, value in sorted(documents.items()))
+    return f"{FINGERPRINT_SCHEME}:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
+
+
 def fingerprint_kb(kb_name: str, manager: KnowledgeBaseManager | None = None) -> str:
     """Return a deterministic fingerprint for the *raw* docs of a KB.
 
     Returns ``""`` when the KB does not exist (so callers can detect deletion).
+    Derived from the per-document map rather than walking raw/ a second time:
+    hashing every byte twice per drift check made ``/books/{id}/health`` — an
+    endpoint the reader polls — scale with total KB size, and two independent
+    passes could also disagree if a file changed between them.
     """
-    mgr = manager or _current_manager()
-    if kb_name not in mgr.list_knowledge_bases():
-        return ""
-    base_dir: Path = mgr.base_dir / kb_name / "raw"
-    if not base_dir.exists():
-        return ""
-    parts: list[str] = []
-    for child in sorted(base_dir.rglob("*")):
-        if not child.is_file():
-            continue
-        token = _hash_file(child)
-        if token:
-            parts.append(token)
-    if not parts:
-        return ""
-    digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
-    return digest
+    return digest_documents(fingerprint_kb_documents(kb_name, manager=manager))
 
 
 def fingerprint_kbs(
@@ -168,12 +181,19 @@ def detect_kb_drift(
     opens a freshly-created book.
     """
     store = storage or get_book_storage()
-    current = fingerprint_kbs(book.knowledge_bases, manager=manager)
-    stored = dict(book.kb_fingerprints or {})
+    # One walk over raw/: the coarse per-KB fingerprints are derived from the
+    # per-document map rather than recomputed from disk.
     current_documents = fingerprint_kb_documents_batch(book.knowledge_bases, manager=manager)
+    current = {name: digest_documents(docs) for name, docs in current_documents.items()}
+    stored = dict(book.kb_fingerprints or {})
     stored_documents = dict(book.kb_document_fingerprints or {})
 
-    if not stored:
+    if not stored or _scheme_changed(stored):
+        # No baseline yet (brand-new or pre-fingerprinting book), or a baseline
+        # written by an older formula. Neither is evidence that the sources
+        # moved, and treating a scheme change as drift would mark every page in
+        # every existing book stale at once — which the refresh gate then
+        # refuses to clear until they are all recompiled.
         return KBDriftReport(
             book_id=book.id,
             has_drift=False,
@@ -288,9 +308,7 @@ def _anchor_matches(anchor_ref: str, document_ref: str) -> bool:
     document = document_ref.strip().rstrip("/")
     if not anchor or not document:
         return False
-    return anchor == document or anchor.endswith(f"/{document}") or document.endswith(
-        f"/{anchor}"
-    )
+    return anchor == document or anchor.endswith(f"/{document}") or document.endswith(f"/{anchor}")
 
 
 def anchor_kb_names_exist(anchors: list[Any]) -> bool:
@@ -301,13 +319,23 @@ def refresh_book_fingerprints(
     book_id: str,
     storage: BookStorage | None = None,
     manager: KnowledgeBaseManager | None = None,
+    *,
+    force: bool = False,
 ) -> Book | None:
-    """Re-compute and persist KB fingerprints on the book manifest."""
+    """Re-compute and persist KB fingerprints on the book manifest.
+
+    Refuses by default while pages the last drift marked stale have not been
+    recompiled, so "mark as seen" cannot quietly hide work still owed.
+    ``force`` overrides that: stale detection deliberately over-marks when it
+    cannot resolve an anchor to a source document, and a user who judges a
+    flagged page fine must be able to dismiss it rather than face a banner
+    nothing will clear.
+    """
     store = storage or get_book_storage()
     book = store.load_book(book_id)
     if book is None:
         return None
-    if book.stale_page_ids:
+    if book.stale_page_ids and not force:
         if not book.stale_detected_at:
             raise ValueError(
                 "Cannot mark KB drift as seen before all stale pages have been recompiled."
@@ -324,10 +352,9 @@ def refresh_book_fingerprints(
                 "Cannot mark KB drift as seen before these pages are recompiled: "
                 + ", ".join(not_recompiled)
             )
-    book.kb_fingerprints = fingerprint_kbs(book.knowledge_bases, manager=manager)
-    book.kb_document_fingerprints = fingerprint_kb_documents_batch(
-        book.knowledge_bases, manager=manager
-    )
+    documents = fingerprint_kb_documents_batch(book.knowledge_bases, manager=manager)
+    book.kb_document_fingerprints = documents
+    book.kb_fingerprints = {name: digest_documents(docs) for name, docs in documents.items()}
     book.stale_page_ids = []
     book.stale_detected_at = 0.0
     store.save_book(book)
@@ -354,13 +381,16 @@ def mark_drift_on_book(
     # Self-heal: when there's no drift but the book is missing a baseline
     # fingerprint (legacy book / new book whose first compile hasn't finished)
     # capture the baseline now so future runs have something to compare to.
-    if not report.has_drift and not book.kb_fingerprints and book.knowledge_bases:
-        book.kb_fingerprints = report.current_fingerprints or fingerprint_kbs(
-            book.knowledge_bases, manager=manager
-        )
-        book.kb_document_fingerprints = fingerprint_kb_documents_batch(
-            book.knowledge_bases, manager=manager
-        )
+    if (
+        not report.has_drift
+        and book.knowledge_bases
+        and (not book.kb_fingerprints or _scheme_changed(book.kb_fingerprints))
+    ):
+        documents = fingerprint_kb_documents_batch(book.knowledge_bases, manager=manager)
+        book.kb_document_fingerprints = documents
+        book.kb_fingerprints = report.current_fingerprints or {
+            name: digest_documents(docs) for name, docs in documents.items()
+        }
         dirty = True
 
     if report.has_drift:

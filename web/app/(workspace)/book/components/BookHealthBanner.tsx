@@ -41,6 +41,7 @@ export default function BookHealthBanner({
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [acknowledgeError, setAcknowledgeError] = useState<string | null>(null);
+  const [canForce, setCanForce] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,15 +95,20 @@ export default function BookHealthBanner({
     return stripped.length > 80 ? `${stripped.slice(0, 80)}…` : stripped;
   };
 
-  const acknowledge = async () => {
+  const acknowledge = async (force = false) => {
     if (!bookId) return;
     setBusy(true);
     setAcknowledgeError(null);
     try {
-      await bookApi.refreshFingerprints(bookId);
+      await bookApi.refreshFingerprints(bookId, force);
       setKbDrift({ has_drift: false });
+      setCanForce(false);
     } catch (err) {
       setAcknowledgeError(err instanceof Error ? err.message : String(err));
+      // The refusal is about pages still owed, not a transport failure. Stale
+      // detection over-marks on purpose, so offer the override rather than
+      // leaving a banner nothing can clear.
+      if (!force) setCanForce(true);
     } finally {
       setBusy(false);
     }
@@ -223,7 +229,7 @@ export default function BookHealthBanner({
         <div className="flex items-center gap-1">
           {hasDrift && (
             <button
-              onClick={acknowledge}
+              onClick={() => acknowledge()}
               disabled={busy}
               title={t(
                 "Available only after every stale page has been recompiled.",
@@ -231,6 +237,16 @@ export default function BookHealthBanner({
               className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
             >
               {busy ? "…" : t("Mark as seen")}
+            </button>
+          )}
+          {hasDrift && canForce && (
+            <button
+              onClick={() => acknowledge(true)}
+              disabled={busy}
+              title={t("Dismiss the warning without recompiling those pages.")}
+              className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
+            >
+              {t("Mark as seen anyway")}
             </button>
           )}
           <button

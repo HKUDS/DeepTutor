@@ -311,14 +311,19 @@ export const bookApi = {
       };
     }>(`/books/${encodeURIComponent(book_id)}/health`),
 
-  refreshFingerprints: (book_id: string) =>
+  /** Mark the current KB state as seen. Rejected with 409 while pages the last
+   *  drift flagged are still awaiting recompilation; `force` dismisses anyway. */
+  refreshFingerprints: (book_id: string, force = false) =>
     request<{
       book_id: string;
       kb_fingerprints: Record<string, string>;
       stale_page_ids: string[];
-    }>(`/books/${encodeURIComponent(book_id)}/refresh-fingerprints`, {
-      method: "POST",
-    }),
+    }>(
+      `/books/${encodeURIComponent(book_id)}/refresh-fingerprints${
+        force ? "?force=true" : ""
+      }`,
+      { method: "POST" },
+    ),
 
   listLearningCaptures: (
     book_id: string,

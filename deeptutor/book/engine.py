@@ -1438,10 +1438,12 @@ class BookEngine:
             return {"book_id": book_id, "has_drift": False, "missing": True}
         return report.to_dict()
 
-    def refresh_kb_fingerprints(self, book_id: str) -> dict[str, Any] | None:
+    def refresh_kb_fingerprints(
+        self, book_id: str, *, force: bool = False
+    ) -> dict[str, Any] | None:
         from .kb_health import refresh_book_fingerprints
 
-        book = refresh_book_fingerprints(book_id, storage=self.storage)
+        book = refresh_book_fingerprints(book_id, storage=self.storage, force=force)
         if book is None:
             return None
         return {

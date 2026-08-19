@@ -800,10 +800,16 @@ async def book_health(book_id: str) -> dict[str, Any]:
 
 
 @router.post("/books/{book_id}/refresh-fingerprints")
-async def refresh_fingerprints(book_id: str) -> dict[str, Any]:
+async def refresh_fingerprints(book_id: str, force: bool = False) -> dict[str, Any]:
+    """Mark the current KB state as seen.
+
+    409s while pages the last drift flagged are still awaiting recompilation.
+    ``force=true`` dismisses them anyway — stale detection over-marks on
+    purpose when an anchor cannot be resolved, so the user needs a way out.
+    """
     engine = get_book_engine()
     try:
-        result = engine.refresh_kb_fingerprints(book_id)
+        result = engine.refresh_kb_fingerprints(book_id, force=force)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:

@@ -3168,5 +3168,7 @@
   "Explain this passage": "解释这段内容",
   "Resize the reader": "调整阅读器宽度",
   "Drag to resize · double-click to reset": "拖动调整宽度 · 双击恢复默认",
-  "Available only after every stale page has been recompiled.": "只有所有过期页面重新编译完成后才能使用。"
+  "Available only after every stale page has been recompiled.": "只有所有过期页面重新编译完成后才能使用。",
+  "Mark as seen anyway": "仍然标记为已读",
+  "Dismiss the warning without recompiling those pages.": "不重新编译这些页面，直接忽略该提示。"
 }
