@@ -40,6 +40,7 @@ import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionLoadingView from "@/components/chat/home/SessionLoadingView";
 import StarterSuggestions from "@/components/chat/home/StarterSuggestions";
+import PsychAcademyShortcuts from "@/components/chat/home/PsychAcademyShortcuts";
 import MasteryPathStrip from "@/components/chat/home/MasteryPathStrip";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
@@ -74,7 +75,10 @@ import {
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
 import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
-import { readChatLaunchIntent } from "@/lib/chat-launch-intent";
+import {
+  readChatLaunchIntent,
+  resolvePsychAcademyLaunchRedirect,
+} from "@/lib/chat-launch-intent";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
@@ -1226,10 +1230,15 @@ export default function ChatPage() {
   }, []);
 
   /* Composer setup requested by the URL that opened this page (capability,
-     tools, persistent mastery path). Runs once: from here on the composer is
-     the user's to change. */
+     tools, persistent mastery path, optional message prefill). Runs once:
+     from here on the composer is the user's to change. */
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const redirect = resolvePsychAcademyLaunchRedirect(window.location.search);
+    if (redirect) {
+      router.replace(redirect);
+      return;
+    }
     const intent = readChatLaunchIntent(window.location.search);
     if (intent.masteryPathId) setMasteryPathId(intent.masteryPathId);
     if (intent.capability !== null) handleSelectCapability(intent.capability);
@@ -1239,6 +1248,25 @@ export default function ChatPage() {
       );
       if (valid.length) setTools(Array.from(new Set(valid)));
     }
+    const prefill = intent.message;
+    if (!prefill) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      if (cancelled) return;
+      if (!prefillInputRef.current) return;
+      prefillInputRef.current(prefill);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("message");
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      window.history.replaceState({}, "", next);
+      window.clearInterval(timer);
+    }, 50);
+    const giveUp = window.setTimeout(() => window.clearInterval(timer), 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.clearTimeout(giveUp);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2262,10 +2290,13 @@ export default function ChatPage() {
                 session when it has no messages, so that both creates the
                 session and starts it on the topic. */}
               {!hasMessages ? (
-                <StarterSuggestions
-                  onPick={(prompt) => void handleSend(prompt)}
-                  disabled={state.isStreaming}
-                />
+                <>
+                  <PsychAcademyShortcuts />
+                  <StarterSuggestions
+                    onPick={(prompt) => void handleSend(prompt)}
+                    disabled={state.isStreaming}
+                  />
+                </>
               ) : null}
               <div
                 aria-hidden="true"

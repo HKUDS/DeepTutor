@@ -239,8 +239,11 @@ export class UnifiedWSClient {
       }
     };
 
-    this.ws.onerror = (err) => {
-      console.error("WS error:", err);
+    this.ws.onerror = () => {
+      // Browser Event objects serialize as `{}` and Next.js treats
+      // ``console.error`` as a blocking overlay. The useful signal is
+      // ``onclose`` (reconnect / intentional disconnect), not this event.
+      if (this.intentionalClose) return;
     };
   }
 
