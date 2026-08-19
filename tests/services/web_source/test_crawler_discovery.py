@@ -6,7 +6,9 @@ from deeptutor.services.web_source import crawler
 
 
 def _xml(body: str) -> crawler.FetchOutcome:
-    return crawler.FetchOutcome(html=body, final_url="https://example.test/sitemap", status_code=200)
+    return crawler.FetchOutcome(
+        html=body, final_url="https://example.test/sitemap", status_code=200
+    )
 
 
 @pytest.mark.asyncio
@@ -46,11 +48,7 @@ async def test_sitemap_discovery_follows_index_and_filters_prefix(monkeypatch) -
 @pytest.mark.asyncio
 async def test_malformed_sitemap_falls_back_to_configured_url(monkeypatch) -> None:
     async def fake_fetch(url, **kwargs):
-        return (
-            _xml("<urlset><url><loc>broken")
-            if url.endswith("/sitemap.xml")
-            else None
-        )
+        return _xml("<urlset><url><loc>broken") if url.endswith("/sitemap.xml") else None
 
     monkeypatch.setattr(crawler, "_fetch_page", fake_fetch)
 

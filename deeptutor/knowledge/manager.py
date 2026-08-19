@@ -2024,9 +2024,7 @@ class KnowledgeBaseManager:
                 last_synced = datetime.fromisoformat(source.get("last_synced_at") or "")
                 if last_synced.tzinfo is None:
                     last_synced = last_synced.replace(tzinfo=timezone.utc)
-                item["next_sync_at"] = (
-                    last_synced + timedelta(hours=interval_hours)
-                ).isoformat()
+                item["next_sync_at"] = (last_synced + timedelta(hours=interval_hours)).isoformat()
             except Exception:
                 item["next_sync_at"] = ""
             decorated.append(item)

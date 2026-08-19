@@ -327,7 +327,9 @@ def register(app: typer.Typer) -> None:
         url: str = typer.Option(..., "--url", "-u", help="Documentation site base URL."),
         max_depth: int = typer.Option(3, "--max-depth", help="Crawl depth."),
         max_pages: int = typer.Option(200, "--max-pages", help="Max pages to crawl."),
-        document_version: str = typer.Option("", "--document-version", help="Document/product version."),
+        document_version: str = typer.Option(
+            "", "--document-version", help="Document/product version."
+        ),
         validation_query: list[str] = typer.Option(
             [], "--validation-query", help="Representative query used to validate a rebuilt index."
         ),

@@ -36,11 +36,15 @@ class WebSourceSyncService(BaseSourceSyncService):
             if not enabled:
                 continue
             if not any(
-                is_stale(s, stale_hours=float(s.get("sync_interval_hours") or WEB_SYNC_INTERVAL_HOURS))
+                is_stale(
+                    s, stale_hours=float(s.get("sync_interval_hours") or WEB_SYNC_INTERVAL_HOURS)
+                )
                 for s in enabled
             ):
                 continue
-            logger.info("Queueing scheduled sync for %d web source(s) in KB '%s'", len(enabled), kb_name)
+            logger.info(
+                "Queueing scheduled sync for %d web source(s) in KB '%s'", len(enabled), kb_name
+            )
             try:
                 submit_web_sync(
                     kb_name=kb_name,

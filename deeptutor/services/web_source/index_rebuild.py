@@ -94,8 +94,7 @@ async def rebuild_index_async(
     except Exception as exc:
         _record_failed_validation(kb_name, base_dir, candidate_path, str(exc))
         raise RuntimeError(
-            f"Candidate index validation failed for KB '{kb_name}' "
-            f"({candidate_path.name}): {exc}"
+            f"Candidate index validation failed for KB '{kb_name}' ({candidate_path.name}): {exc}"
         ) from exc
 
     _publish_candidate(
@@ -164,7 +163,9 @@ async def validate_candidate_index(
             query,
             top_k=3,
         )
-        if not nodes or not any(str(getattr(node.node, "text", "") or "").strip() for node in nodes):
+        if not nodes or not any(
+            str(getattr(node.node, "text", "") or "").strip() for node in nodes
+        ):
             raise RuntimeError(f"representative query returned no indexed content: {query!r}")
 
 

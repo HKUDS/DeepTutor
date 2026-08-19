@@ -160,8 +160,7 @@ async def _run_web_sync_job(
             status="running",
             progress=max(0, min(int(percent), 99)),
             message=message,
-            started_at=current.get("started_at")
-            or datetime.now(timezone.utc).isoformat(),
+            started_at=current.get("started_at") or datetime.now(timezone.utc).isoformat(),
         )
 
     try:
@@ -265,9 +264,7 @@ def submit_web_sync(
         name=job["job_id"],
     )
     _WEB_SYNC_TASKS[job["job_id"]] = task
-    task.add_done_callback(
-        lambda done, job_id=job["job_id"]: _WEB_SYNC_TASKS.pop(job_id, None)
-    )
+    task.add_done_callback(lambda done, job_id=job["job_id"]: _WEB_SYNC_TASKS.pop(job_id, None))
     return job
 
 
