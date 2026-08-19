@@ -66,6 +66,25 @@ def test_resolve_storage_dir_for_rebuild_allocates_fresh_version(tmp_path: Path)
     assert resolve_storage_dir_for_rebuild(kb_dir, sig) == kb_dir / "version-2"
 
 
+def test_unpublished_candidate_is_not_ready_for_read(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "kb"
+    sig = _signature()
+    old = kb_dir / "version-1"
+    old.mkdir(parents=True)
+    (old / "docstore.json").write_text("{}", encoding="utf-8")
+    write_version_meta(kb_dir, sig, storage_dir=old)
+
+    candidate = kb_dir / "version-2"
+    candidate.mkdir()
+    (candidate / "docstore.json").write_text("{}", encoding="utf-8")
+    write_version_meta(kb_dir, sig, storage_dir=candidate, published=False)
+
+    assert resolve_storage_dir_for_read(kb_dir, sig) == old
+    versions = {entry["version"]: entry for entry in list_kb_versions(kb_dir)}
+    assert versions["version-1"]["ready"] is True
+    assert versions["version-2"]["ready"] is False
+
+
 def test_resolve_storage_dir_for_write_without_signature_still_uses_flat_layout(
     tmp_path: Path,
 ) -> None:

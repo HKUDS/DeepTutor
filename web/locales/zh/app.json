@@ -3070,5 +3070,21 @@
   "Generate a chapter on this": "就此生成一章",
   "This book was written without reading your sources.": "这本书生成时没有读取你的资料来源。",
   "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.": "规划阶段检索失败，因此各章仅基于方案生成。重建会重新尝试读取你的知识库。",
-  "Source sweep failed": "来源扫描失败"
+  "Source sweep failed": "来源扫描失败",
+  "Crawl paired documentation sites and keep bilingual pages aligned.": "抓取成对文档站点，并保持双语页面对应。",
+  "Cancel sync": "取消同步",
+  "Detect automatically": "自动识别",
+  "Paired source URL": "配对来源 URL",
+  "Paired": "已配对",
+  "Document version": "文档版本",
+  "Validation questions (one per line)": "验证问题（每行一个）",
+  "How do I configure authentication?": "如何配置身份验证？",
+  "Scheduled sync interval (hours)": "定时同步间隔（小时）",
+  "Scheduled": "定时",
+  "Manual": "手动",
+  "Version": "版本",
+  "Every": "每",
+  "Next sync": "下次同步",
+  "Validation": "验证",
+  "https://example.com/docs/": "https://example.com/docs/"
 }

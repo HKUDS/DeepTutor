@@ -27,7 +27,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
@@ -77,6 +77,16 @@ from deeptutor.services.rag.pipelines.ima.config import (
     ImaConfig,
     ImaCredentials,
     get_account_credentials,
+)
+from deeptutor.services.web_source.jobs import (
+    WebSyncConflictError,
+    submit_web_sync,
+)
+from deeptutor.services.web_source.jobs import (
+    cancel_web_sync_job as cancel_web_sync_job_service,
+)
+from deeptutor.services.web_source.jobs import (
+    get_web_sync_job as get_web_sync_job_service,
 )
 from deeptutor.utils.document_extractor import (
     MAX_EXTRACTED_CHARS_PER_DOC,
@@ -3244,6 +3254,11 @@ class AddWebSourceRequest(BaseModel):
     url: str
     max_depth: int = 3
     max_pages: int = 200
+    language: str = "auto"
+    paired_url: str = ""
+    document_version: str = ""
+    validation_queries: list[str] = []
+    sync_interval_hours: int = 24
 
 
 class WebSourceInfo(BaseModel):
@@ -3261,6 +3276,28 @@ class WebSourceInfo(BaseModel):
     language: str = ""
     pair_key: str = ""
     pair_status: str = ""
+    paired_source_id: str = ""
+    paired_url: str = ""
+    coverage: float | None = None
+    latest_sync_job: str = ""
+    document_version: str = ""
+    validation_queries: list[str] = []
+    sync_interval_hours: int = 24
+    next_sync_at: str = ""
+
+
+class WebSyncJobInfo(BaseModel):
+    job_id: str
+    kb_name: str
+    trigger: str = "manual"
+    status: str
+    progress: int = 0
+    message: str = ""
+    result: dict | None = None
+    error: str | None = None
+    created_at: str = ""
+    started_at: str = ""
+    finished_at: str = ""
 
 
 class WebNavNode(BaseModel):
@@ -3374,7 +3411,15 @@ async def add_web_source(kb_name: str, request: AddWebSourceRequest):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
         info = manager.add_web_source(
-            resolved_name, request.url, request.max_depth, request.max_pages
+            resolved_name,
+            request.url,
+            request.max_depth,
+            request.max_pages,
+            language=request.language,
+            paired_url=request.paired_url,
+            document_version=request.document_version,
+            validation_queries=request.validation_queries,
+            sync_interval_hours=request.sync_interval_hours,
         )
         return WebSourceInfo(**info)
     except HTTPException:
@@ -3417,61 +3462,64 @@ async def remove_web_source(kb_name: str, source_id: str):
 
 @router.post("/{kb_name}/sync-web")
 async def sync_web_sources(kb_name: str):
-    """Sync all web sources for a KB using bilingual-aware orchestration.
-
-    Groups sources into language pairs, crawls, aligns paired pages, and
-    rebuilds the index once after all sources are processed.
-    """
+    """Queue bilingual web-source sync and return a durable job handle."""
     try:
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
         sources = manager.get_web_sources(resolved_name)
-        if not sources:
-            return {
-                "message": "No web sources",
-                "results": [],
-                "pair_results": [],
-                "index_rebuilt": False,
-            }
-        from deeptutor.services.web_source.orchestrator import sync_kb_sources_safe
-
-        enabled = [s for s in sources if s.get("enabled", True)]
-        if not enabled:
-            return {
-                "message": "No enabled web sources",
-                "results": [],
-                "pair_results": [],
-                "index_rebuilt": False,
-            }
-        kb_result = await sync_kb_sources_safe(
+        job = submit_web_sync(
             kb_name=resolved_name,
-            sources=enabled,
-            base_dir=str(kb_base_dir),
+            sources=sources,
+            kb_base_dir=kb_base_dir,
+            trigger="manual",
         )
-        pair_summaries = []
-        for pr in kb_result.pair_results:
-            pair_summaries.append(
-                {
-                    "pair_key": pr.pair_key,
-                    "origin": pr.origin,
-                    "status": pr.status,
-                    "en_pages": pr.en_pages,
-                    "zh_pages": pr.zh_pages,
-                    "paired_pages": pr.paired_pages,
-                    "en_only_pages": pr.en_only_pages,
-                    "zh_only_pages": pr.zh_only_pages,
-                    "low_confidence": pr.low_confidence,
-                    "error": pr.error or None,
-                    "source_results": pr.source_results,
-                }
-            )
-        return {
-            "message": f"Synced {len(enabled)} source(s) in {len(pair_summaries)} pair(s)",
-            "ok": kb_result.ok,
-            "pair_results": pair_summaries,
-            "index_rebuilt": kb_result.index_rebuilt,
-            "index_error": kb_result.index_error or None,
-            "total_pages": kb_result.total_pages,
-        }
+
+        return JSONResponse(
+            status_code=202,
+            content={
+                **job,
+                "status_url": f"/api/v1/knowledge/{resolved_name}/web-sync-jobs/{job['job_id']}",
+            },
+        )
+    except WebSyncConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "A web source sync is already running",
+                "job_id": exc.job.get("job_id"),
+            },
+        ) from exc
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_name}/web-sync-jobs/{job_id}", response_model=WebSyncJobInfo)
+async def get_web_sync_job(kb_name: str, job_id: str):
+    try:
+        _, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        job = get_web_sync_job_service(kb_base_dir, resolved_name, job_id)
+        if not job or job.get("kb_name") != resolved_name:
+            raise HTTPException(status_code=404, detail=f"Web sync job '{job_id}' not found")
+        return WebSyncJobInfo(**job)
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{kb_name}/web-sync-jobs/{job_id}/cancel", response_model=WebSyncJobInfo)
+async def cancel_web_sync_job(kb_name: str, job_id: str):
+    try:
+        _, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        job = await cancel_web_sync_job_service(kb_base_dir, resolved_name, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Web sync job '{job_id}' not found")
+        return WebSyncJobInfo(**job)
     except HTTPException:
         raise
     except ValueError:

@@ -6,7 +6,7 @@ Manages multiple knowledge bases and provides utilities for accessing them.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import logging
@@ -1854,6 +1854,11 @@ class KnowledgeBaseManager:
         url: str,
         max_depth: int = 3,
         max_pages: int = 200,
+        language: str = "auto",
+        paired_url: str = "",
+        document_version: str = "",
+        validation_queries: list[str] | None = None,
+        sync_interval_hours: int = 24,
     ) -> dict:
         """Register a documentation site URL as a document source for a KB."""
         if kb_name not in self.list_knowledge_bases():
@@ -1865,8 +1870,55 @@ class KnowledgeBaseManager:
         metadata_file = self.base_dir / kb_name / "metadata.json"
         metadata = self._read_kb_metadata(metadata_file)
         sources = metadata.get("web_sources", [])
+        language = language.strip().lower() if isinstance(language, str) else "auto"
+        if language not in {"auto", "en", "zh"}:
+            raise ValueError("Web source language must be auto, en, or zh")
+        validation_queries = [
+            str(query).strip() for query in (validation_queries or []) if str(query).strip()
+        ][:10]
+        if not validation_queries:
+            validation_queries = []
+        if sync_interval_hours <= 0:
+            raise ValueError("Web source sync interval must be positive")
+
+        canonical_new_url = url.strip().rstrip("/")
+        pairing_key = ""
+        canonical_paired_url = paired_url.strip().rstrip("/")
+        if canonical_paired_url:
+            pairing_key = self._manual_pairing_key(canonical_new_url, canonical_paired_url)
+        for existing in sources:
+            canonical_existing_url = str(existing.get("url", "")).rstrip("/")
+            canonical_existing_pair = str(existing.get("paired_url", "")).rstrip("/")
+            if canonical_paired_url and canonical_existing_url == canonical_paired_url:
+                pairing_key = existing.get("pairing_key") or self._manual_pairing_key(
+                    canonical_existing_url, url.strip()
+                )
+                existing.setdefault("pairing_key", pairing_key)
+                existing.setdefault("paired_url", url.strip())
+                break
+            if canonical_existing_pair and canonical_existing_pair == url.strip().rstrip("/"):
+                pairing_key = existing.get("pairing_key") or self._manual_pairing_key(
+                    canonical_existing_pair, existing.get("url", "")
+                )
+                existing.setdefault("pairing_key", pairing_key)
+                existing.setdefault("paired_url", str(existing.get("url", "")))
+                break
+
         for existing in sources:
             if existing.get("id") == source_id:
+                if language != "auto":
+                    existing["language"] = language
+                if pairing_key:
+                    existing["pairing_key"] = pairing_key
+                if canonical_paired_url:
+                    existing["paired_url"] = paired_url.strip()
+                if document_version.strip():
+                    existing["document_version"] = document_version.strip()
+                if validation_queries:
+                    existing["validation_queries"] = validation_queries
+                if sync_interval_hours != 24:
+                    existing["sync_interval_hours"] = sync_interval_hours
+                atomic_write_json(metadata_file, metadata)
                 return existing
 
         source_info = {
@@ -1881,6 +1933,12 @@ class KnowledgeBaseManager:
             "last_sync_status": "pending",
             "last_sync_error": None,
             "added_at": datetime.now().isoformat(),
+            "language": "" if language == "auto" else language,
+            "paired_url": paired_url.strip(),
+            "pairing_key": pairing_key,
+            "document_version": document_version.strip(),
+            "validation_queries": validation_queries,
+            "sync_interval_hours": sync_interval_hours,
         }
         sources.append(source_info)
         metadata["web_sources"] = sources
@@ -1908,7 +1966,7 @@ class KnowledgeBaseManager:
             raise ValueError(f"Knowledge base not found: {kb_name}")
         metadata_file = self.base_dir / kb_name / "metadata.json"
         metadata = self._read_kb_metadata(metadata_file)
-        return metadata.get("web_sources", [])
+        return self._decorate_web_sources(metadata.get("web_sources", []))
 
     def update_web_source_state(self, kb_name: str, source_id: str, **fields: object) -> None:
         """Persist sync state fields into a web source entry."""
@@ -1929,6 +1987,50 @@ class KnowledgeBaseManager:
             for source in self.get_web_sources(kb_name):
                 result.append((kb_name, source))
         return result
+
+    @staticmethod
+    def _manual_pairing_key(first_url: str, second_url: str) -> str:
+        joined = "\n".join(sorted((first_url.rstrip("/"), second_url.rstrip("/"))))
+        return "manual-" + hashlib.sha256(joined.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _decorate_web_sources(sources: list[dict]) -> list[dict]:
+        by_pairing_key = {}
+        for source in sources:
+            key = source.get("pairing_key")
+            if key:
+                by_pairing_key.setdefault(key, []).append(source)
+
+        decorated = []
+        for source in sources:
+            item = dict(source)
+            key = source.get("pairing_key")
+            if key:
+                item["paired_source_id"] = next(
+                    (
+                        other.get("id", "")
+                        for other in by_pairing_key.get(key, [])
+                        if other.get("id") != source.get("id")
+                    ),
+                    "",
+                )
+            else:
+                item["paired_source_id"] = ""
+            page_count = int(source.get("page_count") or 0)
+            paired_pages = int(source.get("paired_pages") or 0)
+            item["coverage"] = round(min(paired_pages / page_count, 1.0), 4) if page_count else None
+            try:
+                interval_hours = float(source.get("sync_interval_hours") or 24)
+                last_synced = datetime.fromisoformat(source.get("last_synced_at") or "")
+                if last_synced.tzinfo is None:
+                    last_synced = last_synced.replace(tzinfo=timezone.utc)
+                item["next_sync_at"] = (
+                    last_synced + timedelta(hours=interval_hours)
+                ).isoformat()
+            except Exception:
+                item["next_sync_at"] = ""
+            decorated.append(item)
+        return decorated
 
     def get_web_navigation(self, kb_name: str) -> list[dict]:
         """Return navigation manifests for all web sources in a KB."""

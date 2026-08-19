@@ -9,11 +9,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from deeptutor.services.web_source.crawler import (
+    ALLOWED_HOSTS_ENV,
     CrawledPage,
     CrawlResult,
+    _configured_allowed_hosts,
+    _is_crawler_disallowed_host,
     _is_internal,
     _normalise_link,
     _to_filename,
+    crawl_and_diff,
+    crawl_docs_site,
 )
 from deeptutor.services.web_source.sync import WebSyncResult, sync_source
 from deeptutor.services.web_source.sync_service import _is_stale
@@ -58,6 +63,37 @@ def test_to_filename_no_prefix_collision():
     assert en == "docs/intro.md"
     assert zh == "zh-cn/docs/intro.md"
     assert en != zh
+
+
+def test_crawler_host_allowlist_parses_normalized_hosts(monkeypatch):
+    monkeypatch.setenv(ALLOWED_HOSTS_ENV, "Local.Host; 127.0.0.1, [::1]")
+
+    assert _configured_allowed_hosts() == frozenset({"local.host", "127.0.0.1", "::1"})
+
+
+def test_crawler_host_allowlist_only_bypasses_named_hosts(monkeypatch):
+    monkeypatch.setenv(ALLOWED_HOSTS_ENV, "127.0.0.1")
+    monkeypatch.setattr(
+        "deeptutor.services.web_source.crawler._is_disallowed_host",
+        lambda host: host in {"127.0.0.1", "10.0.0.8"},
+    )
+
+    assert _is_crawler_disallowed_host("127.0.0.1") is False
+    assert _is_crawler_disallowed_host("10.0.0.8") is True
+    assert _is_crawler_disallowed_host("example.com") is False
+
+
+@pytest.mark.asyncio
+async def test_crawler_host_allowlist_accepts_local_base_url(monkeypatch):
+    monkeypatch.setenv(ALLOWED_HOSTS_ENV, "127.0.0.1")
+    monkeypatch.setattr(
+        "deeptutor.services.web_source.crawler._fetch_page",
+        AsyncMock(return_value=None),
+    )
+
+    result = await crawl_docs_site("http://127.0.0.1:18784/en.html")
+
+    assert result.errors == []
 
 
 def _make_kb(tmp_path: Path, kb_name: str = "kb") -> tuple[str, Path]:
@@ -157,6 +193,128 @@ def test_is_stale_recent():
 def test_is_stale_old():
     old = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
     assert _is_stale({"last_synced_at": old}) is True
+
+
+@pytest.mark.asyncio
+async def test_crawl_and_diff_persists_page_manifest(tmp_path: Path) -> None:
+    page = CrawledPage(
+        url="https://example.com/docs/intro/",
+        title="Introduction",
+        markdown="# Introduction",
+        content_hash="hash-1",
+        requested_url="https://example.com/docs/intro",
+        canonical_url="https://example.com/docs/intro/",
+        document_version="v2",
+    )
+    result = CrawlResult(
+        pages=[page],
+        navigation_links=[
+            {"title": "Docs", "url": "https://example.com/docs/", "depth": 0},
+            {"title": "Introduction", "url": "https://example.com/docs/intro/", "depth": 1},
+        ],
+        navigation_kind="original",
+    )
+
+    async def fake_crawl(*_args, **_kwargs):
+        return result
+
+    source = {
+        "url": "https://example.com/docs/",
+        "document_version": "v2",
+        "page_hashes": {},
+        "page_manifest": {},
+    }
+    with patch("deeptutor.services.web_source.crawler.crawl_docs_site", new=fake_crawl):
+        diff = await crawl_and_diff(source, tmp_path)
+
+    entry = diff.page_manifest["docs/intro.md"]
+    assert entry["canonical_url"] == "https://example.com/docs/intro/"
+    assert entry["title"] == "Introduction"
+    assert entry["section_path"] == ["Docs", "Introduction"]
+    assert entry["content_hash"] == "hash-1"
+    assert entry["fetched_at"]
+    assert entry["document_version"] == "v2"
+    assert entry["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_incomplete_crawl_does_not_delete_missing_page(tmp_path: Path) -> None:
+    old_file = tmp_path / "docs" / "old.md"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_text("old", encoding="utf-8")
+    source = {
+        "url": "https://example.com/docs/",
+        "page_hashes": {"docs/old.md": "old-hash"},
+        "page_manifest": {
+            "docs/old.md": {
+                "file_path": "docs/old.md",
+                "canonical_url": "https://example.com/docs/old",
+                "content_hash": "old-hash",
+                "status": "active",
+            }
+        },
+    }
+    result = CrawlResult(
+        pages=[
+            CrawledPage(
+                url="https://example.com/docs/",
+                title="Home",
+                markdown="# Home",
+                content_hash="home-hash",
+            )
+        ],
+        truncated=True,
+    )
+
+    async def fake_crawl(*_args, **_kwargs):
+        return result
+
+    with patch("deeptutor.services.web_source.crawler.crawl_docs_site", new=fake_crawl):
+        diff = await crawl_and_diff(source, tmp_path)
+
+    assert diff.pages_removed == []
+    assert diff.pages_unresolved == ["docs/old.md"]
+    assert old_file.exists()
+    assert diff.page_manifest["docs/old.md"]["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_complete_crawl_marks_missing_page_deleted(tmp_path: Path) -> None:
+    old_file = tmp_path / "docs" / "old.md"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_text("old", encoding="utf-8")
+    source = {
+        "url": "https://example.com/docs/",
+        "page_hashes": {"docs/old.md": "old-hash"},
+        "page_manifest": {
+            "docs/old.md": {
+                "file_path": "docs/old.md",
+                "canonical_url": "https://example.com/docs/old",
+                "content_hash": "old-hash",
+                "status": "active",
+            }
+        },
+    }
+    result = CrawlResult(
+        pages=[
+            CrawledPage(
+                url="https://example.com/docs/",
+                title="Home",
+                markdown="# Home",
+                content_hash="home-hash",
+            )
+        ]
+    )
+
+    async def fake_crawl(*_args, **_kwargs):
+        return result
+
+    with patch("deeptutor.services.web_source.crawler.crawl_docs_site", new=fake_crawl):
+        diff = await crawl_and_diff(source, tmp_path)
+
+    assert diff.pages_removed == ["docs/old.md"]
+    assert not old_file.exists()
+    assert diff.page_manifest["docs/old.md"]["status"] == "deleted"
 
 
 # ── Navigation extraction tests ──────────────────────────────────────

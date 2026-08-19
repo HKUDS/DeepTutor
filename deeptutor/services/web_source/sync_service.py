@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from deeptutor.services.base_sync import BaseSourceSyncService, is_stale
+from deeptutor.services.web_source.jobs import WebSyncConflictError, submit_web_sync
 from deeptutor.services.web_source.orchestrator import WEB_SYNC_INTERVAL_HOURS
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,6 @@ class WebSourceSyncService(BaseSourceSyncService):
 
     async def _sync_one_cycle(self) -> None:
         from deeptutor.knowledge.manager import KnowledgeBaseManager
-        from deeptutor.services.web_source.orchestrator import sync_kb_sources_safe
 
         base_dir = self.effective_base_dir
         manager = KnowledgeBaseManager(base_dir=base_dir)
@@ -35,21 +35,27 @@ class WebSourceSyncService(BaseSourceSyncService):
             enabled = [s for s in sources if s.get("enabled", True)]
             if not enabled:
                 continue
-            if not any(is_stale(s, stale_hours=WEB_SYNC_INTERVAL_HOURS) for s in enabled):
+            if not any(
+                is_stale(s, stale_hours=float(s.get("sync_interval_hours") or WEB_SYNC_INTERVAL_HOURS))
+                for s in enabled
+            ):
                 continue
-            logger.info("Syncing %d web source(s) for KB '%s'", len(enabled), kb_name)
+            logger.info("Queueing scheduled sync for %d web source(s) in KB '%s'", len(enabled), kb_name)
             try:
-                result = await sync_kb_sources_safe(
+                submit_web_sync(
                     kb_name=kb_name,
                     sources=enabled,
-                    base_dir=base_dir,
+                    kb_base_dir=base_dir,
+                    trigger="scheduled",
                 )
-                if not result.ok:
-                    logger.warning("Web sync for KB '%s' completed with errors", kb_name)
-                if result.index_rebuilt:
-                    logger.info("Index rebuilt for KB '%s'", kb_name)
+            except WebSyncConflictError as exc:
+                logger.info(
+                    "Scheduled web sync skipped for KB '%s'; job '%s' is active",
+                    kb_name,
+                    exc.job.get("job_id", ""),
+                )
             except Exception:
-                logger.exception("Failed to sync web sources for KB '%s'", kb_name)
+                logger.exception("Failed to queue scheduled web sync for KB '%s'", kb_name)
 
 
 _web_sync_service = None

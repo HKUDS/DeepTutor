@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 
 
@@ -23,6 +25,41 @@ def test_add_web_source_persists(tmp_path: Path) -> None:
     assert info["url"] == "https://example.com/docs/"
     metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
     assert len(metadata["web_sources"]) == 1
+
+
+def test_add_web_source_persists_publish_gate_and_schedule_settings(
+    tmp_path: Path,
+) -> None:
+    manager, metadata_file, kb = _make_manager_with_kb(tmp_path)
+
+    info = manager.add_web_source(
+        kb,
+        "https://example.com/docs/",
+        document_version="v2.0",
+        validation_queries=["How do I configure authentication?"],
+        sync_interval_hours=12,
+    )
+    manager.update_web_source_state(
+        kb,
+        info["id"],
+        last_synced_at="2026-01-01T00:00:00+00:00",
+    )
+
+    decorated = manager.get_web_sources(kb)[0]
+    metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+    assert metadata["web_sources"][0]["validation_queries"] == [
+        "How do I configure authentication?"
+    ]
+    assert decorated["document_version"] == "v2.0"
+    assert decorated["sync_interval_hours"] == 12
+    assert decorated["next_sync_at"] == "2026-01-01T12:00:00+00:00"
+
+
+def test_add_web_source_rejects_invalid_schedule(tmp_path: Path) -> None:
+    manager, _metadata_file, kb = _make_manager_with_kb(tmp_path)
+
+    with pytest.raises(ValueError, match="sync interval"):
+        manager.add_web_source(kb, "https://example.com/docs/", sync_interval_hours=0)
 
 
 def test_add_web_source_is_idempotent(tmp_path: Path) -> None:
