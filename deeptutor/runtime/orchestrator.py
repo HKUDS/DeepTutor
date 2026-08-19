@@ -26,19 +26,29 @@ logger = logging.getLogger(__name__)
 def completion_event_fields(context: UnifiedContext, cap_name: str) -> tuple[str, dict[str, Any]]:
     """Build CAPABILITY_COMPLETE ``agent_output`` + metadata.
 
-    Capabilities may stash a body on ``context.metadata["agent_output"]``.
-    Remaining metadata is forwarded as-is; ``capability``, ``session_id``,
-    and ``turn_id`` always win so consumers can rely on those keys.
+    Capabilities may stash a body on ``context.metadata["agent_output"]`` and
+    publishable extras under ``context.metadata["event_metadata"]``.
+    ``capability``, ``session_id`` and ``turn_id`` always win so consumers can
+    rely on those keys.
+
+    Only that explicit sub-dict is forwarded, never ``context.metadata`` whole.
+    Turn metadata is a scratchpad, not a wire format: it holds live callables
+    (``wait_for_user_reply``), the user's ask_user answers, and whatever else a
+    capability parked there mid-turn. Publishing it to the global EventBus —
+    whose subscribers include the Partner channels — would leak turn internals
+    to every listener and hand JSON-serialising consumers objects they cannot
+    encode. A capability that wants a value on the bus says so.
     """
-    meta = dict(context.metadata or {})
+    meta = context.metadata or {}
     agent_output = str(meta.get("agent_output") or "")
-    merged = {
-        **meta,
+    published = meta.get("event_metadata")
+    extras = dict(published) if isinstance(published, dict) else {}
+    return agent_output, {
+        **extras,
         "capability": cap_name,
         "session_id": context.session_id,
         "turn_id": str(meta.get("turn_id") or ""),
     }
-    return agent_output, merged
 
 
 class ChatOrchestrator:
