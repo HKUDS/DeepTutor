@@ -77,6 +77,9 @@ export default function WhisperComposer({
             Send
           </button>
         </div>
+        {busy && (
+          <p className="text-[11px] text-[var(--muted-foreground)]">Waiting…</p>
+        )}
         {showEndButton && (
           <div className="flex justify-end">
             <button

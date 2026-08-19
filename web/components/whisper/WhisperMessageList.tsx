@@ -1,6 +1,7 @@
 "use client";
 
 import { Lock } from "lucide-react";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import type { WhisperMessage, WhisperSeat } from "@/lib/whisper-transcript";
 
 type WhisperMessageListProps = {
@@ -24,16 +25,45 @@ function bubbleClass(msg: WhisperMessage): string {
   return "mr-auto border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]";
 }
 
+function showSource(source?: string): boolean {
+  if (!source) return false;
+  return source !== "whisper_visitor" && source !== "whisper_trainee";
+}
+
+function useMarkdown(msg: WhisperMessage): boolean {
+  return msg.role !== "user" && msg.role !== "system";
+}
+
 export default function WhisperMessageList({
   messages,
   seat,
 }: WhisperMessageListProps) {
   if (messages.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--background)]/50 p-4 text-xs leading-5 text-[var(--muted-foreground)]">
-        {seat === "visitor"
-          ? "Speak as the visitor. The first reply will include a room_id for the trainee seat."
-          : "Send counselor lines here. Private whisper notes appear with a lock badge."}
+      <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--background)]/50 p-4 text-xs leading-6 text-[var(--muted-foreground)]">
+        <p className="mb-2 font-medium text-[var(--foreground)]">
+          Dual-seat whisper — 3 steps
+        </p>
+        <ol className="list-decimal space-y-1.5 pl-4">
+          <li>
+            <span className="font-medium text-[var(--foreground)]">Visitor:</span>{" "}
+            send the first message → you get a{" "}
+            <code className="rounded bg-[var(--muted)] px-1">room_id</code>.
+          </li>
+          <li>
+            <span className="font-medium text-[var(--foreground)]">Trainee:</span>{" "}
+            switch seats and send counselor lines. Private notes show with a lock.
+          </li>
+          <li>
+            <span className="font-medium text-[var(--foreground)]">结束:</span>{" "}
+            on Trainee, end the room for a debrief.
+          </li>
+        </ol>
+        <p className="mt-3 opacity-80">
+          {seat === "visitor"
+            ? "You are on Visitor — start with step 1."
+            : "You are on Trainee — complete step 1 as Visitor first if there is no room yet."}
+        </p>
       </div>
     );
   }
@@ -42,15 +72,23 @@ export default function WhisperMessageList({
     <div className="space-y-3">
       {messages.map((msg) => {
         const isWhisper = msg.stage === "whisper";
+        const metaStage =
+          msg.stage && msg.stage !== "whisper" ? msg.stage : null;
+        const metaSource = showSource(msg.source) ? msg.source : null;
+        const showMeta =
+          isWhisper || metaStage || metaSource || Boolean(msg.localSeat);
+
         return (
           <div
             key={msg.id}
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 whitespace-pre-wrap ${bubbleClass(msg)}`}
+              className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${bubbleClass(msg)} ${
+                useMarkdown(msg) ? "" : "whitespace-pre-wrap"
+              }`}
             >
-              {(isWhisper || msg.stage || msg.source) && (
+              {showMeta && (
                 <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide opacity-70">
                   {isWhisper && (
                     <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
@@ -58,14 +96,20 @@ export default function WhisperMessageList({
                       whisper
                     </span>
                   )}
-                  {msg.stage && msg.stage !== "whisper" && (
-                    <span>{msg.stage}</span>
-                  )}
-                  {msg.source && <span>· {msg.source}</span>}
+                  {metaStage && <span>{metaStage}</span>}
+                  {metaSource && <span>· {metaSource}</span>}
                   {msg.localSeat && <span>· you ({msg.localSeat})</span>}
                 </div>
               )}
-              {msg.text}
+              {useMarkdown(msg) ? (
+                <MarkdownRenderer
+                  content={msg.text}
+                  variant="compact"
+                  className="text-sm leading-6"
+                />
+              ) : (
+                msg.text
+              )}
             </div>
           </div>
         );

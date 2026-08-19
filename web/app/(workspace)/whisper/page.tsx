@@ -45,6 +45,7 @@ export default function WhisperPage() {
   const [draft, setDraft] = useState("");
   const [dtSessionId, setDtSessionId] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [everConnected, setEverConnected] = useState(false);
 
   const clientRef = useRef<UnifiedWSClient | null>(null);
   const seatRef = useRef<WhisperSeat>(seat);
@@ -258,6 +259,22 @@ export default function WhisperPage() {
     setDtSessionId(sessionBySeatRef.current[next]);
   }
 
+  function handleNewRoom() {
+    retryTimersRef.current.forEach((timer) => clearTimeout(timer));
+    retryTimersRef.current.clear();
+    sessionBySeatRef.current = { visitor: null, trainee: null };
+    setMessages([]);
+    setDraft("");
+    setBusy(false);
+    setCrisisHit(false);
+    setRoomClosed(false);
+    setRoomId(null);
+    setDtSessionId(null);
+    setSeat("visitor");
+  }
+
+  const canNewRoom = Boolean(roomId || roomClosed || crisisHit);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
@@ -278,6 +295,14 @@ export default function WhisperPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           {roomId ? <WhisperRoomChip roomId={roomId} /> : null}
+          <button
+            type="button"
+            onClick={handleNewRoom}
+            disabled={!canNewRoom}
+            className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--ring)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            New room
+          </button>
           <div
             role="tablist"
             aria-label="Seat"
@@ -306,7 +331,7 @@ export default function WhisperPage() {
           {!connected && (
             <span className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Connecting
+              Reconnecting…
             </span>
           )}
         </div>
