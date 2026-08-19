@@ -10,7 +10,10 @@ type WhisperComposerProps = {
   seat: WhisperSeat;
   draft: string;
   busy: boolean;
-  disabled: boolean;
+  /** Blocks Send / Enter submit (busy, crisis, closed, trainee without room). */
+  sendDisabled: boolean;
+  /** Only lock the textarea for terminal room states — never for busy. */
+  inputDisabled: boolean;
   showEndButton: boolean;
   endDisabled: boolean;
   onDraftChange: (value: string) => void;
@@ -22,7 +25,8 @@ export default function WhisperComposer({
   seat,
   draft,
   busy,
-  disabled,
+  sendDisabled,
+  inputDisabled,
   showEndButton,
   endDisabled,
   onDraftChange,
@@ -35,7 +39,7 @@ export default function WhisperComposer({
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (!shouldSubmitOnEnter(event, isComposingRef.current)) return;
     event.preventDefault();
-    if (!disabled) onSend();
+    if (!sendDisabled) onSend();
   }
 
   return (
@@ -48,7 +52,7 @@ export default function WhisperComposer({
             onKeyDown={handleKeyDown}
             onCompositionStart={onCompositionStart}
             onCompositionEnd={onCompositionEnd}
-            disabled={disabled}
+            disabled={inputDisabled}
             rows={2}
             placeholder={
               seat === "visitor"
@@ -61,7 +65,7 @@ export default function WhisperComposer({
           <button
             type="button"
             onClick={onSend}
-            disabled={disabled || !draft.trim()}
+            disabled={sendDisabled || !draft.trim()}
             className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[var(--primary)] px-3.5 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Send"
           >

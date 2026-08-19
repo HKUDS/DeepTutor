@@ -138,11 +138,22 @@ export default function WhisperPage() {
       setConnected(false);
     });
     clientRef.current = client;
+    setConnected(false);
     client.connect();
-    setConnected(true);
+
+    // Poll readyState until open (UnifiedWSClient has no onOpen hook).
+    const poll = window.setInterval(() => {
+      if (client.connected) {
+        setConnected(true);
+        window.clearInterval(poll);
+      }
+    }, 100);
+    const giveUp = window.setTimeout(() => window.clearInterval(poll), 15_000);
 
     const retryTimers = retryTimersRef.current;
     return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(giveUp);
       retryTimers.forEach((timer) => clearTimeout(timer));
       retryTimers.clear();
       client.disconnect();
@@ -161,8 +172,11 @@ export default function WhisperPage() {
     [messages, seat],
   );
 
-  const sendBlocked =
-    busy || crisisHit || roomClosed || (seat === "trainee" && !roomId);
+  const traineeNeedsRoom = seat === "trainee" && !roomId;
+  const roomLocked = crisisHit || roomClosed;
+  // Typing stays available during busy / trainee-without-room; only Send locks.
+  const inputDisabled = roomLocked;
+  const sendBlocked = busy || roomLocked || traineeNeedsRoom;
 
   function sendWithRetry(payload: StartTurnMessage, attempt = 0) {
     const client = clientRef.current;
@@ -209,6 +223,13 @@ export default function WhisperPage() {
 
     setDraft("");
     setBusy(true);
+
+    // If the turn never emits done/error (WS drop mid-flight), unlock Send.
+    const busyWatchdog = setTimeout(() => {
+      retryTimersRef.current.delete(busyWatchdog);
+      setBusy(false);
+    }, 120_000);
+    retryTimersRef.current.add(busyWatchdog);
 
     const capability =
       seat === "visitor" ? "whisper_visitor" : "whisper_trainee";
@@ -322,7 +343,8 @@ export default function WhisperPage() {
         seat={seat}
         draft={draft}
         busy={busy}
-        disabled={sendBlocked}
+        sendDisabled={sendBlocked}
+        inputDisabled={inputDisabled}
         showEndButton={seat === "trainee"}
         endDisabled={sendBlocked || !roomId}
         onDraftChange={setDraft}
