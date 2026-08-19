@@ -147,6 +147,7 @@ def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     assert set(by_id) == {
         "llamaindex",
         "pageindex",
+        "pageindex-oss",
         "graphrag",
         "lightrag",
         "lightrag-server",
@@ -156,6 +157,7 @@ def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     # LightRAG are optional local engines (no API key, configured = installed).
     assert by_id["llamaindex"]["requires_api_key"] is False
     assert by_id["pageindex"]["requires_api_key"] is True
+    assert by_id["pageindex-oss"]["requires_api_key"] is False
     assert by_id["graphrag"]["requires_api_key"] is False
     assert by_id["lightrag"]["requires_api_key"] is False
     # LightRAG Server is a thin HTTP client: always available, no API key gate
