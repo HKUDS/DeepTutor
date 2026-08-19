@@ -7,14 +7,37 @@ import json
 from typing import AsyncGenerator, Literal
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from deeptutor.agents.notebook import NotebookSummarizeAgent
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.notebook import notebook_manager
+from deeptutor.services.notebook.service import NotebookCorruptedError
 
 router = APIRouter()
+
+
+def _unreadable(exc: NotebookCorruptedError) -> HTTPException:
+    """Translate a damaged notebook file into a response the UI can explain.
+
+    409 rather than 500: the request was fine, the stored file is not, and
+    the client can act on it (restore a backup, delete the notebook).
+
+    Every endpoint re-raises through this before its generic `except
+    Exception`, because that generic clause would otherwise flatten a
+    diagnosable "your file is damaged" into an anonymous 500. The contract is
+    covered by a test that walks the routes, so a new endpoint that forgets
+    it fails CI rather than degrading quietly.
+    """
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "notebook_unreadable",
+            "notebook_id": exc.notebook_id,
+            "message": str(exc),
+        },
+    )
 
 
 # === Request/Response Models ===
@@ -58,7 +81,12 @@ class RemoveRecordRequest(BaseModel):
 
 
 class UpdateRecordRequest(BaseModel):
-    """Update an existing notebook record."""
+    """Update an existing notebook record.
+
+    Only the fields the client actually sends are forwarded (see
+    ``exclude_unset`` at the call site), which is what keeps ``kb_name``
+    from being wiped by a request that merely renames the record.
+    """
 
     title: str | None = None
     summary: str | None = None
@@ -66,6 +94,12 @@ class UpdateRecordRequest(BaseModel):
     output: str | None = None
     metadata: dict | None = None
     kb_name: str | None = None
+
+
+class MoveRecordRequest(BaseModel):
+    """Move or copy a record into another notebook."""
+
+    target_notebook_id: str
 
 
 # === API Endpoints ===
@@ -137,6 +171,15 @@ async def _stream_add_record_with_summary(
         yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+# NOTE: every literal path below must stay above the `/{notebook_id}` routes.
+# FastAPI matches in declaration order, so a literal declared later is shadowed
+# by the parameterised route and becomes unreachable.
+@router.get("/health")
+async def health_check():
+    """Health check"""
+    return {"status": "healthy", "service": "notebook"}
+
+
 @router.get("/list")
 async def list_notebooks():
     """
@@ -148,6 +191,8 @@ async def list_notebooks():
     try:
         notebooks = notebook_manager.list_notebooks()
         return {"notebooks": notebooks, "total": len(notebooks)}
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -163,6 +208,8 @@ async def get_statistics():
     try:
         stats = notebook_manager.get_statistics()
         return stats
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -186,6 +233,8 @@ async def create_notebook(request: CreateNotebookRequest):
             icon=request.icon,
         )
         return {"success": True, "notebook": notebook}
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -208,6 +257,8 @@ async def get_notebook(notebook_id: str):
         return notebook
     except HTTPException:
         raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -237,6 +288,8 @@ async def update_notebook(notebook_id: str, request: UpdateNotebookRequest):
         return {"success": True, "notebook": notebook}
     except HTTPException:
         raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -259,6 +312,8 @@ async def delete_notebook(notebook_id: str):
         return {"success": True, "message": "Notebook deleted successfully"}
     except HTTPException:
         raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -292,6 +347,8 @@ async def add_record(request: AddRecordRequest):
             "record": result["record"],
             "added_to_notebooks": result["added_to_notebooks"],
         }
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -325,6 +382,8 @@ async def remove_record(notebook_id: str, record_id: str):
         return {"success": True, "message": "Record removed successfully"}
     except HTTPException:
         raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -333,26 +392,77 @@ async def remove_record(notebook_id: str, record_id: str):
 async def update_record(notebook_id: str, record_id: str, request: UpdateRecordRequest):
     """Update an existing notebook record in place."""
     try:
+        # Forward only what the client actually sent. Passing every field
+        # unconditionally would hand `kb_name=None` to the service on every
+        # request and clear the record's knowledge-base link as a side effect
+        # of renaming it; the service's sentinel default only works if an
+        # omitted field never reaches it.
+        changes = request.model_dump(exclude_unset=True)
+        if not changes:
+            raise HTTPException(status_code=400, detail="No fields to update")
         updated = notebook_manager.update_record(
             notebook_id=notebook_id,
             record_id=record_id,
-            title=request.title,
-            summary=request.summary,
-            user_query=request.user_query,
-            output=request.output,
-            metadata=request.metadata,
-            kb_name=request.kb_name,
+            **changes,
         )
         if not updated:
             raise HTTPException(status_code=404, detail="Record not found")
         return {"success": True, "record": updated}
     except HTTPException:
         raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health")
-async def health_check():
-    """Health check"""
-    return {"status": "healthy", "service": "notebook"}
+@router.post("/{notebook_id}/records/{record_id}/copy")
+async def copy_record(notebook_id: str, record_id: str, request: MoveRecordRequest):
+    """Duplicate a record into another notebook under a fresh id."""
+    try:
+        copied = notebook_manager.copy_record(notebook_id, record_id, request.target_notebook_id)
+        if not copied:
+            raise HTTPException(status_code=404, detail="Record or target notebook not found")
+        return {"success": True, "record": copied}
+    except HTTPException:
+        raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{notebook_id}/records/{record_id}/move")
+async def move_record(notebook_id: str, record_id: str, request: MoveRecordRequest):
+    """Move a record from this notebook into another one."""
+    try:
+        moved = notebook_manager.move_record(notebook_id, record_id, request.target_notebook_id)
+        if not moved:
+            raise HTTPException(status_code=404, detail="Record or target notebook not found")
+        return {"success": True, "record": moved}
+    except HTTPException:
+        raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{notebook_id}/export", response_class=PlainTextResponse)
+async def export_notebook(notebook_id: str):
+    """Render the whole notebook as a single Markdown document."""
+    try:
+        markdown = notebook_manager.export_markdown(notebook_id)
+        if markdown is None:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+        return PlainTextResponse(
+            markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{notebook_id}.md"'},
+        )
+    except HTTPException:
+        raise
+    except NotebookCorruptedError as exc:
+        raise _unreadable(exc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

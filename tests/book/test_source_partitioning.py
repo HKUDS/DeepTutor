@@ -1,9 +1,13 @@
-"""Retrieval must tell indexed knowledge bases apart from connected pointers.
+"""Retrieval must tell searchable knowledge bases apart from unreachable ones.
 
-A connected KB — an Obsidian vault, a subagent CLI, a remote LightRAG or IMA
-library — has no local index, so `rag_search` returns nothing. Sweeping them
-anyway looked exactly like a source with no relevant content, so a reader who
-attached their vault never learned it contributed zero.
+An Obsidian vault (no index) and a subagent CLI (not a document collection)
+return nothing from `rag_search`. Sweeping them anyway looked exactly like a
+source with no relevant content, so a reader who attached their vault never
+learned it contributed zero — they are named instead.
+
+The other pointer kinds ARE searchable and must be swept: a `linked` folder
+mounts an index built elsewhere, and `lightrag_server` / `ima` offload retrieval
+over HTTP. Excluding every "connected" KB silently dropped those sources.
 """
 
 from __future__ import annotations
@@ -37,7 +41,7 @@ def fake_metadata(monkeypatch):
     return table
 
 
-def test_connected_kbs_are_separated_from_indexed_ones(fake_metadata) -> None:
+def test_unreachable_kbs_are_separated_from_searchable_ones(fake_metadata) -> None:
     fake_metadata.update(
         {
             "my-vault": {"type": "obsidian"},
@@ -45,18 +49,34 @@ def test_connected_kbs_are_separated_from_indexed_ones(fake_metadata) -> None:
             "papers": {"type": "local"},
         }
     )
-    retrievable, connected = SourceExplorer.partition_knowledge_bases(
+    retrievable, unreachable = SourceExplorer.partition_knowledge_bases(
         ["papers", "my-vault", "my-agent"]
     )
     assert retrievable == ["papers"]
-    assert sorted(connected) == ["my-agent", "my-vault"]
+    assert sorted(unreachable) == ["my-agent", "my-vault"]
+
+
+def test_http_backed_and_linked_pointers_are_still_swept(fake_metadata) -> None:
+    """These have an index or a retrieval API — dropping them cost every book."""
+    fake_metadata.update(
+        {
+            "ima-lib": {"type": "ima", "knowledge_base_id": "kb-1"},
+            "lightrag": {"type": "lightrag_server", "server_url": "https://x.invalid"},
+            "linked": {"type": "linked", "external_path": "/tmp/elsewhere"},
+        }
+    )
+    retrievable, unreachable = SourceExplorer.partition_knowledge_bases(
+        ["ima-lib", "lightrag", "linked"]
+    )
+    assert sorted(retrievable) == ["ima-lib", "lightrag", "linked"]
+    assert unreachable == []
 
 
 def test_unresolvable_references_are_treated_as_ordinary(fake_metadata) -> None:
     """A KB we cannot resolve must not be silently dropped from the sweep."""
-    retrievable, connected = SourceExplorer.partition_knowledge_bases(["mystery"])
+    retrievable, unreachable = SourceExplorer.partition_knowledge_bases(["mystery"])
     assert retrievable == ["mystery"]
-    assert connected == []
+    assert unreachable == []
 
 
 # ── Balanced slice ──────────────────────────────────────────────────────

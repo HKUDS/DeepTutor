@@ -34,7 +34,10 @@ test("tools are collected verbatim for the caller to validate", () => {
 });
 
 test("a blank mastery path id is dropped rather than bound", () => {
-  assert.equal(readChatLaunchIntent("?mastery_path_id=%20%20").masteryPathId, null);
+  assert.equal(
+    readChatLaunchIntent("?mastery_path_id=%20%20").masteryPathId,
+    null,
+  );
   assert.deepEqual(readChatLaunchIntent(""), {
     capability: null,
     tools: [],

@@ -113,7 +113,9 @@ export function PathMap({
                     <span
                       className={`text-xs ${STATUS_META[kp.status].className}`}
                     >
-                      {zh ? STATUS_META[kp.status].cn : STATUS_META[kp.status].en}
+                      {zh
+                        ? STATUS_META[kp.status].cn
+                        : STATUS_META[kp.status].en}
                     </span>
                   </button>
                   {open &&

@@ -1473,3 +1473,61 @@ def test_get_ui_settings_not_registered_on_gated_router() -> None:
     }
     assert "GET" not in gated_methods, f"GET /ui must not be on the gated router: {gated_methods}"
     assert "PUT" in gated_methods
+
+
+def test_ui_writes_are_atomic_and_serialised(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Both writers of interface.json must share one lock and one atomic replace.
+
+    The router and the setup capability write the same file. While each opened
+    it directly, twelve concurrent writes left two fields on disk — a lock only
+    one side takes is not a lock, and a plain ``open(..., "w")`` can also leave
+    a truncated file behind a crash.
+    """
+    import threading
+
+    from deeptutor.services.settings import interface_settings
+
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
+
+    def via_router(index: int) -> None:
+        for _ in range(20):
+            settings_router.patch_ui_settings(**{f"router_{index}": index})
+
+    def via_capability(index: int) -> None:
+        for _ in range(20):
+            interface_settings.set_ui_setting(f"cap_{index}", index)
+
+    threads = [threading.Thread(target=via_router, args=(i,)) for i in range(6)]
+    threads += [threading.Thread(target=via_capability, args=(i,)) for i in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert {f"router_{i}" for i in range(6)} <= set(stored)
+    assert {f"cap_{i}" for i in range(6)} <= set(stored)
+
+
+@pytest.mark.asyncio
+async def test_ui_endpoints_do_not_freeze_defaults_into_the_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Changing one preference must not persist every current default alongside it.
+
+    ``load_ui_settings`` returns a defaults-merged view; the endpoints used to
+    save that view straight back, so the first time anyone changed their theme
+    the file gained an explicit copy of every default as it stood that day —
+    and that user silently stopped following later changes to any of them.
+    """
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    await settings_router.update_theme(settings_router.ThemeUpdate(theme="dark"))
+
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert stored == {"theme": "dark"}, f"only the changed field belongs on disk: {stored}"
+    # The read path still reports the full picture.
+    assert settings_router.load_ui_settings()["language"] == "en"

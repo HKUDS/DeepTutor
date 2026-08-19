@@ -1140,6 +1140,22 @@ class SQLiteSessionStore:
             ids_to_delete = [int(message_id)]
             if paired_msg is not None:
                 ids_to_delete.append(int(paired_msg["id"]))
+
+            # Splice the deleted rows out of the parent-pointer tree: children
+            # of a deleted row inherit its parent, in descending id order so a
+            # pair's subtree rides up to the pair's parent in one pass (#912).
+            for mid in sorted(ids_to_delete, reverse=True):
+                conn.execute(
+                    """
+                    UPDATE messages
+                    SET parent_message_id = (
+                        SELECT parent_message_id FROM messages WHERE id = ?
+                    )
+                    WHERE session_id = ? AND parent_message_id = ?
+                    """,
+                    (mid, session_id, mid),
+                )
+
             conn.execute(
                 f"DELETE FROM messages WHERE id IN ({','.join('?' * len(ids_to_delete))})",  # nosec B608
                 tuple(ids_to_delete),

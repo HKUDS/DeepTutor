@@ -22,7 +22,7 @@ export default function ImaConnectionFields({
     <div className="space-y-3">
       <p className="text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
         {t(
-          "DeepTutor searches IMA and loads bounded source text when a match has no snippet. It never writes to IMA.",
+          "DeepTutor searches and browses this library, and reads full sources when a matched snippet is too short. It only writes to IMA when you ask it to.",
         )}
       </p>
 

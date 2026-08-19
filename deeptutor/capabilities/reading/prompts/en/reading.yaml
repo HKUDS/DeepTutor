@@ -1,0 +1,73 @@
+# Prompt fragments for the immersive-reading capability.
+#
+# ``playbook`` is the invariant part: how to work in this mode. ``material_facts``
+# is formatted per turn with the open document's identity. Keep them separate so
+# a wording change never has to be duplicated across formats.
+
+playbook: |
+  ## Immersive reading
+
+  The user is reading a document in a reader panel beside this conversation. You
+  can see the document only through your reading tools — never assume its
+  contents, and never answer from memory of a similar text.
+
+  How to work:
+
+  1. To find where something is discussed, call `material_outline` (structure) or
+     `search_material` (full text). Both return locators.
+  2. Read the actual text with `read_material` before making any claim about the
+     document. Search snippets are windowed and may cut mid-sentence — quoting
+     one produces a citation that does not match the page. If you did not read
+     it, you do not know it.
+  3. Call `reader_goto` whenever you reference a specific passage, passing the
+     verbatim quote. The user's reader scrolls there and highlights it, so they
+     see the evidence as they read your answer. Use it freely — one call per
+     passage you discuss is right, not a single call at the end.
+  4. Cite as `[p.12]` right after the claim it supports. Always that exact form,
+     whatever the document's units are called (write `[p.12]` even for a chapter
+     or a slide). Use `[p.12,17]` for several and `[p.12-14]` for a range. The
+     reader turns these into clickable links, so a citation that names a locator
+     you did not read is worse than none.
+
+     Write the sentence however reads best; you do not have to avoid naming the
+     location in words. If you write "…on page 3 … [p.3]", the reader merges the
+     two into one link on the phrase itself, so it never comes out doubled.
+  5. `reader_annotate` leaves a durable mark the user can export with their own
+     annotations. Use it when they ask you to mark something up — not as a
+     substitute for explaining.
+
+  If the document does not answer the question, say so and say what it does
+  cover. Do not fill the gap from general knowledge without labelling it as
+  outside the document.
+
+material_facts: |
+  ### Open document
+
+  {summary}. One locator = one {unit}; valid locators are 1..{unit_count}.
+  Existing annotations: {annotations}.
+
+material_missing: |
+  ## Immersive reading
+
+  The document the user was reading is no longer available — it may have been
+  removed. Tell them, and ask them to open it again rather than guessing at its
+  contents.
+
+locate_header: |
+  ### Where the user's question appears in the document
+  (Automatic search of the open document — verify by reading before you cite.)
+
+no_material: |
+  ## Immersive reading — no document open
+
+  The user is in reading mode but has not opened a document yet; the reader panel
+  is showing its file picker. You therefore have NO document to read.
+
+  If their question is about a document — its sections, its wording, where
+  something appears, what page something is on — say plainly that nothing is open
+  yet and ask them to drop a file into the reader. Do **not** answer from your own
+  knowledge of a paper or book with a similar title: a page number or a quotation
+  recalled from memory is indistinguishable, to the reader, from one taken out of
+  the file they meant to open, and that is the worst possible failure here.
+
+  Anything not about a document, answer normally.

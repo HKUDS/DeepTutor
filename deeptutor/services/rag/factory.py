@@ -271,8 +271,10 @@ def list_pipelines() -> List[Dict[str, Any]]:
             "description": (
                 "Retrieval offloaded to a knowledge base you keep in Tencent IMA. "
                 "No local index and no copy — connect a KB to its IMA library and "
-                "query it over IMA's OpenAPI. Documents are added in IMA itself. "
-                "Requires an IMA Client ID and API key."
+                "query it over IMA's OpenAPI. Chat can also browse the library's "
+                "documents, read a full source, search your IMA notes, and (when "
+                "you ask) collect a web page or save a note. Uploading files still "
+                "happens in IMA itself. Requires an IMA Client ID and API key."
             ),
             # A thin HTTPS client with no install; readiness is only about the
             # account credentials. The library id stays per-KB, set at connect

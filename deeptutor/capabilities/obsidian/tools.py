@@ -52,7 +52,7 @@ def _no_vault_result() -> ToolResult:
 
 
 def _ok(payload: Any) -> ToolResult:
-    return ToolResult(content=json.dumps(payload, ensure_ascii=False), success=True)
+    return ToolResult(content=json.dumps(payload, ensure_ascii=False, default=str), success=True)
 
 
 def _err(message: str) -> ToolResult:

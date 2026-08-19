@@ -68,6 +68,7 @@ from deeptutor.services.rag.linked_kb import (
     probe_linked_folder,
 )
 from deeptutor.services.rag.pipelines.ima.client import (
+    MAX_PAGE_LIMIT,
     ImaAPIError,
     ImaAuthError,
     ImaClient,
@@ -904,6 +905,7 @@ async def run_upload_processing_task(
     task_id: str,
     rag_provider: str = None,
     folder_id: str = None,
+    folder_root: str = None,
 ):
     """Background task for processing uploaded files.
 
@@ -913,6 +915,9 @@ async def run_upload_processing_task(
         uploaded_file_paths: List of file paths to process
         rag_provider: RAG provider already matched against the KB binding
         folder_id: Optional folder ID for sync state update
+        folder_root: Linked folder's own root path, when these files came
+            from a folder sync. Preserves each file's path relative to it
+            instead of flattening to the bare filename.
     """
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
@@ -944,7 +949,10 @@ async def run_upload_processing_task(
             # *sync* callables to its threadpool — so doing this inline stalled
             # every other request for the length of the batch (#777).
             staged_files = await asyncio.to_thread(
-                adder.add_documents, uploaded_file_paths, allow_duplicates=False
+                adder.add_documents,
+                uploaded_file_paths,
+                allow_duplicates=False,
+                source_root=folder_root,
             )
             _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
 
@@ -1846,7 +1854,9 @@ class ListImaRequest(BaseModel):
     client_id: str = ""
     api_key: str = ""
     cursor: str = ""
-    limit: int = Field(default=20, ge=1, le=20)
+    # IMA documents this call's page size as 1..50; the picker asks for one
+    # screenful and pages for the rest.
+    limit: int = Field(default=20, ge=1, le=MAX_PAGE_LIMIT)
 
 
 class ImaKnowledgeBaseSummary(BaseModel):
@@ -3169,6 +3179,7 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
             task_id=task_id,
             rag_provider=kb_provider,
             folder_id=folder_id,  # Pass folder_id to update state on success
+            folder_root=folder_path,  # Preserve each file's path relative to this root
         )
 
         return {

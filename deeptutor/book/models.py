@@ -286,6 +286,57 @@ class ConceptGraph(BaseModel):
         return any(e.src == src and e.dst == dst for e in self.edges)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Learning captures (Book reader annotations)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class LearningCaptureStatus(str, Enum):
+    """Lifecycle state for one captured reading segment.
+
+    ``captured`` is the first persisted state after user action.
+    ``drafted`` is explicit editing or normalization.
+    ``pending_confirmation`` enters UI review.
+    ``approved`` is user-reviewed and ready for export.
+    ``delivered`` means export task is created.
+    ``imported`` means export task was imported/acknowledged in MN4.
+    ``rejected`` is a terminal, user-declined state.
+    """
+
+    CAPTURED = "captured"
+    DRAFTED = "drafted"
+    PENDING_CONFIRMATION = "pending_confirmation"
+    APPROVED = "approved"
+    DELIVERED = "delivered"
+    IMPORTED = "imported"
+    REJECTED = "rejected"
+
+
+class LearningCapture(BaseModel):
+    """One captured reading segment for manual review before MN4 writeback."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: _new_id("lc"))
+    book_id: str
+    page_id: str
+    block_id: str = ""
+    capture_type: str = "selection"
+    source_text: str = ""
+    context_before: str = ""
+    context_after: str = ""
+    source_locator: str = ""  # book/page/anchor for later traceability
+    book_title: str = ""
+    chapter_title: str = ""
+    user_note: str = ""
+    content_hash: str = ""
+    status: LearningCaptureStatus = LearningCaptureStatus.CAPTURED
+    version: int = 1
+    rejected_reason: str = ""
+    created_at: float = Field(default_factory=_now)
+    updated_at: float = Field(default_factory=_now)
+
+
 class Spine(BaseModel):
     """Full chapter tree of a book."""
 
@@ -512,6 +563,8 @@ __all__ = [
     "SourceChunk",
     "ExplorationReport",
     "Block",
+    "LearningCaptureStatus",
+    "LearningCapture",
     "Page",
     "PageLink",
     "QuizAttempt",
