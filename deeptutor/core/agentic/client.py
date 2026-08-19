@@ -81,6 +81,12 @@ def _client_cache_key(
 
 
 def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -> Any:
+    # A stale SSL_CERT_FILE (common with cloned conda envs) makes httpx's
+    # create_ssl_context raise FileNotFoundError mid-__init__, aborting client
+    # construction. Drop broken CA paths first so TLS uses its default CA config.
+    from deeptutor.services.llm.openai_http_client import sanitize_invalid_ssl_env
+
+    sanitize_invalid_ssl_env()
     default_headers = config.extra_headers or None
     spec = find_by_name(config.binding)
     if spec:
