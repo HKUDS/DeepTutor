@@ -30,7 +30,7 @@ function showSource(source?: string): boolean {
   return source !== "intake_visitor" && source !== "intake_trainee";
 }
 
-function useMarkdown(msg: IntakeMessage): boolean {
+function rendersMarkdown(msg: IntakeMessage): boolean {
   return msg.role !== "user" && msg.role !== "system";
 }
 
@@ -91,7 +91,7 @@ export default function IntakeMessageList({
           >
             <div
               className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${bubbleClass(msg)} ${
-                useMarkdown(msg) ? "" : "whitespace-pre-wrap"
+                rendersMarkdown(msg) ? "" : "whitespace-pre-wrap"
               }`}
             >
               {showMeta && (
@@ -107,7 +107,7 @@ export default function IntakeMessageList({
                   {msg.localSeat && <span>· you ({msg.localSeat})</span>}
                 </div>
               )}
-              {useMarkdown(msg) ? (
+              {rendersMarkdown(msg) ? (
                 <MarkdownRenderer
                   content={msg.text}
                   variant="compact"

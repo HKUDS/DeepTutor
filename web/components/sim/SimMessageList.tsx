@@ -34,7 +34,7 @@ function bubbleClass(msg: SimMessage): string {
   return "mr-auto border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]";
 }
 
-function useMarkdown(msg: SimMessage): boolean {
+function rendersMarkdown(msg: SimMessage): boolean {
   if (msg.stage === "recommend") return false;
   return msg.role !== "user" && msg.role !== "system";
 }
@@ -59,7 +59,7 @@ function MessageBody({ msg }: { msg: SimMessage }) {
     if (rec) return <RecommendCard rec={rec} fallback={msg.text} />;
     return <>{msg.text}</>;
   }
-  if (useMarkdown(msg)) {
+  if (rendersMarkdown(msg)) {
     return (
       <MarkdownRenderer
         content={msg.text}
@@ -106,7 +106,7 @@ export default function SimMessageList({ messages }: { messages: SimMessage[] })
         >
           <div
             className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${bubbleClass(msg)} ${
-              useMarkdown(msg) ? "" : "whitespace-pre-wrap"
+              rendersMarkdown(msg) ? "" : "whitespace-pre-wrap"
             }`}
           >
             {msg.stage && (

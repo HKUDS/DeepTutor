@@ -22,9 +22,10 @@ function newMessageId(): string {
 
 export default function ObservePage() {
   const searchParams = useSearchParams();
+  const counselIdFromUrl = searchParams.get("counsel_id")?.trim() ?? "";
   const [messages, setMessages] = useState<ObserveMessage[]>([]);
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(counselIdFromUrl);
   const [dtSessionId, setDtSessionId] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [everConnected, setEverConnected] = useState(false);
@@ -37,13 +38,6 @@ export default function ObservePage() {
   useEffect(() => {
     sessionRef.current = dtSessionId;
   }, [dtSessionId]);
-
-  useEffect(() => {
-    const counselId = searchParams.get("counsel_id")?.trim();
-    if (counselId) {
-      setDraft(counselId);
-    }
-  }, [searchParams]);
 
   const handleEvent = useCallback((event: StreamEvent) => {
     if (event.type === "session" || event.type === "session_meta") {
@@ -102,7 +96,9 @@ export default function ObservePage() {
       setConnected(false);
     });
     clientRef.current = client;
-    setConnected(false);
+    // No reset needed here: `connected` starts false and the client's onClose
+    // above owns clearing it. Setting it synchronously in the effect only
+    // cascaded a render.
     client.connect();
 
     const poll = window.setInterval(() => {

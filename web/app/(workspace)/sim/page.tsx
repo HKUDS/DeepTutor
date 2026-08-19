@@ -102,7 +102,9 @@ export default function SimPage() {
       setConnected(false);
     });
     clientRef.current = client;
-    setConnected(false);
+    // No reset needed here: `connected` starts false and the client's onClose
+    // above owns clearing it. Setting it synchronously in the effect only
+    // cascaded a render.
     client.connect();
 
     const poll = window.setInterval(() => {

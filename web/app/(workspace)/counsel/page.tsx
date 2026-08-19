@@ -11,7 +11,6 @@ import {
   extractAskUserPayload,
   type AskUserPayload,
 } from "@/components/chat/home/AskUserOptions";
-import { hasPendingAskUser } from "@/lib/ask-user-state";
 import {
   looksLikeCounselSessionEnded,
   looksLikeCrisisRedirect,
@@ -204,7 +203,9 @@ export default function CounselPage() {
       setConnected(false);
     });
     clientRef.current = client;
-    setConnected(false);
+    // No reset needed here: `connected` starts false and the client's onClose
+    // above owns clearing it. Setting it synchronously in the effect only
+    // cascaded a render.
     client.connect();
 
     const poll = window.setInterval(() => {
@@ -234,10 +235,7 @@ export default function CounselPage() {
   }, [messages, pendingAskUser]);
 
   const roomLocked = crisisHit || sessionEnded;
-  const awaitingAskUser =
-    Boolean(pendingAskUser) &&
-    Boolean(activeTurnId) &&
-    hasPendingAskUser(turnEventsRef.current, activeTurnId);
+  const awaitingAskUser = Boolean(pendingAskUser) && Boolean(activeTurnId);
   const sendBlocked = busy || roomLocked || awaitingAskUser;
 
   function sendWithRetry(
