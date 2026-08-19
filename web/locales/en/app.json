@@ -1733,6 +1733,8 @@
   "Ask about this page...": "Ask about this page...",
   "Home tooltip": "Multi-tool AI chat and search.",
   "Co-Writer tooltip": "AI-powered document editor.",
+  "Whisper": "Whisper",
+  "Whisper tooltip": "Dual-seat whisper room for visitor and trainee.",
   "Book tooltip": "Create AI-powered books.",
   "Knowledge tooltip": "Manage learning personas.",
   "Space tooltip": "Your personal learning library.",
