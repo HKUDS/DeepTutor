@@ -122,7 +122,12 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
           language?: unknown;
           response_language?: unknown;
         };
-        if (payload.language !== "zh" && payload.language !== "en") return;
+        if (
+          payload.language !== "zh" &&
+          payload.language !== "en" &&
+          payload.language !== "fr"
+        )
+          return;
         writeStoredLanguage(payload.language);
         // A backend that predates the split sends no response_language;
         // resolveResponseLanguage inherits the interface locale, matching what

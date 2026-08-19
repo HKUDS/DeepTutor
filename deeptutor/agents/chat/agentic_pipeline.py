@@ -193,7 +193,10 @@ class AgenticChatPipeline:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> None:
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        _lang = (language or "en").lower()
+        self.language = (
+            "zh" if _lang.startswith("zh") else "fr" if _lang.startswith("fr") else "en"
+        )
         self.llm_config = get_llm_config()
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)

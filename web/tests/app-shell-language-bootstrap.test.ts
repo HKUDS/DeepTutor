@@ -39,15 +39,20 @@ test("an absent choice is distinguishable from an explicit English one", () => {
   });
 });
 
-test("a stored choice is reported for either language", () => {
+test("a stored choice is reported for any supported language", () => {
   withLocalStorage({ [LANGUAGE_STORAGE_KEY]: "zh" }, () => {
     assert.equal(hasStoredLanguage(), true);
     assert.equal(readStoredLanguage(), "zh");
   });
+
+  withLocalStorage({ [LANGUAGE_STORAGE_KEY]: "fr" }, () => {
+    assert.equal(hasStoredLanguage(), true);
+    assert.equal(readStoredLanguage(), "fr");
+  });
 });
 
 test("an unusable value still counts as a choice and normalizes to English", () => {
-  withLocalStorage({ [LANGUAGE_STORAGE_KEY]: "fr" }, () => {
+  withLocalStorage({ [LANGUAGE_STORAGE_KEY]: "de" }, () => {
     assert.equal(hasStoredLanguage(), true);
     assert.equal(readStoredLanguage(), "en");
   });

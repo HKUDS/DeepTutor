@@ -116,8 +116,8 @@ export type Catalog = {
 
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
-  language: "en" | "zh";
-  response_language: "en" | "zh";
+  language: "en" | "zh" | "fr";
+  response_language: "en" | "zh" | "fr";
   code_block_theme: string;
   code_block_show_line_numbers: boolean;
   code_block_wrap_long_lines: boolean;

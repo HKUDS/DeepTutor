@@ -14,7 +14,10 @@ class ChatPromptAssembler:
 
     def __init__(self, *, prompts: dict[str, Any], language: str) -> None:
         self.prompts = prompts
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        _lang = (language or "en").lower()
+        self.language = (
+            "zh" if _lang.startswith("zh") else "fr" if _lang.startswith("fr") else "en"
+        )
 
     def system_prompt(
         self,
