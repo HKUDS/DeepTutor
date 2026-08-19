@@ -248,6 +248,21 @@ def _do_append(
             notebook_name=notebook_name,
             error="Notebook service did not return a record id.",
         )
+    # A record id comes back even when no notebook accepted the write — the
+    # service skips notebooks that are missing or damaged. Reporting success
+    # off the id alone would tell the model it saved something it did not.
+    added_to = (outcome or {}).get("added_to_notebooks") or []
+    if notebook_id not in added_to:
+        return WriteOutcome(
+            ok=False,
+            mode="append",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            error=(
+                f"Notebook {notebook_name!r} did not accept the record. "
+                "Its file may be missing or damaged."
+            ),
+        )
     return WriteOutcome(
         ok=True,
         mode="append",
@@ -293,7 +308,19 @@ def _do_edit(
             error="record_id is required in edit mode.",
         )
 
-    existing = manager.get_record(notebook_id, rid) if hasattr(manager, "get_record") else None
+    try:
+        existing = manager.get_record(notebook_id, rid) if hasattr(manager, "get_record") else None
+    except Exception as exc:
+        # A damaged notebook file raises here. Report it as a tool result the
+        # model can act on rather than letting it escape into the agent loop.
+        logger.warning("write_note(edit): could not read notebook", exc_info=True)
+        return WriteOutcome(
+            ok=False,
+            mode="edit",
+            notebook_id=notebook_id,
+            notebook_name=notebook_name,
+            error=f"Could not read notebook {notebook_name!r}: {exc}",
+        )
     if existing is None:
         return WriteOutcome(
             ok=False,

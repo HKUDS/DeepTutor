@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
+import { config as proxyConfig } from "../proxy";
 
 // Unit tests for the pure middleware routing policy (web/lib/proxy-policy.ts).
 // The policy is deliberately decoupled from `next/server`, so it can be
@@ -29,6 +31,19 @@ test("isBackendPath matches /api and /ws paths only", () => {
   assert.equal(isBackendPath("/home"), false);
   assert.equal(isBackendPath("/apidocs"), false); // no trailing slash → not backend
   assert.equal(isBackendPath("/logo.png"), false);
+});
+
+test("large knowledge uploads bypass the buffering proxy", () => {
+  const matches = (url: string) =>
+    unstable_doesMiddlewareMatch({ config: proxyConfig, url });
+
+  assert.equal(matches("http://localhost/api/v1/knowledge/create"), false);
+  assert.equal(
+    matches("http://localhost/api/v1/knowledge/my%20kb/upload"),
+    false,
+  );
+  assert.equal(matches("http://localhost/api/v1/knowledge/list"), true);
+  assert.equal(matches("http://localhost/home"), true);
 });
 
 test("isCodexCallbackPath matches only the exact public callback path", () => {

@@ -12,18 +12,20 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.book import (
     BlockType,
     BookProposal,
     Spine,
     get_book_engine,
 )
+from deeptutor.book.estimate import chapter_basis
+from deeptutor.book.export import export_filename, render_book_markdown
 from deeptutor.book.models import ContentType
 from deeptutor.book.streaming import SOURCE as BOOK_SOURCE
-from deeptutor.core.stream import StreamEventType
 from deeptutor.core.stream_bus import StreamBus
 
 router = APIRouter()
@@ -44,6 +46,7 @@ class CreateBookRequest(BaseModel):
     question_categories: list[int] = Field(default_factory=list)
     question_entries: list[int] = Field(default_factory=list)
     language: str = Field(default="en")
+    depth: str = Field(default="standard")
 
 
 class ConfirmProposalRequest(BaseModel):
@@ -114,8 +117,22 @@ class QuizAttemptRequest(BaseModel):
     block_id: str
     question_id: str = ""
     user_answer: str = ""
-    is_correct: bool = False
-    request_remediation: bool = False
+    # ``None`` = revealed but not graded (a written answer the reader skipped
+    # self-assessing). Distinct from ``False``, which means they got it wrong.
+    is_correct: bool | None = None
+
+
+class UpdateBlockRequest(BaseModel):
+    book_id: str
+    page_id: str
+    block_id: str
+    title: str | None = None
+    body: str | None = None
+
+
+class ProgressRequest(BaseModel):
+    book_id: str
+    page_id: str
 
 
 class SupplementRequest(BaseModel):
@@ -135,6 +152,10 @@ class RebuildBookRequest(BaseModel):
     auto_compile: bool = True
 
 
+class ResumeBookRequest(BaseModel):
+    book_id: str
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # REST endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,25 +166,77 @@ async def health_check() -> dict[str, str]:
     return {"status": "healthy", "service": "book"}
 
 
+@router.get("/estimate-basis")
+async def estimate_basis(depth: str = "standard") -> dict[str, Any]:
+    """Per-chapter generation cost, keyed by content type.
+
+    The spine editor sums this over whatever chapters currently exist, so the
+    estimate stays live while the user edits without a request per keystroke —
+    and stays honest, because the numbers come from the same templates the
+    architect plans from.
+    """
+    return {"depth": depth, "basis": chapter_basis(depth)}
+
+
 @router.get("/books")
 async def list_books() -> dict[str, Any]:
     engine = get_book_engine()
-    return {"books": [b.model_dump(mode="json") for b in engine.list_books()]}
+
+    def _collect() -> list[dict[str, Any]]:
+        books: list[dict[str, Any]] = []
+        for book in engine.list_books():
+            data = book.model_dump(mode="json")
+            # Lets the library card say "continue reading" and show how far in
+            # the reader is, instead of treating every book as untouched.
+            data["reading"] = engine.reading_summary(book)
+            books.append(data)
+        return books
+
+    # One manifest read per book plus one progress read per book — off-loop.
+    return {"books": await asyncio.to_thread(_collect)}
+
+
+def _page_summary(page) -> dict[str, Any]:
+    """Page metadata without block payloads.
+
+    A compiled page carries its full rendered content — SVG, Mermaid, prose —
+    so a book's blocks run to hundreds of kilobytes. Views that only need the
+    chapter list (sidebar, library, progress) ask for summaries instead.
+    """
+    data = page.model_dump(mode="json")
+    blocks = data.pop("blocks", []) or []
+    data["block_count"] = len(blocks)
+    data["blocks"] = []
+    return data
 
 
 @router.get("/books/{book_id}")
-async def get_book(book_id: str) -> dict[str, Any]:
+async def get_book(book_id: str, include_blocks: bool = True) -> dict[str, Any]:
     engine = get_book_engine()
     book = engine.load_book(book_id)
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
-    spine = engine.load_spine(book_id)
-    pages = engine.list_pages(book_id)
-    progress = engine.load_progress(book_id)
+
+    # Opening a book is the correctly-scoped moment to notice that its
+    # compilation died with a previous process and pick it back up.
+    await engine.maybe_resume_on_open(book_id)
+    book = engine.load_book(book_id) or book
+
+    def _read() -> tuple[Any, list[Any], Any]:
+        return (
+            engine.load_spine(book_id),
+            engine.list_pages(book_id),
+            engine.load_progress(book_id),
+        )
+
+    # A compiled book is hundreds of KB across one file per page.
+    spine, pages, progress = await asyncio.to_thread(_read)
     return {
         "book": book.model_dump(mode="json"),
         "spine": spine.model_dump(mode="json") if spine else None,
-        "pages": [p.model_dump(mode="json") for p in pages],
+        "pages": [
+            (p.model_dump(mode="json") if include_blocks else _page_summary(p)) for p in pages
+        ],
         "progress": progress.model_dump(mode="json"),
     }
 
@@ -211,6 +284,7 @@ async def create_book(req: CreateBookRequest) -> dict[str, Any]:
             question_categories=req.question_categories,
             question_entries=req.question_entries,
             language=req.language,
+            depth=req.depth,
         )
     except Exception as exc:  # noqa: BLE001
         logger.error(f"create_book failed: {exc}", exc_info=True)
@@ -412,6 +486,63 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
     return {"progress": progress.model_dump(mode="json")}
 
 
+@router.post("/books/update-block")
+async def update_block(req: UpdateBlockRequest) -> dict[str, Any]:
+    """Edit a block's prose in place.
+
+    Scoped deliberately narrow — title and body only. Fixing a typo shouldn't
+    require regenerating a whole block and hoping for a better roll, but a book
+    is not a document editor either; substantial rewrites belong in Co-Writer.
+    """
+    engine = get_book_engine()
+    block = await engine.update_block(
+        book_id=req.book_id,
+        page_id=req.page_id,
+        block_id=req.block_id,
+        title=req.title,
+        body=req.body,
+    )
+    if block is None:
+        raise HTTPException(status_code=404, detail="Block not found or not editable")
+    return {"block": block.model_dump(mode="json")}
+
+
+@router.post("/books/progress/visit")
+async def mark_visited(req: ProgressRequest) -> dict[str, Any]:
+    """Remember the reader's position so the book can be resumed later."""
+    engine = get_book_engine()
+    progress = engine.mark_page_visited(book_id=req.book_id, page_id=req.page_id)
+    return {"progress": progress.model_dump(mode="json")}
+
+
+@router.post("/books/progress/bookmark")
+async def toggle_bookmark(req: ProgressRequest) -> dict[str, Any]:
+    engine = get_book_engine()
+    progress = engine.toggle_page_bookmark(book_id=req.book_id, page_id=req.page_id)
+    return {"progress": progress.model_dump(mode="json")}
+
+
+@router.get("/books/{book_id}/export")
+async def export_book(book_id: str) -> Response:
+    """Download the whole book as a single Markdown file."""
+    engine = get_book_engine()
+    book = engine.load_book(book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    markdown = await asyncio.to_thread(
+        lambda: render_book_markdown(book, engine.load_spine(book_id), engine.list_pages(book_id))
+    )
+    return Response(
+        content=markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": content_disposition(
+                export_filename(book), disposition="attachment"
+            )
+        },
+    )
+
+
 @router.get("/books/{book_id}/health")
 async def book_health(book_id: str) -> dict[str, Any]:
     engine = get_book_engine()
@@ -459,6 +590,20 @@ async def set_page_chat_session(req: PageChatSessionRequest) -> dict[str, Any]:
     return {"book": book.model_dump(mode="json")}
 
 
+@router.post("/books/resume")
+async def resume_book(req: ResumeBookRequest) -> dict[str, Any]:
+    """Re-queue unfinished pages without discarding what already compiled."""
+    engine = get_book_engine()
+    try:
+        pages = await engine.resume_book(book_id=req.book_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"resume_book failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    return {"pages": [p.model_dump(mode="json") for p in pages]}
+
+
 @router.post("/books/rebuild")
 async def rebuild_book(req: RebuildBookRequest) -> dict[str, Any]:
     engine = get_book_engine()
@@ -487,19 +632,73 @@ def _serialize_event(event) -> dict[str, Any]:
     }
 
 
+class _SocketFanout:
+    """Forwards several buses into one socket, at most one task per bus.
+
+    A client watching a book needs events from two places: the book's
+    long-lived stream (background compilation) and, while a book is still being
+    created, a connection-scoped stream (no book id exists yet). Both are
+    attached here; neither producer needs to know a socket is listening.
+
+    Attaching is idempotent — re-subscribing to a book already being forwarded
+    is a no-op rather than a second, duplicating reader.
+    """
+
+    def __init__(self, send) -> None:
+        self._send = send
+        self._tasks: dict[int, asyncio.Task[None]] = {}
+
+    def attach(self, bus: StreamBus) -> None:
+        key = id(bus)
+        existing = self._tasks.get(key)
+        if existing is not None and not existing.done():
+            return
+        self._tasks[key] = asyncio.create_task(self._forward(bus))
+
+    async def _forward(self, bus: StreamBus) -> None:
+        async for event in bus.subscribe():
+            if event.source != BOOK_SOURCE:
+                continue
+            await self._send(_serialize_event(event))
+
+    async def close(self) -> None:
+        for task in self._tasks.values():
+            task.cancel()
+        for task in self._tasks.values():
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._tasks.clear()
+
+
 @router.websocket("/ws")
 async def book_websocket(ws: WebSocket) -> None:
     """Streaming endpoint.
 
-    Client message protocol::
+    Two kinds of client message:
 
-        {"type": "create",          ...CreateBookRequest fields}
+    **Subscribe** — attach this socket to a book's long-lived stream. Recent
+    history is replayed on attach, so a reader who refreshes mid-compilation
+    catches up instead of watching a frozen page::
+
+        {"type": "subscribe", "book_id": "..."}
+
+    **Actions** — run an engine operation and reply with a single result::
+
+        {"type": "create",           ...CreateBookRequest fields}
         {"type": "confirm_proposal", "book_id": "...", "proposal": {...}}
         {"type": "confirm_spine",    "book_id": "...", "spine": {...}, "auto_compile": true}
-        {"type": "compile_page",     "book_id": "...", "page_id": "..."}
-        {"type": "regenerate_block", "book_id": "...", "page_id": "...", "block_id": "...", "params_override": {}}
+        {"type": "compile_page",     "book_id": "...", "page_id": "...", "force": false}
+        {"type": "regenerate_block", "book_id": "...", "page_id": "...", "block_id": "..."}
+
+    Actions publish into the book's own stream (see :mod:`deeptutor.book.event_hub`),
+    so their progress reaches *every* subscriber, and work they leave running in
+    the background keeps streaming long after the action has replied. The socket
+    only ever closes streams it created itself.
     """
     from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
+    from deeptutor.book.event_hub import get_book_bus
     from deeptutor.multi_user.context import reset_current_user
 
     user_token = await ws_require_auth(ws)
@@ -518,20 +717,11 @@ async def book_websocket(ws: WebSocket) -> None:
         except Exception:
             closed = True
 
-    async def stream_into_socket(bus: StreamBus) -> asyncio.Task:
-        async def _forward() -> None:
-            async for event in bus.subscribe():
-                if event.source != BOOK_SOURCE:
-                    continue
-                await send(_serialize_event(event))
-                if event.type == StreamEventType.STAGE_END and event.stage in {
-                    "ideation",
-                    "spine",
-                    "compilation",
-                }:
-                    pass  # keep streaming – multiple stages per task
-
-        return asyncio.create_task(_forward())
+    fanout = _SocketFanout(send)
+    # Book creation has no book id to stream into yet, so ideation events go
+    # through a connection-scoped bus. It is the only bus this socket owns.
+    creation_bus = StreamBus()
+    fanout.attach(creation_bus)
 
     try:
         engine = get_book_engine()
@@ -549,11 +739,21 @@ async def book_websocket(ws: WebSocket) -> None:
                 await send({"type": "error", "content": "Missing 'type' field"})
                 continue
 
-            bus = StreamBus()
-            forward_task = await stream_into_socket(bus)
+            book_id = str(data.get("book_id") or "").strip()
+            if book_id:
+                if engine.load_book(book_id) is None:
+                    await send({"type": "error", "content": f"Book not found: {book_id}"})
+                    continue
+                fanout.attach(get_book_bus(book_id))
 
             try:
-                if msg_type == "create":
+                if msg_type == "subscribe":
+                    if not book_id:
+                        await send({"type": "error", "content": "subscribe requires book_id"})
+                    else:
+                        await send({"type": "subscribed", "book_id": book_id})
+
+                elif msg_type == "create":
                     book, proposal = await engine.create_book(
                         user_intent=str(data.get("user_intent") or ""),
                         chat_session_id=str(data.get("chat_session_id") or ""),
@@ -565,8 +765,11 @@ async def book_websocket(ws: WebSocket) -> None:
                         ],
                         question_entries=[int(e) for e in (data.get("question_entries") or [])],
                         language=str(data.get("language") or "en"),
-                        stream=bus,
+                        depth=str(data.get("depth") or "standard"),
+                        stream=creation_bus,
                     )
+                    # From here on this book has a stream of its own.
+                    fanout.attach(get_book_bus(book.id))
                     await send(
                         {
                             "type": "create_result",
@@ -580,9 +783,8 @@ async def book_websocket(ws: WebSocket) -> None:
                     if data.get("proposal"):
                         edited = BookProposal.model_validate(data["proposal"])
                     book, spine = await engine.confirm_proposal(
-                        book_id=str(data.get("book_id") or ""),
+                        book_id=book_id,
                         edited_proposal=edited,
-                        stream=bus,
                     )
                     await send(
                         {
@@ -597,10 +799,9 @@ async def book_websocket(ws: WebSocket) -> None:
                     if data.get("spine"):
                         edited_spine = Spine.model_validate(data["spine"])
                     pages = await engine.confirm_spine(
-                        book_id=str(data.get("book_id") or ""),
+                        book_id=book_id,
                         edited_spine=edited_spine,
                         auto_compile=bool(data.get("auto_compile", True)),
-                        stream=bus,
                     )
                     await send(
                         {
@@ -611,9 +812,8 @@ async def book_websocket(ws: WebSocket) -> None:
 
                 elif msg_type == "compile_page":
                     page = await engine.compile_page(
-                        book_id=str(data.get("book_id") or ""),
+                        book_id=book_id,
                         page_id=str(data.get("page_id") or ""),
-                        stream=bus,
                         force=bool(data.get("force", False)),
                     )
                     await send(
@@ -625,11 +825,10 @@ async def book_websocket(ws: WebSocket) -> None:
 
                 elif msg_type == "regenerate_block":
                     block = await engine.regenerate_block(
-                        book_id=str(data.get("book_id") or ""),
+                        book_id=book_id,
                         page_id=str(data.get("page_id") or ""),
                         block_id=str(data.get("block_id") or ""),
                         params_override=data.get("params_override"),
-                        stream=bus,
                     )
                     await send(
                         {
@@ -644,13 +843,6 @@ async def book_websocket(ws: WebSocket) -> None:
             except Exception as exc:
                 logger.error(f"book ws action {msg_type} failed: {exc}", exc_info=True)
                 await send({"type": "error", "content": str(exc)})
-            finally:
-                await bus.close()
-                forward_task.cancel()
-                try:
-                    await forward_task
-                except (asyncio.CancelledError, Exception):
-                    pass
 
     except WebSocketDisconnect:
         pass
@@ -658,6 +850,8 @@ async def book_websocket(ws: WebSocket) -> None:
         logger.error(f"Book WS connection error: {exc}", exc_info=True)
     finally:
         closed = True
+        await fanout.close()
+        await creation_bus.close()
         try:
             await ws.close()
         except Exception:

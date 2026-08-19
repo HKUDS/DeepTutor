@@ -170,6 +170,16 @@ def _get_llm_config_from_resolver() -> LLMConfig:
         raise LLMConfigError(
             "No effective LLM endpoint resolved. Please configure base_url or provider defaults."
         )
+    is_placeholder_key = resolved.api_key in {"", "no-key", "sk-no-key-required"}
+    if (
+        resolved.provider_name == "openai"
+        and resolved.provider_mode == "standard"
+        and is_placeholder_key
+    ):
+        raise LLMConfigError(
+            "OpenAI API key is not configured. Set it in Settings > Catalog, "
+            "or select a local provider such as Ollama."
+        )
     return LLMConfig(
         model=resolved.model,
         api_key=resolved.api_key,

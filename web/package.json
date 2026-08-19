@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
     "dev:turbo": "node ./scripts/dev.mjs --turbopack",
-    "build": "next build",
+    "build": "node ./scripts/build.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test:node": "node ./scripts/run-node-tests.mjs",
@@ -33,6 +33,7 @@
     "lucide-react": "^0.562.0",
     "mermaid": "^11.14.0",
     "next": "^16.2.3",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.0.0",

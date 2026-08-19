@@ -728,8 +728,6 @@ def resolve_llm_runtime_config(
 
     profile, model = _active_profile_and_model(loaded, catalog_service, "llm")
     resolved_model = _as_str((model or {}).get("model"))
-    if not resolved_model:
-        resolved_model = "gpt-4o-mini"
 
     binding_hint_raw = _as_str((profile or {}).get("binding"))
     binding_hint = canonical_provider_name(binding_hint_raw)

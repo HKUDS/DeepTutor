@@ -18,7 +18,13 @@ from .loader import (
     parse_language,
     resolve_config_path,
 )
-from .model_catalog import ModelCatalogService, get_model_catalog_service
+from .model_catalog import (
+    CATALOG_SECRET_MASK,
+    ModelCatalogService,
+    get_model_catalog_service,
+    redact_catalog_secrets,
+    restore_catalog_secrets,
+)
 from .runtime_settings import (
     HTTP_KEEP_ALIVE_TIMEOUT,
     ChatAttachmentLimits,
@@ -77,6 +83,9 @@ __all__ = [
     "get_kb_config_service",
     "ModelCatalogService",
     "get_model_catalog_service",
+    "CATALOG_SECRET_MASK",
+    "redact_catalog_secrets",
+    "restore_catalog_secrets",
     "ConfigTestRunner",
     "TestRun",
     "get_config_test_runner",

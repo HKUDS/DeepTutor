@@ -4,6 +4,9 @@ Public API:
 
 - :func:`read_snapshot` — current entities for a surface (no I/O on
   ``state.json`` / ``changes.jsonl``).
+- :func:`read_stamps` — the same set without content: identity, label,
+  fingerprint, timestamp. What the diff and "what happened lately" both
+  actually need.
 - :func:`refresh_snapshot` — re-read workspace, diff against last
   persisted state, append changes, persist new state. Returns the
   computed change list. Idempotent: a no-change refresh writes nothing
@@ -17,28 +20,44 @@ Public API:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from deeptutor.services.memory.paths import Surface
 from deeptutor.services.memory.snapshot import adapters, store
 from deeptutor.services.memory.snapshot.diff import diff_snapshots
-from deeptutor.services.memory.snapshot.entity import ChangeEntry, Entity
+from deeptutor.services.memory.snapshot.entity import (
+    ChangeEntry,
+    Entity,
+    EntityStamp,
+    Stamped,
+)
 
 
 def read_snapshot(surface: Surface) -> list[Entity]:
     return adapters.read_entities(surface)
 
 
-def pending_changes(surface: Surface, entities: list[Entity] | None = None) -> list[ChangeEntry]:
+def read_stamps(surface: Surface) -> list[EntityStamp]:
+    """Diff-shaped view of a surface, without its content. See :mod:`.adapters`."""
+    return adapters.read_stamps(surface)
+
+
+def pending_changes(
+    surface: Surface, entities: Sequence[Stamped] | None = None
+) -> list[ChangeEntry]:
     """Compute the diff between current workspace and the last persisted state.
 
     Pure / read-only: never writes to ``state.json`` or ``changes.jsonl``.
     Used by the L1 view to show "what would a refresh capture right now".
+
+    Accepts anything carrying ``id`` / ``label`` / ``fingerprint`` — a caller
+    that already has full :class:`Entity` objects (the L1 view, which needs
+    their content anyway) passes those; a caller that only needs the diff gets
+    the cheap :class:`EntityStamp` path by passing nothing.
     """
-    if entities is None:
-        entities = adapters.read_entities(surface)
-    curr_fp = {e.id: e.fingerprint for e in entities}
-    curr_labels = {e.id: e.label for e in entities}
+    stamps: Sequence[Stamped] = entities if entities is not None else adapters.read_stamps(surface)
+    curr_fp = {e.id: e.fingerprint for e in stamps}
+    curr_labels = {e.id: e.label for e in stamps}
 
     prev = store.load_state(surface)
     prev_fp = prev.get("fingerprints") or {}
@@ -53,10 +72,15 @@ def pending_changes(surface: Surface, entities: list[Entity] | None = None) -> l
 
 
 def refresh_snapshot(surface: Surface) -> list[ChangeEntry]:
-    entities = adapters.read_entities(surface)
-    changes = pending_changes(surface, entities)
-    curr_fp = {e.id: e.fingerprint for e in entities}
-    curr_labels = {e.id: e.label for e in entities}
+    """Reconcile persisted state with the workspace and log what moved.
+
+    Runs on stamps, not full entities: a refresh only ever writes fingerprints
+    and labels, so reading message bodies here would be pure waste.
+    """
+    stamps = adapters.read_stamps(surface)
+    changes = pending_changes(surface, stamps)
+    curr_fp = {e.id: e.fingerprint for e in stamps}
+    curr_labels = {e.id: e.label for e in stamps}
     store.append_changes(surface, changes)
     store.save_state(
         surface,
@@ -85,8 +109,11 @@ def clear_changes(surface: Surface) -> None:
 
 __all__ = [
     "Entity",
+    "EntityStamp",
+    "Stamped",
     "ChangeEntry",
     "read_snapshot",
+    "read_stamps",
     "pending_changes",
     "refresh_snapshot",
     "read_changes",

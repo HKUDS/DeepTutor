@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from deeptutor.runtime import launcher
+from deeptutor.runtime.home import validate_runtime_home
 
 
 class _FakeTty:
@@ -36,6 +37,28 @@ def test_packaged_web_cache_replaces_next_public_placeholders(tmp_path: Path) ->
         "const api='http://localhost:8001';"
     )
     assert "auth='true'" in (runtime / ".next" / "static" / "app.js").read_text(encoding="utf-8")
+
+
+def test_runtime_home_rejects_project_data_paths(monkeypatch, tmp_path: Path) -> None:
+    package_root = tmp_path / "package"
+    monkeypatch.setattr("deeptutor.runtime.home.PACKAGE_ROOT", package_root)
+
+    with pytest.raises(ValueError, match="Invalid DeepTutor runtime home"):
+        validate_runtime_home(package_root / "data")
+    with pytest.raises(ValueError, match="Invalid DeepTutor runtime home"):
+        validate_runtime_home(package_root / "data" / "user")
+
+
+def test_start_does_not_create_nested_data_tree(monkeypatch, tmp_path: Path) -> None:
+    package_root = tmp_path / "package"
+    bad_home = package_root / "data" / "user"
+    monkeypatch.setattr("deeptutor.runtime.home.PACKAGE_ROOT", package_root)
+    monkeypatch.setattr(launcher, "get_runtime_home", lambda _home=None: bad_home)
+
+    with pytest.raises(SystemExit, match="Invalid DeepTutor runtime home"):
+        launcher.start(bad_home)
+
+    assert not bad_home.exists()
 
 
 def test_packaged_web_cache_refreshes_when_public_settings_change(tmp_path: Path) -> None:

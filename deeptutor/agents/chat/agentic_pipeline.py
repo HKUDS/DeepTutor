@@ -866,6 +866,35 @@ class AgenticChatPipeline:
             trace_id_prefix="chat-loop",
         )
 
+    async def _notify_pause_hooks(
+        self,
+        context: UnifiedContext,
+        hook_name: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """Tell the active loop capabilities about an ``ask_user`` boundary.
+
+        These hooks record side state (a mastery path commits the question's
+        awaiting/answered transitions here) — they do not produce the reply.
+        So one failing is a bookkeeping problem, not a reason to throw away a
+        turn the learner is in the middle of: log it and keep the conversation
+        alive, rather than surfacing a traceback where a question should be.
+        """
+        for capability in self._active_loop_capabilities(context):
+            hook = getattr(capability, hook_name, None)
+            if not callable(hook):
+                continue
+            try:
+                await hook(*args, **kwargs)
+            except Exception:
+                logger.warning(
+                    "Loop capability %s failed in %s",
+                    getattr(capability, "name", type(capability).__name__),
+                    hook_name,
+                    exc_info=True,
+                )
+
     async def _await_user_reply_and_resolve(
         self,
         *,
@@ -874,6 +903,7 @@ class AgenticChatPipeline:
         dispatch: DispatchOutcome,
     ) -> bool:
         ask_user = (dispatch.pause_payload or {}).get("ask_user") or {}
+        await self._notify_pause_hooks(context, "on_user_pause", context, ask_user)
         waiter = context.metadata.get("wait_for_user_reply")
         if not callable(waiter):
             await self._emit_terminator_final_response(
@@ -890,6 +920,14 @@ class AgenticChatPipeline:
         if raw_reply is None:
             return False
         reply_text, answers = _normalise_user_reply(raw_reply)
+        await self._notify_pause_hooks(
+            context,
+            "on_user_resume",
+            context,
+            ask_user,
+            reply_text=reply_text,
+            answers=answers,
+        )
         body_text = _format_user_reply_body(
             reply_text,
             answers,
@@ -1434,10 +1472,11 @@ class AgenticChatPipeline:
 
         Retrieval cannot answer "how many files are in here" — the passages it
         returns say nothing about the size of the collection they came from. The
-        inventory is a filesystem fact, so it is read here (off the event loop,
-        one directory walk per KB) and rendered into the system prompt, which
-        keeps the prompt byte-stable for the whole turn and makes counts
-        answerable without a tool round-trip.
+        inventory is read here instead (off the event loop: a directory walk per
+        local KB, and a cached browse call for a connected library that exposes
+        one) and rendered into the system prompt, which keeps the prompt
+        byte-stable for the whole turn and makes counts answerable without a tool
+        round-trip.
 
         PageIndex KBs are excluded: ``_pageindex_system_note`` already lists
         their documents, with the doc_ids its MCP tools need. Fails soft — a KB

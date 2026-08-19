@@ -245,6 +245,18 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     persisted_turn = await store.get_turn(turn["id"])
     assert persisted_turn is not None
     assert persisted_turn["status"] == "completed"
+    persisted_events = await store.get_turn_events(turn["id"])
+    persisted_done = next(event for event in persisted_events if event["type"] == "done")
+    assert persisted_done["seq"] > 0
+    assert persisted_done["metadata"]["assistant_message_id"] == assistant_row["id"]
+
+    # A fresh runtime (the reconnect/restart shape) replays the committed DONE
+    # instead of synthesizing a metadata-poor terminal event.
+    replay_runtime = TurnRuntimeManager(store)
+    replayed = [event async for event in replay_runtime.subscribe_turn(turn["id"])]
+    replayed_done = next(event for event in replayed if event["type"] == "done")
+    assert replayed_done["seq"] == persisted_done["seq"]
+    assert replayed_done["metadata"]["assistant_message_id"] == assistant_row["id"]
 
 
 @pytest.mark.asyncio

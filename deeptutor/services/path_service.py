@@ -53,6 +53,7 @@ WorkspaceFeature = Literal[
     "co-writer",
     "chat",
     "book",
+    "reading",
 ]
 
 

@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, Rocket, type LucideIcon } from "lucide-react";
+import { ChevronRight, Rocket, Sparkles, type LucideIcon } from "lucide-react";
 
 import { apiFetch, apiUrl } from "@/lib/api";
+import { setPendingPrompt } from "@/lib/pending-prompt";
 import {
   serviceReadiness,
   useSettings,
@@ -34,6 +36,7 @@ type NetworkPreview = {
 
 export default function SettingsHub() {
   const { i18n } = useTranslation();
+  const router = useRouter();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = useCallback((l: Lang) => (zh ? l.zh : l.en), [zh]);
 
@@ -102,14 +105,35 @@ export default function SettingsHub() {
             })}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={startTour}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)]/60 px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-        >
-          <Rocket size={13} />
-          {tr({ zh: "引导", en: "Tour" })}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Explicit entry point into the setup capability. It opens chat with
+              the request already typed rather than sending it, so the user
+              stays in control of what is asked. */}
+          <button
+            type="button"
+            onClick={() => {
+              setPendingPrompt(
+                tr({
+                  zh: "帮我配置一下 DeepTutor，先看看现在缺什么。",
+                  en: "Help me configure DeepTutor — start by checking what's missing.",
+                }),
+              );
+              router.push("/home");
+            }}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)]/60 px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+          >
+            <Sparkles size={13} />
+            {tr({ zh: "让 DeepTutor 帮我配", en: "Set up with DeepTutor" })}
+          </button>
+          <button
+            type="button"
+            onClick={startTour}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)]/60 px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+          >
+            <Rocket size={13} />
+            {tr({ zh: "引导", en: "Tour" })}
+          </button>
+        </div>
       </header>
 
       <SettingsStatusPanel />

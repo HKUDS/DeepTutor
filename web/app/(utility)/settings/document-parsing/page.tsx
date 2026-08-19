@@ -8,6 +8,7 @@ import {
   SettingRow,
   SettingSection,
   SettingsPageHeader,
+  inputClass,
   nativeSelectClass,
   selectOptionClass,
 } from "@/components/settings/shared";
@@ -32,6 +33,7 @@ type DocumentParsingPayload = {
   readiness: Record<string, Readiness>;
   installable: string[];
   mineru: { api_token_set: boolean; local_cli?: unknown };
+  docling?: { api_token_set: boolean };
 };
 
 const PIP_HINT: Record<string, string> = {
@@ -100,8 +102,10 @@ export default function DocumentParsingSettingsPage() {
           );
         }
         setData(payload as DocumentParsingPayload);
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
+        return false;
       } finally {
         setBusy(false);
       }
@@ -201,6 +205,7 @@ export default function DocumentParsingSettingsPage() {
               }
               busy={busy}
               onInstalled={load}
+              tokenSet={data.docling?.api_token_set ?? false}
               onSave={(patch) =>
                 putDocumentParsing({ engines: { docling: patch } })
               }
@@ -324,11 +329,16 @@ function ReadinessNotice({ readiness }: { readiness?: Readiness }) {
   );
 }
 
+const DOCLING_MODES = ["local", "remote"] as const;
+const DEFAULT_DOCLING_URL = "http://localhost:5001";
+const TOKEN_MASK = "••••••••••••";
+
 function DoclingPanel({
   slice,
   readiness,
   available,
   busy,
+  tokenSet,
   onInstalled,
   onSave,
 }: {
@@ -336,74 +346,337 @@ function DoclingPanel({
   readiness?: Readiness;
   available: boolean;
   busy: boolean;
+  tokenSet: boolean;
   onInstalled: () => void;
-  onSave: (patch: Record<string, unknown>) => void;
+  onSave: (patch: Record<string, unknown>) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
+  const mode =
+    slice.mode === "remote"
+      ? "remote"
+      : slice.mode === "local"
+        ? "local"
+        : "local";
+  const isRemote = mode === "remote";
   const doOcr = Boolean(slice.do_ocr);
   const doTables = slice.do_table_structure !== false;
   const allowDownload = Boolean(slice.allow_local_model_download);
 
-  if (!available) {
-    return (
-      <NotInstalledSection
-        engineId="docling"
-        title={t("Docling")}
-        onInstalled={onInstalled}
-      />
-    );
+  // Remote server URL + API key are edited as a draft and saved together so a
+  // half-typed URL is never used mid-parse. Token is write-only.
+  const [remoteDraft, setRemoteDraft] = useState({
+    url: (typeof slice.api_base_url === "string" && slice.api_base_url) || "",
+  });
+  const [tokenDraft, setTokenDraft] = useState("");
+  const [tokenTouched, setTokenTouched] = useState(false);
+  const [savingRemote, setSavingRemote] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const [remoteMsg, setRemoteMsg] = useState("");
+
+  async function saveRemote() {
+    setSavingRemote(true);
+    setRemoteMsg("");
+    setTestResult(null);
+    const patch: Record<string, unknown> = {
+      mode: "remote",
+      api_base_url: remoteDraft.url.trim() || DEFAULT_DOCLING_URL,
+    };
+    if (tokenTouched) patch.api_token = tokenDraft;
+    try {
+      const saved = await onSave(patch);
+      if (saved) {
+        setRemoteMsg(t("Remote Docling settings saved."));
+        setTokenDraft("");
+        setTokenTouched(false);
+      }
+    } finally {
+      setSavingRemote(false);
+    }
   }
 
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const body: Record<string, unknown> = {
+        api_base_url: remoteDraft.url.trim() || DEFAULT_DOCLING_URL,
+      };
+      if (tokenTouched) body.api_token = tokenDraft;
+      const response = await apiFetch(
+        apiUrl("/api/v1/settings/document-parsing/docling/test"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+        detail?: string;
+      };
+      if (!response.ok) {
+        setTestResult({
+          ok: false,
+          message: data.detail || t("Connection test failed."),
+        });
+        return;
+      }
+      setTestResult({
+        ok: Boolean(data.ok),
+        message:
+          data.message ||
+          (data.ok ? t("Ready to parse.") : t("Connection test failed.")),
+      });
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const notInstalled = !available && !isRemote;
+
   return (
-    <SettingSection
-      title={t("Docling")}
-      description={t(
-        "Structured conversion of PDF/Office/HTML/images. Downloads layout/table models on first run.",
+    <>
+      <SettingSection
+        title={t("Docling backend")}
+        description={t(
+          "Choose where parsing runs: the in-process docling package (local) or a Docling Serve server (remote).",
+        )}
+      >
+        <SettingRow
+          title={t("Mode")}
+          description={
+            isRemote
+              ? t(
+                  "Documents are sent to a Docling Serve server for conversion.",
+                )
+              : t(
+                  "Parsing runs on this machine using the installed docling package.",
+                )
+          }
+          control={
+            <div className="inline-flex rounded-lg border border-[var(--border)] p-0.5">
+              {DOCLING_MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (m !== mode) {
+                      onSave({ mode: m });
+                      setTestResult(null);
+                    }
+                  }}
+                  className={`rounded-md px-3 py-1 text-[12px] font-medium transition-colors disabled:opacity-40 ${
+                    mode === m
+                      ? "bg-[var(--foreground)] text-[var(--background)]"
+                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {m === "local" ? t("Local") : t("Remote server")}
+                </button>
+              ))}
+            </div>
+          }
+        />
+      </SettingSection>
+
+      {isRemote && (
+        <SettingSection
+          title={t("Remote server")}
+          description={t(
+            "Point at a Docling Serve server (e.g. `docling serve` or the docker image). No local docling install or models needed.",
+          )}
+        >
+          <SettingRow
+            title={t("Server base URL")}
+            control={
+              <input
+                className={`${inputClass} w-[320px] max-w-[48vw] font-mono text-[12px]`}
+                placeholder={DEFAULT_DOCLING_URL}
+                value={remoteDraft.url}
+                onChange={(e) => {
+                  setRemoteDraft({ url: e.target.value });
+                  setTestResult(null);
+                }}
+              />
+            }
+          />
+          <SettingRow
+            title={t("API key")}
+            description={
+              tokenSet
+                ? t(
+                    "A key is saved. Type to replace it; leave blank to keep it.",
+                  )
+                : t(
+                    "Optional. Sent as the X-Api-Key header for a secured server.",
+                  )
+            }
+            control={
+              <input
+                type="password"
+                className={`${inputClass} w-[320px] max-w-[48vw]`}
+                placeholder={tokenSet ? TOKEN_MASK : t("Optional API key")}
+                value={tokenDraft}
+                onChange={(e) => {
+                  setTokenDraft(e.target.value);
+                  setTokenTouched(true);
+                }}
+              />
+            }
+          />
+          <SettingRow
+            title={t("Test connection")}
+            description={t("Pings the server health + version endpoints.")}
+            control={
+              <div className="flex items-center gap-3">
+                {testResult && (
+                  <span
+                    className={`inline-flex max-w-[40vw] items-center gap-1 text-[12px] ${
+                      testResult.ok
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {testResult.ok ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    {testResult.message}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={testConnection}
+                  disabled={testing || savingRemote || busy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
+                >
+                  {testing && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {t("Test")}
+                </button>
+                <button
+                  type="button"
+                  onClick={saveRemote}
+                  disabled={savingRemote || busy}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
+                >
+                  {savingRemote && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {t("Save remote server")}
+                </button>
+              </div>
+            }
+          />
+          <div className="px-1 pb-4">
+            <span className="text-[12px] text-[var(--muted-foreground)]">
+              {remoteMsg ||
+                t(
+                  "Settings are written to data/user/settings/document_parsing.json.",
+                )}
+            </span>
+          </div>
+        </SettingSection>
       )}
-    >
-      <ReadinessNotice readiness={readiness} />
-      {readiness && !readiness.ready && (
-        <ModelDownloadRow
+
+      {isRemote && (
+        <SettingSection
+          title={t("Parsing options")}
+          description={t("Forwarded to the Docling server for each document.")}
+        >
+          <SettingRow
+            title={t("Recognize tables")}
+            control={
+              <Toggle
+                checked={doTables}
+                disabled={busy}
+                onChange={(v) => onSave({ do_table_structure: v })}
+              />
+            }
+          />
+          <SettingRow
+            title={t("OCR scanned pages")}
+            description={t("Slower; enable for image-only PDFs.")}
+            control={
+              <Toggle
+                checked={doOcr}
+                disabled={busy}
+                onChange={(v) => onSave({ do_ocr: v })}
+              />
+            }
+          />
+        </SettingSection>
+      )}
+
+      {!isRemote && notInstalled && (
+        <NotInstalledSection
           engineId="docling"
-          title={t("Docling")}
-          onDownloaded={onInstalled}
+          title={t("Docling (local)")}
+          onInstalled={onInstalled}
         />
       )}
-      <SettingRow
-        title={t("Allow automatic model download")}
-        description={t(
-          "Off by default. When off, parsing fails with guidance instead of silently downloading models. Or pre-fetch with `docling-tools models download`.",
-        )}
-        control={
-          <Toggle
-            checked={allowDownload}
-            disabled={busy}
-            onChange={(v) => onSave({ allow_local_model_download: v })}
+
+      {!isRemote && !notInstalled && (
+        <SettingSection
+          title={t("Docling (local)")}
+          description={t(
+            "Structured conversion of PDF/Office/HTML/images. Downloads layout/table models on first run.",
+          )}
+        >
+          <ReadinessNotice readiness={readiness} />
+          {readiness && !readiness.ready && (
+            <ModelDownloadRow
+              engineId="docling"
+              title={t("Docling")}
+              onDownloaded={onInstalled}
+            />
+          )}
+          <SettingRow
+            title={t("Allow automatic model download")}
+            description={t(
+              "Off by default. When off, parsing fails with guidance instead of silently downloading models. Or pre-fetch with `docling-tools models download`.",
+            )}
+            control={
+              <Toggle
+                checked={allowDownload}
+                disabled={busy}
+                onChange={(v) => onSave({ allow_local_model_download: v })}
+              />
+            }
           />
-        }
-      />
-      <SettingRow
-        title={t("Recognize tables")}
-        control={
-          <Toggle
-            checked={doTables}
-            disabled={busy}
-            onChange={(v) => onSave({ do_table_structure: v })}
+          <SettingRow
+            title={t("Recognize tables")}
+            control={
+              <Toggle
+                checked={doTables}
+                disabled={busy}
+                onChange={(v) => onSave({ do_table_structure: v })}
+              />
+            }
           />
-        }
-      />
-      <SettingRow
-        title={t("OCR scanned pages")}
-        description={t("Slower; enable for image-only PDFs.")}
-        control={
-          <Toggle
-            checked={doOcr}
-            disabled={busy}
-            onChange={(v) => onSave({ do_ocr: v })}
+          <SettingRow
+            title={t("OCR scanned pages")}
+            description={t("Slower; enable for image-only PDFs.")}
+            control={
+              <Toggle
+                checked={doOcr}
+                disabled={busy}
+                onChange={(v) => onSave({ do_ocr: v })}
+              />
+            }
           />
-        }
-      />
-    </SettingSection>
+        </SettingSection>
+      )}
+    </>
   );
 }
 

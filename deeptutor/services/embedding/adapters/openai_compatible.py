@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 import httpx
 
+from deeptutor.services.embedding.request_options import should_send_embedding_dimensions
 from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 
 from .base import (
@@ -127,18 +128,15 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
           OpenAI-style ``dimensions`` parameter — OpenAI ``text-embedding-3*``,
           Qwen3-Embedding, Qwen3-VL-Embedding.
         """
-        if self.send_dimensions is True:
-            return True
-        if self.send_dimensions is False:
-            return False
-        if not model_name:
-            return False
-        lname = model_name.lower()
-        if lname.startswith("text-embedding-3"):
-            return True
-        if "qwen3-embedding" in lname or "qwen3-vl-embedding" in lname:
-            return True
-        return False
+        return should_send_embedding_dimensions(
+            binding=None,
+            model=model_name,
+            # ``embed`` only calls this hook when a request dimension exists.
+            # Keep the historical one-argument override contract used by
+            # provider adapters such as Gemini.
+            dimension=self.dimensions or 1,
+            send_dimensions=self.send_dimensions,
+        )
 
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         import asyncio

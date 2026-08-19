@@ -21,7 +21,12 @@ from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 from deeptutor.runtime.banner import labels_for, print_banner, resolve_language
-from deeptutor.runtime.home import DEEPTUTOR_HOME_ENV, PACKAGE_ROOT, get_runtime_home
+from deeptutor.runtime.home import (
+    DEEPTUTOR_HOME_ENV,
+    PACKAGE_ROOT,
+    get_runtime_home,
+    validate_runtime_home,
+)
 from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
 
 BACKEND_READY_TIMEOUT = 60
@@ -930,6 +935,10 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
 def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     _relax_console_encoding()
     runtime_home = get_runtime_home(home)
+    try:
+        validate_runtime_home(runtime_home)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     runtime_home.mkdir(parents=True, exist_ok=True)
     os.environ[DEEPTUTOR_HOME_ENV] = str(runtime_home)
     _reset_runtime_singletons()

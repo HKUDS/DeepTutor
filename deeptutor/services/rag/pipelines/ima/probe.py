@@ -15,8 +15,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
-from .client import ImaAuthError, ImaClient
+from .client import ImaClient
 from .config import ImaConfig
+from .envelope import ImaAuthError
 
 
 @dataclass
@@ -71,11 +72,13 @@ async def probe_knowledge_base(
 
     try:
         info = await client.get_knowledge_base()
-    except ImaAuthError as exc:
-        probe.error = f"IMA rejected these credentials: {exc}"
+    except ImaAuthError:
+        probe.error = "IMA rejected these credentials. Check them and try again."
         return probe
-    except Exception as exc:
-        probe.error = f"Could not reach Tencent IMA: {exc}"
+    except Exception:
+        # Upstream exception strings are not returned because they may contain
+        # request details. The UI only needs a stable, actionable verdict.
+        probe.error = "Could not reach Tencent IMA. Try again shortly."
         return probe
 
     # The call is credential-gated, so reaching this point means they were
