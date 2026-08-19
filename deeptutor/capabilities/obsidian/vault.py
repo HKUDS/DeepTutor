@@ -132,7 +132,7 @@ def read_note(root: Path, ref: str) -> dict[str, Any]:
     path = resolve_note(root, ref)
     if path is None:
         raise VaultError(f"Note {ref!r} not found in the vault.")
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8", errors="replace")
     frontmatter, body = split_frontmatter(text)
     return {"path": _rel(root, path), "frontmatter": frontmatter, "body": body}
 
@@ -146,7 +146,7 @@ def search_notes(root: Path, query: str, limit: int = 20) -> list[dict[str, str]
     hits: list[dict[str, str]] = []
     for path in _iter_markdown(root):
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         if needle in path.stem.lower() or needle in text.lower():
@@ -191,7 +191,7 @@ def backlinks(root: Path, ref: str, limit: int = 50) -> list[dict[str, str]]:
         if path == target:
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         if any(t.strip().lower() == stem for t in _WIKILINK_RE.findall(text)):
@@ -212,7 +212,7 @@ def collect_tags(root: Path, limit: int = 200) -> list[dict[str, Any]]:
 
     for path in _iter_markdown(root):
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         frontmatter, body = split_frontmatter(text)
