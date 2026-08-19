@@ -21,6 +21,7 @@ from contextlib import suppress
 import os
 from pathlib import Path
 import shutil
+import sys
 
 import httpx
 
@@ -115,9 +116,56 @@ class BwrapBackend(SandboxBackend):
     level = IsolationLevel.SYSTEM
 
     _RO_SYSTEM_DIRS = ("/usr", "/usr/local", "/bin", "/lib", "/lib64", "/etc", "/sbin")
+    _DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-    def __init__(self, bwrap_path: str = "bwrap") -> None:
+    def __init__(
+        self,
+        bwrap_path: str = "bwrap",
+        *,
+        venv_path: str | Path | None = None,
+        inherit_virtualenv: bool = True,
+    ) -> None:
         self._bwrap = bwrap_path
+        detected_virtualenv = (
+            venv_path is None and inherit_virtualenv and sys.prefix != sys.base_prefix
+        )
+        if venv_path is not None:
+            candidate = Path(venv_path).resolve()
+        elif detected_virtualenv:
+            candidate = Path(sys.prefix).resolve()
+        else:
+            candidate = None
+        self._venv_path = candidate if candidate is not None and candidate.is_dir() else None
+        self._python_runtime_mounts = (
+            self._detect_python_runtime_mounts() if self._venv_path and detected_virtualenv else ()
+        )
+
+    @classmethod
+    def _detect_python_runtime_mounts(cls) -> tuple[tuple[Path, Path], ...]:
+        """Return narrowly scoped base-Python mounts needed by managed venvs."""
+        candidates: list[tuple[Path, Path]] = []
+        for prefix in {sys.base_prefix, sys.base_exec_prefix}:
+            path = Path(prefix)
+            candidates.append((path.resolve(), path.absolute()))
+
+        base_executable = Path(getattr(sys, "_base_executable", sys.executable))
+        runtime_root = base_executable.parent.parent
+        candidates.append((runtime_root.resolve(), runtime_root.absolute()))
+
+        system_roots = tuple(Path(path).resolve() for path in cls._RO_SYSTEM_DIRS)
+        home = Path.home().resolve()
+        mounts: list[tuple[Path, Path]] = []
+        for source, destination in candidates:
+            if not source.is_dir() or source == Path("/") or source == home:
+                continue
+            if len(source.parts) < 3:
+                continue
+            if any(destination == root or root in destination.parents for root in system_roots):
+                continue
+            binding = (source, destination)
+            if binding not in mounts:
+                mounts.append(binding)
+        return tuple(mounts)
 
     def _build_argv(self, request: ExecRequest) -> list[str]:
         argv = [
@@ -138,9 +186,32 @@ class BwrapBackend(SandboxBackend):
         for mount in request.mounts:
             flag = "--ro-bind" if mount.read_only else "--bind"
             argv += [flag, mount.host_path, mount.sandbox_path]
+        # uv-managed venvs can link their interpreter to a versioned runtime
+        # outside /usr. Mount only those concrete runtime roots, never their
+        # shared manager/home parent. Both the resolved and alias destinations
+        # may be needed because venv shebangs preserve the alias path.
+        for source, destination in self._python_runtime_mounts:
+            argv += ["--ro-bind", str(source), str(destination)]
+        # Mount only the environment itself, never its workspace or home-dir
+        # parent. Keeping the original absolute path preserves venv shebangs
+        # and direct sys.executable argv while the later mount order ensures a
+        # writable request mount cannot make the environment writable.
+        if self._venv_path is not None and self._venv_path.is_dir():
+            venv = str(self._venv_path)
+            argv += ["--ro-bind", venv, venv]
         if request.workdir:
             argv += ["--chdir", request.workdir]
-        for key, value in request.env.items():
+        env = dict(request.env)
+        if self._venv_path is not None and self._venv_path.is_dir():
+            venv = str(self._venv_path)
+            venv_bin = str(self._venv_path / "bin")
+            base_path = env.get("PATH") or os.environ.get("PATH") or self._DEFAULT_PATH
+            path_entries = [part for part in base_path.split(os.pathsep) if part != venv_bin]
+            env["PATH"] = os.pathsep.join([venv_bin, *path_entries])
+            # The mounted environment is authoritative. A model-supplied env
+            # must not redirect Python tooling to an unmounted host path.
+            env["VIRTUAL_ENV"] = venv
+        for key, value in env.items():
             argv += ["--setenv", key, value]
         if request.argv:
             # No shell in between: bwrap execs the vector directly.

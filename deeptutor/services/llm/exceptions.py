@@ -41,6 +41,17 @@ class LLMProviderError(LLMError):
     pass
 
 
+class LLMProviderTransportError(LLMProviderError):
+    """A retryable provider connection or response-stream failure."""
+
+    error_code = "provider_transport"
+    retryable = True
+
+    def __init__(self, message: str, *, partial_response: bool = False):
+        super().__init__(message)
+        self.partial_response = partial_response
+
+
 class LLMCircuitBreakerError(LLMError):
     """Raised when circuit breaker blocks LLM execution."""
 
@@ -148,6 +159,7 @@ __all__ = [
     "LLMError",
     "LLMConfigError",
     "LLMProviderError",
+    "LLMProviderTransportError",
     "LLMCircuitBreakerError",
     "LLMAPIError",
     "LLMTimeoutError",

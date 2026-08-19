@@ -6,11 +6,15 @@ import {
   Plus,
   Trash2,
   CheckCircle2,
+  Clock3,
+  FileText,
+  Layers,
   Loader2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Chapter, ContentType, Spine } from "@/lib/book-types";
+import { bookApi, type EstimateBasis } from "@/lib/book-api";
+import type { BookDepth, Chapter, ContentType, Spine } from "@/lib/book-types";
 
 /**
  * Each chapter declares a *content type* — a hint to the SectionArchitect
@@ -24,6 +28,31 @@ interface ContentTypeOption {
   value: ContentType;
   label: string;
   description: string;
+}
+
+function ScopeOption({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`px-2.5 py-1.5 font-medium transition-colors ${
+        active
+          ? "bg-[var(--primary)]/12 text-[var(--foreground)]"
+          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+      }`}
+    >
+      {label}
+    </button>
+  );
 }
 
 const CONTENT_TYPE_OPTIONS: ContentTypeOption[] = [
@@ -58,17 +87,58 @@ const CONTENT_TYPE_OPTIONS: ContentTypeOption[] = [
 
 export interface SpineEditorProps {
   spine: Spine;
-  onConfirm: (spine: Spine) => void | Promise<void>;
+  onConfirm: (spine: Spine, autoCompile: boolean) => void | Promise<void>;
   loading?: boolean;
+  /** Book depth, so the estimate matches what will actually be generated. */
+  depth?: BookDepth;
 }
 
 export default function SpineEditor({
   spine,
   onConfirm,
   loading = false,
+  depth = "standard",
 }: SpineEditorProps) {
   const { t } = useTranslation();
-  const [chapters, setChapters] = useState<Chapter[]>(spine.chapters);
+  // Engine-injected chapters (the overview, deep-dive sub-pages) are not part
+  // of the structure the reader authors, so they stay out of the editor.
+  const [chapters, setChapters] = useState<Chapter[]>(() =>
+    spine.chapters.filter((c) => !c.auto_overview && !c.deep_dive),
+  );
+  const [autoCompile, setAutoCompile] = useState(true);
+  const [basis, setBasis] = useState<EstimateBasis | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void bookApi
+      .estimateBasis(depth)
+      .then((result) => {
+        if (!cancelled) setBasis(result.basis);
+      })
+      .catch(() => {
+        // An estimate is a courtesy; its absence must not block confirming.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [depth]);
+
+  const estimate = useMemo(() => {
+    if (!basis) return null;
+    let words = 0;
+    let seconds = 0;
+    for (const chapter of chapters) {
+      const cost = basis[chapter.content_type] || basis.theory;
+      if (!cost) continue;
+      words += cost.words;
+      seconds += cost.seconds;
+    }
+    return {
+      chapters: chapters.length,
+      words,
+      minutes: Math.ceil(seconds / 60),
+    };
+  }, [basis, chapters]);
 
   const updateChapter = (idx: number, patch: Partial<Chapter>) => {
     setChapters((prev) =>
@@ -110,10 +180,20 @@ export default function SpineEditor({
   };
 
   const handleConfirm = async () => {
-    const cleaned = chapters
-      .filter((c) => c.title.trim())
-      .map((c, i) => ({ ...c, order: i }));
-    await onConfirm({ ...spine, chapters: cleaned });
+    const edited = chapters.filter((c) => c.title.trim());
+    // Re-attach what the editor hid, so confirming never silently deletes an
+    // overview or a deep dive — but in their proper places: the overview leads
+    // the book, deep dives trail it. Appending everything to the end left the
+    // overview out of position and carrying a stale `order`.
+    const overview = spine.chapters.filter((c) => c.auto_overview);
+    const deepDives = spine.chapters.filter(
+      (c) => c.deep_dive && !c.auto_overview,
+    );
+    const merged = [...overview, ...edited, ...deepDives].map((c, i) => ({
+      ...c,
+      order: i,
+    }));
+    await onConfirm({ ...spine, chapters: merged }, autoCompile);
   };
 
   return (
@@ -246,19 +326,68 @@ export default function SpineEditor({
         </div>
       </div>
 
-      <footer className="flex items-center justify-end gap-3 border-t border-[var(--border)] bg-[var(--card)]/60 px-6 py-3">
-        <button
-          onClick={handleConfirm}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <CheckCircle2 className="h-4 w-4" />
-          )}
-          {t("Confirm spine & start compiling")}
-        </button>
+      <footer className="border-t border-[var(--border)] bg-[var(--card)]/60 px-6 py-3">
+        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-3">
+          {/* Confirming here starts dozens of model calls. Say so first. */}
+          <div className="flex items-center gap-3 text-[11px] text-[var(--muted-foreground)]">
+            <span className="inline-flex items-center gap-1">
+              <Layers className="h-3 w-3" />
+              {t("{{count}} chapters", { count: chapters.length })}
+            </span>
+            {estimate && estimate.words > 0 && (
+              <>
+                <span className="inline-flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  {t("~{{count}} words", {
+                    count: Math.round(estimate.words / 100) * 100,
+                  })}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 className="h-3 w-3" />
+                  {t("~{{count}} min to generate", { count: estimate.minutes })}
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* #655: the backend always supported deferring compilation; only
+                the UI insisted on building everything up front. */}
+            <div className="inline-flex overflow-hidden rounded-lg border border-[var(--border)] text-[11px]">
+              <ScopeOption
+                active={autoCompile}
+                label={t("Generate all chapters")}
+                onClick={() => setAutoCompile(true)}
+              />
+              <ScopeOption
+                active={!autoCompile}
+                label={t("First chapter only")}
+                onClick={() => setAutoCompile(false)}
+              />
+            </div>
+            <button
+              onClick={handleConfirm}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              {autoCompile
+                ? t("Confirm spine & start compiling")
+                : t("Confirm spine")}
+            </button>
+          </div>
+        </div>
+        {!autoCompile && (
+          <p className="mx-auto mt-2 w-full max-w-3xl text-[11px] text-[var(--muted-foreground)]">
+            {t(
+              "Chapters will be generated the first time you open them — useful when you want to read as you go, or keep an eye on model usage.",
+            )}
+          </p>
+        )}
       </footer>
     </div>
   );

@@ -52,6 +52,12 @@ class LoopCapability(Protocol):
     (mirroring :attr:`exclusive_tools`), so plain capabilities that omit it are
     unaffected. ``usage`` is the turn's token tracker, passed so a pre-pass can
     fold its own LLM cost into the turn total.
+
+    Capabilities that own a durable user interaction MAY also define async
+    ``on_user_pause(context, ask_user)`` and ``on_user_resume(context,
+    ask_user, *, reply_text, answers)`` hooks.  The pipeline invokes them on
+    the two sides of an ``ask_user`` wait so state can be committed before a
+    disconnect or another LLM round.
     """
 
     name: str

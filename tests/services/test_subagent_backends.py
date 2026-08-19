@@ -13,6 +13,7 @@ import sys
 
 import pytest
 
+from deeptutor.services.subagent import process as process_mod
 from deeptutor.services.subagent.claude_code import ClaudeCodeBackend
 from deeptutor.services.subagent.codex import CodexBackend
 from deeptutor.services.subagent.config import (
@@ -22,7 +23,7 @@ from deeptutor.services.subagent.config import (
     SubagentSettings,
     settings_from_dict,
 )
-from deeptutor.services.subagent.process import stream_process_lines
+from deeptutor.services.subagent.process import resolve_cli_command, stream_process_lines
 from deeptutor.services.subagent.types import ConsultResult
 
 # ---- command building --------------------------------------------------------
@@ -391,6 +392,52 @@ async def test_stream_process_lines_reports_nonzero_exit() -> None:
         async for item in stream_process_lines([sys.executable, "-c", "import sys; sys.exit(3)"])
     ]
     assert seen[-1] == ("exit", "3")
+
+
+# ---- command resolution (Windows .cmd shim fix, issue #759) -------------------
+
+
+def test_resolve_cli_command_passes_empty_through() -> None:
+    assert resolve_cli_command([]) == []
+
+
+def test_resolve_cli_command_returns_absolute_path_unchanged() -> None:
+    # An absolute path that exists (sys.executable) resolves back to itself,
+    # so the live-subprocess tests above are unaffected by the resolve step.
+    resolved = resolve_cli_command([sys.executable, "--version"])
+    assert resolved[0] == sys.executable
+    assert resolved[1] == "--version"
+
+
+def test_resolve_cli_command_resolves_bare_name_to_full_path(monkeypatch) -> None:
+    # On Windows, a bare npm-installed CLI name resolves only via PATHEXT to a
+    # ``.cmd`` shim; shutil.which is what honors PATHEXT, so we monkeypatch it
+    # to stand in for "the shim was found on PATH".
+    monkeypatch.setattr(process_mod.shutil, "which", lambda name, path=None: r"C:\npm\claude.cmd")
+    resolved = resolve_cli_command(["claude", "--version"])
+    assert resolved == [r"C:\npm\claude.cmd", "--version"]
+
+
+def test_resolve_cli_command_falls_back_when_unresolvable(monkeypatch) -> None:
+    # Nothing on PATH matches → return the command unchanged so the OS spawn
+    # (and its FileNotFoundError) behaves exactly as before the fix.
+    monkeypatch.setattr(process_mod.shutil, "which", lambda name, path=None: None)
+    resolved = resolve_cli_command(["nonexistent-cli", "--version"])
+    assert resolved == ["nonexistent-cli", "--version"]
+
+
+def test_resolve_cli_command_honors_caller_supplied_path(monkeypatch) -> None:
+    # stream_process_lines / _spawn pass the child env's PATH so a custom PATH
+    # is honored during resolution rather than only the parent process's PATH.
+    seen: dict[str, str | None] = {}
+
+    def fake_which(name: str, path: str | None = None) -> None:
+        seen["path"] = path
+        return None
+
+    monkeypatch.setattr(process_mod.shutil, "which", fake_which)
+    resolve_cli_command(["claude"], path="/custom/bin")
+    assert seen["path"] == "/custom/bin"
 
 
 # ---- settings ----------------------------------------------------------------
@@ -789,6 +836,35 @@ async def test_partner_consult_unknown_partner(monkeypatch) -> None:
     result = await PartnerBackend().consult("q", on_event=on_event, partner_id="ghost")
     assert result.success is False
     assert manager.sent == []  # never messaged a non-existent partner
+
+
+@pytest.mark.asyncio
+async def test_partner_consult_rechecks_revoked_grant(monkeypatch, tmp_path) -> None:
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+    import deeptutor.multi_user.partner_access as partner_access
+    from deeptutor.multi_user.paths import user_context
+    from deeptutor.services.subagent.partner import PartnerBackend
+
+    manager = _FakePartnerManager()
+    _patch_manager(monkeypatch, manager)
+    monkeypatch.setattr(partner_access, "load_grant", lambda uid: {"partners": []})
+    user = CurrentUser(
+        "u_alice",
+        "alice",
+        "user",
+        UserScope("user", "u_alice", (tmp_path / "u_alice").resolve()),
+    )
+
+    async def on_event(ev):
+        pass
+
+    with user_context(user):
+        result = await PartnerBackend().consult("q", on_event=on_event, partner_id="paul")
+
+    assert result.success is False
+    assert "not assigned" in result.error
+    assert manager.started == []
+    assert manager.sent == []
 
 
 @pytest.mark.asyncio

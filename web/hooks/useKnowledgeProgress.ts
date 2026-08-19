@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl, wsUrl } from "@/lib/api";
-import type { ProgressInfo } from "@/lib/knowledge-helpers";
+import { taskFailureMessage, type ProgressInfo } from "@/lib/knowledge-helpers";
 
 export type TaskKind = "create" | "upload" | "reindex" | "retry";
 
@@ -13,6 +13,8 @@ export interface TaskState {
   logs: string[];
   executing: boolean;
   error: string | null;
+  errorCode?: string;
+  retryable?: boolean;
 }
 
 interface UseKnowledgeProgressOptions {
@@ -216,25 +218,30 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
       source.addEventListener("failed", (event) => {
         settled = true;
         let detail = "Task failed";
-        let details: string | undefined;
+        let errorCode: string | undefined;
+        let retryable: boolean | undefined;
         try {
           const payload = JSON.parse((event as MessageEvent).data) as {
             detail?: string;
             details?: string;
+            error_code?: string;
+            retryable?: boolean;
           };
-          detail = payload.detail || detail;
-          details = payload.details;
+          detail = taskFailureMessage(payload);
+          errorCode = payload.error_code;
+          retryable = payload.retryable;
         } catch {
           // ignore malformed failure event
         }
-        const composed = details ? `${detail}\n\n${details}` : detail;
         setTasksByKb((prev) => {
           const current = prev[kbName];
           if (!current || current.taskId !== taskId) return prev;
           const finalState = {
             ...current,
             executing: false,
-            error: composed,
+            error: detail,
+            errorCode,
+            retryable,
           };
           const startedAt =
             startedAtRef.current[`${kbName}:${taskId}`] ?? Date.now();

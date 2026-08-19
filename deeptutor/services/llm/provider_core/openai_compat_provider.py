@@ -19,6 +19,7 @@ import json_repair
 from openai import AsyncOpenAI
 
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
+from deeptutor.services.llm.exceptions import LLMConfigError
 from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
@@ -31,6 +32,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
+from deeptutor.services.llm.usage_frame import token_counts
 
 if TYPE_CHECKING:
     from deeptutor.services.provider_registry import ProviderSpec
@@ -130,6 +132,17 @@ class OpenAICompatProvider(LLMProvider):
 
         effective_base = api_base or (spec.default_api_base if spec else None) or None
         self._effective_base = effective_base
+        endpoint = (effective_base or "").rstrip("/")
+        placeholder_key = api_key in {None, "", "no-key", "sk-no-key-required"}
+        if (
+            provider_name == "openai"
+            and (not endpoint or endpoint == "https://api.openai.com/v1")
+            and placeholder_key
+        ):
+            raise LLMConfigError(
+                "OpenAI API key is not configured. Set it in Settings > Catalog, "
+                "or select a local provider such as Ollama."
+            )
         default_headers: dict[str, str] = {"x-session-affinity": uuid.uuid4().hex}
         if _uses_openrouter(spec, effective_base):
             default_headers.update(_DEFAULT_OPENROUTER_HEADERS)
@@ -478,27 +491,12 @@ class OpenAICompatProvider(LLMProvider):
 
     @classmethod
     def _extract_usage(cls, response: Any) -> dict[str, int]:
-        usage_obj = None
         response_map = cls._maybe_mapping(response)
         if response_map is not None:
             usage_obj = response_map.get("usage")
-        elif hasattr(response, "usage") and response.usage:
-            usage_obj = response.usage
-
-        usage_map = cls._maybe_mapping(usage_obj)
-        if usage_map is not None:
-            return {
-                "prompt_tokens": int(usage_map.get("prompt_tokens") or 0),
-                "completion_tokens": int(usage_map.get("completion_tokens") or 0),
-                "total_tokens": int(usage_map.get("total_tokens") or 0),
-            }
-        if usage_obj:
-            return {
-                "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
-                "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(usage_obj, "total_tokens", 0) or 0,
-            }
-        return {}
+        else:
+            usage_obj = getattr(response, "usage", None)
+        return token_counts(usage_obj)
 
     def _parse(self, response: Any) -> LLMResponse:
         if isinstance(response, str):

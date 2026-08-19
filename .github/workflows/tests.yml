@@ -171,6 +171,7 @@ jobs:
           logging:
             level: WARNING
           YAML
+          cp tests/fixtures/ci_model_catalog.json data/user/settings/model_catalog.json
 
       - name: Run Python tests
         run: |

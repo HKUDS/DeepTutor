@@ -23,7 +23,9 @@ import {
   kbHasLiveProgress,
   kbNeedsReindex,
   kbProvider,
+  providerConnectionStatus,
   resolveKbStatus,
+  type ProviderConnectionStatus,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { RagProviderSummary } from "@/lib/knowledge-api";
@@ -46,15 +48,7 @@ const ENGINE_ICONS: Record<string, LucideIcon> = {
   "lightrag-server": Server,
 };
 
-type EngineStatus = "ready" | "needs_key" | "unavailable";
-
-function engineStatus(p: RagProviderSummary): EngineStatus {
-  if (p.requires_api_key && p.configured === false) return "needs_key";
-  if (p.configured === false) return "unavailable";
-  return "ready";
-}
-
-function EngineStatusBadge({ status }: { status: EngineStatus }) {
+function EngineStatusBadge({ status }: { status: ProviderConnectionStatus }) {
   const { t } = useTranslation();
   if (status === "ready") {
     return (
@@ -156,7 +150,7 @@ export default function KnowledgeHome({
           </h2>
           <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
             {providers.map((p) => {
-              const status = engineStatus(p);
+              const status = providerConnectionStatus(p);
               const Icon = ENGINE_ICONS[p.id] ?? Boxes;
               const count = kbCountByProvider[p.id] ?? 0;
               return (

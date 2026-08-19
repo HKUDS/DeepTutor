@@ -3,17 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiFetch, apiUrl } from "@/lib/api";
+import { bookApi } from "@/lib/book-api";
+import type { Book } from "@/lib/book-types";
 import { formatRelativeTime } from "@/lib/relative-time";
-
-interface RecentBook {
-  id: string;
-  title: string;
-  status: string;
-  chapter_count: number;
-  page_count: number;
-  updated_at: number;
-}
 
 const STATUS_DOT: Record<string, string> = {
   ready: "bg-emerald-400",
@@ -33,24 +25,18 @@ interface BookRecentProps {
 
 export function BookRecent({ collapsed = false, limit = 4 }: BookRecentProps) {
   const { i18n } = useTranslation();
-  const [books, setBooks] = useState<RecentBook[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch(apiUrl("/api/v1/book/books"));
-        if (!res.ok) return;
-        const data = await res.json();
-        const items: RecentBook[] = Array.isArray(data?.books)
-          ? data.books
-          : [];
-        items.sort(
-          (a, b) => (Number(b.updated_at) || 0) - (Number(a.updated_at) || 0),
-        );
+        const { books: items } = await bookApi.list();
+        // `list_books` already returns newest-first (engine sorts by
+        // updated_at desc), so this is presentation only.
         if (!cancelled) setBooks(items.slice(0, limit));
       } catch {
-        /* ignore */
+        /* the sidebar is decoration; a failed fetch just shows nothing */
       }
     })();
     return () => {

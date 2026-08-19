@@ -12,6 +12,7 @@ import json_repair
 from loguru import logger
 
 from deeptutor.services.llm.provider_core.base import LLMResponse, ToolCallRequest
+from deeptutor.services.llm.usage_frame import token_counts
 
 FINISH_REASON_MAP = {
     "completed": "stop",
@@ -129,6 +130,23 @@ def _build_tool_call(
     )
 
 
+def _response_error_detail(event: Any) -> str:
+    """Extract a useful message from raw or SDK Responses error events."""
+
+    def _field(value: Any, name: str) -> Any:
+        return value.get(name) if isinstance(value, dict) else getattr(value, name, None)
+
+    response = _field(event, "response")
+    error = _field(response, "error") if response is not None else _field(event, "error")
+    if error is not None:
+        code = _field(error, "code")
+        message = _field(error, "message")
+        if code and message:
+            return f"{code}: {message}"
+        return str(message or error)
+    return str(_field(event, "message") or event)
+
+
 async def iter_sse(response: httpx.Response) -> AsyncGenerator[dict[str, Any], None]:
     """Yield parsed JSON events from a Responses API SSE stream."""
     buffer: list[str] = []
@@ -226,8 +244,7 @@ async def consume_sse(
             status = (event.get("response") or {}).get("status")
             finish_reason = map_finish_reason(status)
         elif event_type in {"error", "response.failed"}:
-            detail = event.get("error") or event.get("message") or event
-            raise RuntimeError(f"Response failed: {str(detail)[:500]}")
+            raise RuntimeError(f"Response failed: {_response_error_detail(event)[:500]}")
 
     return content, tool_calls, finish_reason
 
@@ -276,17 +293,8 @@ def parse_response_output(response: Any) -> LLMResponse:
                 )
             )
 
-    usage_raw = response.get("usage") or {}
-    if not isinstance(usage_raw, dict):
-        dump = getattr(usage_raw, "model_dump", None)
-        usage_raw = dump() if callable(dump) else vars(usage_raw)
-    usage = {}
-    if usage_raw:
-        usage = {
-            "prompt_tokens": int(usage_raw.get("input_tokens") or 0),
-            "completion_tokens": int(usage_raw.get("output_tokens") or 0),
-            "total_tokens": int(usage_raw.get("total_tokens") or 0),
-        }
+    # The Responses API names its counters input_/output_tokens.
+    usage = token_counts(response.get("usage"), prompt="input_tokens", completion="output_tokens")
 
     finish_reason = map_finish_reason(response.get("status"))
     return LLMResponse(
@@ -371,11 +379,10 @@ async def consume_sdk_stream(
             status = getattr(response, "status", None) if response is not None else None
             usage_obj = getattr(response, "usage", None) if response is not None else None
             finish_reason = map_finish_reason(status)
-            if usage_obj is not None:
-                usage = {
-                    "prompt_tokens": int(getattr(usage_obj, "input_tokens", 0) or 0),
-                    "completion_tokens": int(getattr(usage_obj, "output_tokens", 0) or 0),
-                    "total_tokens": int(getattr(usage_obj, "total_tokens", 0) or 0),
-                }
+            usage = (
+                token_counts(usage_obj, prompt="input_tokens", completion="output_tokens") or usage
+            )
+        elif event_type in {"error", "response.failed"}:
+            raise RuntimeError(f"Response failed: {_response_error_detail(event)[:500]}")
 
     return content, tool_calls, finish_reason, usage, reasoning_content
