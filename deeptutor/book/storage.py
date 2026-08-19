@@ -228,9 +228,7 @@ class BookStorage:
             try:
                 capture = LearningCapture.model_validate(raw)
             except Exception as exc:
-                logger.warning(
-                    "Failed to validate LearningCapture for %s: %s", book_id, exc
-                )
+                logger.warning("Failed to validate LearningCapture for %s: %s", book_id, exc)
                 continue
             if status is not None and capture.status != status:
                 continue

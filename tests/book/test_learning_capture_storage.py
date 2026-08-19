@@ -88,15 +88,21 @@ def test_learning_captures_filter_by_status(tmp_path: Path, monkeypatch) -> None
         )
     )
 
-    assert [capture.status for capture in storage.load_learning_captures(
-        book_id,
-        status=LearningCaptureStatus.APPROVED,
-    )] == [LearningCaptureStatus.APPROVED]
+    assert [
+        capture.status
+        for capture in storage.load_learning_captures(
+            book_id,
+            status=LearningCaptureStatus.APPROVED,
+        )
+    ] == [LearningCaptureStatus.APPROVED]
 
-    assert {capture.status for capture in storage.load_learning_captures(
-        book_id,
-        status=LearningCaptureStatus.REJECTED,
-    )} == {LearningCaptureStatus.REJECTED}
+    assert {
+        capture.status
+        for capture in storage.load_learning_captures(
+            book_id,
+            status=LearningCaptureStatus.REJECTED,
+        )
+    } == {LearningCaptureStatus.REJECTED}
 
 
 def test_learning_capture_load_by_id(tmp_path: Path, monkeypatch) -> None:

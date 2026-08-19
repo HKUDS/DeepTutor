@@ -217,9 +217,7 @@ def test_learning_capture_list_supports_status_filter(tmp_path, monkeypatch) -> 
         )
     )
 
-    response = client.get(
-        f"/api/v1/book/books/{book_id}/learning-captures?status=approved"
-    )
+    response = client.get(f"/api/v1/book/books/{book_id}/learning-captures?status=approved")
     assert response.status_code == 200
     payload = response.json()["captures"]
     assert len(payload) == 1

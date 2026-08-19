@@ -419,10 +419,7 @@ async def update_learning_capture(
     ):
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Invalid state transition: {capture.status} -> "
-                f"{requested_status}"
-            ),
+            detail=(f"Invalid state transition: {capture.status} -> {requested_status}"),
         )
 
     changed = False
