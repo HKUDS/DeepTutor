@@ -3070,5 +3070,6 @@
   "Generate a chapter on this": "就此生成一章",
   "This book was written without reading your sources.": "这本书生成时没有读取你的资料来源。",
   "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.": "规划阶段检索失败，因此各章仅基于方案生成。重建会重新尝试读取你的知识库。",
-  "Source sweep failed": "来源扫描失败"
+  "Source sweep failed": "来源扫描失败",
+  "Available only after every stale page has been recompiled.": "只有所有过期页面重新编译完成后才能使用。"
 }

@@ -40,6 +40,7 @@ export default function BookHealthBanner({
   const [logHealth, setLogHealth] = useState<LogHealth | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [acknowledgeError, setAcknowledgeError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,9 +97,12 @@ export default function BookHealthBanner({
   const acknowledge = async () => {
     if (!bookId) return;
     setBusy(true);
+    setAcknowledgeError(null);
     try {
       await bookApi.refreshFingerprints(bookId);
       setKbDrift({ has_drift: false });
+    } catch (err) {
+      setAcknowledgeError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -222,7 +226,7 @@ export default function BookHealthBanner({
               onClick={acknowledge}
               disabled={busy}
               title={t(
-                "Mark the current KB state as the new baseline (won't recompile pages — use the recompile button above for that).",
+                "Available only after every stale page has been recompiled.",
               )}
               className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
             >
@@ -236,6 +240,11 @@ export default function BookHealthBanner({
             <X className="h-4 w-4" />
           </button>
         </div>
+        {acknowledgeError && (
+          <div className="text-xs font-medium text-red-700 dark:text-red-200">
+            {acknowledgeError}
+          </div>
+        )}
       </div>
     </div>
   );

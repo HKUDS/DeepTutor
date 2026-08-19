@@ -554,7 +554,10 @@ async def book_health(book_id: str) -> dict[str, Any]:
 @router.post("/books/{book_id}/refresh-fingerprints")
 async def refresh_fingerprints(book_id: str) -> dict[str, Any]:
     engine = get_book_engine()
-    result = engine.refresh_kb_fingerprints(book_id)
+    try:
+        result = engine.refresh_kb_fingerprints(book_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return result

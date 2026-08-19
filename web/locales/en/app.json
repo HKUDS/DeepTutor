@@ -3070,5 +3070,6 @@
   "Generate a chapter on this": "Generate a chapter on this",
   "This book was written without reading your sources.": "This book was written without reading your sources.",
   "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.": "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.",
-  "Source sweep failed": "Source sweep failed"
+  "Source sweep failed": "Source sweep failed",
+  "Available only after every stale page has been recompiled.": "Available only after every stale page has been recompiled."
 }

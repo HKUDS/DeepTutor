@@ -155,6 +155,7 @@ class SectionGenerator(BlockGenerator):
             anchors.append(
                 SourceAnchor(
                     kind=ch.source or "kb",
+                    kb_name=str(ch.kb_name or ctx.primary_kb or "")[:120],
                     ref=str(ch.ref or ch.chunk_id or "")[:200],
                     snippet=_clip(ch.text or "", 300),
                 )

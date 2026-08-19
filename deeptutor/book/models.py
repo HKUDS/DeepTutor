@@ -219,6 +219,7 @@ class SourceAnchor(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     kind: str = ""  # 'kb' | 'notebook' | 'chat' | 'web' | 'manual'
+    kb_name: str = ""  # populated for KB-backed anchors
     ref: str = ""  # KB doc id, notebook record id, message id…
     snippet: str = ""  # short preview (≤300 chars)
 
@@ -479,8 +480,13 @@ class Book(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     # KB fingerprints captured at compile-time. Used to detect KB drift.
     kb_fingerprints: dict[str, str] = Field(default_factory=dict)
+    # Per-document content hashes captured with ``kb_fingerprints``. These let
+    # drift detection narrow stale pages to pages that cited the changed files.
+    kb_document_fingerprints: dict[str, dict[str, str]] = Field(default_factory=dict)
     # Pages whose KB content has changed since they were last compiled.
     stale_page_ids: list[str] = Field(default_factory=list)
+    # Epoch seconds when the current stale set was observed.
+    stale_detected_at: float = 0.0
 
 
 __all__ = [
