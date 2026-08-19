@@ -66,5 +66,4 @@ prompt_toolkit>=3.0.36
 
 # --- MCP client (configurable deferred tools; core, not partners-only) ---
 mcp>=1.26.0,<2.0.0
-pageindex==0.2.10.dev5
-pypdfium2>=4.30.0,<5.0.0  # PageIndex Flash uses a raw API removed in 5.x.
+pageindex>=0.2.10,<0.3.0
