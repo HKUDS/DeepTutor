@@ -31,9 +31,17 @@ class UsageTracker:
 
     def add_from_response(self, response_or_usage: Any) -> None:
         usage = getattr(response_or_usage, "usage", None) or response_or_usage
-        prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
-        completion = int(getattr(usage, "completion_tokens", 0) or 0)
-        total = int(getattr(usage, "total_tokens", prompt + completion) or 0)
+        if hasattr(usage, "model_dump"):
+            usage = usage.model_dump()
+        elif not isinstance(usage, dict):
+            usage = {
+                key: getattr(usage, key, None)
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                if hasattr(usage, key)
+            }
+        prompt = int(usage.get("prompt_tokens") or 0)
+        completion = int(usage.get("completion_tokens") or 0)
+        total = int(usage.get("total_tokens") or prompt + completion)
         if prompt or completion or total:
             self.prompt_tokens += prompt
             self.completion_tokens += completion
