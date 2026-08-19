@@ -233,7 +233,11 @@ graphrag = ["graphrag>=3.0.1,<4.0.0; python_version < '3.14'"]
 # `python_version` marker as graphrag to avoid a silent backtrack/downgrade on
 # 3.14+. Floor is 1.0.1 (no 1.0.0 was ever published) with a <2.0.0 ceiling so
 # a future API-breaking 2.x isn't pulled in silently.
-rag-lightrag = ["raganything>=1.0.1,<2.0.0; python_version < '3.14'"]
+# 1.2.5 is the first release carrying the ``lightrag_kwargs`` passthrough the
+# LightRAG concurrency/extraction settings ride on. Older installs still run —
+# engine.py drops knobs the installed version cannot take — but a fresh install
+# should get the capable one.
+rag-lightrag = ["raganything>=1.2.5,<2.0.0; python_version < '3.14'"]
 
 # Dev/test tooling. Mirrors requirements/dev.txt.
 dev = [
