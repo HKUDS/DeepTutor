@@ -925,10 +925,24 @@ class AgenticChatPipeline:
             reply_text=reply_text,
             answers=answers,
         )
-        # Neutral stop signal for loop plugins (e.g. crisis redirect): skip
-        # further LLM rounds; the outer capability emits the final message.
+        # The reply happened, so it belongs in the transcript whether or not the
+        # loop goes on — emit the trace before deciding to stop.
+        meta: dict[str, Any] = {
+            "trace_kind": "user_reply",
+            "ask_user_resolved": True,
+            "ask_user_tool_call_id": dispatch.pause_tool_call_id,
+            "reply_preview": (reply_text or "")[:200],
+        }
+        if answers:
+            meta["answers"] = list(answers)
+        await stream.progress("", source="chat", stage="responding", metadata=meta)
+
+        # Neutral stop signal for loop plugins (e.g. a crisis redirect): the
+        # outer capability owns the final message, so skip further LLM rounds.
+        # Everything below only exists to feed the answer back to the model.
         if context.metadata.get("end_loop"):
             return False
+
         body_text = _format_user_reply_body(
             reply_text,
             answers,
@@ -947,15 +961,6 @@ class AgenticChatPipeline:
             if tm.get("tool_call_id") == dispatch.pause_tool_call_id:
                 tm["content"] = directive
                 break
-        meta: dict[str, Any] = {
-            "trace_kind": "user_reply",
-            "ask_user_resolved": True,
-            "ask_user_tool_call_id": dispatch.pause_tool_call_id,
-            "reply_preview": (reply_text or "")[:200],
-        }
-        if answers:
-            meta["answers"] = list(answers)
-        await stream.progress("", source="chat", stage="responding", metadata=meta)
         return True
 
     def _augment_tool_kwargs(

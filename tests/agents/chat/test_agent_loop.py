@@ -1295,6 +1295,15 @@ async def test_ask_user_resume_end_loop_skips_further_llm(
     assert "Should not stream." not in _contents(events)
     result = _result(events)
     assert result.metadata["completed"] is False
+    # The user did answer, so the reply must still reach the transcript — only
+    # the further LLM rounds are skipped.
+    replies = [
+        event
+        for event in events
+        if (event.metadata or {}).get("trace_kind") == "user_reply"
+        and (event.metadata or {}).get("reply_preview") == "abort please"
+    ]
+    assert len(replies) == 1
 
 
 @pytest.mark.asyncio
