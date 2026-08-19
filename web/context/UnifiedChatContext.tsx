@@ -39,6 +39,8 @@ import {
 } from "@/lib/stream";
 import { hasPendingAskUserInMessages } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
+import { forwardReaderAction } from "@/lib/reading-reader-action";
+import { readingTurnFields } from "@/lib/reading-turn-state";
 import i18n from "i18next";
 import {
   normalizeBookReferences,
@@ -1121,6 +1123,11 @@ export function UnifiedChatProvider({
     (runnerKey: string, event: StreamEvent) => {
       const runner = runnersRef.current.get(runnerKey);
       const effectiveKey = runner?.key || runnerKey;
+      // Reading tools ask the reader to act (scroll to a locator, show a mark
+      // they just made) by tagging their result metadata. Re-broadcast it as a
+      // DOM event so the reader pane can listen without the chat knowing it
+      // exists — the same pattern the visualize prompt bridge uses.
+      forwardReaderAction(event);
       if (event.type === "session") {
         const sessionId =
           (event.metadata as { session_id?: string } | undefined)?.session_id ||
@@ -1704,6 +1711,12 @@ export function UnifiedChatProvider({
         ...(effectiveMasteryPathId
           ? { mastery_path_id: effectiveMasteryPathId }
           : {}),
+        // Immersive reading. Gated on the capability as well as on an open
+        // document: the reader outlives both a mode switch and a new session, so
+        // without the capability check every later turn would still carry it.
+        // Read from a module cell rather than context state so scrolling the
+        // reader never re-renders the chat.
+        ...readingTurnFields(effectiveCapability),
         // Always sent (possibly ""): an explicit key is the backend's signal
         // to persist the value into session.preferences — "" clears back to
         // Default. Omitting the key would make the backend fall back to the

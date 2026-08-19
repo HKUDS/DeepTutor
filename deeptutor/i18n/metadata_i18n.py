@@ -31,6 +31,10 @@ _CAPABILITY_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "en": "Create visual explanations such as SVG, charts, Mermaid, HTML, or Manim.",
         "zh": "生成 SVG、图表、Mermaid、HTML 或 Manim 等可视化讲解。",
     },
+    "immersive_reading": {
+        "en": "Read a document with the assistant, cited page by page.",
+        "zh": "与助手一起阅读文档，逐页标明出处。",
+    },
 }
 
 _TOOL_DESCRIPTIONS: dict[str, dict[str, str]] = {

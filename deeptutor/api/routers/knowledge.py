@@ -69,6 +69,7 @@ from deeptutor.services.rag.linked_kb import (
     probe_linked_folder,
 )
 from deeptutor.services.rag.pipelines.ima.client import (
+    MAX_PAGE_LIMIT,
     ImaAPIError,
     ImaAuthError,
     ImaClient,
@@ -1868,7 +1869,9 @@ class ListImaRequest(BaseModel):
     client_id: str = ""
     api_key: str = ""
     cursor: str = ""
-    limit: int = Field(default=20, ge=1, le=20)
+    # IMA documents this call's page size as 1..50; the picker asks for one
+    # screenful and pages for the rest.
+    limit: int = Field(default=20, ge=1, le=MAX_PAGE_LIMIT)
 
 
 class ImaKnowledgeBaseSummary(BaseModel):

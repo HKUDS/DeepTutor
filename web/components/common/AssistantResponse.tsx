@@ -4,11 +4,13 @@ import { Fragment, memo, useMemo } from "react";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ModelThinkingCard from "@/components/common/ModelThinkingCard";
+import { useReading } from "@/context/ReadingContext";
 import {
   hasVisibleMarkdownContent,
   repairMalformedStrongEmphasis,
   stripArtifactAnnotations,
 } from "@/lib/markdown-display";
+import { linkifyLocatorCitations } from "@/lib/reading-citations";
 import { parseModelThinkingSegments } from "@/lib/think-segments";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 
@@ -32,9 +34,23 @@ function AssistantResponseImpl({
   isStreaming = false,
 }: AssistantResponseProps) {
   const displayContent = useSmoothStreamText(content, isStreaming);
+  // Immersive reading only: turn `[p.12]` citations into anchors the reader
+  // pane intercepts. Outside that mode `material` is null (there is no
+  // provider on most surfaces, and none when no document is open), so this is a
+  // no-op and every other chat surface renders byte-identically to before.
+  const { material } = useReading();
+  const citedContent = useMemo(
+    () =>
+      material
+        ? linkifyLocatorCitations(displayContent, {
+            maxLocator: material.unit_count,
+          })
+        : displayContent,
+    [displayContent, material],
+  );
   const segments = useMemo(
-    () => parseModelThinkingSegments(stripArtifactAnnotations(displayContent)),
-    [displayContent],
+    () => parseModelThinkingSegments(stripArtifactAnnotations(citedContent)),
+    [citedContent],
   );
 
   // Decide whether the message has anything worth rendering. We consider both

@@ -30,7 +30,10 @@ function feed(pathId: string, revisions: number[]): ActivityFeed {
 }
 
 test("an incremental batch appends and advances the cursor", () => {
-  const merged = mergeEventBatch(feed("p1", [1, 2]), "p1", 2, [event(3), event(4)]);
+  const merged = mergeEventBatch(feed("p1", [1, 2]), "p1", 2, [
+    event(3),
+    event(4),
+  ]);
   assert.deepEqual(
     merged.events.map((e) => e.revision),
     [1, 2, 3, 4],

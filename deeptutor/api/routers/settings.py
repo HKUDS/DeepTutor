@@ -50,7 +50,10 @@ from deeptutor.services.path_service import get_path_service
 from deeptutor.services.settings.interface_settings import (
     DEFAULT_UI_SETTINGS as INTERFACE_DEFAULTS,
 )
-from deeptutor.services.settings.interface_settings import resolve_languages
+from deeptutor.services.settings.interface_settings import (
+    atomic_update,
+    resolve_languages,
+)
 from deeptutor.services.settings.starter_settings import (
     TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
 )
@@ -370,10 +373,26 @@ def get_enabled_optional_tools() -> list[str]:
 
 
 def save_ui_settings(settings: dict[str, Any]) -> None:
-    settings_file = _settings_file()
-    settings_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(settings_file, "w", encoding="utf-8") as handle:
-        json.dump(settings, handle, ensure_ascii=False, indent=2)
+    """Replace the whole stored UI settings document.
+
+    Writes through ``atomic_update`` rather than opening the file here, so this
+    module and the setup capability — which both write ``interface.json`` —
+    share one lock and one atomic replace. A lock held by only one of two
+    writers protects nothing: measured with the old direct write, six concurrent
+    router saves alongside six capability writes lost every one of the router's.
+
+    Prefer :func:`patch_ui_settings` for changing individual fields. This
+    replaces the whole document, so a caller that builds it from
+    ``load_ui_settings`` writes the merged defaults back as stored values and
+    stops following later changes to any of them.
+    """
+    payload = dict(settings)
+    atomic_update(_settings_file(), lambda _stored: payload)
+
+
+def patch_ui_settings(**fields: Any) -> None:
+    """Change individual UI fields without rewriting the rest of the document."""
+    atomic_update(_settings_file(), lambda stored: {**stored, **fields})
 
 
 def _require_settings_admin() -> None:
@@ -1298,17 +1317,13 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
 @router.put("/theme")
 async def update_theme(update: ThemeUpdate):
-    current_ui = load_ui_settings()
-    current_ui["theme"] = update.theme
-    save_ui_settings(current_ui)
+    patch_ui_settings(theme=update.theme)
     return {"theme": update.theme}
 
 
 @router.put("/language")
 async def update_language(update: LanguageUpdate):
-    current_ui = load_ui_settings()
-    current_ui["language"] = update.language
-    save_ui_settings(current_ui)
+    patch_ui_settings(language=update.language)
     return {"language": update.language}
 
 
@@ -1319,9 +1334,7 @@ async def update_voice_autoplay(update: VoiceAutoplayUpdate):
     A personal UI preference (any authenticated user); the chat surface layers
     a per-session override on top of this value.
     """
-    current_ui = load_ui_settings()
-    current_ui["voice_autoplay"] = update.voice_autoplay
-    save_ui_settings(current_ui)
+    patch_ui_settings(voice_autoplay=update.voice_autoplay)
     return {"voice_autoplay": update.voice_autoplay}
 
 
@@ -1333,9 +1346,7 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     video generation can take longer than the old 60s default, so this is
     user-adjustable; the chat surface reads it client-side.
     """
-    current_ui = load_ui_settings()
-    current_ui["chat_response_timeout"] = update.chat_response_timeout
-    save_ui_settings(current_ui)
+    patch_ui_settings(chat_response_timeout=update.chat_response_timeout)
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
@@ -1371,11 +1382,12 @@ async def update_ui_settings(update: UISettingsUpdate):
     by the frontend override saved values. Fields not in the frontend payload
     (even if they equal the model defaults) are omitted from the merge.
     """
-    current_ui = load_ui_settings()
     dump = update.model_dump(exclude_unset=True)  # Only merge explicitly provided fields
-    current_ui.update(dump)
-    save_ui_settings(current_ui)
-    return current_ui
+    # Merged into the stored document, not into the defaults-merged view: saving
+    # that view back would freeze today's defaults as this user's explicit
+    # choices. The response keeps returning the merged view clients expect.
+    patch_ui_settings(**dump)
+    return load_ui_settings()
 
 
 @router.post("/reset")
@@ -1409,26 +1421,20 @@ async def get_sidebar_settings():
 
 @router.put("/sidebar/description")
 async def update_sidebar_description(update: SidebarDescriptionUpdate):
-    current_ui = load_ui_settings()
-    current_ui["sidebar_description"] = update.description
-    save_ui_settings(current_ui)
+    patch_ui_settings(sidebar_description=update.description)
     return {"description": update.description}
 
 
 @router.put("/sidebar/nav-order")
 async def update_sidebar_nav_order(update: SidebarNavOrderUpdate):
-    current_ui = load_ui_settings()
-    current_ui["sidebar_nav_order"] = update.nav_order.model_dump()
-    save_ui_settings(current_ui)
+    patch_ui_settings(sidebar_nav_order=update.nav_order.model_dump())
     return {"nav_order": update.nav_order.model_dump()}
 
 
 @router.put("/enabled-tools")
 async def update_enabled_tools(update: EnabledToolsUpdate):
     sanitized = _sanitize_enabled_tools(update.enabled_tools)
-    current_ui = load_ui_settings()
-    current_ui["enabled_optional_tools"] = sanitized
-    save_ui_settings(current_ui)
+    patch_ui_settings(enabled_optional_tools=sanitized)
     return {"enabled_optional_tools": sanitized}
 
 

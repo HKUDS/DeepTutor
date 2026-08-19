@@ -11,6 +11,7 @@ from contextvars import Token
 from dataclasses import dataclass, field
 import json
 import logging
+import re
 from typing import TYPE_CHECKING, Any, Literal
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
@@ -201,6 +202,44 @@ def _mastery_path_id(value: Any) -> str:
     return str(value or "").strip()
 
 
+# Reading material ids are content hashes; anything else is a client bug or an
+# injection attempt, so the shape is enforced here rather than deeper in.
+_READING_ID_RE = re.compile(r"^[0-9a-f]{8,64}$")
+# A selection is quoted back into the prompt, so it is bounded here — the
+# reader has no reason to send more, and a runaway selection must not eat the
+# turn's context budget.
+READING_SELECTION_MAX_CHARS = 2000
+
+
+def _reading_material_id(value: Any) -> str:
+    """Normalize the immersive-reading material bound to this turn."""
+    candidate = str(value or "").strip().lower()
+    return candidate if _READING_ID_RE.match(candidate) else ""
+
+
+def _reading_viewport(value: Any) -> dict[str, Any]:
+    """Normalize what the reader reports it is showing.
+
+    Both fields are optional: a freshly opened document has no locator yet, and
+    most turns carry no selection. Absent keys are omitted rather than zeroed so
+    the capability's prompt block can distinguish "nothing selected" from an
+    empty selection.
+    """
+    if not isinstance(value, dict):
+        return {}
+    viewport: dict[str, Any] = {}
+    try:
+        locator = int(value.get("locator") or 0)
+    except (TypeError, ValueError):
+        locator = 0
+    if locator > 0:
+        viewport["locator"] = locator
+    selection = str(value.get("selection") or "").strip()
+    if selection:
+        viewport["selection"] = selection[:READING_SELECTION_MAX_CHARS]
+    return viewport
+
+
 def _llm_selection_dict(value: Any) -> dict[str, str] | None:
     from deeptutor.services.model_selection import LLMSelection
 
@@ -246,6 +285,12 @@ def _request_snapshot_metadata(
     mastery_path_id = _mastery_path_id(payload.get("mastery_path_id"))
     if mastery_path_id:
         snapshot["masteryPathId"] = mastery_path_id
+    # Persisted so a regenerate re-runs with the same document open. Without it
+    # the reading capability would be inactive on the retry and the answer would
+    # silently lose its grounding.
+    reading_material_id = _reading_material_id(payload.get("reading_material_id"))
+    if reading_material_id:
+        snapshot["readingMaterialId"] = reading_material_id
     if persona:
         snapshot["persona"] = persona
     if memory_references:
@@ -1127,6 +1172,15 @@ class TurnRuntimeManager:
                 else snapshot.get("bookReferences") or []
             ),
             "mastery_path_id": mastery_path_id,
+            # Recovered from the original turn's snapshot so the regenerate runs
+            # against the same document. An explicit override wins (the reader
+            # may have moved on), and the viewport is deliberately not restored —
+            # "where the user was looking" is stale by definition on a retry.
+            "reading_material_id": _reading_material_id(
+                overrides.get("reading_material_id")
+                if "reading_material_id" in overrides
+                else snapshot.get("readingMaterialId")
+            ),
             "config": config,
         }
         if llm_selection:
@@ -1828,6 +1882,11 @@ class TurnRuntimeManager:
                     "book_references": book_references,
                     "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
                     "mastery_path_lease_managed": capability_name == "mastery_path",
+                    # Immersive reading: the open material activates the reading
+                    # capability and binds its tools; the viewport tells the
+                    # model where the user is actually looking.
+                    "reading_material_id": _reading_material_id(payload.get("reading_material_id")),
+                    "reading_viewport": _reading_viewport(payload.get("reading_viewport")),
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,

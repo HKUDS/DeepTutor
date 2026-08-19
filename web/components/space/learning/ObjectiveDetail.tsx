@@ -73,12 +73,15 @@ export function ObjectiveDetail({
                 )}
                 <div className="min-w-0">
                   <div className="text-[var(--foreground)]">
-                    {attempt.prompt || tr("（题面已不可用）", "(prompt unavailable)")}
+                    {attempt.prompt ||
+                      tr("（题面已不可用）", "(prompt unavailable)")}
                   </div>
                   <div className="text-[var(--muted-foreground)]">
                     {tr("你答：", "You said: ")}
                     {attempt.answer || tr("（空）", "(blank)")}
-                    <span className="ml-2">{formatRelative(attempt.at, zh)}</span>
+                    <span className="ml-2">
+                      {formatRelative(attempt.at, zh)}
+                    </span>
                   </div>
                 </div>
               </li>
@@ -91,9 +94,15 @@ export function ObjectiveDetail({
         <Row label={tr("错因", "Error diagnosis")}>
           {report.errors.map((record) => (
             <span key={record.id} className="mr-2">
-              {tr(ERROR_TYPE_CN[record.error_type] ?? record.error_type, record.error_type)}
+              {tr(
+                ERROR_TYPE_CN[record.error_type] ?? record.error_type,
+                record.error_type,
+              )}
               {record.retries > 0 &&
-                tr(` · 重试 ${record.retries} 次`, ` · ${record.retries} retries`)}
+                tr(
+                  ` · 重试 ${record.retries} 次`,
+                  ` · ${record.retries} retries`,
+                )}
               {record.status === "graduated" && tr(" · 已订正", " · cleared")}
             </span>
           ))}
@@ -121,12 +130,20 @@ function GateBar({ report, tr }: { report: ObjectiveReport; tr: Translate }) {
       <div className="flex items-baseline justify-between text-xs">
         <span className="text-[var(--muted-foreground)]">
           {report.gate === "qualitative"
-            ? tr("定性门槛：用自己的话讲清楚", "Qualitative gate: explain it in your own words")
-            : tr(`定量门槛：${thresholdPct}%`, `Quantitative gate: ${thresholdPct}%`)}
+            ? tr(
+                "定性门槛：用自己的话讲清楚",
+                "Qualitative gate: explain it in your own words",
+              )
+            : tr(
+                `定量门槛：${thresholdPct}%`,
+                `Quantitative gate: ${thresholdPct}%`,
+              )}
         </span>
         <span
           className={
-            report.mastered ? "text-green-500" : "text-[var(--muted-foreground)]"
+            report.mastered
+              ? "text-green-500"
+              : "text-[var(--muted-foreground)]"
           }
         >
           {pct}%
@@ -148,7 +165,13 @@ function GateBar({ report, tr }: { report: ObjectiveReport; tr: Translate }) {
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="text-xs">
       <div className="text-[var(--muted-foreground)]">{label}</div>

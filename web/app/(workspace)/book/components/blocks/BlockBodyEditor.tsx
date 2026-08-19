@@ -57,7 +57,10 @@ export default function BlockBodyEditor({
           if (event.key === "Escape") {
             event.preventDefault();
             onCancel();
-          } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          } else if (
+            event.key === "Enter" &&
+            (event.metaKey || event.ctrlKey)
+          ) {
             event.preventDefault();
             void commit();
           }

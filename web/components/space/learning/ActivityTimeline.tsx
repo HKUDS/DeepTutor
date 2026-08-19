@@ -100,7 +100,10 @@ function describe(
     case "mastery.assessed":
       return event.payload?.passed
         ? tr(`${name} 的解释达标`, `Explanation accepted for ${name}`)
-        : tr(`${name} 的解释还不够`, `Explanation not yet sufficient for ${name}`);
+        : tr(
+            `${name} 的解释还不够`,
+            `Explanation not yet sufficient for ${name}`,
+          );
     case "path.saved":
       return tr("保存了路径状态", "Path state saved");
     default:

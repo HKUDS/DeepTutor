@@ -2,9 +2,9 @@
 
 The engine is a thin HTTPS client over IMA's knowledge-base OpenAPI. We exercise:
 
-* the client wire shapes (POST path, auth headers, ``{code,msg,data}`` envelope,
-  cursor pagination, error-code mapping) against an injected
-  ``httpx.MockTransport`` — no network,
+* the client wire shapes (POST path, auth headers, the status envelope in both of
+  its documented spellings, cursor pagination, error-code mapping) against an
+  injected ``httpx.MockTransport`` — no network,
 * the connect-time probe verdict (credentials accepted / library resolves),
 * the pipeline's ``search`` (reads the per-KB binding from ``kb_config.json``,
   shapes the result, and fails cleanly when unconfigured/unreachable),
@@ -36,8 +36,13 @@ from deeptutor.services.rag.pipelines.ima.config import (
     ImaNotConfiguredError,
     config_from_entry,
 )
+from deeptutor.services.rag.pipelines.ima.models import parse_knowledge_page
 from deeptutor.services.rag.pipelines.ima.pipeline import ImaPipeline
 from deeptutor.services.rag.pipelines.ima.probe import probe_knowledge_base
+from deeptutor.services.rag.pipelines.ima.sources import (
+    DEFAULT_HYDRATION_BUDGET,
+    MIN_USEFUL_SNIPPET_CHARS,
+)
 
 CONFIG = ImaConfig(client_id="cid", api_key="key", knowledge_base_id="kb-1")
 
@@ -146,10 +151,10 @@ class TestClientWire:
             cursors.append(body["cursor"])
             return _ok(pages[len(cursors) - 1])
 
-        items = asyncio.run(_client(handler).search_knowledge("q", limit=10))
+        page = asyncio.run(_client(handler).search_knowledge("q", limit=10))
 
         assert cursors == ["", "c2"]
-        assert [item["media_id"] for item in items] == ["m1", "m2"]
+        assert [document.media_id for document in page.documents] == ["m1", "m2"]
 
     def test_search_stops_once_limit_is_reached(self) -> None:
         calls = 0
@@ -168,10 +173,10 @@ class TestClientWire:
                 }
             )
 
-        items = asyncio.run(_client(handler).search_knowledge("q", limit=2))
+        page = asyncio.run(_client(handler).search_knowledge("q", limit=2))
 
         assert calls == 1
-        assert len(items) == 2
+        assert len(page.documents) == 2
 
     def test_search_page_budget_bounds_pagination(self) -> None:
         # A server that never reports the end must not spin forever.
@@ -249,7 +254,10 @@ class TestClientWire:
                         "notebook_ext_info": {"notebook_id": "note-1"},
                     }
                 )
+            # Both documented spellings of the note id are sent, so the call
+            # works whichever one this deployment expects.
             assert json.loads(request.content) == {
+                "doc_id": "note-1",
                 "note_id": "note-1",
                 "target_content_format": 0,
             }
@@ -348,10 +356,18 @@ class TestClientKnowledgeBaseList:
         }
         assert page == {"knowledge_bases": [], "next_cursor": "", "is_end": True}
 
-    @pytest.mark.parametrize("limit", [0, 21])
-    def test_list_rejects_limits_outside_ima_bounds(self, limit: int) -> None:
-        with pytest.raises(ValueError, match="between 1 and 20"):
-            asyncio.run(_client(lambda _request: _ok({})).search_knowledge_bases(limit=limit))
+    @pytest.mark.parametrize(("requested", "sent"), [(0, 1), (99, 50), ("x", 50)])
+    def test_list_clamps_limits_into_ima_bounds(self, requested, sent: int) -> None:
+        """IMA documents 1..50; a caller's value is clamped, never rejected."""
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["body"] = json.loads(request.content)
+            return _ok({"info_list": [], "is_end": True})
+
+        asyncio.run(_client(handler).search_knowledge_bases(limit=requested))
+
+        assert seen["body"]["limit"] == sent
 
     def test_list_deduplicates_and_enriches_descriptions(self) -> None:
         seen_bodies: list[dict] = []
@@ -576,27 +592,38 @@ def _kb_config(tmp_path: Path, entry: dict) -> str:
     return str(base)
 
 
+def _thick(text: str) -> str:
+    """A snippet long enough that retrieval treats it as usable evidence."""
+    return text + " " + "x" * MIN_USEFUL_SNIPPET_CHARS
+
+
 class _SearchStub:
+    """A client stub taking wire-shaped items, so parsing stays under test too."""
+
     def __init__(
         self,
         items: list[dict] | None = None,
         error: Exception | None = None,
         media: dict[str, ImaMediaContent | None] | None = None,
+        media_error: Exception | None = None,
     ) -> None:
         self._items = items or []
         self._error = error
         self._media = media or {}
+        self._media_error = media_error
         self.limit: int | None = None
         self.media_calls: list[str] = []
 
-    async def search_knowledge(self, query: str, *, limit: int) -> list[dict]:
+    async def search_knowledge(self, query: str, *, limit: int):
         self.limit = limit
         if self._error is not None:
             raise self._error
-        return self._items
+        return parse_knowledge_page({"info_list": self._items, "is_end": True})
 
     async def get_media_content(self, media_id: str) -> ImaMediaContent | None:
         self.media_calls.append(media_id)
+        if self._media_error is not None:
+            raise self._media_error
         return self._media.get(media_id)
 
 
@@ -614,8 +641,8 @@ class TestPipelineSearch:
         )
         stub = _SearchStub(
             [
-                {"media_id": "m1", "title": "Alpha", "highlight_content": "alpha text"},
-                {"media_id": "m2", "title": "Beta", "highlight_content": "beta text"},
+                {"media_id": "m1", "title": "Alpha", "highlight_content": _thick("alpha text")},
+                {"media_id": "m2", "title": "Beta", "highlight_content": _thick("beta text")},
             ]
         )
         pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
@@ -629,6 +656,8 @@ class TestPipelineSearch:
         assert "[1] Alpha" in result["content"]
         assert "alpha text" in result["content"]
         assert result["answer"] == result["content"]
+        # Snippets this substantial need no full-text top-up.
+        assert stub.media_calls == []
 
     def test_title_only_match_is_kept_without_a_snippet(self, tmp_path) -> None:
         base = _kb_config(
@@ -659,43 +688,117 @@ class TestPipelineSearch:
         assert result["sources"][0]["content"] == "quotable full text"
         assert stub.media_calls == ["m1"]
 
-    def test_existing_snippet_skips_full_content_fetch(self, tmp_path) -> None:
+    def test_substantial_snippet_skips_full_content_fetch(self, tmp_path) -> None:
         base = _kb_config(
             tmp_path,
             {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
         )
+        snippet = _thick("snippet")
         stub = _SearchStub(
-            [{"media_id": "m1", "title": "Alpha", "highlight_content": "snippet"}],
+            [{"media_id": "m1", "title": "Alpha", "highlight_content": snippet}],
             media={"m1": ImaMediaContent(text="full text")},
         )
         pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
 
         result = asyncio.run(pipeline.search("q", "IMA"))
 
-        assert result["sources"][0]["content"] == "snippet"
+        assert result["sources"][0]["content"] == snippet
         assert stub.media_calls == []
 
-    def test_full_content_fallback_is_limited_to_three_items(self, tmp_path) -> None:
+    def test_thin_snippet_is_topped_up_with_source_text(self, tmp_path) -> None:
+        """One matched sentence is a hint, not evidence — read the real document."""
         base = _kb_config(
             tmp_path,
             {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
         )
-        items = [{"media_id": f"m{i}", "title": f"Doc {i}"} for i in range(4)]
         stub = _SearchStub(
-            items,
-            media={f"m{i}": ImaMediaContent(text=f"text {i}") for i in range(4)},
+            [{"media_id": "m1", "title": "Alpha", "highlight_content": "one line"}],
+            media={"m1": ImaMediaContent(text="the whole document")},
         )
         pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
 
         result = asyncio.run(pipeline.search("q", "IMA"))
 
-        assert stub.media_calls == ["m0", "m1", "m2"]
-        assert [source["content"] for source in result["sources"]] == [
-            "text 0",
-            "text 1",
-            "text 2",
-            "",
-        ]
+        assert result["sources"][0]["content"] == "the whole document"
+        assert stub.media_calls == ["m1"]
+
+    def test_snippetless_matches_are_topped_up_before_thin_ones(self, tmp_path) -> None:
+        base = _kb_config(
+            tmp_path,
+            {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
+        )
+        stub = _SearchStub(
+            [
+                {"media_id": "thin", "title": "Thin", "highlight_content": "hint"},
+                {"media_id": "empty", "title": "Empty"},
+            ],
+            media={
+                "thin": ImaMediaContent(text="thin full"),
+                "empty": ImaMediaContent(text="empty full"),
+            },
+        )
+        pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
+
+        asyncio.run(pipeline.search("q", "IMA"))
+
+        assert stub.media_calls[0] == "empty"
+
+    def test_unreadable_source_keeps_the_other_matches(self, tmp_path) -> None:
+        base = _kb_config(
+            tmp_path,
+            {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
+        )
+        stub = _SearchStub(
+            [
+                {"media_id": "m1", "title": "Alpha", "highlight_content": "hint"},
+                {"media_id": "m2", "title": "Beta", "highlight_content": _thick("beta")},
+            ],
+            media_error=RuntimeError("cos down"),
+        )
+        pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
+
+        result = asyncio.run(pipeline.search("q", "IMA"))
+
+        assert [source["title"] for source in result["sources"]] == ["Alpha", "Beta"]
+        assert result["sources"][0]["content"] == "hint"
+
+    def test_matched_folders_never_become_sources(self, tmp_path) -> None:
+        """IMA also matches folder names; a folder is not a citable document."""
+        base = _kb_config(
+            tmp_path,
+            {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
+        )
+        stub = _SearchStub(
+            [
+                {"folder_id": "f1", "name": "Papers", "file_number": 3},
+                {"media_id": "m1", "title": "Alpha", "highlight_content": _thick("alpha")},
+            ]
+        )
+        pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
+
+        result = asyncio.run(pipeline.search("q", "IMA"))
+
+        assert [source["title"] for source in result["sources"]] == ["Alpha"]
+
+    def test_full_content_fallback_respects_its_budget(self, tmp_path) -> None:
+        base = _kb_config(
+            tmp_path,
+            {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
+        )
+        count = DEFAULT_HYDRATION_BUDGET + 2
+        items = [{"media_id": f"m{i}", "title": f"Doc {i}"} for i in range(count)]
+        stub = _SearchStub(
+            items,
+            media={f"m{i}": ImaMediaContent(text=f"text {i}") for i in range(count)},
+        )
+        pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
+
+        result = asyncio.run(pipeline.search("q", "IMA"))
+
+        assert sorted(stub.media_calls) == sorted(f"m{i}" for i in range(DEFAULT_HYDRATION_BUDGET))
+        hydrated = [source for source in result["sources"] if source["content"]]
+        assert len(hydrated) == DEFAULT_HYDRATION_BUDGET
+        assert result["sources"][-1]["content"] == ""
 
     def test_downloaded_text_file_is_extracted(self, tmp_path) -> None:
         base = _kb_config(
@@ -747,7 +850,9 @@ class TestPipelineSearch:
 
         def factory(config: ImaConfig):
             seen.append(config)
-            return _SearchStub([{"media_id": "m1", "title": "Alpha", "highlight_content": "a"}])
+            return _SearchStub(
+                [{"media_id": "m1", "title": "Alpha", "highlight_content": _thick("a")}]
+            )
 
         pipeline = ImaPipeline(kb_base_dir=base, client_factory=factory)
 
