@@ -122,10 +122,20 @@ def test_has_no_local_document_root(tmp_path) -> None:
     assert document_root(manager.base_dir / "IMA", entry) is None
 
 
-def test_documents_are_reported_as_non_enumerable(tmp_path) -> None:
-    # IMA holds the documents behind its API; reporting "0 documents" would lie.
+def test_documents_are_non_enumerable_when_the_library_is_unreachable(
+    tmp_path, monkeypatch
+) -> None:
+    """The inventory comes from IMA's browse API; unreachable ≠ "0 documents".
+
+    The reader is stubbed to report "cannot determine" (no network in tests), and
+    the manifest must then degrade to "not listable" rather than claiming the
+    library is empty. Enumeration of a reachable library is covered in
+    ``tests/services/rag/test_ima_inventory.py``.
+    """
+    from deeptutor.knowledge import manifest as manifest_module
     from deeptutor.knowledge.manifest import UNAVAILABLE_REMOTE, build_manifest
 
+    monkeypatch.setitem(manifest_module._REMOTE_INVENTORY_READERS, "ima", lambda _entry: None)
     manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
     entry = _register(manager)
 
@@ -133,3 +143,22 @@ def test_documents_are_reported_as_non_enumerable(tmp_path) -> None:
 
     assert manifest.unavailable == UNAVAILABLE_REMOTE
     assert manifest.total == 0
+
+
+def test_a_reachable_library_enumerates_its_documents(tmp_path, monkeypatch) -> None:
+    """The point of the browse API: "what's in here" is answerable for IMA too."""
+    from deeptutor.knowledge import manifest as manifest_module
+    from deeptutor.knowledge.manifest import build_manifest
+
+    monkeypatch.setitem(
+        manifest_module._REMOTE_INVENTORY_READERS,
+        "ima",
+        lambda _entry: (["a.pdf", "Papers/b.md"], True),
+    )
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
+    entry = _register(manager)
+
+    manifest = build_manifest(name="IMA", kb_dir=manager.base_dir / "IMA", entry=entry)
+
+    assert manifest.enumerable
+    assert [document.name for document in manifest.documents] == ["a.pdf", "Papers/b.md"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from deeptutor.capabilities.protocol import PromptBlock
@@ -68,6 +69,7 @@ class ChatPromptAssembler:
     ) -> list[PromptBlock]:
         blocks: list[PromptBlock] = [
             PromptBlock("general", self._general_block(context)),
+            PromptBlock("runtime_context", self._runtime_context_block()),
             PromptBlock("runtime_policy", self._t("runtime_policy")),
             PromptBlock("loop", self._t("loop.system")),
         ]
@@ -129,6 +131,35 @@ class ChatPromptAssembler:
             ).format(description=description)
             content = f"{content}\n{description_line}"
         return content
+
+    def _runtime_context_block(self) -> str:
+        """Inject the real current date so the model can resolve relative time.
+
+        Without this, a request like "今天上海天气怎样？" makes the model fall
+        back to its training-data cutoff when composing a web_search query
+        (e.g. "上海天气 2025年6月") — stale relative to the real system clock.
+        The injected date lets it convert "今天 / 本月 / 今年 / 现在" to the
+        correct date instead of guessing.
+
+        Granularity is day only (no clock time): the system prompt is
+        built once per turn and reused across every loop round, so omitting the
+        time keeps it byte-stable within a day and preserves prompt-cache hits.
+        Resolving relative dates does not need sub-day precision.
+        """
+        now = datetime.now().astimezone()
+        # The date *format* is locale data, so it lives here; the guidance
+        # prose around it is copy, so it lives in the per-language yaml like
+        # every other block. The default below is only the invariant fact, not
+        # a second copy of the prose.
+        if self.language == "zh":
+            dt_str = f"{now.year}年{now.month}月{now.day}日"
+        else:
+            dt_str = now.date().isoformat()
+        template = self._t("runtime_context", default="Current date: {datetime}.")
+        try:
+            return template.format(datetime=dt_str)
+        except (KeyError, IndexError, ValueError):
+            return f"{template} {dt_str}".strip()
 
     def _partner_turn_policy(self, context: UnifiedContext) -> str:
         identity = context.metadata.get("agent_identity")

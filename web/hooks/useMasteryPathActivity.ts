@@ -68,7 +68,10 @@ export function mergeEventBatch(
 
 /** Where the next read should start from after consuming ``batch``. */
 export function latestRevision(since: number, batch: MasteryEvent[]): number {
-  return batch.reduce((highest, event) => Math.max(highest, event.revision), since);
+  return batch.reduce(
+    (highest, event) => Math.max(highest, event.revision),
+    since,
+  );
 }
 
 export function useMasteryPathActivity(
@@ -96,7 +99,10 @@ export function useMasteryPathActivity(
     const controller = new AbortController();
 
     const poll = async () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible")
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      )
         return;
       const since =
         cursorRef.current.pathId === pathId ? cursorRef.current.revision : 0;

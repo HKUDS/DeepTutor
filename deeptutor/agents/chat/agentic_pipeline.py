@@ -1469,10 +1469,11 @@ class AgenticChatPipeline:
 
         Retrieval cannot answer "how many files are in here" — the passages it
         returns say nothing about the size of the collection they came from. The
-        inventory is a filesystem fact, so it is read here (off the event loop,
-        one directory walk per KB) and rendered into the system prompt, which
-        keeps the prompt byte-stable for the whole turn and makes counts
-        answerable without a tool round-trip.
+        inventory is read here instead (off the event loop: a directory walk per
+        local KB, and a cached browse call for a connected library that exposes
+        one) and rendered into the system prompt, which keeps the prompt
+        byte-stable for the whole turn and makes counts answerable without a tool
+        round-trip.
 
         PageIndex KBs are excluded: ``_pageindex_system_note`` already lists
         their documents, with the doc_ids its MCP tools need. Fails soft — a KB

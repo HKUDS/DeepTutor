@@ -331,28 +331,33 @@ class SourceExplorer(BaseAgent):
 
     @staticmethod
     def partition_knowledge_bases(kb_list: list[str]) -> tuple[list[str], list[str]]:
-        """Split *kb_list* into (retrievable, connected).
+        """Split *kb_list* into (retrievable, unreachable).
 
-        Connected KBs are pointers — an Obsidian vault, a subagent CLI, a remote
-        LightRAG or IMA library — with no local index for ``rag_search`` to hit.
-        Sweeping them anyway returned nothing and looked identical to a source
-        that simply had no relevant content, so the reader never learned their
-        vault contributed zero. Reaching them properly means driving each
-        capability, which is a separate piece of work; naming them is the
-        honest interim.
+        Only the KBs ``rag_search`` genuinely cannot reach are set aside: an
+        Obsidian vault (no index — its capability navigates live files) and a
+        connected subagent (not a document collection). Sweeping those returned
+        nothing and looked identical to a source that simply had no relevant
+        content, so the reader never learned their vault contributed zero;
+        reaching them properly means driving each capability, which is separate
+        work, and naming them is the honest interim.
+
+        Every other pointer KB *is* retrievable and is swept normally — a
+        ``linked`` folder mounts an index built elsewhere, and ``lightrag_server``
+        / ``ima`` offload retrieval over HTTP. Treating "connected" as
+        "unsearchable" silently dropped those sources from every book.
         """
         retrievable: list[str] = []
-        connected: list[str] = []
+        unreachable: list[str] = []
         for kb in kb_list:
             try:
-                from deeptutor.knowledge.kb_types import is_connected_kb
+                from deeptutor.knowledge.kb_types import supports_rag_retrieval
                 from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
 
                 meta = resolve_kb_metadata(kb)
             except Exception:  # noqa: BLE001 - unresolvable → treat as ordinary
                 meta = None
-            (connected if meta and is_connected_kb(meta) else retrievable).append(kb)
-        return retrievable, connected
+            (retrievable if supports_rag_retrieval(meta) else unreachable).append(kb)
+        return retrievable, unreachable
 
     async def _retrieve_kb_chunks(
         self,

@@ -111,13 +111,15 @@ export function useBookStream(
 
 /** Normalized `kind` for a book event, wherever the backend put it. */
 export function bookEventKind(event: BookWsEvent): string {
-  const metadata = (event.metadata as Record<string, unknown> | undefined) || {};
+  const metadata =
+    (event.metadata as Record<string, unknown> | undefined) || {};
   return String(metadata.kind || event.content || "");
 }
 
 /** The page a book event refers to, or `null` for book-level events. */
 export function bookEventPageId(event: BookWsEvent): string | null {
-  const metadata = (event.metadata as Record<string, unknown> | undefined) || {};
+  const metadata =
+    (event.metadata as Record<string, unknown> | undefined) || {};
   const pageId = metadata.page_id;
   return typeof pageId === "string" && pageId ? pageId : null;
 }

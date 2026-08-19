@@ -6,6 +6,7 @@ import {
   Loader2,
   MessageSquare,
   NotebookPen,
+  Plus,
   Sparkles,
   User,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import PickerShell from "@/components/common/PickerShell";
 import PickerHeader from "@/components/common/PickerHeader";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
+  createNotebook,
   listNotebooks,
   type NotebookSummary as RealNotebookSummary,
 } from "@/lib/notebook-api";
@@ -162,6 +164,10 @@ export default function SaveToNotebookModal({
   const [selectedMessageIdx, setSelectedMessageIdx] = useState<Set<number>>(
     new Set(),
   );
+  // Creating a notebook without leaving the dialog: having to go find the
+  // Notebooks page mid-save was the single most-reported friction here.
+  const [newNotebookName, setNewNotebookName] = useState("");
+  const [isCreatingNotebook, setIsCreatingNotebook] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const hasMessageSelection = Array.isArray(messages) && messages.length > 0;
@@ -175,6 +181,7 @@ export default function SaveToNotebookModal({
     setError("");
     setSelectedIds([]);
     setTitleEdited(false);
+    setNewNotebookName("");
     if (hasMessageSelection && messages) {
       setSelectedMessageIdx(new Set(messages.map((_, idx) => idx)));
       setTitle(deriveTitle(messages, payload?.title || ""));
@@ -186,7 +193,9 @@ export default function SaveToNotebookModal({
     void (async () => {
       try {
         const list = await listNotebooks();
-        setNotebooks(list);
+        // Damaged notebooks cannot accept a record — the backend skips them
+        // — so they are not offered as a destination.
+        setNotebooks(list.filter((notebook) => !notebook.unreadable));
       } catch {
         setNotebooks([]);
       } finally {
@@ -194,6 +203,24 @@ export default function SaveToNotebookModal({
       }
     })();
   }, [open, payload, messages, hasMessageSelection]);
+
+  const handleCreateNotebook = async () => {
+    const name = newNotebookName.trim();
+    if (!name || isCreatingNotebook) return;
+    setIsCreatingNotebook(true);
+    setError("");
+    try {
+      const created = await createNotebook({ name });
+      setNotebooks((prev) => [created, ...prev]);
+      // Pre-select it: the user made this notebook in order to save here.
+      setSelectedIds([created.id]);
+      setNewNotebookName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsCreatingNotebook(false);
+    }
+  };
 
   const orderedSelectedMessages = useMemo<NotebookSaveMessage[]>(() => {
     if (!hasMessageSelection || !messages) return [];
@@ -350,11 +377,32 @@ export default function SaveToNotebookModal({
               String(event.payload.detail || t("Failed to save to notebook.")),
             );
           } else if (type === "result") {
+            // The backend skips notebooks it cannot write to and still
+            // returns a record, so success has to be judged by which
+            // notebooks actually accepted it — not by the response arriving.
+            const accepted = Array.isArray(event.payload.added_to_notebooks)
+              ? (event.payload.added_to_notebooks as string[])
+              : [];
+            const rejected = selectedIds.filter((id) => !accepted.includes(id));
+            if (!accepted.length) {
+              throw new Error(
+                t(
+                  "No notebook accepted this save. Their files may be missing or damaged.",
+                ),
+              );
+            }
             const summary = String(event.payload.summary || finalSummary);
             setSummaryPreview(summary);
+            if (rejected.length) {
+              // Partial success: the save happened, but say what missed.
+              const names = rejected
+                .map((id) => notebooks.find((n) => n.id === id)?.name ?? id)
+                .join("、");
+              setError(t("Could not save to: {{names}}", { names }));
+            }
             onSaved?.({ summary });
             setIsLoading(false);
-            onClose();
+            if (!rejected.length) onClose();
             return;
           }
         }
@@ -539,12 +587,35 @@ export default function SaveToNotebookModal({
                   <Loader2 className="h-4 w-4 animate-spin text-[var(--muted-foreground)]" />
                 </div>
               ) : notebooks.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
+                <div className="flex flex-col items-center gap-2.5 px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
                   <NotebookPen className="h-5 w-5 text-[var(--muted-foreground)]/60" />
-                  <span>{t("No notebooks found.")}</span>
-                  <span className="text-[11px] text-[var(--muted-foreground)]/80">
-                    {t("Create one from the Knowledge → Notebooks page.")}
-                  </span>
+                  <span>{t("No notebooks yet.")}</span>
+                  <div className="flex w-full max-w-xs items-center gap-1.5">
+                    <input
+                      value={newNotebookName}
+                      onChange={(event) =>
+                        setNewNotebookName(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") void handleCreateNotebook();
+                      }}
+                      placeholder={t("Name your first notebook")}
+                      className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateNotebook()}
+                      disabled={!newNotebookName.trim() || isCreatingNotebook}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
+                    >
+                      {isCreatingNotebook ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="h-3.5 w-3.5" />
+                      )}
+                      {t("Create")}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 notebooks.map((notebook) => {

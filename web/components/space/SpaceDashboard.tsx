@@ -82,7 +82,7 @@ const GROUPS: DashboardGroup[] = [
       },
       {
         key: "notebooks",
-        href: "/space/notebooks",
+        href: "/notebook",
         icon: NotebookPen,
         title: { zh: "笔记本", en: "Notebooks" },
         blurb: {

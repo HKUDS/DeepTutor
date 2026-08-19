@@ -32,6 +32,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
+from deeptutor.services.llm.usage_frame import token_counts
 
 if TYPE_CHECKING:
     from deeptutor.services.provider_registry import ProviderSpec
@@ -490,27 +491,12 @@ class OpenAICompatProvider(LLMProvider):
 
     @classmethod
     def _extract_usage(cls, response: Any) -> dict[str, int]:
-        usage_obj = None
         response_map = cls._maybe_mapping(response)
         if response_map is not None:
             usage_obj = response_map.get("usage")
-        elif hasattr(response, "usage") and response.usage:
-            usage_obj = response.usage
-
-        usage_map = cls._maybe_mapping(usage_obj)
-        if usage_map is not None:
-            return {
-                "prompt_tokens": int(usage_map.get("prompt_tokens") or 0),
-                "completion_tokens": int(usage_map.get("completion_tokens") or 0),
-                "total_tokens": int(usage_map.get("total_tokens") or 0),
-            }
-        if usage_obj:
-            return {
-                "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
-                "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(usage_obj, "total_tokens", 0) or 0,
-            }
-        return {}
+        else:
+            usage_obj = getattr(response, "usage", None)
+        return token_counts(usage_obj)
 
     def _parse(self, response: Any) -> LLMResponse:
         if isinstance(response, str):

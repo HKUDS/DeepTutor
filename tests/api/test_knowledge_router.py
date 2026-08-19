@@ -264,7 +264,7 @@ def test_list_ima_rejects_missing_credentials(payload: dict) -> None:
     assert "required" in response.json()["detail"]
 
 
-@pytest.mark.parametrize("limit", [0, 21])
+@pytest.mark.parametrize("limit", [0, 51])
 def test_list_ima_validates_official_page_limit(limit: int) -> None:
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -847,6 +847,64 @@ def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Pat
     assert "parse failed loudly" in entry["last_error"]
     assert entry["progress"]["stage"] == "error"
     assert entry["progress"]["indexed_count"] == 0
+
+
+def test_upload_task_with_folder_root_preserves_subfolder_structure(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A linked-folder sync (folder_root set) stages a nested file under the
+    same relative subpath in raw/, instead of flattening it to its basename
+    and colliding with a same-named file from another subfolder (#866)."""
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_ready_llamaindex_version(kb_dir)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    linked_folder = tmp_path / "linked"
+    (linked_folder / "sub").mkdir(parents=True)
+    doc = linked_folder / "sub" / "note.md"
+    doc.write_text("hello", encoding="utf-8")
+
+    class _SucceedingRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.RAGService",
+        _SucceedingRagService,
+    )
+
+    asyncio.run(
+        knowledge_router_module.run_upload_processing_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            uploaded_file_paths=[str(doc)],
+            task_id="folder-sync-test",
+            rag_provider="llamaindex",
+            folder_root=str(linked_folder),
+        )
+    )
+
+    assert (raw_dir / "sub" / "note.md").read_text(encoding="utf-8") == "hello"
+    assert not (raw_dir / "note.md").exists()
 
 
 def test_list_files_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
