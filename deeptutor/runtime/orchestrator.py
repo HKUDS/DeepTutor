@@ -23,6 +23,26 @@ from deeptutor.runtime.registry.tool_registry import get_tool_registry
 logger = logging.getLogger(__name__)
 
 
+def completion_event_fields(
+    context: UnifiedContext, cap_name: str
+) -> tuple[str, dict[str, Any]]:
+    """Build CAPABILITY_COMPLETE ``agent_output`` + metadata.
+
+    Capabilities may stash a body on ``context.metadata["agent_output"]``.
+    Remaining metadata is forwarded as-is; ``capability``, ``session_id``,
+    and ``turn_id`` always win so consumers can rely on those keys.
+    """
+    meta = dict(context.metadata or {})
+    agent_output = str(meta.get("agent_output") or "")
+    merged = {
+        **meta,
+        "capability": cap_name,
+        "session_id": context.session_id,
+        "turn_id": str(meta.get("turn_id") or ""),
+    }
+    return agent_output, merged
+
+
 class ChatOrchestrator:
     """
     Routes a ``UnifiedContext`` to the correct capability, manages
@@ -130,17 +150,14 @@ class ChatOrchestrator:
         """Publish CAPABILITY_COMPLETE to the global EventBus."""
         try:
             bus = get_event_bus()
+            agent_output, metadata = completion_event_fields(context, cap_name)
             await bus.publish(
                 Event(
                     type=EventType.CAPABILITY_COMPLETE,
                     task_id=str(context.metadata.get("turn_id") or context.session_id),
                     user_input=context.user_message,
-                    agent_output="",
-                    metadata={
-                        "capability": cap_name,
-                        "session_id": context.session_id,
-                        "turn_id": str(context.metadata.get("turn_id", "")),
-                    },
+                    agent_output=agent_output,
+                    metadata=metadata,
                 )
             )
         except Exception:

@@ -254,3 +254,52 @@ class TestOrchestratorHelpers:
         orch = _make_orchestrator()
         schemas = orch.get_tool_schemas()
         assert isinstance(schemas, list)
+
+
+class TestCompletionEventFields:
+    def test_reads_agent_output_and_merges_metadata(self) -> None:
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(
+            user_message="hi",
+            session_id="sess-1",
+            metadata={
+                "agent_output": "## Debrief\nNice work.",
+                "turn_id": "turn-9",
+                "practice_trace": "keep-me",
+            },
+        )
+        output, meta = completion_event_fields(ctx, "echo")
+        assert output == "## Debrief\nNice work."
+        assert meta["capability"] == "echo"
+        assert meta["session_id"] == "sess-1"
+        assert meta["turn_id"] == "turn-9"
+        assert meta["practice_trace"] == "keep-me"
+        assert meta["agent_output"] == "## Debrief\nNice work."
+
+    def test_capability_and_ids_override_stashed_keys(self) -> None:
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(
+            user_message="hi",
+            session_id="real-session",
+            metadata={
+                "capability": "spoofed",
+                "session_id": "spoofed-session",
+                "turn_id": "t1",
+            },
+        )
+        _, meta = completion_event_fields(ctx, "echo")
+        assert meta["capability"] == "echo"
+        assert meta["session_id"] == "real-session"
+        assert meta["turn_id"] == "t1"
+
+    def test_empty_agent_output_when_unset(self) -> None:
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(user_message="hi", session_id="s", metadata={})
+        output, meta = completion_event_fields(ctx, "chat")
+        assert output == ""
+        assert meta["capability"] == "chat"
+        assert "agent_output" not in meta or meta.get("agent_output") in (None, "")
+

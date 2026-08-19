@@ -146,6 +146,7 @@ export default function WhisperPage() {
     const poll = window.setInterval(() => {
       if (client.connected) {
         setConnected(true);
+        setEverConnected(true);
         window.clearInterval(poll);
       }
     }, 100);
@@ -185,6 +186,7 @@ export default function WhisperPage() {
     if (client.connected) {
       client.send(payload);
       setConnected(true);
+      setEverConnected(true);
       return;
     }
     if (attempt >= 10) {
@@ -331,7 +333,7 @@ export default function WhisperPage() {
           {!connected && (
             <span className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Reconnecting…
+              {everConnected ? "Reconnecting…" : "Connecting…"}
             </span>
           )}
         </div>
