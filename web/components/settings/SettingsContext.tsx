@@ -23,6 +23,7 @@ import {
   writeStoredResponseLanguage,
 } from "@/context/app-shell-storage";
 import { useAppShell } from "@/context/AppShellContext";
+import type { AppLanguage } from "@/i18n/languages";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setModelReasoningEffort } from "@/lib/reasoning-effort";
@@ -31,13 +32,7 @@ import { setTheme as applyThemePreference } from "@/lib/theme";
 // ─── Domain types ─────────────────────────────────────────────────────────
 
 export type ServiceName =
-  | "llm"
-  | "embedding"
-  | "search"
-  | "tts"
-  | "stt"
-  | "imagegen"
-  | "videogen";
+  "llm" | "embedding" | "search" | "tts" | "stt" | "imagegen" | "videogen";
 
 export type CatalogModel = {
   id: string;
@@ -116,8 +111,8 @@ export type Catalog = {
 
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
-  language: "en" | "zh";
-  response_language: "en" | "zh";
+  language: AppLanguage;
+  response_language: AppLanguage;
   code_block_theme: string;
   code_block_show_line_numbers: boolean;
   code_block_wrap_long_lines: boolean;
@@ -205,10 +200,7 @@ export type DiagnosticsResult = {
 };
 
 export type ServiceReadiness =
-  | "not_configured"
-  | "untested"
-  | "passed"
-  | "failed";
+  "not_configured" | "untested" | "passed" | "failed";
 
 type SettingsPayload = {
   ui: UiSettings;
@@ -649,7 +641,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       setTheme(payload.ui.theme);
       setLanguage(payload.ui.language);
-      setResponseLanguage(payload.ui.response_language ?? payload.ui.language);
+      const loadedResponseLanguage =
+        payload.ui.response_language ?? payload.ui.language;
+      setResponseLanguage(loadedResponseLanguage);
+      writeStoredResponseLanguage(loadedResponseLanguage);
       // Writes the backend-loaded values into app-shell storage and dispatches
       // the code-block settings event; AppShellContext (the single source) picks
       // them up, so no separate copy needs seeding here.

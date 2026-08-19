@@ -1,5 +1,7 @@
 "use client";
 
+import { localeForLanguage, type AppLanguage } from "@/i18n/languages";
+
 import type { CatalogProfile, ServiceName } from "./SettingsContext";
 
 export const fieldControlClass =
@@ -60,12 +62,12 @@ export function formatContextWindowSource(
 
 export function formatContextWindowUpdatedAt(
   value: string | undefined,
-  language: "en" | "zh",
+  language: AppLanguage,
 ): string {
   if (!value) return "";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString(language === "zh" ? "zh-CN" : "en-US", {
+  return parsed.toLocaleString(localeForLanguage(language), {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -95,7 +97,7 @@ export function activeModelDetail(
 // CJK glyphs are already square blocks so we drop both and bump size a hair.
 export function labelClass(
   size: "sm" | "md" | "lg",
-  language: "en" | "zh",
+  language: AppLanguage,
 ): string {
   if (language === "zh") {
     if (size === "sm") return "text-[10.5px] font-medium";

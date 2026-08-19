@@ -3,14 +3,9 @@ import { initReactI18next } from "react-i18next";
 
 import enApp from "@/locales/en/app.json";
 
-export type AppLanguage = "en" | "zh";
+import { normalizeLanguage, type AppLanguage } from "./languages";
 
-export function normalizeLanguage(lang: unknown): AppLanguage {
-  if (!lang) return "en";
-  const s = String(lang).toLowerCase();
-  if (s === "zh" || s === "cn" || s === "chinese") return "zh";
-  return "en";
-}
+export { normalizeLanguage, type AppLanguage } from "./languages";
 
 let _initialized = false;
 
@@ -46,5 +41,10 @@ export async function ensureLanguage(language: AppLanguage) {
   if (language === "zh") {
     const zhApp = (await import("@/locales/zh/app.json")).default;
     i18n.addResourceBundle("zh", "app", zhApp, true, true);
+    return;
+  }
+  if (language === "es") {
+    const esApp = (await import("@/locales/es/app.json")).default;
+    i18n.addResourceBundle("es", "app", esApp, true, true);
   }
 }

@@ -9,6 +9,7 @@ from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.trace import build_trace_metadata, derive_trace_metadata, new_call_id
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
+from deeptutor.services.prompt.language import append_language_directive, normalize_language
 from deeptutor.services.prompt.manager import get_prompt_manager
 from deeptutor.utils.json_parser import parse_json_response
 
@@ -28,7 +29,7 @@ class NotebookAnalysisAgent:
     """Analyze selected notebook records before the main capability runs."""
 
     def __init__(self, language: str = "en") -> None:
-        self.language = "zh" if str(language or "en").lower().startswith("zh") else "en"
+        self.language = normalize_language(language)
         self.llm_config = get_llm_config()
         self.model = getattr(self.llm_config, "model", None)
         self.api_key = getattr(self.llm_config, "api_key", None)
@@ -296,13 +297,13 @@ class NotebookAnalysisAgent:
         return str(section.get(field, "")).strip()
 
     def _thinking_system_prompt(self) -> str:
-        return self._stage_text("thinking", "system")
+        return append_language_directive(self._stage_text("thinking", "system"), self.language)
 
     def _acting_system_prompt(self) -> str:
-        return self._stage_text("acting", "system")
+        return append_language_directive(self._stage_text("acting", "system"), self.language)
 
     def _observing_system_prompt(self) -> str:
-        return self._stage_text("observing", "system")
+        return append_language_directive(self._stage_text("observing", "system"), self.language)
 
     def _thinking_prompt(self, user_question: str, records: list[dict[str, Any]]) -> str:
         return self._stage_text("thinking", "user_template").format(
