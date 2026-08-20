@@ -109,14 +109,15 @@ const nextConfig = {
   // This eliminates the need to copy the full node_modules into Docker production images
   output: "standalone",
 
-  // web/proxy.ts (the Next.js middleware) forwards /api/* and /ws/* to the
-  // backend by buffering and re-issuing the request. Next caps the buffered
-  // request body at 10MB by default, but the backend accepts uploads up to
-  // 200MB (DocumentValidator.MAX_FILE_SIZE). Raise the proxy cap to match (plus
-  // multipart overhead headroom) so knowledge-base document uploads aren't
-  // silently truncated when they pass through the proxy.
+  // web/proxy.ts clones request bodies before rewriting them. Keep enough room
+  // for individual large-body endpoints that still use Proxy. Knowledge-base
+  // create/upload batches use dedicated streaming route handlers instead, so
+  // their total size is not coupled to this in-memory clone limit.
   experimental: {
     proxyClientMaxBodySize: 210 * 1024 * 1024,
+    // Agentic reads and full-draft edits routinely exceed Next's 30-second
+    // rewrite default; the browser remains responsible for cancelling them.
+    proxyTimeout: 30 * 60 * 1000,
   },
 
   // Move dev indicator to bottom-right corner

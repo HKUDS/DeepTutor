@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -8,6 +9,7 @@ from deeptutor.api.utils.task_log_stream import (
     capture_task_logs,
     get_task_stream_manager,
 )
+from deeptutor.logging import PROCESS_LOG_PRIVATE_ATTR
 
 
 @pytest.mark.asyncio
@@ -29,6 +31,45 @@ async def test_knowledge_task_stream_emits_process_log_sse_event():
     assert payload["type"] == "process_log"
     assert payload["message"] == "Indexing started"
     assert payload["context"]["task_id"] == "task-1"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_task_stream_keeps_idle_sse_connection_alive():
+    manager = KnowledgeTaskStreamManager()
+    manager._HEARTBEAT_SECONDS = 0.01
+    manager.ensure_task("task-idle")
+
+    stream = manager.stream("task-idle")
+    try:
+        heartbeat = await asyncio.wait_for(anext(stream), timeout=0.2)
+        assert heartbeat == ": keep-alive\n\n"
+
+        manager.emit_log("task-idle", "Indexing resumed")
+        event = await asyncio.wait_for(anext(stream), timeout=0.2)
+        assert "event: process_log" in event
+        assert "Indexing resumed" in event
+    finally:
+        await stream.aclose()
+
+
+def test_knowledge_task_stream_emits_structured_failure_metadata():
+    manager = KnowledgeTaskStreamManager()
+    manager.ensure_task("task-failed")
+
+    manager.emit_failed(
+        "task-failed",
+        "Choose a compatible chat model.",
+        details="internal traceback",
+        error_code="graphrag_model_incompatible",
+        retryable=False,
+    )
+
+    event = list(manager._buffers["task-failed"])[-1]
+    assert event["event"] == "failed"
+    assert event["payload"]["detail"] == "Choose a compatible chat model."
+    assert event["payload"]["details"] == "internal traceback"
+    assert event["payload"]["error_code"] == "graphrag_model_incompatible"
+    assert event["payload"]["retryable"] is False
 
 
 def test_capture_task_logs_forwards_lightrag_non_propagating_logger():
@@ -95,6 +136,68 @@ def test_capture_task_logs_forwards_graphrag_propagating_logger_once():
         and event["payload"]["context"]["task_id"] == "task-graphrag"
     ]
     assert len(matches) == 1
+
+
+def test_capture_task_logs_excludes_private_non_propagating_library_diagnostics():
+    original_instance = KnowledgeTaskStreamManager._instance
+    graphrag_logger = logging.getLogger("graphrag")
+    original_handlers = list(graphrag_logger.handlers)
+    original_propagate = graphrag_logger.propagate
+    original_level = graphrag_logger.level
+    try:
+        KnowledgeTaskStreamManager._instance = KnowledgeTaskStreamManager()
+        graphrag_logger.handlers = []
+        graphrag_logger.propagate = False
+        graphrag_logger.setLevel(logging.INFO)
+
+        with capture_task_logs("task-private"):
+            graphrag_logger.error(
+                "Stack trace contains sk-secret-must-not-leak",
+                extra={PROCESS_LOG_PRIVATE_ATTR: True},
+            )
+
+        manager = get_task_stream_manager()
+        events = list(manager._buffers["task-private"])
+    finally:
+        KnowledgeTaskStreamManager._instance = original_instance
+        graphrag_logger.handlers = original_handlers
+        graphrag_logger.propagate = original_propagate
+        graphrag_logger.setLevel(original_level)
+
+    assert events == []
+
+
+def test_capture_task_logs_keeps_user_stages_and_drops_runtime_noise():
+    original_instance = KnowledgeTaskStreamManager._instance
+    loggers = {
+        name: logging.getLogger(name)
+        for name in (
+            "root",
+            "asyncio",
+            "deeptutor.knowledge.progress_tracker",
+            "deeptutor.services.rag.pipelines.pageindex.pipeline",
+        )
+    }
+    original_levels = {name: logger.level for name, logger in loggers.items()}
+    try:
+        KnowledgeTaskStreamManager._instance = KnowledgeTaskStreamManager()
+        for logger in loggers.values():
+            logger.setLevel(logging.INFO)
+        with capture_task_logs("task-curated"):
+            loggers["root"].error("Request timed out")
+            loggers["asyncio"].error("Event loop is closed")
+            loggers["deeptutor.knowledge.progress_tracker"].info("duplicate progress")
+            loggers["deeptutor.services.rag.pipelines.pageindex.pipeline"].info(
+                "PageIndex: submitting manual.pdf"
+            )
+        events = list(get_task_stream_manager()._buffers["task-curated"])
+    finally:
+        KnowledgeTaskStreamManager._instance = original_instance
+        for name, logger in loggers.items():
+            logger.setLevel(original_levels[name])
+
+    messages = [event["payload"]["message"] for event in events]
+    assert messages == ["PageIndex: submitting manual.pdf"]
 
 
 def test_completed_task_buffers_are_bounded_and_restore_terminal_event():

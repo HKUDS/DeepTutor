@@ -159,3 +159,156 @@ def test_stream_add_record_with_summary_strips_thinking_tags(
     detail = manager.get_notebook(nb["id"])
     assert detail is not None
     assert detail["records"][0]["summary"] == "Final reusable summary."
+
+
+def test_health_is_not_shadowed_by_the_notebook_id_route(manager: NotebookManager) -> None:
+    """`/health` is a literal path and must win over `/{notebook_id}`.
+
+    Declared after the parameterised route it returned 404 "Notebook not
+    found", because FastAPI matched `health` as an id.
+    """
+    with TestClient(_build_app(manager)) as client:
+        resp = client.get("/api/v1/notebook/health")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "healthy"
+
+
+def test_renaming_a_record_over_http_keeps_its_kb_name(manager: NotebookManager) -> None:
+    """The PUT endpoint must forward only the fields the client sent."""
+    notebook_id = manager.create_notebook("KB")["id"]
+    record = manager.add_record(
+        notebook_ids=[notebook_id],
+        record_type="chat",
+        title="Original",
+        user_query="q",
+        output="o",
+        kb_name="physics",
+    )["record"]
+
+    with TestClient(_build_app(manager)) as client:
+        resp = client.put(
+            f"/api/v1/notebook/{notebook_id}/records/{record['id']}",
+            json={"title": "Renamed"},
+        )
+
+    assert resp.status_code == 200
+    updated = resp.json()["record"]
+    assert updated["title"] == "Renamed"
+    assert updated["kb_name"] == "physics"
+
+
+def test_record_kb_name_can_still_be_cleared_explicitly(manager: NotebookManager) -> None:
+    notebook_id = manager.create_notebook("KB")["id"]
+    record = manager.add_record(
+        notebook_ids=[notebook_id],
+        record_type="chat",
+        title="Original",
+        user_query="q",
+        output="o",
+        kb_name="physics",
+    )["record"]
+
+    with TestClient(_build_app(manager)) as client:
+        resp = client.put(
+            f"/api/v1/notebook/{notebook_id}/records/{record['id']}",
+            json={"kb_name": None},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["record"]["kb_name"] is None
+
+
+def test_move_and_copy_endpoints(manager: NotebookManager) -> None:
+    source = manager.create_notebook("Source")["id"]
+    target = manager.create_notebook("Target")["id"]
+    record = manager.add_record(
+        notebook_ids=[source],
+        record_type="chat",
+        title="Travelling",
+        user_query="q",
+        output="o",
+    )["record"]
+
+    with TestClient(_build_app(manager)) as client:
+        copy_resp = client.post(
+            f"/api/v1/notebook/{source}/records/{record['id']}/copy",
+            json={"target_notebook_id": target},
+        )
+        assert copy_resp.status_code == 200
+        assert copy_resp.json()["record"]["id"] != record["id"]
+
+        move_resp = client.post(
+            f"/api/v1/notebook/{source}/records/{record['id']}/move",
+            json={"target_notebook_id": target},
+        )
+        assert move_resp.status_code == 200
+
+    assert manager.get_record(source, record["id"]) is None
+    assert len(manager.get_records(target)) == 2
+
+
+def test_export_returns_markdown(manager: NotebookManager) -> None:
+    notebook_id = manager.create_notebook("Exported")["id"]
+    manager.add_record(
+        notebook_ids=[notebook_id],
+        record_type="chat",
+        title="First entry",
+        user_query="q",
+        output="Body text.",
+    )
+
+    with TestClient(_build_app(manager)) as client:
+        resp = client.get(f"/api/v1/notebook/{notebook_id}/export")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/markdown")
+    assert "## First entry" in resp.text
+
+
+def test_damaged_notebook_returns_a_named_conflict(manager: NotebookManager) -> None:
+    (manager.base_dir / "broken01.json").write_text("{ not json", encoding="utf-8")
+
+    with TestClient(_build_app(manager)) as client:
+        resp = client.get("/api/v1/notebook/broken01")
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "notebook_unreadable"
+
+
+def test_every_notebook_endpoint_reports_damage_as_409(manager: NotebookManager) -> None:
+    """No endpoint may flatten a damaged file into an anonymous 500.
+
+    Each endpoint wraps its body in `except Exception -> 500`, which swallows
+    NotebookCorruptedError unless it is re-raised first. This walks the real
+    request surface so an endpoint added later without that guard fails here
+    rather than degrading quietly in production.
+    """
+    (manager.base_dir / "broken01.json").write_text("{ not json", encoding="utf-8")
+    healthy = manager.create_notebook("Healthy")["id"]
+
+    requests = [
+        ("GET", "/api/v1/notebook/broken01", None),
+        ("PUT", "/api/v1/notebook/broken01", {"name": "Renamed"}),
+        ("GET", "/api/v1/notebook/broken01/export", None),
+        ("DELETE", "/api/v1/notebook/broken01/records/whatever", None),
+        ("PUT", "/api/v1/notebook/broken01/records/whatever", {"title": "x"}),
+        (
+            "POST",
+            "/api/v1/notebook/broken01/records/whatever/copy",
+            {"target_notebook_id": healthy},
+        ),
+        (
+            "POST",
+            "/api/v1/notebook/broken01/records/whatever/move",
+            {"target_notebook_id": healthy},
+        ),
+    ]
+
+    with TestClient(_build_app(manager)) as client:
+        for method, url, body in requests:
+            resp = client.request(method, url, json=body)
+            assert resp.status_code == 409, f"{method} {url} returned {resp.status_code}"
+            assert resp.json()["detail"]["code"] == "notebook_unreadable", (
+                f"{method} {url} lost the structured reason"
+            )

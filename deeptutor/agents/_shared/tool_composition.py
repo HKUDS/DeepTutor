@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+import json
 from typing import Any
 
 from deeptutor.tools.builtin import (
@@ -50,6 +51,7 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "read_memory": "has_memory",
     "list_notebook": "has_notebooks",
     "write_note": "has_notebooks",
+    "question_bank": "has_question_bank",
     "read_skill": "has_skills",
     "load_tools": "has_deferred_tools",
     "exec": "has_exec",
@@ -78,6 +80,50 @@ def default_optional_tools(excluded: Iterable[str] = ()) -> list[str]:
     ]
 
 
+def admin_enabled_optional_tools() -> list[str]:
+    """The admin's globally-enabled user-toggleable tools.
+
+    Partners are admin-scoped artifacts (their config and workspace live under
+    the admin workspace root), so a partner's tool surface mirrors the admin's
+    Settings → Chat → Tools toggles — the very file that page writes. The
+    partner runtime executes inside a *synthetic* partner scope, not the
+    admin's, so reading the current-user path service there would resolve to
+    the partner's own (empty) settings; this reader goes straight to the admin
+    workspace's ``interface.json`` instead.
+
+    This is the single source both the partner tool picker
+    (``build_tool_options``) and the partner runtime
+    (``_resolved_enabled_tools``) intersect against, keeping them in lock-step
+    with the admin's global chat toggles: a tool the admin disabled globally
+    can neither be picked for a partner nor run inside one, regardless of what
+    a partner config saved. Fails open to the full toggleable set (mirroring
+    ``DEFAULT_UI_SETTINGS``) so a missing or unreadable settings file never
+    silently strips tools.
+    """
+    from deeptutor.multi_user.paths import get_admin_path_service
+
+    try:
+        path = get_admin_path_service().get_settings_file("interface")
+        if not path.exists():
+            return list(USER_TOGGLEABLE_TOOL_NAMES)
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        return list(USER_TOGGLEABLE_TOOL_NAMES)
+
+    value = data.get("enabled_optional_tools") if isinstance(data, dict) else None
+    if not isinstance(value, list):
+        return list(USER_TOGGLEABLE_TOOL_NAMES)
+    allowed = set(USER_TOGGLEABLE_TOOL_NAMES)
+    seen: set[str] = set()
+    out: list[str] = []
+    for name in value:
+        if isinstance(name, str) and name in allowed and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
 @dataclass(frozen=True)
 class ToolMountFlags:
     """Per-turn flags that drive the auto-mount policy.
@@ -91,6 +137,7 @@ class ToolMountFlags:
     has_sources: bool = False
     has_memory: bool = False
     has_notebooks: bool = False
+    has_question_bank: bool = False
     has_skills: bool = False
     has_deferred_tools: bool = False
     has_exec: bool = False
@@ -249,11 +296,29 @@ def user_has_notebooks() -> bool:
         return False
 
 
+def user_has_question_bank() -> bool:
+    """Whether the learner has any saved quiz questions.
+
+    Auto-mount gate for ``question_bank``. Separate from
+    :func:`user_has_notebooks` on purpose — the bank and the notebooks are
+    different stores, and a learner routinely has one without the other.
+    Same fail-closed posture as its siblings.
+    """
+    try:
+        from deeptutor.services.session import get_sqlite_session_store
+
+        return get_sqlite_session_store().has_question_bank_entries()
+    except Exception:
+        return False
+
+
 __all__ = [
     "AUTO_MOUNTED_TOOLS",
     "ToolMountFlags",
+    "admin_enabled_optional_tools",
     "compose_enabled_tools",
     "default_optional_tools",
     "user_has_memory",
     "user_has_notebooks",
+    "user_has_question_bank",
 ]

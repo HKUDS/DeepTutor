@@ -9,6 +9,7 @@ answer without knowing provider-specific filenames.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 import json
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     GRAPHRAG_PROVIDER,
     LIGHTRAG_PROVIDER,
+    PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
     version_matches_provider,
@@ -43,8 +45,8 @@ def inspect_provider_index(
     path = Path(storage_dir) if storage_dir is not None else None
     if path is None:
         return ProviderIndexProbe(resolved, None, False, "No storage path recorded.")
-    if resolved == PAGEINDEX_PROVIDER:
-        return _inspect_pageindex(path)
+    if resolved in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+        return _inspect_pageindex(path, resolved)
     if resolved == GRAPHRAG_PROVIDER:
         return _inspect_graphrag(path)
     if resolved == LIGHTRAG_PROVIDER:
@@ -111,10 +113,17 @@ def provider_failure_summary(
     provider: str | None,
     *,
     limit: int = 3,
+    versions: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Return the first provider-specific failure summary under ``kb_dir``."""
+    """Return the first provider-specific failure summary under ``kb_dir``.
+
+    ``versions`` may carry a pre-computed :func:`inspect_kb_versions` result so
+    bulk callers (e.g. ``KnowledgeBaseManager.get_info``) do not rescan and
+    re-parse every index version just to collect failure text.
+    """
+    entries = versions if versions is not None else inspect_kb_versions(kb_dir, provider)
     failures: list[str] = []
-    for entry in inspect_kb_versions(kb_dir, provider):
+    for entry in entries:
         summary = str(entry.get("failure_summary") or "").strip()
         if summary:
             failures.append(summary)
@@ -165,21 +174,40 @@ def _inspect_llamaindex(storage_dir: Path) -> ProviderIndexProbe:
     )
 
 
-def _inspect_pageindex(storage_dir: Path) -> ProviderIndexProbe:
+def _inspect_pageindex(storage_dir: Path, provider: str) -> ProviderIndexProbe:
     from deeptutor.services.rag.pipelines.pageindex import storage
 
-    manifest = storage.read_manifest(storage_dir)
+    manifest = storage.read_manifest(storage_dir, provider=provider)
     ids = storage.doc_ids(manifest)
     if not ids:
         return ProviderIndexProbe(
-            PAGEINDEX_PROVIDER,
+            provider,
             str(storage_dir),
             False,
             "PageIndex manifest has no document ids.",
             doc_count=0,
         )
+    if provider == PAGEINDEX_OSS_PROVIDER:
+        docs_dir = storage.sdk_storage_path(storage_dir) / "docs"
+        missing = [
+            doc_id
+            for doc_id in ids
+            if not all(
+                (docs_dir / doc_id / name).is_file()
+                for name in ("doc.json", "tree.json", "pages.json")
+            )
+        ]
+        if missing:
+            return ProviderIndexProbe(
+                provider,
+                str(storage_dir),
+                False,
+                "PageIndex OSS Local Library is missing document artifacts.",
+                doc_count=len(ids) - len(missing),
+                diagnostics={"missing_doc_ids": missing[:10]},
+            )
     return ProviderIndexProbe(
-        PAGEINDEX_PROVIDER,
+        provider,
         str(storage_dir),
         True,
         doc_count=len(ids),
@@ -222,12 +250,28 @@ def _inspect_lightrag(storage_dir: Path) -> ProviderIndexProbe:
     )
 
 
-def _llamaindex_doc_count(docstore_path: Path) -> int | None:
-    payload = _read_json(docstore_path)
+# docstore.json holds one entry per chunk/node and can be multi-MB, so parsing
+# it is the dominant cost of a LlamaIndex readiness probe. The count only
+# changes when the file itself changes, so it is cached keyed on size +
+# mtime_ns (same freshness convention as storage._freshness_token).
+_DOCSTORE_COUNT_CACHE_SIZE = 128
+
+
+@lru_cache(maxsize=_DOCSTORE_COUNT_CACHE_SIZE)
+def _llamaindex_doc_count_cached(path: str, size: int, mtime_ns: int) -> int | None:
+    payload = _read_json(Path(path))
     if not isinstance(payload, dict):
         return None
     data = payload.get("docstore/data")
     return len(data) if isinstance(data, dict) else None
+
+
+def _llamaindex_doc_count(docstore_path: Path) -> int | None:
+    try:
+        stat = docstore_path.stat()
+    except OSError:
+        return None
+    return _llamaindex_doc_count_cached(str(docstore_path), stat.st_size, stat.st_mtime_ns)
 
 
 def _lightrag_doc_count(storage_dir: Path) -> int | None:

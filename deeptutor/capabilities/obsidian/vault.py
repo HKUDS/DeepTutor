@@ -52,6 +52,39 @@ def _iter_markdown(root: Path):
         yield path
 
 
+def _read_text(path: Path) -> str:
+    """Decode a note for reading, tolerating bytes that are not valid UTF-8.
+
+    Vaults edited across editors, synced from Windows, or holding non-Latin
+    prose routinely carry a few mangled bytes — invisible in Obsidian itself.
+    Strict decoding would let one such note abort an operation that spans the
+    whole vault, so undecodable bytes are replaced and every decodable
+    character is kept.
+
+    Reads only. A read-modify-write must use :func:`_read_text_exact`, which
+    refuses to launder those bytes back onto disk.
+    """
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _read_text_exact(path: Path) -> str:
+    """Decode a note that is about to be written back, without substitution.
+
+    Rewriting a note we could only partially decode would replace the user's
+    bytes with U+FFFD, so writes stay strict. Raising ``VaultError`` (rather
+    than letting ``UnicodeDecodeError`` escape) is what makes the refusal
+    legible: the tool layer turns it into a message naming the note and the
+    fix, instead of an opaque failure.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise VaultError(
+            f"Note {path.name!r} is not valid UTF-8 (byte offset {exc.start}); "
+            "editing it would corrupt the undecodable bytes. Fix its encoding first."
+        ) from exc
+
+
 def _safe_join(root: Path, rel: str) -> Path:
     """Resolve ``rel`` under ``root``, refusing anything that escapes the vault."""
     root_resolved = root.resolve()
@@ -132,7 +165,7 @@ def read_note(root: Path, ref: str) -> dict[str, Any]:
     path = resolve_note(root, ref)
     if path is None:
         raise VaultError(f"Note {ref!r} not found in the vault.")
-    text = path.read_text(encoding="utf-8")
+    text = _read_text(path)
     frontmatter, body = split_frontmatter(text)
     return {"path": _rel(root, path), "frontmatter": frontmatter, "body": body}
 
@@ -146,7 +179,7 @@ def search_notes(root: Path, query: str, limit: int = 20) -> list[dict[str, str]
     hits: list[dict[str, str]] = []
     for path in _iter_markdown(root):
         try:
-            text = path.read_text(encoding="utf-8")
+            text = _read_text(path)
         except OSError:
             continue
         if needle in path.stem.lower() or needle in text.lower():
@@ -191,7 +224,7 @@ def backlinks(root: Path, ref: str, limit: int = 50) -> list[dict[str, str]]:
         if path == target:
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            text = _read_text(path)
         except OSError:
             continue
         if any(t.strip().lower() == stem for t in _WIKILINK_RE.findall(text)):
@@ -212,7 +245,7 @@ def collect_tags(root: Path, limit: int = 200) -> list[dict[str, Any]]:
 
     for path in _iter_markdown(root):
         try:
-            text = path.read_text(encoding="utf-8")
+            text = _read_text(path)
         except OSError:
             continue
         frontmatter, body = split_frontmatter(text)
@@ -254,7 +287,7 @@ def append_note(root: Path, ref: str, content: str) -> str:
     path = resolve_note(root, ref)
     if path is None:
         raise VaultError(f"Note {ref!r} not found; create it first.")
-    existing = path.read_text(encoding="utf-8")
+    existing = _read_text_exact(path)
     separator = "" if existing.endswith("\n") or not existing else "\n"
     path.write_text(existing + separator + (content or ""), encoding="utf-8")
     return _rel(root, path)
@@ -268,7 +301,7 @@ def set_property(root: Path, ref: str, key: str, value: Any) -> str:
     path = resolve_note(root, ref)
     if path is None:
         raise VaultError(f"Note {ref!r} not found; create it first.")
-    frontmatter, body = split_frontmatter(path.read_text(encoding="utf-8"))
+    frontmatter, body = split_frontmatter(_read_text_exact(path))
     frontmatter[key] = value
     path.write_text(_compose_note(frontmatter, body), encoding="utf-8")
     return _rel(root, path)

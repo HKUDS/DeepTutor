@@ -195,6 +195,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           binding,
           base_url: baseUrl,
           api_key: apiKey || null,
+          profile_id: profileId,
         }),
       });
       if (!response.ok) {

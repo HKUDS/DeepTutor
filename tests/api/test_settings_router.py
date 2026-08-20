@@ -604,6 +604,31 @@ async def test_get_llm_options_returns_redacted_catalog(monkeypatch: pytest.Monk
     assert "base_url" not in response["options"][0]
 
 
+@pytest.mark.asyncio
+async def test_get_settings_never_returns_catalog_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://llm.example/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://emb.example/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    catalog["services"]["llm"]["profiles"][0]["extra_headers"] = {"Authorization": "Bearer secret"}
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    response = await settings_router.get_settings()
+
+    llm_profile = response["catalog"]["services"]["llm"]["profiles"][0]
+    embedding_profile = response["catalog"]["services"]["embedding"]["profiles"][0]
+    assert llm_profile["api_key"] == settings_router.CATALOG_SECRET_MASK
+    assert llm_profile["extra_headers"]["Authorization"] == settings_router.CATALOG_SECRET_MASK
+    assert embedding_profile["api_key"] == settings_router.CATALOG_SECRET_MASK
+    assert "secret-key" not in json.dumps(response)
+    assert "emb-key" not in json.dumps(response)
+
+
 @pytest.fixture(autouse=True)
 def _reset_runtime_state() -> None:
     llm_config_module.clear_llm_config_cache()
@@ -648,7 +673,8 @@ async def test_update_catalog_invalidates_runtime_caches(monkeypatch: pytest.Mon
     new_llm_client = llm_client_module.get_llm_client()
     new_embedding_client = embedding_client_module.get_embedding_client()
 
-    assert response == {"catalog": updated_catalog}
+    assert response == {"catalog": settings_router.redact_catalog_secrets(updated_catalog)}
+    assert service.load() == updated_catalog
     assert old_llm_config.model == "gpt-old"
     assert new_llm_config.model == "gpt-new"
     assert new_llm_config.base_url == "https://new-llm.example/v1"
@@ -693,13 +719,40 @@ async def test_apply_catalog_invalidates_runtime_caches(monkeypatch: pytest.Monk
     new_llm_client = llm_client_module.get_llm_client()
     new_embedding_client = embedding_client_module.get_embedding_client()
 
-    assert response["catalog"] == applied_catalog
+    assert response["catalog"] == settings_router.redact_catalog_secrets(applied_catalog)
+    assert service.load() == applied_catalog
     assert response["runtime"]["catalog_path"]
     assert new_llm_config.model == "gpt-after-apply"
     assert new_llm_client is not old_llm_client
     assert new_llm_client.config.base_url == "https://after-apply-llm.example/v1"
     assert new_embedding_client is not old_embedding_client
     assert new_embedding_client.config.model == "text-embedding-after-apply"
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_restores_masked_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    current = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://llm.example/v1",
+        llm_api_key="stored-llm-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://emb.example/v1/embeddings",
+        embedding_api_key="stored-embedding-key",
+    )
+    service = _FakeCatalogService(current)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    draft = settings_router.redact_catalog_secrets(current)
+    draft["services"]["llm"]["profiles"][0]["name"] = "Renamed"
+
+    response = await settings_router.update_catalog(settings_router.CatalogPayload(catalog=draft))
+
+    saved = service.load()
+    assert saved["services"]["llm"]["profiles"][0]["api_key"] == "stored-llm-key"
+    assert saved["services"]["embedding"]["profiles"][0]["api_key"] == ("stored-embedding-key")
+    assert response["catalog"]["services"]["llm"]["profiles"][0]["api_key"] == (
+        settings_router.CATALOG_SECRET_MASK
+    )
 
 
 @pytest.mark.asyncio
@@ -982,6 +1035,45 @@ async def test_fetch_models_returns_picker_options(monkeypatch: pytest.MonkeyPat
             {"id": "gpt-4o-mini", "name": "gpt-4o-mini"},
         ]
     }
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_resolves_masked_key_server_side(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import deeptutor.services.llm.factory as factory_module
+
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://llm.example/v1",
+        llm_api_key="stored-secret",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://emb.example/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+        assert (binding, base_url, api_key) == (
+            "openai",
+            "https://llm.example/v1",
+            "stored-secret",
+        )
+        return ["gpt-4o-mini"]
+
+    monkeypatch.setattr(factory_module, "fetch_models", _fake_fetch)
+
+    response = await settings_router.fetch_models_from_provider(
+        settings_router.FetchModelsPayload(
+            binding="openai",
+            base_url="https://llm.example/v1",
+            api_key=settings_router.CATALOG_SECRET_MASK,
+            profile_id="llm-profile-default",
+        )
+    )
+
+    assert response == {"models": [{"id": "gpt-4o-mini", "name": "gpt-4o-mini"}]}
 
 
 @pytest.mark.asyncio
@@ -1292,6 +1384,46 @@ def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch,
     assert payload["theme"] == "dark"
 
 
+def test_auth_disabled_settings_endpoint_does_not_expose_provider_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression for #857: local-admin mode is not a secret-viewing mode."""
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from deeptutor.api.routers import auth as auth_router
+
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://llm.example/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://emb.example/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", False)
+    monkeypatch.setattr(
+        settings_router,
+        "get_model_catalog_service",
+        lambda: _FakeCatalogService(catalog),
+    )
+
+    app = FastAPI()
+    app.include_router(
+        settings_router.router,
+        prefix="/api/v1/settings",
+        dependencies=[Depends(auth_router.require_auth)],
+    )
+
+    response = TestClient(app).get("/api/v1/settings")
+
+    assert response.status_code == 200
+    serialized = response.text
+    assert "secret-key" not in serialized
+    assert "emb-key" not in serialized
+    assert settings_router.CATALOG_SECRET_MASK in serialized
+
+
 def test_public_ui_read_omits_deployment_configuration(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
@@ -1341,3 +1473,61 @@ def test_get_ui_settings_not_registered_on_gated_router() -> None:
     }
     assert "GET" not in gated_methods, f"GET /ui must not be on the gated router: {gated_methods}"
     assert "PUT" in gated_methods
+
+
+def test_ui_writes_are_atomic_and_serialised(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Both writers of interface.json must share one lock and one atomic replace.
+
+    The router and the setup capability write the same file. While each opened
+    it directly, twelve concurrent writes left two fields on disk — a lock only
+    one side takes is not a lock, and a plain ``open(..., "w")`` can also leave
+    a truncated file behind a crash.
+    """
+    import threading
+
+    from deeptutor.services.settings import interface_settings
+
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
+
+    def via_router(index: int) -> None:
+        for _ in range(20):
+            settings_router.patch_ui_settings(**{f"router_{index}": index})
+
+    def via_capability(index: int) -> None:
+        for _ in range(20):
+            interface_settings.set_ui_setting(f"cap_{index}", index)
+
+    threads = [threading.Thread(target=via_router, args=(i,)) for i in range(6)]
+    threads += [threading.Thread(target=via_capability, args=(i,)) for i in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert {f"router_{i}" for i in range(6)} <= set(stored)
+    assert {f"cap_{i}" for i in range(6)} <= set(stored)
+
+
+@pytest.mark.asyncio
+async def test_ui_endpoints_do_not_freeze_defaults_into_the_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Changing one preference must not persist every current default alongside it.
+
+    ``load_ui_settings`` returns a defaults-merged view; the endpoints used to
+    save that view straight back, so the first time anyone changed their theme
+    the file gained an explicit copy of every default as it stood that day —
+    and that user silently stopped following later changes to any of them.
+    """
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    await settings_router.update_theme(settings_router.ThemeUpdate(theme="dark"))
+
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert stored == {"theme": "dark"}, f"only the changed field belongs on disk: {stored}"
+    # The read path still reports the full picture.
+    assert settings_router.load_ui_settings()["language"] == "en"

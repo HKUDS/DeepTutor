@@ -17,6 +17,7 @@ from deeptutor.services.config.runtime_settings import (
     DOCUMENT_PARSING_ENGINE_MINERU,
     DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
     DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
+    DOCUMENT_PARSING_ENGINE_TIKA,
 )
 
 from ..base import Parser
@@ -59,6 +60,12 @@ def _pymupdf4llm_class():
     return PyMuPDF4LLMParser
 
 
+def _tika_class():
+    from .tika.engine import TikaParser
+
+    return TikaParser
+
+
 # name -> zero-arg loader returning the engine class.
 _ENGINE_LOADERS: Dict[str, Callable[[], Any]] = {
     DOCUMENT_PARSING_ENGINE_TEXT_ONLY: _text_only_class,
@@ -67,6 +74,7 @@ _ENGINE_LOADERS: Dict[str, Callable[[], Any]] = {
     DOCUMENT_PARSING_ENGINE_MARKITDOWN: _markitdown_class,
     DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _pymupdf4llm_class,
     DOCUMENT_PARSING_ENGINE_LITEPARSE: _liteparse_class,
+    DOCUMENT_PARSING_ENGINE_TIKA: _tika_class,
 }
 
 KNOWN_ENGINES = frozenset(_ENGINE_LOADERS)
@@ -92,8 +100,9 @@ _ENGINE_META: Dict[str, Dict[str, Any]] = {
     DOCUMENT_PARSING_ENGINE_DOCLING: {
         "name": "Docling",
         "description": (
-            "Structured document conversion (layout/tables). Downloads local "
-            "models on first run. PDF/Office/HTML/images."
+            "Structured document conversion (layout/tables). Runs the in-process "
+            "docling package (downloads models on first run) or points at a remote "
+            "Docling Serve server. PDF/Office/HTML/images."
         ),
         "needs_local_models": True,
     },
@@ -120,6 +129,14 @@ _ENGINE_META: Dict[str, Dict[str, Any]] = {
             "Fast, lightweight PDF parser with spatial text extraction. "
             "Markdown output, optional image extraction. No model downloads. "
             "Developed by LlamaIndex."
+        ),
+        "needs_local_models": False,
+    },
+    DOCUMENT_PARSING_ENGINE_TIKA: {
+        "name": "Tika",
+        "description": (
+            "Remote Apache Tika server. Broad format support, no local install "
+            "or model downloads. Point at an existing tika-server container."
         ),
         "needs_local_models": False,
     },

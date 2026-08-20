@@ -34,6 +34,8 @@ from deeptutor.services.rag.factory import (
     IMA_PROVIDER,
     KNOWN_PROVIDERS,
     LIGHTRAG_SERVER_PROVIDER,
+    PAGEINDEX_OSS_PROVIDER,
+    PAGEINDEX_PROVIDER,
     has_ready_provider_index,
     normalize_provider_name,
     provider_uses_embedding_versions,
@@ -466,9 +468,20 @@ class KnowledgeBaseManager:
             kb_config["progress"] = progress
 
         if status == "ready":
-            fp = _get_embedding_fingerprint()
-            if fp:
-                kb_config["embedding_model"], kb_config["embedding_dim"] = fp
+            provider = normalize_provider_name(kb_config.get("rag_provider"))
+            pageindex_provider = provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+            if pageindex_provider:
+                for key in (
+                    "embedding_model",
+                    "embedding_dim",
+                    "embedding_signature",
+                    "embedding_mismatch",
+                ):
+                    kb_config.pop(key, None)
+            else:
+                fp = _get_embedding_fingerprint()
+                if fp:
+                    kb_config["embedding_model"], kb_config["embedding_dim"] = fp
             # Record the active signature + the on-disk version registry so
             # the UI can render version chips without recomputing.
             try:
@@ -476,12 +489,11 @@ class KnowledgeBaseManager:
                     signature_from_embedding_config,
                 )
 
-                sig = signature_from_embedding_config()
+                sig = None if pageindex_provider else signature_from_embedding_config()
                 if sig is not None:
                     kb_config["embedding_signature"] = sig.hash()
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
-                    provider = normalize_provider_name(kb_config.get("rag_provider"))
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
             except Exception:  # pragma: no cover - best-effort metadata
                 pass
@@ -936,10 +948,16 @@ class KnowledgeBaseManager:
 
         Like the other connected types this creates no folder under ``base_dir``
         and runs no index pipeline: it records a ``type: ima`` entry whose
-        credentials and library id the ``ima`` provider queries over IMA's
-        OpenAPI. IMA owns indexing entirely. Callers should validate the binding
-        with the probe helper first; this only guards basic invariants. Raises
-        ``ValueError`` on a missing field or a name clash.
+        library id the ``ima`` provider queries over IMA's OpenAPI. IMA owns
+        indexing entirely.
+
+        Credentials are optional here: leave them empty and the KB retrieves
+        with the account-level pair from the engine settings, so rotating that
+        key updates every such KB at once. Passing a pair pins this KB to it —
+        the way to reach a second IMA account. Callers should validate the
+        binding with the probe helper first; this only guards basic invariants.
+        Raises ``ValueError`` on a missing field, a half-filled credential pair,
+        or a name clash.
         """
         name = (name or "").strip()
         client_id = (client_id or "").strip()
@@ -947,8 +965,8 @@ class KnowledgeBaseManager:
         knowledge_base_id = (knowledge_base_id or "").strip()
         if not name:
             raise ValueError("Knowledge base name is required.")
-        if not client_id or not api_key:
-            raise ValueError("IMA Client ID and API Key are required.")
+        if bool(client_id) != bool(api_key):
+            raise ValueError("IMA Client ID and API Key must be given together.")
         if not knowledge_base_id:
             raise ValueError("IMA knowledge base ID is required.")
 
@@ -962,8 +980,9 @@ class KnowledgeBaseManager:
             "path": name,
             "type": IMA_KB_TYPE,
             "rag_provider": IMA_PROVIDER,
-            "client_id": client_id,
-            "api_key": api_key,
+            # Written only when this KB overrides the account credentials;
+            # absent means "resolve them from the engine settings".
+            **({"client_id": client_id, "api_key": api_key} if client_id else {}),
             "knowledge_base_id": knowledge_base_id,
             "description": description or f"Tencent IMA: {name}",
             "status": "ready",
@@ -1208,7 +1227,9 @@ class KnowledgeBaseManager:
             index_versions = inspect_kb_versions(kb_dir, rag_provider)
             has_ready_provider = any(bool(version.get("ready")) for version in index_versions)
         provider_error_summary = (
-            provider_failure_summary(kb_dir, rag_provider) if dir_exists else ""
+            provider_failure_summary(kb_dir, rag_provider, versions=index_versions)
+            if dir_exists
+            else ""
         )
 
         # For old KBs without status field, determine status from rag_storage
@@ -1344,18 +1365,26 @@ class KnowledgeBaseManager:
         kb_probe_dir = kb_dir if dir_exists else None
         rag_initialized = has_ready_provider
 
-        active_signature = signature_from_embedding_config()
+        pageindex_provider = rag_provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+        active_signature = None if pageindex_provider else signature_from_embedding_config()
         if provider_uses_embedding_versions(rag_provider):
             matched_entry = (
                 find_matching_version(kb_probe_dir, active_signature)
                 if (kb_probe_dir and active_signature)
                 else None
             )
-            active_match = (
-                inspect_provider_version(matched_entry, rag_provider).ready
-                if matched_entry
-                else False
-            )
+            active_match = False
+            if matched_entry:
+                # Reuse the probe results already computed for ``index_versions``
+                # instead of probing the matched storage a second time — probing
+                # parses provider-owned files (e.g. the multi-MB LlamaIndex
+                # docstore.json) and is the dominant cost of kb list / the
+                # knowledge API (see issue #859).
+                matched_path = matched_entry.get("storage_path")
+                active_match = any(
+                    entry.get("storage_path") == matched_path and entry.get("ready")
+                    for entry in index_versions
+                )
         else:
             active_match = rag_initialized
 
@@ -1433,7 +1462,14 @@ class KnowledgeBaseManager:
                 # leaving the KB stuck in the list is worse than orphan files on
                 # disk (issue #370).
                 try:
-                    os.chmod(path, stat.S_IWRITE)
+                    current_mode = os.stat(path).st_mode
+                    writable_mode = current_mode | stat.S_IWRITE
+                    if stat.S_ISDIR(current_mode):
+                        # POSIX directories need execute permission to remain
+                        # traversable. Replacing the whole mode with S_IWRITE
+                        # leaves an orphan that even later cleanup cannot enter.
+                        writable_mode |= stat.S_IXUSR
+                    os.chmod(path, writable_mode)
                     func(path)
                 except Exception as retry_exc:
                     logger.warning(

@@ -39,6 +39,7 @@ export default function KnowledgePage() {
     connectObsidian,
     connectLinkedFolder,
     connectLightRagServer,
+    connectIma,
   } = useKnowledgeBases();
 
   // Connected subagents are stored as ``type: subagent`` KBs so the chat
@@ -173,9 +174,9 @@ export default function KnowledgePage() {
   );
 
   const handleUpload = useCallback(
-    async (kbName: string, files: File[]) => {
+    async (kbName: string, files: File[], destSubdir?: string) => {
       try {
-        await uploadFiles(kbName, files);
+        await uploadFiles(kbName, files, undefined, destSubdir);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         throw err;
@@ -305,6 +306,7 @@ export default function KnowledgePage() {
         onConnectLinkedFolder={connectLinkedFolder}
         onConnectObsidian={connectObsidian}
         onConnectLightRagServer={connectLightRagServer}
+        onConnectIma={connectIma}
         initialMode={createPreset?.mode}
         initialSource={createPreset?.source}
         onConfigureProvider={() => {

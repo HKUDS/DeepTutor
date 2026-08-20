@@ -9,6 +9,9 @@ export interface BookHealthBannerProps {
   bookId: string | null;
   refreshKey?: number;
   onRecompile?: (pageId: string) => void;
+  /** Retrieval failed while this book was planned — it was written from the
+   *  proposal alone, with none of the selected sources behind it. */
+  explorationFailed?: boolean;
 }
 
 interface KbDrift {
@@ -30,12 +33,15 @@ export default function BookHealthBanner({
   bookId,
   refreshKey,
   onRecompile,
+  explorationFailed = false,
 }: BookHealthBannerProps) {
   const { t } = useTranslation();
   const [kbDrift, setKbDrift] = useState<KbDrift | null>(null);
   const [logHealth, setLogHealth] = useState<LogHealth | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [acknowledgeError, setAcknowledgeError] = useState<string | null>(null);
+  const [canForce, setCanForce] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +50,10 @@ export default function BookHealthBanner({
       setLogHealth(null);
       return;
     }
+    // `refreshKey` is the book's `updated_at`, undefined until the book has
+    // loaded. Waiting for it avoids a duplicate check on every open — and this
+    // one is expensive: it stats every raw file in the book's knowledge bases.
+    if (refreshKey === undefined) return;
     setDismissed(false);
     (async () => {
       try {
@@ -76,7 +86,7 @@ export default function BookHealthBanner({
   const blockFailures = logHealth?.block_failures || 0;
   const hasLogIssues = blockFailures >= 3 || repeated.length > 0;
 
-  if (!hasDrift && !hasLogIssues) return null;
+  if (!hasDrift && !hasLogIssues && !explorationFailed) return null;
 
   // Convert technical signatures into a short human label.
   const humanizeSignature = (sig: string): string => {
@@ -85,12 +95,20 @@ export default function BookHealthBanner({
     return stripped.length > 80 ? `${stripped.slice(0, 80)}…` : stripped;
   };
 
-  const acknowledge = async () => {
+  const acknowledge = async (force = false) => {
     if (!bookId) return;
     setBusy(true);
+    setAcknowledgeError(null);
     try {
-      await bookApi.refreshFingerprints(bookId);
+      await bookApi.refreshFingerprints(bookId, force);
       setKbDrift({ has_drift: false });
+      setCanForce(false);
+    } catch (err) {
+      setAcknowledgeError(err instanceof Error ? err.message : String(err));
+      // The refusal is about pages still owed, not a transport failure. Stale
+      // detection over-marks on purpose, so offer the override rather than
+      // leaving a banner nothing can clear.
+      if (!force) setCanForce(true);
     } finally {
       setBusy(false);
     }
@@ -101,6 +119,18 @@ export default function BookHealthBanner({
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <div className="flex-1 space-y-1.5">
+          {explorationFailed && (
+            <div>
+              <strong>
+                {t("This book was written without reading your sources.")}
+              </strong>{" "}
+              <span>
+                {t(
+                  "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.",
+                )}
+              </span>
+            </div>
+          )}
           {hasDrift && (
             <div>
               <strong>
@@ -199,14 +229,24 @@ export default function BookHealthBanner({
         <div className="flex items-center gap-1">
           {hasDrift && (
             <button
-              onClick={acknowledge}
+              onClick={() => acknowledge()}
               disabled={busy}
               title={t(
-                "Mark the current KB state as the new baseline (won't recompile pages — use the recompile button above for that).",
+                "Available only after every stale page has been recompiled.",
               )}
               className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
             >
               {busy ? "…" : t("Mark as seen")}
+            </button>
+          )}
+          {hasDrift && canForce && (
+            <button
+              onClick={() => acknowledge(true)}
+              disabled={busy}
+              title={t("Dismiss the warning without recompiling those pages.")}
+              className="whitespace-nowrap rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 disabled:opacity-60"
+            >
+              {t("Mark as seen anyway")}
             </button>
           )}
           <button
@@ -216,6 +256,11 @@ export default function BookHealthBanner({
             <X className="h-4 w-4" />
           </button>
         </div>
+        {acknowledgeError && (
+          <div className="text-xs font-medium text-red-700 dark:text-red-200">
+            {acknowledgeError}
+          </div>
+        )}
       </div>
     </div>
   );

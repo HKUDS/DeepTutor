@@ -87,6 +87,10 @@ _LEGACY_DOCUMENT_PARSING_SETTINGS_NAME = "mineru"
 MINERU_MODE_LOCAL = "local"
 MINERU_MODE_CLOUD = "cloud"
 _MINERU_MODES = frozenset({MINERU_MODE_LOCAL, MINERU_MODE_CLOUD})
+
+DOCLING_MODE_LOCAL = "local"
+DOCLING_MODE_REMOTE = "remote"
+_DOCLING_MODES = frozenset({DOCLING_MODE_LOCAL, DOCLING_MODE_REMOTE})
 _MINERU_MODEL_VERSIONS = frozenset({"pipeline", "vlm"})
 _MINERU_DOWNLOAD_SOURCES = frozenset({"huggingface", "modelscope"})
 
@@ -96,6 +100,7 @@ DOCUMENT_PARSING_ENGINE_DOCLING = "docling"
 DOCUMENT_PARSING_ENGINE_MARKITDOWN = "markitdown"
 DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM = "pymupdf4llm"
 DOCUMENT_PARSING_ENGINE_LITEPARSE = "liteparse"
+DOCUMENT_PARSING_ENGINE_TIKA = "tika"
 _DOCUMENT_PARSING_ENGINES = frozenset(
     {
         DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
@@ -104,6 +109,7 @@ _DOCUMENT_PARSING_ENGINES = frozenset(
         DOCUMENT_PARSING_ENGINE_MARKITDOWN,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
         DOCUMENT_PARSING_ENGINE_LITEPARSE,
+        DOCUMENT_PARSING_ENGINE_TIKA,
     }
 )
 # Image formats PyMuPDF4LLM can write extracted page images as.
@@ -143,9 +149,14 @@ _DEFAULT_MINERU_ENGINE: dict[str, Any] = {
     "allow_local_model_download": False,
 }
 
-# Docling engine slice. Downloads layout/table models on first run, hence the
-# same ``allow_local_model_download`` gate as MinerU local.
+# Docling engine slice. ``mode`` selects the in-process ``docling`` package
+# ("local") or a Docling Serve HTTP server ("remote"; needs ``api_base_url`` and
+# optionally ``api_token``). Local downloads layout/table models on first run,
+# hence the same ``allow_local_model_download`` gate as MinerU local.
 _DEFAULT_DOCLING_ENGINE: dict[str, Any] = {
+    "mode": DOCLING_MODE_LOCAL,
+    "api_base_url": "http://localhost:5001",
+    "api_token": "",
     "do_ocr": False,
     "do_table_structure": True,
     "allow_local_model_download": False,
@@ -178,6 +189,11 @@ _DEFAULT_LITEPARSE_ENGINE: dict[str, Any] = {
     "max_pages": 0,
 }
 
+# Tika engine slice. Remote-only Apache Tika server; no local package or models.
+_DEFAULT_TIKA_ENGINE: dict[str, Any] = {
+    "server_url": "http://localhost:9998",
+}
+
 # Built-in text-only engine slice. It deliberately has no knobs: it reuses
 # DeepTutor's legacy text extractors for PDF / Office / text-like files.
 _DEFAULT_TEXT_ONLY_ENGINE: dict[str, Any] = {}
@@ -196,6 +212,7 @@ DEFAULT_DOCUMENT_PARSING_SETTINGS: dict[str, Any] = {
         DOCUMENT_PARSING_ENGINE_MARKITDOWN: _DEFAULT_MARKITDOWN_ENGINE,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _DEFAULT_PYMUPDF4LLM_ENGINE,
         DOCUMENT_PARSING_ENGINE_LITEPARSE: _DEFAULT_LITEPARSE_ENGINE,
+        DOCUMENT_PARSING_ENGINE_TIKA: _DEFAULT_TIKA_ENGINE,
     },
 }
 
@@ -205,14 +222,25 @@ DEFAULT_MINERU_SETTINGS: dict[str, Any] = _DEFAULT_MINERU_ENGINE
 
 # PageIndex cloud RAG engine. A KB indexed with the ``pageindex`` provider
 # ships its documents to the hosted PageIndex service for tree building and
-# reasoning-based retrieval. Only an API key (per PageIndex account) and the
-# API base URL are needed; the same key is reused by every ``pageindex`` KB.
+# reasoning-based retrieval. The SDK owns the official endpoint; the same
+# deployment-level credential is reused by every ``pageindex`` KB.
 # Kept in its own JSON file so the credential lives beside other per-feature
 # settings and never leaks into model/network config.
 DEFAULT_PAGEINDEX_SETTINGS: dict[str, Any] = {
     "version": 1,
     "api_key": "",
-    "api_base_url": "https://api.pageindex.ai",
+}
+
+# Tencent IMA. The credential pair (``client_id`` + ``api_key``, issued at
+# https://ima.qq.com/agent-interface) identifies one IMA account, and every
+# library in that account is reachable with it — so it belongs here, beside the
+# other engine credentials, rather than being retyped for each connected KB.
+# A KB may still carry its own pair to reach a *different* IMA account; that
+# per-KB binding wins (see ``pipelines/ima/config.py``).
+DEFAULT_IMA_SETTINGS: dict[str, Any] = {
+    "version": 1,
+    "client_id": "",
+    "api_key": "",
 }
 
 # LlamaIndex local RAG engine. These are the retrieval + chunking knobs the
@@ -257,15 +285,20 @@ DEFAULT_GRAPHRAG_SETTINGS: dict[str, Any] = {
     "dynamic_community_selection": False,
 }
 
-# LightRAG retrieval knobs (HKUDS/LightRAG via RAG-Anything). ``top_k`` is the
-# number of entities/relations the query pulls; ``response_type`` mirrors
+# LightRAG retrieval + indexing knobs (HKUDS/LightRAG via RAG-Anything). ``top_k``
+# is the number of entities/relations the query pulls; ``response_type`` mirrors
 # GraphRAG's. These ride into ``QueryParam`` via the engine's aquery() call;
 # wiring is defensive (an older RAG-Anything that rejects a kwarg degrades to a
-# mode-only query).
+# mode-only query). ``max_concurrent_files`` maps to RAGAnythingConfig's batch
+# knob; ``llm_model_max_async`` / ``entity_extract_max_gleaning`` ride into
+# LightRAG's own constructor via RAGAnything's ``lightrag_kwargs`` passthrough.
 DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
     "version": 1,
     "top_k": 60,
     "response_type": "Multiple Paragraphs",
+    "max_concurrent_files": 1,
+    "llm_model_max_async": 4,
+    "entity_extract_max_gleaning": 1,
 }
 
 IGNORE_PROCESS_OVERRIDES_ENV = "DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES"
@@ -422,6 +455,12 @@ class RuntimeSettingsService:
             engines[DOCUMENT_PARSING_ENGINE_MINERU] = self._apply_mineru_process_overrides(
                 dict(engines[DOCUMENT_PARSING_ENGINE_MINERU])
             )
+            engines[DOCUMENT_PARSING_ENGINE_DOCLING] = self._apply_docling_process_overrides(
+                dict(engines[DOCUMENT_PARSING_ENGINE_DOCLING])
+            )
+            engines[DOCUMENT_PARSING_ENGINE_TIKA] = self._apply_tika_process_overrides(
+                dict(engines[DOCUMENT_PARSING_ENGINE_TIKA])
+            )
             payload = {**payload, "engines": engines}
         return payload
 
@@ -473,6 +512,17 @@ class RuntimeSettingsService:
         _atomic_write_json(self.path_for("pageindex"), payload)
         return payload
 
+    def load_ima(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
+        payload = self._load_or_create("ima", DEFAULT_IMA_SETTINGS, self._normalize_ima)
+        if include_process_overrides:
+            payload = self._apply_ima_process_overrides(payload)
+        return payload
+
+    def save_ima(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = self._normalize_ima({**DEFAULT_IMA_SETTINGS, **settings})
+        _atomic_write_json(self.path_for("ima"), payload)
+        return payload
+
     def load_llamaindex(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
         payload = self._load_or_create(
             "llamaindex",
@@ -510,6 +560,7 @@ class RuntimeSettingsService:
         self.load_integrations(include_process_overrides=False)
         self.load_mineru(include_process_overrides=False)
         self.load_pageindex(include_process_overrides=False)
+        self.load_ima(include_process_overrides=False)
         self.load_llamaindex(include_process_overrides=False)
         self.load_graphrag()
         self.load_lightrag()
@@ -715,16 +766,27 @@ class RuntimeSettingsService:
         payload = dict(settings)
         if value := self._process_env_value("PAGEINDEX_API_KEY"):
             payload["api_key"] = value
-        if value := self._process_env_value("PAGEINDEX_API_BASE_URL"):
-            payload["api_base_url"] = value
         return self._normalize_pageindex(payload)
 
     def _normalize_pageindex(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
             "version": 1,
             "api_key": _string(settings.get("api_key")),
-            "api_base_url": _string(settings.get("api_base_url")).rstrip("/")
-            or "https://api.pageindex.ai",
+        }
+
+    def _apply_ima_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("IMA_CLIENT_ID"):
+            payload["client_id"] = value
+        if value := self._process_env_value("IMA_API_KEY"):
+            payload["api_key"] = value
+        return self._normalize_ima(payload)
+
+    def _normalize_ima(self, settings: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "client_id": _string(settings.get("client_id")),
+            "api_key": _string(settings.get("api_key")),
         }
 
     def _apply_llamaindex_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -782,6 +844,15 @@ class RuntimeSettingsService:
             "version": 1,
             "top_k": _coerce_clamped_int(settings.get("top_k"), 60, 1, 200),
             "response_type": self._normalize_response_type(settings.get("response_type")),
+            "max_concurrent_files": _coerce_clamped_int(
+                settings.get("max_concurrent_files"), 1, 1, 16
+            ),
+            "llm_model_max_async": _coerce_clamped_int(
+                settings.get("llm_model_max_async"), 4, 1, 32
+            ),
+            "entity_extract_max_gleaning": _coerce_clamped_int(
+                settings.get("entity_extract_max_gleaning"), 1, 0, 5
+            ),
         }
 
     def _normalize_document_parsing(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -820,6 +891,9 @@ class RuntimeSettingsService:
             ),
             DOCUMENT_PARSING_ENGINE_LITEPARSE: self._normalize_liteparse_engine(
                 engines_in.get(DOCUMENT_PARSING_ENGINE_LITEPARSE) or {}
+            ),
+            DOCUMENT_PARSING_ENGINE_TIKA: self._normalize_tika_engine(
+                engines_in.get(DOCUMENT_PARSING_ENGINE_TIKA) or {}
             ),
         }
 
@@ -861,13 +935,42 @@ class RuntimeSettingsService:
         }
 
     def _normalize_docling_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        mode = _string(settings.get("mode")).lower()
+        if mode not in _DOCLING_MODES:
+            mode = DOCLING_MODE_LOCAL
         return {
+            "mode": mode,
+            "api_base_url": _string(settings.get("api_base_url")).rstrip("/")
+            or "http://localhost:5001",
+            "api_token": _string(settings.get("api_token")),
             "do_ocr": _coerce_bool(settings.get("do_ocr"), False),
             "do_table_structure": _coerce_bool(settings.get("do_table_structure"), True),
             "allow_local_model_download": _coerce_bool(
                 settings.get("allow_local_model_download"), False
             ),
         }
+
+    def _apply_docling_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("DOCLING_MODE"):
+            payload["mode"] = value
+        if value := self._process_env_value("DOCLING_API_BASE_URL"):
+            payload["api_base_url"] = value
+        if value := self._process_env_value("DOCLING_API_TOKEN"):
+            payload["api_token"] = value
+        return self._normalize_docling_engine(payload)
+
+    def _normalize_tika_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "server_url": _string(settings.get("server_url")).rstrip("/")
+            or "http://localhost:9998",
+        }
+
+    def _apply_tika_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("TIKA_SERVER_URL"):
+            payload["server_url"] = value
+        return self._normalize_tika_engine(payload)
 
     def _normalize_markitdown_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -1101,6 +1204,7 @@ __all__ = [
     "DEFAULT_AUTH_SETTINGS",
     "DEFAULT_DOCUMENT_PARSING_SETTINGS",
     "DEFAULT_GRAPHRAG_SETTINGS",
+    "DEFAULT_IMA_SETTINGS",
     "DEFAULT_INTEGRATIONS_SETTINGS",
     "DEFAULT_LIGHTRAG_SETTINGS",
     "DEFAULT_LLAMAINDEX_SETTINGS",
@@ -1113,6 +1217,9 @@ __all__ = [
     "DOCUMENT_PARSING_ENGINE_MINERU",
     "DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM",
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
+    "DOCUMENT_PARSING_ENGINE_TIKA",
+    "DOCLING_MODE_LOCAL",
+    "DOCLING_MODE_REMOTE",
     "LITEPARSE_IMAGE_MODES",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",

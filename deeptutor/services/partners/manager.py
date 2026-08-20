@@ -615,7 +615,7 @@ class PartnerManager:
         from deeptutor.partners.config.schema import ChannelsConfig
 
         channels_config = ChannelsConfig(**config.channels)
-        manager = ChannelManager(channels_config, bus)
+        manager = ChannelManager(channels_config, bus, partner_id=partner_id)
         if not manager.channels:
             logger.info("No channels matched config for partner '%s'", partner_id)
             return None
@@ -812,6 +812,7 @@ class PartnerManager:
         if not instance or not instance.running or not instance.runner:
             raise RuntimeError(f"Partner '{partner_id}' is not running")
 
+        from deeptutor.multi_user.context import get_current_user_or_none
         from deeptutor.partners.bus.events import InboundMessage
 
         resolved_key = (
@@ -826,6 +827,7 @@ class PartnerManager:
             content=content,
             media=media or [],
             session_key_override=resolved_key,
+            actor=get_current_user_or_none(),
         )
         return await instance.runner.process_message(msg, on_event=on_event)
 

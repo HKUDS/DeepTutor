@@ -186,6 +186,10 @@ export default function PageOutlineNav({
         <nav
           aria-label={headerText}
           aria-hidden={collapsed}
+          // Not just aria-hidden: a collapsed panel still holds one button per
+          // block, and without `inert` Tab lands inside something invisible.
+          // Mirrors the parked-drawer treatment in AppShell.
+          inert={collapsed ? true : undefined}
           className={[
             "flex w-56 flex-col text-[12.5px]",
             collapsed ? "pointer-events-none" : "pointer-events-auto",

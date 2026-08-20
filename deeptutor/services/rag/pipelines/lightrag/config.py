@@ -86,6 +86,47 @@ def query_kwargs_from_settings() -> dict:
         return {}
 
 
+def indexing_kwargs_from_settings() -> dict:
+    """``RAGAnythingConfig`` batch-processing knobs from runtime settings.
+
+    Only ``max_concurrent_files`` is exposed for now (issue #640); the config
+    object accepts several other batch/context knobs we deliberately leave on
+    RAG-Anything's own defaults. Empty on any read error, so a bad settings
+    file falls back to RAG-Anything's built-in default of 1.
+    """
+    try:
+        from deeptutor.services.config import load_lightrag_settings
+
+        settings = load_lightrag_settings()
+        return {"max_concurrent_files": int(settings.get("max_concurrent_files", 1))}
+    except Exception:
+        return {}
+
+
+def lightrag_kwargs_from_settings() -> dict:
+    """Extra kwargs forwarded to LightRAG's own constructor via RAG-Anything's
+    ``lightrag_kwargs`` passthrough.
+
+    ``llm_model_max_async`` bounds how many concurrent LLM calls LightRAG's
+    internal priority queue issues (covers both query and entity-extraction
+    traffic, since both ride the same wrapped ``llm_model_func``).
+    ``entity_extract_max_gleaning`` controls how many extra extraction passes
+    LightRAG runs per chunk to recover entities/relations the first pass
+    missed. Empty on any read error, so a bad settings file falls back to
+    LightRAG's own built-in defaults.
+    """
+    try:
+        from deeptutor.services.config import load_lightrag_settings
+
+        settings = load_lightrag_settings()
+        return {
+            "llm_model_max_async": int(settings.get("llm_model_max_async", 4)),
+            "entity_extract_max_gleaning": int(settings.get("entity_extract_max_gleaning", 1)),
+        }
+    except Exception:
+        return {}
+
+
 def build_llm_model_func(*, io_bridge: OwnerLoopBridge | None = None):
     """Wrap DeepTutor's unified LLM callable for LightRAG.
 
@@ -190,6 +231,8 @@ __all__ = [
     "is_lightrag_available",
     "normalize_mode",
     "query_kwargs_from_settings",
+    "indexing_kwargs_from_settings",
+    "lightrag_kwargs_from_settings",
     "build_llm_model_func",
     "build_vision_model_func",
     "build_embedding_func",

@@ -62,6 +62,36 @@ def test_accounting_errors_never_propagate() -> None:
     assert tracker.calls == 0
 
 
+def test_records_dict_frame_from_native_adapters() -> None:
+    # Native-adapter providers (anthropic, codex, copilot, codebuddy) emit
+    # usage as a plain dict rather than an object with attributes.
+    tracker = UsageTracker()
+    record_streamed_usage(
+        tracker,
+        {"prompt_tokens": 1200, "completion_tokens": 400, "total_tokens": 1600},
+        input_chars=9999,
+        output_chars=9999,
+    )
+
+    assert tracker.calls == 1
+    assert tracker.prompt_tokens == 1200
+    assert tracker.completion_tokens == 400
+    assert tracker.total_tokens == 1600
+
+
+class _PydanticLikeUsage:
+    def model_dump(self) -> dict[str, int]:
+        return {"prompt_tokens": 5, "completion_tokens": 6, "total_tokens": 11}
+
+
+def test_records_model_dump_frame() -> None:
+    tracker = UsageTracker()
+    tracker.add_from_response(_PydanticLikeUsage())
+
+    assert tracker.calls == 1
+    assert tracker.total_tokens == 11
+
+
 def test_message_content_chars_handles_all_shapes() -> None:
     assert message_content_chars({"content": "hello"}) == 5
     assert message_content_chars({"content": None}) == 0

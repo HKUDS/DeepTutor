@@ -27,7 +27,6 @@ def authorize_mcp_tools(
     *,
     scope: ToolScope,
     user_grant: Allowlist,
-    implicit_names: Iterable[str] = (),
     owned_names: Iterable[str] = (),
 ) -> Allowlist:
     """Which MCP tool names *scope* may see and call.
@@ -37,19 +36,13 @@ def authorize_mcp_tools(
     *empty* for a non-admin whose grant omits the field, so deployment
     servers fail closed).
 
-    ``implicit_names`` are the tool names that ``scope.implicit_provider_ids``
-    resolved to against the live pool — authorised by holding the resource.
-
     ``owned_names`` are tools from servers the caller configured themselves.
     They are authorised by ownership: the admin grant governs the deployment's
     shared servers, and applying it to a user's own server would make
     self-service configuration silently useless.
     """
     if scope.exclusive_capability:
-        # An exclusive knowledge capability replaces the tool surface. Only
-        # tools authorised by an attached resource survive — they are already
-        # preloaded, so the turn never needs to advertise anything else.
-        return Allowlist.of(implicit_names)
+        return Allowlist.of([])
 
     caller = Allowlist.of(scope.caller_whitelist)
     # A partner turn is gated by the partner's own configured filter. It must
@@ -60,7 +53,7 @@ def authorize_mcp_tools(
     if shared_gate.is_unrestricted:
         return Allowlist.unrestricted()
 
-    return shared_gate.widen(owned_names).widen(implicit_names)
+    return shared_gate.widen(owned_names)
 
 
 __all__ = ["authorize_mcp_tools"]

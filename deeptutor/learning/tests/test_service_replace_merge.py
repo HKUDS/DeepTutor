@@ -7,6 +7,7 @@ records an attempt, recomputes mastery, advances the spaced-repetition state,
 rebuilds the review queue, and persists.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from deeptutor.learning.models import (
@@ -43,6 +44,45 @@ def _make_module(mod_id: str, kp_ids: list[str]) -> LearningModule:
 
 
 class TestReplaceModules:
+    def test_append_to_empty_path_selects_first_module(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        progress = LearningService(store).replace_modules_for_path(
+            "test",
+            [_make_module("incoming", ["incoming-kp"])],
+            append=True,
+        )
+
+        assert progress.current_module_id == "test_m0"
+        assert progress.current_kp_index == 0
+
+    def test_atomic_appends_rebase_ids_without_losing_modules(self, tmp_path: Path):
+        store = LearningStore(root=tmp_path)
+        service = LearningService(store)
+        service.replace_modules_for_path("test", [_make_module("seed", ["seed-kp"])])
+
+        def append(index: int) -> None:
+            LearningService(store).replace_modules_for_path(
+                "test",
+                [_make_module(f"incoming-{index}", [f"incoming-kp-{index}"])],
+                append=True,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            list(executor.map(append, [1, 2]))
+
+        progress = store.load("test")
+        assert progress is not None
+        assert len(progress.modules) == 3
+        assert [module.id for module in progress.modules] == [
+            "seed",
+            "test_m1",
+            "test_m2",
+        ]
+        assert {kp.id for module in progress.modules[1:] for kp in module.knowledge_points} == {
+            "test_m1_kp0",
+            "test_m2_kp0",
+        }
+
     def test_init_modules_replaces_existing_modules(self, tmp_path: Path):
         store = LearningStore(root=tmp_path)
         service = LearningService(store)

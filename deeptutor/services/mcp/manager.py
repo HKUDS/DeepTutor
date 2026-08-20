@@ -46,15 +46,14 @@ from deeptutor.services.mcp.config import (
     MCPServerConfig,
     load_mcp_config,
 )
-from deeptutor.services.mcp.pageindex_server import with_builtin_servers
 
 logger = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT_S = 15
 _NAME_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
-#: Owner key for the deployment's own servers (the admin ``mcp.json`` plus
-#: injected built-ins). Connections are keyed by ``(owner, server_name)`` so a
+#: Owner key for the deployment's servers from the admin ``mcp.json``.
+#: Connections are keyed by ``(owner, server_name)`` so a
 #: future per-user server cannot collide with — or be routed into — another
 #: tenant's live session.
 SHARED_OWNER = "_shared"
@@ -167,7 +166,10 @@ class MCPToolAdapter(BaseTool):
         )
         return ToolResult(
             content=text,
-            metadata={"mcp_server": self._server_name, "mcp_tool": self._original_name},
+            metadata={
+                "mcp_server": self._server_name,
+                "mcp_tool": self._original_name,
+            },
         )
 
 
@@ -270,13 +272,13 @@ class MCPConnectionManager:
         async with self._lock_for(SHARED_OWNER):
             if self._started:
                 return
-            await self._sync_to_config(with_builtin_servers(load_mcp_config()))
+            await self._sync_to_config(load_mcp_config())
             self._started = True
 
     async def reload(self) -> None:
         """Re-read the persisted config and apply the diff to live connections."""
         async with self._lock_for(SHARED_OWNER):
-            await self._sync_to_config(with_builtin_servers(load_mcp_config()))
+            await self._sync_to_config(load_mcp_config())
             self._started = True
 
     async def shutdown(self) -> None:
@@ -557,6 +559,8 @@ class MCPConnectionManager:
         for block in result.content:
             if isinstance(block, types.TextContent):
                 parts.append(block.text)
+            elif isinstance(block, types.ImageContent):
+                parts.append("[MCP image omitted]")
             else:
                 parts.append(str(block))
         return "\n".join(parts) or "(no output)"
@@ -669,9 +673,14 @@ class MCPConnectionManager:
         """Connection task: owns the AsyncExitStack for one server."""
         from contextlib import AsyncExitStack
 
-        from mcp import ClientSession
-
         try:
+            # Imported inside the guarded block on purpose (issue #792): if the
+            # `mcp` package is missing, an import at function scope raises before
+            # anything can fail *ready*, so the task dies with an unretrieved
+            # ModuleNotFoundError while the connect waits out the full timeout.
+            # Inside the block the real cause reaches the caller immediately.
+            from mcp import ClientSession
+
             async with AsyncExitStack() as stack:
                 read, write = await self._open_transport(
                     stack, conn.config, owner=conn.owner, server_name=conn.name

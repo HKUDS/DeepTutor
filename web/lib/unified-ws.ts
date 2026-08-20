@@ -77,6 +77,15 @@ export interface StartTurnMessage {
   }[];
   /** Persistent mastery state to use independently of this chat session. */
   mastery_path_id?: string;
+  /** Immersive reading: the document open in the reader pane, if any. Its
+   *  presence is what activates the reading capability for the turn. */
+  reading_material_id?: string;
+  /** What the reader is showing right now — the locator on screen and any text
+   *  the user has selected. Advisory context, not a citation. */
+  reading_viewport?: {
+    locator?: number;
+    selection?: string;
+  };
   persona?: string;
   llm_selection?: LLMSelection | null;
   /** Edit-branching: when present (even as ``null``) the new user message
@@ -230,8 +239,14 @@ export class UnifiedWSClient {
       }
     };
 
-    this.ws.onerror = (err) => {
-      console.error("WS error:", err);
+    this.ws.onerror = () => {
+      // Browser Event objects serialize as `{}` and Next.js turns
+      // ``console.error`` into a blocking dev overlay, so this must not be an
+      // error-level log. ``onclose`` carries the actionable signal (reconnect
+      // vs. intentional disconnect); keep a debug breadcrumb so a socket that
+      // fails without ever closing is still visible.
+      if (this.intentionalClose) return;
+      console.debug("[unified-ws] socket error; awaiting close for the reason");
     };
   }
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl, wsUrl } from "@/lib/api";
-import type { ProgressInfo } from "@/lib/knowledge-helpers";
+import { taskFailureMessage, type ProgressInfo } from "@/lib/knowledge-helpers";
 
 export type TaskKind = "create" | "upload" | "reindex" | "retry";
 
@@ -13,6 +13,38 @@ export interface TaskState {
   logs: string[];
   executing: boolean;
   error: string | null;
+  errorCode?: string;
+  retryable?: boolean;
+}
+
+export function appendTaskLog(logs: string[], message?: string): string[] {
+  const line = String(message || "").trim();
+  if (!line || logs.at(-1) === line) return logs;
+  return [...logs, line];
+}
+
+export function taskStateAfterProgress(
+  current: TaskState,
+  expectedTaskId: string | undefined,
+  progress: ProgressInfo,
+): TaskState {
+  const taskId = expectedTaskId || progress.task_id;
+  if (taskId && current.taskId !== taskId) return current;
+  const logs = appendTaskLog(current.logs, progress.message);
+  if (progress.stage === "completed") {
+    return { ...current, logs, executing: false, error: null };
+  }
+  if (progress.stage === "error") {
+    return {
+      ...current,
+      logs,
+      executing: false,
+      error: progress.error || progress.message || "Task failed",
+      errorCode: progress.error_code,
+      retryable: progress.retryable,
+    };
+  }
+  return logs === current.logs ? current : { ...current, logs };
 }
 
 interface UseKnowledgeProgressOptions {
@@ -108,8 +140,36 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
           }
           setProgress(kbName, progress);
           const stage = progress.stage;
+          const terminal = stage === "completed" || stage === "error";
+          setTasksByKb((prev) => {
+            const current = prev[kbName];
+            if (!current) return prev;
+            const finalState = taskStateAfterProgress(
+              current,
+              expectedTaskId,
+              progress,
+            );
+            if (finalState === current) return prev;
+            const startedAt =
+              startedAtRef.current[`${kbName}:${current.taskId}`] ?? Date.now();
+            if (terminal && current.executing) {
+              delete startedAtRef.current[`${kbName}:${current.taskId}`];
+              onTaskSettledRef.current?.(kbName, {
+                ...finalState,
+                status: finalState.error ? "error" : "completed",
+                startedAt,
+                completedAt: Date.now(),
+              } as TaskState & {
+                startedAt: number;
+                completedAt: number;
+                status: "error" | "completed";
+              });
+            }
+            return { ...prev, [kbName]: finalState };
+          });
           if (stage === "completed" || stage === "error") {
             closeSocket(kbName);
+            closeSource(kbName);
             onCompleteRef.current?.(kbName);
           }
         } catch {
@@ -122,7 +182,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
         delete socketsRef.current[kbName];
       };
     },
-    [closeSocket, setProgress],
+    [closeSocket, closeSource, setProgress],
   );
 
   const openTaskStream = useCallback(
@@ -193,6 +253,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
         setTasksByKb((prev) => {
           const current = prev[kbName];
           if (!current || current.taskId !== taskId) return prev;
+          if (!current.executing) return prev;
           const finalState = { ...current, executing: false };
           const startedAt =
             startedAtRef.current[`${kbName}:${taskId}`] ?? Date.now();
@@ -216,25 +277,31 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
       source.addEventListener("failed", (event) => {
         settled = true;
         let detail = "Task failed";
-        let details: string | undefined;
+        let errorCode: string | undefined;
+        let retryable: boolean | undefined;
         try {
           const payload = JSON.parse((event as MessageEvent).data) as {
             detail?: string;
             details?: string;
+            error_code?: string;
+            retryable?: boolean;
           };
-          detail = payload.detail || detail;
-          details = payload.details;
+          detail = taskFailureMessage(payload);
+          errorCode = payload.error_code;
+          retryable = payload.retryable;
         } catch {
           // ignore malformed failure event
         }
-        const composed = details ? `${detail}\n\n${details}` : detail;
         setTasksByKb((prev) => {
           const current = prev[kbName];
           if (!current || current.taskId !== taskId) return prev;
+          if (!current.executing) return prev;
           const finalState = {
             ...current,
             executing: false,
-            error: composed,
+            error: detail,
+            errorCode,
+            retryable,
           };
           const startedAt =
             startedAtRef.current[`${kbName}:${taskId}`] ?? Date.now();
@@ -255,20 +322,8 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
 
       source.onerror = () => {
         if (settled) return;
-        setTasksByKb((prev) => {
-          const current = prev[kbName];
-          if (!current || current.taskId !== taskId) return prev;
-          if (!current.executing) return prev;
-          return {
-            ...prev,
-            [kbName]: {
-              ...current,
-              executing: false,
-              error: current.error || "Process log stream disconnected.",
-            },
-          };
-        });
-        closeSource(kbName);
+        // EventSource reconnects automatically. Progress WebSocket remains the
+        // authoritative terminal-state fallback while SSE reconnects.
       };
     },
     [closeSource, setProgress],
