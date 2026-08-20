@@ -5,6 +5,14 @@ import { kidsAdminApi, type KidsProfile, type KidsLibraryItem } from "@/lib/kids
 
 const AVATARS = ["🦊", "🐼", "🦄", "🐸", "🐱", "🐶", "🦁", "🐰"];
 
+type KidsReportSummary = {
+  chapters_completed?: number;
+  completed_books?: number;
+  total_books?: number;
+  quiz_average_percent?: number;
+  total_time_seconds?: number;
+};
+
 export default function KidsManagePage() {
   const [profiles, setProfiles] = useState<KidsProfile[]>([]);
   const [selected, setSelected] = useState<KidsProfile | null>(null);
@@ -19,6 +27,8 @@ export default function KidsManagePage() {
   const [loading, setLoading] = useState(true);
 
   const [copiedId, setCopiedId] = useState("");
+  const [confirmedDocs, setConfirmedDocs] = useState<Record<string, boolean>>({});
+  const [report, setReport] = useState<KidsReportSummary | null>(null);
 
   // Create form state
   const [name, setName] = useState("");
@@ -46,6 +56,7 @@ export default function KidsManagePage() {
       ]);
       const report = await kidsAdminApi.learningReport(profileId);
       setUsage(report.usage as typeof usage);
+      setReport(report as KidsReportSummary);
       setLibrary(lib.library);
       setAllDocs(docs.documents);
     } catch {
@@ -94,7 +105,12 @@ export default function KidsManagePage() {
 
   const handleAssign = async (docId: string) => {
     if (!selected) return;
-    await kidsAdminApi.assignBook(selected.id, { document_id: docId });
+    if (!confirmedDocs[docId]) return;
+    await kidsAdminApi.assignBook(selected.id, {
+      document_id: docId,
+      content_confirmed: true,
+    });
+    setConfirmedDocs((current) => ({ ...current, [docId]: false }));
     loadLibrary(selected.id);
   };
 
@@ -291,6 +307,22 @@ export default function KidsManagePage() {
                   Add 15 minutes
                 </button>
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginTop: 16 }}>
+                <div>
+                  <div style={summaryLabelStyle}>Chapters done</div>
+                  <div style={summaryValueStyle}>{report?.chapters_completed ?? 0}</div>
+                </div>
+                <div>
+                  <div style={summaryLabelStyle}>Books done</div>
+                  <div style={summaryValueStyle}>
+                    {report?.completed_books ?? 0} / {report?.total_books ?? library.length}
+                  </div>
+                </div>
+                <div>
+                  <div style={summaryLabelStyle}>Quiz average</div>
+                  <div style={summaryValueStyle}>{Math.round(report?.quiz_average_percent ?? 0)}%</div>
+                </div>
+              </div>
             </div>
 
             {/* Assigned books */}
@@ -303,10 +335,15 @@ export default function KidsManagePage() {
               ) : (
                 library.map((item) => {
                   const doc = item.document as Record<string, any>;
+                  const totalChapters = Array.isArray(doc.sections) ? doc.sections.length : 0;
+                  const completedChapters = item.progress.completed_section_ids.length;
                   return (
                     <div key={item.assignment.document_id} style={rowStyle}>
-                      <span style={{ flex: 1, fontSize: 15 }}>
+                      <span style={{ flex: 1, minWidth: 160, fontSize: 15 }}>
                         {doc.title}
+                        <span style={{ display: "block", fontSize: 13, color: "#718096", marginTop: 2 }}>
+                          {completedChapters}/{totalChapters} chapters · Quiz best {item.progress.quiz_best_score}/3
+                        </span>
                       </span>
                       <span style={{ fontSize: 13, color: "#d69e2e" }}>
                         {item.progress.total_stars} stars
@@ -330,9 +367,36 @@ export default function KidsManagePage() {
                   .filter((d) => !library.some((l) => l.assignment.document_id === d.id))
                   .map((doc) => (
                     <div key={doc.id} style={rowStyle}>
-                      <span style={{ flex: 1, fontSize: 15 }}>{doc.title}</span>
+                      <span style={{ flex: 1, minWidth: 180, fontSize: 15 }}>
+                        {doc.title}
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#4a5568", marginTop: 4 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!confirmedDocs[doc.id]}
+                            onChange={(e) =>
+                              setConfirmedDocs((current) => ({ ...current, [doc.id]: e.target.checked }))
+                            }
+                          />
+                          I reviewed this book and it is appropriate
+                        </label>
+                      </span>
+                      <a
+                        href={`/immersive-reading?book=${encodeURIComponent(doc.id)}`}
+                        target="_blank"
+                        style={{ ...miniBtn, background: "#bee3f8", color: "#2c5282" }}
+                      >
+                        Review
+                      </a>
                       <span style={{ fontSize: 13, color: "#a0aec0" }}>{doc.source_format}</span>
-                      <button onClick={() => handleAssign(doc.id)} style={{ ...miniBtn, background: "#c6f6d5", color: "#276749" }}>
+                      <button
+                        onClick={() => handleAssign(doc.id)}
+                        disabled={!confirmedDocs[doc.id]}
+                        style={{
+                          ...miniBtn,
+                          background: confirmedDocs[doc.id] ? "#c6f6d5" : "#e2e8f0",
+                          color: confirmedDocs[doc.id] ? "#276749" : "#a0aec0",
+                        }}
+                      >
                         Assign
                       </button>
                     </div>
@@ -380,6 +444,15 @@ const inputStyle: React.CSSProperties = {
 const rowStyle: React.CSSProperties = {
   display: "flex", alignItems: "center", gap: 12,
   padding: "10px 0", borderBottom: "1px solid #edf2f7",
+  flexWrap: "wrap",
+};
+
+const summaryLabelStyle: React.CSSProperties = {
+  fontSize: 12, fontWeight: 600, color: "#718096",
+};
+
+const summaryValueStyle: React.CSSProperties = {
+  fontSize: 20, fontWeight: 700, color: "#2d3748", marginTop: 2,
 };
 
 const miniBtn: React.CSSProperties = {

@@ -139,6 +139,7 @@ class AssignBookRequest(BaseModel):
     document_id: str
     available_through_section_id: str = ""
     available_through_section_index: int = 999
+    content_confirmed: bool = False
 
 
 class UpdateAssignmentRequest(BaseModel):
@@ -165,11 +166,14 @@ async def assign_book(profile_id: str, request: AssignBookRequest) -> dict:
     ir = get_immersive_reading_service()
     if ir.load_document(request.document_id) is None:
         raise HTTPException(status_code=404, detail="Document not found")
+    if not request.content_confirmed:
+        raise HTTPException(status_code=422, detail="A parent must confirm the book is appropriate")
     assignment = manager.assign_book(
         profile_id,
         request.document_id,
         available_through_section_id=request.available_through_section_id,
         available_through_section_index=request.available_through_section_index,
+        content_confirmed=request.content_confirmed,
     )
     return {"assignment": assignment.model_dump(mode="json")}
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import time
 from types import SimpleNamespace
@@ -39,10 +40,12 @@ def kids_manager(reading_service, monkeypatch):
 @pytest.fixture
 def client(reading_service, kids_manager, monkeypatch) -> TestClient:
     import deeptutor.api.routers.kids as router_module
+    import deeptutor.api.routers.kids_admin as admin_router_module
 
     monkeypatch.setattr(router_module, "get_immersive_reading_service", lambda: reading_service)
     app = FastAPI()
     app.include_router(router_module.router, prefix="/api/v1/kids")
+    app.include_router(admin_router_module.router, prefix="/api/v1/kids-admin")
     return TestClient(app)
 
 
@@ -65,6 +68,46 @@ def document_with_cover(reading_service, imported_document):
 
 def auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def child_token(client: TestClient, profile_id: str, pin: str = "1234") -> str:
+    response = client.post(
+        "/api/v1/kids/parent-unlock",
+        json={"profile_id": profile_id, "pin": pin},
+    )
+    assert response.status_code == 200
+    return response.json()["token"]
+
+
+def test_assignment_requires_explicit_parent_content_confirmation(
+    client: TestClient,
+    kids_manager,
+    imported_document: dict,
+    protected_profile,
+) -> None:
+    profile_id = protected_profile.id
+    document_id = imported_document["id"]
+    kids_manager.unassign_book(profile_id, document_id)
+
+    unconfirmed = client.post(
+        f"/api/v1/kids-admin/profiles/{profile_id}/books",
+        json={"document_id": document_id, "content_confirmed": False},
+    )
+    assert unconfirmed.status_code == 422
+
+    confirmed = client.post(
+        f"/api/v1/kids-admin/profiles/{profile_id}/books",
+        json={"document_id": document_id, "content_confirmed": True},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["assignment"]["content_confirmed"] is True
+
+    kids_manager.update_assignment(profile_id, document_id, content_confirmed=False)
+    assert kids_manager.list_assignments(profile_id)[0].content_confirmed is False
+    token = child_token(client, profile_id)
+    blocked = client.get(f"/api/v1/kids/books/{document_id}", headers=auth_headers(token))
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"]["code"] == "parent_confirmation_required"
 
 
 def test_child_resources_require_a_persisted_device_session(
@@ -165,6 +208,180 @@ def test_daily_limit_uses_capped_server_elapsed_time(kids_manager, protected_pro
     assert status["used_seconds"] == 240  # 60 initial + 180-second cap
 
 
+def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
+    client: TestClient,
+    reading_service,
+    kids_manager,
+    imported_document: dict,
+    protected_profile,
+) -> None:
+    document_id = imported_document["id"]
+    chapter_one = imported_document["sections"][1]
+    chapter_two = imported_document["sections"][2]
+    token = child_token(client, protected_profile.id)
+    headers = auth_headers(token)
+
+    opening = client.put(
+        f"/api/v1/kids/books/{document_id}/progress",
+        json={"section_id": chapter_one["id"], "scroll_percent": 50},
+        headers=headers,
+    )
+    assert opening.status_code == 200
+    assert (
+        client.post(
+            f"/api/v1/kids/books/{document_id}/quiz",
+            json={"section_id": chapter_one["id"]},
+            headers=headers,
+        ).status_code
+        == 403
+    )
+    assert (
+        client.put(
+            f"/api/v1/kids/books/{document_id}/progress",
+            json={"section_id": chapter_one["id"], "scroll_percent": 90, "completed": True},
+            headers=headers,
+        ).status_code
+        == 403
+    )
+
+    completed = client.put(
+        f"/api/v1/kids/books/{document_id}/progress",
+        json={"section_id": chapter_one["id"], "scroll_percent": 100, "completed": True},
+        headers=headers,
+    )
+    assert completed.status_code == 200
+    assert chapter_one["id"] in completed.json()["progress"]["completed_section_ids"]
+
+    for section, answer in ((chapter_one, 0), (chapter_two, 1)):
+        reading_service._save_kids_quiz_cache(
+            document_id,
+            section["id"],
+            KidsQuizResult(
+                document_id=document_id,
+                section_id=section["id"],
+                questions=[
+                    KidsQuizQuestion(
+                        id=f"q{i}",
+                        question=f"Question {i}?",
+                        choices=["yes", "no"],
+                        answer_index=answer,
+                    )
+                    for i in range(1, 4)
+                ],
+                content_hash=reading_service._content_hash(
+                    reading_service.get_section(document_id, section["id"])["content"]
+                ),
+                prompt_version=reading_service.KIDS_QUIZ_PROMPT_VERSION,
+            ),
+        )
+
+    first_quiz = client.post(
+        f"/api/v1/kids/books/{document_id}/quiz",
+        json={"section_id": chapter_one["id"]},
+        headers=headers,
+    )
+    assert first_quiz.status_code == 200
+    assert len(first_quiz.json()["questions"]) == 3
+    first_grade = client.post(
+        f"/api/v1/kids/books/{document_id}/quiz/submit",
+        json={"section_id": chapter_one["id"], "answers": [0, 0, 0]},
+        headers=headers,
+    )
+    assert first_grade.status_code == 200
+    assert first_grade.json()["total"] == 3
+
+    # A sequential chapter transition is a valid completion signal for the
+    # chapter the child just left, even though relocation now reports chapter 2.
+    skipped_chapter = client.put(
+        f"/api/v1/kids/books/{document_id}/progress",
+        json={
+            "section_id": chapter_two["id"],
+            "scroll_percent": 100,
+            "completed": True,
+        },
+        headers=headers,
+    )
+    assert skipped_chapter.status_code == 409
+    assert (
+        client.post(
+            f"/api/v1/kids/books/{document_id}/quiz",
+            json={"section_id": chapter_two["id"]},
+            headers=headers,
+        ).status_code
+        == 403
+    )
+
+    opened_two = client.put(
+        f"/api/v1/kids/books/{document_id}/progress",
+        json={"section_id": chapter_two["id"], "scroll_percent": 40},
+        headers=headers,
+    )
+    assert opened_two.status_code == 200
+    assert (
+        client.post(
+            f"/api/v1/kids/books/{document_id}/quiz/submit",
+            json={"section_id": chapter_two["id"], "answers": [0, 0, 0]},
+            headers=headers,
+        ).status_code
+        == 403
+    )
+    assert (
+        client.put(
+            f"/api/v1/kids/books/{document_id}/progress",
+            json={"section_id": chapter_two["id"], "scroll_percent": 100, "completed": True},
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    second_quiz = client.post(
+        f"/api/v1/kids/books/{document_id}/quiz",
+        json={"section_id": chapter_two["id"]},
+        headers=headers,
+    )
+    assert second_quiz.status_code == 200
+    assert len(second_quiz.json()["questions"]) == 3
+
+    final_book = client.get(f"/api/v1/kids/books/{document_id}", headers=headers)
+    assert final_book.status_code == 200
+    assert final_book.json()["document"]["is_complete"] is True
+
+
+def test_deterministic_fallback_quiz_cache_is_reused(
+    reading_service,
+    imported_document: dict,
+    monkeypatch,
+) -> None:
+    import deeptutor.immersive_reading.service as service_module
+
+    document_id = imported_document["id"]
+    section = imported_document["sections"][1]
+    content = reading_service.get_section(document_id, section["id"])["content"]
+    reading_service._save_kids_quiz_cache(
+        document_id,
+        section["id"],
+        KidsQuizResult(
+            document_id=document_id,
+            section_id=section["id"],
+            questions=[
+                KidsQuizQuestion(id=f"q{i}", question=f"Word {i}?", choices=["yes", "no"])
+                for i in range(1, 4)
+            ],
+            content_hash=reading_service._content_hash(content),
+            model="sight-words-fallback",
+            prompt_version=service_module.KIDS_FALLBACK_QUIZ_PROMPT_VERSION,
+        ),
+    )
+
+    def fail_llm(*args, **kwargs):
+        raise AssertionError("cached fallback quiz must not call the LLM")
+
+    monkeypatch.setattr(service_module, "complete", fail_llm)
+    result = asyncio.run(
+        reading_service.generate_kids_quiz(document_id, section["id"], age_band="6-8")
+    )
+    assert len(result.questions) == 3
+
+
 def test_completion_and_quiz_stars_are_idempotent(
     client: TestClient,
     reading_service,
@@ -189,6 +406,7 @@ def test_completion_and_quiz_stars_are_idempotent(
             questions=[
                 KidsQuizQuestion(id="q1", question="Word?", choices=["yes", "no"], answer_index=0),
                 KidsQuizQuestion(id="q2", question="Other?", choices=["yes", "no"], answer_index=1),
+                KidsQuizQuestion(id="q3", question="Last?", choices=["yes", "no"], answer_index=0),
             ],
             content_hash=reading_service._content_hash(
                 reading_service.get_section(document_id, section_id)["content"]
@@ -200,7 +418,7 @@ def test_completion_and_quiz_stars_are_idempotent(
         "/api/v1/kids/parent-unlock",
         json={"profile_id": protected_profile.id, "pin": "1234"},
     ).json()["token"]
-    payload = {"section_id": section_id, "answers": [0, 1]}
+    payload = {"section_id": section_id, "answers": [0, 1, 0]}
     first_quiz = client.post(
         f"/api/v1/kids/books/{document_id}/quiz/submit",
         json=payload,

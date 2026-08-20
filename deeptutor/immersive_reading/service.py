@@ -66,6 +66,7 @@ _HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 logger = logging.getLogger(__name__)
+KIDS_FALLBACK_QUIZ_PROMPT_VERSION = "sight-words-v1"
 
 
 def _is_front_matter_title(title: str) -> bool:
@@ -684,7 +685,9 @@ class ImmersiveReadingService:
             not force_refresh
             and cached
             and cached.get("content_hash") == content_hash
-            and cached.get("prompt_version") == self.KIDS_QUIZ_PROMPT_VERSION
+            and cached.get("prompt_version")
+            in {self.KIDS_QUIZ_PROMPT_VERSION, KIDS_FALLBACK_QUIZ_PROMPT_VERSION}
+            and len(cached.get("questions", [])) == 3
         ):
             return KidsQuizResult(**cached)
 
@@ -758,8 +761,8 @@ class ImmersiveReadingService:
                 )
             )
 
-        if not questions:
-            raise RuntimeError("No valid questions were generated")
+        if len(questions) != 3:
+            raise RuntimeError("The model did not generate exactly 3 valid questions")
 
         result = KidsQuizResult(
             document_id=document_id,
@@ -2106,6 +2109,9 @@ class KidsManager:
 
     def list_assignments(self, profile_id: str | None = None) -> list[KidsBookAssignment]:
         data = _read_json(self._assignments_path(), [])
+        for item in data:
+            if isinstance(item, dict) and "content_confirmed" not in item:
+                item["content_confirmed"] = True
         items = [KidsBookAssignment(**a) for a in data]
         if profile_id:
             items = [a for a in items if a.profile_id == profile_id]
@@ -2118,6 +2124,7 @@ class KidsManager:
         *,
         available_through_section_id: str = "",
         available_through_section_index: int = 999,
+        content_confirmed: bool = True,
     ) -> KidsBookAssignment:
         existing = self.list_assignments(profile_id)
         match = next((a for a in existing if a.document_id == document_id), None)
@@ -2125,6 +2132,8 @@ class KidsManager:
             match.status = "active"
             match.available_through_section_id = available_through_section_id
             match.available_through_section_index = available_through_section_index
+            match.content_confirmed = content_confirmed
+            match.content_confirmed_at = time.time() if content_confirmed else 0.0
             match.updated_at = time.time()
             self._save_assignments()
             return match
@@ -2140,6 +2149,8 @@ class KidsManager:
             document_title=title,
             available_through_section_id=available_through_section_id,
             available_through_section_index=available_through_section_index,
+            content_confirmed=content_confirmed,
+            content_confirmed_at=time.time() if content_confirmed else 0.0,
             sort_order=sort_order,
         )
         existing.append(assignment)
@@ -2175,6 +2186,7 @@ class KidsManager:
             "is_next_read",
             "available_through_section_id",
             "available_through_section_index",
+            "content_confirmed",
         ):
             if key in kwargs and kwargs[key] is not None:
                 setattr(a, key, kwargs[key])
@@ -2198,8 +2210,18 @@ class KidsManager:
             if doc is None:
                 continue
             progress = self.load_kids_progress(profile_id, a.document_id)
-            total_sections = max(1, len(doc.sections))
-            completed = min(len(progress.completed_section_ids), total_sections)
+            allowed_sections = [
+                section
+                for section in doc.sections
+                if section.index <= a.available_through_section_index
+                and section.checkpoint_kind != "none"
+            ]
+            total_sections = max(1, len(allowed_sections))
+            completed_ids = set(progress.completed_section_ids)
+            completed = len(
+                [section for section in allowed_sections if section.id in completed_ids]
+            )
+            is_complete = bool(allowed_sections) and completed == len(allowed_sections)
             library.append(
                 {
                     "assignment": a.model_dump(mode="json"),
@@ -2210,6 +2232,7 @@ class KidsManager:
                         ),
                         "progress": progress.model_dump(mode="json"),
                         "progress_percent": round(completed / total_sections * 100, 1),
+                        "is_complete": is_complete,
                     },
                     "progress": progress.model_dump(mode="json"),
                 }
@@ -2383,6 +2406,13 @@ class KidsManager:
         total_stars = sum(item["progress"]["total_stars"] for item in library)
         total_time = sum(item["progress"]["time_spent_seconds"] for item in library)
         total_quizzes = sum(item["progress"]["quiz_attempts"] for item in library)
+        chapters_completed = sum(len(item["progress"]["completed_section_ids"]) for item in library)
+        completed_books = sum(1 for item in library if item["document"].get("is_complete") is True)
+        quiz_average = sum(
+            item["progress"]["quiz_best_score"] / 3
+            for item in library
+            if item["progress"]["quiz_attempts"] > 0
+        ) / max(1, sum(1 for item in library if item["progress"]["quiz_attempts"] > 0))
         return {
             "profile": profile.model_dump(mode="json"),
             "books": library,
@@ -2390,6 +2420,9 @@ class KidsManager:
             "total_stars": total_stars,
             "total_time_seconds": total_time,
             "total_quiz_attempts": total_quizzes,
+            "chapters_completed": chapters_completed,
+            "completed_books": completed_books,
+            "quiz_average_percent": round(quiz_average * 100, 1),
             "total_books": len(library),
         }
 

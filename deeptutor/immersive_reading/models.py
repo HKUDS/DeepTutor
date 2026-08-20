@@ -203,6 +203,10 @@ class KidsBookAssignment(BaseModel):
     status: Literal["active", "hidden"] = "active"
     available_through_section_id: str = ""
     available_through_section_index: int = 999
+    # Assignments written before this safety gate did not persist the field.
+    # The loader treats a missing key as confirmed to preserve those libraries.
+    content_confirmed: bool = False
+    content_confirmed_at: float = 0.0
     sort_order: int = 0
     is_next_read: bool = False
     assigned_at: float = Field(default_factory=time.time)

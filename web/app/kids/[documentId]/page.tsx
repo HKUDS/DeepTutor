@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Trophy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
@@ -29,6 +30,9 @@ export default function KidsReaderPage() {
   const [location, setLocation] = useState<string | null>(null);
   const [toc, setToc] = useState<NavItem[]>([]);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [quizSectionId, setQuizSectionId] = useState("");
+  const [quizSectionTitle, setQuizSectionTitle] = useState("");
+  const [quizError, setQuizError] = useState("");
   const [questions, setQuestions] = useState<KidsSafeQuestion[]>([]);
   const [quizLoading, setQuizLoading] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -46,11 +50,23 @@ export default function KidsReaderPage() {
   const [profileHasPin, setProfileHasPin] = useState(false);
   const [profileId, setProfileId] = useState("");
   const [usage, setUsage] = useState<KidsUsage | null>(null);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [bookComplete, setBookComplete] = useState(false);
+  const [showAchievement, setShowAchievement] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const currentHrefRef = useRef<string>("");
   const currentSectionIdRef = useRef<string>("");
   const sectionIdByHrefRef = useRef<Map<string, string>>(new Map());
+  const sectionsByIdRef = useRef<Map<string, {
+    id: string;
+    index: number;
+    title: string;
+    checkpointKind: string;
+  }>>(new Map());
+  const completedSectionIdsRef = useRef<Set<string>>(new Set());
+  const bookCompleteRef = useRef(false);
+  const handleRelocatedRef = useRef<(location: any) => void>(() => {});
   const narrationRateRef = useRef(0.8);
 
   useEffect(() => {
@@ -63,8 +79,22 @@ export default function KidsReaderPage() {
         setBookTitle(doc.title || "Book");
         setStars(data.progress?.total_stars || 0);
         setUsage(data.usage);
+        setProgressPercent(Number(doc.progress_percent || 0));
+        setBookComplete(Boolean(doc.is_complete));
+        bookCompleteRef.current = Boolean(doc.is_complete);
         narrationRateRef.current = data.profile?.narration_rate || 0.8;
         const sections = Array.isArray(doc.sections) ? doc.sections : [];
+        sectionsByIdRef.current = new Map(
+          sections.map((section: any) => [
+            String(section.id),
+            {
+              id: String(section.id),
+              index: Number(section.index || 0),
+              title: String(section.title || `Chapter ${Number(section.index || 0) + 1}`),
+              checkpointKind: String(section.checkpoint_kind || "chapter"),
+            },
+          ]),
+        );
         sectionIdByHrefRef.current = new Map(
           sections
             .flatMap((section: any) => [
@@ -76,6 +106,14 @@ export default function KidsReaderPage() {
         if (!sections.length) {
           sectionIdByHrefRef.current.set("", String((sections[0] as any)?.id || ""));
         }
+        completedSectionIdsRef.current = new Set(
+          (data.progress?.completed_section_ids || []).filter(
+            (sectionId: string) =>
+              sectionsByIdRef.current.get(sectionId)?.checkpointKind !== "none",
+          ),
+        );
+        currentSectionIdRef.current =
+          data.progress?.current_section_id || String((sections[0] as any)?.id || "");
         if (data.progress?.epub_cfi) {
           setLocation(data.progress.epub_cfi);
         }
@@ -137,7 +175,6 @@ export default function KidsReaderPage() {
 
   const doExit = async () => {
     await kidsApi.logout().catch(() => {});
-    localStorage.removeItem("dt_kids_token");
     localStorage.removeItem("dt_kids_profile_id");
     router.push("/kids");
   };
@@ -152,21 +189,115 @@ export default function KidsReaderPage() {
     }
   };
 
-  const saveProgress = useCallback(
-    (loc: string, href: string) => {
-      const sectionId = sectionIdByHrefRef.current.get(href) || currentSectionIdRef.current || "";
-      if (!sectionId) return;
-      currentSectionIdRef.current = sectionId;
-      kidsApi.updateProgress(documentId, {
-        section_id: sectionId,
-        section_index: 0,
-        scroll_percent: 0,
-        epub_cfi: loc,
-        section_href: href,
-      }).catch(() => {});
+  const openQuiz = useCallback(
+    async (sectionId: string) => {
+      const section = sectionsByIdRef.current.get(sectionId);
+      setShowQuiz(true);
+      setQuizSectionId(sectionId);
+      setQuizSectionTitle(section?.title || "Chapter");
+      setGrade(null);
+      setAnswers({});
+      setQuizError("");
+      setQuizLoading(true);
+      try {
+        const { questions: qs } = await kidsApi.getQuiz(documentId, sectionId);
+        setQuestions(qs);
+      } catch (error) {
+        setQuestions([]);
+        setQuizError(
+          error instanceof KidsApiError && error.status === 403
+            ? "Finish this chapter to unlock the quiz."
+            : "Quiz unavailable. Try again.",
+        );
+      } finally {
+        setQuizLoading(false);
+      }
     },
     [documentId],
   );
+
+  const syncSection = useCallback(
+    (loc: string, rawHref: string, rawPercent: number) => {
+      const href = rawHref.split(/[?#]/)[0];
+      const sectionId = sectionIdByHrefRef.current.get(href);
+      if (!sectionId) return;
+      const section = sectionsByIdRef.current.get(sectionId);
+      const previous = currentSectionIdRef.current
+        ? sectionsByIdRef.current.get(currentSectionIdRef.current)
+        : undefined;
+      const percent = Math.max(0, Math.min(100, rawPercent * 100));
+      const totalCheckpoints = Array.from(sectionsByIdRef.current.values()).filter(
+        (item) => item.checkpointKind !== "none",
+      ).length;
+      currentSectionIdRef.current = sectionId;
+      currentHrefRef.current = href;
+
+      const save = (id: string, scrollPercent: number, completed = false) =>
+        kidsApi.updateProgress(documentId, {
+          section_id: id,
+          section_index: sectionsByIdRef.current.get(id)?.index || 0,
+          scroll_percent: scrollPercent,
+          epub_cfi: loc,
+          section_href: sectionsByIdRef.current.get(id)?.index === section?.index ? href : "",
+          completed,
+        });
+
+      void (async () => {
+        try {
+          if (
+            previous &&
+            section &&
+            previous.checkpointKind !== "none" &&
+            section.index === previous.index + 1 &&
+            !completedSectionIdsRef.current.has(previous.id)
+          ) {
+            const result = await save(previous.id, 100, true);
+            completedSectionIdsRef.current.add(previous.id);
+            setStars(result.progress.total_stars);
+            setProgressPercent(
+              Math.round((completedSectionIdsRef.current.size / Math.max(1, totalCheckpoints)) * 100),
+            );
+            await openQuiz(previous.id);
+          }
+
+          if (
+            section &&
+            section.checkpointKind !== "none" &&
+            percent >= 98 &&
+            !completedSectionIdsRef.current.has(sectionId)
+          ) {
+            const result = await save(sectionId, 100, true);
+            completedSectionIdsRef.current.add(sectionId);
+            setStars(result.progress.total_stars);
+            setProgressPercent(
+              Math.round((completedSectionIdsRef.current.size / Math.max(1, totalCheckpoints)) * 100),
+            );
+            const complete =
+              completedSectionIdsRef.current.size === totalCheckpoints;
+            setBookComplete(complete);
+            bookCompleteRef.current = complete;
+            await openQuiz(sectionId);
+          } else {
+            await save(sectionId, percent);
+          }
+        } catch {
+          // Position sync is best-effort; the server remains authoritative for completion.
+        }
+      })();
+    },
+    [documentId, openQuiz],
+  );
+
+  useEffect(() => {
+    handleRelocatedRef.current = (location: any) => {
+      const href = String(location?.start?.href || "");
+      const percent = location?.atEnd
+        ? 100
+        : Number(location?.start?.percentage ?? 0);
+      const cfi = String(location?.start?.cfi || "");
+      if (href && cfi) syncSection(cfi, href, percent);
+    };
+  }, [syncSection]);
 
   const stopSpeaking = useCallback(() => {
     if (utteranceRef.current) {
@@ -206,39 +337,20 @@ export default function KidsReaderPage() {
     }
   }, []);
 
-  const loadQuiz = useCallback(async () => {
-    setShowQuiz(true);
-    setGrade(null);
-    setAnswers({});
-    setQuizLoading(true);
-    try {
-      const sectionId = currentSectionIdRef.current || sectionIdByHrefRef.current.get(currentHrefRef.current) || "";
-      if (!sectionId) {
-        setQuestions([]);
-        return;
-      }
-      const { questions: qs } = await kidsApi.getQuiz(documentId, sectionId);
-      setQuestions(qs);
-    } catch {
-      setQuestions([]);
-    } finally {
-      setQuizLoading(false);
-    }
-  }, [documentId]);
-
   const submitQuiz = async () => {
     setSubmitting(true);
+    setQuizError("");
     try {
       const answerArr = questions.map((_, i) => answers[i] ?? -1);
       const result = await kidsApi.submitQuiz(
         documentId,
-        currentSectionIdRef.current,
+        quizSectionId,
         answerArr,
       );
       setGrade(result);
       setStars((s) => s + (result.earned_stars ?? result.stars));
     } catch {
-      // ignore
+      setQuizError("Quiz unavailable. Try again.");
     } finally {
       setSubmitting(false);
     }
@@ -319,9 +431,14 @@ export default function KidsReaderPage() {
        zIndex: 10,
        flexShrink: 0,
      }}>
-        <button onClick={handleExitClick} style={toolbarBtn}>Books</button>
-       <div style={{ flex: 1, textAlign: "center", fontWeight: 700, fontSize: 18, color: "#4a3f6b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-         {bookTitle}
+       <button onClick={handleExitClick} style={toolbarBtn}>Books</button>
+       <div style={{ flex: 1, minWidth: 0 }}>
+         <div style={{ textAlign: "center", fontWeight: 700, fontSize: 18, color: "#4a3f6b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+           {bookTitle}
+         </div>
+         <div style={{ height: 6, background: "#e9e4f5", borderRadius: 999, marginTop: 4 }}>
+           <div style={{ width: `${progressPercent}%`, height: "100%", background: "#667eea", borderRadius: 999 }} />
+         </div>
        </div>
         <div style={{ fontSize: 22 }}>Stars: {stars}</div>
       </div>
@@ -332,7 +449,6 @@ export default function KidsReaderPage() {
           location={location ?? null}
           locationChanged={(loc: string) => {
             setLocation(loc);
-            saveProgress(loc, currentHrefRef.current);
           }}
           tocChanged={(t: NavItem[]) => setToc(t)}
           epubInitOptions={{ openAs: "epub" }}
@@ -340,6 +456,9 @@ export default function KidsReaderPage() {
           getRendition={(rendition: Rendition) => {
             renditionRef.current = rendition;
             rendition.themes.fontSize("120%");
+            void rendition.book.ready
+              .then(() => rendition.book.locations.generate(1024))
+              .then(() => rendition.reportLocation());
             rendition.on("selected", (cfiRange: string, contents: any) => {
               const text = contents.window.getSelection().toString();
               if (text && text.length > 2) {
@@ -347,8 +466,7 @@ export default function KidsReaderPage() {
               }
             });
             rendition.on("relocated", (location: any) => {
-              const href = location?.start?.href || "";
-              currentHrefRef.current = href;
+              handleRelocatedRef.current(location);
             });
           }}
         />
@@ -380,7 +498,10 @@ export default function KidsReaderPage() {
         >
           Translate
         </button>
-        <button style={{ ...bigBtn, background: "#fed7aa" }} onClick={loadQuiz}>
+        <button
+          style={{ ...bigBtn, background: "#fed7aa" }}
+          onClick={() => void openQuiz(currentSectionIdRef.current)}
+        >
           Quiz
         </button>
       </div>
@@ -430,7 +551,10 @@ export default function KidsReaderPage() {
                 ))}
                 <button
                   style={{ ...bigBtn, marginTop: 16, background: "#667eea", color: "white" }}
-                  onClick={() => setShowQuiz(false)}
+                  onClick={() => {
+                    setShowQuiz(false);
+                    if (bookCompleteRef.current) setShowAchievement(true);
+                  }}
                 >
                   Done!
                 </button>
@@ -439,6 +563,13 @@ export default function KidsReaderPage() {
               <div style={{ textAlign: "center", padding: 40 }}>
                 <div style={{ fontSize: 48 }}>?</div>
                 <p style={{ fontSize: 18, color: "#667eea" }}>Making your quiz...</p>
+              </div>
+            ) : quizError ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <p style={{ fontSize: 18, color: "#4a3f6b" }}>{quizError}</p>
+                <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={() => setShowQuiz(false)}>
+                  Keep Reading
+                </button>
               </div>
             ) : questions.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40 }}>
@@ -450,8 +581,9 @@ export default function KidsReaderPage() {
             ) : (
               <div>
                 <h2 style={{ fontSize: 24, fontWeight: 800, color: "#4a3f6b", marginBottom: 16 }}>
-                  Fun Quiz!
+                  {quizSectionTitle} Quiz
                 </h2>
+                {quizError && <p style={{ fontSize: 16, color: "#e53e3e", marginBottom: 12 }}>{quizError}</p>}
                 {questions.map((q, qi) => (
                   <div key={qi} style={{ marginBottom: 20 }}>
                     <div style={{ fontSize: 18, fontWeight: 600, color: "#2d3748", marginBottom: 8 }}>
@@ -487,6 +619,28 @@ export default function KidsReaderPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {bookComplete && showAchievement && (
+        <div style={popupOverlay}>
+          <div style={popupBox}>
+            <div style={{ textAlign: "center" }}>
+              <Trophy size={56} color="#d69e2e" style={{ marginBottom: 8 }} />
+              <h2 style={{ fontSize: 28, fontWeight: 800, color: "#4a3f6b", margin: 0 }}>
+                Book Complete!
+              </h2>
+              <p style={{ fontSize: 18, color: "#4a5568", marginTop: 12 }}>
+                You finished every chapter and earned {stars} stars.
+              </p>
+              <button
+                style={{ ...bigBtn, background: "#667eea", color: "white", marginTop: 12 }}
+                onClick={() => setShowAchievement(false)}
+              >
+                Back to Book
+              </button>
+            </div>
           </div>
         </div>
       )}

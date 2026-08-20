@@ -12,7 +12,11 @@ from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
 from deeptutor.immersive_reading.models import KidsBookAssignment, ReadingSection
-from deeptutor.immersive_reading.service import KidsManager, get_kids_manager
+from deeptutor.immersive_reading.service import (
+    KIDS_FALLBACK_QUIZ_PROMPT_VERSION,
+    KidsManager,
+    get_kids_manager,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -99,6 +103,14 @@ def _active_assignment(
     )
     if assignment is None:
         raise HTTPException(status_code=404, detail="Book not found")
+    if not assignment.content_confirmed:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "parent_confirmation_required",
+                "message": "A parent must confirm this book first",
+            },
+        )
     return assignment
 
 
@@ -185,6 +197,7 @@ async def kids_library(profile_id: str = Depends(_require_active_profile)) -> di
     return {
         "library": manager.get_kids_library(profile_id),
         "usage": manager.usage_status(profile_id),
+        "profile": _profile_dict(manager.get_profile(profile_id)),
     }
 
 
@@ -203,10 +216,12 @@ async def get_kids_book(
         section
         for section in doc.sections
         if 0 <= section.index <= assignment.available_through_section_index
+        and section.checkpoint_kind != "none"
     ]
     progress = manager.load_kids_progress(profile_id, document_id)
-    total_sections = max(1, len(doc.sections))
-    completed = min(len(progress.completed_section_ids), total_sections)
+    completed_ids = set(progress.completed_section_ids)
+    completed = len([section for section in allowed_sections if section.id in completed_ids])
+    total_sections = max(1, len(allowed_sections))
     return {
         "document": {
             **doc.model_dump(mode="json"),
@@ -214,9 +229,11 @@ async def get_kids_book(
             "cover_url": f"/api/v1/kids/books/{document_id}/cover" if doc.has_cover else "",
             "progress": progress.model_dump(mode="json"),
             "progress_percent": round(completed / total_sections * 100, 1),
+            "is_complete": bool(allowed_sections) and completed == len(allowed_sections),
         },
         "progress": progress.model_dump(mode="json"),
         "usage": manager.usage_status(profile_id),
+        "profile": _profile_dict(manager.get_profile(profile_id)),
     }
 
 
@@ -269,6 +286,8 @@ async def get_kids_section(
     section = _resolve_section(doc, section_id)
     if section.index > assignment.available_through_section_index:
         raise HTTPException(status_code=403, detail="This chapter is not available yet")
+    if section.checkpoint_kind == "none":
+        raise HTTPException(status_code=404, detail="This chapter has no quiz")
     return ir.get_section(document_id, section.id)
 
 
@@ -296,6 +315,9 @@ async def update_kids_progress(
     section = _resolve_section(doc, request.section_id)
     if section.index > assignment.available_through_section_index:
         raise HTTPException(status_code=403, detail="This chapter is not available yet")
+    if section.checkpoint_kind == "none":
+        raise HTTPException(status_code=404, detail="This chapter has no quiz")
+    prior_progress = manager.load_kids_progress(profile_id, document_id)
     progress = manager.update_kids_progress_record(
         profile_id,
         document_id,
@@ -306,6 +328,12 @@ async def update_kids_progress(
         section_href=request.section_href,
     )
     if request.completed:
+        if prior_progress.current_section_id and prior_progress.current_section_id != section.id:
+            raise HTTPException(
+                status_code=409, detail="Complete the chapter you are currently reading"
+            )
+        if request.scroll_percent < 98:
+            raise HTTPException(status_code=403, detail="Read to the end of the chapter first")
         manager.mark_section_completed(profile_id, document_id, section.id)
         progress = manager.load_kids_progress(profile_id, document_id)
     return {"progress": progress.model_dump(mode="json")}
@@ -331,6 +359,9 @@ async def get_kids_quiz(
     section = _resolve_section(doc, request.section_id)
     if section.index > assignment.available_through_section_index:
         raise HTTPException(status_code=403, detail="This chapter is not available yet")
+    progress = manager.load_kids_progress(profile_id, document_id)
+    if section.id not in progress.completed_section_ids:
+        raise HTTPException(status_code=403, detail="Finish this chapter before taking the quiz")
     profile = manager.get_profile(profile_id)
     age_band = profile.age_band if profile else "6-8"
     try:
@@ -379,7 +410,7 @@ async def get_kids_quiz(
             ],
             content_hash=hashlib.sha256(section_text.encode()).hexdigest(),
             model="sight-words-fallback",
-            prompt_version="sight-words-v1",
+            prompt_version=KIDS_FALLBACK_QUIZ_PROMPT_VERSION,
         )
         ir._save_kids_quiz_cache(document_id, section.id, result)
 
@@ -412,6 +443,9 @@ async def submit_kids_quiz(
     section = _resolve_section(doc, request.section_id)
     if section.index > assignment.available_through_section_index:
         raise HTTPException(status_code=403, detail="This chapter is not available yet")
+    progress = manager.load_kids_progress(profile_id, document_id)
+    if section.id not in progress.completed_section_ids:
+        raise HTTPException(status_code=403, detail="Finish this chapter before taking the quiz")
     try:
         cached = await ir.generate_kids_quiz(document_id, section.id)
     except ValueError as exc:

@@ -38,6 +38,8 @@ export interface KidsBookAssignment {
   status: "active" | "hidden";
   available_through_section_id: string;
   available_through_section_index: number;
+  content_confirmed: boolean;
+  content_confirmed_at?: number;
   sort_order: number;
   is_next_read: boolean;
 }
@@ -137,7 +139,12 @@ export const kidsAdminApi = {
 
   assignBook: (
     profileId: string,
-    data: { document_id: string; available_through_section_id?: string; available_through_section_index?: number },
+    data: {
+      document_id: string;
+      available_through_section_id?: string;
+      available_through_section_index?: number;
+      content_confirmed: boolean;
+    },
   ) =>
     adminRequest<{ assignment: KidsBookAssignment }>(`/profiles/${profileId}/books`, {
       method: "POST",
@@ -187,9 +194,7 @@ export class KidsApiError extends Error {
 // ── Child API ──────────────────────────────────────────────────────────────
 
 async function kidsRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("dt_kids_token") : null;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await apiFetch(`${KIDS_BASE}${path}`, {
     headers,
     ...init,
@@ -209,18 +214,21 @@ export const kidsApi = {
   bootstrap: () => kidsRequest<{ profiles: KidsBootstrapProfile[] }>("/bootstrap"),
 
   selectProfile: (profileId: string) =>
-    kidsRequest<{ token: string; profile: KidsProfile }>("/select-profile", {
+    kidsRequest<{ profile: KidsProfile }>("/select-profile", {
       method: "POST",
       body: JSON.stringify({ profile_id: profileId }),
     }),
 
   parentUnlock: (profileId: string, pin: string) =>
-    kidsRequest<{ token: string; profile: KidsProfile }>("/parent-unlock", {
+    kidsRequest<{ profile: KidsProfile }>("/parent-unlock", {
       method: "POST",
       body: JSON.stringify({ profile_id: profileId, pin }),
     }),
 
-  library: () => kidsRequest<{ library: KidsLibraryItem[]; usage: KidsUsage }>("/library"),
+  library: () =>
+    kidsRequest<{ library: KidsLibraryItem[]; usage: KidsUsage; profile: KidsProfile }>(
+      "/library",
+    ),
 
   getBook: (documentId: string) =>
     kidsRequest<{

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   kidsApi,
@@ -41,77 +41,71 @@ export default function KidsProfileEntryPage() {
   const [exitPin, setExitPin] = useState("");
   const [exitPinError, setExitPinError] = useState("");
 
-  async function enterShelf(p: KidsBootstrapProfile) {
-    try {
-      const { token } = await kidsApi.selectProfile(p.id);
-      localStorage.setItem("dt_kids_token", token);
-      localStorage.setItem("dt_kids_profile_id", p.id);
-      const { library: lib } = await kidsApi.library();
-      setProfile(p);
-      setLibrary(lib);
-      setStage("shelf");
-    } catch {
-      setError("Cannot load books. Try again!");
-      setStage("pin");
-    }
-  }
-
   // ── On mount: check for existing token or fetch profile info ──────────
-  const bootstrap = useCallback(async () => {
-    const storedToken =
-      typeof window !== "undefined"
-        ? localStorage.getItem("dt_kids_token")
-        : null;
-    const storedPid =
-      typeof window !== "undefined"
-        ? localStorage.getItem("dt_kids_profile_id")
-        : null;
+  useEffect(() => {
+    let cancelled = false;
 
-    if (storedToken && storedPid === profileId) {
+    const enterShelf = async (p: KidsBootstrapProfile) => {
       try {
+        await kidsApi.selectProfile(p.id);
+        if (cancelled) return;
+        localStorage.setItem("dt_kids_profile_id", p.id);
         const { library: lib } = await kidsApi.library();
-        try {
-          const { profiles } = await kidsApi.bootstrap();
-          const p = profiles.find((x) => x.id === profileId);
-          if (p) setProfile(p);
-        } catch {}
+        if (cancelled) return;
+        setProfile(p);
         setLibrary(lib);
         setStage("shelf");
-        return;
       } catch {
-        localStorage.removeItem("dt_kids_token");
-        localStorage.removeItem("dt_kids_profile_id");
-      }
-    }
-
-    try {
-      const { profiles } = await kidsApi.bootstrap();
-      const p = profiles.find((x) => x.id === profileId);
-      if (!p) {
-        setStage("not_found");
-        return;
-      }
-      setProfile(p);
-      if (p.has_pin) {
+        if (cancelled) return;
+        setError("Cannot load books. Try again!");
         setStage("pin");
-      } else {
-        await enterShelf(p);
       }
-    } catch {
-      setError("Cannot connect. Ask a grown-up for help.");
-      setStage("not_found");
-    }
-  }, [profileId]);
+    };
 
-  useEffect(() => {
-    bootstrap();
-  }, [bootstrap]);
+    (async () => {
+      localStorage.removeItem("dt_kids_token");
+      try {
+        const { profiles } = await kidsApi.bootstrap();
+        if (cancelled) return;
+        const p = profiles.find((x) => x.id === profileId);
+        if (!p) {
+          setStage("not_found");
+          return;
+        }
+        setProfile(p);
+        if (p.has_pin) {
+          try {
+            const session = await kidsApi.library();
+            if (cancelled) return;
+            if (session.profile?.id === profileId) {
+              localStorage.setItem("dt_kids_profile_id", p.id);
+              setLibrary(session.library);
+              setStage("shelf");
+            } else {
+              setStage("pin");
+            }
+          } catch {
+            if (!cancelled) setStage("pin");
+          }
+        } else {
+          await enterShelf(p);
+        }
+      } catch {
+        if (cancelled) return;
+        setError("Cannot connect. Ask a grown-up for help.");
+        setStage("not_found");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
 
   const handlePinSubmit = async () => {
     if (!profile) return;
     try {
-      const { token } = await kidsApi.parentUnlock(profile.id, pinInput);
-      localStorage.setItem("dt_kids_token", token);
+      await kidsApi.parentUnlock(profile.id, pinInput);
       localStorage.setItem("dt_kids_profile_id", profile.id);
       const { library: lib } = await kidsApi.library();
       setLibrary(lib);
@@ -134,7 +128,6 @@ export default function KidsProfileEntryPage() {
 
   const doExit = async () => {
     await kidsApi.logout().catch(() => {});
-    localStorage.removeItem("dt_kids_token");
     localStorage.removeItem("dt_kids_profile_id");
     router.push("/kids");
   };

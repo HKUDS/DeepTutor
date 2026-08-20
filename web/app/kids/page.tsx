@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { kidsApi, type KidsBootstrapProfile, type KidsLibraryItem } from "@/lib/kids-api";
 
@@ -14,37 +14,37 @@ export default function KidsPage() {
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
- const [error, setError] = useState("");
+  const [error, setError] = useState("");
 
-  const loadProfiles = useCallback(async () => {
-    try {
-      // Auto-redirect: if we have a stored token for a specific profile,
-      // skip the picker and go straight to that profile's dedicated link
-      if (typeof window !== "undefined") {
-        const storedToken = localStorage.getItem("dt_kids_token");
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        localStorage.removeItem("dt_kids_token");
         const storedPid = localStorage.getItem("dt_kids_profile_id");
-        if (storedToken && storedPid) {
+        if (storedPid) {
           router.push(`/kids/p/${storedPid}`);
           return;
         }
-      }
-      const { profiles } = await kidsApi.bootstrap();
-      setProfiles(profiles);
-      if (profiles.length === 0) {
-        setError("No profiles yet. Ask a grown-up to set up your account!");
+        const { profiles } = await kidsApi.bootstrap();
+        if (cancelled) return;
+        setProfiles(profiles);
+        if (profiles.length === 0) {
+          setError("No profiles yet. Ask a grown-up to set up your account!");
+        }
         setStage("picker");
-      } else {
+      } catch {
+        if (cancelled) return;
+        setError("Cannot connect. Ask a grown-up for help.");
         setStage("picker");
       }
-    } catch {
-      setError("Cannot connect. Ask a grown-up for help.");
-      setStage("picker");
-    }
-  }, []);
+    })();
 
-  useEffect(() => {
-    loadProfiles();
-  }, [loadProfiles]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   // Exit-protection state
   const [showExitPin, setShowExitPin] = useState(false);
@@ -64,8 +64,7 @@ export default function KidsPage() {
 
   const enterProfile = async (profile: KidsBootstrapProfile) => {
     try {
-      const { token } = await kidsApi.selectProfile(profile.id);
-      localStorage.setItem("dt_kids_token", token);
+      await kidsApi.selectProfile(profile.id);
       localStorage.setItem("dt_kids_profile_id", profile.id);
       const { library: lib } = await kidsApi.library();
       setLibrary(lib);
@@ -78,8 +77,7 @@ export default function KidsPage() {
   const handlePinSubmit = async () => {
     if (!selectedProfile) return;
     try {
-      const { token } = await kidsApi.parentUnlock(selectedProfile.id, pinInput);
-      localStorage.setItem("dt_kids_token", token);
+      await kidsApi.parentUnlock(selectedProfile.id, pinInput);
       localStorage.setItem("dt_kids_profile_id", selectedProfile.id);
       const { library: lib } = await kidsApi.library();
       setLibrary(lib);
@@ -102,7 +100,6 @@ export default function KidsPage() {
 
   const doExit = async () => {
     await kidsApi.logout().catch(() => {});
-    localStorage.removeItem("dt_kids_token");
     localStorage.removeItem("dt_kids_profile_id");
     setSelectedProfile(null);
     setStage("picker");

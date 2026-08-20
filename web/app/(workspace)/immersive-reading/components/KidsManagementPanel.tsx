@@ -67,7 +67,14 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
 
   const handleAssign = async (docId: string) => {
     if (!selectedProfile) return;
-    await kidsAdminApi.assignBook(selectedProfile.id, { document_id: docId });
+    const confirmed = window.confirm(
+      "I reviewed this book and confirm it is appropriate for this child.",
+    );
+    if (!confirmed) return;
+    await kidsAdminApi.assignBook(selectedProfile.id, {
+      document_id: docId,
+      content_confirmed: true,
+    });
     loadLibrary(selectedProfile.id);
   };
 
