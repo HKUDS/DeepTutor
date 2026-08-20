@@ -16,18 +16,15 @@ Generates chapter-scoped character relationship graphs by:
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import time
-from typing import Any
 
 from .blocks._llm_writer import llm_json
-from .context import build_book_context
 from .models import (
+    Chapter,
     CharacterEdge,
     CharacterGraph,
     CharacterNode,
-    Chapter,
     Page,
     Spine,
 )

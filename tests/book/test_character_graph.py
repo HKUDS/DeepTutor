@@ -5,8 +5,8 @@ from __future__ import annotations
 import unittest
 
 from deeptutor.book.character_graph import (
-    render_character_graph_mermaid,
     _hash_text,
+    render_character_graph_mermaid,
 )
 from deeptutor.book.models import (
     CharacterEdge,

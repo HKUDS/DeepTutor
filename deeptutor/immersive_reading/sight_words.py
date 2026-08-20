@@ -9,9 +9,9 @@ Questions scale with the child's age band:
 
 from __future__ import annotations
 
+from collections import Counter
 import random
 import re
-from collections import Counter
 
 # ── Tier 1: Ages 3-5 (pre-K to kindergarten) ────────────────────────────────
 # Very simple words, concrete nouns, basic action verbs.

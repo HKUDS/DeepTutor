@@ -57,7 +57,6 @@ from .compiler import BookCompiler, CompilerOptions, systemic_failure_reason
 from .event_hub import close_book_bus, get_book_bus
 from .inputs import IdeationContext, build_book_inputs
 from .models import (
-    CharacterGraph,
     Block,
     BlockStatus,
     BlockType,
@@ -67,6 +66,7 @@ from .models import (
     BookProposal,
     BookStatus,
     Chapter,
+    CharacterGraph,
     ContentType,
     ExplorationReport,
     Page,

@@ -10,9 +10,6 @@ books". Sits parallel to ``ChatOrchestrator`` and reuses the existing
 
 from .engine import BookEngine, get_book_engine
 from .models import (
-    CharacterEdge,
-    CharacterGraph,
-    CharacterNode,
     Block,
     BlockStatus,
     BlockType,
@@ -21,6 +18,9 @@ from .models import (
     BookProposal,
     BookStatus,
     Chapter,
+    CharacterEdge,
+    CharacterGraph,
+    CharacterNode,
     Page,
     PageStatus,
     Progress,
