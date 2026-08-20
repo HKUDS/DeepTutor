@@ -115,8 +115,21 @@ _FRONT_MATTER_PATTERNS = [
     ]
 ]
 _ZH_FRONT_MATTER_KEYWORDS = {
-    "版权页", "版权声明", "版权信息", "目录", "前言", "序言", "自序", "致谢",
-    "编者按", "使用说明", "家长指南", "导读", "出版说明", "后记", "附录",
+    "版权页",
+    "版权声明",
+    "版权信息",
+    "目录",
+    "前言",
+    "序言",
+    "自序",
+    "致谢",
+    "编者按",
+    "使用说明",
+    "家长指南",
+    "导读",
+    "出版说明",
+    "后记",
+    "附录",
 }
 
 
@@ -133,6 +146,7 @@ def _is_front_matter_title(title: str) -> bool:
     if zh_clean in _ZH_FRONT_MATTER_KEYWORDS:
         return True
     return False
+
 
 def _requires_focus_check(section: ReadingSection) -> bool:
     return section.checkpoint_kind != "none"
@@ -2385,7 +2399,11 @@ class KidsManager:
         _write_json(self._sessions_path(), [item.model_dump(mode="json") for item in sessions])
 
     def create_device_session(
-        self, profile_id: str, *, ttl_seconds: int = 30 * 24 * 60 * 60, device_name: str = "Kids Device"
+        self,
+        profile_id: str,
+        *,
+        ttl_seconds: int = 30 * 24 * 60 * 60,
+        device_name: str = "Kids Device",
     ) -> tuple[KidsDeviceSession, str]:
         """Issue a random bearer token and persist only its hash."""
         token = f"kds_{secrets.token_urlsafe(32)}"
@@ -2445,7 +2463,8 @@ class KidsManager:
         now = time.time()
         pairings = self._list_pairings()
         match = next(
-            (p for p in pairings if p.code == clean_code and not p.used and p.expires_at > now), None
+            (p for p in pairings if p.code == clean_code and not p.used and p.expires_at > now),
+            None,
         )
         if match is None:
             raise ValueError("Invalid or expired pairing code")
@@ -2469,8 +2488,12 @@ class KidsManager:
             {
                 "id": s.id,
                 "profile_id": s.profile_id,
-                "profile_name": profiles_map[s.profile_id].name if s.profile_id in profiles_map else "Unknown",
-                "avatar": profiles_map[s.profile_id].avatar if s.profile_id in profiles_map else "default",
+                "profile_name": profiles_map[s.profile_id].name
+                if s.profile_id in profiles_map
+                else "Unknown",
+                "avatar": profiles_map[s.profile_id].avatar
+                if s.profile_id in profiles_map
+                else "default",
                 "device_name": getattr(s, "device_name", "Kids Device"),
                 "created_at": s.created_at,
                 "last_seen_at": s.last_seen_at,
@@ -2502,20 +2525,26 @@ class KidsManager:
             doc = ir.load_document(doc_id)
             if doc is None:
                 continue
-            doc_assignments = [a for a in assignments if a.document_id == doc_id and a.status == "active"]
+            doc_assignments = [
+                a for a in assignments if a.document_id == doc_id and a.status == "active"
+            ]
             assigned_profiles = [
                 {"id": a.profile_id, "name": profiles_map.get(a.profile_id, a.profile_id)}
                 for a in doc_assignments
             ]
-            results.append({
-                "document": {
-                    **doc.model_dump(mode="json"),
-                    "cover_url": f"/api/v1/immersive-reading/documents/{doc.id}/cover" if doc.has_cover else "",
-                },
-                "entry": entry.model_dump(mode="json"),
-                "assigned_profiles": assigned_profiles,
-                "assigned_count": len(assigned_profiles),
-            })
+            results.append(
+                {
+                    "document": {
+                        **doc.model_dump(mode="json"),
+                        "cover_url": f"/api/v1/immersive-reading/documents/{doc.id}/cover"
+                        if doc.has_cover
+                        else "",
+                    },
+                    "entry": entry.model_dump(mode="json"),
+                    "assigned_profiles": assigned_profiles,
+                    "assigned_count": len(assigned_profiles),
+                }
+            )
         results.sort(key=lambda item: item["entry"]["created_at"], reverse=True)
         return results
 
@@ -2667,7 +2696,11 @@ class KidsManager:
 
     def get_kids_library(self, profile_id: str) -> list[dict[str, Any]]:
         """Return assigned books with progress for a child profile."""
-        assignments = [a for a in self.list_assignments(profile_id) if a.status == "active" and a.content_confirmed]
+        assignments = [
+            a
+            for a in self.list_assignments(profile_id)
+            if a.status == "active" and a.content_confirmed
+        ]
         assignments.sort(key=lambda a: a.sort_order)
         ir_service = get_immersive_reading_service()
         index = ir_service.get_library_index()
@@ -2953,7 +2986,12 @@ class KidsManager:
         """Check if a child is allowed to read a section based on assignment limits."""
         assignments = self.list_assignments(profile_id)
         assignment = next(
-            (a for a in assignments if a.document_id == document_id and a.status == "active" and a.content_confirmed), None
+            (
+                a
+                for a in assignments
+                if a.document_id == document_id and a.status == "active" and a.content_confirmed
+            ),
+            None,
         )
         if assignment is None:
             return False

@@ -286,15 +286,11 @@ class KidsQuizGradeResult(BaseModel):
     encouragements: list[str] = Field(default_factory=list)
 
 
-
-
 class LibraryEntry(BaseModel):
     """Scope, review status, and metadata for a document in the library."""
 
     document_id: str
-    scopes: list[Literal["personal", "kids_family"]] = Field(
-        default_factory=lambda: ["personal"]
-    )
+    scopes: list[Literal["personal", "kids_family"]] = Field(default_factory=lambda: ["personal"])
     kids_review_status: Literal["pending", "approved", "archived"] = "pending"
     approved_age_bands: list[Literal["3-5", "6-8", "9-12"]] = Field(default_factory=list)
     reviewed_at: float = 0.0

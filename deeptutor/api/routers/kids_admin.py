@@ -308,9 +308,7 @@ class AssignMultipleProfilesRequest(BaseModel):
 
 
 @router.post("/library/{document_id}/assign")
-async def assign_book_to_children(
-    document_id: str, request: AssignMultipleProfilesRequest
-) -> dict:
+async def assign_book_to_children(document_id: str, request: AssignMultipleProfilesRequest) -> dict:
     service = get_immersive_reading_service()
     if service.load_document(document_id) is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -394,9 +392,7 @@ async def purge_kids_book(document_id: str, request: PurgeBookRequest | None = N
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
     if request and request.confirm_title and request.confirm_title.strip() != doc.title.strip():
-        raise HTTPException(
-            status_code=400, detail="Book title confirmation does not match"
-        )
+        raise HTTPException(status_code=400, detail="Book title confirmation does not match")
     result = service.purge_kids_document(document_id)
     return result
 
@@ -410,7 +406,8 @@ async def list_personal_candidates() -> dict:
     candidates = [
         doc
         for doc in personal_docs
-        if "kids_family" not in (index.entries.get(doc["id"]).scopes if doc["id"] in index.entries else ["personal"])
+        if "kids_family"
+        not in (index.entries.get(doc["id"]).scopes if doc["id"] in index.entries else ["personal"])
     ]
     return {"candidates": candidates}
 

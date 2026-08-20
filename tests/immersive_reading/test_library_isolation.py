@@ -19,8 +19,12 @@ def client(reading_service: ImmersiveReadingService, monkeypatch) -> TestClient:
     import deeptutor.api.routers.kids_admin as admin_router_module
 
     monkeypatch.setattr(ir_router_module, "get_immersive_reading_service", lambda: reading_service)
-    monkeypatch.setattr(kids_router_module, "get_immersive_reading_service", lambda: reading_service)
-    monkeypatch.setattr(admin_router_module, "get_immersive_reading_service", lambda: reading_service)
+    monkeypatch.setattr(
+        kids_router_module, "get_immersive_reading_service", lambda: reading_service
+    )
+    monkeypatch.setattr(
+        admin_router_module, "get_immersive_reading_service", lambda: reading_service
+    )
 
     app = FastAPI()
     app.include_router(ir_router_module.router, prefix="/api/v1/immersive-reading")
@@ -29,7 +33,9 @@ def client(reading_service: ImmersiveReadingService, monkeypatch) -> TestClient:
     return TestClient(app)
 
 
-def test_library_isolation_and_review_flow(client: TestClient, reading_service: ImmersiveReadingService) -> None:
+def test_library_isolation_and_review_flow(
+    client: TestClient, reading_service: ImmersiveReadingService
+) -> None:
     # 1. Parent creates a child profile
     manager = get_kids_manager()
     profile = manager.create_profile("Bao", birth_date="2018-07-16")
