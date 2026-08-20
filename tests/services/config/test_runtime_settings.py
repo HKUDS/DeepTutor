@@ -298,6 +298,77 @@ def test_mineru_local_cli_path_roundtrip(tmp_path: Path) -> None:
     assert service.save_mineru({})["local_cli_path"] == ""
 
 
+def test_docling_defaults_and_normalization(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+
+    full = service.load_document_parsing(include_process_overrides=False)
+    defaults = full["engines"]["docling"]
+    assert defaults["mode"] == "local"
+    assert defaults["api_base_url"] == "http://localhost:5001"
+    assert defaults["api_token"] == ""
+    assert defaults["do_ocr"] is False
+    assert defaults["do_table_structure"] is True
+    assert defaults["allow_local_model_download"] is False
+
+    saved = service.save_document_parsing(
+        {
+            "engines": {
+                "docling": {
+                    "mode": "REMOTE",  # case-insensitive
+                    "api_base_url": "http://192.168.2.162:5001/",  # trailing slash stripped
+                    "api_token": "  key-123  ",  # trimmed
+                    "do_ocr": "yes",  # coerced to bool
+                }
+            }
+        }
+    )["engines"]["docling"]
+    assert saved["mode"] == "remote"
+    assert saved["api_base_url"] == "http://192.168.2.162:5001"
+    assert saved["api_token"] == "key-123"
+    assert saved["do_ocr"] is True
+    # Unknown mode falls back to local; invalid URL falls back to the default.
+    assert (
+        service.save_document_parsing({"engines": {"docling": {"mode": "weird"}}})["engines"][
+            "docling"
+        ]["mode"]
+        == "local"
+    )
+    assert (
+        service.save_document_parsing({"engines": {"docling": {"api_base_url": ""}}})["engines"][
+            "docling"
+        ]["api_base_url"]
+        == "http://localhost:5001"
+    )
+
+
+def test_docling_process_env_override(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(
+        tmp_path / "settings",
+        process_env={
+            "DOCLING_MODE": "remote",
+            "DOCLING_API_BASE_URL": "http://docling:5001",
+            "DOCLING_API_TOKEN": "env-key",
+        },
+    )
+    service.save_document_parsing(
+        {"engines": {"docling": {"mode": "local", "api_token": "file-key"}}}
+    )
+
+    full = service.load_document_parsing()
+    docling = full["engines"]["docling"]
+    assert docling["mode"] == "remote"
+    assert docling["api_base_url"] == "http://docling:5001"
+    assert docling["api_token"] == "env-key"
+    # Persisted file keeps on-disk values, not the env overrides.
+    persisted = _read_json(service.path_for("document_parsing"))["engines"]["docling"]
+    assert persisted["mode"] == "local"
+    assert persisted["api_token"] == "file-key"
+
+    # Without env, the file value is returned.
+    plain = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    assert plain.load_document_parsing()["engines"]["docling"]["api_token"] == "file-key"
+
+
 def test_mineru_process_env_override(tmp_path: Path) -> None:
     service = RuntimeSettingsService(
         tmp_path / "settings",
@@ -351,6 +422,7 @@ def test_document_parsing_v1_to_v2_migration(tmp_path: Path) -> None:
         "docling",
         "markitdown",
         "pymupdf4llm",
+        "liteparse",
     }
     # Migration is persisted to the renamed file (v2, no top-level flat keys);
     # the legacy mineru.json is gone.

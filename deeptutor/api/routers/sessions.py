@@ -4,12 +4,14 @@ Unified session history API.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
+from deeptutor.learning.storage import LearningStore
 from deeptutor.services.session import get_session_store, get_sqlite_session_store
 from deeptutor.services.storage.attachment_store import get_attachment_store
 
@@ -153,9 +155,20 @@ async def rename_session(session_id: str, payload: SessionRenameRequest):
 @router.delete("/{session_id}")
 async def delete_session(session_id: str):
     store = get_session_store()
+    list_active_turns = getattr(store, "list_active_turns", None)
+    if callable(list_active_turns):
+        from deeptutor.services.session import get_turn_runtime_manager
+
+        runtime = get_turn_runtime_manager()
+        for turn in await list_active_turns(session_id):
+            await runtime.cancel_turn(turn["id"])
     deleted = await store.delete_session(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        await asyncio.to_thread(LearningStore().detach_session, session_id)
+    except Exception:
+        logger.exception("failed to detach mastery paths for session %s", session_id)
     try:
         await get_attachment_store().delete_session(session_id)
     except Exception:

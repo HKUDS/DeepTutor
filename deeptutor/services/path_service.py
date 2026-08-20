@@ -54,6 +54,7 @@ WorkspaceFeature = Literal[
     "chat",
     "book",
     "immersive_reading",
+    "reading",
 ]
 
 

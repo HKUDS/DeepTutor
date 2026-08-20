@@ -226,8 +226,8 @@ function entityDeepLinkUrl(surface: Surface, ent: Entity): string | null {
     case "notebook": {
       const nbId = asString(m.notebook_id);
       return nbId
-        ? `/space/notebooks?notebook=${encodeURIComponent(nbId)}`
-        : "/space/notebooks";
+        ? `/notebook?notebook=${encodeURIComponent(nbId)}`
+        : "/notebook";
     }
     case "book":
       return `/book?book=${encodeURIComponent(ent.id)}`;

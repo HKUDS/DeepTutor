@@ -21,11 +21,19 @@ logger = logging.getLogger(__name__)
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
-from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
+from deeptutor.services.codebuddy_auth import get_codebuddy_auth_service
+from deeptutor.services.codex_auth import (
+    CodexAuthError,
+    get_codex_oauth_service,
+    reconcile_codex_catalog_update,
+)
 from deeptutor.services.config import (
+    CATALOG_SECRET_MASK,
     get_config_test_runner,
     get_model_catalog_service,
     get_runtime_settings_service,
+    redact_catalog_secrets,
+    restore_catalog_secrets,
 )
 from deeptutor.services.config.origins import normalize_origins
 from deeptutor.services.config.runtime_settings import (
@@ -42,7 +50,13 @@ from deeptutor.services.path_service import get_path_service
 from deeptutor.services.settings.interface_settings import (
     DEFAULT_UI_SETTINGS as INTERFACE_DEFAULTS,
 )
-from deeptutor.services.settings.interface_settings import resolve_languages
+from deeptutor.services.settings.interface_settings import (
+    atomic_update,
+    resolve_languages,
+)
+from deeptutor.services.settings.starter_settings import (
+    TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
+)
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 router = APIRouter()
@@ -171,10 +185,16 @@ class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
 
 
+class CodexReasoningEffortUpdate(BaseModel):
+    model: str = Field(min_length=1)
+    reasoning_effort: str | None = None
+
+
 class FetchModelsPayload(BaseModel):
     binding: str = ""
-    base_url: str
+    base_url: str = ""
     api_key: Optional[str] = None
+    profile_id: Optional[str] = None
 
 
 class NetworkSettingsUpdate(BaseModel):
@@ -204,6 +224,16 @@ class ChatAttachmentSettingsUpdate(BaseModel):
     max_chars_total: int = Field(
         ge=CHAT_ATTACHMENT_CHARS_RANGE[0], le=CHAT_ATTACHMENT_CHARS_RANGE[1]
     )
+
+
+class ChatStarterSettingsUpdate(BaseModel):
+    """How much recent activity shapes the home screen's starting points.
+
+    Bounds mirror ``starter_settings.TRACE_COUNT_RANGE`` so the API rejects
+    loudly what the file layer would silently clamp.
+    """
+
+    trace_count: int = Field(ge=STARTER_TRACE_COUNT_RANGE[0], le=STARTER_TRACE_COUNT_RANGE[1])
 
 
 class MinerUSettingsUpdate(BaseModel):
@@ -258,6 +288,15 @@ class DocumentParsingTest(BaseModel):
     """Readiness test for one engine (defaults to the active engine)."""
 
     engine: Optional[str] = None
+
+
+class DoclingRemoteTest(BaseModel):
+    """Draft Docling remote-server test. ``api_token`` is tri-state: ``None``
+    falls back to the stored key, ``""`` clears it, a string supplies it (so
+    the user can verify an unsaved key before saving)."""
+
+    api_base_url: str = "http://localhost:5001"
+    api_token: Optional[str] = None
 
 
 class DocumentParsingInstall(BaseModel):
@@ -334,10 +373,26 @@ def get_enabled_optional_tools() -> list[str]:
 
 
 def save_ui_settings(settings: dict[str, Any]) -> None:
-    settings_file = _settings_file()
-    settings_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(settings_file, "w", encoding="utf-8") as handle:
-        json.dump(settings, handle, ensure_ascii=False, indent=2)
+    """Replace the whole stored UI settings document.
+
+    Writes through ``atomic_update`` rather than opening the file here, so this
+    module and the setup capability — which both write ``interface.json`` —
+    share one lock and one atomic replace. A lock held by only one of two
+    writers protects nothing: measured with the old direct write, six concurrent
+    router saves alongside six capability writes lost every one of the router's.
+
+    Prefer :func:`patch_ui_settings` for changing individual fields. This
+    replaces the whole document, so a caller that builds it from
+    ``load_ui_settings`` writes the merged defaults back as stored values and
+    stops following later changes to any of them.
+    """
+    payload = dict(settings)
+    atomic_update(_settings_file(), lambda _stored: payload)
+
+
+def patch_ui_settings(**fields: Any) -> None:
+    """Change individual UI fields without rewriting the rest of the document."""
+    atomic_update(_settings_file(), lambda stored: {**stored, **fields})
 
 
 def _require_settings_admin() -> None:
@@ -385,8 +440,10 @@ def _codex_http_exception(error: CodexAuthError) -> HTTPException:
 def _provider_choices() -> dict[str, list[dict[str, Any]]]:
     """Build dropdown options for provider selection, keyed by service type."""
     from deeptutor.services.config.provider_runtime import (
+        DEPRECATED_SEARCH_PROVIDERS,
         EMBEDDING_PROVIDERS,
         IMAGEGEN_PROVIDERS,
+        SEARCH_PROVIDERS,
         STT_PROVIDERS,
         TTS_PROVIDERS,
         VIDEOGEN_PROVIDERS,
@@ -424,15 +481,36 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
         ],
         key=lambda p: p["label"].lower(),
     )
+    # Derived from SEARCH_PROVIDERS so the dropdown, the connection-field form
+    # and the provider warnings the web app renders all follow the backend spec
+    # table. No search provider ships a default base_url — only SearXNG takes
+    # one, and it is the user's own instance.
     search = [
-        {"value": "none", "label": "None", "base_url": ""},
-        {"value": "brave", "label": "Brave", "base_url": ""},
-        {"value": "tavily", "label": "Tavily", "base_url": ""},
-        {"value": "jina", "label": "Jina", "base_url": ""},
-        {"value": "searxng", "label": "SearXNG", "base_url": ""},
-        {"value": "duckduckgo", "label": "DuckDuckGo", "base_url": ""},
-        {"value": "perplexity", "label": "Perplexity", "base_url": ""},
-        {"value": "serper", "label": "Serper", "base_url": ""},
+        {
+            "value": name,
+            "label": spec.label,
+            "base_url": "",
+            "requires_api_key": spec.requires_api_key,
+            "requires_base_url": spec.requires_base_url,
+            "soft_fallback": spec.soft_fallback,
+            "status": "supported",
+        }
+        for name, spec in SEARCH_PROVIDERS.items()
+    ]
+    # Retired providers ride along marked rather than offered, so a stale
+    # catalog can be told apart from a typo without a second name table in the
+    # web app. The dropdown filters them out; only the warning text uses them.
+    search += [
+        {
+            "value": name,
+            "label": name,
+            "base_url": "",
+            "requires_api_key": False,
+            "requires_base_url": False,
+            "soft_fallback": True,
+            "status": "deprecated",
+        }
+        for name in sorted(DEPRECATED_SEARCH_PROVIDERS)
     ]
     tts = sorted(
         [
@@ -555,7 +633,7 @@ async def get_settings():
         return {"ui": load_ui_settings()}
     return {
         "ui": load_ui_settings(),
-        "catalog": get_model_catalog_service().load(),
+        "catalog": redact_catalog_secrets(get_model_catalog_service().load()),
         "providers": _provider_choices(),
     }
 
@@ -605,10 +683,53 @@ async def refresh_openai_codex_models() -> dict[str, Any]:
         raise _codex_http_exception(exc) from None
 
 
+@router.get("/providers/codebuddy/auth/status")
+async def get_codebuddy_auth_status() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().status()
+
+
+@router.post("/providers/codebuddy/auth/start")
+async def start_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().start_login()
+
+
+@router.post("/providers/codebuddy/auth/cancel")
+async def cancel_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().cancel_login()
+
+
+@router.post("/providers/codebuddy/auth/logout")
+async def logout_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().logout()
+
+
+@router.post("/providers/openai-codex/models/reasoning-effort")
+async def update_openai_codex_reasoning_effort(
+    payload: CodexReasoningEffortUpdate,
+) -> dict[str, Any]:
+    _require_codex_oauth_actor()
+    try:
+        status_payload = await get_codex_oauth_service().set_reasoning_effort(
+            payload.model,
+            payload.reasoning_effort,
+        )
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+    # This writes the catalog the runtime resolves against, like every other
+    # catalog write here — without it the next turn keeps the old effort until
+    # something else happens to invalidate.
+    _invalidate_runtime_caches()
+    return status_payload
+
+
 @router.get("/catalog")
 async def get_catalog():
     _require_settings_admin()
-    return {"catalog": get_model_catalog_service().load()}
+    return {"catalog": redact_catalog_secrets(get_model_catalog_service().load())}
 
 
 @router.get("/network")
@@ -671,6 +792,33 @@ async def get_chat_attachment_settings():
     """Chat attachment policy. Readable by any user — the composer needs the
     caps to gate file picks client-side; only the PUT is admin-gated."""
     return _chat_attachments_payload()
+
+
+@router.get("/chat-starters")
+async def get_chat_starter_settings():
+    """How many recent activities shape the home screen's starting points.
+
+    Per user and not admin-gated, unlike the attachment caps next door: this
+    changes the size of one prompt built from the caller's own memory, not any
+    resource other people share.
+    """
+    from deeptutor.services.settings.starter_settings import (
+        TRACE_COUNT_RANGE,
+        get_starter_settings,
+    )
+
+    return {"settings": get_starter_settings(), "bounds": {"trace_count": TRACE_COUNT_RANGE}}
+
+
+@router.put("/chat-starters")
+async def update_chat_starter_settings(payload: ChatStarterSettingsUpdate):
+    from deeptutor.services.settings.starter_settings import (
+        TRACE_COUNT_RANGE,
+        save_starter_settings,
+    )
+
+    saved = save_starter_settings({"trace_count": payload.trace_count})
+    return {"settings": saved, "bounds": {"trace_count": TRACE_COUNT_RANGE}}
 
 
 @router.put("/chat-attachments")
@@ -736,8 +884,6 @@ def _document_parsing_payload() -> dict[str, Any]:
     readiness: dict[str, Any] = {}
     available = list_engines()
     for entry in available:
-        if not entry["available"]:
-            continue
         try:
             parser = get_parser(entry["id"])
             report = parser.is_ready(parser.resolve_config())
@@ -750,6 +896,7 @@ def _document_parsing_payload() -> dict[str, Any]:
             continue
 
     mineru_slice = engines.get("mineru", {})
+    docling_slice = engines.get("docling", {})
     return {
         "engine": full.get("engine"),
         "engines": redacted,
@@ -762,6 +909,10 @@ def _document_parsing_payload() -> dict[str, Any]:
         "mineru": {
             "api_token_set": bool(mineru_slice.get("api_token")),
             "local_cli": local_cli_probe(str(mineru_slice.get("local_cli_path") or "")),
+        },
+        # Docling UI state (token presence for remote mode).
+        "docling": {
+            "api_token_set": bool(docling_slice.get("api_token")),
         },
     }
 
@@ -817,8 +968,10 @@ async def update_document_parsing_settings(payload: DocumentParsingUpdate):
         if name not in engines:
             continue
         merged = dict(update or {})
-        # MinerU token tri-state: omitted / None keeps the stored token.
-        if name == "mineru" and merged.get("api_token") is None:
+        # Token tri-state for engines with a secret (MinerU, Docling remote):
+        # omitted / None keeps the stored token; "" clears it; a string
+        # replaces it.
+        if "api_token" in (engines[name] or {}) and merged.get("api_token") is None:
             merged.pop("api_token", None)
         engines[name].update(merged)
 
@@ -841,13 +994,48 @@ async def test_document_parsing(payload: DocumentParsingTest):
         return {"ok": False, "message": f"The '{engine}' parsing engine isn't installed."}
     try:
         parser = get_parser(engine)
-        report = parser.is_ready(parser.resolve_config())
+        config = parser.resolve_config()
+        report = parser.is_ready(config)
+        # Remote engines get a live connectivity check (e.g. Docling Serve
+        # /health) rather than a config-only readiness gate.
+        verify = getattr(parser, "verify", None)
+        if verify is not None and report.ready and callable(verify):
+            ok, message = verify(config)
+            return {"ok": ok, "message": message or ("Ready to parse." if ok else "Not ready.")}
     except Exception as exc:  # noqa: BLE001 - surface as a test result
         return {"ok": False, "message": str(exc)}
     return {
         "ok": report.ready,
         "message": report.message or ("Ready to parse." if report.ready else "Not ready."),
     }
+
+
+@router.post("/document-parsing/docling/test")
+async def test_docling_remote_connection(payload: DoclingRemoteTest):
+    """Live connectivity check for the Docling remote-server draft values.
+    Pings the server health + version endpoints and returns ``ok`` + a
+    human-readable detail. Tests draft form values so the user can verify the
+    URL/key before saving; falls back to the stored key when the secret field
+    is untouched."""
+    _require_settings_admin()
+    from deeptutor.services.parsing.engines.docling.config import (
+        DoclingConfig,
+        resolve_docling_config,
+    )
+    from deeptutor.services.parsing.engines.docling.remote import verify_remote
+
+    stored = resolve_docling_config()
+    base_url = payload.api_base_url.strip().rstrip("/") or "http://localhost:5001"
+    token = stored.api_token if payload.api_token is None else payload.api_token.strip()
+    config = DoclingConfig(
+        mode="remote",
+        api_base_url=base_url,
+        api_token=token,
+        do_ocr=stored.do_ocr,
+        do_table_structure=stored.do_table_structure,
+    )
+    ok, detail = await asyncio.to_thread(verify_remote, config)
+    return {"ok": ok, "message": detail or ("Ready to parse." if ok else "Not ready.")}
 
 
 def _normalize_engine_name(name: str) -> str:
@@ -1052,20 +1240,33 @@ async def get_llm_options():
 @router.put("/catalog")
 async def update_catalog(payload: CatalogPayload):
     _require_settings_admin()
-    catalog = get_model_catalog_service().save(payload.catalog)
+    service = get_model_catalog_service()
+    current = service.load()
+    restored = restore_catalog_secrets(payload.catalog, current)
+    proposed = reconcile_codex_catalog_update(current, restored)
+    catalog = service.save(proposed)
     _invalidate_runtime_caches()
-    return {"catalog": catalog}
+    return {"catalog": redact_catalog_secrets(catalog)}
 
 
 @router.post("/apply")
 async def apply_catalog(payload: CatalogPayload | None = None):
     _require_settings_admin()
-    catalog = payload.catalog if payload is not None else get_model_catalog_service().load()
-    applied = get_model_catalog_service().apply(catalog)
+    service = get_model_catalog_service()
+    current = service.load()
+    catalog = (
+        reconcile_codex_catalog_update(
+            current,
+            restore_catalog_secrets(payload.catalog, current),
+        )
+        if payload is not None
+        else current
+    )
+    applied = service.apply(catalog)
     _invalidate_runtime_caches()
     return {
         "message": "Catalog applied to runtime settings.",
-        "catalog": get_model_catalog_service().load(),
+        "catalog": redact_catalog_secrets(service.load()),
         "runtime": applied,
     }
 
@@ -1083,14 +1284,27 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     base_url = (payload.base_url or "").strip()
     binding = (payload.binding or "").strip().lower() or "openai"
-    if not base_url:
+    if not base_url and binding != "codebuddy":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="base_url is required.",
+            detail="base_url is required for this provider.",
         )
 
+    api_key = payload.api_key
+    if api_key == CATALOG_SECRET_MASK and payload.profile_id:
+        llm_service = get_model_catalog_service().load().get("services", {}).get("llm", {})
+        profile = next(
+            (
+                item
+                for item in llm_service.get("profiles", [])
+                if item.get("id") == payload.profile_id
+            ),
+            None,
+        )
+        api_key = profile.get("api_key") if profile else None
+
     try:
-        model_ids = await fetch_llm_models(binding, base_url, payload.api_key)
+        model_ids = await fetch_llm_models(binding, base_url, api_key)
     except Exception as exc:  # noqa: BLE001 — surface any provider error as 502
         logger.exception("Failed to fetch models from %s", base_url)
         raise HTTPException(
@@ -1103,17 +1317,13 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
 @router.put("/theme")
 async def update_theme(update: ThemeUpdate):
-    current_ui = load_ui_settings()
-    current_ui["theme"] = update.theme
-    save_ui_settings(current_ui)
+    patch_ui_settings(theme=update.theme)
     return {"theme": update.theme}
 
 
 @router.put("/language")
 async def update_language(update: LanguageUpdate):
-    current_ui = load_ui_settings()
-    current_ui["language"] = update.language
-    save_ui_settings(current_ui)
+    patch_ui_settings(language=update.language)
     return {"language": update.language}
 
 
@@ -1124,9 +1334,7 @@ async def update_voice_autoplay(update: VoiceAutoplayUpdate):
     A personal UI preference (any authenticated user); the chat surface layers
     a per-session override on top of this value.
     """
-    current_ui = load_ui_settings()
-    current_ui["voice_autoplay"] = update.voice_autoplay
-    save_ui_settings(current_ui)
+    patch_ui_settings(voice_autoplay=update.voice_autoplay)
     return {"voice_autoplay": update.voice_autoplay}
 
 
@@ -1138,9 +1346,7 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     video generation can take longer than the old 60s default, so this is
     user-adjustable; the chat surface reads it client-side.
     """
-    current_ui = load_ui_settings()
-    current_ui["chat_response_timeout"] = update.chat_response_timeout
-    save_ui_settings(current_ui)
+    patch_ui_settings(chat_response_timeout=update.chat_response_timeout)
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
@@ -1176,11 +1382,12 @@ async def update_ui_settings(update: UISettingsUpdate):
     by the frontend override saved values. Fields not in the frontend payload
     (even if they equal the model defaults) are omitted from the merge.
     """
-    current_ui = load_ui_settings()
     dump = update.model_dump(exclude_unset=True)  # Only merge explicitly provided fields
-    current_ui.update(dump)
-    save_ui_settings(current_ui)
-    return current_ui
+    # Merged into the stored document, not into the defaults-merged view: saving
+    # that view back would freeze today's defaults as this user's explicit
+    # choices. The response keeps returning the merged view clients expect.
+    patch_ui_settings(**dump)
+    return load_ui_settings()
 
 
 @router.post("/reset")
@@ -1214,33 +1421,31 @@ async def get_sidebar_settings():
 
 @router.put("/sidebar/description")
 async def update_sidebar_description(update: SidebarDescriptionUpdate):
-    current_ui = load_ui_settings()
-    current_ui["sidebar_description"] = update.description
-    save_ui_settings(current_ui)
+    patch_ui_settings(sidebar_description=update.description)
     return {"description": update.description}
 
 
 @router.put("/sidebar/nav-order")
 async def update_sidebar_nav_order(update: SidebarNavOrderUpdate):
-    current_ui = load_ui_settings()
-    current_ui["sidebar_nav_order"] = update.nav_order.model_dump()
-    save_ui_settings(current_ui)
+    patch_ui_settings(sidebar_nav_order=update.nav_order.model_dump())
     return {"nav_order": update.nav_order.model_dump()}
 
 
 @router.put("/enabled-tools")
 async def update_enabled_tools(update: EnabledToolsUpdate):
     sanitized = _sanitize_enabled_tools(update.enabled_tools)
-    current_ui = load_ui_settings()
-    current_ui["enabled_optional_tools"] = sanitized
-    save_ui_settings(current_ui)
+    patch_ui_settings(enabled_optional_tools=sanitized)
     return {"enabled_optional_tools": sanitized}
 
 
 @router.post("/tests/{service}/start")
 async def start_service_test(service: str, payload: CatalogPayload | None = None):
     _require_settings_admin()
-    run = get_config_test_runner().start(service, payload.catalog if payload else None)
+    catalog = None
+    if payload is not None:
+        current = get_model_catalog_service().load()
+        catalog = restore_catalog_secrets(payload.catalog, current)
+    run = get_config_test_runner().start(service, catalog)
     return {"run_id": run.id}
 
 
@@ -1301,8 +1506,14 @@ class TourCompletePayload(BaseModel):
 @router.post("/tour/complete")
 async def complete_tour(payload: TourCompletePayload | None = None):
     _require_settings_admin()
-    catalog = payload.catalog if payload and payload.catalog else get_model_catalog_service().load()
-    applied = get_model_catalog_service().apply(catalog)
+    service = get_model_catalog_service()
+    current = service.load()
+    catalog = (
+        restore_catalog_secrets(payload.catalog, current)
+        if payload and payload.catalog
+        else current
+    )
+    applied = service.apply(catalog)
     _invalidate_runtime_caches()
     now = int(time.time())
     launch_at = now + 3

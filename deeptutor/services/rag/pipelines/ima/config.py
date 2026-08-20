@@ -1,15 +1,19 @@
-"""Per-KB connection config for the Tencent IMA engine.
+"""Connection config for the Tencent IMA engine.
 
 IMA credentials (``client_id`` + ``api_key``, issued at
-https://ima.qq.com/agent-interface) identify a *person*, and a knowledge base id
-identifies one of that person's libraries. Both are stored per-KB in
-``kb_config.json`` — the same place a ``lightrag-server`` KB keeps its endpoint —
-rather than as one global account key:
+https://ima.qq.com/agent-interface) identify an *account*, and a knowledge base
+id identifies one of that account's libraries. The credentials therefore resolve
+at two levels:
 
-* on a multi-user deployment each user connects their own IMA account, so
-  nobody retrieves through somebody else's credentials;
-* connecting is self-contained, with no separate global settings surface to fill
-  in first.
+* **account level** — ``settings/ima.json`` (managed by
+  ``RuntimeSettingsService``), edited under Knowledge → the IMA engine page.
+  One pair is shared by every ``ima`` KB, the way PageIndex's key is;
+* **per KB** — the same two fields on the KB's ``kb_config.json`` entry. Present
+  on knowledge bases connected before the engine page existed, and still the way
+  to point one KB at a *different* IMA account.
+
+The per-KB pair wins when it is complete, so an existing binding keeps working
+untouched and rotating the account key updates every KB that relies on it.
 
 This module is the single seam that reads that binding into a typed config; it
 holds no global state and imports no HTTP client (the client lives in
@@ -19,7 +23,7 @@ holds no global state and imports no HTTP client (the client lives in
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 # IMA exposes exactly one retrieval call (``search_knowledge``) with no mode
 # knob, so a KB bound to this engine has no per-KB search mode to pick. The
@@ -34,6 +38,18 @@ class ImaNotConfiguredError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ImaCredentials:
+    """One IMA account's credential pair."""
+
+    client_id: str = ""
+    api_key: str = ""
+
+    @property
+    def complete(self) -> bool:
+        return bool(self.client_id and self.api_key)
+
+
+@dataclass(frozen=True)
 class ImaConfig:
     """A KB's resolved connection to one Tencent IMA knowledge base."""
 
@@ -42,16 +58,47 @@ class ImaConfig:
     knowledge_base_id: str
 
 
-def config_from_entry(entry: dict[str, Any]) -> ImaConfig:
+def get_account_credentials() -> ImaCredentials:
+    """Load the account-level credential pair, or an empty one.
+
+    Never raises: an unreadable settings file only means "not configured", which
+    the callers already handle.
+    """
+    try:
+        from deeptutor.services.config import get_runtime_settings_service
+
+        settings = get_runtime_settings_service().load_ima()
+    except Exception:
+        return ImaCredentials()
+    return ImaCredentials(
+        client_id=str(settings.get("client_id") or "").strip(),
+        api_key=str(settings.get("api_key") or "").strip(),
+    )
+
+
+def is_ima_configured() -> bool:
+    """Whether account-level credentials are set (flags the engine as ready)."""
+    return get_account_credentials().complete
+
+
+def config_from_entry(
+    entry: dict[str, Any],
+    *,
+    fallback: Optional[ImaCredentials] = None,
+) -> ImaConfig:
     """Build an :class:`ImaConfig` from a ``kb_config.json`` KB entry.
 
-    Raises :class:`ImaNotConfiguredError` when any of the three required fields
-    is missing, so retrieval fails with a clear message instead of an opaque
-    HTTP error from IMA.
+    The entry's own credentials win; *fallback* (normally the account-level
+    pair) fills in what it omits. Raises :class:`ImaNotConfiguredError` when any
+    of the three required fields is still missing, so retrieval fails with a
+    clear message instead of an opaque HTTP error from IMA.
     """
     client_id = str(entry.get("client_id") or "").strip()
     api_key = str(entry.get("api_key") or "").strip()
     knowledge_base_id = str(entry.get("knowledge_base_id") or "").strip()
+    if fallback is not None:
+        client_id = client_id or fallback.client_id
+        api_key = api_key or fallback.api_key
     missing = [
         label
         for label, value in (
@@ -64,7 +111,9 @@ def config_from_entry(entry: dict[str, Any]) -> ImaConfig:
     if missing:
         raise ImaNotConfiguredError(
             "This knowledge base is not fully connected to Tencent IMA "
-            f"(missing {', '.join(missing)}). Re-create it with complete credentials."
+            f"(missing {', '.join(missing)}). Add the IMA credentials on the "
+            "engine page under Knowledge, or re-create the knowledge base with "
+            "complete credentials."
         )
     return ImaConfig(
         client_id=client_id,
@@ -73,10 +122,19 @@ def config_from_entry(entry: dict[str, Any]) -> ImaConfig:
     )
 
 
+def resolve_kb_config(entry: dict[str, Any]) -> ImaConfig:
+    """``config_from_entry`` with the account-level credentials as fallback."""
+    return config_from_entry(entry, fallback=get_account_credentials())
+
+
 __all__ = [
     "SUPPORTED_MODES",
     "DEFAULT_MODE",
     "ImaNotConfiguredError",
+    "ImaCredentials",
     "ImaConfig",
     "config_from_entry",
+    "get_account_credentials",
+    "is_ima_configured",
+    "resolve_kb_config",
 ]

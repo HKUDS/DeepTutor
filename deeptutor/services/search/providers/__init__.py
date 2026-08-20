@@ -6,19 +6,34 @@ This module manages the registration and retrieval of search providers.
 
 from typing import Type
 
+from deeptutor.services.config import (
+    DEPRECATED_SEARCH_PROVIDERS,
+    SEARCH_FALLBACK_PROVIDER,
+    search_missing_credential,
+    search_provider_credentials,
+    search_provider_spec,
+    supported_search_providers_hint,
+)
+
 from ..base import BaseSearchProvider
 
 _PROVIDERS: dict[str, Type[BaseSearchProvider]] = {}
 _DEPRECATED_UNSUPPORTED: dict[str, str] = {
-    "exa": "Deprecated; use brave/tavily/jina/searxng/duckduckgo/perplexity/serper.",
-    "baidu": "Deprecated; use brave/tavily/jina/searxng/duckduckgo/perplexity/serper.",
-    "openrouter": "Deprecated; use brave/tavily/jina/searxng/duckduckgo/perplexity/serper.",
+    name: f"Deprecated; use {supported_search_providers_hint()}."
+    for name in sorted(DEPRECATED_SEARCH_PROVIDERS)
 }
 
 
 def register_provider(name: str):
     """
     Decorator to register a provider.
+
+    Metadata that the rest of the app reads off the class — display name,
+    which credentials it needs, whether it writes its own answer — is stamped
+    on from ``SEARCH_PROVIDERS`` so the spec table stays the single source of
+    truth. A name absent from that table (a deprecated provider, or one that
+    was never wired up) stays importable but never enters the registry, so it
+    cannot be selected.
 
     Args:
         name: Name to register the provider under.
@@ -29,11 +44,14 @@ def register_provider(name: str):
 
     def decorator(cls: Type[BaseSearchProvider]):
         key = name.lower()
-        if key in _DEPRECATED_UNSUPPORTED:
-            cls.name = key
-            return cls
-        _PROVIDERS[key] = cls
         cls.name = key
+        spec = search_provider_spec(key)
+        if spec is None:
+            return cls
+        cls.display_name = spec.label
+        cls.requires_api_key = spec.requires_api_key
+        cls.supports_answer = spec.supports_answer
+        _PROVIDERS[key] = cls
         return cls
 
     return decorator
@@ -78,31 +96,31 @@ def list_providers() -> list[str]:
 
 def get_available_providers() -> list[str]:
     """
-    List providers that are currently available (have API keys set).
+    List providers that can run right now — either they need no credentials, or
+    a configured search profile supplies the ones they do need.
 
     Returns:
         list[str]: Sorted list of available provider names.
     """
     available = []
-    for name, cls in _PROVIDERS.items():
-        try:
-            instance = cls()
-            if instance.is_available():
-                available.append(name)
-        except Exception:
-            pass
+    for name in _PROVIDERS:
+        api_key, base_url = search_provider_credentials(name)
+        if not search_missing_credential(name, api_key, base_url):
+            available.append(name)
     return sorted(available)
 
 
 def get_providers_info() -> list[dict]:
     """
-    Get full provider info from class attributes for frontend display.
+    Get full provider info for frontend/CLI display.
 
     Returns:
-        list[dict]: List of provider info dicts with id, name, description, supports_answer
+        list[dict]: List of provider info dicts with id, name, description,
+        supports_answer, and which connection fields the provider needs.
     """
     providers_info = []
     for provider_id, cls in sorted(_PROVIDERS.items()):
+        spec = search_provider_spec(provider_id)
         providers_info.append(
             {
                 "id": provider_id,
@@ -110,6 +128,7 @@ def get_providers_info() -> list[dict]:
                 "description": cls.description,
                 "supports_answer": cls.supports_answer,
                 "requires_api_key": cls.requires_api_key,
+                "requires_base_url": bool(spec and spec.requires_base_url),
                 "status": "supported",
             }
         )
@@ -121,6 +140,7 @@ def get_providers_info() -> list[dict]:
                 "description": reason,
                 "supports_answer": False,
                 "requires_api_key": False,
+                "requires_base_url": False,
                 "status": "deprecated",
             }
         )
@@ -140,16 +160,46 @@ def get_default_provider(**kwargs) -> BaseSearchProvider:
     from deeptutor.services.config import resolve_search_runtime_config
 
     provider_name = resolve_search_runtime_config().provider.lower()
-    if provider_name in _DEPRECATED_UNSUPPORTED:
-        provider_name = "duckduckgo"
+    if provider_name not in _PROVIDERS and provider_name != "none":
+        # Stale config naming a retired provider still gets a working default;
+        # an explicit "none" keeps raising, since that means search is off.
+        provider_name = SEARCH_FALLBACK_PROVIDER
     return get_provider(provider_name, **kwargs)
 
 
 def _register_builtin_providers() -> None:
     # Import for side effects (register_provider decorators).
-    from . import brave, duckduckgo, jina, perplexity, searxng, serper, tavily
+    from . import (
+        aliyun_iqs,
+        bocha,
+        brave,
+        doubao,
+        duckduckgo,
+        firecrawl,
+        jina,
+        perplexity,
+        qianfan,
+        searxng,
+        serper,
+        tavily,
+        zhipu,
+    )
 
-    _ = (brave, duckduckgo, jina, perplexity, searxng, serper, tavily)
+    _ = (
+        aliyun_iqs,
+        bocha,
+        brave,
+        doubao,
+        duckduckgo,
+        firecrawl,
+        jina,
+        perplexity,
+        qianfan,
+        searxng,
+        serper,
+        tavily,
+        zhipu,
+    )
 
 
 _register_builtin_providers()

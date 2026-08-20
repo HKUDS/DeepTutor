@@ -1,0 +1,10 @@
+# Reader-facing brief handed to the shared visualize / animation pipeline.
+# Lives here rather than in Python so it follows the book's language like
+# every other block's prompt does.
+brief: "创建一段简短的 Manim 动画，逐步讲解\"{chapter_title}\"的核心推导{focus_clause}。目标是让学习者能够跟上的、清晰的分步讲解。"
+
+# Quoted on purpose — the English clause needs its leading space.
+focus_clause: "，聚焦于{focus}"
+
+context_summary: "章节摘要：{chapter_summary}"
+context_objectives: "学习目标："

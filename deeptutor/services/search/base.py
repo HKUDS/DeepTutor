@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import logging
 from typing import Any
 
-from deeptutor.services.config import resolve_search_runtime_config
+from deeptutor.services.config import search_provider_credentials
 
 from .types import WebSearchResponse
 
@@ -46,11 +46,13 @@ class BaseSearchProvider(ABC):
         self.proxy = kwargs.get("proxy")
 
     def _get_api_key(self) -> str:
-        """Get API key from the active search profile."""
-        key = ""
-        resolved = resolve_search_runtime_config()
-        if resolved.provider == self.name or resolved.requested_provider == self.name:
-            key = resolved.api_key
+        """Get the API key from this provider's own search profile.
+
+        Looked up by provider rather than off the active profile, so a provider
+        that is configured but not currently active still finds its own key
+        instead of borrowing another vendor's.
+        """
+        key, _ = search_provider_credentials(self.name)
         if self.requires_api_key and not key:
             raise ValueError(f"{self.name} requires an api_key in Settings > Catalog > Search.")
         return key
@@ -77,10 +79,8 @@ class BaseSearchProvider(ABC):
             bool: True if provider is available, False otherwise.
         """
         try:
-            if self.requires_api_key:
-                key = self.api_key or resolve_search_runtime_config().api_key
-                if not key:
-                    return False
+            if self.requires_api_key and not self.api_key:
+                return False
             return True
         except (ValueError, ImportError):
             return False

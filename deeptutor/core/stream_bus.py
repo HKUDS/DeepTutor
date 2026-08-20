@@ -31,17 +31,23 @@ from .trace import merge_trace_metadata
 class StreamBus:
     """Fan-out async event bus for a single chat turn."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_history: int | None = None) -> None:
         self._subscribers: list[asyncio.Queue[StreamEvent | None]] = []
         self._closed = False
         self._history: list[StreamEvent] = []
         self._input_listeners: list[asyncio.Queue[str]] = []
+        # ``None`` keeps the full history (turn-scoped buses live and die with
+        # one turn). Long-lived buses pass a bound so replay stays useful
+        # without growing without limit.
+        self._max_history = max_history
 
     async def emit(self, event: StreamEvent) -> None:
         """Push *event* to every active subscriber."""
         if self._closed:
             return
         self._history.append(event)
+        if self._max_history is not None and len(self._history) > self._max_history:
+            del self._history[: len(self._history) - self._max_history]
         for q in self._subscribers:
             await q.put(event)
 
@@ -67,11 +73,20 @@ class StreamBus:
         finally:
             self._subscribers.remove(q)
 
-    async def close(self) -> None:
-        """Signal all subscribers that the stream is finished."""
+    def mark_closed(self) -> None:
+        """Synchronous ``close()``.
+
+        Safe because subscriber queues are unbounded, so handing them the
+        sentinel never blocks. Lets synchronous call sites (engine teardown,
+        CLI paths) shut a bus down without an event loop.
+        """
         self._closed = True
         for q in self._subscribers:
-            await q.put(None)
+            q.put_nowait(None)
+
+    async def close(self) -> None:
+        """Signal all subscribers that the stream is finished."""
+        self.mark_closed()
 
     # ---- convenience helpers for producers ----
 

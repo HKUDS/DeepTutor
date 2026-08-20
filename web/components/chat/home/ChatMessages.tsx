@@ -61,6 +61,8 @@ import {
   extractAskUserPayload,
   extractMessageSegments,
 } from "./AskUserOptions";
+import { SetupCredentialCard } from "./SetupCredentialCard";
+import { extractSetupCredential } from "@/lib/setup-signals";
 import ContextReferenceTree, {
   type ContextTreeItem,
 } from "./ContextReferenceTree";
@@ -377,6 +379,13 @@ const AssistantMessage = memo(function AssistantMessage({
     [msg.events],
   );
 
+  // Set by ``request_credential`` when a configuration step needs a secret the
+  // assistant must not handle itself.
+  const setupCredential = useMemo(
+    () => extractSetupCredential(msg.events),
+    [msg.events],
+  );
+
   // Interleaved segments for the default chat surface — text emitted
   // before the ask_user call renders above the card; text emitted by
   // the resumed iteration renders below it. Only walked when this
@@ -521,6 +530,10 @@ const AssistantMessage = memo(function AssistantMessage({
           }}
         />
       ) : null}
+      {/* Credential hand-off sits below whichever body branch rendered: it
+          supplements the answer ("here's where to paste the key") rather than
+          replacing it, and applies to every branch. */}
+      {setupCredential ? <SetupCredentialCard data={setupCredential} /> : null}
     </>
   );
 });

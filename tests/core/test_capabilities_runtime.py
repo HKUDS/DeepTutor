@@ -75,6 +75,7 @@ def test_builtin_capability_registry_covers_documented_capabilities() -> None:
         "math_animator",
         "visualize",
         "mastery_path",
+        "immersive_reading",
     }
 
 

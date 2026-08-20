@@ -19,6 +19,7 @@ import json_repair
 from openai import AsyncOpenAI
 
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
+from deeptutor.services.llm.exceptions import LLMConfigError
 from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
@@ -130,6 +131,17 @@ class OpenAICompatProvider(LLMProvider):
 
         effective_base = api_base or (spec.default_api_base if spec else None) or None
         self._effective_base = effective_base
+        endpoint = (effective_base or "").rstrip("/")
+        placeholder_key = api_key in {None, "", "no-key", "sk-no-key-required"}
+        if (
+            provider_name == "openai"
+            and (not endpoint or endpoint == "https://api.openai.com/v1")
+            and placeholder_key
+        ):
+            raise LLMConfigError(
+                "OpenAI API key is not configured. Set it in Settings > Catalog, "
+                "or select a local provider such as Ollama."
+            )
         default_headers: dict[str, str] = {"x-session-affinity": uuid.uuid4().hex}
         if _uses_openrouter(spec, effective_base):
             default_headers.update(_DEFAULT_OPENROUTER_HEADERS)
@@ -593,6 +605,17 @@ class OpenAICompatProvider(LLMProvider):
             if not chunk.choices:
                 usage = cls._extract_usage(chunk) or usage
                 continue
+            # Some providers (CodeBuddy) attach usage to the chunk carrying the
+            # last delta rather than to a final choice-less one. Only a report
+            # with real numbers replaces what we already have: a gateway that
+            # echoes a zero-filled usage object on every delta would otherwise
+            # wipe the counts on its way past.
+            delta_usage = cls._extract_usage(chunk)
+            if delta_usage and any(
+                delta_usage.get(key)
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            ):
+                usage = delta_usage
             choice = chunk.choices[0]
             if choice.finish_reason:
                 finish_reason = choice.finish_reason

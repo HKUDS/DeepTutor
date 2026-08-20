@@ -297,3 +297,22 @@ def test_probe_llm_keeps_anthropic_native_max_tokens(monkeypatch) -> None:
     body = _FakeClient.captured[0]["json"]
     assert body["max_tokens"] == 1
     assert "max_completion_tokens" not in body
+
+
+def test_wizard_search_providers_match_the_backend_spec_table() -> None:
+    """The wizard's own table may add CLI-only detail, never disagree.
+
+    ``deeptutor_cli.init_wizard.SEARCH_PROVIDERS`` carries what only the wizard
+    needs (env var names, a default SearXNG URL, one-line hints), but the set of
+    providers and which credentials each one needs come from
+    ``SEARCH_PROVIDERS`` in the backend spec table. When those drift, the wizard
+    writes a profile the runtime then rejects or silently downgrades.
+    """
+    from deeptutor.services.config.provider_runtime import SEARCH_PROVIDERS as BACKEND
+    from deeptutor_cli.init_wizard import SEARCH_PROVIDERS as WIZARD
+
+    wizard = {spec.name: spec for spec in WIZARD}
+    assert set(wizard) == set(BACKEND)
+    for name, spec in BACKEND.items():
+        assert wizard[name].requires_api_key == spec.requires_api_key, name
+        assert wizard[name].requires_base_url == spec.requires_base_url, name

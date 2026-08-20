@@ -18,6 +18,7 @@ import {
   Paperclip,
   Search,
   SlidersHorizontal,
+  Sparkles,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -180,6 +181,17 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
     },
     icon: SlidersHorizontal,
     tile: "bg-lime-500/10 text-lime-600 dark:text-lime-400",
+  },
+  {
+    key: "starters",
+    href: "/settings/starters",
+    label: { zh: "起始建议", en: "Starting points" },
+    blurb: {
+      zh: "主页输入框下方那三行引导的素材范围。",
+      en: "How much history shapes the three lines under the composer.",
+    },
+    icon: Sparkles,
+    tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
   },
   {
     key: "attachments",

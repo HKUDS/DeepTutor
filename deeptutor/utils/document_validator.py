@@ -33,6 +33,7 @@ class DocumentValidator:
         ".xls",
         ".pptx",
         ".ppt",
+        ".epub",
     }
 
     # MIME type mapping for additional validation
@@ -52,6 +53,8 @@ class DocumentValidator:
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/vnd.ms-powerpoint",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/epub+zip",
+        "application/epub",
     }
 
     @staticmethod

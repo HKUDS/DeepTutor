@@ -88,7 +88,11 @@ class SpineSynthesizer(BaseAgent):
         base_url: str | None = None,
         api_version: str | None = None,
         language: str = "en",
-        binding: str = "openai",
+        # None, not "openai": BaseAgent falls back to the configured
+        # provider only when this is falsy. Hard-coding it forced every
+        # user onto the OpenAI wire format. Matches the pattern in
+        # deeptutor/agents/research/pipeline.py:403.
+        binding: str | None = None,
         *,
         max_rounds: int = 2,
     ) -> None:

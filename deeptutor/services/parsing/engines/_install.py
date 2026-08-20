@@ -42,6 +42,7 @@ ENGINE_PIP_SPECS: dict[str, list[str]] = {
     "pymupdf4llm": ["pymupdf4llm>=0.0.17,<1.0"],
     "markitdown": ["markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2"],
     "docling": ["docling>=2.0.0"],
+    "liteparse": ["liteparse>=2.11.1,<3.0"],
 }
 
 # Engine id -> console-script argv that downloads its model weights. The script

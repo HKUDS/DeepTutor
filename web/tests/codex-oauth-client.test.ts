@@ -11,6 +11,7 @@ import {
   codexStatusMessageKey,
   isLoopbackHostname,
   requestCodex,
+  setCodexReasoningEffort,
   shouldPollCodexStatus,
   type CodexLoginStart,
   type CodexOAuthStatus,
@@ -36,6 +37,7 @@ function status(overrides: Partial<CodexOAuthStatus> = {}): CodexOAuthStatus {
     catalog_source: null,
     catalog_fetched_at: null,
     active_model: null,
+    models: [],
     activated: false,
     error_code: null,
     ...overrides,
@@ -261,6 +263,36 @@ test("Codex OAuth preserves structured errors from non-successful responses", as
   );
 });
 
+test("ordinary users send a scoped Codex reasoning effort update", async () => {
+  let capturedUrl = "";
+  let capturedInit: RequestInit | undefined;
+  const fetchImpl = async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    capturedUrl = String(input);
+    capturedInit = init;
+    return Response.json(status({ connection: "connected" }));
+  };
+
+  await setCodexReasoningEffort("gpt-5.6-sol", "high", fetchImpl);
+
+  assert.match(
+    capturedUrl,
+    /\/providers\/openai-codex\/models\/reasoning-effort$/,
+  );
+  assert.equal(capturedInit?.method, "POST");
+  assert.equal(
+    capturedInit?.headers &&
+      new Headers(capturedInit.headers).get("content-type"),
+    "application/json",
+  );
+  assert.equal(
+    capturedInit?.body,
+    JSON.stringify({ model: "gpt-5.6-sol", reasoning_effort: "high" }),
+  );
+});
+
 test("Codex terminal operation states stop polling", () => {
   for (const operation_state of [
     "completed",
@@ -336,6 +368,16 @@ test("Codex error codes map to stable translation keys", () => {
     codexErrorMessageKey("invalid_response"),
     "codex.oauth.invalidResponse",
   );
+  assert.equal(
+    codexErrorMessageKey("reasoning_effort_unsupported"),
+    "codex.oauth.reasoningUnsupported",
+  );
+  for (const code of ["codex_model_not_found", "codex_catalog_unavailable"]) {
+    assert.equal(
+      codexErrorMessageKey(code),
+      "codex.oauth.reasoningCatalogChanged",
+    );
+  }
 });
 
 function componentBlock(

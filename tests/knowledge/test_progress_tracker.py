@@ -56,3 +56,26 @@ def test_progress_tracker_get_progress_falls_back_to_config(tmp_path) -> None:
         "current": 3,
         "total": 5,
     }
+
+
+def test_progress_tracker_persists_structured_failure_metadata(tmp_path) -> None:
+    tracker = ProgressTracker("demo-kb", tmp_path)
+
+    tracker.update(
+        ProgressStage.ERROR,
+        "GraphRAG model is incompatible",
+        error="Choose a chat model that supports structured output.",
+        error_code="graphrag_model_incompatible",
+        retryable=False,
+    )
+
+    with open(tracker.progress_file, encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    assert payload["error_code"] == "graphrag_model_incompatible"
+    assert payload["retryable"] is False
+
+    status = KnowledgeBaseManager(base_dir=str(tmp_path)).get_kb_status("demo-kb")
+    assert status is not None
+    assert status["progress"]["error_code"] == "graphrag_model_incompatible"
+    assert status["progress"]["retryable"] is False

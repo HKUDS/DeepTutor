@@ -229,6 +229,25 @@ def _validate_channels_payload(channels: dict) -> None:
             detail=f"{t('api.invalid_channels_config')}: {exc}",
         ) from None
 
+    empty_allow_lists = sorted(
+        name
+        for name, section in channels.items()
+        if isinstance(section, dict)
+        and section.get("enabled") is True
+        and section.get("allow_from", section.get("allowFrom")) == []
+    )
+    if empty_allow_lists:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": (
+                    "Enabled channels require at least one allowed sender: "
+                    + ", ".join(empty_allow_lists)
+                ),
+                "channels": empty_allow_lists,
+            },
+        )
+
 
 # Inline avatars are client-resized to ~128px before upload; this cap is a
 # server-side backstop so config.yaml can't be bloated with raw photos.
@@ -436,9 +455,13 @@ async def tool_options():
     mandatory ``partner_read`` / ``partner_memorize`` / ``partner_search`` tools
     instead, which are always on and not owner-configurable.
     """
+    from deeptutor.agents._shared.tool_composition import admin_enabled_optional_tools
     from deeptutor.api.utils.tool_options import build_tool_options
 
-    return await build_tool_options(exclude_builtin={"read_memory", "write_memory"})
+    return await build_tool_options(
+        exclude_builtin={"read_memory", "write_memory"},
+        optional_tools=admin_enabled_optional_tools(),
+    )
 
 
 # ── Create / read / update / lifecycle ─────────────────────────

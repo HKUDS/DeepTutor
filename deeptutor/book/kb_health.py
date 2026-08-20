@@ -21,6 +21,24 @@ import re
 
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 
+
+def _current_manager() -> KnowledgeBaseManager:
+    """The KB manager rooted at the *current user's* knowledge bases.
+
+    Constructing ``KnowledgeBaseManager()`` directly picks up its CWD-relative
+    default root, which under multi-user points at the wrong workspace (and
+    under any deployment where the process CWD isn't the data dir, at nothing).
+    ``current_kb_manager`` resolves through PathService like the knowledge and
+    subagent routers do.
+    """
+    try:
+        from deeptutor.multi_user.knowledge_access import current_kb_manager
+
+        return current_kb_manager()
+    except Exception:  # noqa: BLE001 - single-user / bare-SDK fallback
+        return KnowledgeBaseManager()
+
+
 from .models import Book
 from .storage import BookStorage, get_book_storage
 
@@ -46,7 +64,7 @@ def fingerprint_kb(kb_name: str, manager: KnowledgeBaseManager | None = None) ->
 
     Returns ``""`` when the KB does not exist (so callers can detect deletion).
     """
-    mgr = manager or KnowledgeBaseManager()
+    mgr = manager or _current_manager()
     if kb_name not in mgr.list_knowledge_bases():
         return ""
     base_dir: Path = mgr.base_dir / kb_name / "raw"
@@ -68,7 +86,7 @@ def fingerprint_kb(kb_name: str, manager: KnowledgeBaseManager | None = None) ->
 def fingerprint_kbs(
     kb_names: list[str], manager: KnowledgeBaseManager | None = None
 ) -> dict[str, str]:
-    mgr = manager or KnowledgeBaseManager()
+    mgr = manager or _current_manager()
     return {name: fingerprint_kb(name, manager=mgr) for name in kb_names}
 
 

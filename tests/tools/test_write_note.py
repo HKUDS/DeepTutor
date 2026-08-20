@@ -316,3 +316,53 @@ def test_clips_oversized_title_and_note() -> None:
     assert len(manager.last_add["title"]) <= MAX_TITLE_CHARS + 1
     # The clipped note appears in the body with an ellipsis.
     assert "…" in manager.last_add["output"]
+
+
+def test_append_reports_failure_when_no_notebook_accepted_it(tmp_path) -> None:
+    """A record id comes back even when nothing was written — don't trust it.
+
+    ``add_record`` skips notebooks that are missing or damaged but still
+    returns the record it built, so reporting success off the id alone told
+    the model it had saved something that never landed.
+    """
+    from deeptutor.services.notebook.service import NotebookManager
+    from deeptutor.tools.write_note import write_note
+
+    manager = NotebookManager(base_dir=str(tmp_path))
+    notebook_id = manager.create_notebook("Target")["id"]
+    # Corrupt the file after listing has learned about it, so the notebook is
+    # a valid choice that nonetheless cannot accept the write.
+    (manager.base_dir / f"{notebook_id}.json").write_text("{ broken", encoding="utf-8")
+
+    outcome = write_note(
+        mode="append",
+        notebook_id=notebook_id,
+        title="Should not succeed",
+        content="body",
+        notebook_manager=manager,
+        conversation_history=[],
+        current_user_message="hi",
+    )
+
+    assert outcome.ok is False
+    assert "did not accept" in (outcome.error or "")
+
+
+def test_edit_reports_a_damaged_notebook_instead_of_raising(tmp_path) -> None:
+    from deeptutor.services.notebook.service import NotebookManager
+    from deeptutor.tools.write_note import write_note
+
+    manager = NotebookManager(base_dir=str(tmp_path))
+    notebook_id = manager.create_notebook("Target")["id"]
+    (manager.base_dir / f"{notebook_id}.json").write_text("{ broken", encoding="utf-8")
+
+    outcome = write_note(
+        mode="edit",
+        notebook_id=notebook_id,
+        record_id="whatever",
+        title="New title",
+        notebook_manager=manager,
+    )
+
+    assert outcome.ok is False
+    assert "Could not read notebook" in (outcome.error or "")

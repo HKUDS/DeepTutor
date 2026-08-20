@@ -5,8 +5,9 @@ One chat turn = ONE agent loop over a single growing conversation:
 * each round is one LLM call; its text streams to the user as a ``content``
   block, and its tool calls are dispatched with their ``role=tool`` results
   appended back into the conversation;
-* a round that DOES call tools is "narration" — its text is a preamble to
-  the tool work — and the loop continues;
+* a round that DOES call tools is "narration" by default — its text is a
+  preamble to the tool work — and the loop continues; modes that intentionally
+  combine learner-facing prose with a tool call mark that prose answer-visible;
 * a round that calls NO tools is the ``finish``: its text IS the final
   user-facing answer and the loop ends (the model deciding it is done; a
   first round without tool calls is the "no exploration needed" fast path);
@@ -26,6 +27,7 @@ tells the frontend how to render that round's text.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from dataclasses import dataclass, field
 import logging
@@ -41,12 +43,14 @@ from deeptutor.core.agentic.usage import message_content_chars, record_streamed_
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
-from deeptutor.services.llm import clean_thinking_tags
+from deeptutor.services.llm import LLMProviderTransportError, clean_thinking_tags
+from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
 from deeptutor.services.llm.request_compat import (
     is_image_input_unsupported,
     is_stream_options_unsupported,
     is_tool_schema_unsupported,
+    is_transient_transport_error,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -63,6 +67,11 @@ LOOP_STAGE = "responding"
 # still request tools, making the total upper bound ``exploration + 4``.
 MAX_SETTLEMENT_ROUNDS = 3
 _TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens", "max_output_tokens"})
+# The SDK already retries failures that happen before response headers. These
+# short outer retries also cover SSE connections that fail before yielding any
+# user-visible output. Once output is visible, replay is unsafe because it can
+# duplicate prose or tool calls.
+_PROVIDER_RETRY_DELAYS = (0.5, 1.5)
 
 _THINK_OPEN_RE = re.compile(r"<\s*think(?:ing)?\b[^>]*>", re.IGNORECASE)
 _THINK_CLOSE_RE = re.compile(r"<\s*/\s*think(?:ing)?\s*>", re.IGNORECASE)
@@ -304,8 +313,12 @@ class AgentLoop:
                 # A mid-loop LLM failure (timeout / transient network) must not
                 # discard a turn that already gathered useful work. Salvage it
                 # with a forced finish; only a failure on the very first round
-                # (nothing gathered yet) propagates as before.
-                if state.rounds == 0:
+                # (nothing gathered yet) propagates as before. Once a failed
+                # stream emitted output, however, replay is unsafe: a second
+                # completion would mix new prose with the visible partial one.
+                if state.rounds == 0 or (
+                    isinstance(exc, LLMProviderTransportError) and exc.partial_response
+                ):
                     raise
                 logger.warning(
                     "agent loop round failed after %d round(s); forcing finish: %s",
@@ -523,10 +536,15 @@ class AgentLoop:
                 max_tokens=self.pipeline.loop_max_tokens,
                 tool_schemas=None,  # tools disabled so the model must finish
             )
+        except LLMProviderTransportError:
+            # Preserve the structured retryable error. Treating an unavailable
+            # provider as a successful empty answer hides the real failure and
+            # prevents callers from offering an accurate retry action.
+            raise
         except Exception as exc:
             # The salvage call itself failed (e.g. the provider is still
-            # stalling). Don't bubble up and lose the turn — emit the graceful
-            # fallback answer instead.
+            # returning unusable data). Don't bubble up and lose the turn —
+            # emit the graceful fallback answer instead.
             logger.warning("forced-finish LLM call failed: %s", exc)
             return await self._finalize_finish(
                 "",
@@ -607,6 +625,8 @@ class AgentLoop:
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }
+        if threads_session_id(self.pipeline.binding):
+            kwargs["deeptutor_session_id"] = self.context.session_id
         if self.pipeline.usage is not None:
             kwargs["stream_options"] = {"include_usage": True}
         if tool_schemas:
@@ -627,99 +647,169 @@ class AgentLoop:
             carried = self._last_request.tool_schemas
         self._last_request = LLMRequestSnapshot(messages=list(messages), tool_schemas=carried)
 
-        # Providers (esp. Gemini OpenAI-compat) may attach ``usage`` to more
-        # than one stream chunk. Keep the latest frame; it is recorded once
-        # after the stream via ``record_streamed_usage``.
-        usage_seen: Any = None
-        text_parts: list[str] = []
-        tool_acc: dict[int, dict[str, str]] = {}
-        output_chars = 0
-        finish_reason = ""
-        think_filter = InlineThinkFilter()
-        # DeepSeek's Anthropic-compatible endpoint can interleave user-facing
-        # prose and DSML tool calls in one content stream. Strip only the DSML
-        # blocks incrementally; the raw chunks stay in ``text_parts`` for the
-        # post-stream parser and the surrounding prose remains visible.
-        dsml_filter = DSMLStreamFilter()
-        answer_content_emitted = False
-        visible_text_parts: list[str] = []
         chunk_meta = merge_trace_metadata(trace_meta, {"trace_kind": "llm_chunk"})
 
-        async def _emit_segments(segments: list[tuple[str, str]]) -> None:
-            nonlocal answer_content_emitted
-            for kind, segment in segments:
-                if kind == "content":
-                    visible_text_parts.append(segment)
-                    if segment.strip():
-                        answer_content_emitted = True
-                    await self.stream.content(
-                        segment, source="chat", stage=stage, metadata=chunk_meta
-                    )
-                else:
-                    await self.stream.thinking(
-                        segment, source="chat", stage=stage, metadata=chunk_meta
-                    )
+        for attempt in range(len(_PROVIDER_RETRY_DELAYS) + 1):
+            # Providers (esp. Gemini OpenAI-compat) may attach ``usage`` to
+            # more than one stream chunk. Keep the latest frame and record it
+            # once, only after a successful attempt.
+            usage_seen: Any = None
+            text_parts: list[str] = []
+            tool_acc: dict[int, dict[str, str]] = {}
+            output_chars = 0
+            finish_reason = ""
+            think_filter = InlineThinkFilter()
+            # DeepSeek's Anthropic-compatible endpoint can interleave
+            # user-facing prose and DSML calls in one content stream.
+            dsml_filter = DSMLStreamFilter()
+            answer_content_emitted = False
+            visible_text_parts: list[str] = []
+            output_emitted = False
 
-        response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
-        try:
-            async for chunk in response_stream:
-                usage = getattr(chunk, "usage", None)
-                if usage is not None:
-                    usage_seen = usage
-                choices = getattr(chunk, "choices", None) or []
-                if not choices:
-                    continue
-                choice = choices[0]
-                if getattr(choice, "finish_reason", None):
-                    finish_reason = str(choice.finish_reason)
-                delta = getattr(choice, "delta", None)
-                if delta is None:
-                    continue
+            async def _emit_segments(segments: list[tuple[str, str]]) -> None:
+                nonlocal answer_content_emitted, output_emitted
+                for kind, segment in segments:
+                    output_emitted = True
+                    if kind == "content":
+                        visible_text_parts.append(segment)
+                        if segment.strip():
+                            answer_content_emitted = True
+                        await self.stream.content(
+                            segment, source="chat", stage=stage, metadata=chunk_meta
+                        )
+                    else:
+                        await self.stream.thinking(
+                            segment, source="chat", stage=stage, metadata=chunk_meta
+                        )
 
-                reasoning_text = getattr(delta, "reasoning_content", None) or getattr(
-                    delta,
-                    "reasoning",
-                    None,
-                )
-                if reasoning_text:
-                    output_chars += len(reasoning_text)
-                    await self.stream.thinking(
-                        reasoning_text, source="chat", stage=stage, metadata=chunk_meta
-                    )
-
-                content = getattr(delta, "content", None)
-                if content:
-                    output_chars += len(content)
-                    text_parts.append(content)
-                    # Every round's text streams to the user; inline <think>
-                    # segments remain trace-only while DSML markup and its
-                    # argument payload never enter either visible channel.
-                    visible_content = dsml_filter.feed(content)
-                    if visible_content:
-                        await _emit_segments(think_filter.feed(visible_content))
-
-                for tc_delta in getattr(delta, "tool_calls", None) or []:
-                    index = int(getattr(tc_delta, "index", 0) or 0)
-                    acc = tool_acc.setdefault(index, {"id": "", "name": "", "arguments": ""})
-                    tcid = getattr(tc_delta, "id", None)
-                    if tcid:
-                        acc["id"] += str(tcid)
-                    fn = getattr(tc_delta, "function", None)
-                    if fn is None:
+            response_stream = None
+            try:
+                response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
+                async for chunk in response_stream:
+                    usage = getattr(chunk, "usage", None)
+                    if usage is not None:
+                        usage_seen = usage
+                    choices = getattr(chunk, "choices", None) or []
+                    if not choices:
                         continue
-                    name = getattr(fn, "name", None)
-                    arguments = getattr(fn, "arguments", None)
-                    if name:
-                        acc["name"] += str(name)
-                        output_chars += len(str(name))
-                    if arguments:
-                        acc["arguments"] += str(arguments)
-                        output_chars += len(str(arguments))
-        finally:
-            close = getattr(response_stream, "close", None)
-            if callable(close):
-                with suppress(Exception):
-                    await close()
+                    choice = choices[0]
+                    if getattr(choice, "finish_reason", None):
+                        finish_reason = str(choice.finish_reason)
+                    delta = getattr(choice, "delta", None)
+                    if delta is None:
+                        continue
+
+                    reasoning_text = getattr(delta, "reasoning_content", None) or getattr(
+                        delta,
+                        "reasoning",
+                        None,
+                    )
+                    if reasoning_text:
+                        output_chars += len(reasoning_text)
+                        output_emitted = True
+                        await self.stream.thinking(
+                            reasoning_text, source="chat", stage=stage, metadata=chunk_meta
+                        )
+
+                    content = getattr(delta, "content", None)
+                    if content:
+                        output_chars += len(content)
+                        text_parts.append(content)
+                        # Every round's text streams to the user; inline
+                        # <think> segments remain trace-only while DSML markup
+                        # and its argument payload never enter either channel.
+                        visible_content = dsml_filter.feed(content)
+                        if visible_content:
+                            await _emit_segments(think_filter.feed(visible_content))
+
+                    for tc_delta in getattr(delta, "tool_calls", None) or []:
+                        index = int(getattr(tc_delta, "index", 0) or 0)
+                        acc = tool_acc.setdefault(
+                            index,
+                            {"id": "", "name": "", "arguments": ""},
+                        )
+                        tcid = getattr(tc_delta, "id", None)
+                        if tcid:
+                            acc["id"] += str(tcid)
+                        fn = getattr(tc_delta, "function", None)
+                        if fn is None:
+                            continue
+                        name = getattr(fn, "name", None)
+                        arguments = getattr(fn, "arguments", None)
+                        if name:
+                            acc["name"] += str(name)
+                            output_chars += len(str(name))
+                        if arguments:
+                            acc["arguments"] += str(arguments)
+                            output_chars += len(str(arguments))
+            except Exception as exc:
+                if not is_transient_transport_error(exc):
+                    raise
+                can_retry = not output_emitted and attempt < len(_PROVIDER_RETRY_DELAYS)
+                if can_retry:
+                    logger.warning(
+                        "provider stream failed before output (attempt %d/%d); retrying: %s",
+                        attempt + 1,
+                        len(_PROVIDER_RETRY_DELAYS) + 1,
+                        exc,
+                    )
+                    await self.stream.progress(
+                        self.pipeline._t(
+                            "notices.provider_retry",
+                            default="The model provider connection was interrupted; retrying.",
+                        ),
+                        source="chat",
+                        stage=stage,
+                        metadata=merge_trace_metadata(
+                            trace_meta,
+                            {
+                                "trace_kind": "warning",
+                                "error_code": "provider_transport",
+                                "retry_attempt": attempt + 1,
+                            },
+                        ),
+                    )
+                    await asyncio.sleep(_PROVIDER_RETRY_DELAYS[attempt])
+                    continue
+
+                partial_response = output_emitted
+                await self.stream.progress(
+                    "",
+                    source="chat",
+                    stage=stage,
+                    metadata=merge_trace_metadata(
+                        trace_meta,
+                        {
+                            "trace_kind": "call_status",
+                            "call_state": "failed",
+                            "error_code": "provider_transport",
+                            "retryable": True,
+                            "partial_response": partial_response,
+                        },
+                    ),
+                )
+                message = self.pipeline._t(
+                    (
+                        "notices.provider_stream_interrupted"
+                        if partial_response
+                        else "notices.provider_unavailable"
+                    ),
+                    default=(
+                        "The model provider interrupted this response. Please retry."
+                        if partial_response
+                        else "Unable to reach the model provider. Please retry."
+                    ),
+                )
+                raise LLMProviderTransportError(
+                    message,
+                    partial_response=partial_response,
+                ) from exc
+            finally:
+                close = getattr(response_stream, "close", None)
+                if callable(close):
+                    with suppress(Exception):
+                        await close()
+            break
 
         dsml_tail = dsml_filter.flush()
         if dsml_tail:
@@ -763,12 +853,15 @@ class AgentLoop:
             # output remains visible but is not terminal: the loop continues.
             "call_role": "narration" if tool_calls or truncated_round else "finish",
         }
-        if (dsml_calls or truncated_round) and answer_content_emitted:
+        mastery_tool_round = bool(tool_calls) and bool(self.context.metadata.get("mastery_mode"))
+        if (dsml_calls or truncated_round or mastery_tool_round) and answer_content_emitted:
             # DSML providers may intentionally combine tutor feedback and an
             # ask_user/tool call in the same round. Preserve only that cleaned
             # surrounding prose in the answer surfaces. Truncated rounds also
             # keep their partial answer visible while retaining a truthful
-            # non-terminal ``narration`` role.
+            # non-terminal ``narration`` role. Mastery rounds likewise combine
+            # learner-facing teaching with state/quiz tools; that teaching is
+            # answer content, not an internal tool preamble.
             completion_metadata["answer_visible"] = True
 
         await self.stream.progress(

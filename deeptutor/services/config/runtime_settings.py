@@ -87,6 +87,10 @@ _LEGACY_DOCUMENT_PARSING_SETTINGS_NAME = "mineru"
 MINERU_MODE_LOCAL = "local"
 MINERU_MODE_CLOUD = "cloud"
 _MINERU_MODES = frozenset({MINERU_MODE_LOCAL, MINERU_MODE_CLOUD})
+
+DOCLING_MODE_LOCAL = "local"
+DOCLING_MODE_REMOTE = "remote"
+_DOCLING_MODES = frozenset({DOCLING_MODE_LOCAL, DOCLING_MODE_REMOTE})
 _MINERU_MODEL_VERSIONS = frozenset({"pipeline", "vlm"})
 _MINERU_DOWNLOAD_SOURCES = frozenset({"huggingface", "modelscope"})
 
@@ -95,6 +99,7 @@ DOCUMENT_PARSING_ENGINE_MINERU = "mineru"
 DOCUMENT_PARSING_ENGINE_DOCLING = "docling"
 DOCUMENT_PARSING_ENGINE_MARKITDOWN = "markitdown"
 DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM = "pymupdf4llm"
+DOCUMENT_PARSING_ENGINE_LITEPARSE = "liteparse"
 _DOCUMENT_PARSING_ENGINES = frozenset(
     {
         DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
@@ -102,10 +107,14 @@ _DOCUMENT_PARSING_ENGINES = frozenset(
         DOCUMENT_PARSING_ENGINE_DOCLING,
         DOCUMENT_PARSING_ENGINE_MARKITDOWN,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
+        DOCUMENT_PARSING_ENGINE_LITEPARSE,
     }
 )
 # Image formats PyMuPDF4LLM can write extracted page images as.
 _PYMUPDF4LLM_IMAGE_FORMATS = frozenset({"png", "jpg", "jpeg", "webp"})
+# How LiteParse presents images in its Markdown. Independent of whether the
+# image bytes are extracted (that is the engine's ``extract_images`` knob).
+LITEPARSE_IMAGE_MODES = frozenset({"off", "placeholder", "embed"})
 # Fresh installs default to the built-in text extractor so parsing works out of
 # the box without optional parser packages or model weights.
 # Migrated v1 installs keep MinerU (see ``_normalize_document_parsing``).
@@ -138,9 +147,14 @@ _DEFAULT_MINERU_ENGINE: dict[str, Any] = {
     "allow_local_model_download": False,
 }
 
-# Docling engine slice. Downloads layout/table models on first run, hence the
-# same ``allow_local_model_download`` gate as MinerU local.
+# Docling engine slice. ``mode`` selects the in-process ``docling`` package
+# ("local") or a Docling Serve HTTP server ("remote"; needs ``api_base_url`` and
+# optionally ``api_token``). Local downloads layout/table models on first run,
+# hence the same ``allow_local_model_download`` gate as MinerU local.
 _DEFAULT_DOCLING_ENGINE: dict[str, Any] = {
+    "mode": DOCLING_MODE_LOCAL,
+    "api_base_url": "http://localhost:5001",
+    "api_token": "",
     "do_ocr": False,
     "do_table_structure": True,
     "allow_local_model_download": False,
@@ -162,6 +176,17 @@ _DEFAULT_PYMUPDF4LLM_ENGINE: dict[str, Any] = {
     "image_dpi": 150,
 }
 
+# LiteParse engine slice. Rust-backed, no model downloads. Like PyMuPDF4LLM it
+# can extract embedded images into the parse's images/ dir. Output format and
+# image directory are fixed by the workdir contract, so neither is a knob here
+# (see engines/liteparse/engine.py). ``max_pages`` 0 means the whole document.
+_DEFAULT_LITEPARSE_ENGINE: dict[str, Any] = {
+    "image_mode": "placeholder",
+    "extract_links": True,
+    "extract_images": False,
+    "max_pages": 0,
+}
+
 # Built-in text-only engine slice. It deliberately has no knobs: it reuses
 # DeepTutor's legacy text extractors for PDF / Office / text-like files.
 _DEFAULT_TEXT_ONLY_ENGINE: dict[str, Any] = {}
@@ -179,6 +204,7 @@ DEFAULT_DOCUMENT_PARSING_SETTINGS: dict[str, Any] = {
         DOCUMENT_PARSING_ENGINE_DOCLING: _DEFAULT_DOCLING_ENGINE,
         DOCUMENT_PARSING_ENGINE_MARKITDOWN: _DEFAULT_MARKITDOWN_ENGINE,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _DEFAULT_PYMUPDF4LLM_ENGINE,
+        DOCUMENT_PARSING_ENGINE_LITEPARSE: _DEFAULT_LITEPARSE_ENGINE,
     },
 }
 
@@ -196,6 +222,18 @@ DEFAULT_PAGEINDEX_SETTINGS: dict[str, Any] = {
     "version": 1,
     "api_key": "",
     "api_base_url": "https://api.pageindex.ai",
+}
+
+# Tencent IMA. The credential pair (``client_id`` + ``api_key``, issued at
+# https://ima.qq.com/agent-interface) identifies one IMA account, and every
+# library in that account is reachable with it — so it belongs here, beside the
+# other engine credentials, rather than being retyped for each connected KB.
+# A KB may still carry its own pair to reach a *different* IMA account; that
+# per-KB binding wins (see ``pipelines/ima/config.py``).
+DEFAULT_IMA_SETTINGS: dict[str, Any] = {
+    "version": 1,
+    "client_id": "",
+    "api_key": "",
 }
 
 # LlamaIndex local RAG engine. These are the retrieval + chunking knobs the
@@ -405,6 +443,9 @@ class RuntimeSettingsService:
             engines[DOCUMENT_PARSING_ENGINE_MINERU] = self._apply_mineru_process_overrides(
                 dict(engines[DOCUMENT_PARSING_ENGINE_MINERU])
             )
+            engines[DOCUMENT_PARSING_ENGINE_DOCLING] = self._apply_docling_process_overrides(
+                dict(engines[DOCUMENT_PARSING_ENGINE_DOCLING])
+            )
             payload = {**payload, "engines": engines}
         return payload
 
@@ -456,6 +497,17 @@ class RuntimeSettingsService:
         _atomic_write_json(self.path_for("pageindex"), payload)
         return payload
 
+    def load_ima(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
+        payload = self._load_or_create("ima", DEFAULT_IMA_SETTINGS, self._normalize_ima)
+        if include_process_overrides:
+            payload = self._apply_ima_process_overrides(payload)
+        return payload
+
+    def save_ima(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = self._normalize_ima({**DEFAULT_IMA_SETTINGS, **settings})
+        _atomic_write_json(self.path_for("ima"), payload)
+        return payload
+
     def load_llamaindex(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
         payload = self._load_or_create(
             "llamaindex",
@@ -493,6 +545,7 @@ class RuntimeSettingsService:
         self.load_integrations(include_process_overrides=False)
         self.load_mineru(include_process_overrides=False)
         self.load_pageindex(include_process_overrides=False)
+        self.load_ima(include_process_overrides=False)
         self.load_llamaindex(include_process_overrides=False)
         self.load_graphrag()
         self.load_lightrag()
@@ -710,6 +763,21 @@ class RuntimeSettingsService:
             or "https://api.pageindex.ai",
         }
 
+    def _apply_ima_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("IMA_CLIENT_ID"):
+            payload["client_id"] = value
+        if value := self._process_env_value("IMA_API_KEY"):
+            payload["api_key"] = value
+        return self._normalize_ima(payload)
+
+    def _normalize_ima(self, settings: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "client_id": _string(settings.get("client_id")),
+            "api_key": _string(settings.get("api_key")),
+        }
+
     def _apply_llamaindex_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
         # Only the retrieval profile had an env override historically
         # (DEEPTUTOR_RAG_RETRIEVAL_PROFILE / RAG_RETRIEVAL_PROFILE); preserve it.
@@ -801,6 +869,9 @@ class RuntimeSettingsService:
             DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: self._normalize_pymupdf4llm_engine(
                 engines_in.get(DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM) or {}
             ),
+            DOCUMENT_PARSING_ENGINE_LITEPARSE: self._normalize_liteparse_engine(
+                engines_in.get(DOCUMENT_PARSING_ENGINE_LITEPARSE) or {}
+            ),
         }
 
         engine = _string(settings.get("engine")).lower().replace("-", "_").replace(" ", "_")
@@ -841,7 +912,14 @@ class RuntimeSettingsService:
         }
 
     def _normalize_docling_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        mode = _string(settings.get("mode")).lower()
+        if mode not in _DOCLING_MODES:
+            mode = DOCLING_MODE_LOCAL
         return {
+            "mode": mode,
+            "api_base_url": _string(settings.get("api_base_url")).rstrip("/")
+            or "http://localhost:5001",
+            "api_token": _string(settings.get("api_token")),
             "do_ocr": _coerce_bool(settings.get("do_ocr"), False),
             "do_table_structure": _coerce_bool(settings.get("do_table_structure"), True),
             "allow_local_model_download": _coerce_bool(
@@ -849,11 +927,32 @@ class RuntimeSettingsService:
             ),
         }
 
+    def _apply_docling_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("DOCLING_MODE"):
+            payload["mode"] = value
+        if value := self._process_env_value("DOCLING_API_BASE_URL"):
+            payload["api_base_url"] = value
+        if value := self._process_env_value("DOCLING_API_TOKEN"):
+            payload["api_token"] = value
+        return self._normalize_docling_engine(payload)
+
     def _normalize_markitdown_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
             "enable_llm_image_description": _coerce_bool(
                 settings.get("enable_llm_image_description"), False
             ),
+        }
+
+    def _normalize_liteparse_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        image_mode = _string(settings.get("image_mode")).lower() or "placeholder"
+        if image_mode not in LITEPARSE_IMAGE_MODES:
+            image_mode = "placeholder"
+        return {
+            "image_mode": image_mode,
+            "extract_links": _coerce_bool(settings.get("extract_links"), True),
+            "extract_images": _coerce_bool(settings.get("extract_images"), False),
+            "max_pages": _coerce_clamped_int(settings.get("max_pages"), 0, 0, 100_000),
         }
 
     def _normalize_pymupdf4llm_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1070,6 +1169,7 @@ __all__ = [
     "DEFAULT_AUTH_SETTINGS",
     "DEFAULT_DOCUMENT_PARSING_SETTINGS",
     "DEFAULT_GRAPHRAG_SETTINGS",
+    "DEFAULT_IMA_SETTINGS",
     "DEFAULT_INTEGRATIONS_SETTINGS",
     "DEFAULT_LIGHTRAG_SETTINGS",
     "DEFAULT_LLAMAINDEX_SETTINGS",
@@ -1077,10 +1177,14 @@ __all__ = [
     "DEFAULT_PAGEINDEX_SETTINGS",
     "DEFAULT_SYSTEM_SETTINGS",
     "DOCUMENT_PARSING_ENGINE_DOCLING",
+    "DOCUMENT_PARSING_ENGINE_LITEPARSE",
     "DOCUMENT_PARSING_ENGINE_MARKITDOWN",
     "DOCUMENT_PARSING_ENGINE_MINERU",
     "DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM",
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
+    "DOCLING_MODE_LOCAL",
+    "DOCLING_MODE_REMOTE",
+    "LITEPARSE_IMAGE_MODES",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",
     "ChatAttachmentLimits",

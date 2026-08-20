@@ -12,7 +12,10 @@ from pydantic import BaseModel
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.runtime import memory_probe
-from deeptutor.services.config import resolve_search_runtime_config
+from deeptutor.services.config import (
+    resolve_search_runtime_config,
+    supported_search_providers_hint,
+)
 from deeptutor.services.embedding import get_embedding_client, get_embedding_config
 from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import get_llm_config, get_token_limit_kwargs
@@ -110,13 +113,13 @@ async def get_system_status():
                 result["search"]["status"] = "unsupported"
                 result["search"]["error"] = (
                     f"{search_config.requested_provider} is deprecated/unsupported. "
-                    "Switch to brave/tavily/jina/searxng/duckduckgo/perplexity."
+                    f"Switch to {supported_search_providers_hint()}."
                 )
             elif search_config.deprecated_provider:
                 result["search"]["status"] = "deprecated"
                 result["search"]["error"] = (
                     f"{search_config.requested_provider} is deprecated. "
-                    "Switch to brave/tavily/jina/searxng/duckduckgo/perplexity."
+                    f"Switch to {supported_search_providers_hint()}."
                 )
             elif search_config.missing_credentials:
                 result["search"]["status"] = "not_configured"
@@ -344,7 +347,7 @@ async def test_search_connection():
                 message=(
                     f"Search provider `{search_config.requested_provider}` is deprecated/unsupported."
                 ),
-                error="Switch to brave/tavily/jina/searxng/duckduckgo/perplexity",
+                error=f"Switch to {supported_search_providers_hint()}",
             )
         if search_config.missing_credentials:
             return TestResponse(

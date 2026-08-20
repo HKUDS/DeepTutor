@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -59,10 +60,10 @@
 
 DeepTutor एक agent-native learning workspace है जो tutoring, problem solving, quiz generation, research, visualization, और mastery practice को एक extensible system में जोड़ता है।
 
-- **हर मोड के लिए एक रनटाइम** — Chat, Quiz, Research, Visualize, Solve और Mastery Path एक ही agent loop पर चलते हैं, इसलिए आप objective बदलते हैं, engine नहीं, और context learner के साथ बना रहता है।
+- **हर मोड के लिए एक रनटाइम** — Chat, Quiz, Research, Visualize, Solve, Mastery Path और Immersive Reading एक ही agent loop पर चलते हैं, इसलिए आप objective बदलते हैं, engine नहीं, और context learner के साथ बना रहता है।
 - **जुड़ा हुआ लर्निंग कॉन्टेक्स्ट** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, और Memory सभी workflows में उपलब्ध रहते हैं, isolated tools में बंद रहने की बजाय।
 - **सब-एजेंट और Partners** — किसी भी turn से एक live coding CLI (Claude Code, Codex, Gemini, Kimi, opencode, या MiMo) या एक Partner से सलाह लें (या उनकी पिछली conversations import करें), और same brain पर persistent IM companions चलाएं।
-- **मल्टी-इंजन नॉलेज** — LlamaIndex, PageIndex, GraphRAG, LightRAG या linked Obsidian vault के साथ versioned RAG libraries, pluggable document parsing के साथ।
+- **मल्टी-इंजन नॉलेज** — LlamaIndex, PageIndex, GraphRAG, LightRAG, एक remote LightRAG Server या Tencent IMA library, या एक linked Obsidian vault के साथ versioned RAG libraries, pluggable document parsing के साथ।
 - **एक्सटेंसिबल टूल्स और स्किल्स** — built-in tools, MCP servers, CLI apps, image / video / voice generation models, और EduHub से installable community skills।
 - **इंस्पेक्टेबल मेमोरी** — L1 traces, L2 surface summaries, और L3 synthesis personalization को visible और editable बनाते हैं, एक Memory Graph के साथ जो हर दावे को उसके साक्ष्य तक trace करता है।
 
@@ -330,7 +331,7 @@ User-toggleable tools हैं `brainstorm`, `web_search`, `paper_search`, `rea
 
 Context दो प्रकार की होती है: **sticky session context** (subagent, knowledge bases, persona, model, voice) composer toolbar पर रहती है और turns के पार persist करती है; **एक-बार references** (files, chat history, books, notebooks, question bank, imported agents) एक single turn के लिए `+` menu से आते हैं।
 
-Chat deeper capabilities के लिए launch point भी है: **Quiz** question generation के लिए, **Research** cited reports के लिए, **Visualize** charts / diagrams / animations के लिए, और — *More Capabilities* के नीचे — **Solve** worked reasoning के लिए और **Mastery Path** learning-plan flows के लिए।
+Chat deeper capabilities के लिए launch point भी है: **Quiz** question generation के लिए, **Visualize** charts / diagrams / animations के लिए, **Mastery Path** learning-plan flows के लिए, और **Immersive Reading** — एक document जो thread के बगल में खुला रहता है, हर दावे को उस page तक cite करते हुए जहां से वह आया। **Research** cited reports के लिए और **Solve** worked reasoning के लिए *More Capabilities* के नीचे रहते हैं।
 
 </details>
 
@@ -408,7 +409,7 @@ Book selected sources को एक interactive **living book** में बद
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Book interactive widget block" width="31%">
 </p>
 
-हर chapter typed blocks में compile होती है — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, और user notes — और हर page का अपना Page Chat है। Blocks editable हैं: chapter rewrite किए बिना किसी block को insert, move, regenerate, या उसका type switch करें। Maintenance commands जैसे `deeptutor book health` और `deeptutor book refresh-fingerprints` तब detect करने में मदद करते हैं जब source knowledge compiled pages से drift हो गया हो।
+हर chapter typed blocks में compile होती है — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, और user notes — और हर page का अपना Page Chat है। Blocks editable हैं: किसी block को insert, move, regenerate, body rewrite करें, या chapter दोबारा किए बिना उसका type switch करें। Visited pages, bookmarks, और quiz attempts मिलकर एक completion score और weak chapters में roll up होते हैं; कोई भी book Markdown में export होती है। एक लंबी compile pause और resume होती है; `deeptutor book health` और `refresh-fingerprints` उस source knowledge को flag करते हैं जो drift हो गई हो।
 
 </details>
 
@@ -419,13 +420,13 @@ Book selected sources को एक interactive **living book** में बद
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-Knowledge bases RAG के पीछे document collections हैं — वे Chat turns, Co-Writer edits, Book generation, और Partner conversations को ground करते हैं। जो distinctive है वह है **retrieval engines का choice**: **LlamaIndex** (default, local vector + BM25), **PageIndex** (hosted, reasoning retrieval with page-level citations), **GraphRAG** और **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval एक external LightRAG instance पर offload किया जाता है जिसे आप HTTP पर connect करते हैं), **Tencent IMA** (एक library जिसे आप IMA में curate करते हैं, इसके OpenAPI पर search किया जाता है), या एक linked **Obsidian** vault जिसे tutor in-place पढ़ता और लिखता है। हर KB एक engine से bound होती है।
+Knowledge bases RAG के पीछे document collections हैं — वे Chat turns, Co-Writer edits, Book generation, और Partner conversations को ground करते हैं। जो distinctive है वह है **retrieval engines का choice**: **LlamaIndex** (default, local vector + BM25), **PageIndex** (hosted, reasoning retrieval with page-level citations), **GraphRAG** और **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval एक external LightRAG instance पर offload किया जाता है जिसे आप HTTP पर connect करते हैं), **Tencent IMA** (एक library जिसे आप IMA में curate करते हैं — इसके OpenAPI पर search, browse, और write back किया जाता है), या एक linked **Obsidian** vault जिसे tutor in-place पढ़ता और लिखता है। हर KB एक engine से bound होती है।
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="एक knowledge base बनाएं" width="900">
 </div>
 
-KB बनाते समय, आप either **नया create** करते हैं (documents upload करें और fresh index build करें) या **existing link** करते हैं (कहीं और बना index reuse करें, re-index के बिना in-place पढ़ें)। Re-indexing एक नई flat `version-N` directory लिखता है और prior ones रखता है, इसलिए एक working index rebuild के दौरान कभी destroy नहीं होता। एक single document को **error**-state base से भी remove किया जा सकता है — पूरी delete-and-rebuild के बिना parse होने में failed हुई file को drop करना। Document parsing — Text-only, MinerU, Docling, markitdown, या PyMuPDF4LLM — **Settings → Knowledge Base** में choose किया जाता है, local model downloads default रूप से off हैं। CLI lifecycle को `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, और `delete` से mirror करता है।
+KB बनाते समय, आप either **नया create** करते हैं (documents upload करें और fresh index build करें) या **existing link** करते हैं (कहीं और बना index reuse करें, re-index के बिना in-place पढ़ें)। Re-indexing एक नई flat `version-N` directory लिखता है और prior ones रखता है, इसलिए एक working index rebuild के दौरान कभी destroy नहीं होता। एक single document को **error**-state base से भी remove किया जा सकता है — पूरी delete-and-rebuild के बिना parse होने में failed हुई file को drop करना। Document parsing — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM, या LiteParse — **Settings → Knowledge Base** में choose किया जाता है, local model downloads default रूप से off हैं। Docling को **remote** mode में भी एक Docling Serve server के विरुद्ध चलाया जा सकता है (कोई local install या models की जरूरत नहीं), जिसे **Settings → Document Parsing** (`mode=remote`, एक server base URL, और एक optional API key) या `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables के जरिए configure किया जाता है। CLI lifecycle को `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, और `delete` से mirror करता है।
 
 </details>
 
@@ -436,7 +437,7 @@ KB बनाते समय, आप either **नया create** करते �
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
 </div>
 
-Learning Space library और personalization layer है — वह जगह जहां persist होने वाली चीजें रहती हैं। **Conversations & Materials** में आपका chat history, notebooks, और एक question bank है (हर saved question आपका जवाब, reference answer, और एक explanation रखता है)। **Personalization** में mastery paths, personas (behavior presets जैसे *peer*, *research-assistant*, *teacher*), skills (`SKILL.md` playbooks जिन्हें model on-demand पढ़ता है), **MCP Services** — hosted MCP servers का एक curated store जिन्हें आप एक click में खुद के लिए install करते हैं, साथ ही कोई भी remote server जिसे आप URL से configure करते हैं — और **CLI Apps** हैं, [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog से command-line tools जिन्हें chat agent directly call करता है, हर app की अपनी usage guide on-demand load होती है। यहां सब कुछ Chat, Partners, Co-Writer, और Book से reuse किया जा सकता है।
+Learning Space library और personalization layer है — वह जगह जहां persist होने वाली चीजें रहती हैं। **Conversations & Materials** में आपका chat history, notebooks — अब अपना खुद का console, जिसमें records notebooks के बीच move या copy होते हैं और एक Markdown export होता है — और एक question bank है (हर saved question आपका जवाब, reference answer, और एक explanation रखता है)। **Personalization** में mastery paths, personas (behavior presets जैसे *peer*, *research-assistant*, *teacher*), skills (`SKILL.md` playbooks जिन्हें model on-demand पढ़ता है), **MCP Services** — hosted MCP servers का एक curated store जिन्हें आप एक click में खुद के लिए install करते हैं, साथ ही कोई भी remote server जिसे आप URL से configure करते हैं — और **CLI Apps** हैं, [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog से command-line tools जिन्हें chat agent directly call करता है, हर app की अपनी usage guide on-demand load होती है। यहां सब कुछ Chat, Partners, Co-Writer, और Book से reuse किया जा सकता है।
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="EduHub से skills import करें" width="900">
@@ -476,7 +477,7 @@ Settings operational control plane है, एक live status strip (Backend hea
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
 </div>
 
-अधिकांश sections एक draft-and-apply flow उपयोग करते हैं, इसलिए आप provider को commit करने से पहले test कर सकते हैं। चार themes box में आते हैं — Default, Cream, Dark, और Glass। Project-root `.env` files जानबूझकर ignored हैं; runtime configuration `data/user/settings/*.json` के नीचे रहती है जब तक कि `DEEPTUTOR_HOME` या `deeptutor start --home` app को कहीं और point न करे।
+अधिकांश sections एक draft-and-apply flow उपयोग करते हैं, इसलिए आप provider को commit करने से पहले test कर सकते हैं। आप बस Chat में भी पूछ सकते हैं: assistant current configuration पढ़ता है, एक change apply करता है, और बताता है कि उसे restart या re-index चाहिए या नहीं — एक नए model को commit करने से पहले probe करते हुए, इसलिए यह खुद को किसी unreachable चीज़ पर switch नहीं कर सकता। API keys कभी model से नहीं गुजरतीं, जो इसकी बजाय आपके लिए matching form खोल देता है। चार themes box में आते हैं — Default, Cream, Dark, और Glass। Project-root `.env` files जानबूझकर ignored हैं; runtime configuration `data/user/settings/*.json` के नीचे रहती है जब तक कि `DEEPTUTOR_HOME` या `deeptutor start --home` app को कहीं और point न करे।
 
 **OpenAI Codex OAuth (experimental).** **Models → LLM** के तहत **OpenAI Codex** चुनना API-key fields को एक browser sign-in से replace कर देता है जो आपके अपने ChatGPT plan के विरुद्ध चलता है, इसलिए किसी `OPENAI_API_KEY` की जरूरत नहीं। Tokens केवल `data/system/user-secrets/<owner>/private/openai-codex/` में रहते हैं — multi-container Compose deployment में, उस हर tree के बाहर जहां exec sandbox पहुंच सकता है — और DeepTutor कभी आपकी `~/.codex` CLI login को न तो पढ़ता है न ही modify करता है। Model list उस account के live catalog से आती है; sign in करना profile को publish करता है लेकिन यह active model तभी बनता है जब अभी तक कोई LLM configure न हो, इसलिए यह कभी भी आपकी जानकारी के बिना किसी deployment को repoint नहीं करता। क्योंकि एक token एक व्यक्ति के plan को authorize करता है, profile user grants के जरिए shareable नहीं है — हर account खुद के लिए sign in करता है, सामान्य users भी शामिल: उनका card **Models → LLM** के तहत रहता है, और resulting models, catalog, और sign-out उस account के लिए private रहते हैं।
 
@@ -584,7 +585,7 @@ Repo एक root [`SKILL.md`](../../SKILL.md) ship करता है — ए�
 | `deeptutor book list/health/refresh-fingerprints` | Books inspect करें और source fingerprints refresh करें |
 | `deeptutor plugin list/info` | Registered tools और capabilities inspect करें |
 | `deeptutor config show` | Configuration summary print करें |
-| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` existing Copilot auth session validate करता है) |
+| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` existing Copilot auth session validate करता है; `codebuddy` CodeBuddy SDK auth validate करता है और ज़रूरत पड़ने पर login शुरू करता है) |
 
 </details>
 
@@ -658,6 +659,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 `settings/skill_hubs.json` में और registries add करें: एक `type: "clawhub"` entry किसी भी compatible HTTP API पर point करती है (EduHub और ClawHub दोनों इसे बोलते हैं), `type: "command"` जो fetch CLI एक registry ship करती है उसे wrap करता है, और `"default"` bare slugs के लिए उपयोग होने वाला hub choose करता है। सभी same import gate feed करते हैं।
 
 </details>
+
+## 🤝 ओपन सोर्स पार्टनर्स
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  कोड का उपयोग करें: <b><code>DEEPTUTOR20</code></b> — अपनी पहली <a href="https://developer.pageindex.ai/">PageIndex subscription</a> पर $20 की छूट पाएं!
+</p>
 
 ## 🌐 समुदाय
 

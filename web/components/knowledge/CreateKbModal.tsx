@@ -13,6 +13,7 @@ import {
   Server,
 } from "lucide-react";
 import Modal from "@/components/common/Modal";
+import { useImaConnection } from "@/hooks/useImaConnection";
 import {
   probeLightRagServer,
   probeLinkedFolder,
@@ -21,8 +22,14 @@ import {
   type LinkedFolderProbe,
   type RagProviderSummary,
 } from "@/lib/knowledge-api";
+import {
+  createProviders,
+  IMA_PROVIDER,
+  linkSourceEnabled,
+} from "@/lib/ima-connection";
 import { validateFiles } from "@/lib/knowledge-helpers";
 import FileDropZone from "./FileDropZone";
+import ImaConnectionFields from "./ImaConnectionFields";
 
 // Mirrors SUPPORTED_EXTENSIONS in the backend pageindex pipeline (PageIndex POST /doc/).
 const PAGEINDEX_FORMATS = [
@@ -74,6 +81,13 @@ interface CreateKbModalProps {
     apiKey?: string;
     mode?: string;
   }) => Promise<void>;
+  /** Connect a Tencent IMA knowledge base (retrieval only, no local index). */
+  onConnectIma: (params: {
+    name: string;
+    clientId: string;
+    apiKey: string;
+    knowledgeBaseId: string;
+  }) => Promise<void>;
   /** Open the RAG pipeline settings (to add a missing API key). */
   onConfigureProvider?: () => void;
   /** Open straight into a given mode (e.g. "link" from the Obsidian card). */
@@ -91,6 +105,7 @@ export default function CreateKbModal({
   onConnectLinkedFolder,
   onConnectObsidian,
   onConnectLightRagServer,
+  onConnectIma,
   onConfigureProvider,
   initialMode = "new",
   initialSource,
@@ -115,8 +130,31 @@ export default function CreateKbModal({
   const [serverProbing, setServerProbing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
+  const linkIsIma = linkSource === IMA_PROVIDER;
+  const imaConnection = useImaConnection({
+    name,
+    onNameChange: setName,
+    onError: setError,
+    active: linkIsIma,
+  });
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
+
+  const handleClose = () => {
+    imaConnection.reset();
+    onClose();
+  };
+
+  const handleModeChange = (nextMode: Mode) => {
+    if (nextMode !== "link") imaConnection.reset();
+    setMode(nextMode);
+  };
+
+  const handleLinkSourceChange = (source: string) => {
+    if (source !== IMA_PROVIDER) imaConnection.reset();
+    setLinkSource(source);
+  };
 
   // Reset the form only on the closed → open transition. While the modal is
   // open, background indexing polls replace `providers` (and friends) every
@@ -130,7 +168,12 @@ export default function CreateKbModal({
     setName("");
     setFiles([]);
     setError(null);
-    setProvider(initialSource || providers[0]?.id || "llamaindex");
+    const initialProvider = createProviders(providers).find(
+      (item) => item.id === initialSource,
+    )?.id;
+    setProvider(
+      initialProvider || createProviders(providers)[0]?.id || "llamaindex",
+    );
     setLinkSource(initialSource || firstLinkable || OBSIDIAN_SOURCE);
     setFolderPath("");
     setProbe(null);
@@ -174,7 +217,6 @@ export default function CreateKbModal({
   const selection = validateFiles(files, policyForProvider, t);
 
   // ---- Link mode (mount an existing folder) ----------------------------
-  const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
   const trimmed = name.trim();
   const trimmedPath = folderPath.trim();
 
@@ -190,6 +232,7 @@ export default function CreateKbModal({
       }
       return !providerUnavailable && selection.validFiles.length > 0;
     }
+    if (linkIsIma) return imaConnection.canSubmit;
     if (!trimmedPath) return false;
     if (linkIsObsidian) return true;
     // An engine index must pass the probe before it can be linked.
@@ -250,6 +293,15 @@ export default function CreateKbModal({
             files: selection.validFiles,
           });
         }
+      } else if (linkIsIma) {
+        await onConnectIma({
+          name: trimmed,
+          // Empty when the engine's account credentials are used — the server
+          // resolves them and the KB stores no copy.
+          clientId: imaConnection.submittedClientId,
+          apiKey: imaConnection.submittedApiKey,
+          knowledgeBaseId: imaConnection.knowledgeBaseId,
+        });
       } else if (linkIsObsidian) {
         await onConnectObsidian({ name: trimmed, vaultPath: trimmedPath });
       } else {
@@ -259,7 +311,7 @@ export default function CreateKbModal({
           provider: linkSource,
         });
       }
-      onClose();
+      handleClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -272,14 +324,14 @@ export default function CreateKbModal({
       ? isLightRagServer
         ? t("Connect")
         : t("Create")
-      : linkIsObsidian
+      : linkIsObsidian || linkIsIma
         ? t("Connect")
         : t("Link");
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={submitting ? () => {} : onClose}
+      onClose={submitting ? () => {} : handleClose}
       title={t("Create knowledge base")}
       titleIcon={<Plus size={16} />}
       width="lg"
@@ -289,7 +341,7 @@ export default function CreateKbModal({
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={submitting}
             className="rounded-md px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
           >
@@ -317,7 +369,7 @@ export default function CreateKbModal({
         {/* New vs. link existing */}
         <ModeToggle
           mode={mode}
-          onChange={setMode}
+          onChange={handleModeChange}
           disabled={submitting}
           t={t}
         />
@@ -338,7 +390,7 @@ export default function CreateKbModal({
 
         {mode === "new" ? (
           <NewModeFields
-            providers={providers}
+            providers={createProviders(providers)}
             provider={provider}
             setProvider={setProvider}
             submitting={submitting}
@@ -373,14 +425,23 @@ export default function CreateKbModal({
           <LinkModeFields
             providers={providers}
             linkSource={linkSource}
-            setLinkSource={setLinkSource}
+            setLinkSource={handleLinkSourceChange}
             linkIsObsidian={linkIsObsidian}
+            linkIsIma={linkIsIma}
             folderPath={folderPath}
             setFolderPath={setFolderPath}
             submitting={submitting}
             probing={probing}
             probe={probe}
             onProbe={handleProbe}
+            connectionForm={
+              linkIsIma ? (
+                <ImaConnectionFields
+                  connection={imaConnection}
+                  submitting={submitting}
+                />
+              ) : null
+            }
             t={t}
           />
         )}
@@ -731,24 +792,28 @@ function LinkModeFields({
   linkSource,
   setLinkSource,
   linkIsObsidian,
+  linkIsIma,
   folderPath,
   setFolderPath,
   submitting,
   probing,
   probe,
   onProbe,
+  connectionForm,
   t,
 }: {
   providers: RagProviderSummary[];
   linkSource: string;
   setLinkSource: (id: string) => void;
   linkIsObsidian: boolean;
+  linkIsIma: boolean;
   folderPath: string;
   setFolderPath: (value: string) => void;
   submitting: boolean;
   probing: boolean;
   probe: LinkedFolderProbe | null;
   onProbe: () => void;
+  connectionForm?: ReactNode;
   t: TFn;
 }) {
   return (
@@ -760,7 +825,8 @@ function LinkModeFields({
         <div className="grid gap-2 sm:grid-cols-2">
           {providers.map((p) => {
             const selected = !linkIsObsidian && linkSource === p.id;
-            const disabled = submitting || !p.linkable;
+            const enabled = linkSourceEnabled(p);
+            const disabled = submitting || !enabled;
             return (
               <button
                 key={p.id}
@@ -768,7 +834,7 @@ function LinkModeFields({
                 disabled={disabled}
                 onClick={() => setLinkSource(p.id)}
                 title={
-                  !p.linkable
+                  !enabled
                     ? t(
                         "This engine's index lives in the cloud and can't be linked.",
                       )
@@ -784,12 +850,16 @@ function LinkModeFields({
                   <span className="text-[13px] font-medium text-[var(--foreground)]">
                     {p.name}
                   </span>
-                  {!p.linkable ? (
+                  {selected ? (
+                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                  ) : !enabled ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
                       {t("Cloud index")}
                     </span>
-                  ) : selected ? (
-                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                  ) : p.id === IMA_PROVIDER ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+                      {t("Read only")}
+                    </span>
                   ) : null}
                 </div>
                 <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
@@ -828,46 +898,54 @@ function LinkModeFields({
         </div>
       </div>
 
-      <div>
-        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {linkIsObsidian ? t("Vault path") : t("Folder path")}
-        </label>
-        <div className="flex gap-2">
-          <input
-            value={folderPath}
-            onChange={(event) => setFolderPath(event.target.value)}
-            disabled={submitting}
-            placeholder={
-              linkIsObsidian ? EXAMPLE_VAULT_PATH : EXAMPLE_INDEX_PATH
-            }
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-          />
-          {!linkIsObsidian && (
-            <button
-              type="button"
-              onClick={onProbe}
-              disabled={submitting || probing || folderPath.trim().length === 0}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {probing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <FolderSearch className="h-3.5 w-3.5" />
+      {linkIsIma ? (
+        connectionForm
+      ) : (
+        <>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+              {linkIsObsidian ? t("Vault path") : t("Folder path")}
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={folderPath}
+                onChange={(event) => setFolderPath(event.target.value)}
+                disabled={submitting}
+                placeholder={
+                  linkIsObsidian ? EXAMPLE_VAULT_PATH : EXAMPLE_INDEX_PATH
+                }
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+              />
+              {!linkIsObsidian && (
+                <button
+                  type="button"
+                  onClick={onProbe}
+                  disabled={
+                    submitting || probing || folderPath.trim().length === 0
+                  }
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {probing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FolderSearch className="h-3.5 w-3.5" />
+                  )}
+                  {t("Check folder")}
+                </button>
               )}
-              {t("Check folder")}
-            </button>
-          )}
-        </div>
-        <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-          {linkIsObsidian
-            ? t("The absolute path to the vault folder on this machine.")
-            : t(
-                "The absolute path to a knowledge base folder on this machine — nothing is copied.",
-              )}
-        </p>
-      </div>
+            </div>
+            <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+              {linkIsObsidian
+                ? t("The absolute path to the vault folder on this machine.")
+                : t(
+                    "The absolute path to a knowledge base folder on this machine — nothing is copied.",
+                  )}
+            </p>
+          </div>
 
-      {!linkIsObsidian && probe && <ProbeVerdict probe={probe} t={t} />}
+          {!linkIsObsidian && probe && <ProbeVerdict probe={probe} t={t} />}
+        </>
+      )}
     </>
   );
 }

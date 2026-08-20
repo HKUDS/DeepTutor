@@ -15,6 +15,7 @@ race on a shared object.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -37,6 +38,7 @@ from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter
 # are imported lazily inside the call paths instead (same pattern as the other
 # builtin tools).
 from deeptutor.learning.models import (
+    InteractionStatus,
     KnowledgePoint,
     KnowledgeType,
     LearningModule,
@@ -64,6 +66,9 @@ MASTERY_TOOL_NAMES: tuple[str, ...] = (
     "mastery_grade",
     "mastery_assess",
     "mastery_build",
+    "mastery_paths",
+    "mastery_switch",
+    "mastery_leave",
 )
 
 _QUESTION_TYPES = ("choice", "short", "open")
@@ -210,7 +215,10 @@ async def _sync_mastery_attempt_to_question_bank(
     try:
         from deeptutor.services.session import get_sqlite_session_store
 
-        await get_sqlite_session_store().upsert_notebook_entries(session_id, [item])
+        await asyncio.wait_for(
+            get_sqlite_session_store().upsert_notebook_entries(session_id, [item]),
+            timeout=5.0,
+        )
     except Exception:
         logger.warning(
             "Failed to sync mastery question %s to question bank for session %s",
@@ -261,6 +269,7 @@ class MasteryStatusTool(BaseTool):
             return _json_result(
                 {
                     "status": "empty",
+                    "path_revision": progress.version,
                     "message": (
                         "No mastery path has been built yet. Design one from the "
                         "learner's materials and call mastery_build."
@@ -270,9 +279,21 @@ class MasteryStatusTool(BaseTool):
             )
         payload = {
             "status": "active",
+            "path_revision": progress.version,
             "next": next_objective(progress).to_dict(),
             "map": map_summary(progress),
         }
+        interaction = service.store.get_active_interaction(path_id)
+        if interaction is not None:
+            pending_interaction = {
+                "question_id": interaction.interaction_id,
+                "status": interaction.status.value,
+            }
+            if interaction.status == InteractionStatus.ANSWERED:
+                # The answer is learner-authored state, not the hidden answer
+                # key. Returning it lets a restart grade rather than ask twice.
+                pending_interaction["learner_answer"] = interaction.user_answer
+            payload["pending_interaction"] = pending_interaction
         return _json_result(payload, meta_key="mastery_status")
 
 
@@ -374,16 +395,28 @@ class MasteryQuizTool(BaseTool):
             expected_answer=expected,
             options=options,
         )
-        service.set_pending_question(progress, pending)
+        from deeptutor.learning.service import MasteryInteractionError
+
+        try:
+            progress, interaction, created = service.register_question(
+                path_id,
+                pending,
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+            )
+        except MasteryInteractionError as exc:
+            return ToolResult(content=str(exc), success=False)
+        pending = interaction.question
         public_question = public_pending_question(pending)
         return _json_result(
             {
-                "status": "registered",
-                "knowledge_point_id": kp_id,
+                "status": "registered" if created else "already_pending",
+                "path_revision": progress.version,
+                "knowledge_point_id": pending.knowledge_point_id,
                 "question_id": pending.question_id,
                 "question_type": pending.question_type,
-                "question": question,
-                "options": options,
+                "question": pending.prompt,
+                "options": pending.options,
                 "pending_question": public_question.to_dict(),
                 "ask_user": {"questions": [public_question.to_ask_user_dict()]},
                 "instruction": (
@@ -436,55 +469,70 @@ class MasteryGradeTool(BaseTool):
         answer = str(kwargs.get("answer") or "")
         service = _new_service()
         scheduler = SpacedRepetitionScheduler()
-        progress = service.get_or_create(path_id)
-        pending = progress.pending_question
-        if pending is None:
-            return ToolResult(
-                content="No question is awaiting an answer. Pose one with mastery_quiz first.",
-                success=False,
-            )
         submitted_question_id = str(kwargs.get("question_id") or "").strip()
-        if submitted_question_id and submitted_question_id != pending.question_id:
-            return ToolResult(
-                content=(
-                    f"Question {submitted_question_id!r} is no longer pending; "
-                    f"call mastery_status and answer {pending.question_id!r}."
-                ),
-                success=False,
-            )
+        interaction = (
+            service.store.get_interaction(path_id, submitted_question_id)
+            if submitted_question_id
+            else service.store.get_active_interaction(path_id)
+        )
+        if interaction is not None and interaction.status == InteractionStatus.ANSWERED:
+            # The pause/resume boundary already committed the learner's exact
+            # reply. Never let a later model round paraphrase the graded input.
+            answer = interaction.user_answer
+        progress_before = service.get_or_create(path_id)
+        pending = (
+            interaction.question if interaction is not None else progress_before.pending_question
+        )
         choice_options: dict[str, str] = {}
-        expected_answer = pending.expected_answer
+        expected_answer = pending.expected_answer if pending is not None else ""
         answer_for_grading = answer
-        if pending.question_type == "choice":
+        if (
+            pending is not None
+            and pending.question_type == "choice"
+            and (interaction is None or interaction.status != InteractionStatus.GRADED)
+        ):
             choice_options, expected_answer = await _resolve_pending_choice(
                 pending, _resolve_turn_id(kwargs)
             )
             answer_for_grading = resolve_choice_submission(answer, choice_options) or answer
+        from deeptutor.learning.service import MasteryInteractionError
 
-        is_correct = service.grade_and_record(
-            progress,
-            question_id=pending.question_id,
-            knowledge_point_id=pending.knowledge_point_id,
-            module_id=pending.module_id,
-            user_answer=answer_for_grading,
-            expected_answer=expected_answer,
-            question_type=pending.question_type,
-            scheduler=scheduler,
-        )
+        try:
+            progress, interaction, replayed = service.grade_interaction(
+                path_id,
+                answer=answer,
+                question_id=submitted_question_id,
+                answer_for_grading=answer_for_grading,
+                expected_answer=expected_answer if pending is not None else None,
+                resolved_choice_options=choice_options or None,
+                scheduler=scheduler,
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+            )
+        except MasteryInteractionError as exc:
+            return ToolResult(content=str(exc), success=False)
+        pending = interaction.question
+        is_correct = bool(interaction.result.get("is_correct"))
+        # Upsert on every call, including an idempotent replay: if the first
+        # best-effort sync timed out, a safe retry repairs the auxiliary
+        # question bank without duplicating the mastery attempt.
         await _sync_mastery_attempt_to_question_bank(
-            session_id=_resolve_session_id(kwargs),
-            turn_id=_resolve_turn_id(kwargs),
+            session_id=interaction.session_id or _resolve_session_id(kwargs),
+            turn_id=interaction.turn_id or _resolve_turn_id(kwargs),
             pending=pending,
-            user_answer=answer,
+            # Replays must repair the auxiliary question bank with the
+            # committed answer, not whatever a later model round supplied.
+            user_answer=interaction.user_answer,
             is_correct=is_correct,
             choice_options=choice_options,
             correct_answer=expected_answer,
         )
-        service.clear_pending_question(progress)
         kp, _, _ = find_knowledge_point(progress, pending.knowledge_point_id)
         mastered = bool(kp and is_mastered(progress, kp))
         payload = {
             "is_correct": is_correct,
+            "replayed": replayed,
+            "path_revision": progress.version,
             "knowledge_point_id": pending.knowledge_point_id,
             "mastery": round(display_mastery(progress, kp), 3) if kp else 0.0,
             "threshold": round(gate_threshold(kp.type), 3) if kp else 0.0,
@@ -532,6 +580,8 @@ class MasteryAssessTool(BaseTool):
         path_id = _resolve_path_id(kwargs)
         if not path_id:
             return _no_path_result()
+        from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+
         kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
         if not kp_id:
             return ToolResult(content="mastery_assess needs a knowledge_point_id.", success=False)
@@ -554,9 +604,25 @@ class MasteryAssessTool(BaseTool):
                 ),
                 success=False,
             )
-        service.record_qualitative(progress, kp_id, passed=passed, evidence=feedback)
+        from deeptutor.learning.service import MasteryInteractionError
+
+        try:
+            progress = service.record_qualitative_for_path(
+                path_id,
+                kp_id,
+                passed=passed,
+                evidence=feedback,
+                scheduler=SpacedRepetitionScheduler(),
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+            )
+        except MasteryInteractionError as exc:
+            return ToolResult(content=str(exc), success=False)
+        kp, _, _ = find_knowledge_point(progress, kp_id)
+        assert kp is not None
         payload = {
             "knowledge_point_id": kp_id,
+            "path_revision": progress.version,
             "passed": passed,
             "mastered": is_mastered(progress, kp),
             "mastery": round(display_mastery(progress, kp), 3),
@@ -630,29 +696,174 @@ class MasteryBuildTool(BaseTool):
             mode = "replace"
 
         service = _new_service()
-        progress = service.get_or_create(path_id)
-        offset = len(progress.modules) if mode == "append" else 0
-        new_modules, error = _parse_modules(kwargs.get("modules"), path_id, offset)
+        new_modules, error = _parse_modules(kwargs.get("modules"), path_id, 0)
         if error:
             return ToolResult(content=error, success=False)
 
-        combined = (list(progress.modules) + new_modules) if mode == "append" else new_modules
-        service.replace_modules(progress, combined)
-        progress.pending_question = None  # a rebuilt map invalidates any open question
-        if combined:
-            progress.current_module_id = combined[0].id
-            progress.current_kp_index = 0
-        service.save(progress)
+        progress = service.replace_modules_for_path(
+            path_id,
+            new_modules,
+            append=mode == "append",
+            event_type="path.built",
+            session_id=_resolve_session_id(kwargs),
+            turn_id=_resolve_turn_id(kwargs),
+        )
         kp_count = sum(len(m.knowledge_points) for m in new_modules)
         return _json_result(
             {
                 "status": "built",
+                "path_revision": progress.version,
                 "mode": mode,
                 "modules_added": len(new_modules),
                 "knowledge_points_added": kp_count,
                 "map": map_summary(progress),
             },
             meta_key="mastery_build",
+        )
+
+
+class MasteryPathsTool(BaseTool):
+    """List every path the learner owns and which one this turn is on."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_paths",
+            description=(
+                "List every mastery path this learner has — name, how many "
+                "objectives are mastered vs still being learned, reviews due, "
+                "and which one this conversation is currently on. Use it when "
+                "the learner asks what they are studying or what is finished, "
+                "or before mastery_switch, to find the id to switch to."
+            ),
+            parameters=[],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        service = _new_service()
+        active = _resolve_path_id(kwargs)
+        overviews = await asyncio.to_thread(service.list_path_overviews)
+        # A path with no objectives is one nobody has built yet; listing it
+        # would offer the model an id that teaches nothing.
+        paths = [
+            {**overview, "active": overview["path_id"] == active}
+            for overview in overviews
+            if overview["objectives"] > 0
+        ]
+        return _json_result(
+            {
+                "active_path_id": active,
+                "paths": paths,
+                "instruction": (
+                    "Switch with mastery_switch(path_id=...) — it takes effect "
+                    "from your next round, so call mastery_status afterwards."
+                ),
+            },
+            meta_key="mastery_paths",
+        )
+
+
+class MasterySwitchTool(BaseTool):
+    """Point this conversation at a different mastery path."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_switch",
+            description=(
+                "Put this conversation on a different mastery path — use it to "
+                "enter a path the learner names, or to move from the current "
+                "one to another. The path keeps all of its own progress; the "
+                "conversation simply follows it from now on, including on "
+                "later turns. Call mastery_paths first for valid ids, and "
+                "mastery_status afterwards to see where the new path stands."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="path_id",
+                    type="string",
+                    description="Path id from mastery_paths (verbatim).",
+                )
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.capabilities.mastery.binding import (
+            PathBindingError,
+            rebind_active_path,
+        )
+
+        requested = str(kwargs.get("path_id") or "").strip()
+        if not requested:
+            return ToolResult(
+                content="mastery_switch needs a path_id; call mastery_paths for the ids.",
+                success=False,
+            )
+        previous = _resolve_path_id(kwargs)
+        try:
+            active = await rebind_active_path(
+                path_id=requested,
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+                bind_turn=kwargs.get("_bind_active_path"),
+            )
+        except PathBindingError as exc:
+            return ToolResult(content=str(exc), success=False)
+        return _json_result(
+            {
+                "status": "switched",
+                "previous_path_id": previous,
+                "active_path_id": active,
+                "instruction": (
+                    "This conversation now follows that path, on this turn and "
+                    "later ones. Call mastery_status to see where it stands."
+                ),
+            },
+            meta_key="mastery_switch",
+        )
+
+
+class MasteryLeaveTool(BaseTool):
+    """Detach this conversation from the named path it was following."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_leave",
+            description=(
+                "Stop following the current mastery path in this conversation. "
+                "The path keeps every bit of its progress and can be resumed "
+                "any time with mastery_switch; this conversation falls back to "
+                "a scratch path of its own, so the learner can start something "
+                "new here. Use it when the learner says they are done with the "
+                "course for now, or wants to work on something unrelated."
+            ),
+            parameters=[],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.capabilities.mastery.binding import (
+            PathBindingError,
+            leave_active_path,
+        )
+
+        previous = _resolve_path_id(kwargs)
+        try:
+            active = await leave_active_path(
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+                bind_turn=kwargs.get("_bind_active_path"),
+            )
+        except PathBindingError as exc:
+            return ToolResult(content=str(exc), success=False)
+        return _json_result(
+            {
+                "status": "left",
+                "previous_path_id": previous,
+                "active_path_id": active,
+                "instruction": (
+                    "That path is untouched and resumable with mastery_switch. "
+                    "This conversation is now on its own scratch path."
+                ),
+            },
+            meta_key="mastery_leave",
         )
 
 
@@ -707,15 +918,21 @@ MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     MasteryGradeTool,
     MasteryAssessTool,
     MasteryBuildTool,
+    MasteryPathsTool,
+    MasterySwitchTool,
+    MasteryLeaveTool,
 )
 
 
 __all__ = [
     "MASTERY_TOOL_NAMES",
     "MASTERY_TOOL_TYPES",
-    "MasteryStatusTool",
-    "MasteryQuizTool",
-    "MasteryGradeTool",
     "MasteryAssessTool",
     "MasteryBuildTool",
+    "MasteryGradeTool",
+    "MasteryLeaveTool",
+    "MasteryPathsTool",
+    "MasteryQuizTool",
+    "MasteryStatusTool",
+    "MasterySwitchTool",
 ]

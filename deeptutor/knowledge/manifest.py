@@ -15,6 +15,15 @@ consumers can never disagree:
 * the ``kb_files`` tool enumerates on demand (:func:`render_manifest_report`)
   for the full list, which a system-prompt manifest deliberately truncates.
 
+Most inventories are a directory walk. A *connected* KB whose documents live
+behind an API has no directory, but that does not always mean the inventory is
+unknowable: when the service exposes a listing call, this module reads it through
+:data:`_REMOTE_INVENTORY_READERS` and reports the result exactly like a local one
+(Tencent IMA's ``get_knowledge_list`` is the first such reader). Only when there
+is no reader, or the call fails, does a KB fall back to being reported as
+non-enumerable. A remote listing may be bounded by a request budget, in which
+case the count is flagged as a lower bound rather than being presented as a total.
+
 Deliberately NOT reported: how many documents made it into the *index*. Every
 per-file index record available is unreliable — LlamaIndex's ``docstore.json``
 counts nodes (chunk-level, so it drifts with the chunking config and costs a
@@ -27,7 +36,7 @@ document set plus the KB's index *status* and stops there.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 import fnmatch
 import os
@@ -58,11 +67,33 @@ UNAVAILABLE_MISSING = "missing"
 
 # KB types that hold no local document set at all: their content lives behind
 # an API. Reporting them as "0 documents" would be a lie, so they are reported
-# as non-enumerable instead.
+# as non-enumerable unless a remote reader below can list them for real.
 _NON_DOCUMENT_KB_TYPES: dict[str, str] = {
     LIGHTRAG_SERVER_KB_TYPE: UNAVAILABLE_REMOTE,
     IMA_KB_TYPE: UNAVAILABLE_REMOTE,
     SUBAGENT_KB_TYPE: UNAVAILABLE_AGENT,
+}
+
+# The document names a connected KB's own service can list, plus whether that
+# listing is complete. ``None`` means the inventory could not be read at all, so
+# the KB is reported as non-enumerable — the pre-reader behaviour.
+RemoteInventoryReader = Callable[[Mapping[str, Any]], "tuple[list[str], bool] | None"]
+
+
+def _ima_inventory(entry: Mapping[str, Any]) -> tuple[list[str], bool] | None:
+    """List a connected Tencent IMA library through its own browse API."""
+    from deeptutor.services.rag.pipelines.ima.inventory import read_inventory
+
+    inventory = read_inventory(entry)
+    if inventory is None:
+        return None
+    return list(inventory.documents), inventory.complete
+
+
+# Connected KB types whose inventory is readable over their API. Imported lazily
+# inside each reader so this module stays free of service-layer imports.
+_REMOTE_INVENTORY_READERS: dict[str, RemoteInventoryReader] = {
+    IMA_KB_TYPE: _ima_inventory,
 }
 
 
@@ -97,6 +128,9 @@ class KbManifest:
     pattern: str = ""
     unavailable: str = ""
     """Reason code from this module's ``UNAVAILABLE_*`` set; ``""`` when listable."""
+
+    total_is_lower_bound: bool = False
+    """True when a bounded remote listing stopped early — ``total`` is "at least"."""
 
     @property
     def enumerable(self) -> bool:
@@ -180,6 +214,10 @@ def build_manifest(
         "pattern": pattern.strip(),
     }
 
+    reader = _REMOTE_INVENTORY_READERS.get(kb_type)
+    if reader is not None:
+        return _remote_manifest(manifest_fields, record, reader=reader, limit=limit)
+
     root = document_root(kb_dir, record)
     if root is None:
         return KbManifest(**manifest_fields, unavailable=_NON_DOCUMENT_KB_TYPES[kb_type])
@@ -196,6 +234,39 @@ def build_manifest(
         total=len(all_names),
         matched=len(matched_names),
         documents=tuple(KbDocument(name=rel, size=_size_of(root / rel)) for rel in kept),
+    )
+
+
+def _remote_manifest(
+    fields: dict[str, Any],
+    entry: Mapping[str, Any],
+    *,
+    reader: RemoteInventoryReader,
+    limit: int,
+) -> KbManifest:
+    """Build a manifest from a connected service's own document listing.
+
+    Failing to reach the service is reported as non-enumerable rather than as an
+    empty KB — the same distinction the local path draws for a missing folder.
+    Sizes are unknown over an API, so documents carry ``0`` and the renderers
+    omit the size rather than printing a misleading "0 B".
+    """
+    try:
+        listing = reader(entry)
+    except Exception:
+        listing = None
+    if listing is None:
+        return KbManifest(**fields, unavailable=UNAVAILABLE_REMOTE)
+
+    names, complete = listing
+    matched_names = _filter_names(names, fields["pattern"])
+    kept = matched_names[: max(0, limit)]
+    return KbManifest(
+        **fields,
+        total=len(names),
+        matched=len(matched_names),
+        documents=tuple(KbDocument(name=name, size=0) for name in kept),
+        total_is_lower_bound=not complete,
     )
 
 
@@ -265,7 +336,8 @@ _NOTE_TEXT: dict[str, dict[str, str]] = {
     "en": {
         "header": (
             "[Knowledge Base Inventory]\n"
-            "What the attached knowledge bases actually contain, read from disk."
+            "What the attached knowledge bases actually contain, read from the "
+            "knowledge bases themselves."
         ),
         "empty": "no documents yet",
         "total": "{count} document{plural}",
@@ -280,7 +352,7 @@ _NOTE_TEXT: dict[str, dict[str, str]] = {
         ),
     },
     "zh": {
-        "header": "[知识库清单]\n以下是已挂载知识库的真实文档构成，直接读取自磁盘。",
+        "header": "[知识库清单]\n以下是已挂载知识库的真实文档构成，直接读取自各知识库本身。",
         "empty": "暂无文档",
         "total": "共 {count} 个文档",
         "omitted": "另有 {count} 个未列出，可用 kb_files 查看完整清单",
@@ -322,8 +394,14 @@ def _colon(language: str) -> str:
     return "：" if language == "zh" else ": "
 
 
-def _count(text: Mapping[str, str], key: str, count: int) -> str:
-    return text[key].format(count=count, plural="" if count == 1 else "s")
+def _total_label(manifest: KbManifest, text: Mapping[str, str]) -> str:
+    """The document count, marked as a lower bound when the listing was bounded."""
+    count = f"{manifest.total}+" if manifest.total_is_lower_bound else str(manifest.total)
+    return text["total"].format(count=count, plural="" if manifest.total == 1 else "s")
+
+
+def _total_number(manifest: KbManifest) -> str:
+    return f"{manifest.total}+" if manifest.total_is_lower_bound else str(manifest.total)
 
 
 def _qualifier(manifest: KbManifest, language: str) -> str:
@@ -363,7 +441,7 @@ def _note_line(manifest: KbManifest, language: str) -> str:
     if manifest.omitted:
         tail = text["omitted"].format(count=manifest.omitted)
         listed = f"{listed}（{tail}）" if language == "zh" else f"{listed} ({tail})"
-    return f"{head}{_count(text, 'total', manifest.total)} — {listed}"
+    return f"{head}{_total_label(manifest, text)} — {listed}"
 
 
 def render_manifest_report(manifest: KbManifest, *, language: str) -> str:
@@ -381,7 +459,7 @@ def render_manifest_report(manifest: KbManifest, *, language: str) -> str:
         text["heading"].format(
             name=manifest.name,
             qualifier=qualifier,
-            total=manifest.total,
+            total=_total_number(manifest),
             plural="" if manifest.total == 1 else "s",
         )
     ]
@@ -395,10 +473,15 @@ def render_manifest_report(manifest: KbManifest, *, language: str) -> str:
             text["omitted"].format(shown=len(manifest.documents), omitted=manifest.omitted)
         )
     lines.extend(
-        f"{index}. {document.name} ({_human_size(document.size)})"
+        f"{index}. {document.name}{_size_suffix(document.size)}"
         for index, document in enumerate(manifest.documents, start=1)
     )
     return "\n".join(lines)
+
+
+def _size_suffix(size: int) -> str:
+    """`` (1.2 MB)``, or nothing when the size is unknown (remote listings)."""
+    return f" ({_human_size(size)})" if size > 0 else ""
 
 
 def _human_size(size: int) -> str:

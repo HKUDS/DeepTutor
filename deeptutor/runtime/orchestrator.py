@@ -87,10 +87,23 @@ class ChatOrchestrator:
             except Exception as exc:
                 status = "failed"
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)
+                error_metadata: dict[str, Any] = {
+                    "turn_terminal": True,
+                    "status": status,
+                }
+                error_code = getattr(exc, "error_code", None)
+                if isinstance(error_code, str) and error_code:
+                    error_metadata["error_code"] = error_code
+                retryable = getattr(exc, "retryable", None)
+                if isinstance(retryable, bool):
+                    error_metadata["retryable"] = retryable
+                partial_response = getattr(exc, "partial_response", None)
+                if isinstance(partial_response, bool):
+                    error_metadata["partial_response"] = partial_response
                 await bus.error(
                     str(exc),
                     source=cap_name,
-                    metadata={"turn_terminal": True, "status": status},
+                    metadata=error_metadata,
                 )
             finally:
                 await bus.emit(

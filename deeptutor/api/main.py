@@ -334,6 +334,7 @@ from deeptutor.api.routers import (
     question,
     question_notebook,
     quiz_judge,
+    reading,
     sessions,
     settings,
     skills,
@@ -413,6 +414,7 @@ app.include_router(
     prefix="/api/v1/kids",
     tags=["kids"],
 )
+app.include_router(reading.router, prefix="/api/v1/reading", tags=["reading"], dependencies=_auth)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
     capabilities_settings.router,

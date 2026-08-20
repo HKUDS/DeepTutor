@@ -155,10 +155,16 @@ const BRIDGE_SCRIPT =
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", startHeightObservers, { once: true });
-  } else {
+  // Gate on document.body, not readyState. This script is injected just
+  // before </body>, so the body already exists while readyState is still
+  // "loading" — and deferred scripts (the KaTeX tags injectKaTeX adds) must
+  // all run before DOMContentLoaded fires. Waiting for that event means a
+  // blocked or slow CDN leaves the observers unattached and every
+  // visualization frozen at the iframe's initial height.
+  if (document.body) {
     startHeightObservers();
+  } else {
+    document.addEventListener("DOMContentLoaded", startHeightObservers, { once: true });
   }
   window.addEventListener("load", scheduleHeightReport);
 })();

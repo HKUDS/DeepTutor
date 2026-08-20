@@ -15,6 +15,7 @@ from typing import Any
 from .factory import (
     DEFAULT_PROVIDER,
     GRAPHRAG_PROVIDER,
+    IMA_PROVIDER,
     LIGHTRAG_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
@@ -179,6 +180,30 @@ def _lightrag_preflight() -> dict:
     )
 
 
+def _ima_preflight() -> dict:
+    try:
+        from .pipelines.ima.config import get_account_credentials
+
+        credentials = get_account_credentials()
+    except Exception:
+        from .pipelines.ima.config import ImaCredentials
+
+        credentials = ImaCredentials()
+    return _finalize(
+        [
+            _check(
+                "credentials",
+                "IMA Client ID and API key configured",
+                credentials.complete,
+                credentials.client_id
+                if credentials.complete
+                else "Add them under Credentials, or supply a pair per knowledge base "
+                "when connecting one.",
+            )
+        ]
+    )
+
+
 def _finalize(checks: list[dict]) -> dict:
     ok = all(c["ok"] for c in checks if not c["optional"])
     return {"ok": ok, "checks": checks}
@@ -189,6 +214,7 @@ _PREFLIGHTS = {
     PAGEINDEX_PROVIDER: _pageindex_preflight,
     GRAPHRAG_PROVIDER: _graphrag_preflight,
     LIGHTRAG_PROVIDER: _lightrag_preflight,
+    IMA_PROVIDER: _ima_preflight,
 }
 
 

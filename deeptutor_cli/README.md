@@ -226,6 +226,7 @@ deeptutor config show
 ```bash
 deeptutor provider login openai-codex      # 执行 OpenAI Codex OAuth 登录
 deeptutor provider login github-copilot    # 校验现有 GitHub Copilot 认证是否可用
+deeptutor provider login codebuddy         # 校验 CodeBuddy SDK 登录；未登录时打开登录入口
 ```
 
 `openai-codex` 使用 DeepTutor 自己的独立 OAuth 流程登录。它不需要 `OPENAI_API_KEY`，也不会读取或同步本机 `~/.codex`；凭据保存在 `data/system/user-secrets/<owner>/private/openai-codex/`（沙箱访问不到的目录），与 Web 设置页共用。

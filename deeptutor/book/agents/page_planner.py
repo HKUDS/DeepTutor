@@ -44,6 +44,7 @@ from ..models import (
     Chapter,
     ContentType,
     ExplorationReport,
+    depth_scale,
 )
 
 logger = logging.getLogger(__name__)
@@ -168,8 +169,17 @@ def _build_block(
     block_type: BlockType,
     params: dict[str, Any],
     chapter: Chapter,
+    *,
+    depth: str | None = None,
 ) -> Block:
     transition_in = params.pop("transition_in", "")
+    # Every plan — static template or LLM-authored — funnels through here, so
+    # this is the single place the reader's brief/standard/deep choice has to
+    # be applied. Templates used to hard-code ~3,600 words per chapter for
+    # everyone.
+    target = params.get("target_words")
+    if isinstance(target, (int, float)):
+        params["target_words"] = max(120, round(float(target) * depth_scale(depth)))
     full_params: dict[str, Any] = {
         "chapter_title": chapter.title,
         "chapter_summary": chapter.summary,
@@ -192,9 +202,10 @@ def _static_plan(
     chapter: Chapter,
     *,
     phase: int,
+    depth: str | None = None,
 ) -> list[Block]:
     template = _TEMPLATES_V2.get(chapter.content_type) or _TEMPLATES_V2[ContentType.THEORY]
-    return [_build_block(bt, dict(params), chapter) for bt, params in template]
+    return [_build_block(bt, dict(params), chapter, depth=depth) for bt, params in template]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -269,9 +280,9 @@ class SectionArchitect:
         self.llm_enabled = llm_enabled
 
     # ── Sync (legacy) ────────────────────────────────────────────────
-    def plan_blocks(self, chapter: Chapter) -> list[Block]:
+    def plan_blocks(self, chapter: Chapter, *, depth: str | None = None) -> list[Block]:
         """Static-template plan. Always succeeds."""
-        return _static_plan(chapter, phase=self.phase)
+        return _static_plan(chapter, phase=self.phase, depth=depth)
 
     # ── Async (LLM-first) ────────────────────────────────────────────
     async def plan_blocks_async(
@@ -280,9 +291,10 @@ class SectionArchitect:
         *,
         exploration: ExplorationReport | None = None,
         language: str = "en",
+        depth: str | None = None,
     ) -> list[Block]:
         if not self.llm_enabled:
-            return self.plan_blocks(chapter)
+            return self.plan_blocks(chapter, depth=depth)
 
         try:
             system_prompt, user_template = _architect_prompts(language)
@@ -301,15 +313,15 @@ class SectionArchitect:
             )
         except Exception as exc:
             logger.warning(f"SectionArchitect LLM failed → fallback static: {exc}")
-            return self.plan_blocks(chapter)
+            return self.plan_blocks(chapter, depth=depth)
 
         payload = parse_json_response(raw, logger_instance=logger, fallback={})
         if not isinstance(payload, dict):
-            return self.plan_blocks(chapter)
+            return self.plan_blocks(chapter, depth=depth)
 
         items = payload.get("blocks")
         if not isinstance(items, list) or not items:
-            return self.plan_blocks(chapter)
+            return self.plan_blocks(chapter, depth=depth)
 
         blocks: list[Block] = []
         for raw_item in items[:12]:
@@ -328,10 +340,10 @@ class SectionArchitect:
                 params["transition_in"] = str(raw_item["transition_in"])[:240]
             if raw_item.get("focus"):
                 params["focus"] = str(raw_item["focus"])[:240]
-            blocks.append(_build_block(block_type, params, chapter))
+            blocks.append(_build_block(block_type, params, chapter, depth=depth))
 
         if not blocks:
-            return self.plan_blocks(chapter)
+            return self.plan_blocks(chapter, depth=depth)
 
         # Coverage guarantee: ensure at least one SECTION block, otherwise we
         # silently lose chapter prose. Inject one at the front if missing.
@@ -342,6 +354,7 @@ class SectionArchitect:
                     BlockType.SECTION,
                     {"role": "core", "target_words": 1700},
                     chapter,
+                    depth=depth,
                 ),
             )
 

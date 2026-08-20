@@ -71,3 +71,22 @@ def test_github_copilot_is_oauth_backed() -> None:
     assert spec is not None
     assert spec.auth_mode == "oauth"
     assert spec.env_key == ""
+
+
+def test_orcarouter_provider_aliases_and_detection() -> None:
+    spec = find_by_name("orcarouter")
+
+    assert spec is not None
+    assert spec.display_name == "OrcaRouter"
+    assert spec.env_key == "ORCAROUTER_API_KEY"
+    assert spec.backend == "openai_compat"
+    assert spec.mode == "gateway"
+    assert spec.default_api_base == "https://api.orcarouter.ai/v1"
+    assert find_by_name("orca_router") == spec
+    assert find_by_name("orca-router") == spec
+    # sk-orca- keys must resolve to OrcaRouter, not OpenRouter (sk-or-).
+    assert find_gateway(api_key="sk-orca-test-key") == spec
+    assert find_gateway(api_base="https://api.orcarouter.ai/v1") == spec
+    # An OpenRouter key/base must not be claimed by OrcaRouter.
+    assert find_gateway(api_key="sk-or-v1-abcdef") is not None
+    assert find_gateway(api_key="sk-or-v1-abcdef").name != "orcarouter"

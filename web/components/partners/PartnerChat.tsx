@@ -25,6 +25,7 @@ import {
   resumePartnerSession,
 } from "@/lib/partners-api";
 import { freshPartnerSessionKey } from "@/lib/partner-session";
+import { ReconnectingWebSocket } from "@/lib/reconnecting-websocket";
 import type { ExportableMessage } from "@/lib/chat-export";
 import type { StreamEvent } from "@/lib/unified-ws";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
@@ -224,7 +225,7 @@ export default function PartnerChat({
     events: StreamEvent[];
     content: string;
   } | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const connectionRef = useRef<ReconnectingWebSocket | null>(null);
   // Mirror the active session into a ref so the socket's onopen (which closes
   // over the effect's first render) attaches to the CURRENT session.
   const sessionKeyRef = useRef(sessionKey);
@@ -255,11 +256,19 @@ export default function PartnerChat({
   const tryAttach = useCallback(() => {
     if (attachedRef.current) return;
     if (!historyReadyRef.current || !sessionKeyRef.current) return;
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    const connection = connectionRef.current;
+    if (!connection?.connected) return;
     attachedRef.current = true;
-    wsRef.current.send(
-      JSON.stringify({ action: "attach", session_key: sessionKeyRef.current }),
-    );
+    if (
+      !connection.send(
+        JSON.stringify({
+          action: "attach",
+          session_key: sessionKeyRef.current,
+        }),
+      )
+    ) {
+      attachedRef.current = false;
+    }
   }, []);
 
   // Restore the active session's history (scoped to it — the cross-channel
@@ -270,6 +279,7 @@ export default function PartnerChat({
     if (!sessionKey) return;
     let cancelled = false;
     historyReadyRef.current = false;
+    attachedRef.current = false;
     void getPartnerHistory(partnerId, {
       sessionKey,
       limit: 60,
@@ -306,8 +316,8 @@ export default function PartnerChat({
 
   useEffect(() => {
     if (!running) {
-      wsRef.current?.close();
-      wsRef.current = null;
+      connectionRef.current?.stop();
+      connectionRef.current = null;
       setConnected(false);
       setStreaming(false);
       setDraft(null);
@@ -315,19 +325,8 @@ export default function PartnerChat({
     }
 
     attachedRef.current = false;
-    const ws = new WebSocket(wsUrl(`/api/v1/partners/${partnerId}/ws`));
-    wsRef.current = ws;
-    ws.onopen = () => {
-      setConnected(true);
-      // Reattach to an in-flight turn (survives a page refresh): the server
-      // replays its buffered stream, so a mid-answer reload keeps streaming.
-      // Sequenced after history load via tryAttach so the replay isn't
-      // clobbered by the history replace.
-      tryAttach();
-    };
-
     // Authoritative live-turn accumulator. Lives in the effect scope so
-    // socket handlers can mutate it cheaply; renders see snapshots only.
+    // connection handlers can mutate it cheaply; renders see snapshots only.
     let live: { events: StreamEvent[]; content: string } | null = null;
     const publish = () => {
       setDraft(
@@ -335,12 +334,17 @@ export default function PartnerChat({
       );
     };
 
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data) as {
+    const handleMessage = (message: MessageEvent) => {
+      let data: {
         type: string;
         content?: string;
         event?: StreamEvent;
       };
+      try {
+        data = JSON.parse(String(message.data));
+      } catch {
+        return;
+      }
       if (data.type === "resuming") {
         // Server is about to replay an in-flight turn (after a refresh).
         live = { events: [], content: "" };
@@ -349,11 +353,15 @@ export default function PartnerChat({
         return;
       }
       if (data.type === "user_echo") {
-        // The question that opened the replayed turn (not yet persisted).
-        setMessages((msgs) => [
-          ...msgs,
-          { role: "user", content: data.content ?? "" },
-        ]);
+        // Reconnects replay the active question. Keep the optimistic row that
+        // is already present in this mounted page instead of duplicating it.
+        const content = data.content ?? "";
+        setMessages((msgs) => {
+          const last = msgs[msgs.length - 1];
+          return last?.role === "user" && last.content === content
+            ? msgs
+            : [...msgs, { role: "user", content }];
+        });
         return;
       }
       if (data.type === "stream_event" && data.event) {
@@ -419,14 +427,48 @@ export default function PartnerChat({
       }
     };
 
-    ws.onclose = () => {
-      setConnected(false);
-      setStreaming(false);
+    const connection = new ReconnectingWebSocket(
+      wsUrl(`/api/v1/partners/${partnerId}/ws`),
+      {
+        onOpen: () => {
+          setConnected(true);
+          attachedRef.current = false;
+          // Reattach after every reconnect so the server can replay an
+          // in-flight turn. tryAttach waits for history before doing so.
+          tryAttach();
+        },
+        onMessage: handleMessage,
+        onDisconnect: () => {
+          setConnected(false);
+          setStreaming(false);
+        },
+      },
+      {
+        shouldReconnect: () =>
+          document.visibilityState === "visible" && navigator.onLine !== false,
+      },
+    );
+    connectionRef.current = connection;
+
+    const wakeWhenActive = () => {
+      if (
+        document.visibilityState === "visible" &&
+        navigator.onLine !== false
+      ) {
+        connection.wake();
+      }
     };
+    window.addEventListener("focus", wakeWhenActive);
+    window.addEventListener("online", wakeWhenActive);
+    document.addEventListener("visibilitychange", wakeWhenActive);
+    connection.start();
 
     return () => {
-      ws.close();
-      wsRef.current = null;
+      window.removeEventListener("focus", wakeWhenActive);
+      window.removeEventListener("online", wakeWhenActive);
+      document.removeEventListener("visibilitychange", wakeWhenActive);
+      connection.stop();
+      if (connectionRef.current === connection) connectionRef.current = null;
     };
   }, [partnerId, running, tryAttach]);
 
@@ -446,11 +488,9 @@ export default function PartnerChat({
   }, [messages, onMessagesChange]);
 
   const sendStop = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({ action: "stop", session_key: sessionKey }),
-      );
-    }
+    connectionRef.current?.send(
+      JSON.stringify({ action: "stop", session_key: sessionKey }),
+    );
   }, [sessionKey]);
 
   // Escape interrupts a streaming answer. Bound on `window` rather than the
@@ -578,7 +618,7 @@ export default function PartnerChat({
 
   const handleSend = useCallback(
     (content: string, attachments: PartnerPendingAttachment[]) => {
-      if (streaming || !running) return;
+      if (streaming || !running) return false;
 
       // A new user-authored turn explicitly returns to live-follow mode.
       // During the answer, the shared hook releases that mode as soon as the
@@ -588,16 +628,15 @@ export default function PartnerChat({
         attachments.length === 0 ? parseClientCommand(content) : null;
       if (command) {
         void runClientCommand(command.command, command.arg);
-        return;
+        return false;
       }
 
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       const visibleContent =
         content ||
         (attachments.every((item) => item.type === "image")
           ? t("Please analyze the attached image(s).")
           : t("Please use the attached file(s)."));
-      wsRef.current.send(
+      const sent = connectionRef.current?.send(
         JSON.stringify({
           content: visibleContent,
           session_key: sessionKey,
@@ -609,6 +648,7 @@ export default function PartnerChat({
           })),
         }),
       );
+      if (!sent) return false;
       setMessages((msgs) => [
         ...msgs,
         {
@@ -620,6 +660,7 @@ export default function PartnerChat({
       setDraft({ events: [], content: "" });
       setStreaming(true);
       scrollToBottom("instant");
+      return true;
     },
     [
       sessionKey,

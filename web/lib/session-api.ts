@@ -27,6 +27,22 @@ export interface SessionMessage {
   parent_message_id?: number | null;
 }
 
+export interface SessionPreferences {
+  capability?: string;
+  tools?: string[];
+  knowledge_bases?: string[];
+  language?: string;
+  llm_selection?: LLMSelection | null;
+  /** Persistent mastery state associated with this conversation. */
+  mastery_path_id?: string;
+  /** Session-level persona preference; "" / absent = Default (no persona). */
+  persona?: string;
+  /** Edit-branching: maps a parent_message_id → the child id currently
+   *  shown at that branch point. Missing keys default to the latest
+   *  sibling (most recently created child). */
+  selected_branches?: Record<string, number>;
+}
+
 export interface SessionSummary {
   id: string;
   session_id: string;
@@ -43,19 +59,7 @@ export interface SessionSummary {
     | "cancelled"
     | "rejected";
   active_turn_id?: string;
-  preferences?: {
-    capability?: string;
-    tools?: string[];
-    knowledge_bases?: string[];
-    language?: string;
-    llm_selection?: LLMSelection | null;
-    /** Session-level persona preference; "" / absent = Default (no persona). */
-    persona?: string;
-    /** Edit-branching: maps a parent_message_id → the child id currently
-     *  shown at that branch point. Missing keys default to the latest
-     *  sibling (most recently created child). */
-    selected_branches?: Record<string, number>;
-  };
+  preferences?: SessionPreferences;
 }
 
 export interface ActiveTurnSummary {
@@ -87,19 +91,7 @@ export interface SessionDetail {
   active_turn_id?: string;
   compressed_summary?: string;
   summary_up_to_msg_id?: number;
-  preferences?: {
-    capability?: string;
-    tools?: string[];
-    knowledge_bases?: string[];
-    language?: string;
-    llm_selection?: LLMSelection | null;
-    /** Session-level persona preference; "" / absent = Default (no persona). */
-    persona?: string;
-    /** Edit-branching: maps a parent_message_id → the child id currently
-     *  shown at that branch point. Missing keys default to the latest
-     *  sibling (most recently created child). */
-    selected_branches?: Record<string, number>;
-  };
+  preferences?: SessionPreferences;
   messages: SessionMessage[];
   active_turns?: ActiveTurnSummary[];
 }

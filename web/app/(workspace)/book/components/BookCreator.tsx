@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAppShell } from "@/context/AppShellContext";
-import type { BookProposal } from "@/lib/book-types";
+import type { Book, BookDepth, BookProposal } from "@/lib/book-types";
 import {
   listKnowledgeBases,
   type KnowledgeBaseSummary,
@@ -40,6 +40,48 @@ import {
 
 type SourceTab = "knowledge" | "notebooks" | "questions" | "chats";
 
+/**
+ * Languages a book can be written in.
+ *
+ * Mirrors `_LANGUAGE_LABELS` in `deeptutor/services/prompt/language.py`, which
+ * has always handled all of these — the picker offered only English and
+ * Chinese, so everyone else got a book in a language they didn't ask for
+ * (issue #471). Labels are endonyms: someone looking for their own language
+ * scans for the word they'd write it in.
+ */
+const BOOK_LANGUAGES: Array<{ code: string; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "zh", label: "简体中文" },
+  { code: "zh-tw", label: "繁體中文" },
+  { code: "ja", label: "日本語" },
+  { code: "ko", label: "한국어" },
+  { code: "es", label: "Español" },
+  { code: "fr", label: "Français" },
+  { code: "de", label: "Deutsch" },
+  { code: "ru", label: "Русский" },
+  { code: "pt", label: "Português" },
+  { code: "it", label: "Italiano" },
+];
+
+const DEPTH_OPTIONS: Array<{ value: BookDepth; label: string; hint: string }> =
+  [
+    {
+      value: "brief",
+      label: "Brief",
+      hint: "Roughly half the prose per chapter — a fast orientation.",
+    },
+    {
+      value: "standard",
+      label: "Standard",
+      hint: "The default balance of explanation, examples and practice.",
+    },
+    {
+      value: "deep",
+      label: "Deep",
+      hint: "Longer treatments with more worked detail. Takes noticeably longer.",
+    },
+  ];
+
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 type ParentSelection<TChild extends string | number> =
@@ -61,8 +103,11 @@ export interface BookCreatorProps {
     question_categories: number[];
     question_entries: number[];
     language: string;
+    depth: BookDepth;
   }) => void | Promise<void>;
   loading?: boolean;
+  /** The draft being edited, when one was reopened from the library. */
+  book?: Book | null;
   proposal?: BookProposal | null;
   onConfirmProposal?: (edited: BookProposal) => void | Promise<void>;
   confirmLoading?: boolean;
@@ -71,6 +116,7 @@ export interface BookCreatorProps {
 export default function BookCreator({
   onCreate,
   loading = false,
+  book = null,
   proposal = null,
   onConfirmProposal,
   confirmLoading = false,
@@ -78,8 +124,9 @@ export default function BookCreator({
   const { t } = useTranslation();
   const { language: appLanguage } = useAppShell();
   const [intent, setIntent] = useState("");
-  const [language, setLanguage] = useState(appLanguage);
+  const [language, setLanguage] = useState<string>(appLanguage);
   const languageTouchedRef = useRef(false);
+  const [depth, setDepth] = useState<BookDepth>("standard");
   const [tab, setTab] = useState<SourceTab>("knowledge");
 
   // Knowledge bases (flat selection)
@@ -143,6 +190,10 @@ export default function BookCreator({
     const id = proposal ? proposal.title || "_proposal_" : null;
     if (id && id !== lastSeenProposalIdRef.current) {
       setFormCollapsed(true);
+      // A new proposal replaces the old one outright. Keeping the previous
+      // edits would show text belonging to a proposal that no longer exists —
+      // and confirming would submit it.
+      setEditProposal(null);
     }
     lastSeenProposalIdRef.current = id;
   }, [proposal]);
@@ -328,6 +379,7 @@ export default function BookCreator({
 
     await onCreate({
       user_intent: intent,
+      depth,
       chat_session_id: "",
       chat_selections,
       knowledge_bases: Array.from(selectedKbs),
@@ -711,21 +763,48 @@ export default function BookCreator({
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-xs text-[var(--muted-foreground)]">
-                {t("Language")}{" "}
-                <select
-                  value={language}
-                  onChange={(e) => {
-                    languageTouchedRef.current = true;
-                    setLanguage(e.target.value as "en" | "zh");
-                  }}
-                  className="ml-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
-                >
-                  <option value="en">{t("language.english")}</option>
-                  <option value="zh">{t("language.chinese")}</option>
-                </select>
-              </label>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="text-xs text-[var(--muted-foreground)]">
+                  {t("Language")}{" "}
+                  <select
+                    value={language}
+                    onChange={(e) => {
+                      languageTouchedRef.current = true;
+                      setLanguage(e.target.value);
+                    }}
+                    className="ml-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
+                  >
+                    {BOOK_LANGUAGES.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+                  {t("Depth")}
+                  <div className="inline-flex overflow-hidden rounded-md border border-[var(--border)] text-[11px]">
+                    {DEPTH_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDepth(option.value)}
+                        aria-pressed={depth === option.value}
+                        title={t(option.hint)}
+                        className={`px-2 py-0.5 font-medium transition-colors ${
+                          depth === option.value
+                            ? "bg-[var(--primary)]/12 text-[var(--foreground)]"
+                            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+                        }`}
+                      >
+                        {t(option.label)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
               <button
                 onClick={handleCreate}
                 disabled={loading || !intent.trim()}
@@ -759,6 +838,7 @@ export default function BookCreator({
             proposal={currentProposal}
             onChange={setEditProposal}
             selectedKbs={Array.from(selectedKbs)}
+            savedKbs={book?.knowledge_bases}
           />
           <div className="flex justify-end">
             <button
@@ -1072,12 +1152,17 @@ function ProposalForm({
   proposal,
   onChange,
   selectedKbs,
+  savedKbs,
 }: {
   proposal: BookProposal;
   onChange: (p: BookProposal) => void;
   selectedKbs: string[];
+  /** KBs already recorded on the book. Reopening a draft restores no local
+   *  picker state, so without this the form claims the book has no sources. */
+  savedKbs?: string[];
 }) {
   const { t } = useTranslation();
+  const effectiveKbs = selectedKbs.length > 0 ? selectedKbs : (savedKbs ?? []);
   const update = (patch: Partial<BookProposal>) =>
     onChange({ ...proposal, ...patch });
   return (
@@ -1143,14 +1228,14 @@ function ProposalForm({
           {t("Knowledge bases used")}
         </span>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {selectedKbs.length === 0 ? (
+          {effectiveKbs.length === 0 ? (
             <span className="text-xs italic text-[var(--muted-foreground)]">
               {t(
                 "No knowledge bases selected. The book will rely on general knowledge.",
               )}
             </span>
           ) : (
-            selectedKbs.map((kb) => (
+            effectiveKbs.map((kb) => (
               <span
                 key={kb}
                 className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-2.5 py-0.5 text-[11px] text-[var(--foreground)]"

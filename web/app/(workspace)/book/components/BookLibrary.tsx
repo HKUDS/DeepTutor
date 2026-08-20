@@ -18,6 +18,7 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Book, BookStatus } from "@/lib/book-types";
+import { formatRelativeTime } from "@/lib/relative-time";
 
 const STATUS_STYLES: Record<
   BookStatus,
@@ -40,6 +41,12 @@ const STATUS_STYLES: Record<
       "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300",
     dot: "bg-violet-500 animate-pulse",
   },
+  paused: {
+    label: "Paused",
+    className:
+      "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
+    dot: "bg-amber-500",
+  },
   ready: {
     label: "Ready",
     className:
@@ -59,24 +66,6 @@ const STATUS_STYLES: Record<
     dot: "bg-zinc-400",
   },
 };
-
-function relativeTime(
-  seconds: number,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  if (!seconds || Number.isNaN(seconds)) return "";
-  const diff = Date.now() / 1000 - seconds;
-  if (diff < 60) return t("just now");
-  const mins = Math.floor(diff / 60);
-  if (mins < 60) return t("{{count}}m ago", { count: mins });
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return t("{{count}}h ago", { count: hrs });
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return t("{{count}}d ago", { count: days });
-  const months = Math.floor(days / 30);
-  if (months < 12) return t("{{count}}mo ago", { count: months });
-  return t("{{count}}y ago", { count: Math.floor(months / 12) });
-}
 
 // Stable, deterministic palette per book id so each cover feels distinct
 // without resorting to placeholder letters.
@@ -138,7 +127,6 @@ export interface BookLibraryProps {
   onNewBook: () => void;
   onSelectBook: (id: string) => void;
   onDeleteBook: (id: string) => void;
-  onLearn?: (book: Book) => void;
 }
 
 export default function BookLibrary({
@@ -147,9 +135,8 @@ export default function BookLibrary({
   onNewBook,
   onSelectBook,
   onDeleteBook,
-  onLearn,
 }: BookLibraryProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
@@ -169,6 +156,7 @@ export default function BookLibrary({
     const inProgress = books.filter(
       (b) =>
         b.status === "compiling" ||
+        b.status === "paused" ||
         b.status === "spine_ready" ||
         b.status === "draft",
     ).length;
@@ -385,6 +373,20 @@ export default function BookLibrary({
                     </button>
                   </div>
 
+                  {(book.reading?.percent ?? 0) > 0 && (
+                    <div
+                      className="h-0.5 w-full bg-[var(--muted)]"
+                      title={t("{{percent}}% read", {
+                        percent: book.reading?.percent ?? 0,
+                      })}
+                    >
+                      <div
+                        className="h-full bg-[var(--primary)]"
+                        style={{ width: `${book.reading?.percent ?? 0}%` }}
+                      />
+                    </div>
+                  )}
+
                   {/* Body */}
                   <div className="flex flex-1 flex-col gap-2 p-4">
                     <div
@@ -416,22 +418,27 @@ export default function BookLibrary({
                       </div>
                       <span className="inline-flex items-center gap-1">
                         <Clock3 size={11} />
-                        {relativeTime(book.updated_at, t) || "—"}
+                        {formatRelativeTime(book.updated_at, i18n.language) ||
+                          "—"}
                       </span>
                     </div>
-                    {onLearn && book.status === "ready" && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onLearn(book);
-                        }}
-                        className="mt-2 inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
-                      >
-                        <GraduationCap size={13} />
-                        {t("Start learning")}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectBook(book.id);
+                      }}
+                      className="mt-2 inline-flex items-center justify-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+                    >
+                      <GraduationCap size={13} />
+                      {/* Reading position is persisted, so the card can say
+                          what opening it will actually do. */}
+                      {book.status === "draft" || book.status === "spine_ready"
+                        ? t("Continue setup")
+                        : (book.reading?.visited_pages ?? 0) > 0
+                          ? t("Continue reading")
+                          : t("Start reading")}
+                    </button>
                   </div>
                 </div>
               );

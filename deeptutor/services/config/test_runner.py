@@ -11,11 +11,12 @@ from uuid import uuid4
 
 from .context_window_detection import detect_context_window
 from .embedding_endpoint import redact_embedding_endpoint_for_display
-from .model_catalog import get_model_catalog_service
+from .model_catalog import get_model_catalog_service, redact_catalog_secrets
 from .provider_runtime import (
     resolve_embedding_runtime_config,
     resolve_llm_runtime_config,
     resolve_search_runtime_config,
+    supported_search_providers_hint,
 )
 
 
@@ -159,7 +160,7 @@ class ConfigTestRunner:
         model["dimension"] = str(actual_dimension)
         saved = service.save(catalog)
         reset_embedding_client()
-        return saved
+        return redact_catalog_secrets(saved)
 
     @staticmethod
     def _capabilities_from_adapter(adapter: Any, model_name: str) -> dict[str, Any]:
@@ -428,7 +429,7 @@ class ConfigTestRunner:
         if resolved.unsupported_provider:
             raise ValueError(
                 f"Search provider `{resolved.requested_provider}` is deprecated/unsupported. "
-                "Switch to none/brave/tavily/jina/searxng/duckduckgo/perplexity/serper."
+                f"Switch to none/{supported_search_providers_hint()}."
             )
         if resolved.missing_credentials:
             raise ValueError(
