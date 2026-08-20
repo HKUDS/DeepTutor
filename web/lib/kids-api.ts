@@ -57,6 +57,10 @@ export interface KidsLearningProgress {
   quiz_attempts: number;
   quiz_best_score: number;
   quiz_best_stars?: number;
+  quiz_section_attempts?: Record<string, number>;
+  quiz_section_best_scores?: Record<string, number>;
+  quiz_section_best_stars?: Record<string, number>;
+  quiz_exempt_section_ids?: string[];
   time_spent_seconds: number;
   last_read_at: number;
 }
@@ -78,7 +82,13 @@ export interface KidsUsage {
 
 export interface KidsSafeQuestion {
   id: string;
-  kind: "comprehension" | "sight_word" | "sequence";
+  kind:
+    | "recall"
+    | "sequence"
+    | "inference"
+    | "vocabulary"
+    | "comprehension"
+    | "sight_word";
   question: string;
   choices: string[];
 }
@@ -86,8 +96,10 @@ export interface KidsSafeQuestion {
 export interface KidsQuizGrade {
   score: number;
   total: number;
+  section_id?: string;
   stars: number;
   earned_stars?: number;
+  is_complete?: boolean;
   per_question: { id: string; correct: boolean; explanation: string }[];
   encouragements: string[];
 }
@@ -264,7 +276,12 @@ export const kidsApi = {
     }),
 
   getQuiz: (documentId: string, sectionId: string, forceRefresh = false) =>
-    kidsRequest<{ questions: KidsSafeQuestion[]; section_id: string }>(
+    kidsRequest<{
+      questions: KidsSafeQuestion[];
+      section_id: string;
+      status: "ready" | "exempt";
+      message?: string;
+    }>(
       `/books/${documentId}/quiz`,
       { method: "POST", body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }) },
     ),

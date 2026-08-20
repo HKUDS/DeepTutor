@@ -134,7 +134,9 @@ class KidsQuizQuestion(BaseModel):
     """One multiple-choice question for the child reading quiz."""
 
     id: str = ""
-    kind: Literal["comprehension", "sight_word", "sequence"] = "comprehension"
+    kind: Literal[
+        "recall", "sequence", "inference", "vocabulary", "comprehension", "sight_word"
+    ] = "comprehension"
     question: str = ""
     choices: list[str] = Field(default_factory=list)
     answer_index: int = 0
@@ -150,6 +152,9 @@ class KidsQuizResult(BaseModel):
     content_hash: str = ""
     model: str = ""
     prompt_version: str = ""
+    age_band: str = "6-8"
+    available: bool = True
+    unavailable_reason: str = ""
     generated_at: float = Field(default_factory=time.time)
 
 
@@ -228,6 +233,10 @@ class KidsLearningProgress(BaseModel):
     quiz_attempts: int = 0
     quiz_best_score: int = 0
     quiz_best_stars: int = 0
+    quiz_section_attempts: dict[str, int] = Field(default_factory=dict)
+    quiz_section_best_scores: dict[str, int] = Field(default_factory=dict)
+    quiz_section_best_stars: dict[str, int] = Field(default_factory=dict)
+    quiz_exempt_section_ids: list[str] = Field(default_factory=list)
     time_spent_seconds: float = 0.0
     last_read_at: float = 0.0
     updated_at: float = Field(default_factory=time.time)
@@ -269,7 +278,9 @@ class KidsQuizGradeResult(BaseModel):
 
     score: int
     total: int
+    section_id: str = ""
     stars: int
+    is_complete: bool = False
     per_question: list[dict[str, Any]] = Field(default_factory=list)
     encouragements: list[str] = Field(default_factory=list)
 

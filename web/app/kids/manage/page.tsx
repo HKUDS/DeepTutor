@@ -10,6 +10,9 @@ type KidsReportSummary = {
   completed_books?: number;
   total_books?: number;
   quiz_average_percent?: number;
+  chapter_quiz_attempts?: number;
+  chapter_quiz_exemptions?: number;
+  chapter_quiz_average_percent?: number;
   total_time_seconds?: number;
 };
 
@@ -320,7 +323,9 @@ export default function KidsManagePage() {
                 </div>
                 <div>
                   <div style={summaryLabelStyle}>Quiz average</div>
-                  <div style={summaryValueStyle}>{Math.round(report?.quiz_average_percent ?? 0)}%</div>
+                  <div style={summaryValueStyle}>
+                    {Math.round(report?.chapter_quiz_average_percent ?? report?.quiz_average_percent ?? 0)}%
+                  </div>
                 </div>
               </div>
             </div>
@@ -337,12 +342,28 @@ export default function KidsManagePage() {
                   const doc = item.document as Record<string, any>;
                   const totalChapters = Array.isArray(doc.sections) ? doc.sections.length : 0;
                   const completedChapters = item.progress.completed_section_ids.length;
+                  const sectionIds = new Set(
+                    Array.isArray(doc.sections) ? doc.sections.map((section: any) => String(section.id)) : [],
+                  );
+                  const attemptedChapters = Object.keys(item.progress.quiz_section_attempts || {}).filter((id) =>
+                    sectionIds.has(id),
+                  ).length;
+                  const exemptChapters = (item.progress.quiz_exempt_section_ids || []).filter((id) =>
+                    sectionIds.has(id),
+                  ).length;
+                  const quizChapters = attemptedChapters + exemptChapters;
+                  const chapterScores = Object.entries(item.progress.quiz_section_best_scores || {}).filter(([id]) =>
+                    sectionIds.has(id),
+                  );
+                  const chapterAverage = chapterScores.length
+                    ? Math.round((chapterScores.reduce((sum, [, score]) => sum + score, 0) / (chapterScores.length * 3)) * 100)
+                    : 0;
                   return (
                     <div key={item.assignment.document_id} style={rowStyle}>
                       <span style={{ flex: 1, minWidth: 160, fontSize: 15 }}>
                         {doc.title}
                         <span style={{ display: "block", fontSize: 13, color: "#718096", marginTop: 2 }}>
-                          {completedChapters}/{totalChapters} chapters · Quiz best {item.progress.quiz_best_score}/3
+                          {completedChapters}/{totalChapters} chapters · Quizzes {quizChapters}/{totalChapters} · Best {chapterAverage}%
                         </span>
                       </span>
                       <span style={{ fontSize: 13, color: "#d69e2e" }}>

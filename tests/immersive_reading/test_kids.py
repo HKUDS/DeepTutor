@@ -208,6 +208,31 @@ def test_daily_limit_uses_capped_server_elapsed_time(kids_manager, protected_pro
     assert status["used_seconds"] == 240  # 60 initial + 180-second cap
 
 
+def test_assigning_books_to_multiple_profiles_preserves_every_assignment(
+    kids_manager, imported_document, protected_profile
+) -> None:
+    second_profile = kids_manager.create_profile("Grace", birth_date="2018-05-01")
+    first = kids_manager.assign_book(
+        protected_profile.id,
+        imported_document["id"],
+        available_through_section_index=2,
+        content_confirmed=True,
+    )
+    second = kids_manager.assign_book(
+        second_profile.id,
+        imported_document["id"],
+        available_through_section_index=2,
+        content_confirmed=True,
+    )
+
+    first_assignments = kids_manager.list_assignments(protected_profile.id)
+    second_assignments = kids_manager.list_assignments(second_profile.id)
+
+    assert [assignment.id for assignment in first_assignments] == [first.id]
+    assert [assignment.id for assignment in second_assignments] == [second.id]
+    assert len(kids_manager.list_assignments()) == 2
+
+
 def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
     client: TestClient,
     reading_service,
@@ -252,7 +277,17 @@ def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
     assert completed.status_code == 200
     assert chapter_one["id"] in completed.json()["progress"]["completed_section_ids"]
 
+    blocked_next = client.put(
+        f"/api/v1/kids/books/{document_id}/progress",
+        json={"section_id": chapter_two["id"], "scroll_percent": 20},
+        headers=headers,
+    )
+    assert blocked_next.status_code == 409
+    assert blocked_next.json()["detail"]["code"] == "chapter_quiz_required"
+    assert blocked_next.json()["detail"]["section_id"] == chapter_one["id"]
+
     for section, answer in ((chapter_one, 0), (chapter_two, 1)):
+        kinds = ("recall", "sequence", "vocabulary")
         reading_service._save_kids_quiz_cache(
             document_id,
             section["id"],
@@ -262,12 +297,15 @@ def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
                 questions=[
                     KidsQuizQuestion(
                         id=f"q{i}",
+                        kind=kind,
                         question=f"Question {i}?",
-                        choices=["yes", "no"],
+                        choices=["yes", "no", "maybe", "never"],
                         answer_index=answer,
                     )
-                    for i in range(1, 4)
+                    for i, kind in enumerate(kinds, 1)
                 ],
+                age_band="6-8",
+                available=True,
                 content_hash=reading_service._content_hash(
                     reading_service.get_section(document_id, section["id"])["content"]
                 ),
@@ -289,6 +327,12 @@ def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
     )
     assert first_grade.status_code == 200
     assert first_grade.json()["total"] == 3
+    assert first_grade.json()["section_id"] == chapter_one["id"]
+    opened_after_quiz = client.get(
+        f"/api/v1/kids/books/{document_id}/sections/{chapter_two['id']}",
+        headers=headers,
+    )
+    assert opened_after_quiz.status_code == 200
 
     # A sequential chapter transition is a valid completion signal for the
     # chapter the child just left, even though relocation now reports chapter 2.
@@ -340,9 +384,19 @@ def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
     )
     assert second_quiz.status_code == 200
     assert len(second_quiz.json()["questions"]) == 3
+    second_grade = client.post(
+        f"/api/v1/kids/books/{document_id}/quiz/submit",
+        json={"section_id": chapter_two["id"], "answers": [1, 1, 1]},
+        headers=headers,
+    )
+    assert second_grade.status_code == 200
+    assert second_grade.json()["is_complete"] is True
 
     final_book = client.get(f"/api/v1/kids/books/{document_id}", headers=headers)
     assert final_book.status_code == 200
+    final_progress = final_book.json()["progress"]
+    assert final_progress["quiz_section_attempts"][chapter_one["id"]] == 1
+    assert final_progress["quiz_section_attempts"][chapter_two["id"]] == 1
     assert final_book.json()["document"]["is_complete"] is True
 
 
@@ -363,16 +417,24 @@ def test_deterministic_fallback_quiz_cache_is_reused(
             document_id=document_id,
             section_id=section["id"],
             questions=[
-                KidsQuizQuestion(id=f"q{i}", question=f"Word {i}?", choices=["yes", "no"])
-                for i in range(1, 4)
+                KidsQuizQuestion(
+                    id=f"q{i}",
+                    kind=kind,
+                    question=f"Question {i}?",
+                    choices=["Correct", "Wrong one", "Wrong two", "Wrong three"],
+                    answer_index=0,
+                )
+                for i, kind in enumerate(("recall", "sequence", "vocabulary"), 1)
             ],
+            age_band="6-8",
+            available=True,
             content_hash=reading_service._content_hash(content),
-            model="sight-words-fallback",
+            model="source-fallback",
             prompt_version=service_module.KIDS_FALLBACK_QUIZ_PROMPT_VERSION,
         ),
     )
 
-    def fail_llm(*args, **kwargs):
+    async def fail_llm(*args, **kwargs):
         raise AssertionError("cached fallback quiz must not call the LLM")
 
     monkeypatch.setattr(service_module, "complete", fail_llm)
@@ -404,10 +466,30 @@ def test_completion_and_quiz_stars_are_idempotent(
             document_id=document_id,
             section_id=section_id,
             questions=[
-                KidsQuizQuestion(id="q1", question="Word?", choices=["yes", "no"], answer_index=0),
-                KidsQuizQuestion(id="q2", question="Other?", choices=["yes", "no"], answer_index=1),
-                KidsQuizQuestion(id="q3", question="Last?", choices=["yes", "no"], answer_index=0),
+                KidsQuizQuestion(
+                    id="q1",
+                    kind="recall",
+                    question="Word?",
+                    choices=["yes", "no", "maybe", "never"],
+                    answer_index=0,
+                ),
+                KidsQuizQuestion(
+                    id="q2",
+                    kind="sequence",
+                    question="Other?",
+                    choices=["yes", "no", "maybe", "never"],
+                    answer_index=1,
+                ),
+                KidsQuizQuestion(
+                    id="q3",
+                    kind="vocabulary",
+                    question="Last?",
+                    choices=["yes", "no", "maybe", "never"],
+                    answer_index=0,
+                ),
             ],
+            age_band="6-8",
+            available=True,
             content_hash=reading_service._content_hash(
                 reading_service.get_section(document_id, section_id)["content"]
             ),

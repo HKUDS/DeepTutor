@@ -13,11 +13,17 @@ test("child completes a chapter quiz and sees the book achievement", async ({ pa
     await route.fulfill({
       json: {
         section_id: "e2e-section",
+        status: "ready",
         questions: [1, 2, 3].map((index) => ({
           id: `q${index}`,
-          kind: "comprehension",
+          kind: (["recall", "sequence", "vocabulary"] as const)[index - 1],
           question: `Story question ${index}?`,
-          choices: [`Correct answer ${index}`, "Not this one", "Try again"],
+          choices: [
+            `Correct answer ${index}`,
+            "Not this one",
+            "Try again later",
+            "Not in this story",
+          ],
         })),
       },
     });
@@ -27,8 +33,10 @@ test("child completes a chapter quiz and sees the book achievement", async ({ pa
       json: {
         score: 3,
         total: 3,
+        section_id: "e2e-section",
         stars: 3,
         earned_stars: 3,
+        is_complete: true,
         per_question: [1, 2, 3].map((index) => ({
           id: `q${index}`,
           correct: true,

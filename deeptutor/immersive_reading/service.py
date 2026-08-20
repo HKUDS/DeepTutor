@@ -24,6 +24,7 @@ import unicodedata
 import uuid
 from zipfile import ZIP_STORED, ZipFile
 
+from deeptutor.immersive_reading.kids_quiz_fallback import generate_source_quiz, primary_language
 from deeptutor.immersive_reading.models import (
     ChapterSearchCard,
     FastSearchIndex,
@@ -66,7 +67,7 @@ _HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 logger = logging.getLogger(__name__)
-KIDS_FALLBACK_QUIZ_PROMPT_VERSION = "sight-words-v1"
+KIDS_FALLBACK_QUIZ_PROMPT_VERSION = "kids-quiz-fallback-v2"
 
 
 def _is_front_matter_title(title: str) -> bool:
@@ -661,7 +662,61 @@ class ImmersiveReadingService:
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
 
-    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v1"
+    @staticmethod
+    def _kids_quiz_source_excerpt(content: str, character_limit: int = 9000) -> str:
+        if len(content) <= character_limit:
+            return content
+        segment = character_limit // 3
+        midpoint = len(content) // 2
+        return "\n\n[... omitted ...]\n\n".join(
+            [content[:segment], content[midpoint : midpoint + segment], content[-segment:]]
+        )
+
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v2"
+
+    @staticmethod
+    def _kids_quiz_cache_is_valid(
+        cached: dict[str, Any],
+        *,
+        document_id: str,
+        section_id: str,
+        content_hash: str,
+        age_band: str,
+    ) -> bool:
+        if (
+            cached.get("document_id") != document_id
+            or cached.get("section_id") != section_id
+            or cached.get("content_hash") != content_hash
+            or cached.get("age_band", "6-8") != age_band
+            or cached.get("prompt_version")
+            not in {
+                ImmersiveReadingService.KIDS_QUIZ_PROMPT_VERSION,
+                KIDS_FALLBACK_QUIZ_PROMPT_VERSION,
+            }
+        ):
+            return False
+        if cached.get("available", True) is False:
+            return bool(cached.get("unavailable_reason", "").strip())
+        questions = cached.get("questions", [])
+        expected_kinds = (
+            ("comprehension", "inference", "vocabulary")
+            if age_band == "9-12"
+            else ("recall", "sequence", "vocabulary")
+        )
+
+        def valid_question(question: Any) -> bool:
+            try:
+                answer_index = int(question.get("answer_index", -1))
+            except (AttributeError, TypeError, ValueError):
+                return False
+            return (
+                question.get("kind") in expected_kinds
+                and str(question.get("question", "")).strip() != ""
+                and len(question.get("choices", [])) == 4
+                and 0 <= answer_index <= 3
+            )
+
+        return len(questions) == 3 and all(valid_question(question) for question in questions)
 
     async def generate_kids_quiz(
         self,
@@ -671,23 +726,24 @@ class ImmersiveReadingService:
         force_refresh: bool = False,
         age_band: str = "6-8",
     ) -> KidsQuizResult:
-        """Generate (or load cached) 3 multiple-choice questions for a section."""
+        """Generate (or load cached) 3 source-grounded questions for a section."""
+        effective_age_band = "9-12" if age_band == "9-12" else "6-8"
         quiz_path = self._kids_quiz_path(document_id, section_id)
         cached = _read_json(quiz_path) if quiz_path.exists() else None
 
         content = self._section_path(document_id, section_id).read_text(encoding="utf-8")
         content_hash = self._content_hash(content)
 
-        cfg = get_llm_config()
-        model_name = str(getattr(cfg, "model", "") or "")
-
         if (
             not force_refresh
-            and cached
-            and cached.get("content_hash") == content_hash
-            and cached.get("prompt_version")
-            in {self.KIDS_QUIZ_PROMPT_VERSION, KIDS_FALLBACK_QUIZ_PROMPT_VERSION}
-            and len(cached.get("questions", [])) == 3
+            and cached is not None
+            and self._kids_quiz_cache_is_valid(
+                cached,
+                document_id=document_id,
+                section_id=section_id,
+                content_hash=content_hash,
+                age_band=effective_age_band,
+            )
         ):
             return KidsQuizResult(**cached)
 
@@ -698,80 +754,108 @@ class ImmersiveReadingService:
         if section is None:
             raise ValueError("Reading section not found")
 
-        # Limit content to 6000 chars for children's books (usually very short)
-        excerpt = content[:6000]
+        # Long chapters are represented by their beginning, middle, and end.
+        excerpt = self._kids_quiz_source_excerpt(content)
+        quiz_language = primary_language(excerpt)
 
-        if age_band == "9-12":
+        if effective_age_band == "9-12":
             system = (
-                "You create vocabulary quizzes for readers aged 9-12. "
-                "Generate exactly 3 multiple-choice questions asking what words from the story mean. "
-                "Choose interesting or challenging words (not basic words like 'the' or 'and'). "
-                "Definitions should be clear and simple but not childish. "
-                "For example: What does 'venture' mean? Choices: a risky journey, a type of food, a loud noise, a small animal. "
-                "Each question has exactly 4 choices. Return JSON only. Schema: "
+                "You create chapter-understanding quizzes for readers aged 9-12. "
+                "Use only facts, events, causes, effects, and vocabulary explicitly supported by the source. "
+                "Generate exactly one comprehension or cause-effect question, one inference question, and one "
+                "vocabulary question, in that order. Kinds must be comprehension, inference, and vocabulary. "
+                "The inference question may ask what most likely happened, followed, or was meant, but must have "
+                "one defensible source-supported answer. Write every question, choice, and explanation in the "
+                "chapter's primary language. Each question has exactly 4 concise choices. Return JSON only. Schema: "
                 '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
                 '"answer_index":0,"explanation":"str"}]}'
             )
         else:
             system = (
-                "You create simple vocabulary quizzes for children learning English. "
-                "Generate exactly 3 multiple-choice questions. "
-                "Each question asks what a word from the story means, using very simple English. "
-                "For example: What does 'said' mean? Choices: talked, ran, sat, ate. "
-                "Pick words that actually appear in the story. "
-                "Use very short, simple definitions a child can understand. "
-                "Each question has exactly 4 choices. "
-                "Return JSON only. Schema: "
-                '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
+                "You create chapter-understanding quizzes for readers aged 6-8. "
+                "Use only facts, events, order, and vocabulary explicitly supported by the source. "
+                "Generate exactly one simple recall question, one order-of-events question, and one "
+                "vocabulary question, in that order. Kinds must be recall, sequence, and vocabulary. "
+                "Write every question, choice, and explanation in the chapter's primary language. "
+                "Each question has exactly 4 short choices. Return JSON only. Schema: "
+                '{"questions":[{"id":"q1","kind":"recall","question":"str","choices":["a","b","c","d"],'
                 '"answer_index":0,"explanation":"str"}]}'
             )
 
-        raw = await complete(
-            prompt=(
-                f"Book: {doc.title}\n"
-                f"Story: {section.title}\n\n"
-                f"<story_text>\n{excerpt}\n</story_text>"
-            ),
-            system_prompt=system,
-            temperature=0.3,
-            max_tokens=2000,
-            max_retries=1,
-            timeout=120,
-            response_format={"type": "json_object"},
-        )
+        try:
+            cfg = get_llm_config()
+            model_name = str(getattr(cfg, "model", "") or "")
+            raw = await complete(
+                prompt=(
+                    f"Book: {doc.title}\n"
+                    f"Story: {section.title}\n"
+                    f"Primary language: {quiz_language}\n\n"
+                    f"<story_text>\n{excerpt}\n</story_text>"
+                ),
+                system_prompt=system,
+                temperature=0.3,
+                max_tokens=2000,
+                max_retries=1,
+                timeout=120,
+                response_format={"type": "json_object"},
+            )
+            if not raw or not raw.strip():
+                raise RuntimeError("The model returned an empty quiz")
 
-        if not raw or not raw.strip():
-            raise RuntimeError("The model returned an empty quiz")
-
-        parsed = parse_json_response(raw)
-        questions_raw = parsed.get("questions", [])
-        questions: list[KidsQuizQuestion] = []
-        for i, q in enumerate(questions_raw[:3]):
-            choices = q.get("choices", [])
-            if len(choices) < 2:
-                continue
-            questions.append(
-                KidsQuizQuestion(
-                    id=q.get("id", f"q{i + 1}"),
-                    kind=q.get("kind", "comprehension"),
-                    question=q.get("question", ""),
-                    choices=[str(c) for c in choices[:4]],
-                    answer_index=max(0, min(len(choices) - 1, int(q.get("answer_index", 0)))),
-                    explanation=q.get("explanation", ""),
+            parsed = parse_json_response(raw)
+            questions_raw = parsed.get("questions", [])
+            expected_kinds = (
+                ("comprehension", "inference", "vocabulary")
+                if effective_age_band == "9-12"
+                else ("recall", "sequence", "vocabulary")
+            )
+            questions: list[KidsQuizQuestion] = []
+            for i, q in enumerate(questions_raw[:3]):
+                choices = q.get("choices", [])
+                if len(choices) != 4 or not str(q.get("question", "")).strip():
+                    continue
+                questions.append(
+                    KidsQuizQuestion(
+                        id=q.get("id", f"q{i + 1}"),
+                        kind=q.get("kind", "comprehension"),
+                        question=q.get("question", ""),
+                        choices=[str(choice) for choice in choices],
+                        answer_index=max(0, min(3, int(q.get("answer_index", 0)))),
+                        explanation=q.get("explanation", ""),
+                    )
                 )
+            if tuple(question.kind for question in questions) != expected_kinds:
+                raise RuntimeError("The model returned the wrong quiz question mix")
+
+            result = KidsQuizResult(
+                document_id=document_id,
+                section_id=section_id,
+                questions=questions,
+                content_hash=content_hash,
+                model=model_name,
+                prompt_version=self.KIDS_QUIZ_PROMPT_VERSION,
+                age_band=effective_age_band,
+            )
+        except Exception as exc:
+            logger.warning("LLM quiz generation failed, using deterministic fallback: %s", exc)
+            fallback_questions = generate_source_quiz(content, age_band=effective_age_band)
+            fallback_available = len(fallback_questions) == 3
+            result = KidsQuizResult(
+                document_id=document_id,
+                section_id=section_id,
+                questions=[KidsQuizQuestion(**item) for item in fallback_questions[:3]],
+                content_hash=content_hash,
+                model="source-fallback",
+                prompt_version=KIDS_FALLBACK_QUIZ_PROMPT_VERSION,
+                age_band=effective_age_band,
+                available=fallback_available,
+                unavailable_reason=(
+                    ""
+                    if fallback_available
+                    else "This chapter does not contain enough source material for three questions."
+                ),
             )
 
-        if len(questions) != 3:
-            raise RuntimeError("The model did not generate exactly 3 valid questions")
-
-        result = KidsQuizResult(
-            document_id=document_id,
-            section_id=section_id,
-            questions=questions,
-            content_hash=content_hash,
-            model=model_name,
-            prompt_version=self.KIDS_QUIZ_PROMPT_VERSION,
-        )
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
         return result
@@ -2126,8 +2210,11 @@ class KidsManager:
         available_through_section_index: int = 999,
         content_confirmed: bool = True,
     ) -> KidsBookAssignment:
-        existing = self.list_assignments(profile_id)
-        match = next((a for a in existing if a.document_id == document_id), None)
+        assignments = self.list_assignments()
+        profile_assignments = [
+            assignment for assignment in assignments if assignment.profile_id == profile_id
+        ]
+        match = next((a for a in profile_assignments if a.document_id == document_id), None)
         if match:
             match.status = "active"
             match.available_through_section_id = available_through_section_id
@@ -2141,7 +2228,7 @@ class KidsManager:
         ir_service = get_immersive_reading_service()
         doc = ir_service.load_document(document_id)
         title = doc.title if doc else document_id
-        sort_order = len(existing)
+        sort_order = len(profile_assignments)
         assignment = KidsBookAssignment(
             id=uuid.uuid4().hex[:12],
             profile_id=profile_id,
@@ -2153,8 +2240,8 @@ class KidsManager:
             content_confirmed_at=time.time() if content_confirmed else 0.0,
             sort_order=sort_order,
         )
-        existing.append(assignment)
-        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in existing])
+        assignments.append(assignment)
+        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
         return assignment
 
     def unassign_book(self, profile_id: str, document_id: str) -> None:
@@ -2199,6 +2286,13 @@ class KidsManager:
         assignments = self.list_assignments()
         _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
 
+    @staticmethod
+    def section_quiz_satisfied(progress: KidsLearningProgress, section_id: str) -> bool:
+        return (
+            progress.quiz_section_attempts.get(section_id, 0) > 0
+            or section_id in progress.quiz_exempt_section_ids
+        )
+
     def get_kids_library(self, profile_id: str) -> list[dict[str, Any]]:
         """Return assigned books with progress for a child profile."""
         assignments = [a for a in self.list_assignments(profile_id) if a.status == "active"]
@@ -2221,7 +2315,10 @@ class KidsManager:
             completed = len(
                 [section for section in allowed_sections if section.id in completed_ids]
             )
-            is_complete = bool(allowed_sections) and completed == len(allowed_sections)
+            is_complete = bool(allowed_sections) and all(
+                section.id in completed_ids and self.section_quiz_satisfied(progress, section.id)
+                for section in allowed_sections
+            )
             library.append(
                 {
                     "assignment": a.model_dump(mode="json"),
@@ -2384,7 +2481,14 @@ class KidsManager:
         return progress
 
     def record_quiz_result(
-        self, profile_id: str, document_id: str, score: int, total: int, stars: int
+        self,
+        profile_id: str,
+        document_id: str,
+        score: int,
+        total: int,
+        stars: int,
+        *,
+        section_id: str = "",
     ) -> int:
         """Record a quiz and award stars only for a new personal best."""
         progress = self.load_kids_progress(profile_id, document_id)
@@ -2393,9 +2497,31 @@ class KidsManager:
         progress.quiz_best_score = max(progress.quiz_best_score, score)
         progress.quiz_best_stars = max(progress.quiz_best_stars, stars)
         progress.total_stars += earned
+        if section_id:
+            progress.quiz_section_attempts[section_id] = (
+                progress.quiz_section_attempts.get(section_id, 0) + 1
+            )
+            progress.quiz_section_best_scores[section_id] = max(
+                progress.quiz_section_best_scores.get(section_id, 0), score
+            )
+            progress.quiz_section_best_stars[section_id] = max(
+                progress.quiz_section_best_stars.get(section_id, 0), stars
+            )
         progress.updated_at = time.time()
         _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
         return earned
+
+    def exempt_section_quiz(
+        self, profile_id: str, document_id: str, section_id: str, reason: str
+    ) -> KidsLearningProgress:
+        progress = self.load_kids_progress(profile_id, document_id)
+        if section_id not in progress.quiz_exempt_section_ids:
+            progress.quiz_exempt_section_ids.append(section_id)
+            progress.updated_at = time.time()
+            _write_json(
+                self._progress_path(profile_id, document_id), progress.model_dump(mode="json")
+            )
+        return progress
 
     def get_report(self, profile_id: str) -> dict[str, Any]:
         """Aggregate learning report for a child profile."""
@@ -2408,11 +2534,23 @@ class KidsManager:
         total_quizzes = sum(item["progress"]["quiz_attempts"] for item in library)
         chapters_completed = sum(len(item["progress"]["completed_section_ids"]) for item in library)
         completed_books = sum(1 for item in library if item["document"].get("is_complete") is True)
-        quiz_average = sum(
-            item["progress"]["quiz_best_score"] / 3
-            for item in library
-            if item["progress"]["quiz_attempts"] > 0
-        ) / max(1, sum(1 for item in library if item["progress"]["quiz_attempts"] > 0))
+        chapter_scores: list[int] = []
+        chapter_attempts = 0
+        chapter_exemptions = 0
+        for item in library:
+            progress = item["progress"]
+            attempted_ids = set(progress.get("quiz_section_attempts", {}))
+            exempt_ids = set(progress.get("quiz_exempt_section_ids", []))
+            section_ids = {
+                section.get("id")
+                for section in item.get("document", {}).get("sections", [])
+                if section.get("id")
+            }
+            for section_id in section_ids & attempted_ids:
+                chapter_attempts += progress["quiz_section_attempts"][section_id]
+                chapter_scores.append(progress["quiz_section_best_scores"].get(section_id, 0))
+            chapter_exemptions += len(section_ids & exempt_ids)
+        quiz_average = sum(chapter_scores) / (3 * len(chapter_scores)) if chapter_scores else 0.0
         return {
             "profile": profile.model_dump(mode="json"),
             "books": library,
@@ -2420,6 +2558,9 @@ class KidsManager:
             "total_stars": total_stars,
             "total_time_seconds": total_time,
             "total_quiz_attempts": total_quizzes,
+            "chapter_quiz_attempts": chapter_attempts,
+            "chapter_quiz_exemptions": chapter_exemptions,
+            "chapter_quiz_average_percent": round(quiz_average * 100, 1),
             "chapters_completed": chapters_completed,
             "completed_books": completed_books,
             "quiz_average_percent": round(quiz_average * 100, 1),
