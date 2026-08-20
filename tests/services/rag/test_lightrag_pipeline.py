@@ -13,6 +13,7 @@ import asyncio
 import contextvars
 import inspect
 import json
+import logging
 from pathlib import Path
 import sys
 import threading
@@ -21,6 +22,14 @@ import types
 
 import pytest
 
+from deeptutor.services.llm.exceptions import (
+    LLMAPIError,
+    LLMAuthenticationError,
+    LLMConfigError,
+    LLMParseError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+)
 from deeptutor.services.rag.factory import (
     LIGHTRAG_PROVIDER,
     get_pipeline,
@@ -278,6 +287,7 @@ def test_lightrag_llm_adapter_preserves_messages_and_drops_extra_kwargs(
     assert captured["system_prompt"] == "sys"
     assert captured["history_messages"] == []
     assert captured["messages"] == [{"role": "user", "content": "from messages"}]
+    assert captured["max_retries"] == 0
     assert "response_format" not in captured
     assert "hashing_kv" not in captured
     assert "keyword_extraction" not in captured
@@ -312,7 +322,186 @@ def test_lightrag_vision_adapter_preserves_messages(monkeypatch) -> None:
     assert captured["prompt"] == ""
     assert captured["image_data"] == "abc123"
     assert captured["messages"] == [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
+    assert captured["max_retries"] == 0
     assert bridge.calls == 1
+
+
+def test_lightrag_llm_adapter_uses_three_total_attempts_and_disables_provider_retry(
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    sleep_delays: list[float] = []
+    failures = [
+        LLMAPIError("temporary server error", status_code=503),
+        LLMRateLimitError("rate limited"),
+    ]
+
+    class _Client:
+        def get_model_func(self):
+            async def model_func(_prompt, **kwargs):
+                calls.append(kwargs)
+                if failures:
+                    raise failures.pop(0)
+                return "ok"
+
+            return model_func
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
+    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
+
+    bridge = _RecordingBridge()
+    func = lr_config.build_llm_model_func(io_bridge=bridge)
+
+    assert asyncio.run(func("prompt")) == "ok"
+    assert len(calls) == 3
+    assert [call["max_retries"] for call in calls] == [0, 0, 0]
+    assert sleep_delays == [1.0, 2.0]
+    assert bridge.calls == 3
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        LLMTimeoutError("timeout"),
+        TimeoutError("timeout"),
+        ConnectionError("connection"),
+        LLMRateLimitError("rate limited"),
+        LLMAPIError("temporary server error", status_code=500),
+        LLMAPIError("Error calling Codex: Codex returned HTTP 503."),
+    ],
+)
+def test_lightrag_adapter_retries_classified_transient_errors(monkeypatch, error) -> None:
+    calls = 0
+
+    class _Client:
+        def get_model_func(self):
+            async def model_func(_prompt, **_kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise error
+                return "ok"
+
+            return model_func
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
+    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
+
+    assert asyncio.run(lr_config.build_llm_model_func()("prompt")) == "ok"
+    assert calls == 2
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        LLMAuthenticationError("unauthorized"),
+        LLMAPIError("forbidden", status_code=403),
+        LLMAPIError("not implemented", status_code=501),
+        LLMConfigError("bad configuration"),
+        LLMParseError("bad response"),
+        ValueError("contract mismatch"),
+    ],
+)
+def test_lightrag_adapter_does_not_retry_deterministic_errors(monkeypatch, error) -> None:
+    calls = 0
+
+    class _Client:
+        def get_model_func(self):
+            async def model_func(_prompt, **_kwargs):
+                nonlocal calls
+                calls += 1
+                raise error
+
+            return model_func
+
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
+
+    with pytest.raises(type(error)) as captured:
+        asyncio.run(lr_config.build_llm_model_func()("prompt"))
+
+    assert captured.value is error
+    assert calls == 1
+
+
+def test_lightrag_adapter_exhaustion_reraises_original_final_exception(monkeypatch) -> None:
+    failures = [
+        LLMAPIError("first", status_code=502),
+        LLMAPIError("second", status_code=503),
+        LLMAPIError("final", status_code=504),
+    ]
+    final_error = failures[-1]
+    calls = 0
+
+    class _Client:
+        def get_model_func(self):
+            async def model_func(_prompt, **_kwargs):
+                nonlocal calls
+                calls += 1
+                raise failures.pop(0)
+
+            return model_func
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
+    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(LLMAPIError) as captured:
+        asyncio.run(lr_config.build_llm_model_func()("prompt"))
+
+    assert captured.value is final_error
+    assert calls == 3
+
+
+def test_lightrag_vision_adapter_preserves_payload_and_redacts_retry_log(
+    monkeypatch,
+    caplog,
+) -> None:
+    sensitive_message = "prompt-secret base64-secret token-secret account-secret"
+    image_payload = "base64-secret-image-payload"
+    image_calls: list[object] = []
+    retry_settings: list[object] = []
+    calls = 0
+
+    class _Client:
+        def get_vision_model_func(self):
+            async def model_func(_prompt, **kwargs):
+                nonlocal calls
+                calls += 1
+                image_calls.append(kwargs["image_data"])
+                retry_settings.append(kwargs["max_retries"])
+                if calls == 1:
+                    raise ConnectionError(sensitive_message)
+                return "ok"
+
+            return model_func
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
+    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
+    caplog.set_level(logging.WARNING, logger=lr_config.__name__)
+
+    func = lr_config.build_vision_model_func()
+    assert asyncio.run(func("prompt-secret", image_data=image_payload)) == "ok"
+
+    assert calls == 2
+    assert all(payload is image_payload for payload in image_calls)
+    assert retry_settings == [0, 0]
+    assert sensitive_message not in caplog.text
+    assert "prompt-secret" not in caplog.text
+    assert image_payload not in caplog.text
+    assert (
+        "LightRAG adapter retry attempt=1 exception=ConnectionError status=transport" in caplog.text
+    )
 
 
 def test_build_rag_skips_raganything_parser_install_check(monkeypatch) -> None:
