@@ -108,9 +108,7 @@ class TestMermaidRendering(unittest.TestCase):
                 CharacterNode(id="唐僧", name="Tang Seng"),
             ],
             edges=[
-                CharacterEdge(
-                    source="孙悟空", target="唐僧", relation="disciple_of"
-                ),
+                CharacterEdge(source="孙悟空", target="唐僧", relation="disciple_of"),
             ],
         )
         result = render_character_graph_mermaid(graph)
@@ -149,9 +147,7 @@ class TestCharacterGraphModel(unittest.TestCase):
             chapter_id="ch1",
             scope="current",
             nodes=[
-                CharacterNode(
-                    id="a", name="Alice", aliases=["Al"], description="hero"
-                ),
+                CharacterNode(id="a", name="Alice", aliases=["Al"], description="hero"),
             ],
             edges=[
                 CharacterEdge(source="a", target="a", relation="self"),

@@ -151,12 +151,12 @@ class RebuildBookRequest(BaseModel):
     book_id: str
     auto_compile: bool = True
 
+
 class CharacterGraphRequest(BaseModel):
     book_id: str
     chapter_id: str
     scope: str = "current"  # "current" | "through_current"
     force_refresh: bool = False
-
 
 
 class ResumeBookRequest(BaseModel):
@@ -622,7 +622,6 @@ async def rebuild_book(req: RebuildBookRequest) -> dict[str, Any]:
         logger.error(f"rebuild_book failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
     return {"pages": [p.model_dump(mode="json") for p in pages]}
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────

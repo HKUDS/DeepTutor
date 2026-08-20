@@ -47,7 +47,9 @@ def test_import_text_extracts_chapters_and_preserves_source(
     assert reading_service.original_path(document_id).read_bytes().startswith(b"Title page")
 
 
-def test_import_rejects_empty_and_unsupported_documents(reading_service: ImmersiveReadingService) -> None:
+def test_import_rejects_empty_and_unsupported_documents(
+    reading_service: ImmersiveReadingService,
+) -> None:
     with pytest.raises(ValueError, match="empty"):
         reading_service.import_document("empty.txt", b"")
     with pytest.raises(ValueError, match="Unsupported"):
@@ -126,7 +128,9 @@ def test_citations_round_trip_and_delete(
     document_id = imported_document["id"]
     section_id = imported_document["sections"][1]["id"]
 
-    citation = reading_service.add_citation(document_id, section_id, "Ada follows the compass.", "Key clue")
+    citation = reading_service.add_citation(
+        document_id, section_id, "Ada follows the compass.", "Key clue"
+    )
 
     assert reading_service.list_citations(document_id) == [citation]
     reading_service.delete_citation(citation.id)

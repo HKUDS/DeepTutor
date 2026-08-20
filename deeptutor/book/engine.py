@@ -1820,8 +1820,6 @@ class BookEngine:
             stream=stream,
         )
 
-
-
     # ── Character relationship graph ─────────────────────────────────────
 
     async def generate_character_graph(
@@ -1837,6 +1835,7 @@ class BookEngine:
         See :mod:`deeptutor.book.character_graph` for extraction details.
         """
         from .character_graph import generate_character_graph as _gen
+
         return await _gen(
             book_id=book_id,
             chapter_id=chapter_id,

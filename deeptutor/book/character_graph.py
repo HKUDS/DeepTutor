@@ -303,9 +303,7 @@ def render_character_graph_mermaid(graph: CharacterGraph) -> str:
         if edge.source not in id_map or edge.target not in id_map:
             continue
         relation = _escape_label(edge.relation, max_len=20)
-        lines.append(
-            f'  {id_map[edge.source]} -- "{relation}" --> {id_map[edge.target]}'
-        )
+        lines.append(f'  {id_map[edge.source]} -- "{relation}" --> {id_map[edge.target]}')
 
     return "\n".join(lines)
 

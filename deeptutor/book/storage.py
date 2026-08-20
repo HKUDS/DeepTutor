@@ -260,16 +260,11 @@ class BookStorage:
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
 
-
     # ── Character graph ─────────────────────────────────────────────────
 
     def _character_graph_path(self, book_id: str, chapter_id: str, scope: str) -> Path:
         """Return the path to the cached character graph JSON."""
-        return (
-            self.ensure_book_root(book_id)
-            / "character_graphs"
-            / f"{scope}_{chapter_id}.json"
-        )
+        return self.ensure_book_root(book_id) / "character_graphs" / f"{scope}_{chapter_id}.json"
 
     def save_character_graph(self, graph: CharacterGraph) -> None:
         path = self._character_graph_path(graph.book_id, graph.chapter_id, graph.scope)

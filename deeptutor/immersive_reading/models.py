@@ -130,7 +130,6 @@ class SelectionQueryResult(BaseModel):
     search_provider: str = ""
 
 
-
 class KidsQuizQuestion(BaseModel):
     """One multiple-choice question for the child reading quiz."""
 
@@ -154,7 +153,6 @@ class KidsQuizResult(BaseModel):
     generated_at: float = Field(default_factory=time.time)
 
 
-
 class KidsProfile(BaseModel):
     """A child profile managed by the parent (adult user)."""
 
@@ -176,6 +174,7 @@ class KidsProfile(BaseModel):
             return 7
         try:
             from datetime import date
+
             born = date.fromisoformat(self.birth_date)
             today = date.today()
             return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
@@ -269,7 +268,6 @@ class KidsQuizGradeResult(BaseModel):
     stars: int
     per_question: list[dict[str, Any]] = Field(default_factory=list)
     encouragements: list[str] = Field(default_factory=list)
-
 
 
 __all__ = [

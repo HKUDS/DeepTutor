@@ -538,8 +538,8 @@ class ImmersiveReadingService:
     <dc:creator>{author}</dc:creator>
     <dc:language>en</dc:language>
   </metadata>
-  <manifest>{''.join(manifest_items)}</manifest>
-  <spine>{''.join(spine_items)}</spine>
+  <manifest>{"".join(manifest_items)}</manifest>
+  <spine>{"".join(spine_items)}</spine>
 </package>"""
         nav_document = f"""<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
@@ -565,7 +565,9 @@ class ImmersiveReadingService:
                 "body{line-height:1.7;margin:0 8vw;} p{margin:0 0 1em;} h1{page-break-before:always;}",
             )
             for section, (filename, body) in zip(sections, chapters):
-                chapter_title = html.escape(section.title or f"Chapter {section.index + 1}", quote=True)
+                chapter_title = html.escape(
+                    section.title or f"Chapter {section.index + 1}", quote=True
+                )
                 archive.writestr(
                     f"OEBPS/{filename}",
                     f"""<?xml version="1.0" encoding="utf-8"?>
@@ -650,7 +652,9 @@ class ImmersiveReadingService:
     def _kids_quiz_path(self, document_id: str, section_id: str) -> Path:
         return self._document_root(document_id) / "kids-quiz" / f"{section_id}.json"
 
-    def _save_kids_quiz_cache(self, document_id: str, section_id: str, result: KidsQuizResult) -> None:
+    def _save_kids_quiz_cache(
+        self, document_id: str, section_id: str, result: KidsQuizResult
+    ) -> None:
         """Persist a quiz result (used by fallback quiz generation)."""
         quiz_path = self._kids_quiz_path(document_id, section_id)
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
@@ -659,7 +663,12 @@ class ImmersiveReadingService:
     KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v1"
 
     async def generate_kids_quiz(
-        self, document_id: str, section_id: str, *, force_refresh: bool = False, age_band: str = "6-8"
+        self,
+        document_id: str,
+        section_id: str,
+        *,
+        force_refresh: bool = False,
+        age_band: str = "6-8",
     ) -> KidsQuizResult:
         """Generate (or load cached) 3 multiple-choice questions for a section."""
         quiz_path = self._kids_quiz_path(document_id, section_id)
@@ -1971,7 +1980,14 @@ class KidsManager:
         if idx is None:
             raise ValueError("Profile not found")
         p = profiles[idx]
-        for key in ("name", "avatar", "birth_date", "help_language", "narration_rate", "daily_limit_minutes"):
+        for key in (
+            "name",
+            "avatar",
+            "birth_date",
+            "help_language",
+            "narration_rate",
+            "daily_limit_minutes",
+        ):
             if key in kwargs and kwargs[key] is not None:
                 setattr(p, key, kwargs[key])
         if "parent_pin" in kwargs and kwargs["parent_pin"]:
@@ -2131,19 +2147,35 @@ class KidsManager:
         return assignment
 
     def unassign_book(self, profile_id: str, document_id: str) -> None:
-        assignments = [a for a in self.list_assignments() if not (a.profile_id == profile_id and a.document_id == document_id)]
+        assignments = [
+            a
+            for a in self.list_assignments()
+            if not (a.profile_id == profile_id and a.document_id == document_id)
+        ]
         _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
 
-    def update_assignment(self, profile_id: str, document_id: str, **kwargs: Any) -> KidsBookAssignment:
+    def update_assignment(
+        self, profile_id: str, document_id: str, **kwargs: Any
+    ) -> KidsBookAssignment:
         assignments = self.list_assignments()
         idx = next(
-            (i for i, a in enumerate(assignments) if a.profile_id == profile_id and a.document_id == document_id),
+            (
+                i
+                for i, a in enumerate(assignments)
+                if a.profile_id == profile_id and a.document_id == document_id
+            ),
             None,
         )
         if idx is None:
             raise ValueError("Assignment not found")
         a = assignments[idx]
-        for key in ("status", "sort_order", "is_next_read", "available_through_section_id", "available_through_section_index"):
+        for key in (
+            "status",
+            "sort_order",
+            "is_next_read",
+            "available_through_section_id",
+            "available_through_section_index",
+        ):
             if key in kwargs and kwargs[key] is not None:
                 setattr(a, key, kwargs[key])
         a.updated_at = time.time()
@@ -2168,20 +2200,20 @@ class KidsManager:
             progress = self.load_kids_progress(profile_id, a.document_id)
             total_sections = max(1, len(doc.sections))
             completed = min(len(progress.completed_section_ids), total_sections)
-            library.append({
-                "assignment": a.model_dump(mode="json"),
-                "document": {
-                    **doc.model_dump(mode="json"),
-                    "cover_url": (
-                        f"/api/v1/kids/books/{doc.id}/cover"
-                        if doc.has_cover
-                        else ""
-                    ),
+            library.append(
+                {
+                    "assignment": a.model_dump(mode="json"),
+                    "document": {
+                        **doc.model_dump(mode="json"),
+                        "cover_url": (
+                            f"/api/v1/kids/books/{doc.id}/cover" if doc.has_cover else ""
+                        ),
+                        "progress": progress.model_dump(mode="json"),
+                        "progress_percent": round(completed / total_sections * 100, 1),
+                    },
                     "progress": progress.model_dump(mode="json"),
-                    "progress_percent": round(completed / total_sections * 100, 1),
-                },
-                "progress": progress.model_dump(mode="json"),
-            })
+                }
+            )
         return library
 
     # ── Daily usage ───────────────────────────────────────────────────
@@ -2239,12 +2271,12 @@ class KidsManager:
         if status["limit_reached"]:
             overage = usage.seconds - (status["limit_seconds"] + usage.bonus_seconds)
             usage.seconds -= overage
-            _write_json(self._usage_path(session.profile_id, usage.date), usage.model_dump(mode="json"))
+            _write_json(
+                self._usage_path(session.profile_id, usage.date), usage.model_dump(mode="json")
+            )
         return status
 
-    def _add_document_reading_time(
-        self, profile_id: str, document_id: str, seconds: float
-    ) -> None:
+    def _add_document_reading_time(self, profile_id: str, document_id: str, seconds: float) -> None:
         progress = self.load_kids_progress(profile_id, document_id)
         progress.time_spent_seconds += max(0.0, seconds)
         progress.last_read_at = time.time()
@@ -2298,13 +2330,17 @@ class KidsManager:
         _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
         return progress
 
-    def mark_section_completed(self, profile_id: str, document_id: str, section_id: str) -> KidsLearningProgress:
+    def mark_section_completed(
+        self, profile_id: str, document_id: str, section_id: str
+    ) -> KidsLearningProgress:
         progress = self.load_kids_progress(profile_id, document_id)
         if section_id not in progress.completed_section_ids:
             progress.completed_section_ids.append(section_id)
             progress.total_stars += 1
             progress.updated_at = time.time()
-            _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
+            _write_json(
+                self._progress_path(profile_id, document_id), progress.model_dump(mode="json")
+            )
         return progress
 
     def add_stars(self, profile_id: str, document_id: str, stars: int) -> KidsLearningProgress:
@@ -2314,7 +2350,9 @@ class KidsManager:
         _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
         return progress
 
-    def record_quiz(self, profile_id: str, document_id: str, score: int, total: int) -> KidsLearningProgress:
+    def record_quiz(
+        self, profile_id: str, document_id: str, score: int, total: int
+    ) -> KidsLearningProgress:
         progress = self.load_kids_progress(profile_id, document_id)
         progress.quiz_attempts += 1
         progress.quiz_best_score = max(progress.quiz_best_score, score)
@@ -2358,7 +2396,9 @@ class KidsManager:
     def is_section_allowed(self, profile_id: str, document_id: str, section_index: int) -> bool:
         """Check if a child is allowed to read a section based on assignment limits."""
         assignments = self.list_assignments(profile_id)
-        assignment = next((a for a in assignments if a.document_id == document_id and a.status == "active"), None)
+        assignment = next(
+            (a for a in assignments if a.document_id == document_id and a.status == "active"), None
+        )
         if assignment is None:
             return False
         return section_index <= assignment.available_through_section_index

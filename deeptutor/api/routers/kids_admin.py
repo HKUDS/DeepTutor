@@ -31,6 +31,7 @@ def _profile_dict(profile) -> dict:
 
 # ── Profile CRUD ────────────────────────────────────────────────────────────
 
+
 class CreateProfileRequest(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     avatar: str = "default"
@@ -55,12 +56,7 @@ class UpdateProfileRequest(BaseModel):
 async def list_profiles() -> dict:
     manager = get_kids_manager()
     profiles = manager.list_profiles()
-    return {
-        "profiles": [
-            _profile_dict(p)
-            for p in profiles
-        ]
-    }
+    return {"profiles": [_profile_dict(p) for p in profiles]}
 
 
 @router.post("/profiles")
@@ -100,6 +96,7 @@ async def delete_profile(profile_id: str) -> dict:
 
 # ── PIN management ──────────────────────────────────────────────────────────
 
+
 class VerifyPinRequest(BaseModel):
     pin: str = Field(min_length=4, max_length=20)
 
@@ -136,6 +133,7 @@ async def extend_daily_usage(profile_id: str, request: ExtendUsageRequest) -> di
 
 
 # ── Book assignments ────────────────────────────────────────────────────────
+
 
 class AssignBookRequest(BaseModel):
     document_id: str
@@ -177,7 +175,9 @@ async def assign_book(profile_id: str, request: AssignBookRequest) -> dict:
 
 
 @router.put("/profiles/{profile_id}/books/{document_id}")
-async def update_assignment(profile_id: str, document_id: str, request: UpdateAssignmentRequest) -> dict:
+async def update_assignment(
+    profile_id: str, document_id: str, request: UpdateAssignmentRequest
+) -> dict:
     manager = get_kids_manager()
     try:
         assignment = manager.update_assignment(
@@ -196,6 +196,7 @@ async def unassign_book(profile_id: str, document_id: str) -> dict:
 
 # ── Adult library (for parent to browse and pick books) ─────────────────────
 
+
 @router.get("/library")
 async def adult_library() -> dict:
     """List all imported documents that the parent can assign to children."""
@@ -206,13 +207,13 @@ async def adult_library() -> dict:
     # Annotate each document with which profiles it's assigned to
     for doc in documents:
         doc["assigned_profile_ids"] = [
-            a.profile_id for a in assignments
-            if a.document_id == doc["id"]
+            a.profile_id for a in assignments if a.document_id == doc["id"]
         ]
     return {"documents": documents}
 
 
 # ── Learning reports ────────────────────────────────────────────────────────
+
 
 @router.get("/profiles/{profile_id}/report")
 async def learning_report(profile_id: str) -> dict:

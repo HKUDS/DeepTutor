@@ -76,8 +76,6 @@ class KidsProgressRequest(BaseModel):
     section_href: str = Field(default="", max_length=500)
 
 
-
-
 async def _execute_search(document_id: str, request: SearchRequest) -> dict[str, Any]:
     service = get_immersive_reading_service()
     if request.mode == "description_fast":
@@ -410,9 +408,7 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
         raise HTTPException(status_code=404, detail="Document not found")
 
     sections = doc.sections
-    target_index = next(
-        (s.index for s in sections if s.id == request.section_id), 0
-    )
+    target_index = next((s.index for s in sections if s.id == request.section_id), 0)
 
     if request.scope == "current":
         chosen = [sections[target_index]] if target_index < len(sections) else []
@@ -437,8 +433,7 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
     content_hash = hashlib.sha256(combined.encode()).hexdigest()[:16]
 
     cache_path = (
-        service._document_root(document_id)
-        / f"character_graph_{request.scope}_{content_hash}.json"
+        service._document_root(document_id) / f"character_graph_{request.scope}_{content_hash}.json"
     )
     if not request.force_refresh and cache_path.exists():
         try:
@@ -446,11 +441,7 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
         except Exception:
             pass
 
-    language = (
-        "zh"
-        if any("\u4e00" <= ch <= "\u9fff" for ch in combined[:500])
-        else "en"
-    )
+    language = "zh" if any("\u4e00" <= ch <= "\u9fff" for ch in combined[:500]) else "en"
 
     try:
         graph = await extract_character_graph(
@@ -492,9 +483,7 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
     }
 
     try:
-        cache_path.write_text(
-            _json.dumps(payload, ensure_ascii=False), encoding="utf-8"
-        )
+        cache_path.write_text(_json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
 
@@ -523,9 +512,7 @@ async def generate_kids_quiz(document_id: str, request: KidsQuizRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Kids quiz generation failed document=%s", document_id)
-        raise HTTPException(
-            status_code=502, detail=f"Quiz generation failed: {exc}"
-        ) from exc
+        raise HTTPException(status_code=502, detail=f"Quiz generation failed: {exc}") from exc
 
 
 @router.put("/documents/{document_id}/kids-progress")

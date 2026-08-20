@@ -371,13 +371,15 @@ def generate_translation_quiz(
         rng.shuffle(choices)
         answer_index = choices.index(correct)
 
-        questions.append({
-            "id": f"q{i + 1}",
-            "kind": "sight_word",
-            "question": f'What does "{word}" mean?',
-            "choices": choices,
-            "answer_index": answer_index,
-            "explanation": f'"{word}" means: {correct}.',
-        })
+        questions.append(
+            {
+                "id": f"q{i + 1}",
+                "kind": "sight_word",
+                "question": f'What does "{word}" mean?',
+                "choices": choices,
+                "answer_index": answer_index,
+                "explanation": f'"{word}" means: {correct}.',
+            }
+        )
 
     return questions

@@ -40,7 +40,9 @@ def test_get_section_returns_source_content(client: TestClient, imported_documen
     assert "brass compass" in response.json()["content"]
 
 
-def test_progress_endpoint_persists_reader_position(client: TestClient, imported_document: dict) -> None:
+def test_progress_endpoint_persists_reader_position(
+    client: TestClient, imported_document: dict
+) -> None:
     document_id = imported_document["id"]
     section_id = imported_document["sections"][1]["id"]
 

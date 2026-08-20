@@ -61,14 +61,15 @@ def _require_active_profile(profile_id: str = Depends(_require_profile)) -> str:
     if usage["limit_reached"]:
         raise HTTPException(
             status_code=403,
-            detail={"code": "daily_limit_reached", **{key: value for key, value in usage.items() if key != "date"}},
+            detail={
+                "code": "daily_limit_reached",
+                **{key: value for key, value in usage.items() if key != "date"},
+            },
         )
     return profile_id
 
 
-def _issue_session(
-    manager: KidsManager, profile_id: str, response: Response
-) -> dict[str, Any]:
+def _issue_session(manager: KidsManager, profile_id: str, response: Response) -> dict[str, Any]:
     session, token = manager.create_device_session(profile_id, ttl_seconds=_SESSION_TTL_SECONDS)
     response.set_cookie(
         _SESSION_COOKIE,
@@ -85,7 +86,9 @@ def _issue_session(
     }
 
 
-def _active_assignment(manager: KidsManager, profile_id: str, document_id: str) -> KidsBookAssignment:
+def _active_assignment(
+    manager: KidsManager, profile_id: str, document_id: str
+) -> KidsBookAssignment:
     assignment = next(
         (
             item
@@ -179,7 +182,10 @@ async def logout_session(
 @router.get("/library")
 async def kids_library(profile_id: str = Depends(_require_active_profile)) -> dict:
     manager = get_kids_manager()
-    return {"library": manager.get_kids_library(profile_id), "usage": manager.usage_status(profile_id)}
+    return {
+        "library": manager.get_kids_library(profile_id),
+        "usage": manager.usage_status(profile_id),
+    }
 
 
 @router.get("/books/{document_id}")
@@ -352,7 +358,11 @@ async def get_kids_quiz(
 
         fallback_questions = generate_translation_quiz(section_text, age_band=age_band)
         if not fallback_questions:
-            return {"questions": [], "section_id": section.id, "message": "Read more to unlock quizzes!"}
+            return {
+                "questions": [],
+                "section_id": section.id,
+                "message": "Read more to unlock quizzes!",
+            }
         result = KidsQuizResult(
             document_id=document_id,
             section_id=section.id,
@@ -413,7 +423,10 @@ async def submit_kids_quiz(
         raise HTTPException(status_code=400, detail="Quiz is not ready")
     if len(request.answers) > len(cached.questions):
         raise HTTPException(status_code=400, detail="Invalid quiz answer")
-    if any(answer < -1 or answer >= len(cached.questions[i].choices) for i, answer in enumerate(request.answers)):
+    if any(
+        answer < -1 or answer >= len(cached.questions[i].choices)
+        for i, answer in enumerate(request.answers)
+    ):
         raise HTTPException(status_code=400, detail="Invalid quiz answer")
 
     correct = 0
@@ -434,7 +447,11 @@ async def submit_kids_quiz(
         stars = 3
     earned = manager.record_quiz_result(profile_id, document_id, correct, total, stars)
     encouragement = (
-        "Great job!" if correct == total else "Good try!" if correct else "Keep reading and try again!"
+        "Great job!"
+        if correct == total
+        else "Good try!"
+        if correct
+        else "Keep reading and try again!"
     )
     return {
         "score": correct,
