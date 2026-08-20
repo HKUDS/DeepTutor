@@ -47,6 +47,7 @@ from deeptutor.services.llm import LLMProviderTransportError, clean_thinking_tag
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
 from deeptutor.services.llm.request_compat import (
+    error_text,
     is_image_input_unsupported,
     is_stream_options_unsupported,
     is_tool_schema_unsupported,
@@ -894,6 +895,18 @@ class AgentLoop:
                 retry_kwargs.pop("stream_options", None)
                 return await self.client.chat.completions.create(**retry_kwargs)
             if kwargs.get("tools") and is_tool_schema_unsupported(exc):
+                # Capture the provider's raw rejection body. Without it there is
+                # no way to tell *which* parameter/shape a new model family
+                # objects to — the fallback below silently strips tools and the
+                # model degrades to prose with no visible error (see #708:
+                # gpt-5.6-luna/-terra/-sol 400 on tools, root cause still
+                # unconfirmed for lack of this exact log line).
+                logger.warning(
+                    "provider rejected tool schemas for model=%s; retrying without "
+                    "tools. error=%s",
+                    kwargs.get("model"),
+                    error_text(exc),
+                )
                 await self.stream.progress(
                     self.pipeline._t(
                         "notices.tool_schema_fallback",
