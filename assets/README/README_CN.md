@@ -5,7 +5,8 @@
 # DeepTutor：终身个性化辅导
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -327,7 +328,7 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor 聊天智能体循环" width="900">
 </div>
 
-用户可切换的工具有 `brainstorm`、`web_search`、`paper_search`、`reason` 和 `geogebra_analysis` — 配置了对应生成模型后还有 `imagegen` 和 `videogen`。上下文工具如 `rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`github` 和 `consult_subagent` 会在当前轮次具备相应上下文时自动挂载。
+用户可切换的工具有 `brainstorm`、`web_search`、`paper_search`、`reason` 和 `geogebra_analysis` — 配置了对应生成模型后还有 `imagegen` 和 `videogen`。上下文工具如 `rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github` 和 `consult_subagent` 会在当前轮次具备相应上下文时自动挂载。
 
 上下文分为两类：**粘性会话上下文**（子智能体、知识库、人格预设、模型、语音）存在于编辑器工具栏，在各轮次间持续保留；**一次性引用**（文件、聊天历史、书籍、笔记本、题库、导入的智能体）通过 `+` 菜单添加，仅用于单次对话轮次。
 
@@ -420,13 +421,13 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor 知识中心" width="900">
 </div>
 
-知识库是 RAG 背后的文档集合 — 为 Chat 对话、Co-Writer 编辑、Book 生成和 Partner 对话提供依据。其独特之处在于**检索引擎的选择**：**LlamaIndex**（默认，本地向量 + BM25）、**PageIndex**（托管，支持页面级引用的推理检索）、**GraphRAG** 和 **LightRAG**（知识图谱检索）、**LightRAG Server**（将检索卸载至你通过 HTTP 连接的外部 LightRAG 实例）、**Tencent IMA**（在 IMA 中维护的知识库 — 通过其 OpenAPI 进行检索、浏览并写回），或直接在原位读写的链接 **Obsidian** vault。每个 KB 绑定到单一引擎。
+知识库是 RAG 背后的文档集合 — 为 Chat 对话、Co-Writer 编辑、Book 生成和 Partner 对话提供依据。其独特之处在于**检索引擎的选择**：**LlamaIndex**（默认，本地向量 + BM25）、**PageIndex**（支持页面级引用的推理检索，托管或自托管 OSS）、**GraphRAG** 和 **LightRAG**（知识图谱检索）、**LightRAG Server**（将检索卸载至你通过 HTTP 连接的外部 LightRAG 实例）、**Tencent IMA**（在 IMA 中维护的知识库 — 通过其 OpenAPI 进行检索、浏览并写回），或直接在原位读写的链接 **Obsidian** vault。每个 KB 绑定到单一引擎。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="创建知识库" width="900">
 </div>
 
-创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
+创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向 Apache Tika 服务器（`TIKA_SERVER_URL`）。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
 
 </details>
 

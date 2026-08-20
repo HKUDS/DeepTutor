@@ -24,6 +24,7 @@ import type {
   BookProposal,
   Page,
   Spine,
+  LearningCapture,
 } from "@/lib/book-types";
 import {
   RESET_BOOK_PROGRESS,
@@ -47,6 +48,7 @@ import BookPausedBanner from "./components/BookPausedBanner";
 import BookProgressTimeline from "./components/BookProgressTimeline";
 import BookSidebar from "./components/BookSidebar";
 import PageReader from "./components/PageReader";
+import LearningCapturePanel from "./components/LearningCapturePanel";
 import SpineEditor from "./components/SpineEditor";
 import type { QuizAttemptArgs } from "./components/blocks/QuizBlock";
 
@@ -142,6 +144,10 @@ function BookPageInner() {
   const [supplementingBlockId, setSupplementingBlockId] = useState<
     string | null
   >(null);
+  const [learningCaptures, setLearningCaptures] = useState<LearningCapture[]>(
+    [],
+  );
+  const [loadingLearningCaptures, setLoadingLearningCaptures] = useState(false);
 
   // Phase 5 — live BookEngine progress timeline state.
   const [progress, dispatchProgress] = useReducer(
@@ -215,6 +221,29 @@ function BookPageInner() {
       }
     },
     [selectedBookId, mergePage],
+  );
+
+  const refreshLearningCaptures = useCallback(
+    async (bookId: string) => {
+      setLoadingLearningCaptures(true);
+      try {
+        const { captures } = await bookApi.listLearningCaptures(bookId);
+        setLearningCaptures(captures);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        notify(
+          t("Could not load learning captures: {{message}}", { message: msg }),
+          {
+            tone: "error",
+            durationMs: 6000,
+          },
+        );
+        setLearningCaptures([]);
+      } finally {
+        setLoadingLearningCaptures(false);
+      }
+    },
+    [t],
   );
 
   // Debounced per page, so a burst of block events costs one fetch.
@@ -402,6 +431,14 @@ function BookPageInner() {
     lastDeepLinkedBookId.current = requestedBookId;
     void handleSelectBook(requestedBookId, requestedPageId);
   }, [requestedBookId, requestedPageId, selectedBookId, handleSelectBook]);
+
+  useEffect(() => {
+    if (view !== "reader" || !selectedBookId) {
+      if (!selectedBookId) setLearningCaptures([]);
+      return;
+    }
+    void refreshLearningCaptures(selectedBookId);
+  }, [view, selectedBookId, refreshLearningCaptures]);
 
   const handleDeleteBook = async (id: string) =>
     guard("Delete book", async () => {
@@ -768,6 +805,68 @@ function BookPageInner() {
     }
   };
 
+  const refreshCapturesSorted = useCallback((captures: LearningCapture[]) => {
+    return [...captures].sort((a, b) => b.updated_at - a.updated_at);
+  }, []);
+
+  const applyCapturePatch = useCallback(
+    (capture: LearningCapture) => {
+      setLearningCaptures((current) =>
+        refreshCapturesSorted(
+          current.some((item) => item.id === capture.id)
+            ? current.map((item) => (item.id === capture.id ? capture : item))
+            : [capture, ...current],
+        ),
+      );
+    },
+    [refreshCapturesSorted],
+  );
+
+  const handleCaptureSelection = async (payload: {
+    page_id: string;
+    block_id: string;
+    source_text: string;
+    context_before?: string;
+    context_after?: string;
+    source_locator?: string;
+  }) => {
+    if (!detail) return;
+    const result = await bookApi.createLearningCapture(detail.book.id, {
+      ...payload,
+      book_title: detail.book.title,
+      chapter_title: selectedPage?.title || "",
+    });
+    applyCapturePatch(result.capture);
+  };
+
+  const handleApproveCapture = async (capture: LearningCapture) => {
+    if (!detail) return;
+    const result = await bookApi.updateLearningCapture(
+      detail.book.id,
+      capture.id,
+      { status: "approved" },
+    );
+    applyCapturePatch(result.capture);
+    notify(t("Capture approved"), {
+      tone: "success",
+      durationMs: 3000,
+    });
+  };
+
+  const handleRejectCapture = async (capture: LearningCapture) => {
+    if (!detail) return;
+    const result = await bookApi.updateLearningCapture(
+      detail.book.id,
+      capture.id,
+      { status: "rejected" },
+    );
+    applyCapturePatch(result.capture);
+    notify(t("Capture rejected"), {
+      tone: "info",
+      durationMs: 3000,
+    });
+  };
+
   const handlePageChatSession = async (sessionId: string) =>
     guard("Link chat session", async () => {
       if (!detail || !selectedPage || !sessionId) return;
@@ -875,52 +974,77 @@ function BookPageInner() {
                 }}
               />
               <div className="min-h-0 flex-1">
-                <PageReader
-                  page={selectedPage}
-                  bookId={detail?.book.id}
-                  bookLanguage={detail?.book.language}
-                  loading={
-                    !!compilingPageId && compilingPageId === selectedPage?.id
-                  }
-                  onRegenerateBlock={(block) =>
-                    void handleRegenerateBlock(block)
-                  }
-                  onDeleteBlock={(block) => void handleDeleteBlock(block)}
-                  onMoveBlock={(block, dir) => void handleMoveBlock(block, dir)}
-                  onChangeBlockType={(block, t) =>
-                    void handleChangeBlockType(block, t)
-                  }
-                  onInsertBlock={(t) => handleInsertBlock(t)}
-                  onDeepDive={(topic, blockId) =>
-                    handleDeepDive(topic, blockId)
-                  }
-                  onOpenPage={(pageId) => handleSelectPage(pageId)}
-                  onQuizAttempt={(block, args) =>
-                    void handleQuizAttempt(block, args)
-                  }
-                  onRequestSupplement={(block) =>
-                    void handleRequestSupplement(block)
-                  }
-                  supplementingBlockId={supplementingBlockId}
-                  onUpdateBody={handleUpdateBody}
-                  attempts={detail?.progress.quiz_attempts}
-                  previousPage={pageNeighbours.previous}
-                  nextPage={pageNeighbours.next}
-                  onNavigate={handleSelectPage}
-                  bookmarked={
-                    !!selectedPage &&
-                    !!detail?.progress.bookmarked_page_ids.includes(
-                      selectedPage.id,
-                    )
-                  }
-                  onToggleBookmark={() => void handleToggleBookmark()}
-                  pendingDeepDiveTopic={pendingDeepDiveTopic}
-                  onRecompile={
-                    selectedPage
-                      ? () => void compilePage(selectedPage.id, true)
-                      : undefined
-                  }
-                />
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <PageReader
+                    page={selectedPage}
+                    bookId={detail?.book.id}
+                    bookLanguage={detail?.book.language}
+                    loading={
+                      !!compilingPageId && compilingPageId === selectedPage?.id
+                    }
+                    onRegenerateBlock={(block) =>
+                      void handleRegenerateBlock(block)
+                    }
+                    onDeleteBlock={(block) => void handleDeleteBlock(block)}
+                    onMoveBlock={(block, dir) =>
+                      void handleMoveBlock(block, dir)
+                    }
+                    onChangeBlockType={(block, t) =>
+                      void handleChangeBlockType(block, t)
+                    }
+                    onInsertBlock={(t) => handleInsertBlock(t)}
+                    onDeepDive={(topic, blockId) =>
+                      handleDeepDive(topic, blockId)
+                    }
+                    onOpenPage={(pageId) => handleSelectPage(pageId)}
+                    onQuizAttempt={(block, args) =>
+                      void handleQuizAttempt(block, args)
+                    }
+                    onRequestSupplement={(block) =>
+                      void handleRequestSupplement(block)
+                    }
+                    supplementingBlockId={supplementingBlockId}
+                    onUpdateBody={handleUpdateBody}
+                    attempts={detail?.progress.quiz_attempts}
+                    previousPage={pageNeighbours.previous}
+                    nextPage={pageNeighbours.next}
+                    onNavigate={handleSelectPage}
+                    bookmarked={
+                      !!selectedPage &&
+                      !!detail?.progress.bookmarked_page_ids.includes(
+                        selectedPage.id,
+                      )
+                    }
+                    onToggleBookmark={() => void handleToggleBookmark()}
+                    pendingDeepDiveTopic={pendingDeepDiveTopic}
+                    onRecompile={
+                      selectedPage
+                        ? () => void compilePage(selectedPage.id, true)
+                        : undefined
+                    }
+                    onCaptureSelection={(payload) =>
+                      void guard("Save selection", () =>
+                        handleCaptureSelection(payload),
+                      )
+                    }
+                  />
+                </div>
+                <div className="border-t border-[var(--border)]">
+                  <LearningCapturePanel
+                    captures={learningCaptures}
+                    loading={loadingLearningCaptures}
+                    onApprove={(capture) =>
+                      void guard("Approve capture", () =>
+                        handleApproveCapture(capture),
+                      )
+                    }
+                    onReject={(capture) =>
+                      void guard("Reject capture", () =>
+                        handleRejectCapture(capture),
+                      )
+                    }
+                  />
+                </div>
               </div>
             </div>
           )}

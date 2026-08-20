@@ -15,9 +15,7 @@
 import type * as PdfjsModule from "pdfjs-dist";
 
 export type Pdfjs = typeof PdfjsModule;
-export type PdfDocument = Awaited<
-  ReturnType<Pdfjs["getDocument"]>["promise"]
->;
+export type PdfDocument = Awaited<ReturnType<Pdfjs["getDocument"]>["promise"]>;
 export type PdfPageProxy = Awaited<ReturnType<PdfDocument["getPage"]>>;
 
 let pending: Promise<Pdfjs> | null = null;

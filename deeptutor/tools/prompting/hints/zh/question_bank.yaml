@@ -1,0 +1,6 @@
+short_description: "查看和整理用户的题库——即「学习空间 → 题库」里已作答的题目。注意：这不是笔记本。"
+when_to_use: "只要用户提到自己的题目、错题、题库、想复习/归类/整理它们，就用这个工具。标准顺序：先 action='overview'（拿到统计和已有的分类名），再 action='list' 拿到题目 id，最后 action='organize' 把这些 id 归入某个分类。这种需求绝不要用 `write_note`——笔记本存的是文字记录，题库存的是带答案的题目，把错题写进笔记本是存错了地方。"
+input_format: "overview: {\"action\": \"overview\"}。list: {\"action\": \"list\", \"filter\": \"wrong\" | \"uncategorized\" | \"bookmarked\" | \"all\", \"category\": 可选分类名, \"search\": 可选关键词, \"limit\": 可选}。organize / unfile: {\"action\": \"organize\", \"entry_ids\": [12, 15], \"category\": \"微积分错题\"}。bookmark: {\"action\": \"bookmark\", \"entry_ids\": [12], \"bookmarked\": true}。"
+guideline: "`entry_ids` 是 `list` 输出中方括号里的数字——不要凭空编造，一定先 list 再操作。`organize` 在分类名不存在时会自动新建，所以「把错题归到我新建的 X 题库」是一次 organize 调用就能完成，不需要先建后归。已有分类能对上就原样复用（overview 会列出来），不要造出近似重名的分类。filter='uncategorized' 是尚未归类的待整理区，用户说「帮我整理题库」时从这里入手。"
+note: "题库里没有任何题目时此工具不会出现。改动即时生效，用户在「学习空间 → 题库」里立刻能看到。结果里会说明实际归入了几道、是否新建了分类——如实转述，不要夸大。"
+phase: "synthesis"

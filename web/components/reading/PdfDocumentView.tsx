@@ -182,13 +182,17 @@ export function PdfDocumentView({
       for (const page of pages) {
         const rect = page.getBoundingClientRect();
         const covered =
-          Math.min(rect.bottom, rootRect.bottom) - Math.max(rect.top, rootRect.top);
+          Math.min(rect.bottom, rootRect.bottom) -
+          Math.max(rect.top, rootRect.top);
         if (covered <= 0) continue;
         const locator = Number(page.dataset.readerUnit ?? "0");
         if (!locator) continue;
         if (!best || covered > best.covered) best = { locator, covered };
       }
-      if (best) setVisibleLocator((current) => (current === best.locator ? current : best.locator));
+      if (best)
+        setVisibleLocator((current) =>
+          current === best.locator ? current : best.locator,
+        );
     };
 
     const onScroll = () => {
@@ -219,7 +223,8 @@ export function PdfDocumentView({
    */
   const isActive = useCallback(
     (locator: number) => {
-      const near = (anchor: number) => Math.abs(locator - anchor) <= RENDER_MARGIN;
+      const near = (anchor: number) =>
+        Math.abs(locator - anchor) <= RENDER_MARGIN;
       return near(visibleLocator) || (jump ? near(jump.locator) : false);
     },
     [visibleLocator, jump],
@@ -321,7 +326,8 @@ export function PdfDocumentView({
   // superseded by derivation — no timer, and no way for a stale highlight to
   // outlive the request behind it. The mark itself persists until then; see the
   // `dt-reader-flash` rules for why it does not fade out.
-  const activeFlash = flash && jump && flash.nonce === jump.nonce ? flash : null;
+  const activeFlash =
+    flash && jump && flash.nonce === jump.nonce ? flash : null;
 
   // -- selection -----------------------------------------------------------
 
@@ -419,7 +425,9 @@ export function PdfDocumentView({
                 annotations={annotations}
                 highlightedAnnotationId={highlightedAnnotationId}
                 flashRects={
-                  activeFlash?.locator === locator ? activeFlash.rects : undefined
+                  activeFlash?.locator === locator
+                    ? activeFlash.rects
+                    : undefined
                 }
                 onAnnotationClick={onAnnotationClick}
               />

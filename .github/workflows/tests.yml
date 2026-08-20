@@ -76,6 +76,14 @@ jobs:
         working-directory: web
         run: npm run test:node
 
+      # eslint was not a gate, so #921 landed two real React violations: a
+      # predicate named like a hook (tripping rules-of-hooks) and a synchronous
+      # setState inside an effect. Errors only — the repo still carries i18n
+      # literal warnings, and turning those red is a separate cleanup.
+      - name: Lint frontend
+        working-directory: web
+        run: npx eslint .
+
   import-check:
     name: Import Check (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

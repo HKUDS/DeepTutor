@@ -5,7 +5,8 @@
 # DeepTutor: การสอนพิเศษส่วนตัวตลอดชีวิต
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -327,7 +328,7 @@ Chat คือความสามารถเริ่มต้นและส
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor chat agent loop" width="900">
 </div>
 
-เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `github`, และ `consult_subagent` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
+เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, และ `consult_subagent` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
 
 บริบทมีสองประเภท: **sticky session context** (subagent, knowledge bases, persona, model, voice) อยู่บน composer toolbar และคงอยู่ตลอด turns; **one-time references** (ไฟล์, ประวัติ chat, หนังสือ, notebooks, question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว
 
@@ -420,13 +421,13 @@ Book แปลงแหล่งที่มาที่เลือกให้
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-Knowledge bases คือคอลเลกชันเอกสารที่อยู่เบื้องหลัง RAG — รองรับ Chat turns, Co-Writer edits, Book generation และบทสนทนา Partner สิ่งที่โดดเด่นคือ **การเลือกเอ็นจิน retrieval**: **LlamaIndex** (ค่าเริ่มต้น, local vector + BM25), **PageIndex** (hosted, reasoning retrieval พร้อม page-level citations), **GraphRAG** และ **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval ที่ offload ไปยัง LightRAG instance ภายนอกที่คุณเชื่อมต่อผ่าน HTTP), **Tencent IMA** (ไลบรารีที่คุณคัดสรรใน IMA — ค้นหา เรียกดู และเขียนกลับผ่าน OpenAPI ของมัน) หรือ **Obsidian** vault ที่เชื่อมโยง tutor อ่านและเขียนในที่ KB แต่ละอันถูกผูกกับเอ็นจินหนึ่ง
+Knowledge bases คือคอลเลกชันเอกสารที่อยู่เบื้องหลัง RAG — รองรับ Chat turns, Co-Writer edits, Book generation และบทสนทนา Partner สิ่งที่โดดเด่นคือ **การเลือกเอ็นจิน retrieval**: **LlamaIndex** (ค่าเริ่มต้น, local vector + BM25), **PageIndex** (reasoning retrieval พร้อม page-level citations, hosted หรือ self-hosted OSS), **GraphRAG** และ **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval ที่ offload ไปยัง LightRAG instance ภายนอกที่คุณเชื่อมต่อผ่าน HTTP), **Tencent IMA** (ไลบรารีที่คุณคัดสรรใน IMA — ค้นหา เรียกดู และเขียนกลับผ่าน OpenAPI ของมัน) หรือ **Obsidian** vault ที่เชื่อมโยง tutor อ่านและเขียนในที่ KB แต่ละอันถูกผูกกับเอ็นจินหนึ่ง
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">
 </div>
 
-เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
+เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika (`TIKA_SERVER_URL`) CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
 
 </details>
 

@@ -5,7 +5,8 @@
 # DeepTutor: تدريس شخصي مدى الحياة
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="الوثائق — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="الوثائق — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -327,7 +328,7 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="حلقة وكيل محادثة DeepTutor" width="900">
 </div>
 
-الأدوات القابلة للتبديل من قِبَل المستخدم هي `brainstorm` و`web_search` و`paper_search` و`reason` و`geogebra_analysis` — بالإضافة إلى `imagegen` و`videogen` بمجرد تهيئة نموذج التوليد المطابق. الأدوات السياقية مثل `rag` و`kb_files` و`read_source` و`read_memory` و`write_memory` و`read_skill` و`load_tools` و`exec` و`web_fetch` و`ask_user` و`list_notebook` و`write_note` و`github` و`consult_subagent` تُثبَّت تلقائياً عندما يكون للدور السياق الصحيح.
+الأدوات القابلة للتبديل من قِبَل المستخدم هي `brainstorm` و`web_search` و`paper_search` و`reason` و`geogebra_analysis` — بالإضافة إلى `imagegen` و`videogen` بمجرد تهيئة نموذج التوليد المطابق. الأدوات السياقية مثل `rag` و`kb_files` و`read_source` و`read_memory` و`write_memory` و`read_skill` و`load_tools` و`exec` و`web_fetch` و`ask_user` و`list_notebook` و`write_note` و`question_bank` و`github` و`consult_subagent` تُثبَّت تلقائياً عندما يكون للدور السياق الصحيح.
 
 يأتي السياق في نوعين: **السياق اللاصق للجلسة** (الوكيل الفرعي وقواعد المعرفة والشخصية والنموذج والصوت) يعيش على شريط أدوات المؤلف ويستمر عبر الأدوار؛ **المراجع لمرة واحدة** (الملفات وتاريخ المحادثة والكتب ودفاتر الملاحظات وبنك الأسئلة والوكلاء المستوردون) تأتي من قائمة `+` لدور واحد.
 
@@ -420,13 +421,13 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="مركز المعرفة في DeepTutor" width="900">
 </div>
 
-قواعد المعرفة هي مجموعات المستندات وراء RAG — إنها ترسّخ أدوار Chat وتحرير Co-Writer وتوليد Book ومحادثات Partner. ما يميزها هو **اختيار محرك الاسترجاع**: **LlamaIndex** (الافتراضي، ناقل محلي + BM25)، **PageIndex** (مستضاف، استرجاع تفكيري مع استشهادات على مستوى الصفحة)، **GraphRAG** و**LightRAG** (استرجاع قائم على الرسم البياني المعرفي)، **LightRAG Server** (استرجاع مُحال إلى نسخة LightRAG خارجية تتصل بها عبر HTTP)، **Tencent IMA** (مكتبة تنظّمها ضمن IMA — يُبحث فيها ويُتصفَّح ويُكتَب إليها عبر OpenAPI الخاصة بها)، أو مخزن **Obsidian** مرتبط يقرأ المدرس ويكتب فيه في مكانه. كل قاعدة معرفة مرتبطة بمحرك واحد.
+قواعد المعرفة هي مجموعات المستندات وراء RAG — إنها ترسّخ أدوار Chat وتحرير Co-Writer وتوليد Book ومحادثات Partner. ما يميزها هو **اختيار محرك الاسترجاع**: **LlamaIndex** (الافتراضي، ناقل محلي + BM25)، **PageIndex** (استرجاع تفكيري مع استشهادات على مستوى الصفحة، مستضاف أو مفتوح المصدر ذاتي الاستضافة)، **GraphRAG** و**LightRAG** (استرجاع قائم على الرسم البياني المعرفي)، **LightRAG Server** (استرجاع مُحال إلى نسخة LightRAG خارجية تتصل بها عبر HTTP)، **Tencent IMA** (مكتبة تنظّمها ضمن IMA — يُبحث فيها ويُتصفَّح ويُكتَب إليها عبر OpenAPI الخاصة بها)، أو مخزن **Obsidian** مرتبط يقرأ المدرس ويكتب فيه في مكانه. كل قاعدة معرفة مرتبطة بمحرك واحد.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="إنشاء قاعدة معرفة" width="900">
 </div>
 
-عند إنشاء قاعدة معرفة، إما أن **تنشئ جديدة** (تحميل مستندات وبناء فهرس جديد) أو **تربط موجودة** (إعادة استخدام فهرس مبني في مكان آخر، قراءة في مكانه بدون إعادة فهرسة). تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. تحليل المستندات — نص فقط أو MinerU أو Docling أو markitdown أو PyMuPDF4LLM أو LiteParse — يُختار في **الإعدادات ← قاعدة المعرفة**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. يمكن لـ Docling أيضاً العمل في وضع **بعيد** مقابل خادم Docling Serve (بلا حاجة إلى تثبيت محلي أو نماذج)، يُهيَّأ عبر **الإعدادات ← تحليل المستندات** (`mode=remote`، وعنوان URL أساسي للخادم، ومفتاح API اختياري) أو متغيرات البيئة `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. تعكس واجهة CLI دورة الحياة مع `deeptutor kb list` و`info` و`create` و`add` و`search` و`set-default` و`delete`.
+عند إنشاء قاعدة معرفة، إما أن **تنشئ جديدة** (تحميل مستندات وبناء فهرس جديد) أو **تربط موجودة** (إعادة استخدام فهرس مبني في مكان آخر، قراءة في مكانه بدون إعادة فهرسة). تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. تحليل المستندات — نص فقط أو MinerU أو Docling أو Tika أو markitdown أو PyMuPDF4LLM أو LiteParse — يُختار في **الإعدادات ← قاعدة المعرفة**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. يمكن لـ Docling أيضاً العمل في وضع **بعيد** مقابل خادم Docling Serve (بلا حاجة إلى تثبيت محلي أو نماذج)، يُهيَّأ عبر **الإعدادات ← تحليل المستندات** (`mode=remote`، وعنوان URL أساسي للخادم، ومفتاح API اختياري) أو متغيرات البيئة `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. أما Tika فهو بعيد فقط ويشير إلى خادم Apache Tika (`TIKA_SERVER_URL`). تعكس واجهة CLI دورة الحياة مع `deeptutor kb list` و`info` و`create` و`add` و`search` و`set-default` و`delete`.
 
 </details>
 

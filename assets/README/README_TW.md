@@ -5,7 +5,8 @@
 # DeepTutor：終身個人化學習導師
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -327,7 +328,7 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor Chat 代理程式迴圈" width="900">
 </div>
 
-使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`github` 與 `consult_subagent` 等情境式工具，會在回合具有相符情境時自動掛載。
+使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github` 與 `consult_subagent` 等情境式工具，會在回合具有相符情境時自動掛載。
 
 情境分成兩類：**固定的工作階段情境**（子代理程式、知識庫、角色設定、模型、語音）位於輸入框工具列，並會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、筆記本、題庫、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。
 
@@ -420,13 +421,13 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-知識庫是 RAG 背後的文件集合，可為 Chat 回合、Co-Writer 編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，本機 vector＋BM25）、**PageIndex**（託管式、可推理的檢索並附頁面層級引用）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
+知識庫是 RAG 背後的文件集合，可為 Chat 回合、Co-Writer 編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，本機 vector＋BM25）、**PageIndex**（可推理的檢索並附頁面層級引用，支援託管式或自架 OSS）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="建立知識庫" width="900">
 </div>
 
-建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立全新索引），或**連結現有知識庫**（重複使用在其他位置建立的索引、就地讀取且不重新建立索引）。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、markitdown 或 PyMuPDF4LLM）可在 **Settings → Knowledge Base** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可透過 **Settings → Document Parsing**（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。CLI 也提供對應的完整生命週期指令：`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 與 `delete`。
+建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立全新索引），或**連結現有知識庫**（重複使用在其他位置建立的索引、就地讀取且不重新建立索引）。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown 或 PyMuPDF4LLM）可在 **Settings → Knowledge Base** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可透過 **Settings → Document Parsing**（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至 Apache Tika 伺服器（`TIKA_SERVER_URL`）。CLI 也提供對應的完整生命週期指令：`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 與 `delete`。
 
 </details>
 

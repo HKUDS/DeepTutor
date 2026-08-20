@@ -23,12 +23,63 @@ from .config import (
     build_embedding_func,
     build_llm_model_func,
     build_vision_model_func,
+    indexing_kwargs_from_settings,
+    lightrag_kwargs_from_settings,
     normalize_mode,
     query_kwargs_from_settings,
 )
 from .worker import OwnerLoopBridge
 
 logger = logging.getLogger(__name__)
+
+
+def _accepts(target: Any, name: str) -> bool:
+    """Whether ``target``'s constructor takes a keyword called *name*.
+
+    The settings knobs below ride on RAG-Anything parameters that arrived in
+    different releases — ``lightrag_kwargs`` only exists from ~1.2.5, while the
+    supported range starts at 1.0.1. Asking first keeps an older install
+    working on RAG-Anything's own defaults instead of dying with a TypeError
+    that takes the whole LightRAG engine down. Same defensive posture the query
+    path already takes for ``QueryParam`` kwargs.
+    """
+    import inspect
+
+    try:
+        return name in inspect.signature(target).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _drop_unsupported(target: Any, kwargs: dict[str, Any], *, what: str) -> dict[str, Any]:
+    supported = {key: value for key, value in kwargs.items() if _accepts(target, key)}
+    for key in kwargs.keys() - supported.keys():
+        logger.warning(
+            "Installed RAG-Anything does not accept %s=%r on %s; leaving it at "
+            "the library default. Upgrade raganything to use this setting.",
+            key,
+            kwargs[key],
+            what,
+        )
+    return supported
+
+
+def _build_config(config_cls: Any, working_dir: Path) -> Any:
+    knobs = _drop_unsupported(config_cls, indexing_kwargs_from_settings(), what="RAGAnythingConfig")
+    return config_cls(working_dir=str(working_dir), **knobs)
+
+
+def _construct(rag_cls: Any, **kwargs: Any) -> Any:
+    extra = lightrag_kwargs_from_settings()
+    if extra and _accepts(rag_cls, "lightrag_kwargs"):
+        kwargs["lightrag_kwargs"] = extra
+    elif extra:
+        logger.warning(
+            "Installed RAG-Anything has no lightrag_kwargs passthrough; %s stay "
+            "at LightRAG's defaults. Upgrade raganything to use these settings.",
+            ", ".join(sorted(extra)),
+        )
+    return rag_cls(**kwargs)
 
 
 def build_rag(working_dir: Path, *, io_bridge: OwnerLoopBridge | None = None) -> Any:
@@ -39,14 +90,14 @@ def build_rag(working_dir: Path, *, io_bridge: OwnerLoopBridge | None = None) ->
     """
     from raganything import RAGAnything, RAGAnythingConfig
 
-    config = RAGAnythingConfig(working_dir=str(working_dir))
+    config = _build_config(RAGAnythingConfig, working_dir)
     adapter_kwargs = {"io_bridge": io_bridge} if io_bridge is not None else {}
-    rag = RAGAnything(
-        config=config,
-        llm_model_func=build_llm_model_func(**adapter_kwargs),
-        vision_model_func=build_vision_model_func(**adapter_kwargs),
-        embedding_func=build_embedding_func(**adapter_kwargs),
-    )
+    funcs = {
+        "llm_model_func": build_llm_model_func(**adapter_kwargs),
+        "vision_model_func": build_vision_model_func(**adapter_kwargs),
+        "embedding_func": build_embedding_func(**adapter_kwargs),
+    }
+    rag = _construct(RAGAnything, config=config, **funcs)
     # DeepTutor always feeds RAG-Anything a pre-parsed ``content_list`` (the
     # parse layer runs upstream via DeepTutor's own ParseService), so
     # RAG-Anything's bundled document parser is never invoked. Its LightRAG init

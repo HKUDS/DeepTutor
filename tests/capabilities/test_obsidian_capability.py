@@ -52,6 +52,28 @@ def test_vault_search_and_list_skip_internal_dirs(tmp_path: Path) -> None:
     assert all(".obsidian" not in p for p in V.list_notes(tmp_path))
 
 
+def test_vault_search_survives_undecodable_note(tmp_path: Path) -> None:
+    # Issue #915: one undecodable byte must not abort the whole vault search.
+    _seed_vault(tmp_path)
+    (tmp_path / "broken.md").write_bytes(b"hello \xe5\xaa world\n")
+    assert [h["path"] for h in V.search_notes(tmp_path, "light")] == ["notes/Photosynthesis.md"]
+
+
+def test_vault_read_tolerates_undecodable_bytes(tmp_path: Path) -> None:
+    # Issue #915: read_note should degrade (replacement char) instead of raising.
+    (tmp_path / "broken.md").write_bytes(b"# title\nhello \xe5\xaa world\n")
+    note = V.read_note(tmp_path, "broken")
+    assert "\ufffd" in note["body"]
+
+
+def test_vault_scans_survive_undecodable_note(tmp_path: Path) -> None:
+    # Issue #915: backlinks and tag collection iterate the same files.
+    _seed_vault(tmp_path)
+    (tmp_path / "broken.md").write_bytes(b"hello \xe5\xaa world\n")
+    assert [b["path"] for b in V.backlinks(tmp_path, "Photosynthesis")] == ["Index.md"]
+    assert {row["tag"] for row in V.collect_tags(tmp_path)} == {"biology"}
+
+
 def test_vault_links_and_backlinks_follow_wikilinks(tmp_path: Path) -> None:
     _seed_vault(tmp_path)
     assert V.outgoing_links(tmp_path, "Photosynthesis") == ["Chlorophyll"]
@@ -173,6 +195,20 @@ async def test_read_missing_note_is_graceful(tmp_path: Path) -> None:
     assert res.success is False  # VaultError surfaced as a clean failure
 
 
+@pytest.mark.asyncio
+async def test_read_note_with_date_frontmatter(tmp_path: Path) -> None:
+    # Issue #914: unquoted YAML dates parse to datetime.date, which json.dumps
+    # cannot serialize without default=str — obsidian_read must not crash.
+    (tmp_path / "dated.md").write_text(
+        "---\ntype: item-bank\ncreated: 2026-08-11\n---\n\n# Body\n\ntext\n",
+        encoding="utf-8",
+    )
+    res = await ObsidianReadTool().execute(note="dated.md", _vault_path=str(tmp_path))
+    assert res.success is True
+    payload = json.loads(res.content)
+    assert payload["frontmatter"]["created"] == "2026-08-11"
+
+
 # ---- exclusivity & registry --------------------------------------------------
 
 
@@ -237,3 +273,70 @@ def test_obsidian_vault_refs_enumerates_every_selected_vault(monkeypatch, tmp_pa
     monkeypatch.setattr("deeptutor.multi_user.knowledge_access.resolve_kb_metadata", fake)
     ctx = UnifiedContext(user_message="hi", knowledge_bases=["vaultA", "kb1", "vaultB"])
     assert obsidian_binding.obsidian_vault_refs(ctx) == {"vaultA", "vaultB"}
+
+
+# ---- failures must be legible, and must not corrupt the vault ----------------
+
+
+def _write_undecodable(root: Path, name: str = "broken.md") -> Path:
+    path = root / name
+    path.write_bytes(b"hello \xe5\xaa world\n")
+    return path
+
+
+def test_vault_refuses_to_rewrite_an_undecodable_note(tmp_path: Path) -> None:
+    """Lenient reads have a strict counterpart: a read-modify-write must not
+    launder undecodable bytes into U+FFFD, and must say so as a VaultError so
+    the tool layer can explain it instead of failing opaquely."""
+    path = _write_undecodable(tmp_path)
+    original = path.read_bytes()
+
+    for operation in (
+        lambda: V.append_note(tmp_path, "broken", "more"),
+        lambda: V.set_property(tmp_path, "broken", "status", "draft"),
+    ):
+        with pytest.raises(V.VaultError, match="not valid UTF-8"):
+            operation()
+
+    assert path.read_bytes() == original
+
+
+@pytest.mark.asyncio
+async def test_append_to_undecodable_note_explains_itself(tmp_path: Path) -> None:
+    """The model gets a message it can act on, not an unknown error."""
+    _write_undecodable(tmp_path)
+
+    res = await ObsidianAppendTool().execute(
+        note="broken.md", content="x", _vault_path=str(tmp_path)
+    )
+
+    assert res.success is False
+    assert "not valid UTF-8" in res.content and "encoding" in res.content
+
+
+@pytest.mark.asyncio
+async def test_datetime_frontmatter_serialises_as_iso(tmp_path: Path) -> None:
+    """A YAML timestamp is a datetime; str() would render it with a space."""
+    (tmp_path / "stamped.md").write_text(
+        "---\ncreated: 2026-08-11 09:30:00\n---\n\nbody\n", encoding="utf-8"
+    )
+
+    res = await ObsidianReadTool().execute(note="stamped.md", _vault_path=str(tmp_path))
+
+    assert json.loads(res.content)["frontmatter"]["created"] == "2026-08-11T09:30:00"
+
+
+@pytest.mark.asyncio
+async def test_unexpected_tool_failure_names_its_cause(tmp_path: Path, monkeypatch) -> None:
+    """Issue #914: a non-VaultError escaping the tool left the model with
+    "An unknown error occurred" and nothing to act on."""
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("disk went away")
+
+    monkeypatch.setattr(V, "read_note", boom)
+
+    res = await ObsidianReadTool().execute(note="whatever", _vault_path=str(tmp_path))
+
+    assert res.success is False
+    assert "RuntimeError" in res.content and "disk went away" in res.content

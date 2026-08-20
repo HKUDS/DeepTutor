@@ -63,9 +63,10 @@ export function readerActionFrom(event: {
 
   const outer = metadata as Record<string, unknown>;
   const nested = outer.tool_metadata;
-  const raw = (
-    nested && typeof nested === "object" ? nested : outer
-  ) as Record<string, unknown>;
+  const raw = (nested && typeof nested === "object" ? nested : outer) as Record<
+    string,
+    unknown
+  >;
   const action = raw.reader_action;
   if (action !== "goto" && action !== "annotate") return null;
 
@@ -99,7 +100,9 @@ export function forwardReaderAction(event: {
   const payload = readerActionFrom(event);
   if (payload) {
     if (payload.reader_action === "goto") rememberMoved(turnId);
-    window.dispatchEvent(new CustomEvent(READER_ACTION_EVENT, { detail: payload }));
+    window.dispatchEvent(
+      new CustomEvent(READER_ACTION_EVENT, { detail: payload }),
+    );
     return;
   }
 

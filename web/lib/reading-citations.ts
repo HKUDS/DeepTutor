@@ -50,7 +50,8 @@ const CITATION = /\[p\.\s*(\d[\d\s,–—-]*)\]/gi;
  */
 export function codeRanges(text: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
-  const fence = /(^|\n)[ \t]*(`{3,}|~{3,})[^\n]*\n?[\s\S]*?(?:\n[ \t]*\2[ \t]*(?=\n|$)|$)/g;
+  const fence =
+    /(^|\n)[ \t]*(`{3,}|~{3,})[^\n]*\n?[\s\S]*?(?:\n[ \t]*\2[ \t]*(?=\n|$)|$)/g;
   let match: RegExpExecArray | null;
   while ((match = fence.exec(text)) !== null) {
     ranges.push([match.index, match.index + match[0].length]);
@@ -93,7 +94,6 @@ function parseLocatorList(body: string): number[] {
   return [...found].sort((a, b) => a - b);
 }
 
-
 /**
  * Words a model uses when it names a location in prose, per unit kind.
  *
@@ -107,7 +107,7 @@ const SPELLED_OUT_LOCATION = new RegExp(
     "|" +
     // Chinese: "第 3 页", "第3章", "第 3 节", "第3张幻灯片"
     "第\\s*(\\d+)\\s*(?:页|章|节|张幻灯片|张)" +
-  ")",
+    ")",
   "gi",
 );
 
@@ -251,7 +251,9 @@ export function linkifyLocatorCitations(
 }
 
 /** Locator encoded in an anchor href, or null when it is a different link. */
-export function locatorFromHref(href: string | null | undefined): number | null {
+export function locatorFromHref(
+  href: string | null | undefined,
+): number | null {
   if (!href || !href.startsWith(LOCATOR_HREF_PREFIX)) return null;
   const parsed = Number(href.slice(LOCATOR_HREF_PREFIX.length));
   return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;

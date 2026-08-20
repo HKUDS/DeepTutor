@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
   ClipboardList,
+  Ear,
+  Github,
   GraduationCap,
   History,
   NotebookPen,
@@ -43,7 +45,8 @@ type DashKey =
   | "skills"
   | "mcp"
   | "cli_apps"
-  | "mastery_path";
+  | "mastery_path"
+  | "whisper";
 
 interface DashboardItem {
   key: DashKey;
@@ -51,11 +54,21 @@ interface DashboardItem {
   icon: LucideIcon;
   title: Lang;
   blurb: Lang;
-  /** Unit shown after the live count, e.g. "168 conversations". */
-  unit: Lang;
+  /**
+   * Unit shown after the live count, e.g. "168 conversations". Omitted
+   * together with ``load`` for a tile that has nothing to count.
+   */
+  unit?: Lang;
   /** Icon-tile accent — full class strings so Tailwind keeps them. */
   tile: string;
-  load: () => Promise<number>;
+  /**
+   * Live count for the tile. Optional: a surface with no countable rows (an
+   * ephemeral room, say) renders as title + blurb instead of showing a
+   * permanently-loading number.
+   */
+  load?: () => Promise<number>;
+  /** GitHub handle of the contributor this surface came from. */
+  credit?: string;
 }
 
 interface DashboardGroup {
@@ -187,6 +200,23 @@ const GROUPS: DashboardGroup[] = [
       },
     ],
   },
+  {
+    label: { zh: "更多项目", en: "More Projects" },
+    items: [
+      {
+        key: "whisper",
+        href: "/whisper",
+        icon: Ear,
+        title: { zh: "密语", en: "Whisper" },
+        blurb: {
+          zh: "双席位咨询练习房间：督导只对受训者耳语。",
+          en: "Dual-seat practice room — the supervisor whispers to the trainee only.",
+        },
+        tile: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
+        credit: "alanguan73",
+      },
+    ],
+  },
 ];
 
 const ALL_ITEMS = GROUPS.flatMap((g) => g.items);
@@ -203,6 +233,7 @@ export default function SpaceDashboard() {
     // Each tile loads independently so one slow/failed endpoint never blanks
     // the whole dashboard.
     for (const item of ALL_ITEMS) {
+      if (!item.load) continue;
       item
         .load()
         .then((n) => {
@@ -286,20 +317,22 @@ function DashboardCard({
           <h3 className="truncate text-[14.5px] font-medium leading-tight tracking-tight text-[var(--foreground)]">
             {tr(item.title)}
           </h3>
-          <div className="mt-1 flex items-baseline gap-1.5">
-            {loaded ? (
-              <>
-                <span className="text-[20px] font-semibold leading-none tabular-nums text-[var(--foreground)]">
-                  {formatted}
-                </span>
-                <span className="text-[12px] text-[var(--muted-foreground)]">
-                  {tr(item.unit)}
-                </span>
-              </>
-            ) : (
-              <span className="my-[3px] h-3.5 w-12 animate-pulse rounded bg-[var(--muted)]" />
-            )}
-          </div>
+          {item.unit ? (
+            <div className="mt-1 flex items-baseline gap-1.5">
+              {loaded ? (
+                <>
+                  <span className="text-[20px] font-semibold leading-none tabular-nums text-[var(--foreground)]">
+                    {formatted}
+                  </span>
+                  <span className="text-[12px] text-[var(--muted-foreground)]">
+                    {tr(item.unit)}
+                  </span>
+                </>
+              ) : (
+                <span className="my-[3px] h-3.5 w-12 animate-pulse rounded bg-[var(--muted)]" />
+              )}
+            </div>
+          ) : null}
         </div>
         <ArrowUpRight
           size={16}
@@ -309,6 +342,12 @@ function DashboardCard({
       <p className="mt-3 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
         {tr(item.blurb)}
       </p>
+      {item.credit ? (
+        <span className="mt-2.5 inline-flex items-center gap-1 self-start text-[11px] leading-none text-[var(--muted-foreground)] opacity-60">
+          <Github size={11} strokeWidth={1.8} aria-hidden />
+          {item.credit}
+        </span>
+      ) : null}
     </Link>
   );
 }

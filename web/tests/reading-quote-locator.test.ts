@@ -72,12 +72,17 @@ test("softens punctuation the PDF renders differently", () => {
 });
 
 test("softens a dash mismatch", () => {
-  const found = findQuoteRange(["a state—of—the—art result"], "state-of-the-art");
+  const found = findQuoteRange(
+    ["a state—of—the—art result"],
+    "state-of-the-art",
+  );
   assert.ok(found);
 });
 
 test("falls back to the longest matching prefix of a drifting quote", () => {
-  const spans = ["Positional encoding injects order information into the model."];
+  const spans = [
+    "Positional encoding injects order information into the model.",
+  ];
   const found = findQuoteRange(
     spans,
     "Positional encoding injects order information and then some words that are not in the document at all",
@@ -102,7 +107,10 @@ test("a prefix too short to be credible is not highlighted", () => {
 });
 
 test("returns null rather than guessing when the quote is absent", () => {
-  assert.equal(findQuoteRange(SPANS, "quantum flux capacitor calibration"), null);
+  assert.equal(
+    findQuoteRange(SPANS, "quantum flux capacitor calibration"),
+    null,
+  );
 });
 
 test("returns null for empty inputs", () => {
@@ -132,7 +140,10 @@ test("finds a match at the very end of the last segment", () => {
 });
 
 test("handles CJK text without whitespace cues", () => {
-  const found = findQuoteRange(["本文讨论", "注意力机制的实现细节"], "注意力机制");
+  const found = findQuoteRange(
+    ["本文讨论", "注意力机制的实现细节"],
+    "注意力机制",
+  );
   assert.ok(found);
   assert.equal(found.start.segment, 1);
 });

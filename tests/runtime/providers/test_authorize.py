@@ -1,10 +1,9 @@
 """MCP authorisation across caller kind × grant source.
 
-The matrix matters because the four callers fail in different directions:
-an administrator must not be narrowed by a resource-derived grant, an
-ungranted user must not be widened by one beyond that resource, a partner is
-governed by its own configured filter rather than a (nonexistent) grant, and
-an exclusive knowledge capability must suppress everything it does not own.
+The matrix matters because the callers fail in different directions: an
+administrator must stay unrestricted, an ungranted user must fail closed, a
+partner is governed by its own configured filter rather than a (nonexistent)
+grant, and an exclusive knowledge capability suppresses generic MCP tools.
 """
 
 from __future__ import annotations
@@ -18,11 +17,10 @@ GRANTED = Allowlist.of(["mcp_gh_search"])
 UNGRANTED = Allowlist.of([])  # what allowed_mcp_tools() returns for a plain user
 
 
-def test_admin_stays_unrestricted_even_with_an_implicit_grant() -> None:
+def test_admin_stays_unrestricted() -> None:
     allowed = authorize_mcp_tools(
         scope=ToolScope(owner_id="admin"),
         user_grant=ADMIN_GRANT,
-        implicit_names=["mcp_pageindex_search"],
     )
     assert allowed.is_unrestricted
     assert allowed.allows("mcp_anything_else")
@@ -31,24 +29,6 @@ def test_admin_stays_unrestricted_even_with_an_implicit_grant() -> None:
 def test_ungranted_user_fails_closed() -> None:
     allowed = authorize_mcp_tools(scope=ToolScope(owner_id="u1"), user_grant=UNGRANTED)
     assert allowed.names == frozenset()
-
-
-def test_ungranted_user_gets_only_the_resource_they_hold() -> None:
-    allowed = authorize_mcp_tools(
-        scope=ToolScope(owner_id="u1"),
-        user_grant=UNGRANTED,
-        implicit_names=["mcp_pageindex_search"],
-    )
-    assert allowed.names == frozenset({"mcp_pageindex_search"})
-
-
-def test_granted_user_keeps_grant_plus_resource() -> None:
-    allowed = authorize_mcp_tools(
-        scope=ToolScope(owner_id="u1"),
-        user_grant=GRANTED,
-        implicit_names=["mcp_pageindex_search"],
-    )
-    assert allowed.names == frozenset({"mcp_gh_search", "mcp_pageindex_search"})
 
 
 def test_owned_servers_are_authorised_by_ownership_not_by_grant() -> None:
@@ -94,15 +74,14 @@ def test_partner_with_explicit_none_filter_is_unrestricted() -> None:
     assert allowed.is_unrestricted
 
 
-def test_exclusive_capability_suppresses_everything_but_the_resource() -> None:
+def test_exclusive_capability_suppresses_every_configured_mcp_tool() -> None:
     for grant in (ADMIN_GRANT, GRANTED, UNGRANTED):
         allowed = authorize_mcp_tools(
             scope=ToolScope(owner_id="u1", exclusive_capability=True),
             user_grant=grant,
-            implicit_names=["mcp_pageindex_search"],
             owned_names=["mcp_mynotion_search"],
         )
-        assert allowed.names == frozenset({"mcp_pageindex_search"})
+        assert allowed.names == frozenset()
         assert not allowed.allows("mcp_mynotion_search")
 
 

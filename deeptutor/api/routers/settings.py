@@ -299,6 +299,13 @@ class DoclingRemoteTest(BaseModel):
     api_token: Optional[str] = None
 
 
+class TikaRemoteTest(BaseModel):
+    """Draft Tika server test. Tests the unsaved URL so the user can verify
+    before saving."""
+
+    server_url: str = "http://localhost:9998"
+
+
 class DocumentParsingInstall(BaseModel):
     """One-click pip install of an optional parser engine's package(s)."""
 
@@ -1034,6 +1041,20 @@ async def test_docling_remote_connection(payload: DoclingRemoteTest):
         do_ocr=stored.do_ocr,
         do_table_structure=stored.do_table_structure,
     )
+    ok, detail = await asyncio.to_thread(verify_remote, config)
+    return {"ok": ok, "message": detail or ("Ready to parse." if ok else "Not ready.")}
+
+
+@router.post("/document-parsing/tika/test")
+async def test_tika_remote_connection(payload: TikaRemoteTest):
+    """Live connectivity check for the Tika server draft URL. Pings ``/version``
+    so the user can verify the URL before saving."""
+    _require_settings_admin()
+    from deeptutor.services.parsing.engines.tika.config import TikaConfig
+    from deeptutor.services.parsing.engines.tika.remote import verify_remote
+
+    server_url = payload.server_url.strip().rstrip("/") or "http://localhost:9998"
+    config = TikaConfig(server_url=server_url)
     ok, detail = await asyncio.to_thread(verify_remote, config)
     return {"ok": ok, "message": detail or ("Ready to parse." if ok else "Not ready.")}
 

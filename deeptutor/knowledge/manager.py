@@ -33,6 +33,8 @@ from deeptutor.services.rag.factory import (
     IMA_PROVIDER,
     KNOWN_PROVIDERS,
     LIGHTRAG_SERVER_PROVIDER,
+    PAGEINDEX_OSS_PROVIDER,
+    PAGEINDEX_PROVIDER,
     has_ready_provider_index,
     normalize_provider_name,
     provider_uses_embedding_versions,
@@ -465,9 +467,20 @@ class KnowledgeBaseManager:
             kb_config["progress"] = progress
 
         if status == "ready":
-            fp = _get_embedding_fingerprint()
-            if fp:
-                kb_config["embedding_model"], kb_config["embedding_dim"] = fp
+            provider = normalize_provider_name(kb_config.get("rag_provider"))
+            pageindex_provider = provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+            if pageindex_provider:
+                for key in (
+                    "embedding_model",
+                    "embedding_dim",
+                    "embedding_signature",
+                    "embedding_mismatch",
+                ):
+                    kb_config.pop(key, None)
+            else:
+                fp = _get_embedding_fingerprint()
+                if fp:
+                    kb_config["embedding_model"], kb_config["embedding_dim"] = fp
             # Record the active signature + the on-disk version registry so
             # the UI can render version chips without recomputing.
             try:
@@ -475,12 +488,11 @@ class KnowledgeBaseManager:
                     signature_from_embedding_config,
                 )
 
-                sig = signature_from_embedding_config()
+                sig = None if pageindex_provider else signature_from_embedding_config()
                 if sig is not None:
                     kb_config["embedding_signature"] = sig.hash()
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
-                    provider = normalize_provider_name(kb_config.get("rag_provider"))
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
             except Exception:  # pragma: no cover - best-effort metadata
                 pass
@@ -1306,7 +1318,8 @@ class KnowledgeBaseManager:
         kb_probe_dir = kb_dir if dir_exists else None
         rag_initialized = has_ready_provider
 
-        active_signature = signature_from_embedding_config()
+        pageindex_provider = rag_provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+        active_signature = None if pageindex_provider else signature_from_embedding_config()
         if provider_uses_embedding_versions(rag_provider):
             matched_entry = (
                 find_matching_version(kb_probe_dir, active_signature)
@@ -1402,7 +1415,14 @@ class KnowledgeBaseManager:
                 # leaving the KB stuck in the list is worse than orphan files on
                 # disk (issue #370).
                 try:
-                    os.chmod(path, stat.S_IWRITE)
+                    current_mode = os.stat(path).st_mode
+                    writable_mode = current_mode | stat.S_IWRITE
+                    if stat.S_ISDIR(current_mode):
+                        # POSIX directories need execute permission to remain
+                        # traversable. Replacing the whole mode with S_IWRITE
+                        # leaves an orphan that even later cleanup cannot enter.
+                        writable_mode |= stat.S_IXUSR
+                    os.chmod(path, writable_mode)
                     func(path)
                 except Exception as retry_exc:
                     logger.warning(

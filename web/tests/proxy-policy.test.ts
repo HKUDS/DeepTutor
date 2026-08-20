@@ -46,6 +46,16 @@ test("large knowledge uploads bypass the buffering proxy", () => {
   assert.equal(matches("http://localhost/home"), true);
 });
 
+test("backend proxy allows long-running agent requests", () => {
+  const nextConfig = require(path.resolve(process.cwd(), "next.config.js")) as {
+    experimental?: { proxyTimeout?: number };
+  };
+  assert.ok(
+    (nextConfig.experimental?.proxyTimeout ?? 0) >= 30 * 60 * 1000,
+    "proxyTimeout must accommodate long PageIndex and Co-Writer turns",
+  );
+});
+
 test("isCodexCallbackPath matches only the exact public callback path", () => {
   assert.equal(CODEX_CALLBACK_PATH, "/auth/callback");
   assert.equal(CODEX_CALLBACK_API_PATH, "/api/v1/auth/openai-codex/callback");

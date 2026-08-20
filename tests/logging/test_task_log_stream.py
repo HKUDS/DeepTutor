@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -30,6 +31,25 @@ async def test_knowledge_task_stream_emits_process_log_sse_event():
     assert payload["type"] == "process_log"
     assert payload["message"] == "Indexing started"
     assert payload["context"]["task_id"] == "task-1"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_task_stream_keeps_idle_sse_connection_alive():
+    manager = KnowledgeTaskStreamManager()
+    manager._HEARTBEAT_SECONDS = 0.01
+    manager.ensure_task("task-idle")
+
+    stream = manager.stream("task-idle")
+    try:
+        heartbeat = await asyncio.wait_for(anext(stream), timeout=0.2)
+        assert heartbeat == ": keep-alive\n\n"
+
+        manager.emit_log("task-idle", "Indexing resumed")
+        event = await asyncio.wait_for(anext(stream), timeout=0.2)
+        assert "event: process_log" in event
+        assert "Indexing resumed" in event
+    finally:
+        await stream.aclose()
 
 
 def test_knowledge_task_stream_emits_structured_failure_metadata():
@@ -145,6 +165,39 @@ def test_capture_task_logs_excludes_private_non_propagating_library_diagnostics(
         graphrag_logger.setLevel(original_level)
 
     assert events == []
+
+
+def test_capture_task_logs_keeps_user_stages_and_drops_runtime_noise():
+    original_instance = KnowledgeTaskStreamManager._instance
+    loggers = {
+        name: logging.getLogger(name)
+        for name in (
+            "root",
+            "asyncio",
+            "deeptutor.knowledge.progress_tracker",
+            "deeptutor.services.rag.pipelines.pageindex.pipeline",
+        )
+    }
+    original_levels = {name: logger.level for name, logger in loggers.items()}
+    try:
+        KnowledgeTaskStreamManager._instance = KnowledgeTaskStreamManager()
+        for logger in loggers.values():
+            logger.setLevel(logging.INFO)
+        with capture_task_logs("task-curated"):
+            loggers["root"].error("Request timed out")
+            loggers["asyncio"].error("Event loop is closed")
+            loggers["deeptutor.knowledge.progress_tracker"].info("duplicate progress")
+            loggers["deeptutor.services.rag.pipelines.pageindex.pipeline"].info(
+                "PageIndex: submitting manual.pdf"
+            )
+        events = list(get_task_stream_manager()._buffers["task-curated"])
+    finally:
+        KnowledgeTaskStreamManager._instance = original_instance
+        for name, logger in loggers.items():
+            logger.setLevel(original_levels[name])
+
+    messages = [event["payload"]["message"] for event in events]
+    assert messages == ["PageIndex: submitting manual.pdf"]
 
 
 def test_completed_task_buffers_are_bounded_and_restore_terminal_event():

@@ -1211,6 +1211,102 @@ async def test_ask_user_pause_resumes_and_streams_interleaved(
 
 
 @pytest.mark.asyncio
+async def test_ask_user_resume_end_loop_skips_further_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Neutral ``metadata['end_loop']`` after resume stops without another LLM round."""
+
+    class _EndLoopOnResume:
+        name = "end_loop_probe"
+        owned_tools: tuple[str, ...] = ()
+
+        def is_active(self, context: UnifiedContext) -> bool:
+            return True
+
+        def system_block(self, context, *, language, prompts):  # noqa: ANN001
+            return None
+
+        def augment_kwargs(self, tool_name, kwargs, context):  # noqa: ANN001
+            return kwargs
+
+        def pre_loop_seed(self, context: UnifiedContext) -> str:
+            return ""
+
+        async def on_user_resume(self, context, ask_user, *, reply_text, answers):  # noqa: ANN001
+            _ = ask_user, reply_text, answers
+            context.metadata["end_loop"] = True
+
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            if name == "ask_user":
+                return ToolResult(
+                    content="Asked the user.",
+                    success=True,
+                    pause_for_user={"questions": [{"id": "q1", "prompt": "Which topic?"}]},
+                )
+            return await super().execute(name, **kwargs)
+
+    registry = _PausingRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content="One question."),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "ask_user",
+                            "arguments": json.dumps(
+                                {"questions": [{"id": "q1", "prompt": "Which topic?"}]}
+                            ),
+                        }
+                    ]
+                ),
+            ],
+            # Must not be reached when end_loop is set on resume.
+            [_llm_chunk(content="Should not stream.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(
+        pipeline,
+        "_active_loop_capabilities",
+        lambda _context: (_EndLoopOnResume(),),
+    )
+
+    async def _waiter():
+        return {"text": "abort please"}
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s-end-loop",
+            user_message="Quick question",
+            enabled_tools=["ask_user"],
+            metadata={"wait_for_user_reply": _waiter},
+        ),
+    )
+
+    assert client.call_count == 1
+    assert "Should not stream." not in _contents(events)
+    result = _result(events)
+    assert result.metadata["completed"] is False
+    # The user did answer, so the reply must still reach the transcript — only
+    # the further LLM rounds are skipped.
+    replies = [
+        event
+        for event in events
+        if (event.metadata or {}).get("trace_kind") == "user_reply"
+        and (event.metadata or {}).get("reply_preview") == "abort please"
+    ]
+    assert len(replies) == 1
+
+
+@pytest.mark.asyncio
 async def test_unresolved_ask_user_halts_turn(monkeypatch: pytest.MonkeyPatch) -> None:
     class _PausingRegistry(_Registry):
         async def execute(self, name: str, **kwargs):

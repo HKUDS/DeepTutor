@@ -46,7 +46,8 @@ export function AnnotationLayer({
       {annotations.map((annotation) =>
         annotation.rects.map((rect, index) => {
           const [x0, y0, x1, y1] = rect;
-          const isFocused = annotation.annotation_id === highlightedAnnotationId;
+          const isFocused =
+            annotation.annotation_id === highlightedAnnotationId;
           const isUnderline = annotation.kind === "underline";
           return (
             <button

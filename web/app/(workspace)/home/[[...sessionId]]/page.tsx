@@ -39,6 +39,10 @@ import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionLoadingView from "@/components/chat/home/SessionLoadingView";
+import {
+  SESSION_LOAD_TIMEOUT_MS,
+  shouldSurfaceLoadFailure,
+} from "@/lib/session-load";
 import StarterSuggestions from "@/components/chat/home/StarterSuggestions";
 import MasteryPathStrip from "@/components/chat/home/MasteryPathStrip";
 // Imported eagerly so the drawer shell is always mounted off-screen —
@@ -311,6 +315,10 @@ interface KnowledgeBase {
     type?: string;
     /** Backend of a connected subagent: "claude_code" | "codex" | "partner". */
     agent_kind?: string;
+    rag_provider?: string;
+  };
+  statistics?: {
+    rag_provider?: string;
   };
 }
 
@@ -594,6 +602,10 @@ export default function ChatPage() {
   // Session-loading overlay: shown while navigating from chat-history →
   // session detail. Holds an AbortController so the user can cancel.
   const [sessionLoading, setSessionLoading] = useState(false);
+  // A load that ended without a session: terminal, and retryable. Kept
+  // separate from `sessionLoading` so the overlay can tell "still
+  // arriving" apart from "never arrived".
+  const [sessionLoadFailed, setSessionLoadFailed] = useState(false);
   const loadAbortRef = useRef<AbortController | null>(null);
   // Bridge ref: ``ChatComposer`` writes a prefill function into this on
   // mount; ``ChatMessageList`` reads it via ``handlePrefillComposer`` so an
@@ -1035,17 +1047,23 @@ export default function ChatPage() {
     loadAbortRef.current?.abort();
     loadAbortRef.current = null;
     setSessionLoading(false);
+    setSessionLoadFailed(false);
     navigateToHome();
   }, [navigateToHome]);
 
   /**
-   * Shared helper: kick off a load. The user can cancel via the ✕ button;
-   * otherwise the loading overlay stays until the API responds (no timeout).
+   * Shared helper: kick off a load. The user can cancel via the ✕ button.
    *
    * A session we already hold in memory is painted right away and refreshed
    * in the background — switching back to a conversation read earlier in this
    * visit costs nothing, and the overlay is reserved for the case where we
    * genuinely have nothing to show.
+   *
+   * The wait is bounded. A fetch that never settles used to leave the overlay
+   * spinning forever with no way out but abandoning the conversation, and a
+   * fetch that *failed* used to replace the URL with /home — dropping the
+   * session id, so a transient error read as "my history is gone". Both now
+   * end in the same terminal, retryable state with the id still in the URL.
    */
   const startSessionLoad = useCallback(
     (sid: string) => {
@@ -1054,9 +1072,20 @@ export default function ChatPage() {
       loadAbortRef.current = ctrl;
       const cached = showCachedSession(sid);
       setSessionLoading(!cached);
+      setSessionLoadFailed(false);
+
+      // Aborting is how the timeout stops waiting, so it has to be
+      // distinguishable from the user's ✕ and from a newer load taking over:
+      // those two own the resulting state, a timeout does not.
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        ctrl.abort();
+      }, SESSION_LOAD_TIMEOUT_MS);
 
       void loadSession(sid, { signal: ctrl.signal, revalidate: cached })
         .then(() => {
+          clearTimeout(timeout);
           if (!ctrl.signal.aborted) {
             loadAbortRef.current = null;
             setSessionLoading(false);
@@ -1083,23 +1112,26 @@ export default function ChatPage() {
           }
         })
         .catch(() => {
-          if (!ctrl.signal.aborted) {
-            loadAbortRef.current = null;
-            setSessionLoading(false);
-            // A background refresh that fails leaves the cached copy on
-            // screen; only a cold open has nothing to fall back to.
-            if (!cached) navigateToHome();
-          }
+          clearTimeout(timeout);
+          const surface = shouldSurfaceLoadFailure({
+            aborted: ctrl.signal.aborted,
+            timedOut,
+            cached,
+          });
+          // A newer load (or the user's ✕) owns the state from here, and a
+          // failed background refresh leaves the cached copy on screen.
+          if (!surface) return;
+          loadAbortRef.current = null;
+          setSessionLoading(false);
+          setSessionLoadFailed(true);
         });
     },
-    [
-      loadSession,
-      navigateToHome,
-      showCachedSession,
-      scrollToBottom,
-      shouldAutoScrollRef,
-    ],
+    [loadSession, showCachedSession, scrollToBottom, shouldAutoScrollRef],
   );
+
+  const retrySessionLoad = useCallback(() => {
+    if (sessionIdParam) startSessionLoad(sessionIdParam);
+  }, [sessionIdParam, startSessionLoad]);
 
   // Initial mount — load the session from the URL.
   // Uses a ref-based flag so Strict Mode double-mount doesn't break the flow:
@@ -1131,12 +1163,14 @@ export default function ChatPage() {
     if (sessionIdParam) {
       if (sessionIdParam === state.sessionId) {
         setSessionLoading(false);
+        setSessionLoadFailed(false);
         return;
       }
       startSessionLoad(sessionIdParam);
     } else {
       newSession();
       setSessionLoading(false);
+      setSessionLoadFailed(false);
     }
   }, [sessionIdParam, startSessionLoad, newSession, state.sessionId]);
 
@@ -1799,13 +1833,23 @@ export default function ChatPage() {
   const handleToggleKB = useCallback(
     (name: string) => {
       const current = state.knowledgeBases;
+      const providerOf = (kbName: string) => {
+        const kb = knowledgeBases.find((item) => item.name === kbName);
+        return kb?.metadata?.rag_provider || kb?.statistics?.rag_provider || "";
+      };
+      const selectingOss = providerOf(name) === "pageindex-oss";
       setKBs(
         current.includes(name)
           ? current.filter((kb) => kb !== name)
-          : [...current, name],
+          : [
+              ...(selectingOss
+                ? current.filter((kb) => providerOf(kb) !== "pageindex-oss")
+                : current),
+              name,
+            ],
       );
     },
-    [setKBs, state.knowledgeBases],
+    [knowledgeBases, setKBs, state.knowledgeBases],
   );
 
   // Real knowledge bases and connected subagents render as separate composer
@@ -2074,10 +2118,14 @@ export default function ChatPage() {
               </div>
             </div>
             <div className="flex w-full flex-1 min-h-0 flex-col">
-              {sessionLoading ? (
+              {sessionLoading || sessionLoadFailed ? (
                 <div className="flex w-full flex-1 min-h-0 justify-center px-6">
                   <div className="h-full w-full max-w-[960px]">
-                    <SessionLoadingView onCancel={cancelSessionLoad} />
+                    <SessionLoadingView
+                      onCancel={cancelSessionLoad}
+                      failed={sessionLoadFailed}
+                      onRetry={retrySessionLoad}
+                    />
                   </div>
                 </div>
               ) : !hasMessages ? (

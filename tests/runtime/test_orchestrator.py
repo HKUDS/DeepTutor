@@ -254,3 +254,86 @@ class TestOrchestratorHelpers:
         orch = _make_orchestrator()
         schemas = orch.get_tool_schemas()
         assert isinstance(schemas, list)
+
+
+class TestCompletionEventFields:
+    def test_reads_agent_output_and_declared_event_metadata(self) -> None:
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(
+            user_message="hi",
+            session_id="sess-1",
+            metadata={
+                "agent_output": "## Debrief\nNice work.",
+                "turn_id": "turn-9",
+                "event_metadata": {"practice_trace": "keep-me"},
+            },
+        )
+        output, meta = completion_event_fields(ctx, "echo")
+        assert output == "## Debrief\nNice work."
+        assert meta["capability"] == "echo"
+        assert meta["session_id"] == "sess-1"
+        assert meta["turn_id"] == "turn-9"
+        assert meta["practice_trace"] == "keep-me"
+
+    def test_turn_scratchpad_is_not_published(self) -> None:
+        """Only the declared sub-dict reaches the bus.
+
+        Turn metadata holds live callables and the user's own answers; the
+        EventBus fans out to the Partner channels, and a JSON-serialising
+        subscriber cannot encode a function anyway.
+        """
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(
+            user_message="hi",
+            session_id="sess-1",
+            metadata={
+                "wait_for_user_reply": lambda: None,
+                "ask_user_answers": [{"questionId": "q1", "text": "private"}],
+                "event_metadata": {"room_id": "room-7"},
+            },
+        )
+        _, meta = completion_event_fields(ctx, "whisper")
+        assert meta["room_id"] == "room-7"
+        assert "wait_for_user_reply" not in meta
+        assert "ask_user_answers" not in meta
+
+    def test_capability_and_ids_cannot_be_spoofed(self) -> None:
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(
+            user_message="hi",
+            session_id="real-session",
+            metadata={
+                "turn_id": "t1",
+                "event_metadata": {
+                    "capability": "spoofed",
+                    "session_id": "spoofed-session",
+                    "turn_id": "spoofed-turn",
+                },
+            },
+        )
+        _, meta = completion_event_fields(ctx, "echo")
+        assert meta["capability"] == "echo"
+        assert meta["session_id"] == "real-session"
+        assert meta["turn_id"] == "t1"
+
+    def test_non_dict_event_metadata_is_ignored(self) -> None:
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(
+            user_message="hi",
+            session_id="s",
+            metadata={"event_metadata": "not-a-dict"},
+        )
+        _, meta = completion_event_fields(ctx, "chat")
+        assert meta == {"capability": "chat", "session_id": "s", "turn_id": ""}
+
+    def test_empty_agent_output_when_unset(self) -> None:
+        from deeptutor.runtime.orchestrator import completion_event_fields
+
+        ctx = UnifiedContext(user_message="hi", session_id="s", metadata={})
+        output, meta = completion_event_fields(ctx, "chat")
+        assert output == ""
+        assert "agent_output" not in meta

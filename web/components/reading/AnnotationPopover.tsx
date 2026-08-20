@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Highlighter, MessageSquareQuote, StickyNote, Underline } from "lucide-react";
+import {
+  Highlighter,
+  MessageSquareQuote,
+  StickyNote,
+  Underline,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ANNOTATION_COLORS, type AnnotationColor } from "@/lib/reading-api";
 
@@ -64,7 +69,10 @@ export function AnnotationPopover({
       Math.max(margin, anchor.x - box.width / 2),
       window.innerWidth - box.width - margin,
     );
-    setPosition({ left, top: Math.min(top, window.innerHeight - box.height - margin) });
+    setPosition({
+      left,
+      top: Math.min(top, window.innerHeight - box.height - margin),
+    });
   }, [anchor.x, anchor.y, noteOpen]);
 
   useEffect(() => {

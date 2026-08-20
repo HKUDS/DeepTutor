@@ -35,11 +35,9 @@ def test_typer_dependency_does_not_request_removed_all_extra(metadata_path: Path
 def test_mcp_client_is_a_core_dependency(metadata_path: Path) -> None:
     """`mcp` must install by default, not only via an extra (issue #792).
 
-    Both distributions ship ``deeptutor.services.mcp``, and the connection
-    manager overlays the built-in PageIndex MCP server onto the config whenever
-    a PageIndex API key is set. That happens on a plain install, so an
-    extra-gated ``mcp`` leaves the connection task dying with
-    ``ModuleNotFoundError`` on every turn.
+    Both distributions ship the configurable MCP tool surface. An extra-gated
+    client would leave ordinary configured servers failing with
+    ``ModuleNotFoundError`` on a plain install.
     """
     with metadata_path.open("rb") as file:
         dependencies = tomllib.load(file)["project"]["dependencies"]
@@ -67,3 +65,18 @@ def test_requirements_mirror_the_core_mcp_client() -> None:
     # ...and partners.txt inherits it transitively rather than redeclaring it.
     assert "-r server.txt" in partners_text
     assert "mcp>=" not in partners_text
+
+
+def test_pageindex_sdk_range_matches_every_install_surface() -> None:
+    expected = "pageindex>=0.2.10,<0.3.0"
+    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:
+        root = tomllib.load(file)["project"]
+    with (REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml").open("rb") as file:
+        cli_package = tomllib.load(file)["project"]
+
+    assert root["dependencies"].count(expected) == 1
+    assert root["optional-dependencies"]["cli"].count(expected) == 1
+    assert cli_package["dependencies"].count(expected) == 1
+    assert (REPOSITORY_ROOT / "requirements" / "cli.txt").read_text(
+        encoding="utf-8"
+    ).splitlines().count(expected) == 1

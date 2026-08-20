@@ -98,7 +98,8 @@ def can_write(scope: Scope) -> AccessDecision:
 
 def writable_scopes() -> tuple[Scope, ...]:
     """Scopes the current turn may write — used to describe the surface up front."""
-    return tuple(scope for scope in ("personal", "global") if can_write(scope).allowed)
+    scopes: tuple[Scope, ...] = ("personal", "global")
+    return tuple(scope for scope in scopes if can_write(scope).allowed)
 
 
 __all__ = ["AccessDecision", "can_write", "writable_scopes"]

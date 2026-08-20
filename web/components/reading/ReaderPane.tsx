@@ -79,7 +79,9 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
     reportViewport,
   } = useReading();
 
-  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(
+    null,
+  );
   const [selection, setSelection] = useState<SelectionPayload | null>(null);
   const [jump, setJump] = useState<JumpRequest | null>(null);
   // `null` = follow the document: show the panel once there is something in it.
@@ -116,7 +118,6 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
     });
   }, []);
 
-
   // -- viewport reporting --------------------------------------------------
 
   const handleVisibleLocator = useCallback(
@@ -144,7 +145,8 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
       if (!detail || !material) return;
       // Ignore actions aimed at a document that is no longer open — a stale
       // event replayed from an earlier turn must not move the current view.
-      if (detail.material_id && detail.material_id !== material.material_id) return;
+      if (detail.material_id && detail.material_id !== material.material_id)
+        return;
 
       if (detail.reader_action === "annotate" && detail.annotation) {
         const incoming = detail.annotation as unknown as AnnotationItem;
@@ -157,7 +159,8 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
       if (locator >= 1) requestJump(locator, detail.quote || undefined);
     };
     window.addEventListener(READER_ACTION_EVENT, onReaderAction);
-    return () => window.removeEventListener(READER_ACTION_EVENT, onReaderAction);
+    return () =>
+      window.removeEventListener(READER_ACTION_EVENT, onReaderAction);
   }, [material, autoJump, requestJump, mergeMark]);
 
   /**
@@ -209,7 +212,8 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
       // Leave modified clicks to the browser — a user opening a citation in a
       // new tab is asking for the link, not for the reader to move.
       if (event.button !== 0) return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+        return;
       const target = event.target as HTMLElement | null;
       const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
       const locator = locatorFromHref(anchor?.getAttribute("href"));
@@ -225,7 +229,11 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
   // -- annotations ---------------------------------------------------------
 
   const commitSelection = useCallback(
-    (kind: "highlight" | "underline" | "note", color: AnnotationColor, note = "") => {
+    (
+      kind: "highlight" | "underline" | "note",
+      color: AnnotationColor,
+      note = "",
+    ) => {
       if (!selection || !material) return;
       const temporaryId = `pending-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
       const now = Date.now() / 1000;
@@ -302,7 +310,8 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
   const showAnnotations = annotationPanel ?? annotations.length > 0;
   const unitWord = material ? t(unitLabel(material.unit)) : "";
   const outlineRows = useMemo(
-    () => (material?.outline ?? []).filter((row) => row.title.trim().length > 0),
+    () =>
+      (material?.outline ?? []).filter((row) => row.title.trim().length > 0),
     [material],
   );
 
@@ -310,7 +319,10 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
     <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
       <ReaderResizeHandle />
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
-        <FileText size={14} className="shrink-0 text-[var(--muted-foreground)]" />
+        <FileText
+          size={14}
+          className="shrink-0 text-[var(--muted-foreground)]"
+        />
         <span
           className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]"
           title={material?.filename}
@@ -335,7 +347,9 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               icon={Crosshair}
               label={
                 autoJump
-                  ? t("Auto-jump on — the view follows what the assistant reads")
+                  ? t(
+                      "Auto-jump on — the view follows what the assistant reads",
+                    )
                   : t("Auto-jump off — the assistant will not move your view")
               }
               active={autoJump}
@@ -357,7 +371,11 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               // trigger too keeps it from being a button that does nothing.
               className="hidden lg:inline-flex"
             />
-            <HeaderButton icon={X} label={t("Close document")} onClick={closeMaterial} />
+            <HeaderButton
+              icon={X}
+              label={t("Close document")}
+              onClick={closeMaterial}
+            />
           </>
         )}
         {!material && (
@@ -419,7 +437,9 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               {t("Opening document…")}
             </div>
           ) : !material ? (
-            <MaterialPicker onOpen={(candidate) => void openMaterial(candidate)} />
+            <MaterialPicker
+              onOpen={(candidate) => void openMaterial(candidate)}
+            />
           ) : material.has_raw_view ? (
             <PdfDocumentView
               materialId={material.material_id}

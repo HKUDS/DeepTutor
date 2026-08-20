@@ -147,6 +147,7 @@ def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     assert set(by_id) == {
         "llamaindex",
         "pageindex",
+        "pageindex-oss",
         "graphrag",
         "lightrag",
         "lightrag-server",
@@ -156,6 +157,7 @@ def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     # LightRAG are optional local engines (no API key, configured = installed).
     assert by_id["llamaindex"]["requires_api_key"] is False
     assert by_id["pageindex"]["requires_api_key"] is True
+    assert by_id["pageindex-oss"]["requires_api_key"] is False
     assert by_id["graphrag"]["requires_api_key"] is False
     assert by_id["lightrag"]["requires_api_key"] is False
     # LightRAG Server is a thin HTTP client: always available, no API key gate
@@ -849,6 +851,64 @@ def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Pat
     assert entry["progress"]["indexed_count"] == 0
 
 
+def test_upload_task_with_folder_root_preserves_subfolder_structure(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A linked-folder sync (folder_root set) stages a nested file under the
+    same relative subpath in raw/, instead of flattening it to its basename
+    and colliding with a same-named file from another subfolder (#866)."""
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_ready_llamaindex_version(kb_dir)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    linked_folder = tmp_path / "linked"
+    (linked_folder / "sub").mkdir(parents=True)
+    doc = linked_folder / "sub" / "note.md"
+    doc.write_text("hello", encoding="utf-8")
+
+    class _SucceedingRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.RAGService",
+        _SucceedingRagService,
+    )
+
+    asyncio.run(
+        knowledge_router_module.run_upload_processing_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            uploaded_file_paths=[str(doc)],
+            task_id="folder-sync-test",
+            rag_provider="llamaindex",
+            folder_root=str(linked_folder),
+        )
+    )
+
+    assert (raw_dir / "sub" / "note.md").read_text(encoding="utf-8") == "hello"
+    assert not (raw_dir / "note.md").exists()
+
+
 def test_list_files_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     manager.config["knowledge_bases"]["actual-kb"] = {
@@ -1106,6 +1166,80 @@ def test_upload_allows_same_filename_in_different_folders(monkeypatch, tmp_path:
     assert response.status_code == 200
     assert (manager.base_dir / "kb" / "raw" / "ModuleA" / "note.txt").is_file()
     assert (manager.base_dir / "kb" / "raw" / "ModuleB" / "note.txt").is_file()
+
+
+def test_upload_places_a_batch_under_dest_subdir(monkeypatch, tmp_path: Path) -> None:
+    """A folder pick reports paths relative to the chosen directory, so its
+    ancestors never reach the server. dest_subdir re-attaches the batch where
+    it belongs instead of stacking every batch at the KB root (#866)."""
+    manager = _ready_kb_manager(tmp_path)
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+
+    async def _noop_upload_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/kb/upload",
+            files=[("files", ("README.txt", b"cli", "text/plain"))],
+            data={
+                "rel_paths": "DingTalkCLI/README.txt",
+                "dest_subdir": "AppDev",
+            },
+        )
+
+    assert response.status_code == 200
+    raw = manager.base_dir / "kb" / "raw"
+    assert (raw / "AppDev" / "DingTalkCLI" / "README.txt").is_file()
+    assert not (raw / "DingTalkCLI").exists()
+
+
+def test_upload_dest_subdir_refuses_traversal(monkeypatch, tmp_path: Path) -> None:
+    """dest_subdir is caller-supplied, so it goes through the same guard as a
+    directory upload's own relative path — it can never escape raw/."""
+    manager = _ready_kb_manager(tmp_path)
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+
+    async def _noop_upload_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/kb/upload",
+            files=[("files", ("note.txt", b"hi", "text/plain"))],
+            data={"dest_subdir": "../../escaped"},
+        )
+
+    assert response.status_code == 400
+    assert not (manager.base_dir.parent / "escaped").exists()
+
+
+def test_upload_without_dest_subdir_is_unchanged(monkeypatch, tmp_path: Path) -> None:
+    """The parameter is optional; omitting it keeps the previous placement."""
+    manager = _ready_kb_manager(tmp_path)
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+
+    async def _noop_upload_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/kb/upload",
+            files=[("files", ("note.txt", b"hi", "text/plain"))],
+            data={"rel_paths": "Folder/note.txt"},
+        )
+
+    assert response.status_code == 200
+    assert (manager.base_dir / "kb" / "raw" / "Folder" / "note.txt").is_file()
 
 
 def test_move_file_into_folder(monkeypatch, tmp_path: Path) -> None:
@@ -1605,3 +1739,182 @@ def test_assert_not_connected_kb_blocks_connected_writes() -> None:
         assert excinfo.value.status_code == 409
     # An ordinary KB is writable — the guard is a no-op.
     guard("kb", {"path": "kb", "status": "ready"})
+
+
+def _write_upload_task_kb(tmp_path: Path) -> Path:
+    base_dir = tmp_path / "knowledge_bases"
+    kb_dir = base_dir / "kb"
+    (kb_dir / "raw").mkdir(parents=True)
+    _write_ready_llamaindex_version(kb_dir)
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return base_dir
+
+
+def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+    preflight = importlib.import_module("deeptutor.services.rag.preflight")
+    monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
+
+    async def _noop_init_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/create",
+            data={
+                "name": "kb-oss",
+                "rag_provider": "pageindex-oss",
+                "pageindex_mode": "standard",
+            },
+            files=[("files", ("demo.pdf", b"%PDF-1.4\n", "application/pdf"))],
+        )
+
+    assert response.status_code == 200
+    entry = manager.config["knowledge_bases"]["kb-oss"]
+    assert entry["rag_provider"] == "pageindex-oss"
+    assert entry["pageindex_mode"] == "standard"
+
+
+def test_create_pageindex_oss_rejects_non_pdf(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+    preflight = importlib.import_module("deeptutor.services.rag.preflight")
+    monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/create",
+            data={"name": "kb-oss-docx", "rag_provider": "pageindex-oss"},
+            files=[
+                (
+                    "files",
+                    (
+                        "demo.docx",
+                        b"placeholder",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ),
+                )
+            ],
+        )
+
+    assert response.status_code == 400
+    assert "accept: .pdf" in response.json()["detail"]
+    assert "kb-oss-docx" not in manager.config["knowledge_bases"]
+
+
+def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
+    monkeypatch, tmp_path: Path
+) -> None:
+    base_dir = _write_upload_task_kb(tmp_path)
+    source = tmp_path / "ok.txt"
+    source.write_text("ok", encoding="utf-8")
+
+    class _SuccessfulRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr(
+        "deeptutor.knowledge.add_documents.RAGService",
+        _SuccessfulRagService,
+    )
+    updates: list[tuple[str, int, int]] = []
+    original_update = knowledge_router_module.ProgressTracker.update
+
+    def _record_update(self, stage, message="", current=0, total=0, **kwargs):
+        updates.append((message, current, total))
+        return original_update(
+            self,
+            stage,
+            message,
+            current=current,
+            total=total,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(knowledge_router_module.ProgressTracker, "update", _record_update)
+
+    asyncio.run(
+        knowledge_router_module.run_upload_processing_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            uploaded_file_paths=[str(source)],
+            task_id="upload-progress-test",
+            rag_provider="llamaindex",
+        )
+    )
+
+    assert updates == [
+        ("Validating 1 file(s)...", 0, 1),
+        ("Staged 1 new file(s)", 0, 1),
+        ("Indexing ok.txt", 0, 1),
+        ("Indexed ok.txt", 1, 1),
+        ("Saving metadata...", 1, 1),
+        ("Successfully processed 1 files!", 1, 1),
+    ]
+
+
+def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The contract the settings UI edits: GET exposes the knobs, PUT keeps them.
+
+    EngineDetail's LightRAG form reads every field off this payload and sends
+    all five back on save, so a field the router drops is a field the UI
+    silently cannot change.
+    """
+    from deeptutor.services.config.runtime_settings import RuntimeSettingsService
+
+    service = RuntimeSettingsService(tmp_path, process_env={})
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_runtime_settings_service",
+        lambda: service,
+    )
+
+    client = TestClient(_build_app())
+
+    initial = client.get("/api/v1/knowledge/rag-pipelines/lightrag/config")
+    assert initial.status_code == 200
+    for key in ("top_k", "response_type", "max_concurrent_files", "llm_model_max_async"):
+        assert key in initial.json(), f"{key} missing from the payload the UI reads"
+
+    saved = client.put(
+        "/api/v1/knowledge/rag-pipelines/lightrag/config",
+        json={
+            "top_k": 42,
+            "response_type": "Single Paragraph",
+            "max_concurrent_files": 4,
+            "llm_model_max_async": 8,
+            "entity_extract_max_gleaning": 2,
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["max_concurrent_files"] == 4
+    assert saved.json()["llm_model_max_async"] == 8
+    assert saved.json()["entity_extract_max_gleaning"] == 2
+
+    # And they survive a reload rather than living only in the response.
+    again = client.get("/api/v1/knowledge/rag-pipelines/lightrag/config").json()
+    assert again["max_concurrent_files"] == 4
+    assert again["entity_extract_max_gleaning"] == 2
+    assert again["top_k"] == 42

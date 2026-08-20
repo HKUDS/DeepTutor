@@ -1,132 +1,146 @@
-"""Thin async HTTP client for the hosted PageIndex REST API.
-
-Upload and lifecycle only — retrieval happens agent-side through the PageIndex
-MCP server:
-
-* ``POST /doc/``                — submit a document for processing → ``doc_id``
-* ``GET  /doc/{doc_id}/``       — poll processing status
-* ``DELETE /doc/{doc_id}/``     — best-effort cloud cleanup
-
-The client keeps the dependency surface to ``httpx`` (already a dependency)
-and is trivially mockable: inject an ``httpx`` transport or swap the whole
-client out via ``PageIndexPipeline(client=...)`` in tests.
-"""
+"""Async adapter around the synchronous PageIndex SDK clients."""
 
 from __future__ import annotations
 
 import asyncio
-import logging
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import httpx
+from deeptutor.services.provider_registry import find_by_name, strip_provider_prefix
 
 from .config import PageIndexConfig
 
-logger = logging.getLogger(__name__)
 
-_TERMINAL_OK = {"completed", "complete", "done", "ready", "success", "finished"}
-_TERMINAL_FAIL = {"failed", "error", "cancelled", "canceled"}
+def _sdk_types():
+    from pageindex import PageIndexCloudClient, PageIndexLocalClient
+
+    return PageIndexCloudClient, PageIndexLocalClient
 
 
-class PageIndexAPIError(RuntimeError):
-    """Raised when the PageIndex API returns an error or unexpected payload."""
+@lru_cache(maxsize=1)
+def _cloud_sdk_client(api_key: str):
+    """Reuse the SDK's MCP bridge until the global Cloud key changes."""
+    cloud_type, _ = _sdk_types()
+    return cloud_type(api_key)
+
+
+def _prefixed_model(prefix: str, model: str) -> str:
+    return model if model.startswith(f"{prefix}/") else f"{prefix}/{model}"
+
+
+def resolve_oss_sdk_config() -> tuple[str, dict[str, Any]]:
+    """Translate DeepTutor's active LLM into PageIndex's indexing lane."""
+    from deeptutor.services.config import resolve_llm_runtime_config
+
+    cfg = resolve_llm_runtime_config()
+    model = str(getattr(cfg, "model", "") or "").strip()
+    binding = str(
+        getattr(cfg, "binding", None) or getattr(cfg, "provider_name", None) or "openai"
+    ).strip()
+    spec = find_by_name(binding)
+    if not model:
+        raise RuntimeError(
+            "PageIndex OSS needs an active LLM. Configure one under Settings → Catalog."
+        )
+    if (
+        spec is None
+        or spec.is_oauth
+        or spec.backend
+        in {
+            "openai_codex",
+            "github_copilot",
+            "codebuddy",
+        }
+    ):
+        raise RuntimeError(
+            "PageIndex OSS indexing needs an API-key or local LLM profile; "
+            "the active OAuth-only provider cannot be used."
+        )
+
+    resolved_model = strip_provider_prefix(model, spec)
+    prefix = {
+        "anthropic": "anthropic",
+        "azure_openai": "azure",
+        "openai_compat": "openai",
+    }.get(spec.backend)
+    if prefix is None:
+        raise RuntimeError("The active LLM transport is not supported by PageIndex OSS indexing.")
+
+    sdk_model = _prefixed_model(prefix, resolved_model)
+    backend: dict[str, Any] = {}
+    api_key = str(getattr(cfg, "api_key", "") or "").strip()
+    base_url = str(getattr(cfg, "base_url", "") or "").strip()
+    api_version = str(getattr(cfg, "api_version", "") or "").strip()
+    headers = getattr(cfg, "extra_headers", None)
+
+    if spec.backend == "openai_compat":
+        # PageIndex treats ``openai/...`` as the OpenAI-compatible fast path;
+        # this also preserves gateway model ids such as anthropic/claude-*.
+        backend["api_key"] = api_key or "sk-no-key-required"
+    elif api_key:
+        backend["api_key"] = api_key
+
+    if base_url:
+        backend["api_base"] = base_url
+    if api_version and spec.backend != "openai_compat":
+        backend["api_version"] = api_version
+    if isinstance(headers, dict) and headers:
+        if spec.backend == "openai_compat":
+            backend["default_headers"] = dict(headers)
+        else:
+            backend["extra_headers"] = dict(headers)
+
+    return sdk_model, backend
 
 
 class PageIndexClient:
-    """Stateless wrapper over the PageIndex REST API.
+    """Small async facade used by the DeepTutor RAG lifecycle."""
 
-    A fresh :class:`httpx.AsyncClient` is opened per call so the object is safe
-    to construct once and reuse across requests without managing a connection
-    lifecycle.
-    """
+    def __init__(self, sdk_client: Any) -> None:
+        self.sdk_client = sdk_client
 
-    def __init__(
-        self,
-        config: PageIndexConfig,
-        *,
-        timeout: float = 120.0,
-        transport: Optional[httpx.AsyncBaseTransport] = None,
-    ) -> None:
-        self._config = config
-        self._timeout = timeout
-        self._transport = transport
+    @classmethod
+    def cloud(cls, config: PageIndexConfig) -> "PageIndexClient":
+        return cls(_cloud_sdk_client(config.api_key))
 
-    def _open(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            base_url=self._config.api_base_url,
-            headers={"Authorization": f"Bearer {self._config.api_key}"},
-            timeout=self._timeout,
-            transport=self._transport,
+    @classmethod
+    def local(cls, storage_path: str | Path) -> "PageIndexClient":
+        _, local_type = _sdk_types()
+        model, backend = resolve_oss_sdk_config()
+        return cls(
+            local_type(
+                storage_path=str(storage_path),
+                index_model=model,
+                summary_model=model,
+                index_backend=backend,
+            )
         )
 
-    @staticmethod
-    def _json(resp: httpx.Response) -> dict[str, Any]:
-        if resp.status_code >= 400:
-            raise PageIndexAPIError(f"PageIndex API {resp.status_code}: {resp.text[:300]}")
-        try:
-            data = resp.json()
-        except Exception as exc:  # pragma: no cover - defensive
-            raise PageIndexAPIError(f"PageIndex returned non-JSON response: {exc}") from exc
-        if not isinstance(data, dict):
-            raise PageIndexAPIError(f"PageIndex returned unexpected payload: {data!r}")
-        return data
+    @classmethod
+    def local_read(cls, storage_path: str | Path) -> "PageIndexClient":
+        """Open an existing Local Library without resolving indexing credentials."""
+        _, local_type = _sdk_types()
+        return cls(local_type(storage_path=str(storage_path)))
 
-    # ----- document processing (indexing) ---------------------------------
-
-    async def submit_document(self, file_path: str | Path) -> str:
-        path = Path(file_path)
-        async with self._open() as client:
-            with open(path, "rb") as handle:
-                resp = await client.post(
-                    "/doc/",
-                    files={"file": (path.name, handle, "application/octet-stream")},
-                )
-        data = self._json(resp)
-        doc_id = data.get("doc_id") or data.get("id")
+    async def submit_document(self, file_path: str | Path, *, mode: str | None = None) -> str:
+        result = await asyncio.to_thread(
+            self.sdk_client.submit_document,
+            str(file_path),
+            mode=mode,
+            wait=True,
+        )
+        doc_id = result.get("doc_id") if isinstance(result, dict) else None
         if not doc_id:
-            raise PageIndexAPIError(f"submit_document returned no doc_id: {data!r}")
+            raise RuntimeError(f"PageIndex submit_document returned no doc_id: {result!r}")
         return str(doc_id)
 
-    async def get_document(self, doc_id: str, *, summary: bool = False) -> dict[str, Any]:
-        """GET /doc/{id}/ — status plus the document tree in ``result``.
-
-        ``summary=True`` asks the API to include per-node summaries.
-        """
-        params = {"summary": "true"} if summary else None
-        async with self._open() as client:
-            resp = await client.get(f"/doc/{doc_id}/", params=params)
-        return self._json(resp)
-
-    async def wait_until_ready(
-        self,
-        doc_id: str,
-        *,
-        poll_interval: float = 3.0,
-        max_attempts: int = 200,
-    ) -> dict[str, Any]:
-        """Poll ``get_document`` until processing reaches a terminal state."""
-        for _ in range(max_attempts):
-            data = await self.get_document(doc_id)
-            status = str(data.get("status") or "").strip().lower()
-            ready = bool(data.get("retrieval_ready"))
-            if status in _TERMINAL_FAIL:
-                raise PageIndexAPIError(f"PageIndex processing failed for {doc_id}: {data!r}")
-            if ready or status in _TERMINAL_OK:
-                return data
-            await asyncio.sleep(poll_interval)
-        raise PageIndexAPIError(
-            f"PageIndex processing timed out for {doc_id} after {max_attempts} polls"
-        )
-
     async def delete_document(self, doc_id: str) -> bool:
-        try:
-            async with self._open() as client:
-                resp = await client.delete(f"/doc/{doc_id}/")
-            return resp.status_code < 400
-        except Exception as exc:  # pragma: no cover - best-effort
-            logger.warning("PageIndex delete_document(%s) failed: %s", doc_id, exc)
-            return False
+        await asyncio.to_thread(self.sdk_client.delete_document, doc_id)
+        return True
 
 
-__all__ = ["PageIndexClient", "PageIndexAPIError"]
+__all__ = [
+    "PageIndexClient",
+    "resolve_oss_sdk_config",
+]

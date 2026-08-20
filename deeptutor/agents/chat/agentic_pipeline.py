@@ -12,6 +12,7 @@ from deeptutor.agents._shared.tool_composition import (
     default_optional_tools,
     user_has_memory,
     user_has_notebooks,
+    user_has_question_bank,
 )
 from deeptutor.agents.chat.agent_loop import AgentLoop
 from deeptutor.agents.chat.context_budget import LLMRequestSnapshot, build_context_budget
@@ -22,6 +23,7 @@ from deeptutor.capabilities import (
     active_loop_capabilities,
     any_exclusive_capability_active,
 )
+from deeptutor.capabilities.protocol import END_LOOP
 from deeptutor.core.agentic import (
     DispatchOutcome,
     LLMClientConfig,
@@ -481,7 +483,20 @@ class AgenticChatPipeline:
         ``runtime.providers``. All the pipeline owns is translating the turn's
         context into a :class:`ToolScope`.
         """
-        self._pageindex_docs = self._pageindex_doc_maps(context)
+        self._pageindex_providers: set[str] = set()
+        self._pageindex_cloud_instructions = ""
+        self._pageindex_oss_instructions = ""
+        pageindex_tools: list[Any] = []
+        try:
+            for kb, bundle in await self._pageindex_sdk_tool_bundles(context):
+                self._pageindex_providers.add(bundle.provider)
+                if bundle.provider == "pageindex-oss":
+                    self._pageindex_oss_instructions = bundle.instructions
+                else:
+                    self._pageindex_cloud_instructions = bundle.instructions
+                pageindex_tools.extend(bundle.tools)
+        except Exception:
+            logger.warning("PageIndex SDK tool preparation failed", exc_info=True)
         try:
             view = await build_tool_view(
                 base_registry=self.registry,
@@ -494,6 +509,8 @@ class AgenticChatPipeline:
                         "the tools listed in the prompt can be called."
                     ),
                 ),
+                overlay_tools=pageindex_tools,
+                preloaded_names=[tool.name for tool in pageindex_tools],
             )
         except Exception:
             # ``build_tool_view`` is contractually non-raising; this is defence
@@ -509,8 +526,6 @@ class AgenticChatPipeline:
 
     def _tool_scope(self, context: UnifiedContext) -> ToolScope:
         """Per-turn policy inputs for the provider layer."""
-        from deeptutor.services.mcp.pageindex_server import PAGEINDEX_SERVER_NAME
-
         raw_filter = context.metadata.get("mcp_tools_filter")
         return ToolScope(
             owner_id=self._current_owner_id(),
@@ -521,33 +536,39 @@ class AgenticChatPipeline:
                 if isinstance(raw_filter, list)
                 else None
             ),
-            # Attaching a PageIndex knowledge base authorises that server:
-            # access to the KB *is* the permission, and its tools are preloaded
-            # so retrieval works without a load_tools round-trip.
-            implicit_provider_ids=(
-                frozenset({PAGEINDEX_SERVER_NAME}) if self._pageindex_docs else frozenset()
-            ),
             exclusive_capability=self._exclusive_capability_active(context),
         )
 
-    def _pageindex_doc_maps(self, context: UnifiedContext) -> dict[str, dict[str, str]]:
-        """kb_name -> {file: doc_id} for bound KBs on the pageindex provider."""
-        out: dict[str, dict[str, str]] = {}
-        for kb in self._selected_kbs(context):
-            try:
-                from deeptutor.multi_user.knowledge_access import resolve_kb
-                from deeptutor.services.rag.factory import PAGEINDEX_PROVIDER
-                from deeptutor.services.rag.pipelines.pageindex.pipeline import PageIndexPipeline
-                from deeptutor.services.rag.provider_binding import resolve_bound_provider
+    async def _pageindex_sdk_tool_bundles(self, context: UnifiedContext):
+        from deeptutor.multi_user.knowledge_access import resolve_kb
+        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
+        from deeptutor.services.rag.pipelines.pageindex.tools import build_sdk_tool_bundle
+        from deeptutor.services.rag.provider_binding import resolve_bound_provider
 
-                resource = resolve_kb(kb, require_write=False)
-                base_dir = str(resource.base_dir)
-                if resolve_bound_provider(base_dir, resource.name) != PAGEINDEX_PROVIDER:
-                    continue
-                out[kb] = PageIndexPipeline(kb_base_dir=base_dir).document_map(resource.name)
-            except Exception:
-                logger.debug("pageindex doc-map resolution failed for %r", kb, exc_info=True)
-        return out
+        bundles = []
+        seen_providers: set[str] = set()
+        for kb in self._selected_kbs(context):
+            resource = resolve_kb(kb, require_write=False)
+            base_dir = str(resource.base_dir)
+            provider = resolve_bound_provider(base_dir, resource.name)
+            if provider not in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+                continue
+            # Cloud tools are account-wide and OSS selection already permits at
+            # most one local library, so one SDK bundle per provider is enough.
+            if provider in seen_providers:
+                continue
+            bundles.append(
+                (
+                    kb,
+                    await build_sdk_tool_bundle(
+                        resource.name,
+                        base_dir,
+                        provider=provider,
+                    ),
+                )
+            )
+            seen_providers.add(provider)
+        return bundles
 
     def _deferred_tools_manifest(self) -> str:
         view = getattr(self, "_tool_view", None)
@@ -605,6 +626,7 @@ class AgenticChatPipeline:
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
+                has_question_bank=user_has_question_bank(),
                 has_skills=bool(context.skills_manifest),
                 has_deferred_tools=getattr(self, "_deferred_loader", None) is not None,
                 has_exec=getattr(self, "_exec_enabled", False),
@@ -925,6 +947,24 @@ class AgenticChatPipeline:
             reply_text=reply_text,
             answers=answers,
         )
+        # The reply happened, so it belongs in the transcript whether or not the
+        # loop goes on — emit the trace before deciding to stop.
+        meta: dict[str, Any] = {
+            "trace_kind": "user_reply",
+            "ask_user_resolved": True,
+            "ask_user_tool_call_id": dispatch.pause_tool_call_id,
+            "reply_preview": (reply_text or "")[:200],
+        }
+        if answers:
+            meta["answers"] = list(answers)
+        await stream.progress("", source="chat", stage="responding", metadata=meta)
+
+        # Neutral stop signal for loop plugins (e.g. a crisis redirect): the
+        # outer capability owns the final message, so skip further LLM rounds.
+        # Everything below only exists to feed the answer back to the model.
+        if context.metadata.get(END_LOOP):
+            return False
+
         body_text = _format_user_reply_body(
             reply_text,
             answers,
@@ -943,15 +983,6 @@ class AgenticChatPipeline:
             if tm.get("tool_call_id") == dispatch.pause_tool_call_id:
                 tm["content"] = directive
                 break
-        meta: dict[str, Any] = {
-            "trace_kind": "user_reply",
-            "ask_user_resolved": True,
-            "ask_user_tool_call_id": dispatch.pause_tool_call_id,
-            "reply_preview": (reply_text or "")[:200],
-        }
-        if answers:
-            meta["answers"] = list(answers)
-        await stream.progress("", source="chat", stage="responding", metadata=meta)
         return True
 
     def _augment_tool_kwargs(
@@ -1135,12 +1166,9 @@ class AgenticChatPipeline:
         context: UnifiedContext,
         stream: StreamBus,
     ) -> str:
-        # Seed every selected KB except those owned by an exclusive capability
-        # (an Obsidian vault is read agentically via its own tools, not seeded).
-        # Co-selected LlamaIndex KBs are still seeded so their context reaches
-        # the model even when a vault owns the turn (issue #650).
-        owned = self._capability_owned_kbs(context)
-        kbs = [kb for kb in self._selected_kbs(context) if kb not in owned]
+        # Only traditional RAG KBs are pre-seeded. PageIndex and capability-owned
+        # KBs are read with their tools inside the reasoning loop.
+        kbs = self._coexisting_rag_kbs(context)
         query = (context.user_message or "").strip()
         if not kbs or not query:
             return ""
@@ -1403,9 +1431,10 @@ class AgenticChatPipeline:
         return [str(kb).strip() for kb in context.knowledge_bases if str(kb).strip()]
 
     def _rag_kbs(self, context: UnifiedContext) -> list[str]:
-        """Attached KBs served by the rag tool (PageIndex KBs are read via MCP)."""
-        pageindex = getattr(self, "_pageindex_docs", None) or {}
-        return [kb for kb in self._selected_kbs(context) if kb not in pageindex]
+        """Attached KBs served by rag; PageIndex KBs use their SDK tools."""
+        from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
+
+        return [kb for kb in self._selected_kbs(context) if not is_pageindex_kb(kb)]
 
     def _capability_owned_kbs(self, context: UnifiedContext) -> set[str]:
         """Selected KBs consumed by an active capability's own tools (not rag).
@@ -1476,7 +1505,7 @@ class AgenticChatPipeline:
         round-trip.
 
         PageIndex KBs are excluded: ``_pageindex_system_note`` already lists
-        their documents, with the doc_ids its MCP tools need. Fails soft — a KB
+        their documents for the SDK tools. Fails soft — a KB
         whose files cannot be read costs the manifest, not the turn.
         """
         self._kb_manifests = []
@@ -1511,35 +1540,51 @@ class AgenticChatPipeline:
         return f"\n{note}" if note else ""
 
     def _pageindex_system_note(self) -> str:
-        """Doc list + retrieval instructions for attached PageIndex KBs.
+        """Retrieval instructions for attached PageIndex KBs.
 
         Populated by ``_prepare_deferred_tools`` once per turn, so the system
         prompt stays byte-stable for the whole turn (KB cache prefix).
         """
-        doc_maps = getattr(self, "_pageindex_docs", None) or {}
-        if not doc_maps:
+        providers = getattr(self, "_pageindex_providers", None) or set()
+        if not providers:
             return ""
-        lines = []
-        for kb, doc_map in sorted(doc_maps.items()):
-            listed = "; ".join(
-                f"{name} (doc_id: {doc_id})" for name, doc_id in sorted(doc_map.items())
-            )
-            lines.append(f"- {kb}: {listed or '(no indexed documents)'}")
-        docs_block = "\n".join(lines)
-        if self.language == "zh":
-            return (
-                "\n以下知识库使用托管的 PageIndex 引擎，其文档通过已加载的 "
-                "PageIndex MCP 工具阅读：先用 mcp_pageindex_get_document_structure "
-                "查看结构，再用 mcp_pageindex_get_page_content 读取相关页面。文档清单：\n"
-                f"{docs_block}"
-            )
-        return (
-            "\nThe following knowledge bases are on the hosted PageIndex engine; read "
-            "their documents with the preloaded PageIndex MCP tools: "
-            "mcp_pageindex_get_document_structure for the outline, then "
-            "mcp_pageindex_get_page_content for the relevant pages. Documents:\n"
-            f"{docs_block}"
-        )
+
+        blocks: list[str] = []
+        if "pageindex" in providers:
+            instructions = str(getattr(self, "_pageindex_cloud_instructions", "") or "").strip()
+            if self.language == "zh":
+                blocks.append(
+                    "\n以下知识库使用 PageIndex Cloud。使用已加载的 pageindex_cloud_* "
+                    "SDK 工具先查看文档结构、再读取相关页面；不要使用 rag 读取这些 "
+                    "PageIndex 知识库。\n\nPageIndex SDK 阅读说明：\n"
+                    f"{instructions}"
+                )
+            else:
+                blocks.append(
+                    "\nThe following knowledge bases use PageIndex Cloud. Read them with "
+                    "the preloaded pageindex_cloud_* SDK tools; inspect structure, then "
+                    "read relevant pages. Do not use rag to read these PageIndex knowledge "
+                    "bases.\n\nPageIndex SDK reading instructions:\n"
+                    f"{instructions}"
+                )
+        if "pageindex-oss" in providers:
+            instructions = str(getattr(self, "_pageindex_oss_instructions", "") or "").strip()
+            if self.language == "zh":
+                blocks.append(
+                    "\n以下知识库使用 PageIndex OSS。使用已加载的 pageindex_oss_* 工具，"
+                    "在当前推理循环中先查看文档结构、再读取相关页面；不要使用 rag 读取这些 "
+                    "PageIndex 知识库。\n\nPageIndex SDK 阅读说明：\n"
+                    f"{instructions}"
+                )
+            else:
+                blocks.append(
+                    "\nThe following knowledge bases use PageIndex OSS. Use the preloaded "
+                    "pageindex_oss_* tools inside this reasoning loop; inspect structure, "
+                    "then read relevant pages. Do not use rag to read these PageIndex knowledge "
+                    "bases.\n\nPageIndex SDK reading instructions:\n"
+                    f"{instructions}"
+                )
+        return "".join(blocks)
 
     def _workspace_system_note(self, context: UnifiedContext) -> str:
         if not getattr(self, "_exec_enabled", False):

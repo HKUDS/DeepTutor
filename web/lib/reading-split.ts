@@ -39,7 +39,9 @@ export function clampReaderWidth(px: number, available: number): number {
     available > 0
       ? Math.min(READER_MAX_PX, available - CHAT_MIN_PX)
       : READER_MAX_PX;
-  return Math.round(Math.max(READER_MIN_PX, Math.min(px, Math.max(READER_MIN_PX, ceiling))));
+  return Math.round(
+    Math.max(READER_MIN_PX, Math.min(px, Math.max(READER_MIN_PX, ceiling))),
+  );
 }
 
 /** Parse a persisted width, or null when there is nothing usable stored. */

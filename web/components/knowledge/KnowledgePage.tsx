@@ -174,9 +174,9 @@ export default function KnowledgePage() {
   );
 
   const handleUpload = useCallback(
-    async (kbName: string, files: File[]) => {
+    async (kbName: string, files: File[], destSubdir?: string) => {
       try {
-        await uploadFiles(kbName, files);
+        await uploadFiles(kbName, files, undefined, destSubdir);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         throw err;

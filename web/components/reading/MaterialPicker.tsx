@@ -25,7 +25,10 @@ export interface MaterialPickerProps {
  * read before reopens it *with its annotations* rather than creating a duplicate.
  * The copy says so, because otherwise the behaviour looks like a bug.
  */
-export function MaterialPicker({ onOpen, refreshToken = 0 }: MaterialPickerProps) {
+export function MaterialPicker({
+  onOpen,
+  refreshToken = 0,
+}: MaterialPickerProps) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [materials, setMaterials] = useState<MaterialInfo[]>([]);
@@ -133,7 +136,10 @@ export function MaterialPicker({ onOpen, refreshToken = 0 }: MaterialPickerProps
           }`}
         >
           {busy ? (
-            <Loader2 size={20} className="animate-spin text-[var(--muted-foreground)]" />
+            <Loader2
+              size={20}
+              className="animate-spin text-[var(--muted-foreground)]"
+            />
           ) : (
             <Upload size={20} className="text-[var(--muted-foreground)]" />
           )}

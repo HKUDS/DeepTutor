@@ -2,11 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  loadPdfjs,
-  outputScale,
-  type PdfDocument,
-} from "@/lib/pdfjs-loader";
+import { loadPdfjs, outputScale, type PdfDocument } from "@/lib/pdfjs-loader";
 import type { AnnotationItem } from "@/lib/reading-api";
 import { AnnotationLayer } from "./AnnotationLayer";
 
@@ -125,7 +121,10 @@ export function PdfPage({
         // allSettled: a canvas failure must not cost the page its text layer,
         // and vice versa. Failures are reported below only if BOTH sides failed,
         // since either one alone still leaves a usable page.
-        const outcomes = await Promise.allSettled([paintCanvas(), buildTextLayer()]);
+        const outcomes = await Promise.allSettled([
+          paintCanvas(),
+          buildTextLayer(),
+        ]);
         if (cancelled) return;
         const fatal = outcomes.every(
           (outcome) =>

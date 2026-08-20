@@ -43,7 +43,10 @@ test("reads an annotate, carrying the stored row", () => {
   );
   assert.ok(action);
   assert.equal(action.reader_action, "annotate");
-  assert.equal((action.annotation as { annotation_id: string }).annotation_id, "abc123");
+  assert.equal(
+    (action.annotation as { annotation_id: string }).annotation_id,
+    "abc123",
+  );
 });
 
 test("still accepts a flat payload, for events emitted directly", () => {
@@ -69,7 +72,10 @@ test("ignores tool results that carry no reader action", () => {
 test("ignores every other event type", () => {
   for (const type of ["content", "tool_call", "done", "sources", "error"]) {
     assert.equal(
-      readerActionFrom({ type, metadata: { tool_metadata: { reader_action: "goto", locator: 1 } } }),
+      readerActionFrom({
+        type,
+        metadata: { tool_metadata: { reader_action: "goto", locator: 1 } },
+      }),
       null,
       type,
     );
@@ -77,10 +83,18 @@ test("ignores every other event type", () => {
 });
 
 test("drops nonsense locators rather than jumping somewhere arbitrary", () => {
-  assert.equal(readerActionFrom(realEvent({ reader_action: "goto", locator: 0 }))?.locator, undefined);
-  assert.equal(readerActionFrom(realEvent({ reader_action: "goto", locator: -2 }))?.locator, undefined);
   assert.equal(
-    readerActionFrom(realEvent({ reader_action: "goto", locator: "abc" }))?.locator,
+    readerActionFrom(realEvent({ reader_action: "goto", locator: 0 }))?.locator,
+    undefined,
+  );
+  assert.equal(
+    readerActionFrom(realEvent({ reader_action: "goto", locator: -2 }))
+      ?.locator,
+    undefined,
+  );
+  assert.equal(
+    readerActionFrom(realEvent({ reader_action: "goto", locator: "abc" }))
+      ?.locator,
     undefined,
   );
 });
@@ -88,9 +102,15 @@ test("drops nonsense locators rather than jumping somewhere arbitrary", () => {
 test("tolerates malformed metadata", () => {
   assert.equal(readerActionFrom({ type: "tool_result" }), null);
   assert.equal(readerActionFrom({ type: "tool_result", metadata: null }), null);
-  assert.equal(readerActionFrom({ type: "tool_result", metadata: "nope" }), null);
   assert.equal(
-    readerActionFrom({ type: "tool_result", metadata: { tool_metadata: "nope" } }),
+    readerActionFrom({ type: "tool_result", metadata: "nope" }),
+    null,
+  );
+  assert.equal(
+    readerActionFrom({
+      type: "tool_result",
+      metadata: { tool_metadata: "nope" },
+    }),
     null,
   );
 });
@@ -107,7 +127,9 @@ import {
 } from "../lib/reading-reader-action";
 
 /** Minimal window stub: these functions only dispatch DOM events. */
-function withWindow<T>(run: (seen: Array<{ type: string; detail: unknown }>) => T): T {
+function withWindow<T>(
+  run: (seen: Array<{ type: string; detail: unknown }>) => T,
+): T {
   const seen: Array<{ type: string; detail: unknown }> = [];
   const previous = (globalThis as { window?: unknown }).window;
   (globalThis as { window?: unknown }).window = {
@@ -196,7 +218,13 @@ test("annotate alone does not count as having moved the reader", () => {
     forwardReaderAction({
       type: "tool_result",
       turn_id: "turn-4",
-      metadata: { tool_metadata: { reader_action: "annotate", locator: 2, annotation: { annotation_id: "a" } } },
+      metadata: {
+        tool_metadata: {
+          reader_action: "annotate",
+          locator: 2,
+          annotation: { annotation_id: "a" },
+        },
+      },
     });
     forwardReaderAction({ type: "done", turn_id: "turn-4" });
     assert.deepEqual(

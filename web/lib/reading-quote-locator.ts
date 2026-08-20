@@ -33,10 +33,38 @@ export interface QuoteRange {
 
 /** Punctuation that commonly differs between a PDF and a copied quote. */
 const SOFT_CHARS = new Set([
-  "‘", "’", "“", "”", "–", "—", "-", "_", "'", '"', "`",
-  ",", "，", "、", ";", "；", ":", "：", ".", "。",
-  "!", "！", "?", "？", "(", ")", "（", "）",
-  "[", "]", "【", "】",
+  "‘",
+  "’",
+  "“",
+  "”",
+  "–",
+  "—",
+  "-",
+  "_",
+  "'",
+  '"',
+  "`",
+  ",",
+  "，",
+  "、",
+  ";",
+  "；",
+  ":",
+  "：",
+  ".",
+  "。",
+  "!",
+  "！",
+  "?",
+  "？",
+  "(",
+  ")",
+  "（",
+  "）",
+  "[",
+  "]",
+  "【",
+  "】",
 ]);
 
 interface Projection {
@@ -130,7 +158,11 @@ export function findQuoteRange(
   // before loosening further: a Latin quote needs the joining space, a CJK one
   // needs its absence, and getting a strict match under either beats a loose
   // match under the other.
-  const passes: Array<{ soften: boolean; joinWithSpace: boolean; mode: QuoteRange["mode"] }> = [
+  const passes: Array<{
+    soften: boolean;
+    joinWithSpace: boolean;
+    mode: QuoteRange["mode"];
+  }> = [
     { soften: false, joinWithSpace: true, mode: "collapsed" },
     { soften: false, joinWithSpace: false, mode: "collapsed" },
     { soften: true, joinWithSpace: true, mode: "softened" },

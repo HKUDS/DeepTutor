@@ -7,6 +7,26 @@ from typing import Any, Protocol
 
 from deeptutor.core.context import UnifiedContext
 
+# ── Keys a capability may write into ``context.metadata`` for the runtime ──────
+#
+# Turn metadata is a shared scratchpad, so the handful of keys the runtime
+# itself reads back are named here, next to the interface a capability author is
+# already reading. Anything else in there is private to whoever put it.
+
+#: Set truthy during ``on_user_resume`` to end the turn without another LLM
+#: round — the capability owns the final message from that point on. The user's
+#: reply still reaches the transcript; only feeding it back to the model stops.
+END_LOOP = "end_loop"
+
+#: The body to publish as ``agent_output`` on the turn's CAPABILITY_COMPLETE
+#: event.
+AGENT_OUTPUT = "agent_output"
+
+#: A dict of extras to publish alongside it. Only this sub-dict is forwarded —
+#: never ``context.metadata`` whole, which holds live callables and the user's
+#: own answers — so a capability states exactly what may leave the turn.
+EVENT_METADATA = "event_metadata"
+
 
 @dataclass(frozen=True, slots=True)
 class PromptBlock:
@@ -119,4 +139,11 @@ class KnowledgeCapability:
         return set()
 
 
-__all__ = ["KnowledgeCapability", "LoopCapability", "PromptBlock"]
+__all__ = [
+    "AGENT_OUTPUT",
+    "END_LOOP",
+    "EVENT_METADATA",
+    "KnowledgeCapability",
+    "LoopCapability",
+    "PromptBlock",
+]

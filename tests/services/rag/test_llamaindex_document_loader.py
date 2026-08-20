@@ -211,6 +211,11 @@ def test_loader_skips_images_when_embedding_provider_is_text_only(
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyClient())
 
+    def _unexpected_llm_client():
+        pytest.fail("text-only embedding must not initialize the LLM client")
+
+    monkeypatch.setattr(loader_module, "get_llm_client", _unexpected_llm_client)
+
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
     assert documents == []
@@ -300,7 +305,7 @@ def test_loader_skips_images_when_llm_is_text_only(
     assert documents == []
 
 
-def test_loader_logs_all_missing_multimodal_image_requirements(
+def test_loader_skips_images_when_llm_client_is_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     pytest.importorskip("llama_index.core")
@@ -309,27 +314,22 @@ def test_loader_logs_all_missing_multimodal_image_requirements(
     image_path = tmp_path / "photo.png"
     image_path.write_bytes(b"\x89PNG\r\n")
 
-    class _TextOnlyEmbeddingClient:
-        config = type("Config", (), {"binding": "openai", "model": "text-embedding-3-small"})()
+    class _MultimodalEmbeddingClient:
+        config = type("Config", (), {"binding": "siliconflow", "model": "qwen3-vl"})()
 
         def supports_multimodal_contents(self) -> bool:
-            return False
+            return True
 
-    class _TextOnlyLLMClient:
-        config = type("Config", (), {"binding": "openai", "model": "gpt-3.5-turbo"})()
+    def _unavailable_llm_client():
+        raise RuntimeError("no LLM configured")
 
-        def supports_multimodal_images(self) -> bool:
-            return False
-
-    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyEmbeddingClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _TextOnlyLLMClient())
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
+    monkeypatch.setattr(loader_module, "get_llm_client", _unavailable_llm_client)
 
     with caplog.at_level("WARNING"):
         documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
     assert documents == []
     assert "requires both multimodal embedding and multimodal LLM support" in caplog.text
-    assert "embedding provider/model does not support multimodal contents" in caplog.text
-    assert "LLM provider/model does not support multimodal image input" in caplog.text
-    assert "text-embedding-3-small" in caplog.text
-    assert "gpt-3.5-turbo" in caplog.text
+    assert "LLM client is unavailable" in caplog.text
+    assert "no LLM configured" in caplog.text

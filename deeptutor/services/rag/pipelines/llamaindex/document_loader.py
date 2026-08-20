@@ -150,29 +150,34 @@ class LlamaIndexDocumentLoader:
         return images
 
     async def _load_image_nodes(self, sources: list[_ImageSource]) -> list[ImageNode]:
-        embedding_client = get_embedding_client()
-        llm_client = get_llm_client()
-
-        unsupported_reasons = []
+        try:
+            embedding_client = get_embedding_client()
+        except Exception as exc:
+            self._log_skipped_images(sources, f"embedding client is unavailable ({exc})")
+            return []
         if not embedding_client.supports_multimodal_contents():
-            unsupported_reasons.append(
+            self._log_skipped_images(
+                sources,
                 "embedding provider/model does not support multimodal contents "
                 f"(binding={embedding_client.config.binding}, "
-                f"model={embedding_client.config.model})"
+                f"model={embedding_client.config.model})",
             )
+            return []
+
+        # Resolve the LLM only after the embedding prerequisite passes. This
+        # keeps text-only embedding setups independent of LLM configuration and
+        # reuses one client for the whole image batch.
+        try:
+            llm_client = get_llm_client()
+        except Exception as exc:
+            self._log_skipped_images(sources, f"LLM client is unavailable ({exc})")
+            return []
         if not llm_client.supports_multimodal_images():
-            unsupported_reasons.append(
+            self._log_skipped_images(
+                sources,
                 "LLM provider/model does not support multimodal image input "
-                f"(binding={llm_client.config.binding}, model={llm_client.config.model})"
+                f"(binding={llm_client.config.binding}, model={llm_client.config.model})",
             )
-        if unsupported_reasons:
-            reason_text = "; ".join(unsupported_reasons)
-            for source in sources:
-                self.logger.warning(
-                    "Skipped image because image indexing requires both "
-                    f"multimodal embedding and multimodal LLM support; {reason_text}: "
-                    f"{source.path.name}"
-                )
             return []
 
         embedded: list[_ImageSource] = []
@@ -182,6 +187,7 @@ class LlamaIndexDocumentLoader:
             try:
                 image_payload = self._load_image_payload(source.path)
                 description = await self._describe_image(
+                    llm_client,
                     source.path,
                     image_payload["base64"],
                     image_payload["mimetype"],
@@ -241,8 +247,16 @@ class LlamaIndexDocumentLoader:
             self.logger.info(f"Loaded image: {source.path.name} ({len(embedding)}D vector)")
         return nodes
 
-    async def _describe_image(self, file_path: Path, image_base64: str, mimetype: str) -> str:
-        llm_client = get_llm_client()
+    def _log_skipped_images(self, sources: list[_ImageSource], reason: str) -> None:
+        for source in sources:
+            self.logger.warning(
+                "Skipped image because image indexing requires both multimodal "
+                f"embedding and multimodal LLM support; {reason}: {source.path.name}"
+            )
+
+    async def _describe_image(
+        self, llm_client: Any, file_path: Path, image_base64: str, mimetype: str
+    ) -> str:
         response = await llm_client.complete(
             IMAGE_DESCRIPTION_PROMPT,
             system_prompt=IMAGE_DESCRIPTION_SYSTEM_PROMPT,

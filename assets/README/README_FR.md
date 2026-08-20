@@ -5,7 +5,8 @@
 # DeepTutor : Tutorat Personnalisé à Vie
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -349,7 +350,7 @@ La boucle est délibérément simple : le modèle réfléchit en rounds, appelle
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="Boucle d'agent Chat de DeepTutor" width="900">
 </div>
 
-Les outils basculables par l'utilisateur sont `brainstorm`, `web_search`, `paper_search`, `reason` et `geogebra_analysis` — plus `imagegen` et `videogen` une fois que vous avez configuré le modèle de génération correspondant. Les outils contextuels tels que `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `github` et `consult_subagent` se montent automatiquement quand le tour dispose du bon contexte.
+Les outils basculables par l'utilisateur sont `brainstorm`, `web_search`, `paper_search`, `reason` et `geogebra_analysis` — plus `imagegen` et `videogen` une fois que vous avez configuré le modèle de génération correspondant. Les outils contextuels tels que `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github` et `consult_subagent` se montent automatiquement quand le tour dispose du bon contexte.
 
 Le contexte se présente en deux types : le **contexte de session persistant** (sous-agent, bases de connaissances, persona, modèle, voix) vit sur la barre d'outils du compositeur et persiste entre les tours ; les **références ponctuelles** (fichiers, historique de chat, livres, carnets, banque de questions, agents importés) proviennent du menu `+` pour un seul tour.
 
@@ -442,13 +443,13 @@ Chaque chapitre se compile en blocs typés — texte, encadrés, quiz, fiches, c
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="Knowledge Center de DeepTutor" width="900">
 </div>
 
-Les bases de connaissances sont les collections de documents derrière le RAG — elles ancrent les tours de Chat, les éditions Co-Writer, la génération de Book et les conversations Partner. Ce qui est distinctif est un **choix de moteurs de récupération** : **LlamaIndex** (par défaut, vecteur local + BM25), **PageIndex** (hébergé, récupération par raisonnement avec citations au niveau de la page), **GraphRAG** et **LightRAG** (récupération par graphe de connaissances), **LightRAG Server** (récupération déléguée à une instance LightRAG externe connectée via HTTP), **Tencent IMA** (une bibliothèque que vous constituez dans IMA — interrogée, parcourue et mise à jour via son OpenAPI), ou un vault **Obsidian** lié que le tuteur lit et écrit en place. Chaque KB est liée à un moteur.
+Les bases de connaissances sont les collections de documents derrière le RAG — elles ancrent les tours de Chat, les éditions Co-Writer, la génération de Book et les conversations Partner. Ce qui est distinctif est un **choix de moteurs de récupération** : **LlamaIndex** (par défaut, vecteur local + BM25), **PageIndex** (récupération par raisonnement avec citations au niveau de la page, hébergé ou OSS auto-hébergé), **GraphRAG** et **LightRAG** (récupération par graphe de connaissances), **LightRAG Server** (récupération déléguée à une instance LightRAG externe connectée via HTTP), **Tencent IMA** (une bibliothèque que vous constituez dans IMA — interrogée, parcourue et mise à jour via son OpenAPI), ou un vault **Obsidian** lié que le tuteur lit et écrit en place. Chaque KB est liée à un moteur.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Créer une base de connaissances" width="900">
 </div>
 
-En créant une KB, vous choisissez soit de **créer nouvelle** (uploadez des documents et construisez un index frais) soit de **lier une existante** (réutilisez un index construit ailleurs, lu en place sans re-indexation). La re-indexation écrit un nouveau répertoire plat `version-N` et conserve les précédents, donc un index fonctionnel n'est jamais détruit en milieu de reconstruction. Un seul document peut être supprimé même d'une base en état d'**erreur** — retirer un fichier dont l'analyse a échoué sans devoir tout supprimer et reconstruire. L'analyse de documents — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM ou LiteParse — est choisie dans **Paramètres → Base de Connaissances**, avec les téléchargements de modèles locaux désactivés par défaut. Docling peut aussi fonctionner en mode **distant** contre un serveur Docling Serve (aucune installation ni modèle local nécessaire), configuré via **Paramètres → Analyse de Documents** (`mode=remote`, une URL de base de serveur, et une clé API optionnelle) ou les variables d'environnement `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. La CLI reprend le cycle de vie avec `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` et `delete`.
+En créant une KB, vous choisissez soit de **créer nouvelle** (uploadez des documents et construisez un index frais) soit de **lier une existante** (réutilisez un index construit ailleurs, lu en place sans re-indexation). La re-indexation écrit un nouveau répertoire plat `version-N` et conserve les précédents, donc un index fonctionnel n'est jamais détruit en milieu de reconstruction. Un seul document peut être supprimé même d'une base en état d'**erreur** — retirer un fichier dont l'analyse a échoué sans devoir tout supprimer et reconstruire. L'analyse de documents — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM ou LiteParse — est choisie dans **Paramètres → Base de Connaissances**, avec les téléchargements de modèles locaux désactivés par défaut. Docling peut aussi fonctionner en mode **distant** contre un serveur Docling Serve (aucune installation ni modèle local nécessaire), configuré via **Paramètres → Analyse de Documents** (`mode=remote`, une URL de base de serveur, et une clé API optionnelle) ou les variables d'environnement `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. Tika est distant uniquement et pointe vers un serveur Apache Tika (`TIKA_SERVER_URL`). La CLI reprend le cycle de vie avec `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` et `delete`.
 
 </details>
 

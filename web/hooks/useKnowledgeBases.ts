@@ -212,8 +212,9 @@ export function useKnowledgeBases() {
       kbName: string,
       files: File[],
       provider?: string,
+      destSubdir?: string,
     ): Promise<KnowledgeTaskResponse> => {
-      const result = await uploadKbApi(kbName, files, { provider });
+      const result = await uploadKbApi(kbName, files, { provider, destSubdir });
       invalidateKnowledgeCaches();
       const fileCount = files.length;
       if (result.task_id) {

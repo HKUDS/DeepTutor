@@ -15,11 +15,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  FolderPlus,
   ImagePlus,
   Loader2,
   MessageSquarePlus,
-  Plus,
   RotateCcw,
   Sparkles,
   X,
@@ -43,6 +41,7 @@ import {
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
 import { type QuizQuestion } from "@/lib/quiz-types";
+import CategoryMenu from "@/components/space/question-bank/CategoryMenu";
 import {
   addEntryToCategory,
   createCategory,
@@ -212,11 +211,6 @@ export default function QuizViewer({
     Record<string, string>
   >({});
   const [categories, setCategories] = useState<NotebookCategory[]>([]);
-  const [categoryDropdownKey, setCategoryDropdownKey] = useState<string | null>(
-    null,
-  );
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [categoryBusy, setCategoryBusy] = useState(false);
 
   const [judgments, setJudgments] = useState<Record<number, JudgmentState>>({});
   const [answerViews, setAnswerViews] = useState<Record<number, AnswerView>>(
@@ -364,51 +358,45 @@ export default function QuizViewer({
     }
   }, []);
 
-  const handleOpenCategoryDropdown = useCallback(() => {
-    if (!q) return;
-    const key = getQuestionKey(q, idx);
-    if (categoryDropdownKey === key) {
-      setCategoryDropdownKey(null);
-      return;
-    }
-    setCategoryDropdownKey(key);
-    void loadCategories();
-  }, [categoryDropdownKey, idx, loadCategories, q]);
+  // Load the category list once, so the file-into menu opens already
+  // populated. Guarded against a late response landing after unmount.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await listCategories();
+        if (!cancelled) setCategories(next);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleAddToCategory = useCallback(
     async (catId: number) => {
       if (!q) return;
-      const key = getQuestionKey(q, idx);
-      const eId = entryIds[key];
+      const eId = entryIds[getQuestionKey(q, idx)];
       if (!eId) return;
-      setCategoryBusy(true);
-      try {
-        await addEntryToCategory(eId, catId);
-        setCategoryDropdownKey(null);
-      } catch {
-        /* ignore */
-      }
-      setCategoryBusy(false);
+      await addEntryToCategory(eId, catId);
+      await loadCategories();
     },
-    [entryIds, idx, q],
+    [entryIds, idx, loadCategories, q],
   );
 
-  const handleCreateAndAdd = useCallback(async () => {
-    if (!q || !newCategoryName.trim()) return;
-    const key = getQuestionKey(q, idx);
-    const eId = entryIds[key];
-    if (!eId) return;
-    setCategoryBusy(true);
-    try {
-      const cat = await createCategory(newCategoryName.trim());
+  const handleCreateAndAdd = useCallback(
+    async (name: string) => {
+      if (!q) return;
+      const eId = entryIds[getQuestionKey(q, idx)];
+      if (!eId) return;
+      const cat = await createCategory(name);
       await addEntryToCategory(eId, cat.id);
-      setNewCategoryName("");
-      setCategoryDropdownKey(null);
-    } catch {
-      /* ignore */
-    }
-    setCategoryBusy(false);
-  }, [entryIds, idx, newCategoryName, q]);
+      await loadCategories();
+    },
+    [entryIds, idx, loadCategories, q],
+  );
 
   const isChoice = q ? isMultipleChoice(q) : false;
   const isConcept = q ? isConceptQuizQuestion(q.question_type) : false;
@@ -768,7 +756,6 @@ export default function QuizViewer({
 
   const currentEntryId = entryIds[questionKey];
   const currentBookmarked = bookmarked[questionKey] ?? false;
-  const showCategoryDropdown = categoryDropdownKey === questionKey;
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
@@ -917,14 +904,12 @@ export default function QuizViewer({
                   fill={currentBookmarked ? "currentColor" : "none"}
                 />
               </button>
-              <button
-                onClick={handleOpenCategoryDropdown}
+              <CategoryMenu
+                categories={categories}
                 disabled={!currentEntryId}
-                title={t("Add to Category")}
-                className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30"
-              >
-                <FolderPlus size={16} />
-              </button>
+                onPick={handleAddToCategory}
+                onCreate={handleCreateAndAdd}
+              />
               <button
                 onClick={handleOpenFollowup}
                 title={t("Follow-up Chat")}
@@ -944,49 +929,6 @@ export default function QuizViewer({
                   ) : null;
                 })()}
               </button>
-
-              {showCategoryDropdown && (
-                <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg">
-                  {categories.length > 0 && (
-                    <div className="max-h-[160px] overflow-y-auto">
-                      {categories.map((cat) => (
-                        <button
-                          key={cat.id}
-                          disabled={categoryBusy}
-                          onClick={() => void handleAddToCategory(cat.id)}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-40"
-                        >
-                          {cat.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="border-t border-[var(--border)] px-2 py-1.5">
-                    <div className="flex items-center gap-1">
-                      <input
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && void handleCreateAndAdd()
-                        }
-                        placeholder={t("New category...")}
-                        className="flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
-                      />
-                      <button
-                        disabled={!newCategoryName.trim() || categoryBusy}
-                        onClick={() => void handleCreateAndAdd()}
-                        className="rounded p-1 text-[var(--primary)] disabled:opacity-30"
-                      >
-                        {categoryBusy ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <Plus size={12} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>

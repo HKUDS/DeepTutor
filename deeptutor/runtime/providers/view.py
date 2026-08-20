@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
-from typing import Any
+from typing import Any, Iterable
 
 from deeptutor.core.tool_protocol import BaseTool, ToolLookup
 from deeptutor.runtime.providers.allowlist import Allowlist
@@ -24,7 +24,6 @@ from deeptutor.runtime.providers.authorize import authorize_mcp_tools
 from deeptutor.runtime.providers.scope import ToolScope
 from deeptutor.runtime.registry.deferred_tools import (
     DeferredToolLoader,
-    provider_identity,
     render_deferred_tools_manifest,
 )
 from deeptutor.runtime.registry.scoped_registry import ScopedToolRegistry
@@ -74,6 +73,8 @@ async def build_tool_view(
     scope: ToolScope,
     language: str = "en",
     refusal_message: str = "",
+    overlay_tools: Iterable[BaseTool] = (),
+    preloaded_names: Iterable[str] = (),
 ) -> ProviderToolView:
     """Resolve the provider tools *scope* may use this turn."""
     try:
@@ -82,6 +83,8 @@ async def build_tool_view(
             scope=scope,
             language=language,
             refusal_message=refusal_message,
+            overlay_tools=tuple(overlay_tools),
+            preloaded_names=frozenset(preloaded_names),
         )
     except Exception:
         logger.warning("provider tool view assembly failed; continuing without", exc_info=True)
@@ -94,6 +97,8 @@ async def _build(
     scope: ToolScope,
     language: str,
     refusal_message: str,
+    overlay_tools: tuple[BaseTool, ...],
+    preloaded_names: frozenset[str],
 ) -> ProviderToolView:
     from deeptutor.services.mcp import get_mcp_manager, load_loaded_tools
 
@@ -103,21 +108,12 @@ async def _build(
     shared_pool = list(base_registry.deferred_tools())
     owned_pool = await _owned_tools(manager, scope)
     cli_pool = _cli_app_tools(scope)
-    if not shared_pool and not owned_pool and not cli_pool:
+    if not shared_pool and not owned_pool and not cli_pool and not overlay_tools:
         return ProviderToolView.empty(base_registry)
-
-    # Resolve resource-derived authorisation (e.g. an attached PageIndex KB
-    # authorises that server) from provider ids to concrete tool names.
-    implicit_names = {
-        tool.get_definition().name
-        for tool in shared_pool
-        if provider_identity(tool)[1] in scope.implicit_provider_ids
-    }
 
     allowed = authorize_mcp_tools(
         scope=scope,
         user_grant=_user_grant(scope),
-        implicit_names=implicit_names,
         # Servers the caller configured themselves are authorised by ownership:
         # the admin grant governs the deployment's shared servers, and applying
         # it here would make self-service configuration silently useless.
@@ -128,10 +124,13 @@ async def _build(
     # names it approved are widened in here. Widening an unrestricted allowlist
     # is identity, so an administrator is unaffected.
     allowed = allowed.widen(tool.get_definition().name for tool in cli_pool)
+    # Resource-bound overlays (including PageIndex SDK tools) are authorised by
+    # possession of the selected resource and live only in this turn's registry.
+    allowed = allowed.widen(tool.get_definition().name for tool in overlay_tools)
 
     pool = tuple(
         tool
-        for tool in (*shared_pool, *owned_pool, *cli_pool)
+        for tool in (*shared_pool, *owned_pool, *cli_pool, *overlay_tools)
         if allowed.allows(tool.get_definition().name)
     )
     registry = ScopedToolRegistry(
@@ -139,7 +138,7 @@ async def _build(
         # Owner-scoped tools live only in this turn's overlay — they are never
         # published to the process registry, so two accounts whose servers share
         # a name cannot resolve to each other's session.
-        overlay=[*owned_pool, *cli_pool],
+        overlay=[*owned_pool, *cli_pool, *overlay_tools],
         allowed=allowed,
         refusal_message=refusal_message,
     )
@@ -154,7 +153,7 @@ async def _build(
         # Resource-authorised tools are preloaded: holding the resource is the
         # permission, so the model should not have to spend a `load_tools`
         # round-trip before its first retrieval.
-        loaded=load_loaded_tools(scope.session_id) | implicit_names,
+        loaded=load_loaded_tools(scope.session_id) | set(preloaded_names),
         allowed=allowed.as_set(),
     )
     manifest = (

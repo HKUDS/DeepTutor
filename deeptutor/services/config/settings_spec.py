@@ -525,7 +525,7 @@ async def _probe_llm(value: str) -> ProbeResult:
                 extra_headers=resolved.extra_headers,
                 reasoning_effort=resolved.reasoning_effort,
                 max_retries=_PROBE_MAX_RETRIES,
-                **get_token_limit_kwargs(resolved.model, max_tokens=64),
+                **get_token_limit_kwargs(resolved.model, max_tokens=64),  # type: ignore[arg-type]
             ),
             timeout=_PROBE_TIMEOUT_SECONDS,
         )

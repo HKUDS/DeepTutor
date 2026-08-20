@@ -5,7 +5,8 @@
 # DeepTutor：生涯にわたるパーソナライズド個別指導
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -327,7 +328,7 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutorチャットエージェントループ" width="900">
 </div>
 
-ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`github`、`consult_subagent`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
+ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
 
 コンテキストには2種類あります：**スティッキーセッションコンテキスト**（サブエージェント、知識ベース、ペルソナ、モデル、音声）はコンポーザーツールバーに常駐し、ターンをまたいで持続します。**ワンタイム参照**（ファイル、チャット履歴、本、ノートブック、問題バンク、インポートしたエージェント）は単一のターンのために`+`メニューから追加します。
 
@@ -420,13 +421,13 @@ Bookは選択したソースをインタラクティブな**生きている本**
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-知識ベースはRAGの背後にあるドキュメントコレクションです — Chatターン、Co-Writerの編集、Book生成、Partnerの会話をグラウンドします。特徴的なのは**検索エンジンの選択**です：**LlamaIndex**（デフォルト、ローカルベクター + BM25）、**PageIndex**（ホスト型、ページレベル引用付き推論検索）、**GraphRAG**と**LightRAG**（知識グラフ検索）、**LightRAG Server**（HTTP経由で接続する外部LightRAGインスタンスに検索をオフロード）、**Tencent IMA**（IMAでキュレートするライブラリで、そのOpenAPI経由で検索・閲覧・書き戻しが可能）、またはチューターがその場で読み書きするリンクされた**Obsidian**ボールト。各KBは1つのエンジンにバインドされます。
+知識ベースはRAGの背後にあるドキュメントコレクションです — Chatターン、Co-Writerの編集、Book生成、Partnerの会話をグラウンドします。特徴的なのは**検索エンジンの選択**です：**LlamaIndex**（デフォルト、ローカルベクター + BM25）、**PageIndex**（ページレベル引用付き推論検索、ホスト型またはセルフホストOSS）、**GraphRAG**と**LightRAG**（知識グラフ検索）、**LightRAG Server**（HTTP経由で接続する外部LightRAGインスタンスに検索をオフロード）、**Tencent IMA**（IMAでキュレートするライブラリで、そのOpenAPI経由で検索・閲覧・書き戻しが可能）、またはチューターがその場で読み書きするリンクされた**Obsidian**ボールト。各KBは1つのエンジンにバインドされます。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="知識ベースの作成" width="900">
 </div>
 
-KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
+KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。Tikaはリモート専用で、Apache Tikaサーバー（`TIKA_SERVER_URL`）を指定します。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
 
 </details>
 

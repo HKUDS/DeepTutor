@@ -91,7 +91,9 @@ export function AnnotationList({
                   <span
                     aria-hidden
                     className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full"
-                    style={{ background: SWATCH[annotation.color] ?? SWATCH.yellow }}
+                    style={{
+                      background: SWATCH[annotation.color] ?? SWATCH.yellow,
+                    }}
                   />
                   {annotation.quote && (
                     <p className="line-clamp-3 pl-1.5 text-[12px] leading-[1.55] text-[var(--foreground)]">

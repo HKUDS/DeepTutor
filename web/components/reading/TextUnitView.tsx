@@ -71,7 +71,9 @@ export function TextUnitView({
       } catch (loadError) {
         if (!cancelled) {
           setError(
-            loadError instanceof Error ? loadError.message : t("Could not load this section."),
+            loadError instanceof Error
+              ? loadError.message
+              : t("Could not load this section."),
           );
         }
       } finally {
@@ -102,7 +104,11 @@ export function TextUnitView({
   }, [jump, unitCount]);
 
   const runs = useMemo(
-    () => segmentTextByQuotes(text, annotations.filter((a) => a.locator === locator)),
+    () =>
+      segmentTextByQuotes(
+        text,
+        annotations.filter((a) => a.locator === locator),
+      ),
     [text, annotations, locator],
   );
 
@@ -160,7 +166,9 @@ export function TextUnitView({
         <button
           type="button"
           disabled={!canNext}
-          onClick={() => setLocator((current) => Math.min(unitCount, current + 1))}
+          onClick={() =>
+            setLocator((current) => Math.min(unitCount, current + 1))
+          }
           className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
           aria-label={t("Next")}
         >
@@ -193,7 +201,9 @@ export function TextUnitView({
                   <mark
                     key={index}
                     title={run.mark.note || undefined}
-                    onClick={() => onAnnotationClick?.(run.mark as AnnotationItem)}
+                    onClick={() =>
+                      onAnnotationClick?.(run.mark as AnnotationItem)
+                    }
                     className={`cursor-pointer rounded-[2px] px-[1px] text-[var(--foreground)] ${
                       run.mark.annotation_id === highlightedAnnotationId
                         ? "ring-2 ring-[var(--ring)]"

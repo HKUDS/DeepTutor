@@ -8,6 +8,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+import itertools
 import json
 import logging
 from pathlib import Path
@@ -213,12 +214,44 @@ class DocumentAdder:
                 return {}
         return {}
 
-    def add_documents(self, source_files: List[str], allow_duplicates: bool = False) -> List[Path]:
-        """Validate and stage files into raw/ before indexing."""
+    @staticmethod
+    def _non_colliding(dest_path: Path) -> Path:
+        """A free sibling name for a *different* document that wants a taken one.
+
+        Two files can legitimately share a name and hold different content — a
+        docs tree with a README.md per folder is the ordinary case, and batched
+        syncs of sibling folders stage them against different roots, so they
+        land on the same name even with structure preserved. Dropping the later
+        one loses a document the user asked to index, silently.
+        """
+        if not dest_path.exists():
+            return dest_path
+        for index in itertools.count(2):
+            candidate = dest_path.with_name(f"{dest_path.stem} ({index}){dest_path.suffix}")
+            if not candidate.exists():
+                return candidate
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def add_documents(
+        self,
+        source_files: List[str],
+        allow_duplicates: bool = False,
+        source_root: str | Path | None = None,
+    ) -> List[Path]:
+        """Validate and stage files into raw/ before indexing.
+
+        ``source_root``, when given, is the root a caller is syncing from
+        (e.g. a linked folder). Any source file found under it is staged at
+        the same path *relative to that root*, instead of being flattened to
+        its bare filename: without this, every externally-sourced subfolder
+        collapses into raw/'s top level and same-named files in different
+        subfolders collide.
+        """
         logger.info(f"Validating documents for '{self.kb_name}'...")
 
         ingested_hashes = self.get_ingested_hashes()
         files_to_process: list[Path] = []
+        resolved_source_root = Path(source_root).resolve() if source_root else None
 
         for source in source_files:
             source_path = Path(source)
@@ -231,26 +264,33 @@ class DocumentAdder:
                 logger.info(f"Skipped (content already indexed): {source_path.name}")
                 continue
 
+            resolved_source = source_path.resolve()
+
             # Files already saved under raw/ (e.g. by the upload route, possibly
             # inside a folder) are indexed in place — never flattened to the
             # basename — so the uploaded folder structure is preserved verbatim.
-            if source_path.resolve().is_relative_to(self.raw_dir.resolve()):
+            if resolved_source.is_relative_to(self.raw_dir.resolve()):
                 files_to_process.append(source_path)
                 continue
 
-            dest_path = self.raw_dir / source_path.name
+            if resolved_source_root and resolved_source.is_relative_to(resolved_source_root):
+                dest_path = self.raw_dir / resolved_source.relative_to(resolved_source_root)
+            else:
+                dest_path = self.raw_dir / source_path.name
+
             if dest_path.exists():
                 dest_hash = self._get_file_hash(dest_path)
                 if dest_hash == current_hash:
                     logger.info(f"Recovering staged file: {source_path.name}")
                     files_to_process.append(dest_path)
                     continue
-                if not allow_duplicates:
-                    logger.info(f"Skipped (filename collision): {source_path.name}")
-                    continue
+                # Same name, different document: keep both rather than
+                # silently dropping this one.
+                dest_path = self._non_colliding(dest_path)
 
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_path, dest_path)
-            logger.info(f"Staged to raw: {source_path.name}")
+            logger.info(f"Staged to raw: {dest_path.relative_to(self.raw_dir).as_posix()}")
             files_to_process.append(dest_path)
 
         return files_to_process
@@ -273,7 +313,7 @@ class DocumentAdder:
                     self.progress_tracker.update(
                         ProgressStage.PROCESSING_FILE,
                         f"Indexing {doc_file.name}",
-                        current=idx,
+                        current=len(processed_files),
                         total=total_files,
                     )
 
@@ -286,6 +326,13 @@ class DocumentAdder:
                     # requests once per indexed file (#777).
                     await asyncio.to_thread(self._record_successful_hash, doc_file)
                     logger.info(f"Processed: {doc_file.name}")
+                    if self.progress_tracker is not None:
+                        self.progress_tracker.update(
+                            ProgressStage.PROCESSING_FILE,
+                            f"Indexed {doc_file.name}",
+                            current=len(processed_files),
+                            total=total_files,
+                        )
                 else:
                     error = "Provider returned failure without details."
                     failures.append(DocumentIndexFailure(doc_file, error))

@@ -16,6 +16,7 @@ import {
 import type { KnowledgeUploadPolicy } from "@/lib/knowledge-api";
 import {
   formatKnowledgeTimestamp,
+  providerUsesEmbeddingMetadata,
   resolveKbStatus,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
@@ -35,7 +36,11 @@ interface KnowledgeBaseDetailProps {
   task?: TaskState;
   history: HistoryEntry[];
   onCreate: () => void;
-  onUpload: (kbName: string, files: File[]) => Promise<void>;
+  onUpload: (
+    kbName: string,
+    files: File[],
+    destSubdir?: string,
+  ) => Promise<void>;
   onReindex: (kbName: string) => Promise<void>;
   onRetry: (kbName: string) => Promise<void>;
   onSetDefault: (kbName: string) => Promise<void>;
@@ -105,6 +110,7 @@ export default function KnowledgeBaseDetail({
 
   const meta = kb.metadata || {};
   const provider = kb.statistics?.rag_provider || "llamaindex";
+  const pageIndexProvider = !providerUsesEmbeddingMetadata(provider);
   const embeddingLabel = meta.embedding_model
     ? typeof meta.embedding_dim === "number"
       ? `${meta.embedding_model} · ${meta.embedding_dim}${t("d")}`
@@ -169,7 +175,9 @@ export default function KnowledgeBaseDetail({
               />
             </div>
             <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
-              {provider} · {embeddingLabel} · {t("Updated")} {updatedLabel}
+              {provider}
+              {!pageIndexProvider ? ` · ${embeddingLabel}` : ""} ·{" "}
+              {t("Updated")} {updatedLabel}
               {lastIndexedLabel
                 ? ` · ${t("Last indexed")} ${lastIndexedLabel}`
                 : ""}
@@ -235,8 +243,10 @@ export default function KnowledgeBaseDetail({
                   history={history}
                   onClearHistory={() => onClearHistory(kb.name)}
                   onRetry={handleRetry}
-                  onUpload={(files) =>
-                    kb.read_only ? Promise.resolve() : onUpload(kb.name, files)
+                  onUpload={(files, destSubdir) =>
+                    kb.read_only
+                      ? Promise.resolve()
+                      : onUpload(kb.name, files, destSubdir)
                   }
                 />
               )}

@@ -27,6 +27,11 @@ def _json_dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so a search term matches itself literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 # Sentinel so ``add_message`` can distinguish "caller wants the legacy
 # auto-pick-latest-message default" from "caller explicitly wants the
 # message attached at the session root (parent = NULL)". Both surface as
@@ -91,6 +96,45 @@ class TurnRecord:
             "finished_at": self.finished_at,
             "last_seq": self.last_seq,
         }
+
+
+@dataclass(frozen=True)
+class QuestionBankQuery:
+    """One question-bank listing request.
+
+    A value object instead of a widening positional signature: the store's
+    ``_run`` helper only forwards positional args, so every new filter used
+    to mean another parameter threaded through three layers. Callers build
+    a query, the store reads it — adding a filter never changes an arity.
+
+    ``category_id`` and ``uncategorized`` are mutually exclusive views of the
+    same axis; when both are supplied the explicit category wins, because a
+    caller asking for one category always means "show me that category".
+    """
+
+    category_id: int | None = None
+    uncategorized: bool = False
+    bookmarked: bool | None = None
+    is_correct: bool | None = None
+    search: str = ""
+    session_id: str | None = None
+    sort: str = "recent"
+    limit: int = 50
+    offset: int = 0
+
+    def normalized(self) -> "QuestionBankQuery":
+        """Clamp untrusted inputs into the ranges the SQL below assumes."""
+        return QuestionBankQuery(
+            category_id=self.category_id,
+            uncategorized=self.uncategorized and self.category_id is None,
+            bookmarked=self.bookmarked,
+            is_correct=self.is_correct,
+            search=(self.search or "").strip()[:200],
+            session_id=self.session_id,
+            sort="oldest" if self.sort == "oldest" else "recent",
+            limit=max(1, min(int(self.limit), 500)),
+            offset=max(0, int(self.offset)),
+        )
 
 
 class SQLiteSessionStore:
@@ -1140,6 +1184,22 @@ class SQLiteSessionStore:
             ids_to_delete = [int(message_id)]
             if paired_msg is not None:
                 ids_to_delete.append(int(paired_msg["id"]))
+
+            # Splice the deleted rows out of the parent-pointer tree: children
+            # of a deleted row inherit its parent, in descending id order so a
+            # pair's subtree rides up to the pair's parent in one pass (#912).
+            for mid in sorted(ids_to_delete, reverse=True):
+                conn.execute(
+                    """
+                    UPDATE messages
+                    SET parent_message_id = (
+                        SELECT parent_message_id FROM messages WHERE id = ?
+                    )
+                    WHERE session_id = ? AND parent_message_id = ?
+                    """,
+                    (mid, session_id, mid),
+                )
+
             conn.execute(
                 f"DELETE FROM messages WHERE id IN ({','.join('?' * len(ids_to_delete))})",  # nosec B608
                 tuple(ids_to_delete),
@@ -1610,16 +1670,81 @@ class SQLiteSessionStore:
             "updated_at": float(row["updated_at"]),
         }
 
-    def _list_notebook_entries_sync(
-        self,
-        category_id: int | None,
-        bookmarked: bool | None,
-        is_correct: bool | None,
-        limit: int,
-        offset: int,
-        session_id: str | None = None,
-    ) -> dict[str, Any]:
-        base = """
+    # ---- question bank (notebook_entries) queries -----------------------
+
+    @staticmethod
+    def _question_bank_filters(query: QuestionBankQuery) -> tuple[str, str, list[Any]]:
+        """Build the ``(join, where, params)`` triple shared by list + count.
+
+        Kept apart from the SELECT so the row query and the COUNT query can
+        never drift into filtering different sets — the bug that makes a
+        paginated list report a total it does not contain.
+        """
+        joins: list[str] = []
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if query.category_id is not None:
+            joins.append(" INNER JOIN notebook_entry_categories ec ON ec.entry_id = n.id")
+            conditions.append("ec.category_id = ?")
+            params.append(query.category_id)
+        elif query.uncategorized:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM notebook_entry_categories ec WHERE ec.entry_id = n.id)"
+            )
+        if query.bookmarked is not None:
+            conditions.append("n.bookmarked = ?")
+            params.append(1 if query.bookmarked else 0)
+        if query.is_correct is not None:
+            conditions.append("n.is_correct = ?")
+            params.append(1 if query.is_correct else 0)
+        if query.session_id is not None:
+            conditions.append("n.session_id = ?")
+            params.append(query.session_id)
+        if query.search:
+            # ESCAPE so a learner searching for "50%" or "a_b" gets literal
+            # matches instead of the wildcards those characters would be.
+            needle = f"%{_escape_like(query.search)}%"
+            conditions.append(
+                "(n.question LIKE ? ESCAPE '\\' OR n.user_answer LIKE ? ESCAPE '\\' "
+                "OR n.correct_answer LIKE ? ESCAPE '\\' OR n.explanation LIKE ? ESCAPE '\\')"
+            )
+            params.extend([needle] * 4)
+
+        join_sql = "".join(joins)
+        where_sql = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        return join_sql, where_sql, params
+
+    @staticmethod
+    def _load_categories_for(
+        conn: sqlite3.Connection, entry_ids: list[int]
+    ) -> dict[int, list[dict[str, Any]]]:
+        """Fetch every entry's categories in one query (never N+1)."""
+        if not entry_ids:
+            return {}
+        placeholders = ",".join("?" * len(entry_ids))
+        rows = conn.execute(
+            f"""
+            SELECT ec.entry_id, c.id, c.name
+            FROM notebook_entry_categories ec
+            INNER JOIN notebook_categories c ON c.id = ec.category_id
+            WHERE ec.entry_id IN ({placeholders})
+            ORDER BY c.name
+            """,  # nosec B608 - only `?` placeholders are interpolated; every value binds
+            tuple(entry_ids),
+        ).fetchall()
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        for row in rows:
+            grouped.setdefault(int(row["entry_id"]), []).append(
+                {"id": row["id"], "name": row["name"]}
+            )
+        return grouped
+
+    def _list_notebook_entries_sync(self, query: QuestionBankQuery) -> dict[str, Any]:
+        query = query.normalized()
+        join_sql, where_sql, params = self._question_bank_filters(query)
+        order = "ASC" if query.sort == "oldest" else "DESC"
+        base = f"""
             SELECT
                 n.id, n.session_id, COALESCE(s.title, '') AS session_title,
                 n.turn_id, n.question_id, n.question, n.question_type, n.options_json,
@@ -1627,35 +1752,27 @@ class SQLiteSessionStore:
                 n.user_answer, n.user_answer_images_json, n.is_correct, n.bookmarked,
                 n.followup_session_id, n.ai_judgment, n.created_at, n.updated_at
             FROM notebook_entries n
-            LEFT JOIN sessions s ON s.id = n.session_id
-        """
-        count_base = "SELECT COUNT(*) AS cnt FROM notebook_entries n"
-        conditions: list[str] = []
-        params: list[Any] = []
-        if category_id is not None:
-            join = " INNER JOIN notebook_entry_categories ec ON ec.entry_id = n.id"
-            base += join
-            count_base += join
-            conditions.append("ec.category_id = ?")
-            params.append(category_id)
-        if bookmarked is not None:
-            conditions.append("n.bookmarked = ?")
-            params.append(1 if bookmarked else 0)
-        if is_correct is not None:
-            conditions.append("n.is_correct = ?")
-            params.append(1 if is_correct else 0)
-        if session_id is not None:
-            conditions.append("n.session_id = ?")
-            params.append(session_id)
-        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+            LEFT JOIN sessions s ON s.id = n.session_id{join_sql}
+        """  # nosec B608 - join_sql/where_sql are literal fragments; every value binds via ?
+        count_sql = (
+            # join_sql/where_sql are literal fragments; every value binds via ?
+            f"SELECT COUNT(*) AS cnt FROM notebook_entries n{join_sql}{where_sql}"  # nosec B608
+        )
         with self._connect() as conn:
-            total_row = conn.execute(count_base + where, tuple(params)).fetchone()
+            total_row = conn.execute(count_sql, tuple(params)).fetchone()
             total = int(total_row["cnt"]) if total_row else 0
             rows = conn.execute(
-                base + where + " ORDER BY n.created_at DESC LIMIT ? OFFSET ?",
-                tuple(params) + (limit, offset),
+                base
+                + where_sql
+                # ``n.id`` breaks ties: a batch upserted in one call shares a
+                # created_at, and an unstable order duplicates/drops rows across pages.
+                + f" ORDER BY n.created_at {order}, n.id {order} LIMIT ? OFFSET ?",
+                tuple(params) + (query.limit, query.offset),
             ).fetchall()
-        items = [self._serialize_notebook_entry(r) for r in rows]
+            items = [self._serialize_notebook_entry(r) for r in rows]
+            grouped = self._load_categories_for(conn, [int(i["id"]) for i in items])
+        for item in items:
+            item["categories"] = grouped.get(int(item["id"]), [])
         return {"items": items, "total": total}
 
     async def list_notebook_entries(
@@ -1667,16 +1784,69 @@ class SQLiteSessionStore:
         offset: int = 0,
         *,
         session_id: str | None = None,
+        search: str = "",
+        uncategorized: bool = False,
+        sort: str = "recent",
     ) -> dict[str, Any]:
+        """List question-bank entries. Every row carries its categories."""
         return await self._run(
             self._list_notebook_entries_sync,
-            category_id,
-            bookmarked,
-            is_correct,
-            limit,
-            offset,
-            session_id,
+            QuestionBankQuery(
+                category_id=category_id,
+                uncategorized=uncategorized,
+                bookmarked=bookmarked,
+                is_correct=is_correct,
+                search=search,
+                session_id=session_id,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            ),
         )
+
+    def _question_bank_stats_sync(self) -> dict[str, int]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    COALESCE(SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END), 0) AS wrong,
+                    COALESCE(SUM(CASE WHEN bookmarked = 1 THEN 1 ELSE 0 END), 0) AS bookmarked,
+                    COALESCE(SUM(
+                        CASE WHEN NOT EXISTS (
+                            SELECT 1 FROM notebook_entry_categories ec
+                            WHERE ec.entry_id = notebook_entries.id
+                        ) THEN 1 ELSE 0 END
+                    ), 0) AS uncategorized
+                FROM notebook_entries
+                """
+            ).fetchone()
+        if row is None:
+            return {"total": 0, "wrong": 0, "bookmarked": 0, "uncategorized": 0}
+        return {
+            "total": int(row["total"]),
+            "wrong": int(row["wrong"]),
+            "bookmarked": int(row["bookmarked"]),
+            "uncategorized": int(row["uncategorized"]),
+        }
+
+    def has_question_bank_entries(self) -> bool:
+        """Whether the bank holds anything at all — the tool's mount gate.
+
+        Deliberately synchronous: tool composition runs inside a sync
+        policy function, and a bool probe is one indexed row read. Fails
+        closed so a missing/locked db never mounts a tool with no data.
+        """
+        try:
+            with self._connect() as conn:
+                row = conn.execute("SELECT 1 FROM notebook_entries LIMIT 1").fetchone()
+            return row is not None
+        except Exception:
+            return False
+
+    async def question_bank_stats(self) -> dict[str, int]:
+        """Counts behind the bank's filter chips (and the agent's overview)."""
+        return await self._run(self._question_bank_stats_sync)
 
     def _get_notebook_entry_sync(self, entry_id: int) -> dict[str, Any] | None:
         with self._connect() as conn:
@@ -1785,15 +1955,33 @@ class SQLiteSessionStore:
 
     # ── Notebook categories ────────────────────────────────────────
 
+    @staticmethod
+    def _name_taken(conn: sqlite3.Connection, name: str, *, excluding: int | None = None) -> bool:
+        """Whether a category already claims this name, ignoring case.
+
+        The table's UNIQUE index is case-sensitive, so "Math" and "math"
+        both fit — but they read as one pile to a learner, and the agent
+        resolves names case-insensitively, so it would file into the first
+        and report a name the learner sees twice in the rail.
+        """
+        row = conn.execute(
+            "SELECT id FROM notebook_categories WHERE name = ? COLLATE NOCASE",
+            (name.strip(),),
+        ).fetchone()
+        return row is not None and (excluding is None or int(row["id"]) != excluding)
+
     def _create_category_sync(self, name: str) -> dict[str, Any]:
         now = time.time()
+        cleaned = name.strip()
         with self._connect() as conn:
+            if self._name_taken(conn, cleaned):
+                raise ValueError(f"A category named {cleaned!r} already exists.")
             cur = conn.execute(
                 "INSERT INTO notebook_categories (name, created_at) VALUES (?, ?)",
-                (name.strip(), now),
+                (cleaned, now),
             )
             conn.commit()
-        return {"id": int(cur.lastrowid), "name": name.strip(), "created_at": now}
+        return {"id": int(cur.lastrowid), "name": cleaned, "created_at": now}
 
     async def create_category(self, name: str) -> dict[str, Any]:
         return await self._run(self._create_category_sync, name)
@@ -1824,10 +2012,15 @@ class SQLiteSessionStore:
         return await self._run(self._list_categories_sync)
 
     def _rename_category_sync(self, category_id: int, name: str) -> bool:
+        cleaned = name.strip()
         with self._connect() as conn:
+            # Without this the UNIQUE index raises straight through the
+            # router as a 500; a name clash is a request problem, not a bug.
+            if self._name_taken(conn, cleaned, excluding=category_id):
+                raise ValueError(f"A category named {cleaned!r} already exists.")
             cur = conn.execute(
                 "UPDATE notebook_categories SET name = ? WHERE id = ?",
-                (name.strip(), category_id),
+                (cleaned, category_id),
             )
             conn.commit()
         return cur.rowcount > 0
@@ -1887,6 +2080,70 @@ class SQLiteSessionStore:
     async def get_entry_categories(self, entry_id: int) -> list[dict[str, Any]]:
         return await self._run(self._get_entry_categories_sync, entry_id)
 
+    def _link_entries_to_category_sync(
+        self, entry_ids: list[int], category_id: int, link: bool
+    ) -> int:
+        """Add/remove many entries to one category in a single transaction.
+
+        Returns the number of links actually changed, so a caller that asked
+        to file 20 questions can tell the learner "18 filed, 2 already there"
+        instead of claiming a no-op succeeded.
+        """
+        if not entry_ids:
+            return 0
+        with self._connect() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM notebook_categories WHERE id = ?", (category_id,)
+            ).fetchone()
+            if exists is None:
+                return 0
+            placeholders = ",".join("?" * len(entry_ids))
+            # Filter to entries that really exist: a stale id from the agent
+            # or a concurrently-deleted row must not abort the whole batch.
+            known = [
+                int(r["id"])
+                for r in conn.execute(
+                    f"SELECT id FROM notebook_entries WHERE id IN ({placeholders})",  # nosec B608 - only `?` placeholders are interpolated; every value binds
+                    tuple(entry_ids),
+                ).fetchall()
+            ]
+            if not known:
+                return 0
+            if link:
+                cur = conn.executemany(
+                    "INSERT OR IGNORE INTO notebook_entry_categories "
+                    "(entry_id, category_id) VALUES (?, ?)",
+                    [(eid, category_id) for eid in known],
+                )
+            else:
+                cur = conn.executemany(
+                    "DELETE FROM notebook_entry_categories WHERE entry_id = ? AND category_id = ?",
+                    [(eid, category_id) for eid in known],
+                )
+            return int(cur.rowcount or 0)
+
+    async def link_entries_to_category(
+        self, entry_ids: list[int], category_id: int, *, link: bool = True
+    ) -> int:
+        return await self._run(
+            self._link_entries_to_category_sync, list(entry_ids), category_id, link
+        )
+
+    def _find_category_by_name_sync(self, name: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, name, created_at FROM notebook_categories "
+                "WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 1",
+                (name.strip(),),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"id": int(row["id"]), "name": row["name"], "created_at": float(row["created_at"])}
+
+    async def find_category_by_name(self, name: str) -> dict[str, Any] | None:
+        """Look a category up by display name — the only handle an agent has."""
+        return await self._run(self._find_category_by_name_sync, name)
+
 
 _instances: dict[str, SQLiteSessionStore] = {}
 
@@ -1899,4 +2156,9 @@ def get_sqlite_session_store() -> SQLiteSessionStore:
     return _instances[key]
 
 
-__all__ = ["SQLiteSessionStore", "get_sqlite_session_store", "make_imported_session_id"]
+__all__ = [
+    "QuestionBankQuery",
+    "SQLiteSessionStore",
+    "get_sqlite_session_store",
+    "make_imported_session_id",
+]

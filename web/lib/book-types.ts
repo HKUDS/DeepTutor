@@ -188,6 +188,36 @@ export interface QuizAttempt {
   timestamp: number;
 }
 
+export type LearningCaptureStatus =
+  | "captured"
+  | "drafted"
+  | "pending_confirmation"
+  | "approved"
+  | "delivered"
+  | "imported"
+  | "rejected";
+
+export interface LearningCapture {
+  id: string;
+  book_id: string;
+  page_id: string;
+  block_id: string;
+  capture_type: string;
+  source_text: string;
+  context_before: string;
+  context_after: string;
+  source_locator: string;
+  book_title: string;
+  chapter_title: string;
+  user_note: string;
+  content_hash: string;
+  status: LearningCaptureStatus;
+  version: number;
+  rejected_reason: string;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface Progress {
   book_id: string;
   current_page_id: string;

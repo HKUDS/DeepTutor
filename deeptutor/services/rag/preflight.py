@@ -17,6 +17,7 @@ from .factory import (
     GRAPHRAG_PROVIDER,
     IMA_PROVIDER,
     LIGHTRAG_PROVIDER,
+    PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
 )
@@ -78,21 +79,36 @@ def _llamaindex_preflight() -> dict:
 
 def _pageindex_preflight() -> dict:
     try:
-        from .pipelines.pageindex.config import DEFAULT_API_BASE_URL, get_pageindex_config
+        from .pipelines.pageindex.config import get_pageindex_config
 
         cfg = get_pageindex_config(require_key=False)
         configured = bool(cfg.api_key)
-        base = cfg.api_base_url or DEFAULT_API_BASE_URL
     except Exception:
-        configured, base = False, ""
+        configured = False
     return _finalize(
         [
             _check(
                 "api_key",
                 "API key configured",
                 configured,
-                base if configured else "Add a PageIndex API key under Credentials.",
+                "PageIndex Cloud" if configured else "Add a PageIndex API key under Credentials.",
             )
+        ]
+    )
+
+
+def _pageindex_oss_preflight() -> dict:
+    try:
+        from .pipelines.pageindex.client import resolve_oss_sdk_config
+
+        model, _backend = resolve_oss_sdk_config()
+        llm_ok, detail = bool(model), model
+    except Exception as exc:
+        llm_ok = False
+        detail = str(exc)
+    return _finalize(
+        [
+            _check("chat", "Active LLM for indexing", llm_ok, detail),
         ]
     )
 
@@ -212,6 +228,7 @@ def _finalize(checks: list[dict]) -> dict:
 _PREFLIGHTS = {
     DEFAULT_PROVIDER: _llamaindex_preflight,
     PAGEINDEX_PROVIDER: _pageindex_preflight,
+    PAGEINDEX_OSS_PROVIDER: _pageindex_oss_preflight,
     GRAPHRAG_PROVIDER: _graphrag_preflight,
     LIGHTRAG_PROVIDER: _lightrag_preflight,
     IMA_PROVIDER: _ima_preflight,

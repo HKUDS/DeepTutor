@@ -57,6 +57,7 @@ from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     GRAPHRAG_PROVIDER,
     LIGHTRAG_PROVIDER,
+    PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
     provider_uses_embedding_versions,
@@ -351,6 +352,7 @@ def _save_uploaded_files(
     allowed_extensions: set[str] | None = None,
     kb_name: str | None = None,
     rel_paths: list[str] | None = None,
+    dest_subdir: str = "",
 ) -> tuple[list[str], list[str]]:
     """
     Save uploaded files to the local raw/ directory.
@@ -387,7 +389,12 @@ def _save_uploaded_files(
                     if rel_paths and idx < len(rel_paths) and rel_paths[idx]
                     else ""
                 )
-                subdir = _sanitize_rel_subdir(rel.rsplit("/", 1)[0]) if "/" in rel else ""
+                own_subdir = _sanitize_rel_subdir(rel.rsplit("/", 1)[0]) if "/" in rel else ""
+                # A browser folder pick reports paths relative to the chosen
+                # directory, so its ancestors are simply not in the payload.
+                # dest_subdir is how the caller re-attaches the batch to the
+                # place it belongs inside the KB (#866).
+                subdir = "/".join(part for part in (dest_subdir, own_subdir) if part)
                 dest_dir = target_dir / subdir if subdir else target_dir
                 if subdir:
                     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -477,6 +484,7 @@ async def _save_uploaded_files_off_loop(
     allowed_extensions: set[str] | None = None,
     kb_name: str | None = None,
     rel_paths: list[str] | None = None,
+    dest_subdir: str = "",
 ) -> tuple[list[str], list[str]]:
     """:func:`_save_uploaded_files` on a worker thread.
 
@@ -496,6 +504,7 @@ async def _save_uploaded_files_off_loop(
         allowed_extensions=allowed_extensions,
         kb_name=kb_name,
         rel_paths=rel_paths,
+        dest_subdir=dest_subdir,
     )
 
 
@@ -595,9 +604,9 @@ def _task_log(task_id: str, message: str, level: str = "info") -> None:
 
     log_method = getattr(logger, level, None)
     if callable(log_method):
-        log_method(f"[{task_id}] {message}")
+        log_method(f"[{task_id}] {message}", extra={PROCESS_LOG_PRIVATE_ATTR: True})
     else:
-        logger.info(f"[{task_id}] {message}")
+        logger.info(f"[{task_id}] {message}", extra={PROCESS_LOG_PRIVATE_ATTR: True})
 
 
 def _server_task_trace(task_id: str, trace: str) -> None:
@@ -652,6 +661,24 @@ def _assert_provider_ready(provider: str) -> None:
                 ),
             )
 
+    if provider == PAGEINDEX_OSS_PROVIDER:
+        from deeptutor.services.rag.preflight import engine_preflight
+
+        report = engine_preflight(provider)
+        failed_checks = [
+            check
+            for check in report.get("checks", [])
+            if not check.get("optional") and not check.get("ok")
+        ]
+        if failed_checks:
+            details = "; ".join(
+                str(check.get("detail") or check.get("label") or "Requirement not met")
+                for check in failed_checks
+            )
+            raise HTTPException(
+                status_code=409, detail=f"PageIndex OSS preflight failed: {details}"
+            )
+
     if provider == GRAPHRAG_PROVIDER:
         from deeptutor.services.rag.pipelines.graphrag.config import is_graphrag_available
 
@@ -699,19 +726,26 @@ def _assert_provider_ready(provider: str) -> None:
 
 def _enforce_provider_formats(provider: str, files: list[UploadFile]) -> None:
     """Reject files PageIndex's document endpoint does not accept, up front."""
-    if provider != PAGEINDEX_PROVIDER:
+    if provider not in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
         return
-    from deeptutor.services.rag.pipelines.pageindex.pipeline import SUPPORTED_EXTENSIONS
+    from deeptutor.services.rag.pipelines.pageindex.pipeline import (
+        OSS_SUPPORTED_EXTENSIONS,
+        SUPPORTED_EXTENSIONS,
+    )
+
+    extensions = (
+        OSS_SUPPORTED_EXTENSIONS if provider == PAGEINDEX_OSS_PROVIDER else SUPPORTED_EXTENSIONS
+    )
 
     unsupported = [
         f.filename
         for f in files
         if f.filename
-        and not f.filename.lower().endswith(".zip")
-        and Path(f.filename).suffix.lower() not in SUPPORTED_EXTENSIONS
+        and not (provider == PAGEINDEX_PROVIDER and f.filename.lower().endswith(".zip"))
+        and Path(f.filename).suffix.lower() not in extensions
     ]
     if unsupported:
-        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+        supported = ", ".join(sorted(extensions))
         raise HTTPException(
             status_code=400,
             detail=(
@@ -905,6 +939,7 @@ async def run_upload_processing_task(
     task_id: str,
     rag_provider: str = None,
     folder_id: str = None,
+    folder_root: str = None,
 ):
     """Background task for processing uploaded files.
 
@@ -914,6 +949,9 @@ async def run_upload_processing_task(
         uploaded_file_paths: List of file paths to process
         rag_provider: RAG provider already matched against the KB binding
         folder_id: Optional folder ID for sync state update
+        folder_root: Linked folder's own root path, when these files came
+            from a folder sync. Preserves each file's path relative to it
+            instead of flattening to the bare filename.
     """
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
@@ -927,7 +965,7 @@ async def run_upload_processing_task(
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Processing {len(uploaded_file_paths)} files...",
+                f"Validating {len(uploaded_file_paths)} file(s)...",
                 current=0,
                 total=len(uploaded_file_paths),
             )
@@ -945,9 +983,18 @@ async def run_upload_processing_task(
             # *sync* callables to its threadpool — so doing this inline stalled
             # every other request for the length of the batch (#777).
             staged_files = await asyncio.to_thread(
-                adder.add_documents, uploaded_file_paths, allow_duplicates=False
+                adder.add_documents,
+                uploaded_file_paths,
+                allow_duplicates=False,
+                source_root=folder_root,
             )
             _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
+            progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                f"Staged {len(staged_files)} new file(s)",
+                current=0,
+                total=len(staged_files),
+            )
 
             if not staged_files:
                 _task_log(task_id, "No new files to process (all duplicates or invalid)")
@@ -1000,6 +1047,12 @@ async def run_upload_processing_task(
                 )
                 return
 
+            progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                "Saving metadata...",
+                current=index_result.processed_count,
+                total=len(staged_files),
+            )
             adder.update_metadata(index_result.processed_count)
 
             if folder_id and processed_files:
@@ -1131,7 +1184,6 @@ class PageIndexConfigUpdate(BaseModel):
     # Tri-state api_key: omit/None keeps the stored key, "" clears it, any other
     # value replaces it — so the masked UI never round-trips the real secret.
     api_key: str | None = None
-    api_base_url: str | None = None
 
 
 def _pageindex_config_payload() -> dict:
@@ -1140,7 +1192,6 @@ def _pageindex_config_payload() -> dict:
 
     settings = get_runtime_settings_service().load_pageindex()
     return {
-        "api_base_url": settings.get("api_base_url") or "",
         "api_key_set": bool(settings.get("api_key")),
         "configured": bool(settings.get("api_key")),
     }
@@ -1158,10 +1209,9 @@ async def get_pageindex_pipeline_config():
 
 @router.put("/rag-pipelines/pageindex/config")
 async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
-    """Persist the PageIndex API key / base URL for this user's account."""
+    """Persist the deployment-level PageIndex Cloud credential."""
     try:
         from deeptutor.services.config import get_runtime_settings_service
-        from deeptutor.services.rag.pipelines.pageindex.config import DEFAULT_API_BASE_URL
 
         service = get_runtime_settings_service()
         current = service.load_pageindex(include_process_overrides=False)
@@ -1170,20 +1220,7 @@ async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
         if payload.api_key is not None:
             api_key = payload.api_key.strip()
 
-        api_base_url = current.get("api_base_url") or DEFAULT_API_BASE_URL
-        if payload.api_base_url is not None and payload.api_base_url.strip():
-            api_base_url = payload.api_base_url.strip()
-
-        service.save_pageindex({"api_key": api_key, "api_base_url": api_base_url})
-
-        # The built-in pageindex MCP server derives its URL/Bearer header from
-        # these settings — resync connections so key changes apply immediately.
-        try:
-            from deeptutor.services.mcp import get_mcp_manager
-
-            await get_mcp_manager().reload()
-        except Exception:
-            logger.warning("MCP reload after PageIndex config change failed", exc_info=True)
+        service.save_pageindex({"api_key": api_key})
 
         return _pageindex_config_payload()
     except Exception as e:
@@ -1326,15 +1363,18 @@ async def update_graphrag_pipeline_config(payload: GraphRagConfigUpdate):
 
 
 class LightRagConfigUpdate(BaseModel):
-    """Partial update for LightRAG query knobs (omitted fields kept)."""
+    """Partial update for LightRAG query + indexing knobs (omitted fields kept)."""
 
     top_k: int | None = None
     response_type: str | None = None
+    max_concurrent_files: int | None = None
+    llm_model_max_async: int | None = None
+    entity_extract_max_gleaning: int | None = None
 
 
 @router.get("/rag-pipelines/lightrag/config")
 async def get_lightrag_pipeline_config():
-    """Read LightRAG's query knobs (top_k, response style)."""
+    """Read LightRAG's query knobs plus its indexing concurrency/extraction knobs."""
     try:
         from deeptutor.services.config import get_runtime_settings_service
 
@@ -1346,7 +1386,12 @@ async def get_lightrag_pipeline_config():
 
 @router.put("/rag-pipelines/lightrag/config")
 async def update_lightrag_pipeline_config(payload: LightRagConfigUpdate):
-    """Persist LightRAG's query knobs. Takes effect on the next query."""
+    """Persist LightRAG's knobs.
+
+    Query knobs (``top_k``, ``response_type``) take effect on the next query;
+    the indexing knobs shape how a KB is built, so they apply to the next
+    build or rebuild.
+    """
     try:
         from deeptutor.services.config import get_runtime_settings_service
 
@@ -2399,10 +2444,19 @@ async def delete_kb_file(kb_name: str, filename: str):
     whether a re-index is needed to purge the file from retrieval.
     """
     manager, kb_name, _ = _writable_kb(kb_name)
-    _assert_kb_writable_or_409(kb_name, _load_kb_entry_or_404(manager, kb_name))
+    kb_entry = _load_kb_entry_or_404(manager, kb_name)
+    _assert_kb_writable_or_409(kb_name, kb_entry)
     target = _resolve_kb_raw_file_or_404(kb_name, filename)
 
     kb_dir = manager.get_knowledge_base_path(kb_name)
+    provider = _validate_registered_provider(kb_entry.get("rag_provider") or DEFAULT_PROVIDER)
+    if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+        from deeptutor.services.rag.factory import get_pipeline
+
+        await get_pipeline(provider, kb_base_dir=str(manager.base_dir)).remove_document(
+            kb_name,
+            target.name,
+        )
     removal = remove_raw_document(Path(kb_dir), target)
     return {
         "status": "ok",
@@ -2446,8 +2500,16 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     rag_provider: str = Form(None),
     rel_paths: list[str] = Form(None),
+    dest_subdir: str = Form(None),
 ):
-    """Upload files to a knowledge base and process them in background."""
+    """Upload files to a knowledge base and process them in background.
+
+    ``dest_subdir`` places the whole batch under that folder inside the KB.
+    A browser folder pick reports each file's path relative to the chosen
+    directory, so the directory's own ancestors never reach the server; this
+    is how a caller adding one subtree at a time re-attaches it where it
+    belongs instead of piling every batch at the root (#866).
+    """
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
         requested_provider = None
@@ -2479,7 +2541,11 @@ async def upload_files(
         upload_extensions = allowed_extensions | {".zip"}
         _validate_upload_batch(files, allowed_extensions=upload_extensions, rel_paths=rel_paths)
         uploaded_files, uploaded_file_paths = await _save_uploaded_files_off_loop(
-            files, raw_dir, allowed_extensions=upload_extensions, rel_paths=rel_paths
+            files,
+            raw_dir,
+            allowed_extensions=upload_extensions,
+            rel_paths=rel_paths,
+            dest_subdir=_sanitize_rel_subdir(dest_subdir),
         )
         task_id = _build_unique_task_id("kb_upload", kb_name)
         get_task_stream_manager().ensure_task(task_id)
@@ -2523,6 +2589,7 @@ async def create_knowledge_base(
     name: str = Form(...),
     files: list[UploadFile] = File(...),
     rag_provider: str = Form(DEFAULT_PROVIDER),
+    pageindex_mode: str = Form(""),
     rel_paths: list[str] = Form(None),
 ):
     """Create a new knowledge base and initialize it with files."""
@@ -2538,6 +2605,16 @@ async def create_knowledge_base(
             raise HTTPException(status_code=400, detail=f"Knowledge base '{name}' already exists")
 
         rag_provider = _validate_registered_provider(rag_provider)
+        pageindex_mode = str(pageindex_mode or "").strip().lower()
+        if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode not in {
+            "",
+            "flash",
+            "standard",
+        }:
+            raise HTTPException(
+                status_code=400,
+                detail="PageIndex OSS mode must be 'flash', 'standard', or omitted.",
+            )
         _assert_provider_ready(rag_provider)
         _enforce_provider_formats(rag_provider, files)
         allowed_extensions = FileTypeRouter.get_supported_extensions()
@@ -2566,6 +2643,8 @@ async def create_knowledge_base(
         if name in manager.config.get("knowledge_bases", {}):
             manager.config["knowledge_bases"][name]["rag_provider"] = rag_provider
             manager.config["knowledge_bases"][name]["needs_reindex"] = False
+            if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode:
+                manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
             manager._save_config()
 
         progress_tracker = ProgressTracker(name, kb_base_dir)
@@ -3172,6 +3251,7 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
             task_id=task_id,
             rag_provider=kb_provider,
             folder_id=folder_id,  # Pass folder_id to update state on success
+            folder_root=folder_path,  # Preserve each file's path relative to this root
         )
 
         return {

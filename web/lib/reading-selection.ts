@@ -90,7 +90,12 @@ export function normaliseRects(rects: Box[], container: Box): NormalisedRect[] {
       const y1 = clamp01(
         (rect.top + rect.height - container.top) / container.height,
       );
-      return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+      return [
+        Math.min(x0, x1),
+        Math.min(y0, y1),
+        Math.max(x0, x1),
+        Math.max(y0, y1),
+      ];
     })
     .filter(([x0, y0, x1, y1]) => x1 - x0 > 0.001 && y1 - y0 > 0.001);
 }

@@ -122,9 +122,7 @@ export async function uploadMaterial(file: File): Promise<MaterialDetail> {
   );
 }
 
-export async function getMaterial(
-  materialId: string,
-): Promise<MaterialDetail> {
+export async function getMaterial(materialId: string): Promise<MaterialDetail> {
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials/${materialId}`), {
       cache: "no-store",
@@ -145,10 +143,9 @@ export async function getUnitText(
   locator: number,
 ): Promise<{ locator: number; unit: UnitKind; text: string }> {
   return unwrap(
-    await apiFetch(
-      apiUrl(`${BASE}/materials/${materialId}/units/${locator}`),
-      { cache: "no-store" },
-    ),
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/units/${locator}`), {
+      cache: "no-store",
+    }),
   );
 }
 
@@ -211,7 +208,9 @@ export async function fetchExport(
   }
   return {
     blob: await response.blob(),
-    filename: filenameFromDisposition(response.headers.get("content-disposition")),
+    filename: filenameFromDisposition(
+      response.headers.get("content-disposition"),
+    ),
   };
 }
 

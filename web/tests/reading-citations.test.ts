@@ -35,7 +35,14 @@ test("bounds an absurd range instead of expanding it", () => {
 });
 
 test("ignores brackets that are not locator citations", () => {
-  for (const input of ["[12]", "[page 12]", "[p.]", "[p.abc]", "[web-1]", "[0]"]) {
+  for (const input of [
+    "[12]",
+    "[page 12]",
+    "[p.]",
+    "[p.abc]",
+    "[web-1]",
+    "[0]",
+  ]) {
     assert.deepEqual(findLocatorCitations(input), [], input);
   }
 });
@@ -51,16 +58,30 @@ test("does not touch citations inside inline code", () => {
 });
 
 test("does not touch citations inside fenced code blocks", () => {
-  const text = ["Look at this:", "", "```python", "x = data[p.12]", "```", "", "Then [p.3]."].join(
-    "\n",
-  );
+  const text = [
+    "Look at this:",
+    "",
+    "```python",
+    "x = data[p.12]",
+    "```",
+    "",
+    "Then [p.3].",
+  ].join("\n");
   const found = findLocatorCitations(text);
   assert.equal(found.length, 1);
   assert.deepEqual(found[0].locators, [3]);
 });
 
 test("handles tilde fences and multiple fences", () => {
-  const text = ["~~~", "a[p.1]", "~~~", "prose [p.2]", "```", "b[p.3]", "```"].join("\n");
+  const text = [
+    "~~~",
+    "a[p.1]",
+    "~~~",
+    "prose [p.2]",
+    "```",
+    "b[p.3]",
+    "```",
+  ].join("\n");
   const found = findLocatorCitations(text);
   assert.deepEqual(
     found.map((c) => c.locators),
@@ -200,7 +221,9 @@ test("does not absorb a phrase naming a different locator", () => {
 
 test("does not reach across a sentence boundary", () => {
   assert.equal(
-    linkifyLocatorCitations("It is on page 3. A different claim follows [p.3]."),
+    linkifyLocatorCitations(
+      "It is on page 3. A different claim follows [p.3].",
+    ),
     `It is on page 3. A different claim follows [p.3](${LOCATOR_HREF_PREFIX}3).`,
   );
 });
@@ -230,12 +253,16 @@ test("absorption survives several citations in one answer", () => {
 
 test("a marker with no nearby phrase still renders as a marker", () => {
   assert.equal(
-    linkifyLocatorCitations("Order is injected explicitly rather than learned [p.3]."),
+    linkifyLocatorCitations(
+      "Order is injected explicitly rather than learned [p.3].",
+    ),
     `Order is injected explicitly rather than learned [p.3](${LOCATOR_HREF_PREFIX}3).`,
   );
 });
 
 test("absorption is still idempotent", () => {
-  const once = linkifyLocatorCitations("It is on page 3 of the document [p.3].");
+  const once = linkifyLocatorCitations(
+    "It is on page 3 of the document [p.3].",
+  );
   assert.equal(linkifyLocatorCitations(once), once);
 });

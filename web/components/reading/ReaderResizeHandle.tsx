@@ -83,7 +83,9 @@ export function ReaderResizeHandle() {
       // Storage unavailable — keep the CSS default.
     }
     if (stored === null) return;
-    applyWidthImmediately(clampReaderWidth(stored, containerWidth(ref.current)));
+    applyWidthImmediately(
+      clampReaderWidth(stored, containerWidth(ref.current)),
+    );
   }, []);
 
   const persist = useCallback((px: number) => {
@@ -145,7 +147,10 @@ export function ReaderResizeHandle() {
   const nudge = useCallback(
     (delta: number) => {
       const element = ref.current;
-      const next = clampReaderWidth(currentWidth(element) + delta, containerWidth(element));
+      const next = clampReaderWidth(
+        currentWidth(element) + delta,
+        containerWidth(element),
+      );
       applyWidthImmediately(next);
       persist(next);
     },

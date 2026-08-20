@@ -16,7 +16,8 @@ import type { StreamEvent } from "@/lib/unified-ws";
 const THEMES: readonly Theme[] = ["light", "dark", "glass", "snow"];
 
 function asTheme(value: unknown): Theme | null {
-  return typeof value === "string" && (THEMES as readonly string[]).includes(value)
+  return typeof value === "string" &&
+    (THEMES as readonly string[]).includes(value)
     ? (value as Theme)
     : null;
 }

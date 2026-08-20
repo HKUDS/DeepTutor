@@ -51,7 +51,10 @@ export interface ReadingContextValue {
   openMaterial: (candidate: MaterialDetail | MaterialInfo) => Promise<void>;
   closeMaterial: () => void;
   /** Insert or update an annotation, optimistically. */
-  saveMark: (draft: AnnotationDraft, optimistic: AnnotationItem) => Promise<void>;
+  saveMark: (
+    draft: AnnotationDraft,
+    optimistic: AnnotationItem,
+  ) => Promise<void>;
   /** Remove an annotation, optimistically. */
   removeMark: (annotation: AnnotationItem) => Promise<void>;
   /** Accept a mark the assistant just made (arrives via a tool result). */
@@ -111,7 +114,9 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       } catch (caught) {
         if (token !== openTokenRef.current) return;
         setErrorState(
-          caught instanceof Error ? caught.message : "This document could not be opened.",
+          caught instanceof Error
+            ? caught.message
+            : "This document could not be opened.",
         );
       } finally {
         if (token === openTokenRef.current) setLoading(false);
@@ -145,10 +150,14 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         );
       } catch (caught) {
         setAnnotations((current) =>
-          current.filter((row) => row.annotation_id !== optimistic.annotation_id),
+          current.filter(
+            (row) => row.annotation_id !== optimistic.annotation_id,
+          ),
         );
         setErrorState(
-          caught instanceof Error ? caught.message : "That annotation could not be saved.",
+          caught instanceof Error
+            ? caught.message
+            : "That annotation could not be saved.",
         );
       }
     },
@@ -162,7 +171,9 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       let previous: AnnotationItem[] = [];
       setAnnotations((current) => {
         previous = current;
-        return current.filter((row) => row.annotation_id !== annotation.annotation_id);
+        return current.filter(
+          (row) => row.annotation_id !== annotation.annotation_id,
+        );
       });
       try {
         await deleteAnnotationApi(materialId, annotation.annotation_id);
@@ -179,13 +190,16 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   const mergeMark = useCallback((annotation: AnnotationItem) => {
     if (!annotation?.annotation_id) return;
     setAnnotations((current) => [
-      ...current.filter((row) => row.annotation_id !== annotation.annotation_id),
+      ...current.filter(
+        (row) => row.annotation_id !== annotation.annotation_id,
+      ),
       annotation,
     ]);
   }, []);
 
   const reportViewport = useCallback(
-    (next: { locator?: number; selection?: string }) => setReadingViewport(next),
+    (next: { locator?: number; selection?: string }) =>
+      setReadingViewport(next),
     [],
   );
 
@@ -223,7 +237,9 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <ReadingContext.Provider value={value}>{children}</ReadingContext.Provider>;
+  return (
+    <ReadingContext.Provider value={value}>{children}</ReadingContext.Provider>
+  );
 }
 
 export function useReading(): ReadingContextValue {

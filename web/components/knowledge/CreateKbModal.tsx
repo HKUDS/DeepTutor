@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   Check,
+  ExternalLink,
   FolderOpen,
   FolderSearch,
   Link2,
@@ -27,24 +28,13 @@ import {
   IMA_PROVIDER,
   linkSourceEnabled,
 } from "@/lib/ima-connection";
-import { validateFiles } from "@/lib/knowledge-helpers";
+import {
+  uploadPolicyForProvider,
+  validateFiles,
+} from "@/lib/knowledge-helpers";
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 
-// Mirrors SUPPORTED_EXTENSIONS in the backend pageindex pipeline (PageIndex POST /doc/).
-const PAGEINDEX_FORMATS = [
-  ".pdf",
-  ".md",
-  ".markdown",
-  ".txt",
-  ".docx",
-  ".doc",
-  ".pptx",
-  ".ppt",
-  ".xlsx",
-  ".xls",
-  ".csv",
-];
 const OBSIDIAN_SOURCE = "obsidian";
 const LIGHTRAG_SERVER_PROVIDER = "lightrag-server";
 const EXAMPLE_INDEX_PATH = "/Users/you/knowledge_bases/my-kb";
@@ -62,6 +52,7 @@ interface CreateKbModalProps {
     name: string;
     provider: string;
     files: File[];
+    pageindexMode?: "flash" | "standard";
   }) => Promise<void>;
   /** Link a pre-built engine index folder in place (no copy, no re-index). */
   onConnectLinkedFolder: (params: {
@@ -115,6 +106,9 @@ export default function CreateKbModal({
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("llamaindex");
   const [files, setFiles] = useState<File[]>([]);
+  const [pageIndexMode, setPageIndexMode] = useState<"" | "flash" | "standard">(
+    "",
+  );
   // Link mode: the source is either an engine id or the Obsidian sentinel.
   const [linkSource, setLinkSource] = useState(OBSIDIAN_SOURCE);
   const [folderPath, setFolderPath] = useState("");
@@ -167,6 +161,7 @@ export default function CreateKbModal({
     setMode(initialMode);
     setName("");
     setFiles([]);
+    setPageIndexMode("");
     setError(null);
     const initialProvider = createProviders(providers).find(
       (item) => item.id === initialSource,
@@ -200,19 +195,14 @@ export default function CreateKbModal({
   const providerNeedsKey =
     !!activeProvider?.requires_api_key && activeProvider?.configured === false;
   const providerUnavailable = activeProvider?.configured === false;
-  const isPageIndex = provider === "pageindex";
+  const isPageIndexCloud = provider === "pageindex";
+  const isPageIndexOSS = provider === "pageindex-oss";
   const isLightRagServer = provider === LIGHTRAG_SERVER_PROVIDER;
   const serverModeOptions = activeProvider?.modes ?? [];
   const effectiveServerMode =
     serverMode || activeProvider?.default_mode || serverModeOptions[0] || "";
 
-  const policyForProvider: KnowledgeUploadPolicy = isPageIndex
-    ? {
-        ...uploadPolicy,
-        extensions: PAGEINDEX_FORMATS,
-        accept: PAGEINDEX_FORMATS.join(","),
-      }
-    : uploadPolicy;
+  const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
 
   const selection = validateFiles(files, policyForProvider, t);
 
@@ -291,6 +281,8 @@ export default function CreateKbModal({
             name: trimmed,
             provider,
             files: selection.validFiles,
+            pageindexMode:
+              isPageIndexOSS && pageIndexMode ? pageIndexMode : undefined,
           });
         }
       } else if (linkIsIma) {
@@ -397,7 +389,10 @@ export default function CreateKbModal({
             providerUnavailable={providerUnavailable}
             providerNeedsKey={providerNeedsKey}
             onConfigureProvider={onConfigureProvider}
-            isPageIndex={isPageIndex}
+            isPageIndexCloud={isPageIndexCloud}
+            isPageIndexOSS={isPageIndexOSS}
+            pageIndexMode={pageIndexMode}
+            setPageIndexMode={setPageIndexMode}
             files={files}
             setFiles={setFiles}
             policyForProvider={policyForProvider}
@@ -531,7 +526,10 @@ function NewModeFields({
   providerUnavailable,
   providerNeedsKey,
   onConfigureProvider,
-  isPageIndex,
+  isPageIndexCloud,
+  isPageIndexOSS,
+  pageIndexMode,
+  setPageIndexMode,
   files,
   setFiles,
   policyForProvider,
@@ -545,7 +543,10 @@ function NewModeFields({
   providerUnavailable: boolean;
   providerNeedsKey: boolean;
   onConfigureProvider?: () => void;
-  isPageIndex: boolean;
+  isPageIndexCloud: boolean;
+  isPageIndexOSS: boolean;
+  pageIndexMode: "" | "flash" | "standard";
+  setPageIndexMode: (mode: "" | "flash" | "standard") => void;
   files: File[];
   setFiles: (files: File[]) => void;
   policyForProvider: KnowledgeUploadPolicy;
@@ -553,6 +554,9 @@ function NewModeFields({
   connectionForm?: ReactNode;
   t: TFn;
 }) {
+  const readinessReason = providers.find(
+    (item) => item.id === provider,
+  )?.readiness_reason;
   return (
     <>
       <div>
@@ -565,37 +569,49 @@ function NewModeFields({
             const needsKey = !!p.requires_api_key && p.configured === false;
             const unavailable = p.configured === false && !p.requires_api_key;
             return (
-              <button
-                key={p.id}
-                type="button"
-                disabled={submitting}
-                onClick={() => setProvider(p.id)}
-                className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
-                  selected
-                    ? "border-[var(--primary)] bg-[var(--primary)]/5"
-                    : "border-[var(--border)] hover:border-[var(--ring)]"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-medium text-[var(--foreground)]">
-                    {p.name}
+              <div key={p.id} className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setProvider(p.id)}
+                  className={`group flex w-full flex-1 flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+                    selected
+                      ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                      : "border-[var(--border)] hover:border-[var(--ring)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] font-medium text-[var(--foreground)]">
+                      {p.name}
+                    </span>
+                    {needsKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                        {t("Needs key")}
+                      </span>
+                    ) : unavailable ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                        {t("Not installed")}
+                      </span>
+                    ) : selected ? (
+                      <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                    ) : null}
+                  </div>
+                  <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
+                    {p.description}
                   </span>
-                  {needsKey ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-                      {t("Needs key")}
-                    </span>
-                  ) : unavailable ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-                      {t("Not installed")}
-                    </span>
-                  ) : selected ? (
-                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
-                  ) : null}
-                </div>
-                <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
-                  {p.description}
-                </span>
-              </button>
+                </button>
+                {p.id === "pageindex" && (
+                  <a
+                    href="https://dash.pageindex.ai/api-keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-1 text-[10.5px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  >
+                    {t("PageIndex API plans")}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
             );
           })}
         </div>
@@ -608,7 +624,8 @@ function NewModeFields({
                     "This engine needs an API key. Configure it before creating.",
                   )
                 : t(
-                    "This engine isn't installed on the server. Install it before creating.",
+                    readinessReason ||
+                      "This engine isn't ready on the server. Check its requirements before creating.",
                   )}
             </span>
             {providerNeedsKey && onConfigureProvider && (
@@ -624,13 +641,48 @@ function NewModeFields({
         )}
       </div>
 
+      {isPageIndexOSS && (
+        <div>
+          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+            {t("Index mode")}
+            <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
+              · {t("optional")}
+            </span>
+          </label>
+          <select
+            value={pageIndexMode}
+            onChange={(event) =>
+              setPageIndexMode(event.target.value as "" | "flash" | "standard")
+            }
+            disabled={submitting}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+          >
+            <option value="">
+              {t("Default — Flash, summaries and full optimization")}
+            </option>
+            <option value="flash">{t("Flash")}</option>
+            <option value="standard">{t("Standard")}</option>
+          </select>
+          <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+            {t(
+              "Uses the globally active LLM credential. Leaving this unset delegates to the PageIndex SDK default.",
+            )}
+          </p>
+        </div>
+      )}
+
       {connectionForm ?? (
         <div>
           <label className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             {t("Initial documents")}
-            {isPageIndex && (
+            {(isPageIndexCloud || isPageIndexOSS) && (
               <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
-                · {t("PDF, Office, text and Markdown")}
+                ·{" "}
+                {isPageIndexOSS
+                  ? t(
+                      "PDF only — use PageIndex Cloud for Office, Markdown or CSV",
+                    )
+                  : t("PDF, Office, text and Markdown")}
               </span>
             )}
           </label>

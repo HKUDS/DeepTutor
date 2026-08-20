@@ -32,14 +32,12 @@ import {
   getLightRagConfig,
   getImaConfig,
   getLlamaIndexConfig,
-  getPageIndexConfig,
   setEngineActiveModel,
   testGraphRagModelCompatibility,
   updateGraphRagConfig,
   updateImaConfig,
   updateLightRagConfig,
   updateLlamaIndexConfig,
-  updatePageIndexConfig,
   type EnginePreflight,
   type GraphRagModelCompatibility,
   type GraphRagConfig,
@@ -47,7 +45,6 @@ import {
   type LightRagConfig,
   type LlamaIndexConfig,
   type ModelOptionsByKind,
-  type PageIndexConfig,
   type RagProviderSummary,
 } from "@/lib/knowledge-api";
 import { canApplyGraphRagModelCandidate } from "@/lib/graphrag-model-compatibility";
@@ -59,6 +56,7 @@ import {
   type KnowledgeBase,
   type ProviderConnectionStatus,
 } from "@/lib/knowledge-helpers";
+import { PageIndexConfigForm } from "./PageIndexSettingsModal";
 
 interface EngineDetailProps {
   provider: RagProviderSummary;
@@ -74,6 +72,7 @@ interface EngineDetailProps {
 const ENGINE_ICONS: Record<string, LucideIcon> = {
   llamaindex: Boxes,
   pageindex: Cloud,
+  "pageindex-oss": Database,
   graphrag: Network,
   lightrag: Workflow,
   "lightrag-server": Server,
@@ -118,6 +117,7 @@ const MODE_DESCRIPTIONS: Record<string, string> = {
 const ENGINE_MODEL_KINDS: Record<string, ("llm" | "embedding")[]> = {
   llamaindex: ["embedding"],
   pageindex: [],
+  "pageindex-oss": ["llm"],
   graphrag: ["llm", "embedding"],
   lightrag: ["llm", "embedding"],
   "lightrag-server": [],
@@ -144,6 +144,8 @@ const ENGINE_PREREQUISITES: Record<string, string> = {
     "Local vector engine — works out of the box. Retrieval uses your active embedding model; install the optional BM25 package to enable hybrid retrieval.",
   pageindex:
     "Hosted engine: documents are uploaded to PageIndex's servers and the chat agent reads them through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.",
+  "pageindex-oss":
+    "Local chunkless and vectorless indexing. Accepts PDF files and uses the globally active chat model credential for indexing; the index remains readable after model changes.",
   graphrag:
     "Local knowledge-graph retrieval. Needs the optional dependency installed; indexing is LLM-heavy. Requires an active chat model and embedding model.",
   lightrag:
@@ -525,137 +527,6 @@ function LlamaIndexForm({
   );
 }
 
-/* -------------------------- PageIndex config form ------------------------- */
-
-const PAGEINDEX_DEFAULT_BASE_URL = "https://api.pageindex.ai";
-
-function PageIndexForm({
-  onChanged,
-  onError,
-}: {
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [config, setConfig] = useState<PageIndexConfig | null>(null);
-  const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getPageIndexConfig({ force: true })
-      .then((cfg) => {
-        if (cancelled) return;
-        setConfig(cfg);
-        setBaseUrl(cfg.api_base_url || "");
-      })
-      .catch((err) =>
-        onError(err instanceof Error ? err.message : String(err)),
-      );
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const persist = async (payload: {
-    api_key?: string;
-    api_base_url?: string;
-  }) => {
-    setSaving(true);
-    try {
-      const next = await updatePageIndexConfig(payload);
-      setConfig(next);
-      setApiKey("");
-      onChanged();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const keySet = config?.api_key_set ?? false;
-
-  return (
-    <div className="space-y-4 rounded-2xl border border-[var(--border)] p-4">
-      <p className="text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-        {t(
-          "PageIndex is a hosted, vectorless retrieval engine. Documents in a PageIndex knowledge base are uploaded to PageIndex's servers for processing. One key is shared by all your PageIndex knowledge bases.",
-        )}
-      </p>
-
-      <div>
-        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {t("API key")}
-        </label>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          disabled={saving}
-          placeholder={
-            keySet
-              ? t("•••••••• (configured — leave blank to keep)")
-              : t("Enter your PageIndex API key")
-          }
-          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-        />
-        {keySet && (
-          <button
-            type="button"
-            onClick={() => void persist({ api_key: "" })}
-            disabled={saving}
-            className="mt-1.5 text-[11px] font-medium text-red-600 transition-colors hover:text-red-700 disabled:opacity-40 dark:text-red-400"
-          >
-            {t("Remove stored key")}
-          </button>
-        )}
-      </div>
-
-      <div>
-        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {t("API base URL")}
-        </label>
-        <input
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          disabled={saving}
-          placeholder={PAGEINDEX_DEFAULT_BASE_URL}
-          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-        />
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <a
-          href="https://dash.pageindex.ai/api-keys"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-        >
-          {t("Get an API key")}
-          <ExternalLink className="h-3 w-3" />
-        </a>
-        <button
-          type="button"
-          onClick={() =>
-            void persist({
-              api_base_url: baseUrl.trim() || undefined,
-              ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
-            })
-          }
-          disabled={saving}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          {t("Save changes")}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* ------------------------- Tencent IMA credentials ------------------------ */
 
 function ImaForm({
@@ -1006,6 +877,9 @@ function LightRagForm({
       const next = await updateLightRagConfig({
         top_k: form.top_k,
         response_type: form.response_type,
+        max_concurrent_files: form.max_concurrent_files,
+        llm_model_max_async: form.llm_model_max_async,
+        entity_extract_max_gleaning: form.entity_extract_max_gleaning,
       });
       setLoaded(next);
       setForm(next);
@@ -1032,6 +906,47 @@ function LightRagForm({
           onChange={(v) => patch({ response_type: v })}
         />
       </div>
+
+      {/* Indexing knobs are a separate axis from the two above: they shape how
+          a knowledge base is built, so changing them only affects the next
+          build — the divider and note keep that from surprising anyone. */}
+      <div className="space-y-4 border-t border-[var(--border)] pt-4">
+        <div className="space-y-0.5">
+          <div className="text-[12px] font-medium text-[var(--foreground)]">
+            {t("Indexing")}
+          </div>
+          <div className="text-[11px] text-[var(--muted-foreground)]">
+            {t("Applies the next time a knowledge base is built or rebuilt.")}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <NumberField
+            label={t("Files in parallel")}
+            hint={t("Higher finishes sooner but uses more memory")}
+            value={form.max_concurrent_files}
+            min={1}
+            max={16}
+            onChange={(v) => patch({ max_concurrent_files: v })}
+          />
+          <NumberField
+            label={t("Concurrent LLM calls")}
+            hint={t("Lower this if your provider rate-limits you")}
+            value={form.llm_model_max_async}
+            min={1}
+            max={32}
+            onChange={(v) => patch({ llm_model_max_async: v })}
+          />
+          <NumberField
+            label={t("Extra extraction passes")}
+            hint={t("Recovers missed entities; each pass costs another call")}
+            value={form.entity_extract_max_gleaning}
+            min={0}
+            max={5}
+            onChange={(v) => patch({ entity_extract_max_gleaning: v })}
+          />
+        </div>
+      </div>
+
       <SaveButton dirty={dirty} saving={saving} onSave={() => void save()} />
     </div>
   );
@@ -1535,7 +1450,7 @@ export default function EngineDetail({
         {/* PageIndex credentials */}
         {provider.id === "pageindex" && (
           <Section label={t("Credentials")} icon={KeyRound}>
-            <PageIndexForm onChanged={onChanged} onError={onError} />
+            <PageIndexConfigForm onChanged={onChanged} onError={onError} />
           </Section>
         )}
 

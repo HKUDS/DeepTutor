@@ -35,6 +35,13 @@ class AnswerImageItem(BaseModel):
     mime_type: str = ""
 
 
+class CategoryItem(BaseModel):
+    id: int
+    name: str
+    created_at: float = 0
+    entry_count: int = 0
+
+
 class NotebookEntryItem(BaseModel):
     id: int
     session_id: str
@@ -69,13 +76,6 @@ class EntryUpdateRequest(BaseModel):
     ai_judgment: str | None = None
 
 
-class CategoryItem(BaseModel):
-    id: int
-    name: str
-    created_at: float = 0
-    entry_count: int = 0
-
-
 class CategoryCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
 
@@ -86,6 +86,25 @@ class CategoryRenameRequest(BaseModel):
 
 class CategoryAddRequest(BaseModel):
     category_id: int
+
+
+class BulkCategoryRequest(BaseModel):
+    """File (or unfile) many entries at once.
+
+    One round-trip per bulk action keeps the list view consistent: the
+    client re-reads once instead of racing N per-entry writes.
+    """
+
+    entry_ids: list[int] = Field(..., min_length=1, max_length=500)
+    category_id: int
+    link: bool = True
+
+
+class QuestionBankStats(BaseModel):
+    total: int = 0
+    wrong: int = 0
+    bookmarked: int = 0
+    uncategorized: int = 0
 
 
 class AnswerImageUpload(BaseModel):
@@ -205,16 +224,26 @@ async def upsert_single_entry(payload: UpsertEntryRequest):
 @router.get("/entries", response_model=NotebookEntryListResponse)
 async def list_entries(
     category_id: int | None = Query(default=None),
+    uncategorized: bool = Query(
+        default=False,
+        description="Only entries filed under no category — the triage inbox. "
+        "Ignored when category_id is set.",
+    ),
     bookmarked: bool | None = Query(default=None),
     is_correct: bool | None = Query(default=None),
+    search: str = Query(default="", max_length=200),
+    sort: str = Query(default="recent", pattern="^(recent|oldest)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> NotebookEntryListResponse:
     store = get_sqlite_session_store()
     result = await store.list_notebook_entries(
         category_id=category_id,
+        uncategorized=uncategorized,
         bookmarked=bookmarked,
         is_correct=is_correct,
+        search=search,
+        sort=sort,
         limit=limit,
         offset=offset,
     )
@@ -278,6 +307,20 @@ async def delete_entry(entry_id: int):
 # ── Entry ↔ Category linking ────────────────────────────────────
 
 
+@router.post("/entries/categories/bulk")
+async def bulk_link_entries(payload: BulkCategoryRequest):
+    store = get_sqlite_session_store()
+    changed = await store.link_entries_to_category(
+        payload.entry_ids, payload.category_id, link=payload.link
+    )
+    return {
+        "changed": changed,
+        "requested": len(payload.entry_ids),
+        "category_id": payload.category_id,
+        "link": payload.link,
+    }
+
+
 @router.post("/entries/{entry_id}/categories")
 async def add_entry_to_category(entry_id: int, payload: CategoryAddRequest):
     store = get_sqlite_session_store()
@@ -299,6 +342,16 @@ async def remove_entry_from_category(entry_id: int, category_id: int):
     return {"removed": True, "entry_id": entry_id, "category_id": category_id}
 
 
+# ── Overview ─────────────────────────────────────────────────────
+
+
+@router.get("/stats", response_model=QuestionBankStats)
+async def question_bank_stats() -> QuestionBankStats:
+    """Counts behind the filter chips; also the agent's one-call overview."""
+    store = get_sqlite_session_store()
+    return QuestionBankStats(**await store.question_bank_stats())
+
+
 # ── Category CRUD ────────────────────────────────────────────────
 
 
@@ -313,14 +366,17 @@ async def create_category(payload: CategoryCreateRequest):
     store = get_sqlite_session_store()
     try:
         return await store.create_category(payload.name)
-    except Exception:
-        raise HTTPException(status_code=409, detail="Category name already exists")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 @router.patch("/categories/{category_id}")
 async def rename_category(category_id: int, payload: CategoryRenameRequest):
     store = get_sqlite_session_store()
-    updated = await store.rename_category(category_id, payload.name)
+    try:
+        updated = await store.rename_category(category_id, payload.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if not updated:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"updated": True, "id": category_id, "name": payload.name}

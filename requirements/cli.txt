@@ -64,7 +64,6 @@ typer>=0.9.0
 rich>=13.0.0
 prompt_toolkit>=3.0.36
 
-# --- MCP client (deferred tools; built-in PageIndex MCP server) ---
-# Core, not partners-only: the connection manager injects the built-in
-# pageindex server whenever a PageIndex API key is configured (issue #792).
+# --- MCP client (configurable deferred tools; core, not partners-only) ---
 mcp>=1.26.0,<2.0.0
+pageindex>=0.2.10,<0.3.0

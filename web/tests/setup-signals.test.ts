@@ -87,14 +87,12 @@ test("collectAppliedSettingIds returns one id per applied change", () => {
   const ids = collectAppliedSettingIds([
     {
       events: [
-        toolResult(
-          { setup_applied: { key: "interface.language" } },
-          { tool_call_id: "call-1" } as Partial<StreamEvent>,
-        ),
-        toolResult(
-          { setup_applied: { key: "interface.theme" } },
-          { tool_call_id: "call-2" } as Partial<StreamEvent>,
-        ),
+        toolResult({ setup_applied: { key: "interface.language" } }, {
+          tool_call_id: "call-1",
+        } as Partial<StreamEvent>),
+        toolResult({ setup_applied: { key: "interface.theme" } }, {
+          tool_call_id: "call-2",
+        } as Partial<StreamEvent>),
       ],
     },
   ]);
@@ -104,11 +102,13 @@ test("collectAppliedSettingIds returns one id per applied change", () => {
 test("collectAppliedSettingIds deduplicates a replayed tool call", () => {
   // History replay re-delivers the same event; honouring it twice would
   // overwrite a preference the user has since changed by hand.
-  const event = toolResult(
-    { setup_applied: { key: "interface.theme" } },
-    { tool_call_id: "call-1" } as Partial<StreamEvent>,
-  );
-  const ids = collectAppliedSettingIds([{ events: [event] }, { events: [event] }]);
+  const event = toolResult({ setup_applied: { key: "interface.theme" } }, {
+    tool_call_id: "call-1",
+  } as Partial<StreamEvent>);
+  const ids = collectAppliedSettingIds([
+    { events: [event] },
+    { events: [event] },
+  ]);
   assert.deepEqual(ids, ["call-1"]);
 });
 

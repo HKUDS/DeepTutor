@@ -25,6 +25,8 @@ from deeptutor.tools.partner_memory import (
     PartnerSearchTool,
 )
 from deeptutor.tools.prompting import load_prompt_hints
+from deeptutor.tools.question_bank import ACTIONS as QB_ACTIONS
+from deeptutor.tools.question_bank import FILTERS as QB_FILTERS
 
 logger = logging.getLogger(__name__)
 
@@ -990,6 +992,120 @@ class ListNotebookTool(_PromptHintsMixin, BaseTool):
         )
 
 
+class QuestionBankTool(_PromptHintsMixin, BaseTool):
+    """Read and organise the learner's question bank.
+
+    The bank (Learning Space → Question Bank) holds every graded quiz
+    question the learner has answered. It is a different store from the
+    notebooks ``write_note`` writes to; without this tool the agent had
+    no writable handle on it, so "file my wrong answers into my mistakes
+    set" silently became a note. Auto-mounted iff the bank has entries.
+
+    Actions are name-addressed, never id-addressed, for the one write
+    that matters: ``organize`` takes a category *name* and creates it
+    when missing, so filing is a single call from a single listing.
+    """
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="question_bank",
+            description=(
+                "Read and organise the learner's question bank — the graded "
+                "quiz questions saved under Learning Space → Question Bank. "
+                "This is where wrong answers and quiz history live; it is NOT "
+                "the notebook (`write_note`). Use it whenever the learner asks "
+                "to review, group, file, or tidy their questions or mistakes. "
+                "action='overview' for counts + existing categories; "
+                "action='list' to see entries (each prefixed with its id); "
+                "action='organize' to file entry_ids into a category by name "
+                "(the category is created if it does not exist); "
+                "action='unfile' to remove them; "
+                "action='bookmark' to star or unstar them."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="action",
+                    type="string",
+                    description=(
+                        "'overview' (counts + categories, needs nothing else), "
+                        "'list', 'organize', 'unfile', or 'bookmark'."
+                    ),
+                    enum=list(QB_ACTIONS),
+                ),
+                ToolParameter(
+                    name="filter",
+                    type="string",
+                    description=(
+                        "For action='list'. 'wrong' = answered incorrectly, "
+                        "'uncategorized' = not filed anywhere yet (the triage "
+                        "inbox), 'bookmarked', or 'all'. Default 'all'."
+                    ),
+                    enum=list(QB_FILTERS),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="category",
+                    type="string",
+                    description=(
+                        "Category name. Required for 'organize' / 'unfile'; "
+                        "optional on 'list' to look inside one category. "
+                        "'organize' creates the category when it is new."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="search",
+                    type="string",
+                    description="For action='list'. Free-text match over question and answers.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="entry_ids",
+                    type="array",
+                    description=(
+                        "Entry ids to act on, from a `list` call (the number in "
+                        "[brackets]). Required for 'organize' / 'unfile' / 'bookmark'."
+                    ),
+                    items={"type": "integer"},
+                    required=False,
+                ),
+                ToolParameter(
+                    name="bookmarked",
+                    type="boolean",
+                    description="For action='bookmark'. true to star, false to unstar. Default true.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="limit",
+                    type="integer",
+                    description="For action='list'. Max entries to return (default 20, max 100).",
+                    required=False,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.tools.question_bank import run_question_bank
+
+        outcome = await run_question_bank(
+            action=str(kwargs.get("action") or "overview"),
+            # ``filter`` is the schema name the model sees; the pure
+            # function avoids shadowing the builtin.
+            filter_mode=str(kwargs.get("filter") or "all"),
+            category=str(kwargs.get("category") or ""),
+            search=str(kwargs.get("search") or ""),
+            entry_ids=kwargs.get("entry_ids"),
+            bookmarked=bool(kwargs.get("bookmarked", True)),
+            limit=int(kwargs.get("limit") or 20),
+        )
+        if not outcome.ok:
+            return ToolResult(content=outcome.error, success=False)
+        return ToolResult(
+            content=outcome.text,
+            metadata={"question_bank": outcome.summary or {}},
+        )
+
+
 class WriteNoteTool(_PromptHintsMixin, BaseTool):
     """Create OR edit a notebook record from the chat agent.
 
@@ -1579,6 +1695,7 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     WebFetchTool,
     ListNotebookTool,
     WriteNoteTool,
+    QuestionBankTool,
     GithubTool,
     AskUserTool,
     CronTool,
@@ -1667,6 +1784,7 @@ CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "read_skill",
     "list_notebook",
     "write_note",
+    "question_bank",
     "web_fetch",
     "github",
     "exec",
@@ -1703,6 +1821,7 @@ __all__ = [
     "VideogenTool",
     "ListNotebookTool",
     "PaperSearchToolWrapper",
+    "QuestionBankTool",
     "PartnerMemorizeTool",
     "PartnerReadTool",
     "PartnerSearchTool",

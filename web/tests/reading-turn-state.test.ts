@@ -30,7 +30,13 @@ test("carries nothing once the user switches to another mode", () => {
   setReadingMaterial("d138eacaad029843");
   setReadingViewport({ locator: 3 });
 
-  for (const capability of ["", "deep_solve", "deep_research", "mastery_path", "visualize"]) {
+  for (const capability of [
+    "",
+    "deep_solve",
+    "deep_research",
+    "mastery_path",
+    "visualize",
+  ]) {
     assert.deepEqual(readingTurnFields(capability), {}, capability);
   }
 });
@@ -49,7 +55,10 @@ test("the document itself is kept, so returning to the mode resumes it", () => {
   assert.deepEqual(readingTurnFields("deep_solve"), {});
   // …and back, with the reader still where it was.
   assert.equal(getReadingTurnState().materialId, "d138eacaad029843");
-  assert.equal(readingTurnFields(READING_CAPABILITY).reading_viewport?.locator, 7);
+  assert.equal(
+    readingTurnFields(READING_CAPABILITY).reading_viewport?.locator,
+    7,
+  );
 });
 
 test("carries nothing in reading mode with no document open", () => {
@@ -62,7 +71,11 @@ test("closing the document clears its viewport too", () => {
   setReadingMaterial(null);
 
   assert.deepEqual(readingTurnFields(READING_CAPABILITY), {});
-  assert.deepEqual(getReadingTurnState(), { materialId: null, locator: 0, selection: "" });
+  assert.deepEqual(getReadingTurnState(), {
+    materialId: null,
+    locator: 0,
+    selection: "",
+  });
 });
 
 test("a viewport with no locator or selection is omitted, not sent empty", () => {
@@ -75,7 +88,13 @@ test("a viewport with no locator or selection is omitted, not sent empty", () =>
 test("nonsense viewport values are ignored", () => {
   setReadingMaterial("d138eacaad029843");
   setReadingViewport({ locator: -3 });
-  assert.equal(readingTurnFields(READING_CAPABILITY).reading_viewport, undefined);
+  assert.equal(
+    readingTurnFields(READING_CAPABILITY).reading_viewport,
+    undefined,
+  );
   setReadingViewport({ locator: 2.7 });
-  assert.equal(readingTurnFields(READING_CAPABILITY).reading_viewport?.locator, 2);
+  assert.equal(
+    readingTurnFields(READING_CAPABILITY).reading_viewport?.locator,
+    2,
+  );
 });
