@@ -49,9 +49,10 @@ _DEFAULT_MAX_TOKEN_SIZE = 8192
 # on every attempt to prevent the two retry layers from multiplying.
 _ADAPTER_MAX_ATTEMPTS = 3
 _ADAPTER_RETRY_DELAYS_SECONDS = (1.0, 2.0)
-_RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+_ADAPTER_MAX_RETRY_DELAY_SECONDS = 60.0
+_RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504, 529})
 _HTTP_STATUS_PATTERN = re.compile(
-    r"\b(?:http(?: status)?|status(?: code)?)\s*[:=-]?\s*(\d{3})\b",
+    r"\b(?:http(?: status)?|status(?: code)?|error code)\s*[:=-]?\s*(\d{3})\b",
     re.I,
 )
 
@@ -98,6 +99,16 @@ def _retry_classification(exc: Exception) -> tuple[bool, str]:
     return False, "non_retryable"
 
 
+def _retry_delay_seconds(exc: Exception, scheduled_delay: float) -> float:
+    """Honor a safe Retry-After value without allowing unbounded sleeps."""
+    from deeptutor.services.llm.error_mapping import retry_after_seconds
+
+    requested_delay = retry_after_seconds(exc)
+    if requested_delay is None:
+        return scheduled_delay
+    return min(requested_delay, _ADAPTER_MAX_RETRY_DELAY_SECONDS)
+
+
 async def _run_adapter_with_retry(
     request: Callable[[], Awaitable[_T]],
     *,
@@ -119,7 +130,8 @@ async def _run_adapter_with_retry(
                 type(exc).__name__,
                 status,
             )
-            await asyncio.sleep(_ADAPTER_RETRY_DELAYS_SECONDS[attempt - 1])
+            delay = _retry_delay_seconds(exc, _ADAPTER_RETRY_DELAYS_SECONDS[attempt - 1])
+            await asyncio.sleep(delay)
 
     raise AssertionError("unreachable")
 
@@ -226,6 +238,7 @@ def build_llm_model_func(*, io_bridge: OwnerLoopBridge | None = None):
                 history_messages=history_messages or [],
                 messages=messages,
                 max_retries=0,
+                allow_image_fallback=False,
             )
 
         return await _run_adapter_with_retry(request, io_bridge=io_bridge)
@@ -255,6 +268,7 @@ def build_vision_model_func(*, io_bridge: OwnerLoopBridge | None = None):
                 image_data=image_data,
                 messages=messages,
                 max_retries=0,
+                allow_image_fallback=False,
             )
 
         return await _run_adapter_with_retry(request, io_bridge=io_bridge)
