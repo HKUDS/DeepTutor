@@ -4,7 +4,9 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
+  KidsApiError,
   kidsApi,
+  type KidsUsage,
   type KidsSafeQuestion,
   type KidsQuizGrade,
 } from "@/lib/kids-api";
@@ -16,9 +18,6 @@ const ReactReader = dynamic(
 
 type Rendition = any;
 type NavItem = any;
-
-const EPUB_URL = (documentId: string) =>
-  `/api/v1/immersive-reading/documents/${encodeURIComponent(documentId)}/original`;
 
 export default function KidsReaderPage() {
   const router = useRouter();
@@ -46,9 +45,13 @@ export default function KidsReaderPage() {
   const [exitPinError, setExitPinError] = useState("");
   const [profileHasPin, setProfileHasPin] = useState(false);
   const [profileId, setProfileId] = useState("");
+  const [usage, setUsage] = useState<KidsUsage | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const currentHrefRef = useRef<string>("");
+  const currentSectionIdRef = useRef<string>("");
+  const sectionIdByHrefRef = useRef<Map<string, string>>(new Map());
+  const narrationRateRef = useRef(0.8);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +62,20 @@ export default function KidsReaderPage() {
         const doc = data.document as Record<string, any>;
         setBookTitle(doc.title || "Book");
         setStars(data.progress?.total_stars || 0);
+        setUsage(data.usage);
+        narrationRateRef.current = data.profile?.narration_rate || 0.8;
+        const sections = Array.isArray(doc.sections) ? doc.sections : [];
+        sectionIdByHrefRef.current = new Map(
+          sections
+            .flatMap((section: any) => [
+              [String(section.source_href || ""), String(section.id)],
+              [`chapter-${Number(section.index) + 1}.xhtml`, String(section.id)],
+            ] as const)
+            .filter(([href, id]) => href && id),
+        );
+        if (!sections.length) {
+          sectionIdByHrefRef.current.set("", String((sections[0] as any)?.id || ""));
+        }
         if (data.progress?.epub_cfi) {
           setLocation(data.progress.epub_cfi);
         }
@@ -69,6 +86,32 @@ export default function KidsReaderPage() {
       }
     })();
     return () => { cancelled = true; };
+  }, [documentId]);
+
+  useEffect(() => {
+    let stopped = false;
+    const beat = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const result = await kidsApi.heartbeat(documentId);
+        if (!stopped) setUsage(result);
+      } catch (error) {
+        if (
+          error instanceof KidsApiError &&
+          typeof error.detail === "object" &&
+          error.detail !== null &&
+          (error.detail as { code?: string }).code === "daily_limit_reached"
+        ) {
+          setUsage(error.detail as KidsUsage);
+        }
+      }
+    };
+    beat();
+    const timer = window.setInterval(beat, 30_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
   }, [documentId]);
 
   // Check if the current profile has a PIN (for exit protection)
@@ -88,14 +131,21 @@ export default function KidsReaderPage() {
       setExitPin("");
       setExitPinError("");
     } else {
-      router.push("/kids");
+      void doExit();
     }
+  };
+
+  const doExit = async () => {
+    await kidsApi.logout().catch(() => {});
+    localStorage.removeItem("dt_kids_token");
+    localStorage.removeItem("dt_kids_profile_id");
+    router.push("/kids");
   };
 
   const handleExitPinSubmit = async () => {
     try {
       await kidsApi.exitVerify(profileId, exitPin);
-      router.push("/kids");
+      await doExit();
     } catch {
       setExitPinError("Wrong PIN. Try again!");
       setExitPin("");
@@ -104,13 +154,15 @@ export default function KidsReaderPage() {
 
   const saveProgress = useCallback(
     (loc: string, href: string) => {
+      const sectionId = sectionIdByHrefRef.current.get(href) || currentSectionIdRef.current || "";
+      if (!sectionId) return;
+      currentSectionIdRef.current = sectionId;
       kidsApi.updateProgress(documentId, {
-        section_id: href,
+        section_id: sectionId,
         section_index: 0,
         scroll_percent: 0,
         epub_cfi: loc,
         section_href: href,
-        time_delta: 0,
       }).catch(() => {});
     },
     [documentId],
@@ -132,7 +184,7 @@ export default function KidsReaderPage() {
     const text = selection.toString();
     if (!text.trim()) return;
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.8;
+    u.rate = narrationRateRef.current;
     u.onend = () => setSpeaking(false);
     u.onerror = () => setSpeaking(false);
     utteranceRef.current = u;
@@ -160,7 +212,11 @@ export default function KidsReaderPage() {
     setAnswers({});
     setQuizLoading(true);
     try {
-      const sectionId = currentHrefRef.current || "section-0";
+      const sectionId = currentSectionIdRef.current || sectionIdByHrefRef.current.get(currentHrefRef.current) || "";
+      if (!sectionId) {
+        setQuestions([]);
+        return;
+      }
       const { questions: qs } = await kidsApi.getQuiz(documentId, sectionId);
       setQuestions(qs);
     } catch {
@@ -176,11 +232,11 @@ export default function KidsReaderPage() {
       const answerArr = questions.map((_, i) => answers[i] ?? -1);
       const result = await kidsApi.submitQuiz(
         documentId,
-        currentHrefRef.current || "section-0",
+        currentSectionIdRef.current,
         answerArr,
       );
       setGrade(result);
-      setStars((s) => s + result.stars);
+      setStars((s) => s + (result.earned_stars ?? result.stars));
     } catch {
       // ignore
     } finally {
@@ -198,6 +254,16 @@ export default function KidsReaderPage() {
 
  return (
    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#fef9f0" }}>
+      {usage?.limit_reached && (
+        <div style={popupOverlay}>
+          <div style={popupBox}>
+            <div style={{ fontSize: 48 }}>Time is up!</div>
+            <p style={{ fontSize: 20, color: "#4a3f6b", marginTop: 12 }}>
+              Ask a grown-up if you can read more today.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Exit PIN modal */}
       {showExitPin && (
         <div style={{
@@ -262,7 +328,7 @@ export default function KidsReaderPage() {
 
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <ReactReader
-          url={EPUB_URL(documentId)}
+          url={kidsApi.getEpubUrl(documentId)}
           location={location ?? null}
           locationChanged={(loc: string) => {
             setLocation(loc);

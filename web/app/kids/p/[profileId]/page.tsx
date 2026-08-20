@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   kidsApi,
-  type KidsProfile,
+  type KidsBootstrapProfile,
   type KidsLibraryItem,
 } from "@/lib/kids-api";
 
@@ -31,7 +31,7 @@ export default function KidsProfileEntryPage() {
   const [stage, setStage] = useState<
     "loading" | "pin" | "shelf" | "not_found"
   >("loading");
-  const [profile, setProfile] = useState<KidsProfile | null>(null);
+  const [profile, setProfile] = useState<KidsBootstrapProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
@@ -40,6 +40,21 @@ export default function KidsProfileEntryPage() {
   const [showExitPin, setShowExitPin] = useState(false);
   const [exitPin, setExitPin] = useState("");
   const [exitPinError, setExitPinError] = useState("");
+
+  async function enterShelf(p: KidsBootstrapProfile) {
+    try {
+      const { token } = await kidsApi.selectProfile(p.id);
+      localStorage.setItem("dt_kids_token", token);
+      localStorage.setItem("dt_kids_profile_id", p.id);
+      const { library: lib } = await kidsApi.library();
+      setProfile(p);
+      setLibrary(lib);
+      setStage("shelf");
+    } catch {
+      setError("Cannot load books. Try again!");
+      setStage("pin");
+    }
+  }
 
   // ── On mount: check for existing token or fetch profile info ──────────
   const bootstrap = useCallback(async () => {
@@ -54,7 +69,7 @@ export default function KidsProfileEntryPage() {
 
     if (storedToken && storedPid === profileId) {
       try {
-        const { library: lib } = await kidsApi.library(profileId);
+        const { library: lib } = await kidsApi.library();
         try {
           const { profiles } = await kidsApi.bootstrap();
           const p = profiles.find((x) => x.id === profileId);
@@ -86,26 +101,11 @@ export default function KidsProfileEntryPage() {
       setError("Cannot connect. Ask a grown-up for help.");
       setStage("not_found");
     }
-  }, [profileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profileId]);
 
   useEffect(() => {
     bootstrap();
   }, [bootstrap]);
-
-  const enterShelf = async (p: KidsProfile) => {
-    try {
-      const { token } = await kidsApi.selectProfile(p.id);
-      localStorage.setItem("dt_kids_token", token);
-      localStorage.setItem("dt_kids_profile_id", p.id);
-      const { library: lib } = await kidsApi.library(p.id);
-      setProfile(p);
-      setLibrary(lib);
-      setStage("shelf");
-    } catch {
-      setError("Cannot load books. Try again!");
-      setStage("pin");
-    }
-  };
 
   const handlePinSubmit = async () => {
     if (!profile) return;
@@ -113,7 +113,7 @@ export default function KidsProfileEntryPage() {
       const { token } = await kidsApi.parentUnlock(profile.id, pinInput);
       localStorage.setItem("dt_kids_token", token);
       localStorage.setItem("dt_kids_profile_id", profile.id);
-      const { library: lib } = await kidsApi.library(profile.id);
+      const { library: lib } = await kidsApi.library();
       setLibrary(lib);
       setStage("shelf");
     } catch {
@@ -132,7 +132,8 @@ export default function KidsProfileEntryPage() {
     }
   };
 
-  const doExit = () => {
+  const doExit = async () => {
+    await kidsApi.logout().catch(() => {});
     localStorage.removeItem("dt_kids_token");
     localStorage.removeItem("dt_kids_profile_id");
     router.push("/kids");
@@ -142,7 +143,7 @@ export default function KidsProfileEntryPage() {
     if (!profile) return;
     try {
       await kidsApi.exitVerify(profile.id, exitPin);
-      doExit();
+      await doExit();
     } catch {
       setExitPinError("Wrong PIN. Try again!");
       setExitPin("");

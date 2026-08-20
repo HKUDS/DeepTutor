@@ -10,6 +10,11 @@ export default function KidsManagePage() {
   const [selected, setSelected] = useState<KidsProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
   const [allDocs, setAllDocs] = useState<Record<string, any>[]>([]);
+  const [usage, setUsage] = useState<{
+    used_seconds: number;
+    limit_seconds: number;
+    bonus_seconds: number;
+  } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -39,6 +44,8 @@ export default function KidsManagePage() {
         kidsAdminApi.listAssignedBooks(profileId),
         kidsAdminApi.adultLibrary(),
       ]);
+      const report = await kidsAdminApi.learningReport(profileId);
+      setUsage(report.usage as typeof usage);
       setLibrary(lib.library);
       setAllDocs(docs.documents);
     } catch {
@@ -102,6 +109,15 @@ export default function KidsManagePage() {
     await kidsAdminApi.deleteProfile(profileId);
     setSelected(null);
     loadProfiles();
+  };
+
+  const handleUsageAction = async (action: "reset" | "extend") => {
+    if (!selected) return;
+    if (action === "reset" && !confirm("Reset today's reading time?")) return;
+    const { usage: nextUsage } = action === "reset"
+      ? await kidsAdminApi.resetUsage(selected.id)
+      : await kidsAdminApi.extendUsage(selected.id, 15);
+    setUsage(nextUsage);
   };
 
   if (loading) {
@@ -200,7 +216,7 @@ export default function KidsManagePage() {
               <div style={{ ...cardStyle, textAlign: "center", padding: 40 }}>
                 <div style={{ fontSize: 48, marginBottom: 8 }}>👶</div>
                 <p style={{ fontSize: 18, color: "#718096" }}>No child profiles yet</p>
-                <p style={{ fontSize: 14, color: "#a0aec0" }}>Click "+ Add Child" to create one</p>
+                <p style={{ fontSize: 14, color: "#a0aec0" }}>Click &quot;+ Add Child&quot; to create one</p>
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
@@ -256,6 +272,24 @@ export default function KidsManagePage() {
               </div>
               <div style={{ fontSize: 12, color: "#a0aec0", marginTop: 8 }}>
                 Bookmark this on your child&apos;s device — they tap it to go straight to their books.
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle, marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, marginTop: 0, marginBottom: 12 }}>
+                Today&apos;s Reading Time
+              </h3>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "#2d3748" }}>
+                {usage ? Math.round(usage.used_seconds / 60) : 0} /{" "}
+                {selected.daily_limit_minutes + Math.round((usage?.bonus_seconds || 0) / 60)} minutes
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={() => handleUsageAction("reset")} style={{ ...miniBtn, background: "#bee3f8", color: "#2c5282" }}>
+                  Reset today
+                </button>
+                <button onClick={() => handleUsageAction("extend")} style={{ ...miniBtn, background: "#c6f6d5", color: "#276749" }}>
+                  Add 15 minutes
+                </button>
               </div>
             </div>
 

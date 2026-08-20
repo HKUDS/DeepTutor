@@ -7,28 +7,35 @@ their pages are extracted from the user's original file and never rewritten.
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from difflib import SequenceMatcher
 import hashlib
+import html
+from io import BytesIO
 import json
 import logging
 from pathlib import Path
 import re
+import secrets
 import shutil
 import time
 from typing import Any, Iterable
 import unicodedata
 import uuid
+from zipfile import ZIP_STORED, ZipFile
 
 from deeptutor.immersive_reading.models import (
     ChapterSearchCard,
+    FastSearchIndex,
+    FocusAttempt,
+    FocusCheckResult,
     KidsBookAssignment,
+    KidsDailyUsage,
+    KidsDeviceSession,
     KidsLearningProgress,
     KidsProfile,
     KidsQuizQuestion,
     KidsQuizResult,
-    FastSearchIndex,
-    FocusAttempt,
-    FocusCheckResult,
     ReadingCitation,
     ReadingDocument,
     ReadingProgress,
@@ -482,6 +489,92 @@ class ImmersiveReadingService:
         if not matches:
             raise ValueError("Original file not found")
         return matches[0]
+
+    def kids_epub(self, document_id: str, through_section_index: int) -> bytes:
+        """Build a source-faithful EPUB containing only assigned sections."""
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        sections = [section for section in doc.sections if section.index <= through_section_index]
+        if not sections:
+            raise ValueError("No assigned sections are available")
+
+        chapters: list[tuple[str, str]] = []
+        for section in sections:
+            try:
+                content = self._section_path(document_id, section.id).read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"Reading section not found: {section.id}") from exc
+            paragraphs = "\n".join(
+                f"<p>{html.escape(part, quote=False)}</p>"
+                for part in re.split(r"\n{2,}", content.strip())
+                if part.strip()
+            )
+            chapters.append((f"chapter-{section.index + 1}.xhtml", paragraphs))
+
+        title = html.escape(doc.title or doc.source_filename, quote=True)
+        author = html.escape(doc.author or "Unknown", quote=True)
+        nav_items = "\n".join(
+            f'<li><a href="{filename}">{html.escape(section.title or f"Chapter {section.index + 1}", quote=True)}</a></li>'
+            for section, (filename, _body) in zip(sections, chapters)
+        )
+        manifest_items = [
+            '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
+            '<item id="css" href="style.css" media-type="text/css"/>',
+        ]
+        spine_items = ['<itemref idref="nav" linear="no"/>']
+        for section, (filename, _body) in zip(sections, chapters):
+            item_id = f"chapter-{section.index + 1}"
+            manifest_items.append(
+                f'<item id="{item_id}" href="{filename}" media-type="application/xhtml+xml"/>'
+            )
+            spine_items.append(f'<itemref idref="{item_id}"/>')
+
+        opf = f"""<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="book-id">urn:deeptutor:kids:{document_id}</dc:identifier>
+    <dc:title>{title}</dc:title>
+    <dc:creator>{author}</dc:creator>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest>{''.join(manifest_items)}</manifest>
+  <spine>{''.join(spine_items)}</spine>
+</package>"""
+        nav_document = f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>{title}</title></head>
+  <body><nav epub:type="toc"><h1>{title}</h1><ol>{nav_items}</ol></nav></body>
+</html>"""
+
+        output = BytesIO()
+        with ZipFile(output, "w") as archive:
+            archive.writestr("mimetype", "application/epub+zip", compress_type=ZIP_STORED)
+            archive.writestr(
+                "META-INF/container.xml",
+                """<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>""",
+            )
+            archive.writestr("OEBPS/content.opf", opf)
+            archive.writestr("OEBPS/nav.xhtml", nav_document)
+            archive.writestr(
+                "OEBPS/style.css",
+                "body{line-height:1.7;margin:0 8vw;} p{margin:0 0 1em;} h1{page-break-before:always;}",
+            )
+            for section, (filename, body) in zip(sections, chapters):
+                chapter_title = html.escape(section.title or f"Chapter {section.index + 1}", quote=True)
+                archive.writestr(
+                    f"OEBPS/{filename}",
+                    f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>{chapter_title}</title>
+<link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body><h1>{chapter_title}</h1>{body}</body></html>""",
+                )
+        return output.getvalue()
 
     def cover_path(self, document_id: str) -> Path:
         path = self._document_root(document_id) / "cover.png"
@@ -1773,20 +1866,28 @@ __all__ = [
 # ── Kids profile & library management ──────────────────────────────────────
 
 import hmac
-import secrets
 
 
 def _hash_pin(pin: str) -> str:
-    """Hash a parent PIN using a salted comparison."""
-    import hashlib
-    salt = "deeptutor-kids-pin-v1"
-    return hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+    """Hash a parent PIN with a per-profile random salt."""
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt.encode(), 200_000)
+    return f"pbkdf2_sha256$200000${salt}${digest.hex()}"
 
 
 def _verify_pin(pin: str, pin_hash: str) -> bool:
     if not pin_hash:
         return False
-    return hmac.compare_digest(_hash_pin(pin), pin_hash)
+    parts = pin_hash.split("$")
+    if len(parts) != 4 or parts[0] != "pbkdf2_sha256":
+        legacy = hashlib.sha256(f"deeptutor-kids-pin-v1:{pin}".encode()).hexdigest()
+        return hmac.compare_digest(legacy, pin_hash)
+    try:
+        iterations = int(parts[1])
+    except ValueError:
+        return False
+    expected = hashlib.pbkdf2_hmac("sha256", pin.encode(), parts[2].encode(), iterations)
+    return hmac.compare_digest(expected.hex(), parts[3])
 
 
 class KidsManager:
@@ -1817,6 +1918,17 @@ class KidsManager:
 
     def _progress_path(self, profile_id: str, document_id: str) -> Path:
         return self._progress_dir() / f"{profile_id}_{document_id}.json"
+
+    def _sessions_path(self) -> Path:
+        return self._kids_root() / "device-sessions.json"
+
+    def _usage_dir(self) -> Path:
+        path = self._kids_root() / "usage"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _usage_path(self, profile_id: str, usage_date: str) -> Path:
+        return self._usage_dir() / f"{profile_id}_{usage_date}.json"
 
     # ── Profiles ───────────────────────────────────────────────────────
 
@@ -1864,6 +1976,7 @@ class KidsManager:
                 setattr(p, key, kwargs[key])
         if "parent_pin" in kwargs and kwargs["parent_pin"]:
             p.pin_hash = _hash_pin(kwargs["parent_pin"])
+            self.revoke_profile_sessions(profile_id)
         p.updated_at = time.time()
         profiles[idx] = p
         _write_json(self._profiles_path(), [pp.model_dump(mode="json") for pp in profiles])
@@ -1878,6 +1991,9 @@ class KidsManager:
         _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
         # Clean progress files
         for f in self._progress_dir().glob(f"{profile_id}_*.json"):
+            f.unlink(missing_ok=True)
+        self.revoke_profile_sessions(profile_id)
+        for f in self._usage_dir().glob(f"{profile_id}_*.json"):
             f.unlink(missing_ok=True)
 
     def verify_parent_pin(self, profile_id: str, pin: str) -> bool:
@@ -1900,6 +2016,75 @@ class KidsManager:
     def has_pin(self, profile_id: str) -> bool:
         p = self.get_profile(profile_id)
         return bool(p and p.pin_hash)
+
+    # ── Device sessions ────────────────────────────────────────────────
+
+    def _list_sessions(self) -> list[KidsDeviceSession]:
+        return [KidsDeviceSession(**item) for item in _read_json(self._sessions_path(), [])]
+
+    def _save_sessions(self, sessions: list[KidsDeviceSession]) -> None:
+        _write_json(self._sessions_path(), [item.model_dump(mode="json") for item in sessions])
+
+    def create_device_session(
+        self, profile_id: str, *, ttl_seconds: int = 30 * 24 * 60 * 60
+    ) -> tuple[KidsDeviceSession, str]:
+        """Issue a random bearer token and persist only its hash."""
+        token = f"kds_{secrets.token_urlsafe(32)}"
+        now = time.time()
+        session = KidsDeviceSession(
+            id=uuid.uuid4().hex[:12],
+            profile_id=profile_id,
+            token_hash=hashlib.sha256(token.encode()).hexdigest(),
+            created_at=now,
+            expires_at=now + ttl_seconds,
+            last_seen_at=now,
+        )
+        sessions = [item for item in self._list_sessions() if item.expires_at > time.time()]
+        sessions.append(session)
+        self._save_sessions(sessions)
+        return session, token
+
+    def validate_device_session(self, token: str) -> KidsDeviceSession | None:
+        if not token:
+            return None
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        now = time.time()
+        session = next(
+            (
+                item
+                for item in self._list_sessions()
+                if item.token_hash == token_hash
+                and item.revoked_at is None
+                and item.expires_at > now
+            ),
+            None,
+        )
+        if session is None or self.get_profile(session.profile_id) is None:
+            return None
+        return session
+
+    def revoke_device_session(self, token: str) -> None:
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        sessions = self._list_sessions()
+        changed = False
+        for index, session in enumerate(sessions):
+            if session.token_hash == token_hash and session.revoked_at is None:
+                session.revoked_at = time.time()
+                sessions[index] = session
+                changed = True
+        if changed:
+            self._save_sessions(sessions)
+
+    def revoke_profile_sessions(self, profile_id: str) -> None:
+        sessions = self._list_sessions()
+        changed = False
+        for index, session in enumerate(sessions):
+            if session.profile_id == profile_id and session.revoked_at is None:
+                session.revoked_at = time.time()
+                sessions[index] = session
+                changed = True
+        if changed:
+            self._save_sessions(sessions)
 
     # ── Assignments ────────────────────────────────────────────────────
 
@@ -1981,12 +2166,102 @@ class KidsManager:
             if doc is None:
                 continue
             progress = self.load_kids_progress(profile_id, a.document_id)
+            total_sections = max(1, len(doc.sections))
+            completed = min(len(progress.completed_section_ids), total_sections)
             library.append({
                 "assignment": a.model_dump(mode="json"),
-                "document": ir_service._summary(doc),
+                "document": {
+                    **doc.model_dump(mode="json"),
+                    "cover_url": (
+                        f"/api/v1/kids/books/{doc.id}/cover"
+                        if doc.has_cover
+                        else ""
+                    ),
+                    "progress": progress.model_dump(mode="json"),
+                    "progress_percent": round(completed / total_sections * 100, 1),
+                },
                 "progress": progress.model_dump(mode="json"),
             })
         return library
+
+    # ── Daily usage ───────────────────────────────────────────────────
+
+    def load_daily_usage(self, profile_id: str, usage_date: str | None = None) -> KidsDailyUsage:
+        day = usage_date or date.today().isoformat()
+        data = _read_json(self._usage_path(profile_id, day))
+        if data:
+            return KidsDailyUsage(**data)
+        return KidsDailyUsage(profile_id=profile_id, date=day)
+
+    def usage_status(self, profile_id: str) -> dict[str, Any]:
+        profile = self.get_profile(profile_id)
+        if profile is None:
+            raise ValueError("Profile not found")
+        usage = self.load_daily_usage(profile_id)
+        limit_seconds = profile.daily_limit_minutes * 60
+        allowed_seconds = limit_seconds + usage.bonus_seconds
+        return {
+            "date": usage.date,
+            "used_seconds": round(usage.seconds, 1),
+            "limit_seconds": limit_seconds,
+            "bonus_seconds": round(usage.bonus_seconds, 1),
+            "remaining_seconds": round(max(0.0, allowed_seconds - usage.seconds), 1),
+            "limit_reached": usage.seconds >= allowed_seconds,
+        }
+
+    def record_reading_heartbeat(
+        self,
+        session: KidsDeviceSession,
+        *,
+        document_id: str = "",
+        max_gap_seconds: float = 180.0,
+    ) -> dict[str, Any]:
+        """Charge elapsed server time, capped to tolerate a sleeping device."""
+        now = time.time()
+        elapsed = max(0.0, min(max_gap_seconds, now - session.last_seen_at))
+        session.last_seen_at = now
+        sessions = self._list_sessions()
+        for index, item in enumerate(sessions):
+            if item.id == session.id:
+                sessions[index] = session
+                break
+        self._save_sessions(sessions)
+
+        usage = self.load_daily_usage(session.profile_id)
+        if usage.date != date.today().isoformat():
+            usage = self.load_daily_usage(session.profile_id)
+        usage.seconds += elapsed
+        usage.updated_at = now
+        _write_json(self._usage_path(session.profile_id, usage.date), usage.model_dump(mode="json"))
+        if document_id and self.is_section_allowed(session.profile_id, document_id, 0):
+            self._add_document_reading_time(session.profile_id, document_id, elapsed)
+        status = self.usage_status(session.profile_id)
+        if status["limit_reached"]:
+            overage = usage.seconds - (status["limit_seconds"] + usage.bonus_seconds)
+            usage.seconds -= overage
+            _write_json(self._usage_path(session.profile_id, usage.date), usage.model_dump(mode="json"))
+        return status
+
+    def _add_document_reading_time(
+        self, profile_id: str, document_id: str, seconds: float
+    ) -> None:
+        progress = self.load_kids_progress(profile_id, document_id)
+        progress.time_spent_seconds += max(0.0, seconds)
+        progress.last_read_at = time.time()
+        progress.updated_at = time.time()
+        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
+
+    def reset_daily_usage(self, profile_id: str) -> KidsDailyUsage:
+        usage = KidsDailyUsage(profile_id=profile_id, date=date.today().isoformat())
+        _write_json(self._usage_path(profile_id, usage.date), usage.model_dump(mode="json"))
+        return usage
+
+    def extend_daily_usage(self, profile_id: str, minutes: int) -> KidsDailyUsage:
+        usage = self.load_daily_usage(profile_id)
+        usage.bonus_seconds += max(1, min(120, minutes)) * 60
+        usage.updated_at = time.time()
+        _write_json(self._usage_path(profile_id, usage.date), usage.model_dump(mode="json"))
+        return usage
 
     # ── Progress ───────────────────────────────────────────────────────
 
@@ -2027,6 +2302,7 @@ class KidsManager:
         progress = self.load_kids_progress(profile_id, document_id)
         if section_id not in progress.completed_section_ids:
             progress.completed_section_ids.append(section_id)
+            progress.total_stars += 1
             progress.updated_at = time.time()
             _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
         return progress
@@ -2046,6 +2322,20 @@ class KidsManager:
         _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
         return progress
 
+    def record_quiz_result(
+        self, profile_id: str, document_id: str, score: int, total: int, stars: int
+    ) -> int:
+        """Record a quiz and award stars only for a new personal best."""
+        progress = self.load_kids_progress(profile_id, document_id)
+        earned = max(0, stars - max(0, progress.quiz_best_stars))
+        progress.quiz_attempts += 1
+        progress.quiz_best_score = max(progress.quiz_best_score, score)
+        progress.quiz_best_stars = max(progress.quiz_best_stars, stars)
+        progress.total_stars += earned
+        progress.updated_at = time.time()
+        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
+        return earned
+
     def get_report(self, profile_id: str) -> dict[str, Any]:
         """Aggregate learning report for a child profile."""
         profile = self.get_profile(profile_id)
@@ -2058,6 +2348,7 @@ class KidsManager:
         return {
             "profile": profile.model_dump(mode="json"),
             "books": library,
+            "usage": self.usage_status(profile_id),
             "total_stars": total_stars,
             "total_time_seconds": total_time,
             "total_quiz_attempts": total_quizzes,

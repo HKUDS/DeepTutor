@@ -224,8 +224,31 @@ class KidsLearningProgress(BaseModel):
     total_stars: int = 0
     quiz_attempts: int = 0
     quiz_best_score: int = 0
+    quiz_best_stars: int = 0
     time_spent_seconds: float = 0.0
     last_read_at: float = 0.0
+    updated_at: float = Field(default_factory=time.time)
+
+
+class KidsDeviceSession(BaseModel):
+    """A revocable session issued to one child device."""
+
+    id: str
+    profile_id: str
+    token_hash: str
+    created_at: float = Field(default_factory=time.time)
+    expires_at: float
+    last_seen_at: float = Field(default_factory=time.time)
+    revoked_at: float | None = None
+
+
+class KidsDailyUsage(BaseModel):
+    """Server-trusted reading time for one local calendar day."""
+
+    profile_id: str
+    date: str
+    seconds: float = 0.0
+    bonus_seconds: float = 0.0
     updated_at: float = Field(default_factory=time.time)
 
 
@@ -255,6 +278,8 @@ __all__ = [
     "FocusAttempt",
     "FocusCheckResult",
     "KidsBookAssignment",
+    "KidsDailyUsage",
+    "KidsDeviceSession",
     "KidsLearningProgress",
     "KidsProfile",
     "KidsQuizGradeResult",

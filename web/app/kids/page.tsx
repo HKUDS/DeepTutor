@@ -2,15 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { kidsApi, type KidsProfile, type KidsLibraryItem } from "@/lib/kids-api";
+import { kidsApi, type KidsBootstrapProfile, type KidsLibraryItem } from "@/lib/kids-api";
 
 const AVATAR_EMOJIS = ["🦊", "🐼", "🦄", "🐸", "🐱", "🐶", "🦁", "🐰"];
 
 export default function KidsPage() {
   const router = useRouter();
   const [stage, setStage] = useState<"loading" | "picker" | "pin" | "shelf">("loading");
-  const [profiles, setProfiles] = useState<KidsProfile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState<KidsProfile | null>(null);
+  const [profiles, setProfiles] = useState<KidsBootstrapProfile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<KidsBootstrapProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
@@ -51,7 +51,7 @@ export default function KidsPage() {
   const [exitPin, setExitPin] = useState("");
   const [exitPinError, setExitPinError] = useState("");
 
-  const handleSelectProfile = async (profile: KidsProfile) => {
+  const handleSelectProfile = async (profile: KidsBootstrapProfile) => {
     setSelectedProfile(profile);
     if (profile.has_pin) {
       setStage("pin");
@@ -62,11 +62,12 @@ export default function KidsPage() {
     }
   };
 
-  const enterProfile = async (profile: KidsProfile) => {
+  const enterProfile = async (profile: KidsBootstrapProfile) => {
     try {
       const { token } = await kidsApi.selectProfile(profile.id);
       localStorage.setItem("dt_kids_token", token);
-      const { library: lib } = await kidsApi.library(profile.id);
+      localStorage.setItem("dt_kids_profile_id", profile.id);
+      const { library: lib } = await kidsApi.library();
       setLibrary(lib);
       setStage("shelf");
     } catch {
@@ -79,7 +80,8 @@ export default function KidsPage() {
     try {
       const { token } = await kidsApi.parentUnlock(selectedProfile.id, pinInput);
       localStorage.setItem("dt_kids_token", token);
-      const { library: lib } = await kidsApi.library(selectedProfile.id);
+      localStorage.setItem("dt_kids_profile_id", selectedProfile.id);
+      const { library: lib } = await kidsApi.library();
       setLibrary(lib);
       setStage("shelf");
     } catch {
@@ -98,7 +100,8 @@ export default function KidsPage() {
     }
   };
 
-  const doExit = () => {
+  const doExit = async () => {
+    await kidsApi.logout().catch(() => {});
     localStorage.removeItem("dt_kids_token");
     localStorage.removeItem("dt_kids_profile_id");
     setSelectedProfile(null);
@@ -109,7 +112,7 @@ export default function KidsPage() {
     if (!selectedProfile) return;
     try {
       await kidsApi.exitVerify(selectedProfile.id, exitPin);
-      doExit();
+      await doExit();
     } catch {
       setExitPinError("Wrong PIN. Try again!");
       setExitPin("");

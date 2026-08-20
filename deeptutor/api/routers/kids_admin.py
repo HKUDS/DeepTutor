@@ -6,7 +6,7 @@ All endpoints require adult authentication (require_auth).
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -65,6 +65,8 @@ async def list_profiles() -> dict:
 
 @router.post("/profiles")
 async def create_profile(request: CreateProfileRequest) -> dict:
+    if request.parent_pin and len(request.parent_pin) < 4:
+        raise HTTPException(status_code=422, detail="Parent PIN must contain at least 4 characters")
     manager = get_kids_manager()
     profile = manager.create_profile(
         request.name,
@@ -80,6 +82,8 @@ async def create_profile(request: CreateProfileRequest) -> dict:
 
 @router.put("/profiles/{profile_id}")
 async def update_profile(profile_id: str, request: UpdateProfileRequest) -> dict:
+    if request.parent_pin and len(request.parent_pin) < 4:
+        raise HTTPException(status_code=422, detail="Parent PIN must contain at least 4 characters")
     manager = get_kids_manager()
     try:
         profile = manager.update_profile(profile_id, **request.model_dump(exclude_none=True))
@@ -106,6 +110,29 @@ async def verify_pin(profile_id: str, request: VerifyPinRequest) -> dict:
     if not ok:
         raise HTTPException(status_code=403, detail="Invalid PIN or too many attempts")
     return {"verified": True}
+
+
+@router.post("/profiles/{profile_id}/usage/reset")
+async def reset_daily_usage(profile_id: str) -> dict:
+    manager = get_kids_manager()
+    if manager.get_profile(profile_id) is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    usage = manager.reset_daily_usage(profile_id)
+    return {"usage": {**usage.model_dump(mode="json"), **manager.usage_status(profile_id)}}
+
+
+class ExtendUsageRequest(BaseModel):
+    minutes: int = Field(ge=1, le=120)
+
+
+@router.post("/profiles/{profile_id}/usage/extend")
+async def extend_daily_usage(profile_id: str, request: ExtendUsageRequest) -> dict:
+    manager = get_kids_manager()
+    if manager.get_profile(profile_id) is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    manager.extend_daily_usage(profile_id, request.minutes)
+    usage = manager.load_daily_usage(profile_id)
+    return {"usage": {**usage.model_dump(mode="json"), **manager.usage_status(profile_id)}}
 
 
 # ── Book assignments ────────────────────────────────────────────────────────

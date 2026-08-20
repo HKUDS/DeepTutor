@@ -21,6 +21,15 @@ export interface KidsProfile {
   updated_at?: number;
 }
 
+export interface KidsBootstrapProfile {
+  id: string;
+  name: string;
+  avatar: string;
+  age_band: KidsProfile["age_band"];
+  has_pin?: boolean;
+  device_url?: string;
+}
+
 export interface KidsBookAssignment {
   id: string;
   profile_id: string;
@@ -45,6 +54,7 @@ export interface KidsLearningProgress {
   total_stars: number;
   quiz_attempts: number;
   quiz_best_score: number;
+  quiz_best_stars?: number;
   time_spent_seconds: number;
   last_read_at: number;
 }
@@ -53,6 +63,15 @@ export interface KidsLibraryItem {
   assignment: KidsBookAssignment;
   document: Record<string, unknown>;
   progress: KidsLearningProgress;
+}
+
+export interface KidsUsage {
+  date?: string;
+  used_seconds: number;
+  limit_seconds: number;
+  bonus_seconds: number;
+  remaining_seconds: number;
+  limit_reached: boolean;
 }
 
 export interface KidsSafeQuestion {
@@ -66,6 +85,7 @@ export interface KidsQuizGrade {
   score: number;
   total: number;
   stars: number;
+  earned_stars?: number;
   per_question: { id: string; correct: boolean; explanation: string }[];
   encouragements: string[];
 }
@@ -140,7 +160,29 @@ export const kidsAdminApi = {
 
   learningReport: (profileId: string) =>
     adminRequest<Record<string, unknown>>(`/profiles/${profileId}/report`),
+
+  resetUsage: (profileId: string) =>
+    adminRequest<{ usage: KidsUsage }>(`/profiles/${profileId}/usage/reset`, {
+      method: "POST",
+    }),
+
+  extendUsage: (profileId: string, minutes: number) =>
+    adminRequest<{ usage: KidsUsage }>(`/profiles/${profileId}/usage/extend`, {
+      method: "POST",
+      body: JSON.stringify({ minutes }),
+    }),
 };
+
+export class KidsApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public detail: unknown,
+  ) {
+    super(message);
+    this.name = "KidsApiError";
+  }
+}
 
 // ── Child API ──────────────────────────────────────────────────────────────
 
@@ -151,13 +193,20 @@ async function kidsRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(`${KIDS_BASE}${path}`, {
     headers,
     ...init,
+    skipAuthRedirect: true,
   });
-  if (!res.ok) throw new Error(`Kids API error: ${res.status}`);
+  if (!res.ok) {
+    let detail: unknown = null;
+    try {
+      detail = (await res.json())?.detail ?? null;
+    } catch {}
+    throw new KidsApiError(`Kids API error: ${res.status}`, res.status, detail);
+  }
   return res.json();
 }
 
 export const kidsApi = {
-  bootstrap: () => kidsRequest<{ profiles: KidsProfile[] }>("/bootstrap"),
+  bootstrap: () => kidsRequest<{ profiles: KidsBootstrapProfile[] }>("/bootstrap"),
 
   selectProfile: (profileId: string) =>
     kidsRequest<{ token: string; profile: KidsProfile }>("/select-profile", {
@@ -171,13 +220,15 @@ export const kidsApi = {
       body: JSON.stringify({ profile_id: profileId, pin }),
     }),
 
-  library: (profileId: string) =>
-    kidsRequest<{ library: KidsLibraryItem[] }>("/library", {
-      headers: { "X-Profile-Id": profileId },
-    }),
+  library: () => kidsRequest<{ library: KidsLibraryItem[]; usage: KidsUsage }>("/library"),
 
   getBook: (documentId: string) =>
-    kidsRequest<{ document: Record<string, unknown>; progress: KidsLearningProgress }>(
+    kidsRequest<{
+      document: Record<string, unknown>;
+      progress: KidsLearningProgress;
+      usage: KidsUsage;
+      profile: KidsProfile;
+    }>(
       `/books/${documentId}`,
     ),
 
@@ -185,6 +236,8 @@ export const kidsApi = {
     kidsRequest<Record<string, unknown>>(`/books/${documentId}/sections/${sectionId}`),
 
   getCoverUrl: (documentId: string) => `${KIDS_BASE}/books/${documentId}/cover`,
+
+  getEpubUrl: (documentId: string) => `${KIDS_BASE}/books/${documentId}/epub`,
 
   updateProgress: (
     documentId: string,
@@ -194,7 +247,6 @@ export const kidsApi = {
       scroll_percent: number;
       epub_cfi?: string;
       section_href?: string;
-      time_delta?: number;
       completed?: boolean;
     },
   ) =>
@@ -220,6 +272,14 @@ export const kidsApi = {
       method: "POST",
       body: JSON.stringify({ text, target_language: targetLanguage }),
     }),
+
+  heartbeat: (documentId: string) =>
+    kidsRequest<KidsUsage>("/session/heartbeat", {
+      method: "POST",
+      body: JSON.stringify({ active: true, document_id: documentId }),
+    }),
+
+  logout: () => kidsRequest<{ ok: boolean }>("/session/logout", { method: "POST" }),
 
   exitVerify: (profileId: string, pin: string) =>
     kidsRequest<{ ok: boolean }>("/exit-verify", {
