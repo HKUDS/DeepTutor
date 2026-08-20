@@ -170,6 +170,22 @@ Use a separate Git worktree for each feature (`git worktree add ../DeepTutor-<ta
 and long-running agents operate independently without rewriting one another's
 outputs. Before removing a worktree, commit or explicitly preserve its changes;
 do not use `git reset --hard` or `git clean` as a routine cleanup shortcut.
+
+Use the workspace governance helper to audit, create, archive, and retire worktrees safely:
+
+```bash
+# Audit all registered worktrees and their cleanliness
+python3 scripts/workspace_governance.py audit
+
+# Create an isolated task worktree tracking origin/dev
+python3 scripts/workspace_governance.py create my-feature --base dev
+
+# Snapshot an existing worktree before retirement
+python3 scripts/workspace_governance.py archive /path/to/worktree
+
+# Retire a finished worktree safely
+python3 scripts/workspace_governance.py retire /path/to/worktree
+```
 ---
 
 ## Code Quality & Security

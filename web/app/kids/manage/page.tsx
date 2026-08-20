@@ -158,7 +158,13 @@ export default function KidsManagePage() {
             </h1>
             {selected && (
               <p style={{ fontSize: 16, color: "#718096", marginTop: 4 }}>
-                Age {selected.age} ({selected.age_band})
+                Age {selected.age} · {
+                  selected.age_band === "3-5"
+                    ? "Ages 3–5 (Parent-Supervised Co-reading / 家长陪读)"
+                    : selected.age_band === "6-8"
+                    ? "Ages 6–8 (Independent: Recall, Sequence & Vocab / 独立自主阅读)"
+                    : "Ages 9–12 (Independent: Comprehension, Inference & Vocab / 独立深度阅读)"
+                }
               </p>
             )}
           </div>

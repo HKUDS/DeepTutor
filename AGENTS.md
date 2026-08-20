@@ -1,3 +1,32 @@
+# Global Codex Engineering Delivery Rules
+
+These rules apply by default to development in DeepTutor:
+
+## Required Workflow
+
+1. **Research**: read applicable documentation, relevant source and tests, and worktree status before coding.
+2. **Decide**: identify product, architecture, security, compatibility, and migration constraints.
+3. **Define acceptance**: publish a concise checklist of verifiable criteria before non-trivial coding.
+4. **Develop**: implement in isolated task worktrees; never dirty the main control checkout.
+5. **Test in reality**: run relevant pytest, typecheck, production build, and actual browser/runtime flow.
+6. **Close the loop**: fix failures, rerun checks, report concrete `PASS` / `FAIL` / `BLOCKED` evidence.
+
+## GitHub CLI in Sandboxed Environments
+
+- Do not diagnose a GitHub CLI login as invalid from a sandboxed `gh auth status` failure alone. Restricted network access or credential-store access can produce a misleading invalid-token message.
+- When GitHub access is needed, verify the actual login with an approved non-sandbox command: `gh api user --jq '.login'`.
+- If that command succeeds, use the working `gh` identity for read/write GitHub actions instead of asking the user to re-authenticate.
+- Only report a token/login problem after a non-sandbox GitHub API check fails with an authentication error.
+
+## Workspace Governance
+
+- **Control Checkout**: `/Users/Shared/DeepTutor` is a clean control checkout only (tracking `dev` or `main`). Direct edits and scratch files belong in task worktrees.
+- **Task Worktrees**: Create isolated task worktrees using `python3 scripts/workspace_governance.py create <name> --base dev`.
+- **Archive-Before-Retire**: Worktrees are archived to `/Users/Shared/DeepTutor-worktree-archives/` before retirement via `python3 scripts/workspace_governance.py archive <path>`.
+- **Safe Retirement**: Only retire worktrees whose PRs are merged/closed and whose local state is cleanly archived. Never use `git reset --hard` or `git clean` on dirty unarchived state.
+
+---
+
 # DeepTutor — Agent-Native Architecture
 
 ## Overview
