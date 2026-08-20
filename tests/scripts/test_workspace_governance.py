@@ -114,6 +114,29 @@ def test_main_checkout_cannot_be_retired(tmp_path: Path) -> None:
     assert info.safe_to_retire is False
 
 
+def test_verify_cli_accepts_an_archive_path_without_repo_option(tmp_path: Path) -> None:
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    payload = archive / "changes.patch"
+    payload.write_text("example patch\n", encoding="utf-8")
+    import hashlib
+
+    digest = hashlib.sha256(payload.read_bytes()).hexdigest()
+    (archive / "manifest.sha256").write_text(
+        f"{digest}  {payload.name}\n", encoding="utf-8"
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(script_path), "verify", str(archive)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "Archive verified: PASS"
+
+
 def test_retire_workspace_removes_linked_worktree(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

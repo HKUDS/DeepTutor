@@ -328,6 +328,7 @@ def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
     assert first_grade.status_code == 200
     assert first_grade.json()["total"] == 3
     assert first_grade.json()["section_id"] == chapter_one["id"]
+    assert first_grade.json()["earned_stars"] == 3
     opened_after_quiz = client.get(
         f"/api/v1/kids/books/{document_id}/sections/{chapter_two['id']}",
         headers=headers,
@@ -390,6 +391,7 @@ def test_each_completed_chapter_gets_a_three_question_quiz_and_book_summary(
         headers=headers,
     )
     assert second_grade.status_code == 200
+    assert second_grade.json()["earned_stars"] == 3
     assert second_grade.json()["is_complete"] is True
 
     final_book = client.get(f"/api/v1/kids/books/{document_id}", headers=headers)
