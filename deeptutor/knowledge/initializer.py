@@ -187,11 +187,20 @@ class KnowledgeBaseInitializer:
                 total=total_batches,
             )
 
+        def _on_image_progress(current: int, total: int):
+            self.progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                f"Describing images: {current}/{total}",
+                current=current,
+                total=total,
+            )
+
         try:
             success = await rag_service.initialize(
                 kb_name=self.kb_name,
                 file_paths=file_paths,
                 progress_callback=_on_progress,
+                image_progress_callback=_on_image_progress,
             )
             if not success:
                 self.progress_tracker.update(

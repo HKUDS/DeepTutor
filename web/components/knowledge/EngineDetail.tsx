@@ -391,6 +391,9 @@ function LlamaIndexForm({
         bm25_top_k_multiplier: form.bm25_top_k_multiplier,
         chunk_size: form.chunk_size,
         chunk_overlap: form.chunk_overlap,
+        image_description_concurrency: form.image_description_concurrency,
+        image_description_timeout_seconds:
+          form.image_description_timeout_seconds,
       });
       setLoaded(next);
       setForm(next);
@@ -508,6 +511,34 @@ function LlamaIndexForm({
             min={0}
             max={Math.max(0, form.chunk_size - 1)}
             onChange={(v) => set({ chunk_overlap: v })}
+          />
+        </div>
+      </div>
+
+      {/* Image descriptions */}
+      <div>
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <span className="text-[12px] font-medium text-[var(--foreground)]">
+            {t("Image descriptions")}
+          </span>
+          <span className="text-[11px] text-[var(--muted-foreground)]">
+            {t("Applies on the next image indexing run")}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <NumberField
+            label={t("Concurrent image descriptions")}
+            value={form.image_description_concurrency}
+            min={1}
+            max={16}
+            onChange={(v) => set({ image_description_concurrency: v })}
+          />
+          <NumberField
+            label={t("Per-image timeout (seconds)")}
+            value={form.image_description_timeout_seconds}
+            min={5}
+            max={600}
+            onChange={(v) => set({ image_description_timeout_seconds: v })}
           />
         </div>
       </div>

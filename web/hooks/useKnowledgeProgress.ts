@@ -243,6 +243,26 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
             (event as MessageEvent).data,
           ) as ProgressInfo;
           setProgress(kbName, payload);
+          // The progress bar reads `percent`; the log box reads `task.logs`.
+          // Also surface the message so "Describing images: m/n" and
+          // "Embedding batches: N/M" stream into the log box live (not only at
+          // completion). Dedupe against the last line: process_log may already
+          // have emitted the same message via _task_log.
+          if (payload.message) {
+            setTasksByKb((prev) => {
+              const current = prev[kbName];
+              if (!current || current.taskId !== taskId) return prev;
+              const logs = appendTaskLog(current.logs, payload.message);
+              if (logs === current.logs) return prev;
+              return {
+                ...prev,
+                [kbName]: {
+                  ...current,
+                  logs,
+                },
+              };
+            });
+          }
         } catch {
           // ignore malformed progress
         }

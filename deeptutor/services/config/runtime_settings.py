@@ -253,6 +253,8 @@ DEFAULT_IMA_SETTINGS: dict[str, Any] = {
 #   candidates each child retriever fetches before fusion re-ranks to ``top_k``.
 # * ``chunk_size`` / ``chunk_overlap`` — indexing chunk geometry; changes apply
 #   on the next (re-)index, not retroactively.
+# * ``image_description_concurrency`` / ``image_description_timeout_seconds`` —
+#   bounded multimodal LLM work while indexing image-heavy documents.
 #
 # ``fusion_num_queries`` is intentionally NOT exposed: query generation needs a
 # real LLM, but the fusion retriever runs on a MockLLM, so any value > 1 would
@@ -269,6 +271,8 @@ DEFAULT_LLAMAINDEX_SETTINGS: dict[str, Any] = {
     "bm25_top_k_multiplier": 2,
     "chunk_size": 512,
     "chunk_overlap": 50,
+    "image_description_concurrency": 4,
+    "image_description_timeout_seconds": 60,
 }
 
 # GraphRAG retrieval knobs (microsoft/graphrag). Only query-time params that the
@@ -821,6 +825,12 @@ class RuntimeSettingsService:
             ),
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
+            "image_description_concurrency": _coerce_clamped_int(
+                settings.get("image_description_concurrency"), 4, 1, 16
+            ),
+            "image_description_timeout_seconds": _coerce_clamped_int(
+                settings.get("image_description_timeout_seconds"), 60, 5, 600
+            ),
         }
 
     def _normalize_response_type(self, value: Any) -> str:

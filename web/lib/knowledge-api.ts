@@ -61,6 +61,9 @@ export interface LlamaIndexConfig {
   /** Chunk geometry — applies to documents indexed after the change. */
   chunk_size: number;
   chunk_overlap: number;
+  /** Bounded multimodal LLM work during image-heavy indexing. */
+  image_description_concurrency: number;
+  image_description_timeout_seconds: number;
 }
 
 export interface GraphRagConfig {

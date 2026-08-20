@@ -1293,6 +1293,8 @@ class LlamaIndexConfigUpdate(BaseModel):
     bm25_top_k_multiplier: int | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    image_description_concurrency: int | None = None
+    image_description_timeout_seconds: int | None = None
 
 
 @router.get("/rag-pipelines/llamaindex/config")
@@ -1311,8 +1313,8 @@ async def get_llamaindex_pipeline_config():
 async def update_llamaindex_pipeline_config(payload: LlamaIndexConfigUpdate):
     """Persist the LlamaIndex engine knobs.
 
-    Retrieval knobs take effect on the next query; chunk geometry only changes
-    how documents indexed *after* the save are split.
+    Retrieval knobs take effect on the next query; indexing knobs only affect
+    documents processed after the save.
     """
     try:
         from deeptutor.services.config import get_runtime_settings_service
