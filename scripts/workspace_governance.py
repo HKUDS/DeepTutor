@@ -23,9 +23,7 @@ import time
 DEFAULT_ARCHIVE_DIR = Path(
     os.environ.get("DEEPTUTOR_ARCHIVE_DIR", "/Users/Shared/DeepTutor-worktree-archives")
 )
-DEFAULT_WORKTREE_PARENT = Path(
-    os.environ.get("DEEPTUTOR_WORKTREE_PARENT", "/Users/Shared")
-)
+DEFAULT_WORKTREE_PARENT = Path(os.environ.get("DEEPTUTOR_WORKTREE_PARENT", "/Users/Shared"))
 
 
 def _run_cmd(
@@ -170,7 +168,7 @@ def create_workspace(
     target_parent: Path = DEFAULT_WORKTREE_PARENT,
 ) -> WorkspaceInfo:
     branch_name = f"codex/{name}" if not name.startswith("codex/") else name
-    worktree_dir_name = f"DeepTutor-worktrees-{name.replace("codex/", "").replace("/", "-")}"
+    worktree_dir_name = f"DeepTutor-worktrees-{name.replace('codex/', '').replace('/', '-')}"
     target_dir = target_parent / worktree_dir_name
 
     if target_dir.exists():
@@ -367,7 +365,7 @@ def main() -> int:
                 print(f"- {w.path}{main_tag}")
                 print(f"  Branch: {w.branch} @ {w.head_sha[:8]} | Status: {status}{archived_tag}")
                 if w.retirement_blockers:
-                    print(f"  Blockers: {"; ".join(w.retirement_blockers)}")
+                    print(f"  Blockers: {'; '.join(w.retirement_blockers)}")
         return 0
 
     if args.command == "create":
@@ -386,7 +384,7 @@ def main() -> int:
 
     if args.command == "verify":
         valid = verify_archive(Path(args.archive_path))
-        print(f"Archive verified: {"PASS" if valid else "FAIL"}")
+        print(f"Archive verified: {'PASS' if valid else 'FAIL'}")
         return 0 if valid else 1
 
     if args.command == "retire":

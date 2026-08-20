@@ -2493,7 +2493,9 @@ class KidsManager:
         """Record a quiz and award stars only for a new personal best."""
         progress = self.load_kids_progress(profile_id, document_id)
         prior_section_best = (
-            progress.quiz_section_best_stars.get(section_id, 0) if section_id else progress.quiz_best_stars
+            progress.quiz_section_best_stars.get(section_id, 0)
+            if section_id
+            else progress.quiz_best_stars
         )
         earned = max(0, stars - max(0, prior_section_best))
         progress.quiz_attempts += 1

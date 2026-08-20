@@ -122,9 +122,7 @@ def test_verify_cli_accepts_an_archive_path_without_repo_option(tmp_path: Path) 
     import hashlib
 
     digest = hashlib.sha256(payload.read_bytes()).hexdigest()
-    (archive / "manifest.sha256").write_text(
-        f"{digest}  {payload.name}\n", encoding="utf-8"
-    )
+    (archive / "manifest.sha256").write_text(f"{digest}  {payload.name}\n", encoding="utf-8")
 
     result = subprocess.run(
         [sys.executable, str(script_path), "verify", str(archive)],

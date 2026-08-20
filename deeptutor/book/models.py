@@ -331,6 +331,7 @@ class CharacterGraph(BaseModel):
                 return n
         return None
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Learning captures (Book reader annotations)
 # ─────────────────────────────────────────────────────────────────────────────
