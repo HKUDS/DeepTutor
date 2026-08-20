@@ -110,7 +110,7 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
             >
               <Menu size={18} strokeWidth={1.7} />
             </button>
-            <Link href="/" className="flex items-center gap-1.5">
+            <Link href="/" aria-label="DeepTutor" className="flex items-center gap-1.5">
               <Image
                 src="/logo.png"
                 alt="DeepTutor"

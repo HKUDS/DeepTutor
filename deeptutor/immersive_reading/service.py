@@ -32,11 +32,14 @@ from deeptutor.immersive_reading.models import (
     FocusCheckResult,
     KidsBookAssignment,
     KidsDailyUsage,
+    KidsDevicePairing,
     KidsDeviceSession,
     KidsLearningProgress,
     KidsProfile,
     KidsQuizQuestion,
     KidsQuizResult,
+    LibraryEntry,
+    LibraryIndex,
     ReadingCitation,
     ReadingDocument,
     ReadingProgress,
@@ -70,11 +73,66 @@ logger = logging.getLogger(__name__)
 KIDS_FALLBACK_QUIZ_PROMPT_VERSION = "kids-quiz-fallback-v2"
 
 
-def _is_front_matter_title(title: str) -> bool:
-    """Identify the synthetic pre-TOC section created by our parsers."""
-    normalized = re.sub(r"[^a-z]+", " ", unicodedata.normalize("NFKC", title).casefold()).strip()
-    return normalized == "front matter"
+_FRONT_MATTER_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"^front\s*matter$",
+        r"^back\s*matter$",
+        r"^copyright(?:\s+(?:page|notice|info|information|and\s+credits|credits))?$",
+        r"^table\s+of\s+contents$",
+        r"^contents$",
+        r"^toc$",
+        r"^title\s+page$",
+        r"^half\s+title$",
+        r"^imprint$",
+        r"^colophon$",
+        r"^disclaimer$",
+        r"^legal\s+notice$",
+        r"^rights?\s+and\s+permissions?$",
+        r"^all\s+rights?\s+reserved$",
+        r"^welcome(?:\s+to\s+.*)?$",
+        r"^hints?(?:\s+for\s+.*)?$",
+        r"^(?:parents?|educators?|teachers?)\s+guides?$",
+        r"^guides?\s+for\s+(?:parents?|educators?|teachers?)$",
+        r"^(?:a\s+)?notes?\s+to\s+(?:parents?|educators?|teachers?|readers?)$",
+        r"^how\s+to\s+use\s+(?:this\s+)?book$",
+        r"^instructions?$",
+        r"^about\s+this\s+(?:book|series|author|illustrator|publisher)$",
+        r"^about\s+the\s+(?:book|series|author|illustrator|publisher)$",
+        r"^dedication$",
+        r"^acknowledg?ments?$",
+        r"^preface$",
+        r"^foreword$",
+        r"^credits?$",
+        r"^publishers?\s+notes?$",
+        r"^epilogue$",
+        r"^afterword$",
+        r"^glossary$",
+        r"^index$",
+        r"^appendix.*$",
+        r"^bibliography$",
+        r"^further\s+reading$",
+    ]
+]
+_ZH_FRONT_MATTER_KEYWORDS = {
+    "版权页", "版权声明", "版权信息", "目录", "前言", "序言", "自序", "致谢",
+    "编者按", "使用说明", "家长指南", "导读", "出版说明", "后记", "附录",
+}
 
+
+def _is_front_matter_title(title: str) -> bool:
+    """Identify front matter, copyright, TOC, and metadata sections."""
+    if not title:
+        return False
+    clean = re.sub(r"[^a-z0-9\s]+", " ", unicodedata.normalize("NFKC", title).casefold()).strip()
+    clean = re.sub(r"\s+", " ", clean)
+    for p in _FRONT_MATTER_PATTERNS:
+        if p.match(clean):
+            return True
+    zh_clean = re.sub(r"[^\u4e00-\u9fa5]", "", title)
+    if zh_clean in _ZH_FRONT_MATTER_KEYWORDS:
+        return True
+    return False
 
 def _requires_focus_check(section: ReadingSection) -> bool:
     return section.checkpoint_kind != "none"
@@ -352,7 +410,154 @@ class ImmersiveReadingService:
         progress.updated_at = time.time()
         _write_json(self._progress_path(progress.document_id), progress.model_dump(mode="json"))
 
-    def _summary(self, document: ReadingDocument) -> dict[str, Any]:
+    def _library_index_path(self) -> Path:
+        return self._root() / "library_index.json"
+
+    def get_library_index(self) -> LibraryIndex:
+        path = self._library_index_path()
+        data = _read_json(path, None)
+        index = LibraryIndex(**data) if data else LibraryIndex()
+
+        # Reconcile any unindexed documents on disk
+        changed = False
+        try:
+            mgr = get_kids_manager()
+            assignments = mgr.list_assignments()
+            assigned_doc_ids = {a.document_id for a in assignments if a.status == "active"}
+        except Exception:
+            assigned_doc_ids = set()
+
+        if self._root().exists():
+            for child in self._root().iterdir():
+                if not child.is_dir() or not child.name.startswith("document_"):
+                    continue
+                doc_id = child.name[len("document_") :]
+                if doc_id not in index.entries:
+                    if doc_id in assigned_doc_ids:
+                        index.entries[doc_id] = LibraryEntry(
+                            document_id=doc_id,
+                            scopes=["kids_family"],
+                            kids_review_status="approved",
+                            approved_age_bands=["3-5", "6-8", "9-12"],
+                            source_scope="kids_upload",
+                        )
+                    else:
+                        index.entries[doc_id] = LibraryEntry(
+                            document_id=doc_id,
+                            scopes=["personal"],
+                            kids_review_status="pending",
+                            approved_age_bands=[],
+                            source_scope="personal",
+                        )
+                    changed = True
+
+        if changed or not path.exists():
+            self.save_library_index(index)
+        return index
+
+    def save_library_index(self, index: LibraryIndex) -> None:
+        index.updated_at = time.time()
+        _write_json(self._library_index_path(), index.model_dump(mode="json"))
+
+    def get_library_entry(self, document_id: str) -> LibraryEntry:
+        index = self.get_library_index()
+        if document_id in index.entries:
+            return index.entries[document_id]
+        entry = LibraryEntry(document_id=document_id, scopes=["personal"])
+        index.entries[document_id] = entry
+        self.save_library_index(index)
+        return entry
+
+    def update_library_entry(self, document_id: str, **kwargs: Any) -> LibraryEntry:
+        index = self.get_library_index()
+        entry = index.entries.get(document_id) or LibraryEntry(document_id=document_id)
+        for k, v in kwargs.items():
+            if v is not None and hasattr(entry, k):
+                setattr(entry, k, v)
+        entry.updated_at = time.time()
+        index.entries[document_id] = entry
+        self.save_library_index(index)
+        return entry
+
+    def add_to_kids_family(
+        self,
+        document_id: str,
+        *,
+        status: str = "pending",
+        approved_age_bands: list[str] | None = None,
+        reviewer_note: str = "",
+    ) -> LibraryEntry:
+        index = self.get_library_index()
+        entry = index.entries.get(document_id) or LibraryEntry(document_id=document_id)
+        if "kids_family" not in entry.scopes:
+            entry.scopes.append("kids_family")
+        entry.kids_review_status = status  # type: ignore
+        if approved_age_bands is not None:
+            entry.approved_age_bands = approved_age_bands  # type: ignore
+        if reviewer_note:
+            entry.reviewer_note = reviewer_note
+        if status == "approved":
+            entry.reviewed_at = time.time()
+        entry.updated_at = time.time()
+        index.entries[document_id] = entry
+        self.save_library_index(index)
+        return entry
+
+    def add_to_personal(self, document_id: str) -> LibraryEntry:
+        index = self.get_library_index()
+        entry = index.entries.get(document_id) or LibraryEntry(document_id=document_id)
+        if "personal" not in entry.scopes:
+            entry.scopes.append("personal")
+        entry.updated_at = time.time()
+        index.entries[document_id] = entry
+        self.save_library_index(index)
+        return entry
+
+    def archive_from_kids_family(self, document_id: str) -> LibraryEntry:
+        index = self.get_library_index()
+        entry = index.entries.get(document_id) or LibraryEntry(document_id=document_id)
+        entry.kids_review_status = "archived"
+        entry.updated_at = time.time()
+        index.entries[document_id] = entry
+        self.save_library_index(index)
+        return entry
+
+    def unarchive_to_kids_family(self, document_id: str) -> LibraryEntry:
+        index = self.get_library_index()
+        entry = index.entries.get(document_id) or LibraryEntry(document_id=document_id)
+        entry.kids_review_status = "approved"
+        entry.updated_at = time.time()
+        index.entries[document_id] = entry
+        self.save_library_index(index)
+        return entry
+
+    def purge_kids_document(self, document_id: str) -> dict[str, Any]:
+        index = self.get_library_index()
+        entry = index.entries.get(document_id)
+        mgr = get_kids_manager()
+        for assignment in mgr.list_assignments():
+            if assignment.document_id == document_id:
+                mgr.unassign_book(assignment.profile_id, document_id)
+
+        if entry and "personal" in entry.scopes:
+            entry.scopes = [s for s in entry.scopes if s != "kids_family"]
+            entry.kids_review_status = "archived"
+            entry.updated_at = time.time()
+            index.entries[document_id] = entry
+            self.save_library_index(index)
+            return {"purged": True, "kept_in_personal": True}
+        else:
+            if entry and document_id in index.entries:
+                del index.entries[document_id]
+                self.save_library_index(index)
+            root = self._document_root(document_id)
+            if root.exists():
+                shutil.rmtree(root, ignore_errors=True)
+            return {"purged": True, "kept_in_personal": False}
+
+    def _summary(
+        self, document: ReadingDocument, entry: LibraryEntry | None = None
+    ) -> dict[str, Any]:
         progress = self.load_progress(document.id)
         total = max(1, len(document.sections))
         fraction = (progress.current_section_index + progress.scroll_percent / 100) / total
@@ -363,8 +568,14 @@ class ImmersiveReadingService:
             s.id in progress.passed_section_ids for s in required_sections
         ):
             fraction = 1.0
+        lib_entry = entry or self.get_library_entry(document.id)
         return {
             **document.model_dump(mode="json"),
+            "scopes": lib_entry.scopes,
+            "kids_review_status": lib_entry.kids_review_status,
+            "approved_age_bands": lib_entry.approved_age_bands,
+            "reviewed_at": lib_entry.reviewed_at,
+            "source_scope": lib_entry.source_scope,
             "progress": progress.model_dump(mode="json"),
             "progress_percent": round(max(0.0, min(100.0, fraction * 100)), 1),
             "cover_url": f"/api/v1/immersive-reading/documents/{document.id}/cover"
@@ -373,16 +584,26 @@ class ImmersiveReadingService:
             "fast_search_index": self.fast_index_status(document.id),
         }
 
-    def list_documents(self) -> list[dict[str, Any]]:
+    def list_documents(self, scope: str = "personal") -> list[dict[str, Any]]:
         docs: list[ReadingDocument] = []
+        if not self._root().exists():
+            return []
+        index = self.get_library_index()
         for child in self._root().iterdir():
             if not child.is_dir() or not child.name.startswith("document_"):
                 continue
-            doc = self.load_document(child.name[len("document_") :])
-            if doc:
-                docs.append(doc)
+            doc_id = child.name[len("document_") :]
+            doc = self.load_document(doc_id)
+            if not doc:
+                continue
+            entry = index.entries.get(doc_id) or self.get_library_entry(doc_id)
+            if scope == "personal" and "personal" not in entry.scopes:
+                continue
+            if scope == "kids_family" and "kids_family" not in entry.scopes:
+                continue
+            docs.append(doc)
         docs.sort(key=lambda item: item.updated_at, reverse=True)
-        return [self._summary(doc) for doc in docs]
+        return [self._summary(doc, index.entries.get(doc.id)) for doc in docs]
 
     def document_detail(self, document_id: str) -> dict[str, Any]:
         doc = self.load_document(document_id)
@@ -390,7 +611,15 @@ class ImmersiveReadingService:
             raise ValueError("Reading document not found")
         return self._summary(doc)
 
-    def import_document(self, filename: str, raw: bytes) -> dict[str, Any]:
+    def import_document(
+        self,
+        filename: str,
+        raw: bytes,
+        *,
+        scope: str = "personal",
+        kids_review_status: str = "pending",
+        approved_age_bands: list[str] | None = None,
+    ) -> dict[str, Any]:
         safe_filename = Path(filename or "book.txt").name
         suffix = Path(safe_filename).suffix.lower()
         if suffix not in SUPPORTED_FORMATS:
@@ -471,7 +700,24 @@ class ImmersiveReadingService:
             self._save_progress(progress)
             _write_json(self._citations_path(document_id), [])
             self._save_fast_index(self._empty_fast_index(document))
-            return self._summary(document)
+
+            # Record in LibraryIndex
+            scopes = ["kids_family"] if scope == "kids_family" else ["personal"]
+            source_scope = "kids_upload" if scope == "kids_family" else "personal"
+            entry = LibraryEntry(
+                document_id=document_id,
+                scopes=scopes,
+                kids_review_status=kids_review_status if scope == "kids_family" else "pending",  # type: ignore
+                approved_age_bands=approved_age_bands or [],  # type: ignore
+                source_scope=source_scope,  # type: ignore
+                created_at=now,
+                updated_at=now,
+            )
+            index = self.get_library_index()
+            index.entries[document_id] = entry
+            self.save_library_index(index)
+
+            return self._summary(document, entry)
         except Exception:
             shutil.rmtree(root, ignore_errors=True)
             raise
@@ -497,12 +743,21 @@ class ImmersiveReadingService:
         doc = self.load_document(document_id)
         if doc is None:
             raise ValueError("Reading document not found")
-        sections = [section for section in doc.sections if section.index <= through_section_index]
+        story_sections = [
+            section
+            for section in doc.sections
+            if section.index <= through_section_index and section.checkpoint_kind != "none"
+        ]
+        sections = (
+            story_sections
+            if story_sections
+            else [section for section in doc.sections if section.index <= through_section_index]
+        )
         if not sections:
             raise ValueError("No assigned sections are available")
 
         chapters: list[tuple[str, str]] = []
-        for section in sections:
+        for i_sec, section in enumerate(sections):
             try:
                 content = self._section_path(document_id, section.id).read_text(encoding="utf-8")
             except OSError as exc:
@@ -512,21 +767,22 @@ class ImmersiveReadingService:
                 for part in re.split(r"\n{2,}", content.strip())
                 if part.strip()
             )
-            chapters.append((f"chapter-{section.index + 1}.xhtml", paragraphs))
+            filename = f"chapter-{i_sec + 1}.xhtml"
+            chapters.append((filename, paragraphs))
 
         title = html.escape(doc.title or doc.source_filename, quote=True)
         author = html.escape(doc.author or "Unknown", quote=True)
         nav_items = "\n".join(
-            f'<li><a href="{filename}">{html.escape(section.title or f"Chapter {section.index + 1}", quote=True)}</a></li>'
-            for section, (filename, _body) in zip(sections, chapters)
+            f'<li><a href="{filename}">{html.escape(section.title or f"Chapter {i_sec + 1}", quote=True)}</a></li>'
+            for i_sec, (section, (filename, _body)) in enumerate(zip(sections, chapters))
         )
         manifest_items = [
             '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
             '<item id="css" href="style.css" media-type="text/css"/>',
         ]
         spine_items = ['<itemref idref="nav" linear="no"/>']
-        for section, (filename, _body) in zip(sections, chapters):
-            item_id = f"chapter-{section.index + 1}"
+        for i_sec, (filename, _body) in enumerate(chapters):
+            item_id = f"chapter-{i_sec + 1}"
             manifest_items.append(
                 f'<item id="{item_id}" href="{filename}" media-type="application/xhtml+xml"/>'
             )
@@ -2129,7 +2385,7 @@ class KidsManager:
         _write_json(self._sessions_path(), [item.model_dump(mode="json") for item in sessions])
 
     def create_device_session(
-        self, profile_id: str, *, ttl_seconds: int = 30 * 24 * 60 * 60
+        self, profile_id: str, *, ttl_seconds: int = 30 * 24 * 60 * 60, device_name: str = "Kids Device"
     ) -> tuple[KidsDeviceSession, str]:
         """Issue a random bearer token and persist only its hash."""
         token = f"kds_{secrets.token_urlsafe(32)}"
@@ -2138,6 +2394,7 @@ class KidsManager:
             id=uuid.uuid4().hex[:12],
             profile_id=profile_id,
             token_hash=hashlib.sha256(token.encode()).hexdigest(),
+            device_name=device_name,
             created_at=now,
             expires_at=now + ttl_seconds,
             last_seen_at=now,
@@ -2146,6 +2403,121 @@ class KidsManager:
         sessions.append(session)
         self._save_sessions(sessions)
         return session, token
+
+    def _pairings_path(self) -> Path:
+        return self._kids_root() / "device-pairings.json"
+
+    def _list_pairings(self) -> list[KidsDevicePairing]:
+        data = _read_json(self._pairings_path(), [])
+        return [KidsDevicePairing(**p) for p in data]
+
+    def _save_pairings(self, pairings: list[KidsDevicePairing]) -> None:
+        _write_json(self._pairings_path(), [p.model_dump(mode="json") for p in pairings])
+
+    def create_pairing_code(self, profile_id: str, ttl_seconds: int = 600) -> dict[str, Any]:
+        profile = self.get_profile(profile_id)
+        if profile is None:
+            raise ValueError("Profile not found")
+        code = f"{secrets.randbelow(900000) + 100000}"
+        now = time.time()
+        pairing = KidsDevicePairing(
+            code=code,
+            profile_id=profile_id,
+            expires_at=now + ttl_seconds,
+            created_at=now,
+            used=False,
+        )
+        pairings = [p for p in self._list_pairings() if p.expires_at > now and not p.used]
+        pairings.append(pairing)
+        self._save_pairings(pairings)
+        return {
+            "code": code,
+            "profile_id": profile_id,
+            "profile_name": profile.name,
+            "expires_at": pairing.expires_at,
+            "ttl_seconds": ttl_seconds,
+        }
+
+    def redeem_pairing_code(
+        self, code: str, device_name: str = "Kids Device"
+    ) -> tuple[KidsDeviceSession, str, KidsProfile]:
+        clean_code = str(code).strip()
+        now = time.time()
+        pairings = self._list_pairings()
+        match = next(
+            (p for p in pairings if p.code == clean_code and not p.used and p.expires_at > now), None
+        )
+        if match is None:
+            raise ValueError("Invalid or expired pairing code")
+        match.used = True
+        self._save_pairings(pairings)
+        profile = self.get_profile(match.profile_id)
+        if profile is None:
+            raise ValueError("Profile not found")
+        session, token = self.create_device_session(
+            profile.id,
+            device_name=device_name,
+        )
+        return session, token, profile
+
+    def list_device_sessions_for_admin(self) -> list[dict[str, Any]]:
+        sessions = self._list_sessions()
+        profiles_map = {p.id: p for p in self.list_profiles()}
+        now = time.time()
+        active = [s for s in sessions if s.expires_at > now and s.revoked_at is None]
+        return [
+            {
+                "id": s.id,
+                "profile_id": s.profile_id,
+                "profile_name": profiles_map[s.profile_id].name if s.profile_id in profiles_map else "Unknown",
+                "avatar": profiles_map[s.profile_id].avatar if s.profile_id in profiles_map else "default",
+                "device_name": getattr(s, "device_name", "Kids Device"),
+                "created_at": s.created_at,
+                "last_seen_at": s.last_seen_at,
+                "expires_at": s.expires_at,
+            }
+            for s in active
+        ]
+
+    def revoke_device_session_by_id(self, session_id: str) -> bool:
+        sessions = self._list_sessions()
+        for s in sessions:
+            if s.id == session_id and s.revoked_at is None:
+                s.revoked_at = time.time()
+                self._save_sessions(sessions)
+                return True
+        return False
+
+    def get_family_kids_library(self) -> list[dict[str, Any]]:
+        """Return all books in the family kids library (scope=kids_family) for parent review/assignment."""
+        ir = get_immersive_reading_service()
+        index = ir.get_library_index()
+        assignments = self.list_assignments()
+        profiles_map = {p.id: p.name for p in self.list_profiles()}
+
+        results: list[dict[str, Any]] = []
+        for doc_id, entry in index.entries.items():
+            if "kids_family" not in entry.scopes:
+                continue
+            doc = ir.load_document(doc_id)
+            if doc is None:
+                continue
+            doc_assignments = [a for a in assignments if a.document_id == doc_id and a.status == "active"]
+            assigned_profiles = [
+                {"id": a.profile_id, "name": profiles_map.get(a.profile_id, a.profile_id)}
+                for a in doc_assignments
+            ]
+            results.append({
+                "document": {
+                    **doc.model_dump(mode="json"),
+                    "cover_url": f"/api/v1/immersive-reading/documents/{doc.id}/cover" if doc.has_cover else "",
+                },
+                "entry": entry.model_dump(mode="json"),
+                "assigned_profiles": assigned_profiles,
+                "assigned_count": len(assigned_profiles),
+            })
+        results.sort(key=lambda item: item["entry"]["created_at"], reverse=True)
+        return results
 
     def validate_device_session(self, token: str) -> KidsDeviceSession | None:
         if not token:
@@ -2295,11 +2667,16 @@ class KidsManager:
 
     def get_kids_library(self, profile_id: str) -> list[dict[str, Any]]:
         """Return assigned books with progress for a child profile."""
-        assignments = [a for a in self.list_assignments(profile_id) if a.status == "active"]
+        assignments = [a for a in self.list_assignments(profile_id) if a.status == "active" and a.content_confirmed]
         assignments.sort(key=lambda a: a.sort_order)
         ir_service = get_immersive_reading_service()
+        index = ir_service.get_library_index()
         library: list[dict[str, Any]] = []
         for a in assignments:
+            entry = index.entries.get(a.document_id)
+            if entry is not None:
+                if "kids_family" not in entry.scopes or entry.kids_review_status != "approved":
+                    continue
             doc = ir_service.load_document(a.document_id)
             if doc is None:
                 continue
@@ -2576,9 +2953,13 @@ class KidsManager:
         """Check if a child is allowed to read a section based on assignment limits."""
         assignments = self.list_assignments(profile_id)
         assignment = next(
-            (a for a in assignments if a.document_id == document_id and a.status == "active"), None
+            (a for a in assignments if a.document_id == document_id and a.status == "active" and a.content_confirmed), None
         )
         if assignment is None:
+            return False
+        ir = get_immersive_reading_service()
+        entry = ir.get_library_entry(document_id)
+        if "kids_family" not in entry.scopes or entry.kids_review_status != "approved":
             return False
         return section_index <= assignment.available_through_section_index
 

@@ -356,7 +356,7 @@ export function SidebarShell({
     <aside className="flex w-[220px] h-dvh shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/" className="group flex items-center gap-1.5">
+        <Link href="/" aria-label="DeepTutor" className="group flex items-center gap-1.5">
           <Image
             src="/logo.png"
             alt="DeepTutor"

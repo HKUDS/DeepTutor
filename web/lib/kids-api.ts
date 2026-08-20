@@ -30,6 +30,13 @@ export interface KidsBootstrapProfile {
   device_url?: string;
 }
 
+export interface KidsBootstrapResponse {
+  authenticated: boolean;
+  profile?: KidsProfile;
+  pairing_required?: boolean;
+  profiles?: KidsBootstrapProfile[];
+}
+
 export interface KidsBookAssignment {
   id: string;
   profile_id: string;
@@ -69,6 +76,55 @@ export interface KidsLibraryItem {
   assignment: KidsBookAssignment;
   document: Record<string, unknown>;
   progress: KidsLearningProgress;
+}
+
+export interface KidsFamilyLibraryItem {
+  document: {
+    id: string;
+    title: string;
+    author?: string;
+    source_filename: string;
+    source_format: string;
+    total_chars: number;
+    total_words: number;
+    reading_mode: "chapters" | "chunks";
+    sections: Array<{ id: string; title: string; index: number; checkpoint_kind?: string }>;
+    cover_url?: string;
+    created_at?: number;
+    updated_at?: number;
+  };
+  entry: {
+    document_id: string;
+    scopes: ("personal" | "kids_family")[];
+    kids_review_status: "pending" | "approved" | "archived";
+    approved_age_bands: ("3-5" | "6-8" | "9-12")[];
+    reviewed_at: number;
+    reviewer_note: string;
+    source_scope: "personal" | "kids_upload";
+    created_at: number;
+    updated_at: number;
+  };
+  assigned_profiles: Array<{ id: string; name: string }>;
+  assigned_count: number;
+}
+
+export interface KidsDeviceSessionItem {
+  id: string;
+  profile_id: string;
+  profile_name: string;
+  avatar: string;
+  device_name: string;
+  created_at: number;
+  last_seen_at: number;
+  expires_at: number;
+}
+
+export interface KidsPairingCodeResponse {
+  code: string;
+  profile_id: string;
+  profile_name: string;
+  expires_at: number;
+  ttl_seconds: number;
 }
 
 export interface KidsUsage {
@@ -111,7 +167,20 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
-  if (!res.ok) throw new Error(`Admin API error: ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const data = await res.json();
+      if (typeof data?.detail === "string") {
+        detail = data.detail;
+      } else if (Array.isArray(data?.detail)) {
+        detail = data.detail.map((d: any) => d.msg || JSON.stringify(d)).join("; ");
+      } else if (data?.detail) {
+        detail = JSON.stringify(data.detail);
+      }
+    } catch {}
+    throw new Error(detail || `Admin API error: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -175,7 +244,106 @@ export const kidsAdminApi = {
       { method: "DELETE" },
     ),
 
-  adultLibrary: () => adminRequest<{ documents: Record<string, unknown>[] }>("/library"),
+  // Family Kids Library management
+  getFamilyLibrary: () =>
+    adminRequest<{ items: KidsFamilyLibraryItem[]; documents: Record<string, unknown>[] }>("/library"),
+
+  importKidsBook: async (
+    file: File,
+    options?: { auto_approve?: boolean; age_bands?: string },
+  ): Promise<{ document: Record<string, unknown> }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (options?.auto_approve) formData.append("auto_approve", "true");
+    if (options?.age_bands) formData.append("age_bands", options.age_bands);
+    const res = await apiFetch(`${ADMIN_BASE}/library/import`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const data = await res.json();
+        detail = typeof data?.detail === "string" ? data.detail : JSON.stringify(data?.detail);
+      } catch {}
+      throw new Error(detail || `Import failed: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  reviewBook: (
+    documentId: string,
+    data: {
+      status: "pending" | "approved" | "archived";
+      approved_age_bands?: ("3-5" | "6-8" | "9-12")[];
+      reviewer_note?: string;
+    },
+  ) =>
+    adminRequest<{ entry: Record<string, unknown> }>(`/library/${documentId}/review`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  assignToProfiles: (
+    documentId: string,
+    data: {
+      profile_ids: string[];
+      available_through_section_index?: number;
+      content_confirmed?: boolean;
+    },
+  ) =>
+    adminRequest<{ assignments: KidsBookAssignment[]; assigned_profile_ids: string[] }>(
+      `/library/${documentId}/assign`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+
+  shareFromPersonal: (
+    documentId: string,
+    data?: { auto_approve?: boolean; approved_age_bands?: string[]; reviewer_note?: string },
+  ) =>
+    adminRequest<{ entry: Record<string, unknown> }>(`/library/from-personal/${documentId}`, {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    }),
+
+  shareToPersonal: (documentId: string) =>
+    adminRequest<{ entry: Record<string, unknown> }>(`/library/${documentId}/add-to-personal`, {
+      method: "POST",
+    }),
+
+  archiveBook: (documentId: string) =>
+    adminRequest<{ entry: Record<string, unknown> }>(`/library/${documentId}/archive`, {
+      method: "POST",
+    }),
+
+  unarchiveBook: (documentId: string) =>
+    adminRequest<{ entry: Record<string, unknown> }>(`/library/${documentId}/unarchive`, {
+      method: "POST",
+    }),
+
+  purgeBook: (documentId: string, confirmTitle?: string) =>
+    adminRequest<{ purged: boolean; kept_in_personal: boolean }>(`/library/${documentId}/purge`, {
+      method: "POST",
+      body: JSON.stringify({ confirm_title: confirmTitle || "" }),
+    }),
+
+  listPersonalCandidates: () =>
+    adminRequest<{ candidates: Record<string, unknown>[] }>("/library/personal-candidates"),
+
+  // Device pairing & session management
+  createDevicePairing: (profileId: string, ttlSeconds = 600) =>
+    adminRequest<{ pairing: KidsPairingCodeResponse }>("/devices/pair", {
+      method: "POST",
+      body: JSON.stringify({ profile_id: profileId, ttl_seconds: ttlSeconds }),
+    }),
+
+  listDeviceSessions: () =>
+    adminRequest<{ devices: KidsDeviceSessionItem[] }>("/devices"),
+
+  revokeDeviceSession: (sessionId: string) =>
+    adminRequest<{ revoked: boolean }>(`/devices/${sessionId}`, {
+      method: "DELETE",
+    }),
 
   learningReport: (profileId: string) =>
     adminRequest<Record<string, unknown>>(`/profiles/${profileId}/report`),
@@ -223,7 +391,16 @@ async function kidsRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const kidsApi = {
-  bootstrap: () => kidsRequest<{ profiles: KidsBootstrapProfile[] }>("/bootstrap"),
+  bootstrap: () => kidsRequest<KidsBootstrapResponse>("/bootstrap"),
+
+  pairDevice: (code: string, deviceName?: string) =>
+    kidsRequest<{ token: string; expires_at: number; profile: KidsProfile }>("/pair", {
+      method: "POST",
+      body: JSON.stringify({ code, device_name: deviceName || "Kids Device" }),
+    }),
+
+  getProfilePublicInfo: (profileId: string) =>
+    kidsRequest<{ profile: KidsBootstrapProfile }>(`/profile/${profileId}`),
 
   selectProfile: (profileId: string) =>
     kidsRequest<{ profile: KidsProfile }>("/select-profile", {

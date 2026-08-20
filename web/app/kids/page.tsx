@@ -2,19 +2,35 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { kidsApi, type KidsBootstrapProfile, type KidsLibraryItem } from "@/lib/kids-api";
-
-const AVATAR_EMOJIS = ["🦊", "🐼", "🦄", "🐸", "🐱", "🐶", "🦁", "🐰"];
+import { kidsApi, type KidsProfile, type KidsLibraryItem } from "@/lib/kids-api";
 
 export default function KidsPage() {
   const router = useRouter();
-  const [stage, setStage] = useState<"loading" | "picker" | "pin" | "shelf">("loading");
-  const [profiles, setProfiles] = useState<KidsBootstrapProfile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState<KidsBootstrapProfile | null>(null);
+  const [stage, setStage] = useState<"loading" | "pairing" | "shelf">("loading");
+  const [currentProfile, setCurrentProfile] = useState<KidsProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
+  const [pairCode, setPairCode] = useState("");
+  const [pairingLoading, setPairingLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Exit PIN state
+  const [showExitPin, setShowExitPin] = useState(false);
+  const [exitPin, setExitPin] = useState("");
+  const [exitPinError, setExitPinError] = useState("");
+
+  const loadShelf = async () => {
+    try {
+      const { library: lib, profile: prof } = await kidsApi.library();
+      setLibrary(lib || []);
+      setCurrentProfile(prof || null);
+      if (prof?.id) {
+        localStorage.setItem("dt_kids_profile_id", prof.id);
+      }
+      setStage("shelf");
+    } catch {
+      setStage("pairing");
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -22,22 +38,28 @@ export default function KidsPage() {
     (async () => {
       try {
         localStorage.removeItem("dt_kids_token");
-        const storedPid = localStorage.getItem("dt_kids_profile_id");
-        if (storedPid) {
-          router.push(`/kids/p/${storedPid}`);
-          return;
-        }
-        const { profiles } = await kidsApi.bootstrap();
+        const boot = await kidsApi.bootstrap();
         if (cancelled) return;
-        setProfiles(profiles);
-        if (profiles.length === 0) {
-          setError("No profiles yet. Ask a grown-up to set up your account!");
+
+        if (boot.authenticated && boot.profile) {
+          setCurrentProfile(boot.profile);
+          await loadShelf();
+        } else {
+          try {
+            await loadShelf();
+          } catch {
+            const storedPid = localStorage.getItem("dt_kids_profile_id");
+            if (storedPid) {
+              router.push(`/kids/p/${storedPid}`);
+              return;
+            }
+            setStage("pairing");
+          }
         }
-        setStage("picker");
       } catch {
-        if (cancelled) return;
-        setError("Cannot connect. Ask a grown-up for help.");
-        setStage("picker");
+        if (!cancelled) {
+          setStage("pairing");
+        }
       }
     })();
 
@@ -46,77 +68,54 @@ export default function KidsPage() {
     };
   }, [router]);
 
-  // Exit-protection state
-  const [showExitPin, setShowExitPin] = useState(false);
-  const [exitPin, setExitPin] = useState("");
-  const [exitPinError, setExitPinError] = useState("");
-
-  const handleSelectProfile = async (profile: KidsBootstrapProfile) => {
-    setSelectedProfile(profile);
-    if (profile.has_pin) {
-      setStage("pin");
-      setPinInput("");
-      setPinError("");
-    } else {
-      await enterProfile(profile);
-    }
-  };
-
-  const enterProfile = async (profile: KidsBootstrapProfile) => {
+  const handlePairSubmit = async () => {
+    const cleanCode = pairCode.trim();
+    if (cleanCode.length < 6) return;
+    setPairingLoading(true);
+    setError("");
     try {
-      await kidsApi.selectProfile(profile.id);
+      const { profile } = await kidsApi.pairDevice(cleanCode, "Child Device");
+      setCurrentProfile(profile);
       localStorage.setItem("dt_kids_profile_id", profile.id);
-      const { library: lib } = await kidsApi.library();
-      setLibrary(lib);
-      setStage("shelf");
-    } catch {
-      setError("Cannot load books. Try again!");
+      await loadShelf();
+    } catch (err: any) {
+      setError(err?.detail || "Invalid or expired 6-digit code. Please ask a grown-up for a new code.");
+      setPairCode("");
+    } finally {
+      setPairingLoading(false);
     }
   };
 
-  const handlePinSubmit = async () => {
-    if (!selectedProfile) return;
-    try {
-      await kidsApi.parentUnlock(selectedProfile.id, pinInput);
-      localStorage.setItem("dt_kids_profile_id", selectedProfile.id);
-      const { library: lib } = await kidsApi.library();
-      setLibrary(lib);
-      setStage("shelf");
-    } catch {
-      setPinError("Wrong PIN. Try again!");
-      setPinInput("");
-    }
-  };
-
-  const handleBackToPicker = () => {
-    if (selectedProfile?.has_pin) {
+  const handleExitClick = () => {
+    if (currentProfile?.has_pin) {
       setShowExitPin(true);
       setExitPin("");
       setExitPinError("");
     } else {
-      doExit();
+      doLogout();
     }
   };
 
-  const doExit = async () => {
+  const doLogout = async () => {
     await kidsApi.logout().catch(() => {});
     localStorage.removeItem("dt_kids_profile_id");
-    setSelectedProfile(null);
-    setStage("picker");
+    setCurrentProfile(null);
+    setLibrary([]);
+    setStage("pairing");
   };
 
   const handleExitPinSubmit = async () => {
-    if (!selectedProfile) return;
+    if (!currentProfile) return;
     try {
-      await kidsApi.exitVerify(selectedProfile.id, exitPin);
-      await doExit();
+      await kidsApi.exitVerify(currentProfile.id, exitPin);
+      setShowExitPin(false);
+      await doLogout();
     } catch {
       setExitPinError("Wrong PIN. Try again!");
       setExitPin("");
     }
   };
 
-  // ── Loading ────────────────────────────────────────────────────────────
   if (stage === "loading") {
     return (
       <div style={styles.center}>
@@ -125,81 +124,63 @@ export default function KidsPage() {
     );
   }
 
-  // ── Profile Picker ──────────────────────────────────────────────────────
-  if (stage === "picker") {
+  // Pairing View
+  if (stage === "pairing") {
     return (
       <div style={styles.container}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>📚 My Reading World</h1>
-          <p style={styles.subtitle}>Pick your character to start!</p>
+        <div style={{ ...styles.header, marginTop: 40 }}>
+          <div style={{ fontSize: 64, marginBottom: 12 }}>🚀</div>
+          <h1 style={styles.title}>My Reading World</h1>
+          <p style={styles.subtitle}>Enter the 6-digit code from the Parent Center to pair this device</p>
         </div>
-        {error && <p style={styles.errorText}>{error}</p>}
-        <div style={styles.profileGrid}>
-          {profiles.map((p, i) => (
-            <button
-              key={p.id}
-              style={styles.profileCard}
-              onClick={() => handleSelectProfile(p)}
-            >
-              <div style={styles.profileAvatar}>
-                {AVATAR_EMOJIS[i % AVATAR_EMOJIS.length]}
-              </div>
-              <div style={styles.profileName}>{p.name}</div>
-              {p.has_pin && <div style={styles.pinBadge}>🔒</div>}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
-  // ── PIN Entry ───────────────────────────────────────────────────────────
-  if (stage === "pin") {
-    return (
-      <div style={styles.container}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>🔒 Grown-Up PIN</h1>
-          <p style={styles.subtitle}>Ask a grown-up to enter the PIN</p>
-        </div>
         <div style={styles.pinPad}>
           <input
-            type="password"
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
-            maxLength={8}
-            style={styles.pinInput}
-            placeholder="• • • •"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={pairCode}
+            onChange={(e) => setPairCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(e) => e.key === "Enter" && pairCode.length === 6 && handlePairSubmit()}
+            maxLength={6}
+            style={styles.pairingInput}
+            placeholder="0 0 0 0 0 0"
             autoFocus
           />
-          {pinError && <p style={styles.errorText}>{pinError}</p>}
-          <div style={styles.pinButtons}>
-            <button style={{ ...styles.btn, ...styles.btnSecondary }} onClick={() => setStage("picker")}>
-              ← Back
-            </button>
-            <button
-              style={{ ...styles.btn, ...styles.btnPrimary }}
-              onClick={handlePinSubmit}
-              disabled={pinInput.length < 4}
-            >
-              Enter →
-            </button>
-          </div>
+
+          {error && <p style={styles.errorText}>{error}</p>}
+
+          <button
+            style={{
+              ...styles.btn,
+              ...styles.btnPrimary,
+              width: "100%",
+              marginTop: 10,
+              opacity: pairCode.length < 6 || pairingLoading ? 0.6 : 1,
+            }}
+            onClick={handlePairSubmit}
+            disabled={pairCode.length < 6 || pairingLoading}
+          >
+            {pairingLoading ? "Connecting..." : "Start Reading →"}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 24, textAlign: "center" }}>
+          <a href="/kids/manage" target="_blank" style={{ color: "#6366f1", fontSize: 14, textDecoration: "none" }}>
+            Parent Center (Generate Code) →
+          </a>
         </div>
       </div>
     );
   }
 
- // ── Bookshelf ───────────────────────────────────────────────────────────
- return (
-   <div style={styles.container}>
-      {/* Exit PIN modal */}
+  // Bookshelf View
+  return (
+    <div style={styles.container}>
       {showExitPin && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-        }}>
+        <div style={styles.overlay}>
           <div style={{ ...styles.pinPad, maxWidth: 360 }}>
-            <p style={styles.subtitle}>🔒 Enter PIN to exit</p>
+            <p style={styles.subtitle}>🔒 Enter Grown-up PIN to Exit</p>
             <input
               type="password"
               value={exitPin}
@@ -212,25 +193,30 @@ export default function KidsPage() {
             />
             {exitPinError && <p style={styles.errorText}>{exitPinError}</p>}
             <div style={styles.pinButtons}>
-              <button style={{ ...styles.btn, ...styles.btnSecondary }}
-                onClick={() => { setShowExitPin(false); setExitPin(""); setExitPinError(""); }}>
+              <button
+                style={{ ...styles.btn, ...styles.btnSecondary }}
+                onClick={() => { setShowExitPin(false); setExitPin(""); setExitPinError(""); }}
+              >
                 Cancel
               </button>
-              <button style={{ ...styles.btn, ...styles.btnPrimary }}
-                onClick={handleExitPinSubmit} disabled={exitPin.length < 4}>
+              <button
+                style={{ ...styles.btn, ...styles.btnPrimary }}
+                onClick={handleExitPinSubmit}
+                disabled={exitPin.length < 4}
+              >
                 Exit
               </button>
             </div>
           </div>
         </div>
       )}
-     <div style={styles.shelfHeader}>
-       <button style={styles.backBtn} onClick={handleBackToPicker}>
-         👈
-       </button>
+
+      <div style={styles.shelfHeader}>
+        <button style={styles.backBtn} onClick={handleExitClick} title="Exit Kids Mode">
+          🚪
+        </button>
         <h1 style={styles.shelfTitle}>
-          {AVATAR_EMOJIS[profiles.findIndex((p) => p.id === selectedProfile?.id) % AVATAR_EMOJIS.length]}{" "}
-          {selectedProfile?.name}&apos;s Books
+          {currentProfile?.name}&apos;s Books
         </h1>
         <div style={styles.starsBadge}>
           ⭐ {library.reduce((sum, b) => sum + (b.progress?.total_stars || 0), 0)}
@@ -239,15 +225,17 @@ export default function KidsPage() {
 
       {library.length === 0 ? (
         <div style={styles.emptyShelf}>
-          <div style={{ fontSize: 64 }}>📖</div>
-          <p style={styles.subtitle}>No books yet! Ask a grown-up to add books.</p>
+          <div style={{ fontSize: 64, marginBottom: 12 }}>📖</div>
+          <h2 style={{ fontSize: 22, color: "#4a3f6b", margin: 0 }}>No books yet!</h2>
+          <p style={styles.subtitle}>Ask a grown-up to approve and assign books from the Parent Center.</p>
         </div>
       ) : (
         <div style={styles.bookGrid}>
           {library.map((item) => {
-            const doc = item.document as Record<string, string>;
+            const doc = item.document as Record<string, any>;
             const coverUrl = kidsApi.getCoverUrl(item.assignment.document_id);
             const completed = (item.progress?.completed_section_ids || []).length;
+            const totalCh = Array.isArray(doc.sections) ? doc.sections.length : 0;
             return (
               <button
                 key={item.assignment.document_id}
@@ -265,11 +253,11 @@ export default function KidsPage() {
                 <div style={styles.bookInfo}>
                   <div style={styles.bookTitle}>{doc?.title || "Unknown"}</div>
                   <div style={styles.bookStars}>
-                    ⭐ {item.progress?.total_stars || 0}
+                    ⭐ {item.progress?.total_stars || 0} stars
                   </div>
-                  {(item.progress?.current_section_id || completed > 0) && (
+                  {totalCh > 0 && (
                     <div style={styles.bookProgress}>
-                      {completed} chapter{completed !== 1 ? "s" : ""} done
+                      {completed}/{totalCh} chapters completed
                     </div>
                   )}
                   {item.assignment.is_next_read && (
@@ -293,7 +281,7 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: "100vh",
     background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
   },
-  spinner: { fontSize: 80, animation: "spin 1s linear infinite" },
+  spinner: { fontSize: 80 },
   container: {
     minHeight: "100vh",
     background: "linear-gradient(180deg, #e0f2ff 0%, #fef3e7 50%, #f0fdf4 100%)",
@@ -302,67 +290,55 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
   },
-  header: { textAlign: "center", marginBottom: 32, marginTop: 20 },
-  title: { fontSize: 36, fontWeight: 800, color: "#4a3f6b", margin: 0 },
-  subtitle: { fontSize: 18, color: "#7c6f9b", marginTop: 8 },
-  errorText: { fontSize: 16, color: "#e53e3e", textAlign: "center", marginTop: 12 },
-  profileGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-    gap: 20,
-    maxWidth: 700,
-    width: "100%",
-  },
-  profileCard: {
-    background: "white",
-    borderRadius: 24,
-    padding: "24px 16px",
-    border: "none",
-    cursor: "pointer",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 12,
-    boxShadow: "0 4px 14px rgba(0,0,0,0.1)",
-    transition: "transform 0.2s",
-    position: "relative",
-  },
-  profileAvatar: { fontSize: 56 },
-  profileName: { fontSize: 20, fontWeight: 700, color: "#4a3f6b" },
-  pinBadge: { position: "absolute", top: 8, right: 12, fontSize: 20 },
+  header: { textAlign: "center", marginBottom: 28 },
+  title: { fontSize: 32, fontWeight: 800, color: "#312e81", margin: 0 },
+  subtitle: { fontSize: 16, color: "#475569", marginTop: 8, maxWidth: 460 },
+  errorText: { fontSize: 14, color: "#e11d48", textAlign: "center", marginTop: 8 },
   pinPad: {
     background: "white",
     borderRadius: 24,
-    padding: 32,
+    padding: 28,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 16,
-    boxShadow: "0 4px 14px rgba(0,0,0,0.1)",
-    maxWidth: 360,
+    gap: 14,
+    boxShadow: "0 8px 30px rgba(0,0,0,0.08)",
+    maxWidth: 380,
     width: "100%",
   },
-  pinInput: {
+  pairingInput: {
     fontSize: 32,
-    textAlign: "center" as const,
-    letterSpacing: 12,
-    border: "3px solid #667eea",
-    borderRadius: 12,
+    textAlign: "center",
+    letterSpacing: 8,
+    border: "3px solid #6366f1",
+    borderRadius: 14,
     padding: "12px 16px",
     width: "100%",
     outline: "none",
+    fontWeight: 700,
+    color: "#1e1b4b",
   },
-  pinButtons: { display: "flex", gap: 12, marginTop: 8 },
+  pinInput: {
+    fontSize: 28,
+    textAlign: "center",
+    letterSpacing: 8,
+    border: "2px solid #cbd5e1",
+    borderRadius: 12,
+    padding: "10px 14px",
+    width: "100%",
+    outline: "none",
+  },
+  pinButtons: { display: "flex", gap: 10, marginTop: 8 },
   btn: {
-    padding: "12px 24px",
+    padding: "12px 20px",
     borderRadius: 12,
     border: "none",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 700,
     cursor: "pointer",
   },
-  btnPrimary: { background: "#667eea", color: "white" },
-  btnSecondary: { background: "#e2e8f0", color: "#4a5568" },
+  btnPrimary: { background: "#6366f1", color: "white" },
+  btnSecondary: { background: "#f1f5f9", color: "#475569" },
   shelfHeader: {
     display: "flex",
     alignItems: "center",
@@ -375,22 +351,29 @@ const styles: Record<string, React.CSSProperties> = {
     background: "white",
     border: "none",
     borderRadius: "50%",
-    width: 48,
-    height: 48,
-    fontSize: 24,
+    width: 44,
+    height: 44,
+    fontSize: 20,
     cursor: "pointer",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
   },
-  shelfTitle: { fontSize: 24, fontWeight: 800, color: "#4a3f6b", margin: 0, flex: 1, textAlign: "center" as const },
+  shelfTitle: {
+    fontSize: 24,
+    fontWeight: 800,
+    color: "#1e1b4b",
+    margin: 0,
+    flex: 1,
+    textAlign: "center",
+  },
   starsBadge: {
     background: "#fef3c7",
     borderRadius: 20,
-    padding: "8px 16px",
-    fontSize: 18,
+    padding: "6px 14px",
+    fontSize: 16,
     fontWeight: 700,
     color: "#92400e",
   },
-  emptyShelf: { textAlign: "center", marginTop: 80 },
+  emptyShelf: { textAlign: "center", marginTop: 60 },
   bookGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
@@ -406,23 +389,34 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
-    boxShadow: "0 4px 14px rgba(0,0,0,0.1)",
-    transition: "transform 0.2s",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+    transition: "transform 0.15s",
   },
   bookCover: {
     width: "100%",
     height: 200,
     objectFit: "cover",
-    background: "#f7fafc",
+    background: "#f8fafc",
   },
-  bookInfo: { padding: "12px 14px", textAlign: "left" as const },
-  bookTitle: { fontSize: 16, fontWeight: 700, color: "#2d3748", lineHeight: 1.3 },
-  bookStars: { fontSize: 14, color: "#d69e2e", marginTop: 4 },
-  bookProgress: { fontSize: 12, color: "#718096", marginTop: 2 },
+  bookInfo: { padding: "12px 14px", textAlign: "left" },
+  bookTitle: { fontSize: 15, fontWeight: 700, color: "#1e293b", lineHeight: 1.3 },
+  bookStars: { fontSize: 13, color: "#d97706", marginTop: 4 },
+  bookProgress: { fontSize: 12, color: "#64748b", marginTop: 2 },
   nextReadBadge: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
-    color: "#667eea",
+    color: "#6366f1",
     marginTop: 6,
+  },
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.5)",
+    backdropFilter: "blur(4px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: 16,
   },
 };

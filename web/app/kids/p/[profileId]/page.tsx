@@ -8,40 +8,21 @@ import {
   type KidsLibraryItem,
 } from "@/lib/kids-api";
 
-/**
- * Dedicated child entry point.
- *
- * URL pattern: /kids/p/{profile_id}
- *
- * The parent bookmarks this on the child's device. On first visit:
- *   - If the profile has no PIN → auto-select and enter the shelf.
- *   - If the profile has a PIN → show a PIN pad; on success store the device
- *     token in localStorage and enter the shelf.
- *
- * On subsequent visits the stored token is reused (no PIN prompt).
- *
- * The shelf's "Exit" button triggers PIN verification before clearing the
- * token, so the child can't accidentally wander out of Kids mode.
- */
 export default function KidsProfileEntryPage() {
   const router = useRouter();
   const params = useParams();
   const profileId = params.profileId as string;
 
-  const [stage, setStage] = useState<
-    "loading" | "pin" | "shelf" | "not_found"
-  >("loading");
+  const [stage, setStage] = useState<"loading" | "pin" | "shelf" | "not_found">("loading");
   const [profile, setProfile] = useState<KidsBootstrapProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   const [error, setError] = useState("");
-  // Exit-protection state
   const [showExitPin, setShowExitPin] = useState(false);
   const [exitPin, setExitPin] = useState("");
   const [exitPinError, setExitPinError] = useState("");
 
-  // ── On mount: check for existing token or fetch profile info ──────────
   useEffect(() => {
     let cancelled = false;
 
@@ -53,7 +34,7 @@ export default function KidsProfileEntryPage() {
         const { library: lib } = await kidsApi.library();
         if (cancelled) return;
         setProfile(p);
-        setLibrary(lib);
+        setLibrary(lib || []);
         setStage("shelf");
       } catch {
         if (cancelled) return;
@@ -65,9 +46,8 @@ export default function KidsProfileEntryPage() {
     (async () => {
       localStorage.removeItem("dt_kids_token");
       try {
-        const { profiles } = await kidsApi.bootstrap();
+        const { profile: p } = await kidsApi.getProfilePublicInfo(profileId);
         if (cancelled) return;
-        const p = profiles.find((x) => x.id === profileId);
         if (!p) {
           setStage("not_found");
           return;
@@ -79,7 +59,7 @@ export default function KidsProfileEntryPage() {
             if (cancelled) return;
             if (session.profile?.id === profileId) {
               localStorage.setItem("dt_kids_profile_id", p.id);
-              setLibrary(session.library);
+              setLibrary(session.library || []);
               setStage("shelf");
             } else {
               setStage("pin");
@@ -92,7 +72,7 @@ export default function KidsProfileEntryPage() {
         }
       } catch {
         if (cancelled) return;
-        setError("Cannot connect. Ask a grown-up for help.");
+        setError("Cannot connect or profile not found.");
         setStage("not_found");
       }
     })();
@@ -108,7 +88,7 @@ export default function KidsProfileEntryPage() {
       await kidsApi.parentUnlock(profile.id, pinInput);
       localStorage.setItem("dt_kids_profile_id", profile.id);
       const { library: lib } = await kidsApi.library();
-      setLibrary(lib);
+      setLibrary(lib || []);
       setStage("shelf");
     } catch {
       setPinError("Wrong PIN. Try again!");
@@ -168,7 +148,7 @@ export default function KidsProfileEntryPage() {
       <div style={S.container}>
         <div style={S.header}>
           <h1 style={S.title}>🔒 Grown-Up PIN</h1>
-          <p style={S.subtitle}>Ask a grown-up to enter the PIN</p>
+          <p style={S.subtitle}>Ask a grown-up to enter the PIN for {profile?.name}</p>
         </div>
         <div style={S.pinPad}>
           <input
@@ -195,7 +175,6 @@ export default function KidsProfileEntryPage() {
     );
   }
 
-  // Bookshelf
   return (
     <div style={S.container}>
       {showExitPin && (
@@ -242,8 +221,9 @@ export default function KidsProfileEntryPage() {
 
       {library.length === 0 ? (
         <div style={S.emptyShelf}>
-          <div style={{ fontSize: 64 }}>📖</div>
-          <p style={S.subtitle}>No books yet! Ask a grown-up to add books.</p>
+          <div style={{ fontSize: 64, marginBottom: 12 }}>📖</div>
+          <h2 style={{ fontSize: 22, color: "#4a3f6b", margin: 0 }}>No books yet!</h2>
+          <p style={S.subtitle}>Ask a grown-up to approve and add books from the Parent Center.</p>
         </div>
       ) : (
         <div style={S.bookGrid}>

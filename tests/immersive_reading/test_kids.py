@@ -43,10 +43,22 @@ def client(reading_service, kids_manager, monkeypatch) -> TestClient:
     import deeptutor.api.routers.kids_admin as admin_router_module
 
     monkeypatch.setattr(router_module, "get_immersive_reading_service", lambda: reading_service)
+    monkeypatch.setattr(admin_router_module, "get_immersive_reading_service", lambda: reading_service)
     app = FastAPI()
     app.include_router(router_module.router, prefix="/api/v1/kids")
     app.include_router(admin_router_module.router, prefix="/api/v1/kids-admin")
     return TestClient(app)
+
+
+@pytest.fixture
+def document_with_cover(reading_service, imported_document):
+    reading_service.add_to_kids_family(
+        imported_document["id"], status="approved", approved_age_bands=["6-8"]
+    )
+    (reading_service._document_root(imported_document["id"]) / "cover.png").write_bytes(
+        b"fake-cover"
+    )
+    return imported_document
 
 
 @pytest.fixture
@@ -56,14 +68,6 @@ def protected_profile(document_with_cover, kids_manager):
         profile.id, document_with_cover["id"], available_through_section_index=2
     )
     return profile
-
-
-@pytest.fixture
-def document_with_cover(reading_service, imported_document):
-    (reading_service._document_root(imported_document["id"]) / "cover.png").write_bytes(
-        b"fake-cover"
-    )
-    return imported_document
 
 
 def auth_headers(token: str) -> dict[str, str]:

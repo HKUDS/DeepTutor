@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { kidsAdminApi, type KidsProfile, type KidsLibraryItem } from "@/lib/kids-api";
+import { kidsAdminApi, type KidsProfile, type KidsLibraryItem, type KidsFamilyLibraryItem } from "@/lib/kids-api";
 
 const AVATARS = ["fox", "panda", "unicorn", "frog", "cat", "dog", "lion", "bunny"];
 
@@ -9,12 +9,13 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
   const [profiles, setProfiles] = useState<KidsProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<KidsProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
-  const [allDocs, setAllDocs] = useState<Record<string, any>[]>([]);
+  const [familyBooks, setFamilyBooks] = useState<KidsFamilyLibraryItem[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
   const [newBirthDate, setNewBirthDate] = useState("");
   const [newPin, setNewPin] = useState("");
+  const [error, setError] = useState("");
   const [report, setReport] = useState<Record<string, any> | null>(null);
 
   const loadProfiles = useCallback(async () => {
@@ -30,12 +31,12 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
 
   const loadLibrary = useCallback(async (profileId: string) => {
     try {
-      const [lib, docs] = await Promise.all([
+      const [lib, fam] = await Promise.all([
         kidsAdminApi.listAssignedBooks(profileId),
-        kidsAdminApi.adultLibrary(),
+        kidsAdminApi.getFamilyLibrary(),
       ]);
-      setLibrary(lib.library);
-      setAllDocs(docs.documents);
+      setLibrary(lib.library || []);
+      setFamilyBooks(fam.items || []);
     } catch {
       // ignore
     }
@@ -54,15 +55,20 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
-    await kidsAdminApi.createProfile({
-      name: newName.trim(),
-      birth_date: newBirthDate,
-      parent_pin: newPin || undefined,
-    });
-    setNewName("");
-    setNewPin("");
-    setShowCreate(false);
-    loadProfiles();
+    try {
+      const normalizedDate = (newBirthDate || "").trim().replace(/\//g, "-").replace(/\./g, "-");
+      await kidsAdminApi.createProfile({
+        name: newName.trim(),
+        birth_date: normalizedDate || undefined,
+        parent_pin: newPin || undefined,
+      });
+      setNewName("");
+      setNewPin("");
+      setShowCreate(false);
+      loadProfiles();
+    } catch (e: any) {
+      setError(e?.message || "Failed to create profile");
+    }
   };
 
   const handleAssign = async (docId: string) => {
@@ -108,7 +114,17 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
           <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>
             {selectedProfile ? `${selectedProfile.name}'s Library` : "Kids Content Management"}
           </h2>
-          <button onClick={onClose} style={closeBtn}>X</button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <a
+              href="/kids/manage"
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 13, color: "#6366f1", fontWeight: 600, textDecoration: "none" }}
+            >
+              Open Full Parent Center ↗
+            </a>
+            <button onClick={onClose} style={closeBtn}>✕</button>
+          </div>
         </div>
 
         {!selectedProfile ? (
@@ -142,6 +158,7 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
                   maxLength={8}
                   style={inputStyle}
                 />
+                {error && <div style={{ color: "#e53e3e", fontSize: 13 }}>{error}</div>}
                 <button onClick={handleCreate} style={primaryBtn} disabled={!newName.trim()}>
                   Create Profile
                 </button>
@@ -172,7 +189,7 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
 
             <div style={{ marginTop: 16, padding: 12, background: "var(--surface-2, #f7fafc)", borderRadius: 8 }}>
               <a href="/kids" target="_blank" style={{ color: "#667eea", fontWeight: 600 }}>
-                Open Kids Mode {"->"} /kids
+                Open Kids Portal {"->"} /kids
               </a>
             </div>
           </>
@@ -228,14 +245,14 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
               </div>
             )}
 
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Add Books</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Add Books from Kids Library</h3>
             <div style={{ maxHeight: 200, overflowY: "auto" }}>
-              {allDocs
-                .filter((d) => !library.some((l) => l.assignment.document_id === d.id))
-                .map((doc) => (
-                  <div key={doc.id} style={bookRow}>
-                    <span style={{ flex: 1 }}>{doc.title}</span>
-                    <button onClick={() => handleAssign(doc.id)} style={{ ...miniBtn, background: "#c6f6d5" }}>
+              {familyBooks
+                .filter((fb) => fb.entry.kids_review_status === "approved" && !library.some((l) => l.assignment.document_id === fb.document.id))
+                .map((fb) => (
+                  <div key={fb.document.id} style={bookRow}>
+                    <span style={{ flex: 1 }}>{fb.document.title}</span>
+                    <button onClick={() => handleAssign(fb.document.id)} style={{ ...miniBtn, background: "#c6f6d5" }}>
                       Assign
                     </button>
                   </div>
@@ -258,7 +275,7 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
 }
 
 const closeBtn: React.CSSProperties = {
-  background: "transparent", border: "none", fontSize: 22, cursor: "pointer", padding: "4px 8px",
+  background: "transparent", border: "none", fontSize: 20, cursor: "pointer", padding: "4px 8px",
 };
 const primaryBtn: React.CSSProperties = {
   background: "#667eea", color: "white", border: "none", borderRadius: 8,

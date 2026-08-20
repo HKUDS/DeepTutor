@@ -42,6 +42,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { kidsAdminApi } from "@/lib/kids-api";
 import {
   immersiveReadingApi,
   type FocusCheckResult,
@@ -322,15 +323,26 @@ function ImmersiveReadingContent() {
             <p className="text-sm text-[var(--muted-foreground)]">{t("Read closely, remember deeply, and keep the passages that matter.")}</p>
           </div>
         </div>
-        <button
-          type="button"
-          disabled={importing}
-          onClick={() => fileInputRef.current?.click()}
-          className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-[var(--primary-foreground)] shadow-sm transition hover:brightness-105 disabled:opacity-60"
-        >
-          {importing ? <Loader2 size={16} className="animate-spin" /> : <Plus size={17} />}
-          {importing ? t("Importing…") : t("Import book")}
-        </button>
+        <div className="flex items-center gap-3">
+          <a
+            href="/kids/manage"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] shadow-sm transition hover:bg-[var(--muted)]"
+          >
+            <Baby size={16} className="text-[var(--primary)]" />
+            {t("Kids Reading Center")}
+          </a>
+          <button
+            type="button"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-[var(--primary-foreground)] shadow-sm transition hover:brightness-105 disabled:opacity-60"
+          >
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Plus size={17} />}
+            {importing ? t("Importing…") : t("Import book")}
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -415,6 +427,22 @@ function ImmersiveReadingContent() {
               >
                 <div className="relative mx-auto max-w-[230px]">
                   <BookCover document={document} />
+                  <button
+                    type="button"
+                    title={t("Share to Kids Family Library")}
+                    onClick={async (event) => {
+                      event.stopPropagation();
+                      try {
+                        await kidsAdminApi.shareFromPersonal(document.id, { auto_approve: false });
+                        setToast(t("Book added to Kids Library (pending review)!"));
+                      } catch (err: any) {
+                        setErrorToast({ id: Date.now(), message: err?.message || t("Failed to share") });
+                      }
+                    }}
+                    className="absolute left-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg bg-black/65 text-white opacity-0 backdrop-blur transition hover:bg-indigo-600 group-hover:opacity-100 group-focus-within:opacity-100"
+                  >
+                    <Baby size={15} />
+                  </button>
                   <button
                     type="button"
                     aria-label={t("Delete")}
