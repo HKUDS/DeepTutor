@@ -133,4 +133,42 @@ def test_decision_ledger_uses_a_hashed_document_identifier(tmp_path: Path) -> No
     assert path.parent.name == block_policy.LEDGER_DIRNAME
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert path.stem == payload["document_id_sha256"][:16]
+    assert payload["decision"] == {
+        "ledger_role": "current-index",
+        "policy_outcome": "accepted",
+    }
     assert "private-document-name" not in path.read_text(encoding="utf-8")
+
+
+def test_attempt_ledger_is_unique_and_does_not_expose_identifiers(tmp_path: Path) -> None:
+    decision = block_policy.prepare_content_list(
+        [{"type": "future_widget", "text": "secret", "page_idx": 0}],
+        engine="mineru",
+        source_hash="source-hash",
+        parser_signature="private-parser-signature",
+    )
+    assert decision.ledger is not None
+
+    first_path, first_id = block_policy.write_attempt_ledger(
+        tmp_path,
+        "private-document-name",
+        decision.ledger,
+        outcome="rejected",
+    )
+    second_path, second_id = block_policy.write_attempt_ledger(
+        tmp_path,
+        "private-document-name",
+        decision.ledger,
+        outcome="rejected",
+    )
+
+    assert first_path != second_path
+    assert first_id != second_id
+    assert first_path.parent.name == block_policy.ATTEMPT_LEDGER_DIRNAME
+    payload = json.loads(first_path.read_text(encoding="utf-8"))
+    assert first_path.stem == payload["decision"]["attempt_key_sha256"]
+    assert payload["decision"]["attempt_id"] == first_id
+    assert payload["decision"]["ledger_role"] == "attempt"
+    assert payload["decision"]["policy_outcome"] == "rejected"
+    assert "private-document-name" not in first_path.name
+    assert "private-parser-signature" not in first_path.name

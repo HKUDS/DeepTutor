@@ -1141,6 +1141,13 @@ def test_initialize_filters_only_mineru_layout_blocks(tmp_path, monkeypatch) -> 
     assert ledger["counts"]["filtered_total"] == 3
     assert ledger["counts"]["eligible_multimodal_total"] == 1
     assert ledger["counts"]["unknown_total"] == 0
+    assert ledger["decision"]["ledger_role"] == "current-index"
+    assert ledger["decision"]["policy_outcome"] == "accepted"
+    attempts = list((tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json"))
+    assert len(attempts) == 1
+    accepted_attempt = json.loads(attempts[0].read_text(encoding="utf-8"))
+    assert accepted_attempt["decision"]["policy_outcome"] == "accepted"
+    assert accepted_attempt["decision"]["attempt_id"] == ledger["decision"]["attempt_id"]
 
 
 def test_initialize_fails_closed_for_unknown_mineru_type(tmp_path, monkeypatch) -> None:
@@ -1148,7 +1155,7 @@ def test_initialize_fails_closed_for_unknown_mineru_type(tmp_path, monkeypatch) 
     inserts = _stub_engine(monkeypatch)
     _stub_parse(
         monkeypatch,
-        blocks=[{"type": "future_widget", "text": "content", "page_idx": 0}],
+        blocks=[{"type": "future_widget", "text": "raw-block-secret", "page_idx": 0}],
         engine_name="mineru",
     )
     pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
@@ -1160,6 +1167,104 @@ def test_initialize_fails_closed_for_unknown_mineru_type(tmp_path, monkeypatch) 
 
     assert inserts == []
     assert resolve_storage_dir_for_read(tmp_path / "kb", None) is None
+    attempts = list((tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json"))
+    assert len(attempts) == 1
+    rejected = json.loads(attempts[0].read_text(encoding="utf-8"))
+    assert rejected["counts"]["unknown_by_type"] == {"future_widget": 1}
+    assert rejected["decision"]["ledger_role"] == "attempt"
+    assert rejected["decision"]["policy_outcome"] == "rejected"
+    assert "raw-block-secret" not in attempts[0].read_text(encoding="utf-8")
+
+
+def test_add_documents_rejection_keeps_current_accepted_ledger(tmp_path, monkeypatch) -> None:
+    _force_available(monkeypatch, True)
+    inserts = _stub_engine(monkeypatch)
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "text", "text": "accepted", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="accepted-signature",
+    )
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pdf = tmp_path / "exam.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
+    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
+    assert root is not None
+    current_path = next((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
+    accepted_payload = current_path.read_text(encoding="utf-8")
+
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "future_widget", "text": "rejected", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="rejected-signature",
+    )
+    with pytest.raises(block_policy.MinerUBlockPolicyError, match="future_widget=1"):
+        asyncio.run(pipe.add_documents("kb", [str(pdf)]))
+
+    assert len(inserts) == 1
+    assert current_path.read_text(encoding="utf-8") == accepted_payload
+    attempts = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json")
+    ]
+    assert len(attempts) == 2
+    rejected_attempt = next(
+        item for item in attempts if item["decision"]["policy_outcome"] == "rejected"
+    )
+    assert rejected_attempt["parser"]["parser_signature"] == "rejected-signature"
+    assert rejected_attempt["counts"]["unknown_total"] == 1
+
+
+def test_add_documents_insert_failure_keeps_current_accepted_ledger(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _force_available(monkeypatch, True)
+    _stub_engine(monkeypatch)
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "text", "text": "accepted", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="accepted-signature",
+    )
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pdf = tmp_path / "exam.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
+    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
+    assert root is not None
+    current_path = next((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
+    accepted_payload = current_path.read_text(encoding="utf-8")
+
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "text", "text": "new attempt", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="new-signature",
+    )
+
+    async def fail_insert(*_args, **_kwargs) -> None:
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr(engine, "insert", fail_insert)
+    with pytest.raises(RuntimeError, match="insert failed"):
+        asyncio.run(pipe.add_documents("kb", [str(pdf)]))
+
+    assert current_path.read_text(encoding="utf-8") == accepted_payload
+    attempts = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json")
+    ]
+    assert len(attempts) == 2
+    latest_attempt = next(
+        item for item in attempts if item["parser"]["parser_signature"] == "new-signature"
+    )
+    assert latest_attempt["decision"]["policy_outcome"] == "accepted"
+    assert latest_attempt["counts"]["unknown_total"] == 0
 
 
 def test_ingest_falls_back_to_markdown_when_no_blocks(tmp_path, monkeypatch) -> None:

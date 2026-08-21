@@ -102,6 +102,8 @@ class LightRagPipeline:
                 self.logger.warning("LightRAG: parse failed for %s: %s", path.name, exc)
                 continue
 
+            accepted_ledger: dict[str, Any] | None = None
+            attempt_id: str | None = None
             if doc.blocks:
                 document_id = doc.source_hash or path.stem
                 decision = block_policy.prepare_content_list(
@@ -111,8 +113,12 @@ class LightRagPipeline:
                     parser_signature=doc.parser_signature,
                 )
                 if decision.ledger is not None:
-                    block_policy.write_decision_ledger(
-                        Path(rag.working_dir), document_id, decision.ledger
+                    outcome = "rejected" if decision.unknown_type_counts else "accepted"
+                    _, attempt_id = block_policy.write_attempt_ledger(
+                        Path(rag.working_dir).parent,
+                        document_id,
+                        decision.ledger,
+                        outcome=outcome,
                     )
                     counts = decision.ledger["counts"]
                     self.logger.info(
@@ -124,6 +130,7 @@ class LightRagPipeline:
                         counts["unknown_total"],
                     )
                 decision.require_accepted()
+                accepted_ledger = decision.ledger
                 content_list = decision.content_list
             else:
                 content_list = (
@@ -143,6 +150,13 @@ class LightRagPipeline:
             doc_error = storage.document_error(Path(rag.working_dir), doc.source_hash or path.stem)
             if doc_error:
                 raise RuntimeError(f"{path.name}: {doc_error}")
+            if accepted_ledger is not None:
+                block_policy.write_decision_ledger(
+                    Path(rag.working_dir),
+                    doc.source_hash or path.stem,
+                    accepted_ledger,
+                    attempt_id=attempt_id,
+                )
             inserted += 1
             self.logger.info("LightRAG: inserted %s", path.name)
             if progress_callback is not None:

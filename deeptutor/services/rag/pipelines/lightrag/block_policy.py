@@ -15,11 +15,13 @@ import hashlib
 from pathlib import Path
 import re
 from typing import Any
+import uuid
 
 from deeptutor.services.file_io import atomic_write_json
 
 POLICY_ID = "mineru-legacy-content-list-v1"
 LEDGER_DIRNAME = "deeptutor_ingestion_audit"
+ATTEMPT_LEDGER_DIRNAME = "deeptutor_ingestion_attempts"
 
 FILTERED_LAYOUT_TYPES = frozenset({"footer", "header", "page_number"})
 PRESERVED_AUXILIARY_TYPES = frozenset({"aside_text", "page_footnote"})
@@ -178,21 +180,67 @@ def write_decision_ledger(
     working_dir: Path,
     document_id: str,
     ledger: dict[str, Any],
+    *,
+    attempt_id: str | None = None,
 ) -> Path:
-    """Persist sanitized classification evidence beside LightRAG storage."""
+    """Persist the accepted decision that corresponds to the current index."""
     document_id_sha256 = hashlib.sha256(document_id.encode()).hexdigest()
     path = Path(working_dir) / LEDGER_DIRNAME / f"{document_id_sha256[:16]}.json"
+    decision = {
+        "ledger_role": "current-index",
+        "policy_outcome": "accepted",
+    }
+    if attempt_id is not None:
+        decision["attempt_id"] = attempt_id
     atomic_write_json(
         path,
         {
             **ledger,
             "document_id_sha256": document_id_sha256,
+            "decision": decision,
         },
     )
     return path
 
 
+def write_attempt_ledger(
+    kb_dir: Path,
+    document_id: str,
+    ledger: dict[str, Any],
+    *,
+    outcome: str,
+) -> tuple[Path, str]:
+    """Persist one immutable policy attempt outside a candidate version."""
+    if outcome not in {"accepted", "rejected"}:
+        raise ValueError(f"Unsupported policy outcome: {outcome}")
+
+    document_id_sha256 = hashlib.sha256(document_id.encode()).hexdigest()
+    attempt_id = uuid.uuid4().hex
+    policy = ledger.get("policy")
+    parser = ledger.get("parser")
+    policy_id = str(policy.get("id") or "") if isinstance(policy, dict) else ""
+    parser_signature = str(parser.get("parser_signature") or "") if isinstance(parser, dict) else ""
+    key_material = "\0".join((document_id_sha256, policy_id, parser_signature, outcome, attempt_id))
+    attempt_key_sha256 = hashlib.sha256(key_material.encode()).hexdigest()
+    path = Path(kb_dir) / ATTEMPT_LEDGER_DIRNAME / f"{attempt_key_sha256}.json"
+    atomic_write_json(
+        path,
+        {
+            **ledger,
+            "document_id_sha256": document_id_sha256,
+            "decision": {
+                "attempt_id": attempt_id,
+                "attempt_key_sha256": attempt_key_sha256,
+                "ledger_role": "attempt",
+                "policy_outcome": outcome,
+            },
+        },
+    )
+    return path, attempt_id
+
+
 __all__ = [
+    "ATTEMPT_LEDGER_DIRNAME",
     "BlockPolicyDecision",
     "FILTERED_LAYOUT_TYPES",
     "LEDGER_DIRNAME",
@@ -203,5 +251,6 @@ __all__ = [
     "PRESERVED_SEMANTIC_TYPES",
     "PRESERVED_TYPES",
     "prepare_content_list",
+    "write_attempt_ledger",
     "write_decision_ledger",
 ]
