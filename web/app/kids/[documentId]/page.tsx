@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { Languages } from "lucide-react";
 import {
   kidsApi,
   type KidsSafeQuestion,
@@ -28,7 +29,7 @@ export default function KidsReaderPage() {
   const [bookTitle, setBookTitle] = useState("");
   const [location, setLocation] = useState<string | null>(null);
   const [toc, setToc] = useState<NavItem[]>([]);
-  const [showQuiz, setShowQuiz] = useState(false);
+  const [showLearn, setShowLearn] = useState(false);
   const [questions, setQuestions] = useState<KidsSafeQuestion[]>([]);
   const [quizLoading, setQuizLoading] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -170,8 +171,8 @@ export default function KidsReaderPage() {
     }
   }, []);
 
-  const loadQuiz = useCallback(async () => {
-    setShowQuiz(true);
+  const loadLearnQuestions = useCallback(async () => {
+    setShowLearn(true);
     setGrade(null);
     setAnswers({});
     setQuizLoading(true);
@@ -186,7 +187,7 @@ export default function KidsReaderPage() {
     }
   }, [documentId]);
 
-  const submitQuiz = async () => {
+  const submitLearnAnswers = async () => {
     setSubmitting(true);
     try {
       const answerArr = questions.map((_, i) => answers[i] ?? -1);
@@ -196,7 +197,7 @@ export default function KidsReaderPage() {
         answerArr,
       );
       setGrade(result);
-      setStars((s) => s + result.stars);
+      setStars(result.total_stars);
     } catch {
       // ignore
     } finally {
@@ -288,6 +289,19 @@ export default function KidsReaderPage() {
          {bookTitle}
        </div>
         <div style={{ fontSize: 22 }}>Stars: {stars}</div>
+        <button
+          style={secondaryToolBtn}
+          title="Translate selected words"
+          aria-label="Translate selected words"
+          onClick={async () => {
+            if (!renditionRef.current) return;
+            const sel = renditionRef.current.getRange?.();
+            const text = sel?.toString() || "";
+            if (text) handleTranslate(text);
+          }}
+        >
+          <Languages size={18} />
+        </button>
       </div>
 
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
@@ -333,19 +347,8 @@ export default function KidsReaderPage() {
         >
           {speaking ? "Stop" : "Read Aloud"}
         </button>
-        <button
-          style={{ ...bigBtn, background: "#bee3f8" }}
-          onClick={async () => {
-            if (!renditionRef.current) return;
-            const sel = renditionRef.current.getRange?.();
-            const text = sel?.toString() || "";
-            if (text) handleTranslate(text);
-          }}
-        >
-          Translate
-        </button>
-        <button style={{ ...bigBtn, background: "#fed7aa" }} onClick={loadQuiz}>
-          Quiz
+        <button style={learnBtn} onClick={loadLearnQuestions}>
+          Learn
         </button>
       </div>
 
@@ -363,13 +366,13 @@ export default function KidsReaderPage() {
         </div>
       )}
 
-      {showQuiz && (
-        <div style={popupOverlay} onClick={() => setShowQuiz(false)}>
+      {showLearn && (
+        <div style={popupOverlay} onClick={() => setShowLearn(false)}>
           <div style={popupBox} onClick={(e) => e.stopPropagation()}>
-            {grade ? (
+            {grade && grade.score === grade.total ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: 64 }}>
-                  {grade.stars >= 3 ? "Great!" : grade.stars >= 2 ? "Good!" : grade.stars >= 1 ? "Nice!" : "Try again!"}
+                  {grade.score === grade.total ? "Great!" : grade.score > 0 ? "Keep thinking!" : "Try again!"}
                 </div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: "#4a3f6b", marginTop: 8 }}>
                   {grade.score} / {grade.total} correct!
@@ -377,9 +380,11 @@ export default function KidsReaderPage() {
                 <div style={{ fontSize: 32, marginTop: 8 }}>
                   {"*".repeat(grade.stars)}{".".repeat(3 - grade.stars)}
                 </div>
-                <div style={{ fontSize: 18, color: "#667eea", marginTop: 8 }}>
-                  {grade.encouragements[0]}
-                </div>
+                {grade.new_stars_awarded > 0 && (
+                  <div style={{ fontSize: 18, color: "#667eea", marginTop: 8 }}>
+                    {grade.encouragements[0]}
+                  </div>
+                )}
                 {grade.per_question.map((q, i) => (
                   <div key={i} style={{
                     marginTop: 12,
@@ -394,7 +399,7 @@ export default function KidsReaderPage() {
                 ))}
                 <button
                   style={{ ...bigBtn, marginTop: 16, background: "#667eea", color: "white" }}
-                  onClick={() => setShowQuiz(false)}
+                  onClick={() => setShowLearn(false)}
                 >
                   Done!
                 </button>
@@ -406,48 +411,64 @@ export default function KidsReaderPage() {
               </div>
             ) : questions.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40 }}>
-                <p style={{ fontSize: 18, color: "#e53e3e" }}>Quiz unavailable. Try reading first!</p>
-                <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={() => setShowQuiz(false)}>
+                <p style={{ fontSize: 18, color: "#e53e3e" }}>Read a little more first!</p>
+                <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={() => setShowLearn(false)}>
                   Close
                 </button>
               </div>
             ) : (
               <div>
                 <h2 style={{ fontSize: 24, fontWeight: 800, color: "#4a3f6b", marginBottom: 16 }}>
-                  Fun Quiz!
+                  Look and Think
                 </h2>
+                <p style={{ fontSize: 15, color: "#7c6f9b", marginBottom: 16 }}>
+                  Look closely, then choose what you think.
+                </p>
                 {questions.map((q, qi) => (
                   <div key={qi} style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#7c6f9b", marginBottom: 4 }}>
+                      Question {qi + 1}
+                    </div>
                     <div style={{ fontSize: 18, fontWeight: 600, color: "#2d3748", marginBottom: 8 }}>
                       {q.question}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      {q.choices.map((c, ci) => (
-                        <button
-                          key={ci}
-                          onClick={() => setAnswers({ ...answers, [qi]: ci })}
-                          style={{
-                            padding: "12px 16px",
-                            borderRadius: 12,
-                            border: answers[qi] === ci ? "3px solid #667eea" : "3px solid #e2e8f0",
-                            background: answers[qi] === ci ? "#e9d8fd" : "white",
-                            fontSize: 16,
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          {c}
-                        </button>
-                      ))}
+                      {q.choices.map((c, ci) => {
+                        const feedback = grade?.per_question?.[qi];
+                        const isCorrectChoice = !!feedback?.correct && answers[qi] === ci;
+                        return (
+                          <button
+                            key={ci}
+                            onClick={() => setAnswers({ ...answers, [qi]: ci })}
+                            disabled={isCorrectChoice}
+                            style={{
+                              padding: "12px 16px",
+                              borderRadius: 12,
+                              border: answers[qi] === ci ? "3px solid #667eea" : "3px solid #e2e8f0",
+                              background: answers[qi] === ci ? "#e9d8fd" : "white",
+                              fontSize: 16,
+                              cursor: isCorrectChoice ? "default" : "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            {c}
+                          </button>
+                        );
+                      })}
                     </div>
+                    {grade?.per_question?.[qi] && !grade.per_question[qi].correct && (
+                      <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "#fff5f5", color: "#c53030", fontWeight: 700 }}>
+                        Think again
+                      </div>
+                    )}
                   </div>
                 ))}
                 <button
                   style={{ ...bigBtn, width: "100%", background: "#667eea", color: "white" }}
-                  onClick={submitQuiz}
-                  disabled={submitting}
+                  onClick={submitLearnAnswers}
+                  disabled={submitting || questions.some((_, i) => answers[i] === undefined)}
                 >
-                  {submitting ? "Checking..." : "Check Answers!"}
+                  {submitting ? "Checking..." : grade && grade.score < grade.total ? "Try Again" : "Check My Thinking"}
                 </button>
               </div>
             )}
@@ -477,6 +498,23 @@ const bigBtn: React.CSSProperties = {
   fontWeight: 700,
   cursor: "pointer",
   color: "#2d3748",
+};
+
+const learnBtn: React.CSSProperties = {
+  ...bigBtn,
+  background: "#fed7aa",
+  minWidth: 160,
+};
+
+const secondaryToolBtn: React.CSSProperties = {
+  ...toolbarBtn,
+  width: 36,
+  height: 36,
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 12,
 };
 
 const popupOverlay: React.CSSProperties = {

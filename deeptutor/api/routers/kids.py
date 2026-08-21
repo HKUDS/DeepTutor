@@ -428,14 +428,21 @@ async def submit_kids_quiz(
         else "Keep reading and try again!"
     ]
 
-    # Record progress
-    manager.record_quiz(profile_id, document_id, correct, total)
-    manager.add_stars(profile_id, document_id, stars)
+    progress, new_stars = manager.record_reading_quiz_result(
+        profile_id,
+        document_id,
+        request.section_id,
+        correct,
+        total,
+        stars,
+    )
 
     return {
         "score": correct,
         "total": total,
         "stars": stars,
+        "new_stars_awarded": new_stars,
+        "total_stars": progress.total_stars,
         "per_question": per_question,
         "encouragements": encouragements,
     }
@@ -809,7 +816,7 @@ async def get_kids_interactive_asset(
     if suffix == ".mp4":
         media_type = "video/mp4"
     elif suffix in (".png", ".jpg", ".jpeg"):
-        media_type = f"image/{suffix.lstrip(".")}"
+        media_type = f"image/{suffix.lstrip('.')}"
     elif suffix == ".svg":
         media_type = "image/svg+xml"
 

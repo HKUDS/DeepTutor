@@ -123,6 +123,8 @@ export interface KidsQuizGrade {
   score: number;
   total: number;
   stars: number;
+  new_stars_awarded: number;
+  total_stars: number;
   per_question: { id: string; correct: boolean; explanation: string }[];
   encouragements: string[];
 }

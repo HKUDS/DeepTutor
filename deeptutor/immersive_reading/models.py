@@ -275,6 +275,8 @@ class KidsLearningProgress(BaseModel):
     total_stars: int = 0
     quiz_attempts: int = 0
     quiz_best_score: int = 0
+    quiz_scores: dict[str, int] = Field(default_factory=dict)
+    quiz_stars_awarded: dict[str, int] = Field(default_factory=dict)
     time_spent_seconds: float = 0.0
     last_read_at: float = 0.0
     updated_at: float = Field(default_factory=time.time)

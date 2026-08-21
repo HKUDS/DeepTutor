@@ -1969,7 +1969,7 @@ class ImmersiveReadingService:
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
 
-    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v1"
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v2"
 
     async def generate_kids_quiz(
         self,
@@ -2013,23 +2013,27 @@ class ImmersiveReadingService:
                 "Generate exactly 3 multiple-choice questions asking what words from the story mean. "
                 "Choose interesting or challenging words (not basic words like 'the' or 'and'). "
                 "Definitions should be clear and simple but not childish. "
-                "For example: What does 'venture' mean? Choices: a risky journey, a type of food, a loud noise, a small animal. "
-                "Each question has exactly 4 choices. Return JSON only. Schema: "
-                '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
-                '"answer_index":0,"explanation":"str"}]}'
+                "For example, for the word 'venture', return question \"What does 'venture' mean?\" and choices "
+                '["a risky journey", "a type of food", "a loud noise", "a small animal"]. '
+                "Use concrete story words, not schema placeholders. Each question has exactly 4 choices. Return JSON only: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"What does venture mean?",'
+                '"choices":["a risky journey","a type of food","a loud noise","a small animal"],'
+                '"answer_index":0,"explanation":"Venture means a risky journey."}]}'
             )
         else:
             system = (
                 "You create simple vocabulary quizzes for children learning English. "
                 "Generate exactly 3 multiple-choice questions. "
                 "Each question asks what a word from the story means, using very simple English. "
-                "For example: What does 'said' mean? Choices: talked, ran, sat, ate. "
+                "For example, for the word 'said', return question \"What does 'said' mean?\" and choices "
+                '["talked", "ran", "sat", "ate"]. '
                 "Pick words that actually appear in the story. "
                 "Use very short, simple definitions a child can understand. "
                 "Each question has exactly 4 choices. "
-                "Return JSON only. Schema: "
-                '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
-                '"answer_index":0,"explanation":"str"}]}'
+                "Use concrete story words, not schema placeholders. Return JSON only: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"What does said mean?",'
+                '"choices":["talked","ran","sat","ate"],"answer_index":0,'
+                '"explanation":"Said means talked."}]}'
             )
 
         raw = await complete(
@@ -2056,12 +2060,25 @@ class ImmersiveReadingService:
             choices = q.get("choices", [])
             if len(choices) < 2:
                 continue
+            question_text = str(q.get("question", "")).strip()
+            clean_choices = [str(c).strip() for c in choices[:4]]
+            placeholder_choices = {"a", "b", "c", "d"}
+            if (
+                not question_text
+                or question_text.lower() == "str"
+                or any(not choice for choice in clean_choices)
+                or (
+                    len(clean_choices) == 4
+                    and {choice.lower() for choice in clean_choices} == placeholder_choices
+                )
+            ):
+                continue
             questions.append(
                 KidsQuizQuestion(
                     id=q.get("id", f"q{i + 1}"),
                     kind=q.get("kind", "comprehension"),
-                    question=q.get("question", ""),
-                    choices=[str(c) for c in choices[:4]],
+                    question=question_text,
+                    choices=clean_choices,
                     answer_index=max(0, min(len(choices) - 1, int(q.get("answer_index", 0)))),
                     explanation=q.get("explanation", ""),
                 )
@@ -2357,7 +2374,7 @@ class KidsManager:
             (
                 i
                 for i, a in enumerate(assignments)
-                if a.profile_id == profile_id and (a.document_id == document_id or a.book_id == document_id)
+            if a.profile_id == profile_id and (a.document_id == document_id or a.book_id == document_id)
             ),
             None,
         )
@@ -2492,6 +2509,31 @@ class KidsManager:
         progress.updated_at = time.time()
         _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
         return progress
+
+    def record_reading_quiz_result(
+        self,
+        profile_id: str,
+        document_id: str,
+        section_id: str,
+        score: int,
+        total: int,
+        earned_stars: int,
+    ) -> tuple[KidsLearningProgress, int]:
+        """Record one section quiz and award only newly earned stars."""
+        progress = self.load_kids_progress(profile_id, document_id)
+        key = section_id or "section-0"
+        previous_stars = progress.quiz_stars_awarded.get(key, 0)
+        new_stars = max(0, earned_stars - previous_stars)
+        if earned_stars > previous_stars:
+            progress.quiz_stars_awarded[key] = earned_stars
+        progress.total_stars += new_stars
+        previous_score = progress.quiz_scores.get(key, 0)
+        progress.quiz_scores[key] = max(previous_score, score)
+        progress.quiz_attempts += 1
+        progress.quiz_best_score = max(progress.quiz_best_score, score)
+        progress.updated_at = time.time()
+        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
+        return progress, new_stars
 
     def get_report(self, profile_id: str) -> dict[str, Any]:
         """Aggregate learning report for a child profile."""
