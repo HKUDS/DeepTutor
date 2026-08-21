@@ -72,6 +72,18 @@ def build_auth_headers(auth_style: str, api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}"}
 
 
+def normalize_stt_content_type(content_type: str | None) -> str:
+    """Strip MIME parameters that STT APIs reject.
+
+    Chrome's ``MediaRecorder.mimeType`` is typically ``audio/webm;codecs=opus``.
+    OpenAI-compatible transcription endpoints treat the codec parameter as an
+    unknown format and return 400 (``Unsupported file format: ...``). Keep the
+    type/subtype only.
+    """
+    media_type = (content_type or "").split(";", 1)[0].strip()
+    return media_type or "application/octet-stream"
+
+
 def join_audio_path(base_url: str, suffix: str) -> str:
     """Append an OpenAI audio path to a configured base URL.
 
@@ -140,5 +152,6 @@ __all__ = [
     "BaseSTTAdapter",
     "build_auth_headers",
     "join_audio_path",
+    "normalize_stt_content_type",
     "strip_markdown_for_speech",
 ]

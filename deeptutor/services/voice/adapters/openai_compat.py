@@ -25,6 +25,7 @@ from deeptutor.services.voice.base import (
     VoiceProviderHTTPError,
     build_auth_headers,
     join_audio_path,
+    normalize_stt_content_type,
 )
 from deeptutor.services.voice.config import STT_BASE64_JSON, STTConfig, TTSConfig
 
@@ -329,7 +330,9 @@ class OpenAICompatSTTAdapter(BaseSTTAdapter):
         content_type: str,
         config: STTConfig,
     ) -> httpx.Response:
-        files = {"file": (filename, audio, content_type or "application/octet-stream")}
+        files = {
+            "file": (filename, audio, normalize_stt_content_type(content_type)),
+        }
         data: dict[str, str] = {"model": config.model, "response_format": "json"}
         if config.language:
             data["language"] = config.language

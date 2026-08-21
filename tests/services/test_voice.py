@@ -27,6 +27,7 @@ from deeptutor.services.voice.adapters.openai_compat import (
 from deeptutor.services.voice.base import (
     build_auth_headers,
     join_audio_path,
+    normalize_stt_content_type,
     strip_markdown_for_speech,
 )
 from deeptutor.services.voice.config import STTConfig, TTSConfig
@@ -70,6 +71,14 @@ def test_join_audio_path_appends_and_preserves_full_url() -> None:
     assert join_audio_path("https://api.openai.com/v1", "audio/speech").endswith("/v1/audio/speech")
     full = "https://r.azure.com/openai/deployments/tts/audio/speech?api-version=2025"
     assert join_audio_path(full, "audio/speech") == full
+
+
+def test_normalize_stt_content_type_strips_codec_parameters() -> None:
+    assert normalize_stt_content_type("audio/webm;codecs=opus") == "audio/webm"
+    assert normalize_stt_content_type(" audio/ogg; codecs=opus ") == "audio/ogg"
+    assert normalize_stt_content_type("audio/wav") == "audio/wav"
+    assert normalize_stt_content_type("") == "application/octet-stream"
+    assert normalize_stt_content_type(None) == "application/octet-stream"
 
 
 def test_auth_headers_styles() -> None:
@@ -232,7 +241,23 @@ async def test_stt_adapter_multipart(monkeypatch: pytest.MonkeyPatch) -> None:
     assert text == "hello world"
     assert captured["url"] == "https://api.openai.com/v1/audio/transcriptions"
     assert captured["files"]["file"][0] == "a.wav"
+    assert captured["files"]["file"][2] == "audio/wav"
     assert captured["data"]["model"] == "whisper-1"
+
+
+@pytest.mark.asyncio
+async def test_stt_adapter_strips_codec_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
+    resp = httpx.Response(200, json={"text": "hello world"})
+    captured = _capture_post(monkeypatch, resp)
+    config = STTConfig(model="whisper-1", base_url="https://api.openai.com/v1", api_key="sk")
+    text = await OpenAICompatSTTAdapter().transcribe(
+        b"audiobytes",
+        config,
+        filename="recording.webm",
+        content_type="audio/webm;codecs=opus",
+    )
+    assert text == "hello world"
+    assert captured["files"]["file"][2] == "audio/webm"
 
 
 @pytest.mark.asyncio
@@ -348,6 +373,12 @@ async def test_synthesize_speech_facade_strips_markdown(monkeypatch: pytest.Monk
 @pytest.mark.asyncio
 async def test_transcribe_audio_facade(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = httpx.Response(200, json={"text": "transcribed"})
-    _capture_post(monkeypatch, resp)
-    text = await transcribe_audio(b"bytes", catalog=_voice_catalog(), filename="x.webm")
+    captured = _capture_post(monkeypatch, resp)
+    text = await transcribe_audio(
+        b"bytes",
+        catalog=_voice_catalog(),
+        filename="x.webm",
+        content_type="audio/webm;codecs=opus",
+    )
     assert text == "transcribed"
+    assert captured["json"]["input_audio"]["format"] == "webm"

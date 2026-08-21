@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch, apiUrl } from "@/lib/api";
+import { stripAudioMimeParameters } from "@/lib/voice-mime";
 
 export type RecorderState = "idle" | "recording" | "transcribing";
 
@@ -50,7 +51,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
       if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
     };
     recorder.onstop = async () => {
-      const mimeType = recorder.mimeType || "audio/webm";
+      const mimeType = stripAudioMimeParameters(recorder.mimeType);
       releaseStream();
       const blob = new Blob(chunksRef.current, { type: mimeType });
       chunksRef.current = [];

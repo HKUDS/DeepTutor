@@ -11,7 +11,11 @@ from __future__ import annotations
 from typing import Any
 
 from deeptutor.services.voice.adapters import get_stt_adapter, get_tts_adapter
-from deeptutor.services.voice.base import VoiceProviderError, strip_markdown_for_speech
+from deeptutor.services.voice.base import (
+    VoiceProviderError,
+    normalize_stt_content_type,
+    strip_markdown_for_speech,
+)
 from deeptutor.services.voice.config import STTConfig, TTSConfig
 
 
@@ -61,7 +65,12 @@ async def transcribe_audio(
     if language:
         config.language = language
     adapter = get_stt_adapter(config.adapter)
-    return await adapter.transcribe(audio, config, filename=filename, content_type=content_type)
+    return await adapter.transcribe(
+        audio,
+        config,
+        filename=filename,
+        content_type=normalize_stt_content_type(content_type),
+    )
 
 
 __all__ = [
@@ -70,5 +79,6 @@ __all__ = [
     "STTConfig",
     "synthesize_speech",
     "transcribe_audio",
+    "normalize_stt_content_type",
     "strip_markdown_for_speech",
 ]
