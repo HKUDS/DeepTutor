@@ -30,6 +30,16 @@ test("kids reader centers guided learning and demotes translation", () => {
   assert.match(readerSource, /Languages/);
 });
 
+test("kids reader always offers three guided questions with pronunciation", () => {
+  assert.match(readerSource, /Getting 3 questions/);
+  assert.match(readerSource, /speakQuizText/);
+  assert.match(readerSource, /question-\$\{qi\}/);
+  assert.match(readerSource, /choice-\$\{qi\}-\$\{ci\}/);
+  assert.match(readerSource, /answer-\$\{i\}/);
+  assert.match(readerSource, /Volume2/);
+  assert.match(readerSource, /loadLearnQuestions\(previousSectionId\)/);
+});
+
 test("kids reader maps EPUB navigation to backend reading sections", () => {
   const sectionId = resolveKidsReadingSectionId(
     "OEBPS/chap01.html",

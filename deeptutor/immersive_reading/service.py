@@ -1969,7 +1969,31 @@ class ImmersiveReadingService:
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
 
-    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v2"
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v3"
+
+    def _kids_fallback_questions(
+        self, content: str, age_band: str, existing_questions: list[KidsQuizQuestion]
+    ) -> list[KidsQuizQuestion]:
+        from deeptutor.immersive_reading.sight_words import generate_translation_quiz
+
+        existing_texts = {q.question.strip().lower() for q in existing_questions}
+        fallbacks = generate_translation_quiz(content, age_band=age_band, num_questions=9)
+        questions: list[KidsQuizQuestion] = []
+        for i, fallback in enumerate(fallbacks, start=len(existing_questions) + 1):
+            if fallback["question"].strip().lower() in existing_texts:
+                continue
+            questions.append(
+                KidsQuizQuestion(
+                    id=f"fallback-q{i}",
+                    kind="sight_word",
+                    question=fallback["question"],
+                    choices=fallback["choices"],
+                    answer_index=fallback["answer_index"],
+                    explanation=fallback["explanation"],
+                )
+            )
+            existing_texts.add(fallback["question"].strip().lower())
+        return questions
 
     async def generate_kids_quiz(
         self,
@@ -1989,13 +2013,26 @@ class ImmersiveReadingService:
         cfg = get_llm_config()
         model_name = str(getattr(cfg, "model", "") or "")
 
-        if (
-            not force_refresh
-            and cached
-            and cached.get("content_hash") == content_hash
-            and cached.get("prompt_version") == self.KIDS_QUIZ_PROMPT_VERSION
-        ):
-            return KidsQuizResult(**cached)
+        if not force_refresh and cached and cached.get("content_hash") == content_hash:
+            result = KidsQuizResult(**cached)
+            if len(result.questions) > 3:
+                result.questions = result.questions[:3]
+                result.prompt_version = self.KIDS_QUIZ_PROMPT_VERSION
+                result.generated_at = time.time()
+                _write_json(quiz_path, result.model_dump(mode="json"))
+                return result
+            if len(result.questions) == 3:
+                return result
+            if result.questions:
+                # Older caches could contain only one valid question. Upgrade them
+                # synchronously so a child never waits for the model to click Learn.
+                result.questions.extend(
+                    self._kids_fallback_questions(content, age_band, result.questions)[: 3 - len(result.questions)]
+                )
+                result.prompt_version = self.KIDS_QUIZ_PROMPT_VERSION
+                result.generated_at = time.time()
+                _write_json(quiz_path, result.model_dump(mode="json"))
+                return result
 
         doc = self.load_document(document_id)
         if doc is None:
@@ -2045,8 +2082,8 @@ class ImmersiveReadingService:
             system_prompt=system,
             temperature=0.3,
             max_tokens=2000,
-            max_retries=1,
-            timeout=120,
+            max_retries=0,
+            timeout=5,
             response_format={"type": "json_object"},
         )
 
@@ -2086,6 +2123,10 @@ class ImmersiveReadingService:
 
         if not questions:
             raise RuntimeError("No valid questions were generated")
+
+        needed = 3 - len(questions)
+        if needed > 0:
+            questions.extend(self._kids_fallback_questions(content, age_band, questions)[:needed])
 
         result = KidsQuizResult(
             document_id=document_id,

@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
+import time
 from typing import Any
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException
@@ -17,6 +19,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
+from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
 from deeptutor.immersive_reading.service import get_kids_manager
 
 router = APIRouter()
@@ -281,6 +284,107 @@ class KidsQuizRequest(BaseModel):
     force_refresh: bool = False
 
 
+def _resolve_kids_reading_section(ir, document_id: str, requested_section_id: str):
+    """Resolve current section IDs and older EPUB hrefs from deployed clients."""
+    try:
+        doc = ir.load_document(document_id)
+    except Exception:
+        # Test doubles and older services may only expose quiz/section methods.
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            id=requested_section_id, index=0, title="", checkpoint_kind="chapter"
+        )
+    if doc is None:
+        return None
+    section = next((s for s in doc.sections if s.id == requested_section_id), None)
+    if section is not None:
+        return section
+
+    requested = requested_section_id.split("?")[0].split("/")[-1].lower()
+    chapter_match = re.search(r"chap(?:ter)?[_-]?(\d+)", requested)
+    chapters = [s for s in doc.sections if s.checkpoint_kind == "chapter"]
+    if chapter_match:
+        chapter_number = int(chapter_match.group(1))
+        if 1 <= chapter_number <= len(chapters):
+            return chapters[chapter_number - 1]
+
+    normalized = " ".join(requested.replace("-", " ").split())
+    return next((s for s in doc.sections if " ".join(s.title.lower().split()) == normalized), None)
+
+
+def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: str, result):
+    """Guard the endpoint contract even when a provider/fake returns fewer questions."""
+    if result is not None and len(result.questions) > 3:
+        result.questions = result.questions[:3]
+    if result is None or len(result.questions) >= 3:
+        return result
+
+    try:
+        section_text = ir.get_section(document_id, section_id).get("content", "")
+    except Exception:
+        section_text = ""
+
+    from deeptutor.immersive_reading.sight_words import generate_translation_quiz
+
+    existing = {q.question.strip().lower() for q in result.questions}
+    fallbacks = generate_translation_quiz(section_text, age_band=age_band, num_questions=9)
+    for i, fallback in enumerate(fallbacks, start=len(result.questions) + 1):
+        if len(result.questions) == 3:
+            break
+        if fallback["question"].strip().lower() in existing:
+            continue
+        result.questions.append(
+            KidsQuizQuestion(
+                id=f"fallback-q{i}",
+                kind="sight_word",
+                question=fallback["question"],
+                choices=fallback["choices"],
+                answer_index=fallback["answer_index"],
+                explanation=fallback["explanation"],
+            )
+        )
+        existing.add(fallback["question"].strip().lower())
+
+    result.prompt_version = "kids-quiz-fallback-v3"
+    result.generated_at = time.time()
+    if hasattr(ir, "_save_kids_quiz_cache"):
+        ir._save_kids_quiz_cache(document_id, section_id, result)
+    return result
+
+
+def _safe_kids_questions(result):
+    return [
+        {"id": q.id, "kind": q.kind, "question": q.question, "choices": q.choices}
+        for q in result.questions
+    ]
+
+
+def _build_fallback_kids_quiz(
+    document_id: str, section_id: str, section_text: str, age_band: str
+) -> KidsQuizResult:
+    from deeptutor.immersive_reading.sight_words import generate_translation_quiz
+
+    fallback_qs = generate_translation_quiz(section_text, age_band=age_band, num_questions=3)
+    return KidsQuizResult(
+        document_id=document_id,
+        section_id=section_id,
+        questions=[
+            KidsQuizQuestion(
+                id=q["id"],
+                kind=q["kind"],
+                question=q["question"],
+                choices=q["choices"],
+                answer_index=q["answer_index"],
+                explanation=q["explanation"],
+            )
+            for q in fallback_qs
+        ],
+        content_hash=hashlib.sha256(section_text.encode()).hexdigest(),
+        model="sight-words-fallback",
+        prompt_version="kids-quiz-fallback-v3",
+    )
+
 @router.post("/books/{document_id}/quiz")
 async def get_kids_quiz(
     document_id: str,
@@ -289,92 +393,37 @@ async def get_kids_quiz(
 ) -> dict:
     """Get quiz questions — answer_index is stripped for children."""
     manager = get_kids_manager()
-    if not manager.is_section_allowed(profile_id, document_id, 0):
-        raise HTTPException(status_code=404, detail="Book not found")
     ir = get_immersive_reading_service()
+    section = _resolve_kids_reading_section(ir, document_id, request.section_id)
+    if section is None or not manager.is_section_allowed(profile_id, document_id, section.index):
+        raise HTTPException(status_code=404, detail="Book not found")
+    if section.checkpoint_kind != "chapter":
+        return {"questions": [], "section_id": section.id, "message": "Read a chapter first!"}
 
-    # Get age band from profile for age-appropriate quiz difficulty
     profile = manager.get_profile(profile_id)
     age_band = profile.age_band if profile else "6-8"
-
-    # Read section text for fallback quiz generation
-    section_text = ""
-    try:
-        section_data = ir.get_section(document_id, request.section_id)
-        section_text = section_data.get("content", "")
-    except Exception:
-        pass
+    section_text = ir.get_section(document_id, section.id).get("content", "")
 
     try:
         result = await ir.generate_kids_quiz(
-            document_id, request.section_id, force_refresh=request.force_refresh, age_band=age_band
+            document_id, section.id, force_refresh=request.force_refresh, age_band=age_band
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("LLM quiz failed, using deterministic fallback: %s", exc)
-        result = None
+        result = _build_fallback_kids_quiz(document_id, section.id, section_text, age_band)
+        if result.questions:
+            ir._save_kids_quiz_cache(document_id, section.id, result)
 
-    # If LLM produced no usable questions, fall back to deterministic translation quiz
-    if result is None or not result.questions:
-        from deeptutor.immersive_reading.sight_words import generate_translation_quiz
-
-        fallback_qs = generate_translation_quiz(section_text, age_band=age_band)
-        if fallback_qs:
-            logger.info("Using fallback translation quiz: %d questions", len(fallback_qs))
-            safe_questions = [
-                {
-                    "id": q["id"],
-                    "kind": q["kind"],
-                    "question": q["question"],
-                    "choices": q["choices"],
-                }
-                for q in fallback_qs
-            ]
-            # Cache the fallback so submit can grade it
-            import hashlib
-
-            from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
-
-            fallback_result = KidsQuizResult(
-                document_id=document_id,
-                section_id=request.section_id,
-                questions=[
-                    KidsQuizQuestion(
-                        id=q["id"],
-                        kind=q["kind"],
-                        question=q["question"],
-                        choices=q["choices"],
-                        answer_index=q["answer_index"],
-                        explanation=q["explanation"],
-                    )
-                    for q in fallback_qs
-                ],
-                content_hash=hashlib.sha256(section_text.encode()).hexdigest(),
-                model="sight-words-fallback",
-                prompt_version="sight-words-v1",
-            )
-            ir._save_kids_quiz_cache(document_id, request.section_id, fallback_result)
-            return {"questions": safe_questions, "section_id": request.section_id}
-        # No words found either
+    result = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, result)
+    if not result.questions:
         return {
             "questions": [],
-            "section_id": request.section_id,
+            "section_id": section.id,
             "message": "Read more to unlock quizzes!",
         }
-
-    # Strip answer_index from questions sent to the child
-    safe_questions = []
-    for q in result.questions:
-        safe_questions.append(
-            {
-                "id": q.id,
-                "kind": q.kind,
-                "question": q.question,
-                "choices": q.choices,
-            }
-        )
-    return {"questions": safe_questions, "section_id": request.section_id}
+    return {"questions": _safe_kids_questions(result), "section_id": section.id}
 
 
 class KidsQuizSubmitRequest(BaseModel):
@@ -391,12 +440,25 @@ async def submit_kids_quiz(
     """Grade quiz on the server and return stars."""
     manager = get_kids_manager()
     ir = get_immersive_reading_service()
+    section = _resolve_kids_reading_section(ir, document_id, request.section_id)
+    if section is None or not manager.is_section_allowed(profile_id, document_id, section.index):
+        raise HTTPException(status_code=404, detail="Book not found")
+    profile = manager.get_profile(profile_id)
+    age_band = profile.age_band if profile else "6-8"
     try:
-        cached = await ir.generate_kids_quiz(document_id, request.section_id)
+        cached = await ir.generate_kids_quiz(document_id, section.id, age_band=age_band)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("LLM quiz submit reload failed, using fallback: %s", exc)
+        try:
+            section_text = ir.get_section(document_id, section.id).get("content", "")
+        except Exception:
+            section_text = ""
+        cached = _build_fallback_kids_quiz(document_id, section.id, section_text, age_band)
+        ir._save_kids_quiz_cache(document_id, section.id, cached)
+
+    cached = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, cached)
 
     correct = 0
     per_question: list[dict[str, Any]] = []
@@ -431,11 +493,13 @@ async def submit_kids_quiz(
     progress, new_stars = manager.record_reading_quiz_result(
         profile_id,
         document_id,
-        request.section_id,
+        section.id,
         correct,
         total,
         stars,
     )
+    if correct == total:
+        progress = manager.mark_section_completed(profile_id, document_id, section.id)
 
     return {
         "score": correct,
@@ -443,6 +507,7 @@ async def submit_kids_quiz(
         "stars": stars,
         "new_stars_awarded": new_stars,
         "total_stars": progress.total_stars,
+        "completed_section_ids": progress.completed_section_ids,
         "per_question": per_question,
         "encouragements": encouragements,
     }

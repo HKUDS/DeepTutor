@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Languages } from "lucide-react";
+import { Languages, Volume2, VolumeX } from "lucide-react";
 import {
   kidsApi,
   resolveKidsReadingSectionId,
@@ -38,6 +38,7 @@ export default function KidsReaderPage() {
   const [grade, setGrade] = useState<KidsQuizGrade | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [quizSpeakingId, setQuizSpeakingId] = useState<string | null>(null);
   const [translateText, setTranslateText] = useState<string | null>(null);
   const [translateResult, setTranslateResult] = useState("");
   const [translating, setTranslating] = useState(false);
@@ -52,6 +53,10 @@ export default function KidsReaderPage() {
   const renditionRef = useRef<Rendition | null>(null);
   const currentHrefRef = useRef<string>("");
   const currentSectionIdRef = useRef<string>("");
+  const quizSectionIdRef = useRef<string>("");
+  const completedSectionIdsRef = useRef<string[]>([]);
+  const quizLoadTokenRef = useRef(0);
+  const sawInitialSectionRef = useRef(false);
   const sectionsRef = useRef<KidsReadingSection[]>([]);
   const tocRef = useRef<NavItem[]>([]);
 
@@ -65,6 +70,7 @@ export default function KidsReaderPage() {
         const doc = data.document as Record<string, any>;
         setBookTitle(doc.title || "Book");
         setStars(data.progress?.total_stars || 0);
+        completedSectionIdsRef.current = data.progress?.completed_section_ids || [];
         const docSections = Array.isArray(doc.sections) ? doc.sections : [];
         sectionsRef.current = docSections;
         currentSectionIdRef.current =
@@ -170,6 +176,25 @@ export default function KidsReaderPage() {
     setSpeaking(true);
   }, [stopSpeaking]);
 
+  const speakQuizText = useCallback(
+    (id: string, text: string) => {
+      if (typeof window === "undefined" || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      if (quizSpeakingId === id) {
+        setQuizSpeakingId(null);
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.75;
+      utterance.onend = () => setQuizSpeakingId(null);
+      utterance.onerror = () => setQuizSpeakingId(null);
+      window.speechSynthesis.speak(utterance);
+      setQuizSpeakingId(id);
+    },
+    [quizSpeakingId],
+  );
+
   const handleTranslate = useCallback(async (text: string) => {
     setTranslateText(text);
     setTranslating(true);
@@ -184,21 +209,36 @@ export default function KidsReaderPage() {
     }
   }, []);
 
-  const loadLearnQuestions = useCallback(async () => {
+  const closeLearnQuestions = useCallback(() => {
+    quizLoadTokenRef.current += 1;
+    setShowLearn(false);
+    setQuizLoading(false);
+    setQuizSpeakingId(null);
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+  }, []);
+
+  const loadLearnQuestions = useCallback(async (sectionIdOverride?: string) => {
+    const token = ++quizLoadTokenRef.current;
     setShowLearn(true);
     setGrade(null);
     setAnswers({});
+    setQuizSpeakingId(null);
     setQuizLoading(true);
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     try {
       const sectionId =
+        sectionIdOverride ||
         currentSectionIdRef.current ||
         resolveKidsReadingSectionId(currentHrefRef.current, tocRef.current, sectionsRef.current);
+      quizSectionIdRef.current = sectionId;
       const { questions: qs } = await kidsApi.getQuiz(documentId, sectionId);
+      if (token !== quizLoadTokenRef.current) return;
       setQuestions(qs);
     } catch {
+      if (token !== quizLoadTokenRef.current) return;
       setQuestions([]);
     } finally {
-      setQuizLoading(false);
+      if (token === quizLoadTokenRef.current) setQuizLoading(false);
     }
   }, [documentId]);
 
@@ -208,12 +248,14 @@ export default function KidsReaderPage() {
       const answerArr = questions.map((_, i) => answers[i] ?? -1);
       const result = await kidsApi.submitQuiz(
         documentId,
-        currentSectionIdRef.current ||
+        quizSectionIdRef.current ||
+          currentSectionIdRef.current ||
           resolveKidsReadingSectionId(currentHrefRef.current, tocRef.current, sectionsRef.current),
         answerArr,
       );
       setGrade(result);
       setStars(result.total_stars);
+      completedSectionIdsRef.current = result.completed_section_ids || completedSectionIdsRef.current;
     } catch {
       // ignore
     } finally {
@@ -342,6 +384,7 @@ export default function KidsReaderPage() {
             });
             rendition.on("relocated", (location: any) => {
               const href = location?.start?.href || "";
+              const previousSectionId = currentSectionIdRef.current;
               currentHrefRef.current = href;
               currentSectionIdRef.current = resolveKidsReadingSectionId(
                 href,
@@ -349,6 +392,16 @@ export default function KidsReaderPage() {
                 sectionsRef.current,
               );
               saveProgress(location?.start?.cfi || "", href);
+              if (!sawInitialSectionRef.current) {
+                sawInitialSectionRef.current = true;
+              } else if (
+                previousSectionId &&
+                previousSectionId !== currentSectionIdRef.current &&
+                sectionsRef.current.find((s) => s.id === previousSectionId)?.checkpoint_kind === "chapter" &&
+                !completedSectionIdsRef.current.includes(previousSectionId)
+              ) {
+                loadLearnQuestions(previousSectionId);
+              }
             });
           }}
         />
@@ -369,7 +422,7 @@ export default function KidsReaderPage() {
         >
           {speaking ? "Stop" : "Read Aloud"}
         </button>
-        <button style={learnBtn} onClick={loadLearnQuestions}>
+        <button style={learnBtn} onClick={() => loadLearnQuestions()}>
           Learn
         </button>
       </div>
@@ -389,7 +442,7 @@ export default function KidsReaderPage() {
       )}
 
       {showLearn && (
-        <div style={popupOverlay} onClick={() => setShowLearn(false)}>
+        <div style={popupOverlay} onClick={closeLearnQuestions}>
           <div style={popupBox} onClick={(e) => e.stopPropagation()}>
             {grade && grade.score === grade.total ? (
               <div style={{ textAlign: "center" }}>
@@ -415,13 +468,23 @@ export default function KidsReaderPage() {
                     background: q.correct ? "#f0fff4" : "#fff5f5",
                     textAlign: "left",
                   }}>
-                    <span style={{ fontSize: 20 }}>{q.correct ? "Yes" : "No"}</span>
-                    <span style={{ fontSize: 14, color: "#4a5568", marginLeft: 8 }}>{q.explanation}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 20 }}>{q.correct ? "Yes" : "No"}</span>
+                      <button
+                        style={speechBtn}
+                        title={quizSpeakingId === `answer-${i}` ? "Stop answer" : "Read answer"}
+                        aria-label={quizSpeakingId === `answer-${i}` ? "Stop answer" : "Read answer"}
+                        onClick={() => speakQuizText(`answer-${i}`, `${q.correct ? "Yes" : "No"}. ${q.explanation}`)}
+                      >
+                        {quizSpeakingId === `answer-${i}` ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 14, color: "#4a5568", marginTop: 6 }}>{q.explanation}</div>
                   </div>
                 ))}
                 <button
                   style={{ ...bigBtn, marginTop: 16, background: "#667eea", color: "white" }}
-                  onClick={() => setShowLearn(false)}
+                  onClick={closeLearnQuestions}
                 >
                   Done!
                 </button>
@@ -429,12 +492,15 @@ export default function KidsReaderPage() {
             ) : quizLoading ? (
               <div style={{ textAlign: "center", padding: 40 }}>
                 <div style={{ fontSize: 48 }}>?</div>
-                <p style={{ fontSize: 18, color: "#667eea" }}>Making your quiz...</p>
+                <p style={{ fontSize: 18, color: "#667eea" }}>Getting 3 questions...</p>
+                <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={closeLearnQuestions}>
+                  Close
+                </button>
               </div>
             ) : questions.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40 }}>
                 <p style={{ fontSize: 18, color: "#e53e3e" }}>Read a little more first!</p>
-                <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={() => setShowLearn(false)}>
+                <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={closeLearnQuestions}>
                   Close
                 </button>
               </div>
@@ -448,10 +514,20 @@ export default function KidsReaderPage() {
                 </p>
                 {questions.map((q, qi) => (
                   <div key={qi} style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#7c6f9b", marginBottom: 4 }}>
-                      Question {qi + 1}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#7c6f9b" }}>
+                        Question {qi + 1}
+                      </div>
+                      <button
+                        style={speechBtn}
+                        title={quizSpeakingId === `question-${qi}` ? "Stop question" : "Read question"}
+                        aria-label={quizSpeakingId === `question-${qi}` ? "Stop question" : "Read question"}
+                        onClick={() => speakQuizText(`question-${qi}`, q.question)}
+                      >
+                        {quizSpeakingId === `question-${qi}` ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                      </button>
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: "#2d3748", marginBottom: 8 }}>
+                    <div style={{ fontSize: 18, fontWeight: 600, color: "#2d3748", marginBottom: 8, textAlign: "left" }}>
                       {q.question}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -459,22 +535,36 @@ export default function KidsReaderPage() {
                         const feedback = grade?.per_question?.[qi];
                         const isCorrectChoice = !!feedback?.correct && answers[qi] === ci;
                         return (
-                          <button
-                            key={ci}
-                            onClick={() => setAnswers({ ...answers, [qi]: ci })}
-                            disabled={isCorrectChoice}
-                            style={{
-                              padding: "12px 16px",
-                              borderRadius: 12,
-                              border: answers[qi] === ci ? "3px solid #667eea" : "3px solid #e2e8f0",
-                              background: answers[qi] === ci ? "#e9d8fd" : "white",
-                              fontSize: 16,
-                              cursor: isCorrectChoice ? "default" : "pointer",
-                              textAlign: "left",
-                            }}
-                          >
-                            {c}
-                          </button>
+                          <div key={ci} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
+                            <button
+                              onClick={() => setAnswers({ ...answers, [qi]: ci })}
+                              disabled={isCorrectChoice}
+                              style={{
+                                flex: 1,
+                                padding: "12px 14px",
+                                borderRadius: 12,
+                                border: answers[qi] === ci ? "3px solid #667eea" : "3px solid #e2e8f0",
+                                background: answers[qi] === ci ? "#e9d8fd" : "white",
+                                fontSize: 16,
+                                cursor: isCorrectChoice ? "default" : "pointer",
+                                textAlign: "left",
+                              }}
+                            >
+                              {c}
+                            </button>
+                            <button
+                              style={speechBtn}
+                              title={quizSpeakingId === `choice-${qi}-${ci}` ? `Stop ${c}` : `Read ${c}`}
+                              aria-label={quizSpeakingId === `choice-${qi}-${ci}` ? `Stop ${c}` : `Read ${c}`}
+                              onClick={() => speakQuizText(`choice-${qi}-${ci}`, c)}
+                            >
+                              {quizSpeakingId === `choice-${qi}-${ci}` ? (
+                                <VolumeX size={15} />
+                              ) : (
+                                <Volume2 size={15} />
+                              )}
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -537,6 +627,20 @@ const secondaryToolBtn: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   borderRadius: 12,
+};
+
+const speechBtn: React.CSSProperties = {
+  width: 38,
+  height: 38,
+  flexShrink: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "2px solid #e2e8f0",
+  borderRadius: 12,
+  background: "#f7fafc",
+  color: "#667eea",
+  cursor: "pointer",
 };
 
 const popupOverlay: React.CSSProperties = {

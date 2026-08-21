@@ -40,6 +40,7 @@ export interface KidsReadingSection {
   id: string;
   title: string;
   index: number;
+  checkpoint_kind?: string;
 }
 
 export interface KidsReaderTocItem {
@@ -162,6 +163,7 @@ export interface KidsQuizGrade {
   total_stars: number;
   per_question: { id: string; correct: boolean; explanation: string }[];
   encouragements: string[];
+  completed_section_ids?: string[];
 }
 
 // ── Admin (parent) API ─────────────────────────────────────────────────────
@@ -328,7 +330,11 @@ export const kidsApi = {
   getQuiz: (documentId: string, sectionId: string, forceRefresh = false) =>
     kidsRequest<{ questions: KidsSafeQuestion[]; section_id: string }>(
       `/books/${documentId}/quiz`,
-      { method: "POST", body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }),
+        signal: AbortSignal.timeout(12000),
+      },
     ),
 
   submitQuiz: (documentId: string, sectionId: string, answers: number[]) =>
