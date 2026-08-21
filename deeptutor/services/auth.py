@@ -44,6 +44,7 @@ AUTH_USERNAME: str = str(_AUTH_SETTINGS["username"])
 AUTH_PASSWORD_HASH: str = str(_AUTH_SETTINGS["password_hash"])
 AUTH_SECRET: str = ""
 TOKEN_EXPIRE_HOURS: int = int(_AUTH_SETTINGS["token_expire_hours"])
+AUTH_ALLOW_REGISTRATION: bool = bool(_AUTH_SETTINGS.get("allow_registration", False))
 
 # PocketBase auth mode — active when integrations.pocketbase_url is set and auth is enabled.
 # When enabled, login/register proxy to PocketBase and token validation uses

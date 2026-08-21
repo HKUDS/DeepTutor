@@ -32,6 +32,7 @@ _SAMESITE = "none" if _SECURE else "lax"
 from deeptutor.multi_user.context import set_current_user, user_from_token_payload
 from deeptutor.multi_user.paths import local_admin_user
 from deeptutor.services.auth import (
+    AUTH_ALLOW_REGISTRATION,
     AUTH_ENABLED,
     POCKETBASE_ENABLED,
     TOKEN_EXPIRE_HOURS,
@@ -532,8 +533,8 @@ async def register(body: RegisterRequest) -> dict:
             "is_admin": False,
         }
 
-    # Standard mode — only allowed before the first admin exists.
-    if not is_first_user():
+    # Standard mode — allowed before the first admin exists, or when registration is opened by admin.
+    if not is_first_user() and not AUTH_ALLOW_REGISTRATION:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Self-registration is closed. Ask an administrator to create your account.",
