@@ -143,12 +143,25 @@ class LightRagPipeline:
         async def job(io_bridge: OwnerLoopBridge) -> int:
             io_bridge.raise_if_cancelled()
             rag = engine.build_rag(working_dir, io_bridge=io_bridge)
-            return await self._ingest(
-                rag,
-                file_paths,
-                io_bridge=io_bridge,
-                progress_callback=progress_callback,
-            )
+            failed = True
+            try:
+                result = await self._ingest(
+                    rag,
+                    file_paths,
+                    io_bridge=io_bridge,
+                    progress_callback=progress_callback,
+                )
+                failed = False
+                return result
+            finally:
+                try:
+                    await engine.finalize(rag, cancel_pending=failed)
+                except BaseException:
+                    if not failed:
+                        raise
+                    self.logger.exception(
+                        "LightRAG resource cleanup failed while indexing was aborting"
+                    )
 
         return await run_in_worker_loop(job)
 

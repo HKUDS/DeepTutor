@@ -27,6 +27,7 @@ from deeptutor.services.llm.exceptions import (
     LLMAuthenticationError,
     LLMConfigError,
     LLMParseError,
+    LLMProviderTransportError,
     LLMRateLimitError,
     LLMTimeoutError,
 )
@@ -368,6 +369,7 @@ def test_lightrag_llm_adapter_uses_three_total_attempts_and_disables_provider_re
     "error",
     [
         LLMTimeoutError("timeout"),
+        LLMProviderTransportError("provider transport failed"),
         TimeoutError("timeout"),
         ConnectionError("connection"),
         LLMRateLimitError("rate limited"),
@@ -955,6 +957,112 @@ def test_indexing_cancellation_waits_for_worker_loop_to_close() -> None:
     assert worker_loop is not None
     assert worker_loop.is_closed()
     assert owner_callback_called is False
+
+
+def test_indexing_cancellation_cancels_worker_main_task() -> None:
+    started = threading.Event()
+    stopped = threading.Event()
+    worker_loop: asyncio.AbstractEventLoop | None = None
+
+    async def scenario() -> None:
+        async def job(_io_bridge) -> None:
+            nonlocal worker_loop
+            worker_loop = asyncio.get_running_loop()
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+        task = asyncio.create_task(run_in_worker_loop(job))
+        while not started.is_set():
+            await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=0.5)
+
+    asyncio.run(scenario())
+
+    assert stopped.is_set()
+    assert worker_loop is not None
+    assert worker_loop.is_closed()
+
+
+def test_indexing_cancellation_escalates_when_worker_suppresses_first_cancel() -> None:
+    started = threading.Event()
+    first_cancel = threading.Event()
+    stopped = threading.Event()
+    worker_loop: asyncio.AbstractEventLoop | None = None
+
+    async def scenario() -> None:
+        async def job(_io_bridge) -> None:
+            nonlocal worker_loop
+            worker_loop = asyncio.get_running_loop()
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                first_cancel.set()
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+
+        task = asyncio.create_task(run_in_worker_loop(job, cancel_grace_seconds=0.01))
+        while not started.is_set():
+            await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=0.5)
+
+    asyncio.run(scenario())
+
+    assert first_cancel.is_set()
+    assert stopped.is_set()
+    assert worker_loop is not None
+    assert worker_loop.is_closed()
+
+
+def test_indexing_failure_forces_queue_shutdown_and_finalizes_storage(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class _QueueFunc:
+        async def __call__(self, *_args, **_kwargs) -> None:
+            return None
+
+        async def shutdown(self, *, graceful: bool, timeout: float) -> None:
+            calls.append(("shutdown", graceful, timeout))
+
+    queue_func = _QueueFunc()
+
+    class _FailingRag:
+        def __init__(self, working_dir) -> None:
+            self.working_dir = Path(working_dir)
+            self.lightrag = types.SimpleNamespace(
+                role_llm_funcs={"extract": queue_func},
+                embedding_func=types.SimpleNamespace(func=queue_func),
+                rerank_model_func=None,
+            )
+
+        async def insert_content_list(self, **_kwargs) -> None:
+            raise RuntimeError("entity extraction failed")
+
+        async def finalize_storages(self) -> None:
+            calls.append(("finalize",))
+
+    monkeypatch.setattr(engine, "build_rag", lambda wd, **_: _FailingRag(wd))
+    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
+    _force_available(monkeypatch, True)
+    document = tmp_path / "bad.pdf"
+    document.write_bytes(b"%PDF")
+
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    with pytest.raises(RuntimeError, match="entity extraction failed"):
+        asyncio.run(pipe.initialize("kb", [str(document)]))
+
+    assert calls == [("shutdown", False, 5.0), ("finalize",)]
 
 
 def test_initialize_requires_lightrag(tmp_path, monkeypatch) -> None:
