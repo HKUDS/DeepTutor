@@ -6,6 +6,7 @@ from deeptutor.services.llm.error_mapping import map_error, retry_after_seconds
 from deeptutor.services.llm.exceptions import (
     LLMAPIError,
     LLMAuthenticationError,
+    LLMProviderTransportError,
     LLMRateLimitError,
     ProviderContextWindowError,
 )
@@ -72,3 +73,12 @@ def test_map_error_falls_back_to_api_error() -> None:
     mapped = map_error(DummyError("boom", status_code=500), provider="openai")
     assert isinstance(mapped, LLMAPIError)
     assert mapped.status_code == 500
+
+
+def test_map_error_preserves_structured_transport_error() -> None:
+    error = LLMProviderTransportError("provider connection failed")
+
+    mapped = map_error(error, provider="openai_codex")
+
+    assert mapped is error
+    assert mapped.provider == "openai_codex"

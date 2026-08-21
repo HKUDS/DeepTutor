@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from .exceptions import LLMTimeoutError
+from .exceptions import LLMProviderTransportError, LLMTimeoutError
 
 
 def _exception_chain(exc: Exception):
@@ -102,7 +102,13 @@ def is_transient_transport_error(exc: Exception) -> bool:
     for current in _exception_chain(exc):
         if isinstance(
             current,
-            (httpx.TransportError, LLMTimeoutError, TimeoutError, ConnectionError),
+            (
+                httpx.TransportError,
+                LLMProviderTransportError,
+                LLMTimeoutError,
+                TimeoutError,
+                ConnectionError,
+            ),
         ):
             return True
         error_type = type(current)
