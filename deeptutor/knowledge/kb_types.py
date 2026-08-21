@@ -101,7 +101,7 @@ CONNECTED_KB_TYPES = frozenset(
 # mounts an index built elsewhere, while ``lightrag_server`` and ``ima`` offload
 # retrieval over HTTP — so "connected" must never be used as a synonym for
 # "unsearchable" (it once cost Book generation every one of those sources).
-NON_RETRIEVABLE_KB_TYPES = frozenset({OBSIDIAN_KB_TYPE, SUBAGENT_KB_TYPE})
+NON_RETRIEVABLE_KB_TYPES = frozenset({OBSIDIAN_KB_TYPE, SUBAGENT_KB_TYPE, MARGINNOTE4_KB_TYPE})
 
 
 def is_connected_kb(entry: Any) -> bool:

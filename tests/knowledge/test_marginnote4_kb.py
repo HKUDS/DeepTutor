@@ -86,3 +86,26 @@ def test_register_marginnote4_kb_rejects_duplicate(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="already exists"):
         manager.register_marginnote4_kb("Lib")
+
+
+def test_mn4_is_connected_but_not_rag_retrievable() -> None:
+    """MN4 objects live in their own store, so ``rag_search`` cannot reach them.
+
+    Membership in ``CONNECTED_KB_TYPES`` alone would leave
+    ``supports_rag_retrieval`` true and let Book sweep the library, which
+    returns nothing and reads as "your MN4 notes had no relevant content"
+    instead of "this source needs its own tools".
+    """
+    from deeptutor.knowledge.kb_types import is_connected_kb, supports_rag_retrieval
+
+    entry = {"type": "marginnote4", "db_path": "/data/mn4/test.db"}
+    assert is_connected_kb(entry) is True
+    assert supports_rag_retrieval(entry) is False
+
+
+def test_connected_kbs_backed_by_an_index_stay_retrievable() -> None:
+    """Guard the distinction: "connected" is not the same as "unsearchable"."""
+    from deeptutor.knowledge.kb_types import supports_rag_retrieval
+
+    for kb_type in ("linked", "lightrag_server", "ima"):
+        assert supports_rag_retrieval({"type": kb_type}) is True

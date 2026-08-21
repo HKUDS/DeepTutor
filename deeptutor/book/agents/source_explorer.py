@@ -342,8 +342,10 @@ class SourceExplorer(BaseAgent):
         """Split *kb_list* into (retrievable, unreachable).
 
         Only the KBs ``rag_search`` genuinely cannot reach are set aside: an
-        Obsidian vault (no index — its capability navigates live files) and a
-        connected subagent (not a document collection). Sweeping those returned
+        Obsidian vault (no index — its capability navigates live files), a
+        MarginNote 4 library (same shape: synced objects in their own store,
+        reachable only through the MN4 tools) and a connected subagent (not a
+        document collection). Sweeping those returned
         nothing and looked identical to a source that simply had no relevant
         content, so the reader never learned their vault contributed zero;
         reaching them properly means driving each capability, which is separate
