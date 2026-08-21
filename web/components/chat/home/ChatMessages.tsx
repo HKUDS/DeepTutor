@@ -41,6 +41,8 @@ import type {
 import { apiFetch, apiUrl } from "@/lib/api";
 import { docIconFor } from "@/lib/doc-attachments";
 import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
+import { showEncoreAdminNav } from "@/lib/encore-admin-nav";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 import {
   extractQuizQuestions,
@@ -1203,6 +1205,13 @@ export const ChatMessageList = memo(function ChatMessageList({
   ) => void;
 }) {
   const { t } = useTranslation();
+  const { enabled, isAdmin, loading: authLoading } = useAuthStatus();
+  
+  const showCostFooter = showEncoreAdminNav({
+    loading: authLoading,
+    enabled,
+    isAdmin,
+  });
   // Visible path: when no branching has happened the result is identical
   // to the input. After an edit, sibling branches are filtered out so the
   // UI shows exactly one continuous thread, with arrow nav exposed on the
@@ -1404,6 +1413,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         const showDelete = deletableTurnUserId != null;
 
         const costSummary = (() => {
+          if (!showCostFooter) return null;
           if (!msgDone) return null;
           const resultEv = msg.events?.find((e) => e.type === "result");
           if (!resultEv) return null;

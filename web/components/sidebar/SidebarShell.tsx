@@ -29,7 +29,12 @@ import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import type { SessionSummary } from "@/lib/session-api";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 import type { Capability } from "@/lib/capability-routes";
+import {
+  isEncoreAdminOnlyNavHref,
+  showEncoreAdminNav,
+} from "@/lib/encore-admin-nav";
 
 interface NavEntry {
   href: string;
@@ -143,6 +148,7 @@ export function SidebarShell({
   const router = useRouter();
   const { t } = useTranslation();
   const { has } = useCapabilityAccess();
+  const { enabled, isAdmin, loading: authLoading } = useAuthStatus();
   const { sidebarCollapsed, setSidebarCollapsed: setCollapsed } = useAppShell();
   const { isMobile } = useDevice();
   const drawer = useSidebarDrawer();
@@ -162,6 +168,18 @@ export function SidebarShell({
   const navLocked = (item: NavEntry) =>
     item.requires ? !has(item.requires) : false;
   const lockedTooltip = t("Locked — contact your administrator to get access.");
+
+  const showAdminNav = showEncoreAdminNav({
+    loading: authLoading,
+    enabled,
+    isAdmin,
+  });
+  const primaryNav = PRIMARY_NAV.filter(
+    (item) => showAdminNav || !isEncoreAdminOnlyNavHref(item.href),
+  );
+  const secondaryNav = SECONDARY_NAV.filter(
+    (item) => showAdminNav || !isEncoreAdminOnlyNavHref(item.href),
+  );
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(collapsed) : footerSlot;
   const [recentsCollapsed, setRecentsCollapsed] = useState(false);
@@ -227,7 +245,7 @@ export function SidebarShell({
 
         {/* Primary nav */}
         <nav className="mt-1 flex w-full flex-col items-center gap-1 px-1.5">
-          {PRIMARY_NAV.map((item) => {
+          {primaryNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const locked = navLocked(item);
             const description = locked
@@ -286,8 +304,10 @@ export function SidebarShell({
 
         {/* Secondary nav + footer */}
         <div className="flex w-full flex-col items-center gap-1 px-1.5">
-          <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
-          {SECONDARY_NAV.map((item) => {
+          {secondaryNav.length > 0 ? (
+            <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
+          ) : null}
+          {secondaryNav.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
               <Link
@@ -347,7 +367,7 @@ export function SidebarShell({
       {/* Primary nav */}
       <nav className="px-2 pt-1">
         <div className="space-y-px">
-          {PRIMARY_NAV.map((item) => {
+          {primaryNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const locked = navLocked(item);
             if (locked) {
@@ -448,7 +468,7 @@ export function SidebarShell({
 
       {/* Secondary nav + footer */}
       <div className="border-t border-[var(--border)]/40 px-2 py-2">
-        {SECONDARY_NAV.map((item) => {
+        {secondaryNav.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link

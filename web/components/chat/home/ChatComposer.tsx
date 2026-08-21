@@ -37,6 +37,8 @@ import {
   isSvgFilename,
 } from "@/lib/doc-attachments";
 import { useTranslation } from "react-i18next";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
+import { showEncoreAdminNav } from "@/lib/encore-admin-nav";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
@@ -365,6 +367,12 @@ export default memo(function ChatComposer({
   inputPlaceholder?: string;
 }) {
   const { t } = useTranslation();
+  const { enabled, isAdmin, loading: authLoading } = useAuthStatus();
+  const showModelControls = showEncoreAdminNav({
+    loading: authLoading,
+    enabled,
+    isAdmin,
+  });
   const CapIcon = activeCap.icon;
 
   const [hasContent, setHasContent] = useState(false);
@@ -1065,16 +1073,18 @@ export default memo(function ChatComposer({
                     onOpenChange={onPersonaSelectorOpenChange}
                   />
                 ) : null}
-                <ModelSelector
-                  options={llmOptions}
-                  activeDefault={activeLLMDefault}
-                  value={llmSelection}
-                  loading={llmOptionsLoading}
-                  error={llmOptionsError}
-                  onChange={onSelectLLM}
-                  onRefresh={onRefreshLLMOptions}
-                />
-                {contextBudget ? (
+                {showModelControls ? (
+                  <ModelSelector
+                    options={llmOptions}
+                    activeDefault={activeLLMDefault}
+                    value={llmSelection}
+                    loading={llmOptionsLoading}
+                    error={llmOptionsError}
+                    onChange={onSelectLLM}
+                    onRefresh={onRefreshLLMOptions}
+                  />
+                ) : null}
+                {showModelControls && contextBudget ? (
                   <ContextBudgetChip budget={contextBudget} />
                 ) : null}
 
