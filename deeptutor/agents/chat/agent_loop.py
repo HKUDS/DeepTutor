@@ -902,8 +902,7 @@ class AgentLoop:
                 # gpt-5.6-luna/-terra/-sol 400 on tools, root cause still
                 # unconfirmed for lack of this exact log line).
                 logger.warning(
-                    "provider rejected tool schemas for model=%s; retrying without "
-                    "tools. error=%s",
+                    "provider rejected tool schemas for model=%s; retrying without tools. error=%s",
                     kwargs.get("model"),
                     error_text(exc),
                 )
