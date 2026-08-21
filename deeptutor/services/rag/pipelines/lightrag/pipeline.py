@@ -31,8 +31,8 @@ from deeptutor.services.rag.index_versioning import (
 )
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
+from . import block_policy, engine, storage
 from . import config as lr_config
-from . import engine, storage
 from .worker import OwnerLoopBridge, run_in_worker_loop
 
 logger = logging.getLogger(__name__)
@@ -102,9 +102,33 @@ class LightRagPipeline:
                 self.logger.warning("LightRAG: parse failed for %s: %s", path.name, exc)
                 continue
 
-            content_list = doc.blocks or (
-                [{"type": "text", "text": doc.markdown, "page_idx": 0}] if doc.markdown else []
-            )
+            if doc.blocks:
+                document_id = doc.source_hash or path.stem
+                decision = block_policy.prepare_content_list(
+                    doc.blocks,
+                    engine=doc.engine,
+                    source_hash=doc.source_hash,
+                    parser_signature=doc.parser_signature,
+                )
+                if decision.ledger is not None:
+                    block_policy.write_decision_ledger(
+                        Path(rag.working_dir), document_id, decision.ledger
+                    )
+                    counts = decision.ledger["counts"]
+                    self.logger.info(
+                        "MinerU block policy %s raw=%d filtered=%d eligible=%d unknown=%d",
+                        block_policy.POLICY_ID,
+                        counts["raw_total"],
+                        counts["filtered_total"],
+                        counts["eligible_total"],
+                        counts["unknown_total"],
+                    )
+                decision.require_accepted()
+                content_list = decision.content_list
+            else:
+                content_list = (
+                    [{"type": "text", "text": doc.markdown, "page_idx": 0}] if doc.markdown else []
+                )
             if not content_list:
                 self.logger.warning("LightRAG: empty document skipped: %s", path.name)
                 continue

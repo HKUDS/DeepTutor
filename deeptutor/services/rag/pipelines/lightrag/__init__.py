@@ -7,6 +7,7 @@ through the per-KB ``search_mode``.
 
 Modules:
 
+* ``block_policy`` — versioned MinerU block classification before indexing.
 * ``config``   — availability + mode helpers + the LLM/vision/embedding adapters.
 * ``storage``  — per-KB version-dir layout + readiness marker.
 * ``engine``   — the ONLY module importing ``raganything``/``lightrag``.

@@ -1,0 +1,207 @@
+"""Versioned MinerU block policy for LightRAG indexing.
+
+MinerU's legacy ``content_list.json`` mixes semantic document content with
+page-layout helpers.  DeepTutor retains the raw parser cache for audit and
+derives an independent, deep-copied list for indexing so RAG-Anything never
+needs to decide which parser blocks are semantic.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from copy import deepcopy
+from dataclasses import dataclass
+import hashlib
+from pathlib import Path
+import re
+from typing import Any
+
+from deeptutor.services.file_io import atomic_write_json
+
+POLICY_ID = "mineru-legacy-content-list-v1"
+LEDGER_DIRNAME = "deeptutor_ingestion_audit"
+
+FILTERED_LAYOUT_TYPES = frozenset({"footer", "header", "page_number"})
+PRESERVED_AUXILIARY_TYPES = frozenset({"aside_text", "page_footnote"})
+PRESERVED_SEMANTIC_TYPES = frozenset(
+    {"chart", "code", "equation", "image", "list", "table", "text"}
+)
+PRESERVED_TYPES = PRESERVED_AUXILIARY_TYPES | PRESERVED_SEMANTIC_TYPES
+MULTIMODAL_TYPES = PRESERVED_TYPES - {"text"}
+
+V2_AUXILIARY_EQUIVALENTS = {
+    "aside_text": "page_aside_text",
+    "footer": "page_footer",
+    "header": "page_header",
+    "page_footnote": "page_footnote",
+    "page_number": "page_number",
+}
+
+_SAFE_TYPE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
+_INVALID_TYPE = "<invalid>"
+
+
+class MinerUBlockPolicyError(RuntimeError):
+    """Raised before indexing when MinerU emits an unclassified block type."""
+
+
+@dataclass(frozen=True)
+class BlockPolicyDecision:
+    """Sanitized policy outcome plus an independent list for indexing."""
+
+    content_list: list[dict[str, Any]]
+    ledger: dict[str, Any] | None
+    unknown_type_counts: tuple[tuple[str, int], ...] = ()
+
+    def require_accepted(self) -> None:
+        """Fail closed when an observed MinerU type has no explicit policy."""
+        if not self.unknown_type_counts:
+            return
+        summary = ", ".join(
+            f"{content_type}={count}" for content_type, count in self.unknown_type_counts
+        )
+        raise MinerUBlockPolicyError(
+            f"MinerU content_list contains unsupported block types: {summary}"
+        )
+
+
+def _sanitized_type(block: dict[str, Any]) -> str:
+    value = block.get("type")
+    if isinstance(value, str) and _SAFE_TYPE.fullmatch(value):
+        return value
+    return _INVALID_TYPE
+
+
+def _sorted_counts(counter: Counter[str]) -> dict[str, int]:
+    return dict(sorted(counter.items()))
+
+
+def _page_type_key(content_type: str, block: dict[str, Any]) -> str | None:
+    page_idx = block.get("page_idx")
+    if isinstance(page_idx, int) and page_idx >= 0:
+        return f"{content_type}:{page_idx}"
+    return None
+
+
+def prepare_content_list(
+    blocks: list[dict[str, Any]],
+    *,
+    engine: str,
+    source_hash: str,
+    parser_signature: str,
+) -> BlockPolicyDecision:
+    """Derive the indexable content list without mutating parser-owned blocks.
+
+    Only MinerU's legacy structured output is classified. Other parse engines
+    retain their existing behavior because their block vocabularies have
+    independent contracts.
+    """
+    if engine != "mineru":
+        return BlockPolicyDecision(content_list=blocks, ledger=None)
+
+    raw_counts: Counter[str] = Counter()
+    filtered_counts: Counter[str] = Counter()
+    eligible_counts: Counter[str] = Counter()
+    eligible_multimodal_page_counts: Counter[str] = Counter()
+    unknown_counts: Counter[str] = Counter()
+    indexable: list[dict[str, Any]] = []
+
+    for raw_block in blocks:
+        if not isinstance(raw_block, dict):
+            raw_counts[_INVALID_TYPE] += 1
+            unknown_counts[_INVALID_TYPE] += 1
+            continue
+        block = raw_block
+        content_type = _sanitized_type(block)
+        raw_counts[content_type] += 1
+        if content_type in FILTERED_LAYOUT_TYPES:
+            filtered_counts[content_type] += 1
+            continue
+        if content_type not in PRESERVED_TYPES:
+            unknown_counts[content_type] += 1
+            continue
+
+        eligible_counts[content_type] += 1
+        if content_type in MULTIMODAL_TYPES:
+            page_type_key = _page_type_key(content_type, block)
+            if page_type_key is not None:
+                eligible_multimodal_page_counts[page_type_key] += 1
+        indexable.append(deepcopy(block))
+
+    ledger: dict[str, Any] = {
+        "schema_version": 1,
+        "policy": {
+            "id": POLICY_ID,
+            "input_schema": "legacy-content-list",
+            "filtered_layout_types": sorted(FILTERED_LAYOUT_TYPES),
+            "preserved_auxiliary_types": sorted(PRESERVED_AUXILIARY_TYPES),
+            "preserved_semantic_types": sorted(PRESERVED_SEMANTIC_TYPES),
+            "v2_auxiliary_equivalents": dict(sorted(V2_AUXILIARY_EQUIVALENTS.items())),
+            "v2_runtime_ingestion_enabled": False,
+        },
+        "parser": {
+            "engine": engine,
+            "source_hash": source_hash,
+            "parser_signature": parser_signature,
+        },
+        "counts": {
+            "raw_total": len(blocks),
+            "raw_by_type": _sorted_counts(raw_counts),
+            "filtered_total": sum(filtered_counts.values()),
+            "filtered_by_type": _sorted_counts(filtered_counts),
+            "eligible_total": len(indexable),
+            "eligible_by_type": _sorted_counts(eligible_counts),
+            "eligible_multimodal_total": sum(
+                count
+                for content_type, count in eligible_counts.items()
+                if content_type in MULTIMODAL_TYPES
+            ),
+            "eligible_multimodal_by_type_and_page": _sorted_counts(eligible_multimodal_page_counts),
+            "unknown_total": sum(unknown_counts.values()),
+            "unknown_by_type": _sorted_counts(unknown_counts),
+        },
+        "invariants": {
+            "input_blocks_mutated": False,
+            "eligible_order_preserved": True,
+            "unknown_types_fail_closed": True,
+            "raw_parser_artifacts_mutated": False,
+        },
+    }
+    return BlockPolicyDecision(
+        content_list=indexable,
+        ledger=ledger,
+        unknown_type_counts=tuple(sorted(unknown_counts.items())),
+    )
+
+
+def write_decision_ledger(
+    working_dir: Path,
+    document_id: str,
+    ledger: dict[str, Any],
+) -> Path:
+    """Persist sanitized classification evidence beside LightRAG storage."""
+    document_id_sha256 = hashlib.sha256(document_id.encode()).hexdigest()
+    path = Path(working_dir) / LEDGER_DIRNAME / f"{document_id_sha256[:16]}.json"
+    atomic_write_json(
+        path,
+        {
+            **ledger,
+            "document_id_sha256": document_id_sha256,
+        },
+    )
+    return path
+
+
+__all__ = [
+    "BlockPolicyDecision",
+    "FILTERED_LAYOUT_TYPES",
+    "LEDGER_DIRNAME",
+    "MULTIMODAL_TYPES",
+    "MinerUBlockPolicyError",
+    "POLICY_ID",
+    "PRESERVED_AUXILIARY_TYPES",
+    "PRESERVED_SEMANTIC_TYPES",
+    "PRESERVED_TYPES",
+    "prepare_content_list",
+    "write_decision_ledger",
+]
