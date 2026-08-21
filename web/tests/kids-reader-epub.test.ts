@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { resolveKidsReadingSectionId } from "../lib/kids-api";
 
 const readerSource = readFileSync(
   path.resolve(process.cwd(), "app/kids/[documentId]/page.tsx"),
@@ -27,4 +28,15 @@ test("kids reader centers guided learning and demotes translation", () => {
   assert.match(readerSource, /result\.total_stars/);
   assert.doesNotMatch(readerSource, />\s*Translate\s*</);
   assert.match(readerSource, /Languages/);
+});
+
+test("kids reader maps EPUB navigation to backend reading sections", () => {
+  const sectionId = resolveKidsReadingSectionId(
+    "OEBPS/chap01.html",
+    [{ href: "../Text/chap01.html", label: "Book 1 - Plums" }],
+    [{ id: "section_0005", title: "Book 1 - Plums", index: 4 }],
+  );
+
+  assert.equal(sectionId, "section_0005");
+  assert.equal(resolveKidsReadingSectionId("unknown.html", [], []), "");
 });

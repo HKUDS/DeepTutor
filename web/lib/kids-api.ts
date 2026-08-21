@@ -36,6 +36,41 @@ export interface KidsBookAssignment {
   is_next_read: boolean;
 }
 
+export interface KidsReadingSection {
+  id: string;
+  title: string;
+  index: number;
+}
+
+export interface KidsReaderTocItem {
+  href?: string;
+  label?: string;
+  title?: string;
+}
+
+function _resourceName(value: string): string {
+  return value.split(/[?#]/)[0].split("/").pop()?.toLowerCase() || "";
+}
+
+function _normalizedTitle(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+}
+
+export function resolveKidsReadingSectionId(
+  href: string,
+  toc: KidsReaderTocItem[],
+  sections: KidsReadingSection[],
+): string {
+  const resourceName = _resourceName(href);
+  const currentTocItem = toc.find((item) => item.href && _resourceName(item.href) === resourceName);
+  const tocTitle = currentTocItem?.label || currentTocItem?.title || "";
+  const normalizedTocTitle = _normalizedTitle(tocTitle);
+
+  return (
+    sections.find((section) => _normalizedTitle(section.title) === normalizedTocTitle)?.id || ""
+  );
+}
+
 export interface KidsLearningProgress {
   profile_id: string;
   document_id: string;

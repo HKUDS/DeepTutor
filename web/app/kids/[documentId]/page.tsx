@@ -6,6 +6,8 @@ import { useRouter, useParams } from "next/navigation";
 import { Languages } from "lucide-react";
 import {
   kidsApi,
+  resolveKidsReadingSectionId,
+  type KidsReadingSection,
   type KidsSafeQuestion,
   type KidsQuizGrade,
 } from "@/lib/kids-api";
@@ -49,6 +51,9 @@ export default function KidsReaderPage() {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const currentHrefRef = useRef<string>("");
+  const currentSectionIdRef = useRef<string>("");
+  const sectionsRef = useRef<KidsReadingSection[]>([]);
+  const tocRef = useRef<NavItem[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +65,10 @@ export default function KidsReaderPage() {
         const doc = data.document as Record<string, any>;
         setBookTitle(doc.title || "Book");
         setStars(data.progress?.total_stars || 0);
+        const docSections = Array.isArray(doc.sections) ? doc.sections : [];
+        sectionsRef.current = docSections;
+        currentSectionIdRef.current =
+          docSections.find((section: KidsReadingSection) => section.id === data.progress?.current_section_id)?.id || "";
         if (data.progress?.epub_cfi) {
           setLocation(data.progress.epub_cfi);
         }
@@ -121,9 +130,13 @@ export default function KidsReaderPage() {
 
   const saveProgress = useCallback(
     (loc: string, href: string) => {
+      const sectionId =
+        currentSectionIdRef.current ||
+        resolveKidsReadingSectionId(href, tocRef.current, sectionsRef.current);
+      const sectionIndex = sectionsRef.current.find((section) => section.id === sectionId)?.index || 0;
       kidsApi.updateProgress(documentId, {
-        section_id: href,
-        section_index: 0,
+        section_id: sectionId,
+        section_index: sectionIndex,
         scroll_percent: 0,
         epub_cfi: loc,
         section_href: href,
@@ -177,7 +190,9 @@ export default function KidsReaderPage() {
     setAnswers({});
     setQuizLoading(true);
     try {
-      const sectionId = currentHrefRef.current || "section-0";
+      const sectionId =
+        currentSectionIdRef.current ||
+        resolveKidsReadingSectionId(currentHrefRef.current, tocRef.current, sectionsRef.current);
       const { questions: qs } = await kidsApi.getQuiz(documentId, sectionId);
       setQuestions(qs);
     } catch {
@@ -193,7 +208,8 @@ export default function KidsReaderPage() {
       const answerArr = questions.map((_, i) => answers[i] ?? -1);
       const result = await kidsApi.submitQuiz(
         documentId,
-        currentHrefRef.current || "section-0",
+        currentSectionIdRef.current ||
+          resolveKidsReadingSectionId(currentHrefRef.current, tocRef.current, sectionsRef.current),
         answerArr,
       );
       setGrade(result);
@@ -308,11 +324,11 @@ export default function KidsReaderPage() {
         <ReactReader
           url={epubUrl}
           location={location ?? null}
-          locationChanged={(loc: string) => {
-            setLocation(loc);
-            saveProgress(loc, currentHrefRef.current);
+          locationChanged={(loc: string) => setLocation(loc)}
+          tocChanged={(t: NavItem[]) => {
+            setToc(t);
+            tocRef.current = t;
           }}
-          tocChanged={(t: NavItem[]) => setToc(t)}
           epubInitOptions={{ openAs: "epub" }}
           epubOptions={{ allowScriptedContent: false }}
           getRendition={(rendition: Rendition) => {
@@ -327,6 +343,12 @@ export default function KidsReaderPage() {
             rendition.on("relocated", (location: any) => {
               const href = location?.start?.href || "";
               currentHrefRef.current = href;
+              currentSectionIdRef.current = resolveKidsReadingSectionId(
+                href,
+                tocRef.current,
+                sectionsRef.current,
+              );
+              saveProgress(location?.start?.cfi || "", href);
             });
           }}
         />
