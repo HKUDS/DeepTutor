@@ -352,6 +352,8 @@ from deeptutor.api.routers import (
     co_writer,
     dashboard,
     imports,
+    kids,
+    kids_admin,
     knowledge,
     mastery_path,
     mcp_settings,
@@ -425,6 +427,17 @@ app.include_router(
     notebook.router, prefix="/api/v1/notebook", tags=["notebook"], dependencies=_auth
 )
 app.include_router(book.router, prefix="/api/v1/book", tags=["book"], dependencies=_auth)
+app.include_router(
+    kids_admin.router,
+    prefix="/api/v1/kids-admin",
+    tags=["kids-admin"],
+    dependencies=_auth,
+)
+app.include_router(
+    kids.router,
+    prefix="/api/v1/kids",
+    tags=["kids"],
+)
 app.include_router(reading.router, prefix="/api/v1/reading", tags=["reading"], dependencies=_auth)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
