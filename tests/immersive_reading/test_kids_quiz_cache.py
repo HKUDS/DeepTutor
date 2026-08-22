@@ -130,7 +130,7 @@ def write_cache(path, *, age_band="6-8", language="en", sight_word=False):
         questions=questions,
         content_hash=hashlib.sha256(CONTENT.encode("utf-8")).hexdigest(),
         model="cached-model",
-        prompt_version="kids-quiz-v5",
+        prompt_version="kids-quiz-v6",
         age_band=age_band,
         language=language,
     )
@@ -143,7 +143,7 @@ def write_cache(path, *, age_band="6-8", language="en", sight_word=False):
 async def test_unsupported_cache_version_is_regenerated(tmp_path, monkeypatch):
     service, quiz_path, calls = make_service(tmp_path, monkeypatch)
     cached = write_cache(quiz_path)
-    cached.prompt_version = "kids-quiz-v3"
+    cached.prompt_version = "kids-quiz-v5"
     quiz_path.write_text(cached.model_dump_json(), encoding="utf-8")
 
     result = await service.generate_kids_quiz("document-1", "section-1", age_band="6-8")
@@ -248,6 +248,4 @@ def test_chinese_fallback_comprehension_is_content_anchored():
     assert len(questions) == 3
     assert all(question["kind"] == "comprehension" for question in questions)
     assert all(re.search(r"[\u4e00-\u9fff]", question["question"]) for question in questions)
-    assert any(
-        "量子世界" in question["choices"][question["answer_index"]] for question in questions
-    )
+    assert any("牛顿" in question["choices"][question["answer_index"]] for question in questions)

@@ -28,7 +28,10 @@ from deeptutor.immersive_reading.models import (
     FocusCheckResult,
     KidsBookAssignment,
     KidsInteractiveBookProgress,
+    KidsLearnConcept,
     KidsLearningProgress,
+    KidsLearnReflection,
+    KidsLearnResult,
     KidsProfile,
     KidsQuizQuestion,
     KidsQuizResult,
@@ -1986,8 +1989,8 @@ class ImmersiveReadingService:
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
 
-    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v5"
-    KIDS_QUIZ_SUPPORTED_CACHE_VERSIONS = frozenset({"kids-quiz-v5", "kids-quiz-fallback-v5"})
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v6"
+    KIDS_QUIZ_SUPPORTED_CACHE_VERSIONS = frozenset({"kids-quiz-v6", "kids-quiz-fallback-v6"})
 
     def _kids_fallback_questions(
         self,
@@ -2112,6 +2115,7 @@ class ImmersiveReadingService:
                 "2. Question 2 (Detail, inference, or cause/effect): What happens, why does it happen, or what can be inferred? "
                 "3. Question 3 (Key idea in context): What does an important phrase mean here, or what is the main conclusion? "
                 "Each question must have exactly 4 choices (one correct, three plausible distractors). "
+                "Distractors must be plausible, realistic alternatives related to the context (do NOT generate absurd jokes or unrelated fairy-tale tropes). "
                 "Return JSON only matching the schema: "
                 '{"questions":[{"id":"q1","kind":"comprehension","question":"...","choices":["a","b","c","d"],"answer_index":0,"explanation":"..."}]}'
             )
@@ -2124,6 +2128,7 @@ class ImmersiveReadingService:
                 "3. Question 3 (Conclusion / Meaning in context): What is the result, or what does an important phrase mean here? "
                 "Keep questions and choices very simple, short, and clear (2-6 words per choice). "
                 "Each question must have exactly 4 choices and exactly 1 correct answer. "
+                "Distractors must be plausible, realistic alternatives related to the context (do NOT generate absurd jokes or unrelated fairy-tale tropes). "
                 "Return JSON only matching the schema: "
                 '{"questions":[{"id":"q1","kind":"comprehension","question":"...","choices":["a","b","c","d"],"answer_index":0,"explanation":"..."}]}'
             )
@@ -2150,16 +2155,17 @@ class ImmersiveReadingService:
             ),
             system_prompt=system,
             temperature=0.3,
-            max_tokens=2000,
+            max_tokens=2500,
             max_retries=0,
-            timeout=5,
+            timeout=45,
             response_format={"type": "json_object"},
         )
 
         if not raw or not raw.strip():
             raise RuntimeError("The model returned an empty quiz")
 
-        parsed = parse_json_response(raw)
+        cleaned_raw = clean_thinking_tags(raw)
+        parsed = parse_json_response(cleaned_raw)
         questions_raw = parsed.get("questions", [])
         questions: list[KidsQuizQuestion] = []
         for i, q in enumerate(questions_raw[:3]):
@@ -2218,6 +2224,220 @@ class ImmersiveReadingService:
         )
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
+        return result
+
+    KIDS_LEARN_PROMPT_VERSION = "kids-learn-v1"
+
+    def _kids_learn_path(self, document_id: str, section_id: str, content_hash: str) -> Path:
+        return self._document_root(document_id) / "kids-learn" / section_id / f"{content_hash}.json"
+
+    def _kids_learn_fallback(
+        self,
+        document_id: str,
+        section_id: str,
+        visible_text: str,
+        *,
+        age_band: str,
+        language: str,
+    ) -> KidsLearnResult:
+        paragraphs = [p.strip() for p in re.split(r"\n+", visible_text) if p.strip()]
+        sentences = [
+            s.strip()
+            for p in paragraphs
+            for s in re.split(r"(?<=[。！？!?；;])\s*|(?<=\.)\s+", p)
+            if 12 <= len(s.strip()) <= 240
+        ]
+        informative = [s for s in sentences if _CJK_RE.search(s) or len(s.split()) >= 6]
+        overview = (
+            informative[0] if informative else (paragraphs[0] if paragraphs else visible_text[:160])
+        )
+
+        definition_terms: list[str] = []
+        for sentence in informative:
+            for match in re.finditer(
+                r"([^，。！？；：,!?;:\s]{2,16})(?:是|是指|叫做|叫)(?:什么|怎样|什么样)", sentence
+            ):
+                term = match.group(1).strip()
+                if term and term not in definition_terms:
+                    definition_terms.append(term)
+
+        cjk_counts: dict[str, int] = {}
+        compact = re.sub(r"\s+", "", visible_text)
+        for size in (4, 3, 2):
+            for i in range(0, max(0, len(compact) - size + 1)):
+                token = compact[i : i + size]
+                if not all(_CJK_RE.match(char) for char in token):
+                    continue
+                cjk_counts[token] = cjk_counts.get(token, 0) + 1
+        repeated = sorted(
+            (term for term, count in cjk_counts.items() if count >= 2),
+            key=lambda term: (cjk_counts[term] * len(term), len(term)),
+            reverse=True,
+        )
+        for term in repeated:
+            if term not in definition_terms:
+                definition_terms.append(term)
+
+        concepts: list[KidsLearnConcept] = []
+        for term in definition_terms:
+            supporting = next((s for s in informative if term in s), "")
+            if not supporting:
+                continue
+            concepts.append(KidsLearnConcept(term=term, explanation=supporting, analogy=""))
+            if len(concepts) == 3:
+                break
+
+        if language == "zh":
+            reflection = KidsLearnReflection(
+                prompt="用自己的话说说，这一页主要讲了什么？",
+                hint="先看第一句和反复出现的关键词，再把它们连成一句话。",
+                answer=overview,
+            )
+        else:
+            reflection = KidsLearnReflection(
+                prompt="Explain this page in your own words.",
+                hint="Start with the first sentence, then use a repeated key word.",
+                answer=overview,
+            )
+
+        return KidsLearnResult(
+            document_id=document_id,
+            section_id=section_id,
+            overview=overview,
+            concepts=concepts,
+            reflection=reflection,
+            content_hash=self._content_hash(visible_text),
+            model="visible-page-fallback",
+            prompt_version=self.KIDS_LEARN_PROMPT_VERSION,
+            age_band=age_band,
+            language="zh" if language == "zh" else "en",
+            source="fallback",
+        )
+
+    def _load_valid_kids_learn_cache(
+        self, cached: Any, *, content_hash: str, age_band: str, language: str
+    ) -> KidsLearnResult | None:
+        if not isinstance(cached, dict):
+            return None
+        if (
+            cached.get("age_band") != age_band
+            or cached.get("language") != language
+            or cached.get("prompt_version") != self.KIDS_LEARN_PROMPT_VERSION
+            or cached.get("content_hash") != content_hash
+        ):
+            return None
+        try:
+            return KidsLearnResult.model_validate(cached)
+        except ValueError:
+            return None
+
+    async def generate_kids_learn(
+        self,
+        document_id: str,
+        section_id: str,
+        visible_text: str,
+        *,
+        force_refresh: bool = False,
+        age_band: str = "6-8",
+        language: str = "en",
+    ) -> KidsLearnResult:
+        """Generate an unscored concept guide for the currently visible page."""
+        content_hash = self._content_hash(visible_text)
+        cache_path = self._kids_learn_path(document_id, section_id, content_hash)
+        cached = _read_json(cache_path) if cache_path.exists() else None
+        cached_result = self._load_valid_kids_learn_cache(
+            cached, content_hash=content_hash, age_band=age_band, language=language
+        )
+        if not force_refresh and cached_result is not None:
+            return cached_result
+
+        try:
+            doc = self.load_document(document_id)
+            section = next((s for s in doc.sections if s.id == section_id), None)
+            if section is None:
+                raise ValueError("Reading section not found")
+            age_instruction = {
+                "3-5": "For ages 3-5, use very short sentences.",
+                "6-8": "For ages 6-8, use simple sentences.",
+                "9-12": "For ages 9-12, use clear but substantive sentences.",
+            }.get(age_band, "For ages 6-8, use simple sentences.")
+            language_label = "Simplified Chinese" if language == "zh" else "English"
+            system = (
+                "You create a short concept guide for one visible page of a children's book. "
+                "Use only information stated or directly implied by the page. "
+                "Return JSON only: "
+                '{"overview":"...","concepts":[{"term":"...","explanation":"...","analogy":"..."}],'
+                '"reflection":{"prompt":"...","hint":"...","answer":"..."}}. '
+                "Use 2 or 3 concepts. Every analogy must be a child-friendly everyday comparison. "
+                f"{age_instruction} Write every value in {language_label}."
+            )
+            raw = await complete(
+                prompt=f"Page title: {section.title}\n\n<visible_page>\n{visible_text}\n</visible_page>",
+                system_prompt=system,
+                temperature=0.2,
+                max_tokens=1200,
+                max_retries=0,
+                timeout=6,
+                response_format={"type": "json_object"},
+            )
+            parsed = parse_json_response(raw)
+            overview = str(parsed.get("overview", "")).strip()
+            concepts_raw = parsed.get("concepts", [])
+            concepts = [
+                KidsLearnConcept(
+                    term=str(item.get("term", "")).strip(),
+                    explanation=str(item.get("explanation", "")).strip(),
+                    analogy=str(item.get("analogy", "")).strip(),
+                )
+                for item in concepts_raw[:3]
+                if isinstance(item, dict)
+                and str(item.get("term", "")).strip()
+                and str(item.get("explanation", "")).strip()
+            ]
+            reflection_raw = parsed.get("reflection", {})
+            if (
+                not overview
+                or not concepts
+                or not isinstance(reflection_raw, dict)
+                or not str(reflection_raw.get("prompt", "")).strip()
+                or not str(reflection_raw.get("answer", "")).strip()
+                or (language == "zh" and not _CJK_RE.search(overview))
+                or (language == "zh" and any(not _CJK_RE.search(c.term) for c in concepts))
+                or (language == "en" and _CJK_RE.search(overview))
+                or (language == "en" and any(_CJK_RE.search(c.term) for c in concepts))
+            ):
+                raise RuntimeError("The model returned an invalid learn guide")
+
+            cfg = get_llm_config()
+            result = KidsLearnResult(
+                document_id=document_id,
+                section_id=section_id,
+                overview=overview,
+                concepts=concepts,
+                reflection=KidsLearnReflection(
+                    prompt=str(reflection_raw.get("prompt", "")).strip(),
+                    hint=str(reflection_raw.get("hint", "")).strip() or overview,
+                    answer=str(reflection_raw.get("answer", "")).strip(),
+                ),
+                content_hash=content_hash,
+                model=str(getattr(cfg, "model", "") or ""),
+                prompt_version=self.KIDS_LEARN_PROMPT_VERSION,
+                age_band=age_band,
+                language="zh" if language == "zh" else "en",
+                source="generated",
+            )
+        except Exception as exc:
+            logger.warning("Kids learn generation failed, using visible-page fallback: %s", exc)
+            result = self._kids_learn_fallback(
+                document_id,
+                section_id,
+                visible_text,
+                age_band=age_band,
+                language=language,
+            )
+
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(cache_path, result.model_dump(mode="json"))
         return result
 
     def update_kids_progress(

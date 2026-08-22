@@ -15,6 +15,7 @@ import logging
 import re
 import time
 from typing import Any
+import unicodedata
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
@@ -83,6 +84,24 @@ def _require_profile(
     if manager.get_profile(profile_id) is None:
         raise HTTPException(status_code=401, detail="Profile not found")
     return profile_id
+
+
+def _normalize_learning_anchor(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    return " ".join(normalized.split()).casefold()
+
+
+def _is_visible_text_anchored(visible_text: str, section_text: str) -> bool:
+    visible = _normalize_learning_anchor(visible_text)
+    full = _normalize_learning_anchor(section_text)
+    if not visible or not full:
+        return False
+    if visible in full:
+        return True
+    paragraphs = [
+        _normalize_learning_anchor(p) for p in re.split(r"\n+", visible_text) if p.strip()
+    ]
+    return any(len(p) >= 20 and p in full for p in paragraphs)
 
 
 # ── Bootstrap & profile selection ───────────────────────────────────────────
@@ -212,6 +231,19 @@ async def get_kids_book(
     max_index = assignment.available_through_section_index if assignment else 999
     allowed_sections = [s for s in doc.sections if s.index <= max_index]
     detail = ir.document_detail(document_id)
+    chapter_texts: list[str] = []
+    for section in allowed_sections:
+        if section.checkpoint_kind != "chapter":
+            continue
+        try:
+            chapter_texts.append(str(ir.get_section(document_id, section.id).get("content", "")))
+        except Exception:
+            continue
+        if len("".join(chapter_texts)) > 3000:
+            break
+    detail["content_language"] = detect_quiz_language(
+        "\n".join(chapter_texts), preferred_language="en"
+    )
     detail["sections"] = [s.model_dump(mode="json") for s in allowed_sections]
     progress = manager.load_kids_progress(profile_id, document_id)
     return {"document": detail, "progress": progress.model_dump(mode="json")}
@@ -288,6 +320,51 @@ class KidsQuizRequest(BaseModel):
     force_refresh: bool = False
 
 
+class KidsLearnRequest(BaseModel):
+    section_id: str
+    visible_text: str = Field(min_length=1, max_length=3000)
+    force_refresh: bool = False
+
+
+@router.post("/books/{document_id}/learn")
+async def get_kids_learn(
+    document_id: str,
+    request: KidsLearnRequest,
+    profile_id: str = Depends(_require_profile),
+) -> dict:
+    """Get an unscored concept guide for the currently visible page."""
+    manager = get_kids_manager()
+    ir = get_immersive_reading_service()
+    section = _resolve_kids_reading_section(ir, document_id, request.section_id)
+    if section is None or not manager.is_section_allowed(profile_id, document_id, section.index):
+        raise HTTPException(status_code=404, detail="Book not found")
+    if section.checkpoint_kind != "chapter":
+        raise HTTPException(status_code=400, detail="Learn is available in chapters")
+
+    section_text = ir.get_section(document_id, section.id).get("content", "")
+    if not _is_visible_text_anchored(request.visible_text, section_text):
+        raise HTTPException(status_code=400, detail="Page text does not match this chapter")
+
+    profile = manager.get_profile(profile_id)
+    age_band = profile.age_band if profile else "6-8"
+    language = detect_quiz_language(
+        request.visible_text,
+        preferred_language=profile.help_language if profile else "en",
+    )
+    try:
+        result = await ir.generate_kids_learn(
+            document_id,
+            section.id,
+            request.visible_text,
+            force_refresh=request.force_refresh,
+            age_band=age_band,
+            language=language,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return result.model_dump(mode="json")
+
+
 def _resolve_kids_reading_section(ir, document_id: str, requested_section_id: str):
     """Resolve current section IDs and older EPUB hrefs from deployed clients."""
     try:
@@ -359,7 +436,7 @@ def _fill_kids_quiz_to_three(
         )
         existing.add(fallback["question"].strip().lower())
 
-    result.prompt_version = "kids-quiz-fallback-v5"
+    result.prompt_version = "kids-quiz-fallback-v6"
     result.generated_at = time.time()
     result.age_band = age_band
     result.language = language
@@ -399,7 +476,7 @@ def _build_fallback_kids_quiz(
         ],
         content_hash=hashlib.sha256(section_text.encode()).hexdigest(),
         model="story-comprehension-fallback",
-        prompt_version="kids-quiz-fallback-v5",
+        prompt_version="kids-quiz-fallback-v6",
         age_band=age_band,
         language=language,
     )
@@ -453,9 +530,14 @@ async def get_kids_quiz(
         return {
             "questions": [],
             "section_id": section.id,
+            "language": language,
             "message": "Read more to unlock quizzes!",
         }
-    return {"questions": _safe_kids_questions(result), "section_id": section.id}
+    return {
+        "questions": _safe_kids_questions(result),
+        "section_id": section.id,
+        "language": language,
+    }
 
 
 class KidsQuizSubmitRequest(BaseModel):
@@ -525,13 +607,19 @@ async def submit_kids_quiz(
     total = len(cached.questions)
     stars = 3 if total > 0 and correct == total else 0
 
-    encouragements = [
-        "Great job!"
+    encouragements = (
+        ["全部答对，太棒了！"]
         if correct == total
-        else "Good try!"
+        else ["有进步，再想想！"]
         if correct > 0
-        else "Keep reading and try again!"
-    ]
+        else ["继续读一读，再试一次！"]
+        if language == "zh"
+        else ["Great job!"]
+        if correct == total
+        else ["Good try!"]
+        if correct > 0
+        else ["Keep reading and try again!"]
+    )
 
     progress, new_stars = manager.record_reading_quiz_result(
         profile_id,
@@ -553,6 +641,7 @@ async def submit_kids_quiz(
         "completed_section_ids": progress.completed_section_ids,
         "per_question": per_question,
         "encouragements": encouragements,
+        "language": language,
     }
 
 
