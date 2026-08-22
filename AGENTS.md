@@ -1,5 +1,8 @@
 # DeepTutor — Agent-Native Architecture
 
+For feature development, bug fixes, branching, isolated worktrees, ports, and
+local product deployment, follow `DEVELOPMENT_WORKFLOW.md` in this repository.
+
 ## Overview
 
 DeepTutor is an **agent-native** intelligent learning companion organized

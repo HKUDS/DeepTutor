@@ -54,6 +54,9 @@ The active Kids feature set is a coherent product, not a demo:
 
 ## Regression gates
 
+Follow `DEVELOPMENT_WORKFLOW.md` for branching, isolated worktrees, ports,
+verification, and local product deployment before merging or releasing.
+
 Run these before releasing or merging upstream changes into this fork:
 
 ```bash
