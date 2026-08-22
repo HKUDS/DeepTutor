@@ -1,10 +1,11 @@
 """Security and transport tests for child-facing reading documents."""
 
 from pathlib import Path
+import re
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from types import SimpleNamespace
 
 import deeptutor.api.routers.kids as kids_router_module
 from deeptutor.immersive_reading.models import (
@@ -90,6 +91,26 @@ class FailingQuizReadingService:
         return {"content": "The plum is a little fruit. said Mac."}
 
 
+class FakeWordHintReadingService:
+    def load_document(self, document_id: str):
+        assert document_id == "readingdoc001"
+        return SimpleNamespace(
+            sections=[
+                SimpleNamespace(
+                    id="section-1",
+                    title="Book 1 - Plums",
+                    index=0,
+                    checkpoint_kind="chapter",
+                )
+            ]
+        )
+
+    def get_section(self, document_id: str, section_id: str):
+        assert document_id == "readingdoc001"
+        assert section_id == "section-1"
+        return {"content": "The little plum is on the mat."}
+
+
 def test_kids_epub_requires_device_session(tmp_path, monkeypatch):
     manager = get_kids_manager()
     monkeypatch.setattr(manager, "_kids_root", lambda: tmp_path / "kids")
@@ -172,6 +193,49 @@ def test_kids_epub_quiz_stars_are_idempotent_per_section(tmp_path, monkeypatch):
     assert second.json()["new_stars_awarded"] == 0
     assert second.json()["total_stars"] == 3
     assert "answer_index" not in first.text
+
+
+def test_kids_epub_quiz_partial_score_does_not_award_stars_or_complete(tmp_path, monkeypatch):
+    manager = get_kids_manager()
+    monkeypatch.setattr(manager, "_kids_root", lambda: tmp_path / "kids")
+    profile = manager.create_profile(name="Reader")
+    _write_json(
+        manager._assignments_path(),
+        [
+            KidsBookAssignment(
+                id="assignment001",
+                profile_id=profile.id,
+                document_id="readingdoc001",
+                document_title="Reading Doc",
+            ).model_dump(mode="json")
+        ],
+    )
+    monkeypatch.setattr(
+        kids_router_module,
+        "get_immersive_reading_service",
+        lambda: FakeQuizReadingService(),
+    )
+
+    app = FastAPI()
+    app.include_router(kids_router_module.router, prefix="/api/v1/kids")
+    client = TestClient(app)
+    selected = client.post("/api/v1/kids/select-profile", json={"profile_id": profile.id})
+    headers = {"Authorization": f"Bearer {selected.json()['token']}"}
+
+    response = client.post(
+        "/api/v1/kids/books/readingdoc001/quiz/submit",
+        json={"section_id": "section-1", "answers": [0, 1, 0]},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["score"] == 2
+    assert payload["total"] == 3
+    assert payload["stars"] == 0
+    assert payload["new_stars_awarded"] == 0
+    assert payload["total_stars"] == 0
+    assert payload["completed_section_ids"] == []
 
 
 def test_kids_epub_quiz_falls_back_to_real_story_words(tmp_path, monkeypatch):
@@ -266,3 +330,88 @@ def test_kids_quiz_is_capped_at_three_questions():
     )
 
     assert len(_fill_kids_quiz_to_three(object(), "doc", "section", "6-8", result).questions) == 3
+
+
+def _word_hint_client(tmp_path, monkeypatch):
+    manager = get_kids_manager()
+    monkeypatch.setattr(manager, "_kids_root", lambda: tmp_path / "kids")
+    profile = manager.create_profile(name="Reader")
+    _write_json(
+        manager._assignments_path(),
+        [
+            KidsBookAssignment(
+                id="assignment001",
+                profile_id=profile.id,
+                document_id="readingdoc001",
+                document_title="Reading Doc",
+            ).model_dump(mode="json")
+        ],
+    )
+    monkeypatch.setattr(
+        kids_router_module,
+        "get_immersive_reading_service",
+        lambda: FakeWordHintReadingService(),
+    )
+    app = FastAPI()
+    app.include_router(kids_router_module.router, prefix="/api/v1/kids")
+    client = TestClient(app)
+    selected = client.post("/api/v1/kids/select-profile", json={"profile_id": profile.id})
+    return client, {"Authorization": f"Bearer {selected.json()['token']}"}
+
+
+def test_kids_word_hint_progressive_contract(tmp_path, monkeypatch):
+    client, headers = _word_hint_client(tmp_path, monkeypatch)
+    endpoint = "/api/v1/kids/books/readingdoc001/word-hint"
+
+    initial = client.post(
+        endpoint,
+        json={"word": "plum", "section_id": "section-1", "context": "The little plum."},
+        headers=headers,
+    )
+    assert initial.status_code == 200
+    initial_payload = initial.json()
+    assert initial_payload["english_hint"]
+    assert "chinese" not in initial_payload
+    assert "choices" not in initial_payload
+    assert "answer" not in initial_payload
+
+    choices = client.post(
+        f"{endpoint}/choices",
+        json={"hint_id": initial_payload["hint_id"]},
+        headers=headers,
+    )
+    assert choices.status_code == 200
+    choice_payload = choices.json()
+    assert len(choice_payload["choices"]) == 3
+    assert all(not re.search(r"[\u4e00-\u9fff]", choice) for choice in choice_payload["choices"])
+
+    wrong_choice = "not one of the choices"
+    first_wrong = client.post(
+        f"{endpoint}/check",
+        json={"hint_id": initial_payload["hint_id"], "choice": wrong_choice, "attempt": 1},
+        headers=headers,
+    )
+    first_payload = first_wrong.json()
+    assert first_payload["correct"] is False
+    assert "chinese" not in first_payload
+    assert "correct_choice" not in first_payload
+
+    second_wrong = client.post(
+        f"{endpoint}/check",
+        json={"hint_id": initial_payload["hint_id"], "choice": wrong_choice, "attempt": 2},
+        headers=headers,
+    )
+    second_payload = second_wrong.json()
+    assert second_payload["correct"] is False
+    assert second_payload["correct_choice"]
+    assert re.search(r"[\u4e00-\u9fff]", second_payload["chinese"])
+
+
+def test_kids_word_hint_rejects_unauthorized_section(tmp_path, monkeypatch):
+    client, headers = _word_hint_client(tmp_path, monkeypatch)
+    response = client.post(
+        "/api/v1/kids/books/readingdoc001/word-hint",
+        json={"word": "plum", "section_id": "missing-section", "context": ""},
+        headers=headers,
+    )
+    assert response.status_code == 404
