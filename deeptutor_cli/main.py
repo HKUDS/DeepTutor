@@ -13,6 +13,7 @@ from .book import register as register_book
 from .chat import register as register_chat
 from .common import build_turn_request, console, maybe_run
 from .config_cmd import register as register_config
+from .doctor import register as register_doctor
 from .init_cmd import register as register_init
 from .kb import register as register_kb
 from .memory import register as register_memory
@@ -69,6 +70,7 @@ register_session(session_app)
 register_notebook(notebook_app)
 register_provider(provider_app)
 register_book(book_app)
+register_doctor(app)
 register_init(app)
 
 
