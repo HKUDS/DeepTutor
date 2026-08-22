@@ -239,14 +239,22 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                     if response.status_code == 429:
                         if self._key_pool:
                             self._key_pool.mark_429(api_key)
-                        if rate_limit_retries < 1:
+                        # 滑动窗口 429 是瞬态的：长跑（全库 reindex 数小时）里
+                        # 单次 429 不该报废整跑。最多 8 轮，每轮等窗口滑过
+                        # （Retry-After 优先，无头保守 60s）。月度额度耗尽的
+                        # 429 会连挂 8 轮后仍然 raise，不会无限空转。
+                        if rate_limit_retries < 8:
                             rate_limit_retries += 1
-                            api_key = self._auth_api_key()
-                            self._set_auth_header(headers, api_key)
-                            # 火山 RPM 是滑动窗口：换 key 后立即重试仍会被拒。
-                            # 按 Retry-After 等待（无头时保守 30s）让窗口滑过。
                             retry_after = float(response.headers.get("Retry-After", 0))
-                            await asyncio.sleep(max(retry_after, 30))
+                            await asyncio.sleep(max(retry_after, 60))
+                            try:
+                                api_key = self._auth_api_key()
+                            except RuntimeError:
+                                # 池内 key 全在冷却（KeyPool 冷却 60s）。
+                                # 等冷却期过后再取一次；仍取不到才认输。
+                                await asyncio.sleep(65)
+                                api_key = self._auth_api_key()
+                            self._set_auth_header(headers, api_key)
                             continue
                         retry_after = float(response.headers.get("Retry-After", 0))
                         raise EmbeddingProviderError(
