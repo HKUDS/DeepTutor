@@ -9,6 +9,7 @@ from typing import Any
 
 from deeptutor.capabilities.explore_context import ExploreContextCapability
 from deeptutor.capabilities.ima import ImaCapability
+from deeptutor.capabilities.marginnote4 import MarginNoteCapability
 from deeptutor.capabilities.mastery import MasteryLoopCapability
 from deeptutor.capabilities.obsidian import ObsidianCapability
 from deeptutor.capabilities.protocol import LoopCapability
@@ -27,6 +28,7 @@ LOOP_CAPABILITIES: tuple[LoopCapability, ...] = (
     MasteryLoopCapability(),
     SolveLoopCapability(),
     ObsidianCapability(),
+    MarginNoteCapability(),
     SubagentCapability(),
     # Additive (not a KnowledgeCapability): an IMA library is searchable over
     # HTTP, so ``rag`` keeps serving it and these tools only add what retrieval

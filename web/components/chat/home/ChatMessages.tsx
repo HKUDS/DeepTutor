@@ -891,6 +891,7 @@ const UserMessage = memo(function UserMessage({
   editDisabled,
   siblingInfo,
   onSwitchBranch,
+  availableKbNames,
 }: {
   msg: ChatMessageItem;
   index: number;
@@ -900,6 +901,8 @@ const UserMessage = memo(function UserMessage({
   editDisabled?: boolean;
   siblingInfo?: SiblingInfo;
   onSwitchBranch?: (parentMessageId: number | null, childId: number) => void;
+  /** Names of KBs confirmed to exist. Omitted when the KB list is unavailable. */
+  availableKbNames?: Set<string>;
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
@@ -956,25 +959,30 @@ const UserMessage = memo(function UserMessage({
         onClick: onPreviewAttachment ? () => onPreviewAttachment(a) : undefined,
       };
     }),
-    ...(snap?.knowledgeBases ?? []).map((name): ContextTreeItem => {
-      const agentKind = agentKinds[name];
-      if (agentKind) {
+    ...(snap?.knowledgeBases ?? [])
+      .filter(
+        (name) =>
+          !availableKbNames || availableKbNames.has(name) || agentKinds[name],
+      )
+      .map((name): ContextTreeItem => {
+        const agentKind = agentKinds[name];
+        if (agentKind) {
+          return {
+            key: `agent-${name}`,
+            // Brand SVG marks share the lucide call signature (size/strokeWidth/
+            // className); cast bridges the structural-variance gap.
+            icon: (agentGlyph(agentKind) ?? Bot) as unknown as LucideIcon,
+            kind: t("Agent"),
+            label: name,
+          };
+        }
         return {
-          key: `agent-${name}`,
-          // Brand SVG marks share the lucide call signature (size/strokeWidth/
-          // className); cast bridges the structural-variance gap.
-          icon: (agentGlyph(agentKind) ?? Bot) as unknown as LucideIcon,
-          kind: t("Agent"),
+          key: `kb-${name}`,
+          icon: Database,
+          kind: t("Knowledge"),
           label: name,
         };
-      }
-      return {
-        key: `kb-${name}`,
-        icon: Database,
-        kind: t("Knowledge"),
-        label: name,
-      };
-    }),
+      }),
     ...(snap?.bookReferences ?? []).map(
       (ref): ContextTreeItem => ({
         key: `book-${ref.book_id}`,
@@ -1165,6 +1173,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   selectedBranches,
   onEditMessage,
   onSwitchBranch,
+  availableKbNames,
   onSubmitUserReply,
 }: {
   messages: ChatMessageItem[];
@@ -1201,6 +1210,8 @@ export const ChatMessageList = memo(function ChatMessageList({
           answers?: Array<{ questionId: string; text: string }>;
         },
   ) => void;
+  /** Names of KBs confirmed to exist. Omitted when the KB list is unavailable. */
+  availableKbNames?: Set<string>;
 }) {
   const { t } = useTranslation();
   // Visible path: when no branching has happened the result is identical
@@ -1381,6 +1392,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               editDisabled={isStreaming}
               siblingInfo={sib}
               onSwitchBranch={onSwitchBranch}
+              availableKbNames={availableKbNames}
             />
           );
         }

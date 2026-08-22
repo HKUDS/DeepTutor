@@ -12,6 +12,7 @@ import {
   Loader2,
   Plus,
   Server,
+  Smartphone,
 } from "lucide-react";
 import Modal from "@/components/common/Modal";
 import { useImaConnection } from "@/hooks/useImaConnection";
@@ -36,6 +37,7 @@ import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 
 const OBSIDIAN_SOURCE = "obsidian";
+const MARGINNOTE4_SOURCE = "marginnote4";
 const LIGHTRAG_SERVER_PROVIDER = "lightrag-server";
 const EXAMPLE_INDEX_PATH = "/Users/you/knowledge_bases/my-kb";
 const EXAMPLE_VAULT_PATH = "/Users/you/Documents/MyVault";
@@ -72,6 +74,8 @@ interface CreateKbModalProps {
     apiKey?: string;
     mode?: string;
   }) => Promise<void>;
+  /** Connect a MarginNote 4 library (its Add-on pushes objects in; no index). */
+  onConnectMarginNote4: (params: { name: string }) => Promise<void>;
   /** Connect a Tencent IMA knowledge base (retrieval only, no local index). */
   onConnectIma: (params: {
     name: string;
@@ -96,6 +100,7 @@ export default function CreateKbModal({
   onConnectLinkedFolder,
   onConnectObsidian,
   onConnectLightRagServer,
+  onConnectMarginNote4,
   onConnectIma,
   onConfigureProvider,
   initialMode = "new",
@@ -125,6 +130,7 @@ export default function CreateKbModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
+  const linkIsMarginNote = linkSource === MARGINNOTE4_SOURCE;
   const linkIsIma = linkSource === IMA_PROVIDER;
   const imaConnection = useImaConnection({
     name,
@@ -223,6 +229,7 @@ export default function CreateKbModal({
       return !providerUnavailable && selection.validFiles.length > 0;
     }
     if (linkIsIma) return imaConnection.canSubmit;
+    if (linkIsMarginNote) return true;
     if (!trimmedPath) return false;
     if (linkIsObsidian) return true;
     // An engine index must pass the probe before it can be linked.
@@ -294,6 +301,8 @@ export default function CreateKbModal({
           apiKey: imaConnection.submittedApiKey,
           knowledgeBaseId: imaConnection.knowledgeBaseId,
         });
+      } else if (linkIsMarginNote) {
+        await onConnectMarginNote4({ name: trimmed });
       } else if (linkIsObsidian) {
         await onConnectObsidian({ name: trimmed, vaultPath: trimmedPath });
       } else {
@@ -316,7 +325,7 @@ export default function CreateKbModal({
       ? isLightRagServer
         ? t("Connect")
         : t("Create")
-      : linkIsObsidian || linkIsIma
+      : linkIsObsidian || linkIsIma || linkIsMarginNote
         ? t("Connect")
         : t("Link");
 
@@ -423,6 +432,7 @@ export default function CreateKbModal({
             setLinkSource={handleLinkSourceChange}
             linkIsObsidian={linkIsObsidian}
             linkIsIma={linkIsIma}
+            linkIsMarginNote={linkIsMarginNote}
             folderPath={folderPath}
             setFolderPath={setFolderPath}
             submitting={submitting}
@@ -845,6 +855,7 @@ function LinkModeFields({
   setLinkSource,
   linkIsObsidian,
   linkIsIma,
+  linkIsMarginNote,
   folderPath,
   setFolderPath,
   submitting,
@@ -859,6 +870,7 @@ function LinkModeFields({
   setLinkSource: (id: string) => void;
   linkIsObsidian: boolean;
   linkIsIma: boolean;
+  linkIsMarginNote: boolean;
   folderPath: string;
   setFolderPath: (value: string) => void;
   submitting: boolean;
@@ -876,7 +888,8 @@ function LinkModeFields({
         </label>
         <div className="grid gap-2 sm:grid-cols-2">
           {providers.map((p) => {
-            const selected = !linkIsObsidian && linkSource === p.id;
+            const selected =
+              !linkIsObsidian && !linkIsMarginNote && linkSource === p.id;
             const enabled = linkSourceEnabled(p);
             const disabled = submitting || !enabled;
             return (
@@ -947,11 +960,44 @@ function LinkModeFields({
               )}
             </span>
           </button>
+
+          {/* MarginNote 4 — filled by its Add-on, not by a path on this disk. */}
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => setLinkSource(MARGINNOTE4_SOURCE)}
+            className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+              linkIsMarginNote
+                ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                : "border-[var(--border)] hover:border-[var(--ring)]"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--foreground)]">
+                <Smartphone className="h-3.5 w-3.5" />
+                {t("MarginNote 4")}
+              </span>
+              {linkIsMarginNote && (
+                <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+              )}
+            </div>
+            <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
+              {t(
+                "Notes, excerpts and cards pushed in by the MarginNote 4 add-on.",
+              )}
+            </span>
+          </button>
         </div>
       </div>
 
       {linkIsIma ? (
         connectionForm
+      ) : linkIsMarginNote ? (
+        <p className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-2 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
+          {t(
+            "The library starts empty. Pair a device from its Devices tab, then enter the token in the MarginNote 4 add-on to start syncing.",
+          )}
+        </p>
       ) : (
         <>
           <div>

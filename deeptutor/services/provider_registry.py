@@ -538,6 +538,48 @@ def find_by_model(model: str | None) -> ProviderSpec | None:
     return None
 
 
+def _matching_overrides(spec: ProviderSpec, model_lower: str) -> dict[str, Any]:
+    for pattern, overrides in spec.model_overrides:
+        if pattern in model_lower:
+            return dict(overrides)
+    return {}
+
+
+def model_overrides_for(model: str | None, spec: ProviderSpec | None) -> dict[str, Any]:
+    """Request-parameter overrides *model* needs, whatever route serves it.
+
+    ``model_overrides`` are intrinsic to the model rather than to the route: a
+    Kimi model rejects an explicit ``temperature`` whether the caller reached
+    it through the ``moonshot`` binding, through an OpenAI-compatible router,
+    or through a gateway. Resolving them from the configured binding alone
+    loses them for everyone who picked a generic binding — which is the common
+    case — so #938 still got HTTP 400 ``invalid temperature: only 1 is allowed
+    for this model`` from ``kimi-k3`` under ``binding="openai"``, two months
+    after the override itself landed.
+
+    The configured spec is consulted first so an explicit binding always wins.
+    When it says nothing about this model, the model's own vendor spec does;
+    ``find_by_model`` skips gateway and local entries, so that lookup lands on
+    the vendor whose API is the thing actually enforcing the limit.
+
+    A value of ``None`` means "send this parameter as absent" — see the
+    ``moonshot`` spec for why that differs from sending a fixed value.
+    """
+    model_lower = (model or "").strip().lower()
+    if not model_lower:
+        return {}
+
+    if spec is not None:
+        configured = _matching_overrides(spec, model_lower)
+        if configured:
+            return configured
+
+    vendor = find_by_model(model_lower)
+    if vendor is None or vendor is spec:
+        return {}
+    return _matching_overrides(vendor, model_lower)
+
+
 def find_gateway(
     provider_name: str | None = None,
     api_key: str | None = None,

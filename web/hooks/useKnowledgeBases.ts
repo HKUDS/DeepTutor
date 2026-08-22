@@ -5,6 +5,7 @@ import {
   connectImaKnowledgeBase as connectImaApi,
   connectLightRagServer as connectLightRagServerApi,
   connectLinkedFolder as connectLinkedFolderApi,
+  connectMarginNote4Library as connectMarginNote4Api,
   connectObsidianVault as connectObsidianApi,
   createKnowledgeBase as createKbApi,
   deleteKnowledgeBase as deleteKbApi,
@@ -342,6 +343,15 @@ export function useKnowledgeBases() {
     [load],
   );
 
+  const connectMarginNote4 = useCallback(
+    async (params: { name: string }) => {
+      await connectMarginNote4Api(params);
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+    },
+    [load],
+  );
+
   const connectIma = useCallback(
     async (params: {
       name: string;
@@ -379,6 +389,7 @@ export function useKnowledgeBases() {
     connectObsidian,
     connectLinkedFolder,
     connectLightRagServer,
+    connectMarginNote4,
     connectIma,
   };
 }

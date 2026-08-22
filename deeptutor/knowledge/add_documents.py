@@ -312,7 +312,8 @@ class DocumentAdder:
 
                     self.progress_tracker.update(
                         ProgressStage.PROCESSING_FILE,
-                        f"Indexing {doc_file.name}",
+                        message_key="Indexing {{name}}",
+                        message_params={"name": doc_file.name},
                         current=len(processed_files),
                         total=total_files,
                     )
@@ -329,7 +330,8 @@ class DocumentAdder:
                     if self.progress_tracker is not None:
                         self.progress_tracker.update(
                             ProgressStage.PROCESSING_FILE,
-                            f"Indexed {doc_file.name}",
+                            message_key="Indexed {{name}}",
+                            message_params={"name": doc_file.name},
                             current=len(processed_files),
                             total=total_files,
                         )

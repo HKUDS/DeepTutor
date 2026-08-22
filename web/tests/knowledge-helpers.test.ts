@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  isMarginNoteKb,
   kbCanReindex,
+  kbDetailSections,
+  kbProvider,
   providerUsesEmbeddingMetadata,
   resolveKnowledgeIndexFailure,
   taskFailureMessage,
@@ -192,4 +195,31 @@ test("engine status follows the credential and install state", () => {
     providerConnectionStatus({ id: "graphrag", configured: false }),
     "unavailable",
   );
+});
+
+test("a MarginNote library shows devices instead of files and index versions", () => {
+  // It owns no raw documents and builds no index, so those three sections
+  // would render empty against it; what it does have is the devices that
+  // push objects into it.
+  const marginNote: KnowledgeBase = {
+    name: "MN4",
+    metadata: { type: "marginnote4", db_path: "/data/mn4/MN4.db" },
+  };
+  assert.deepEqual(kbDetailSections(marginNote), ["devices", "settings"]);
+  assert.equal(isMarginNoteKb(marginNote), true);
+  assert.equal(kbProvider(marginNote), "marginnote4");
+});
+
+test("an ordinary knowledge base has no devices section", () => {
+  const indexed: KnowledgeBase = {
+    name: "Papers",
+    statistics: { rag_provider: "llamaindex" },
+  };
+  assert.deepEqual(kbDetailSections(indexed), [
+    "files",
+    "add",
+    "versions",
+    "settings",
+  ]);
+  assert.equal(isMarginNoteKb(indexed), false);
 });

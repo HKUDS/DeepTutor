@@ -400,6 +400,11 @@ export default function ChatPage() {
   } = useUnifiedChat();
 
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
+  const availableKbNames = useMemo(
+    () => new Set(knowledgeBases.map((kb) => kb.name)),
+    [knowledgeBases],
+  );
   // A connected agent to preselect once it loads, from `?agent=<name>` on the
   // URL (the partner list page links here to drop straight into a chat with a
   // partner). Captured once at first client render — the URL is rewritten to
@@ -1190,7 +1195,9 @@ export default function ChatPage() {
       try {
         const list = await listKnowledgeBases({ force: options?.force });
         setKnowledgeBases(list);
+        setKnowledgeBasesLoaded(true);
       } catch {
+        setKnowledgeBasesLoaded(false);
         setKnowledgeBases([]);
       }
     },
@@ -1210,6 +1217,16 @@ export default function ChatPage() {
   useEffect(() => {
     void refreshKnowledgeBases();
   }, [refreshKnowledgeBases]);
+
+  // A physical KB delete does not cascade into persisted session preferences.
+  // Reconcile only after a successful fetch: an empty result then means every
+  // KB was deleted, while a failed request must keep the existing selection.
+  useEffect(() => {
+    if (!knowledgeBasesLoaded) return;
+    const selected = state.knowledgeBases;
+    const pruned = selected.filter((name) => availableKbNames.has(name));
+    if (pruned.length !== selected.length) setKBs(pruned);
+  }, [availableKbNames, knowledgeBasesLoaded, state.knowledgeBases, setKBs]);
 
   const refreshUserEnabledTools = useCallback(
     async (options?: { force?: boolean }) => {
@@ -1465,8 +1482,11 @@ export default function ChatPage() {
   // Fold all messages once per state.messages change to power the
   // SessionActivityPanel on the right (tools, KBs, space refs, attachments).
   const sessionActivity = useMemo(
-    () => buildSessionActivity(state.messages),
-    [state.messages],
+    () =>
+      buildSessionActivity(state.messages, {
+        availableKbNames: knowledgeBasesLoaded ? availableKbNames : undefined,
+      }),
+    [state.messages, availableKbNames, knowledgeBasesLoaded],
   );
 
   // Context-window readout for the composer chip: the newest turn that was
@@ -2200,6 +2220,9 @@ export default function ChatPage() {
                         onEditMessage={editMessage}
                         onSwitchBranch={switchBranch}
                         onSubmitUserReply={submitUserReply}
+                        availableKbNames={
+                          knowledgeBasesLoaded ? availableKbNames : undefined
+                        }
                       />
                       <div
                         ref={messagesEndRef}
