@@ -37,16 +37,46 @@ test("kids reader always offers three guided questions with pronunciation", () =
   assert.match(readerSource, /choice-\$\{qi\}-\$\{ci\}/);
   assert.match(readerSource, /answer-\$\{i\}/);
   assert.match(readerSource, /Volume2/);
-  assert.match(readerSource, /loadLearnQuestions\(previousSectionId\)/);
+  assert.match(readerSource, /shouldOpenChapterCheck/);
+  assert.match(readerSource, /loadLearnQuestions\(sectionId\)/);
+});
+
+test("kids reader protects the restored learning golden path", () => {
+  assert.match(readerSource, /kidsApi\.getWordHint/);
+  assert.match(readerSource, /createInitialWordHintState/);
+  assert.match(readerSource, /reduceWordHintState/);
+  assert.match(readerSource, /decorateEpubWords/);
+  assert.match(readerSource, /data-kids-word/);
+  assert.match(readerSource, /locations\.generate\(256\)/);
+  assert.match(readerSource, /reportLocation/);
+  assert.match(readerSource, /speakKidsText/);
+  assert.match(readerSource, /stopKidsSpeech/);
+  assert.match(readerSource, /shownSectionIdsRef/);
+  assert.doesNotMatch(readerSource, /speechSynthesis/);
 });
 
 test("kids reader maps EPUB navigation to backend reading sections", () => {
+  const sections = [
+    { id: "section_0004", title: "Contents", index: 3, checkpoint_kind: "none" },
+    { id: "section_0005", title: "Book 1 - Plums", index: 4, checkpoint_kind: "chapter" },
+    { id: "section_0006", title: "Book 2 - Little Bug", index: 5, checkpoint_kind: "chapter" },
+    {
+      id: "section_0007",
+      title: "Explicit href",
+      index: 6,
+      checkpoint_kind: "chapter",
+      source_href: "OEBPS/explicit.xhtml",
+    },
+  ];
+
   const sectionId = resolveKidsReadingSectionId(
     "OEBPS/chap01.html",
     [{ href: "../Text/chap01.html", label: "Book 1 - Plums" }],
-    [{ id: "section_0005", title: "Book 1 - Plums", index: 4 }],
+    sections,
   );
 
   assert.equal(sectionId, "section_0005");
+  assert.equal(resolveKidsReadingSectionId("OEBPS/chap02.html", [], sections), "section_0006");
+  assert.equal(resolveKidsReadingSectionId("OEBPS/explicit.xhtml", [], sections), "section_0007");
   assert.equal(resolveKidsReadingSectionId("unknown.html", [], []), "");
 });

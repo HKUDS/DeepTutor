@@ -84,6 +84,18 @@ jobs:
         working-directory: web
         run: npx eslint .
 
+      - name: Build frontend
+        working-directory: web
+        run: npm run build
+
+      - name: Install Playwright browser
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run frontend E2E golden path
+        working-directory: web
+        run: npm run test:e2e
+
   import-check:
     name: Import Check (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

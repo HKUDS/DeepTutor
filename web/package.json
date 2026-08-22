@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test:node": "node ./scripts/run-node-tests.mjs",
+    "test:e2e": "playwright test --project=e2e",
     "perf:check": "node ./scripts/route_budgets.mjs",
     "build:perf": "npm run build && npm run perf:check",
     "i18n:parity": "node ./scripts/i18n_parity.mjs",

@@ -19,9 +19,22 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "e2e",
+      testMatch: "**/*.e2e.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "ui-audit",
       testMatch: "**/*.audit.ts",
       use: { ...devices["Desktop Chrome"] },
     },
   ],
+  webServer: process.env.WEB_BASE_URL
+    ? undefined
+    : {
+        command: "npm run start -- --port 3000",
+        url: BASE_URL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
 });
