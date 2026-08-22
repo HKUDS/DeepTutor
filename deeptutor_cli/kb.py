@@ -350,52 +350,121 @@ def register(app: typer.Typer) -> None:
         else:
             console.print(f"[yellow]Source '{source_id}' not found.[/]")
 
+    @app.command("add-web-source")
+    def kb_add_web_source(
+        name: str = typer.Argument(..., help="KB name."),
+        url: str = typer.Option(..., "--url", "-u", help="Documentation site base URL."),
+        max_depth: int = typer.Option(3, "--max-depth", help="Crawl depth."),
+        max_pages: int = typer.Option(200, "--max-pages", help="Max pages to crawl."),
+        document_version: str = typer.Option(
+            "", "--document-version", help="Document/product version."
+        ),
+        validation_query: list[str] = typer.Option(
+            [], "--validation-query", help="Representative query used to validate a rebuilt index."
+        ),
+        sync_interval_hours: int = typer.Option(
+            24, "--sync-interval-hours", help="Scheduled sync interval in hours."
+        ),
+    ) -> None:
+        """Add a documentation site URL as a source for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+        try:
+            info = mgr.add_web_source(
+                name,
+                url,
+                max_depth,
+                max_pages,
+                document_version=document_version,
+                validation_queries=list(validation_query),
+                sync_interval_hours=sync_interval_hours,
+            )
+        except Exception as exc:
+            console.print(f"[red]Failed: {exc}[/]")
+            raise typer.Exit(code=1) from exc
+        console.print("[green]Web source added:[/]")
+        console.print_json(json.dumps(info, ensure_ascii=False))
+
+    @app.command("remove-web-source")
+    def kb_remove_web_source(
+        name: str = typer.Argument(..., help="KB name."),
+        source_id: str = typer.Option(..., "--source-id", "-s", help="Source ID to remove."),
+    ) -> None:
+        """Remove a web source from a KB."""
+        mgr = _get_kb_manager()
+        removed = mgr.remove_web_source(name, source_id)
+        if removed:
+            console.print(f"[green]Removed '{source_id}'.[/]")
+        else:
+            console.print(f"[yellow]Source '{source_id}' not found.[/]")
+
     @app.command("list-sources")
     def kb_list_sources(
         name: str = typer.Argument(..., help="KB name."),
     ) -> None:
-        """List GitHub sources for a KB."""
+        """List GitHub and web sources for a KB."""
         mgr = _get_kb_manager()
         if name not in mgr.list_knowledge_bases():
             console.print(f"[red]Knowledge base '{name}' not found.[/]")
             raise typer.Exit(code=1)
 
         gh_sources = mgr.get_github_sources(name)
+        web_sources = mgr.get_web_sources(name)
 
-        if not gh_sources:
+        if not gh_sources and not web_sources:
             console.print("[dim]No sources for this KB.[/]")
             return
 
-        table = Table(title=f"GitHub Sources - {name}")
-        table.add_column("ID", style="dim")
-        table.add_column("Repo")
-        table.add_column("Branch")
-        table.add_column("Status")
-        table.add_column("Files", justify="right")
-        for source in gh_sources:
-            table.add_row(
-                source.get("id", ""),
-                source.get("repo", ""),
-                source.get("branch", ""),
-                source.get("last_sync_status", "pending"),
-                str(source.get("files_synced", 0)),
-            )
-        console.print(table)
+        if gh_sources:
+            table = Table(title=f"GitHub Sources - {name}")
+            table.add_column("ID", style="dim")
+            table.add_column("Repo")
+            table.add_column("Branch")
+            table.add_column("Status")
+            table.add_column("Files", justify="right")
+            for source in gh_sources:
+                table.add_row(
+                    source.get("id", ""),
+                    source.get("repo", ""),
+                    source.get("branch", ""),
+                    source.get("last_sync_status", "pending"),
+                    str(source.get("files_synced", 0)),
+                )
+            console.print(table)
+
+        if web_sources:
+            table = Table(title=f"Web Sources - {name}")
+            table.add_column("ID", style="dim")
+            table.add_column("URL")
+            table.add_column("Status")
+            table.add_column("Pages", justify="right")
+            for source in web_sources:
+                table.add_row(
+                    source.get("id", ""),
+                    source.get("url", ""),
+                    source.get("last_sync_status", "pending"),
+                    str(source.get("page_count", 0)),
+                )
+            console.print(table)
 
     @app.command("sync")
     def kb_sync(name: str = typer.Argument(..., help="KB name.")) -> None:
-        """Immediately sync all GitHub sources for a KB."""
+        """Immediately sync all GitHub and web sources for a KB."""
         mgr = _get_kb_manager()
         if name not in mgr.list_knowledge_bases():
             console.print(f"[red]Knowledge base '{name}' not found.[/]")
             raise typer.Exit(code=1)
 
         gh_sources = mgr.get_github_sources(name)
-        if not gh_sources:
+        web_sources = mgr.get_web_sources(name)
+        if not gh_sources and not web_sources:
             console.print("[yellow]No sources to sync.[/]")
             raise typer.Exit(code=0)
 
         from deeptutor.services.github_source.sync import sync_source as gh_sync
+        from deeptutor.services.web_source.sync import sync_source as web_sync
 
         for src in gh_sources:
             if not src.get("enabled", True):
@@ -412,3 +481,22 @@ def register(app: typer.Typer) -> None:
                 console.print(f"  [green]+{r.files_added} ~{r.files_updated} -{r.files_removed}[/]")
             else:
                 console.print(f"  [red]Failed: {r.error}[/]")
+
+        for source in web_sources:
+            if not source.get("enabled", True):
+                continue
+            console.print(f"Crawling [bold]{source.get('url')}[/] ...")
+            try:
+                result = asyncio.run(
+                    web_sync(kb_name=name, source=source, base_dir=str(mgr.base_dir))
+                )
+            except Exception as exc:
+                console.print(f"  [red]Error: {exc}[/]")
+                continue
+            if result.ok:
+                console.print(
+                    f"  [green]+{result.pages_added} ~{result.pages_updated} "
+                    f"-{result.pages_removed} ({result.pages_unchanged} unchanged)[/]"
+                )
+            else:
+                console.print(f"  [red]Failed: {result.error}[/]")

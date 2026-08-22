@@ -117,7 +117,9 @@ def _entry_from_flat_version(version_dir: Path) -> dict[str, Any]:
     meta = _read_json(version_dir / META_FILENAME) or {}
     meta.setdefault("version", version_dir.name)
     meta.setdefault("signature", meta.get("signature") or version_dir.name)
-    meta["ready"] = _is_storage_ready(version_dir)
+    # A full rebuild writes a complete store before it is validated. Explicitly
+    # unpublished candidates therefore remain invisible to the read selector.
+    meta["ready"] = _is_storage_ready(version_dir) and meta.get("published", True)
     meta["storage_path"] = str(version_dir)
     meta["version_path"] = str(version_dir)
     meta["layout"] = "flat"
@@ -261,7 +263,11 @@ def storage_dir_for_signature(kb_dir: Path, sig_hash: str) -> Path:
 
 
 def write_version_meta(
-    kb_dir: Path, signature: EmbeddingSignature, storage_dir: Path | None = None
+    kb_dir: Path,
+    signature: EmbeddingSignature,
+    storage_dir: Path | None = None,
+    *,
+    published: bool = True,
 ) -> None:
     """Persist metadata next to the LlamaIndex store."""
     target = storage_dir or resolve_storage_dir_for_write(kb_dir, signature)
@@ -271,6 +277,7 @@ def write_version_meta(
         "signature": signature.hash(),
         **asdict(signature),
         "layout": "flat" if target.parent == kb_dir else "nested_legacy",
+        "published": published,
         "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     }
     with open(target / META_FILENAME, "w", encoding="utf-8") as handle:

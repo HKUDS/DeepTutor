@@ -110,7 +110,12 @@ class LlamaIndexPipeline:
 
             self.logger.info(f"Index persisted to {storage_dir}")
             if signature is not None:
-                write_version_meta(kb_dir, signature, storage_dir=storage_dir)
+                write_version_meta(
+                    kb_dir,
+                    signature,
+                    storage_dir=storage_dir,
+                    published=bool(kwargs.get("published", True)),
+                )
 
             self.logger.info(f"KB '{kb_name}' initialized successfully with LlamaIndex")
             return True

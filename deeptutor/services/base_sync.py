@@ -1,8 +1,9 @@
 """Abstract base class for background source-sync services.
 
-Source-sync services share lifecycle management (start/stop/event-loop)
-and staleness detection logic. This module provides the shared
-implementation so subclasses only need to implement ``_sync_one_cycle``.
+Both :class:`WebSourceSyncService` and :class:`GitHubSourceSyncService`
+share identical lifecycle management (start/stop/event-loop) and staleness
+detection logic.  This module provides the shared implementation so
+subclasses only need to implement ``_sync_one_cycle``.
 """
 
 from __future__ import annotations
