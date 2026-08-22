@@ -93,3 +93,31 @@ test("getVisiblePageText handles word-level spans when paragraphs span across co
 test("getVisiblePageText returns empty string safely on missing document", () => {
   assert.equal(getVisiblePageText(undefined, undefined), "");
 });
+
+test("getVisiblePageText returns visible blocks for Chinese text even when a block spans wide", () => {
+  const mockP1 = {
+    tagName: "P",
+    innerText: "很多小朋友应该都看过Facebook创始人扎克伯格给他的女儿讲量子力学的那张照片。",
+    textContent: "很多小朋友应该都看过Facebook创始人扎克伯格给他的女儿讲量子力学的那张照片。",
+    getBoundingClientRect: () => ({ left: 20, right: 1200, top: 20, bottom: 100, width: 1180, height: 80 }),
+    closest: () => null,
+  };
+
+  const mockDoc = {
+    body: {
+      children: [mockP1],
+      innerText: "很多小朋友应该都看过Facebook创始人扎克伯格给他的女儿讲量子力学的那张照片。",
+    },
+    documentElement: { clientWidth: 800, clientHeight: 600 },
+    querySelectorAll: (selector: string) => {
+      if (selector.includes("p")) {
+        return [mockP1];
+      }
+      return [];
+    },
+  } as unknown as Document;
+
+  const mockWin = { innerWidth: 800, innerHeight: 600 } as unknown as Window;
+  const visibleText = getVisiblePageText(mockDoc, mockWin);
+  assert.equal(visibleText, "很多小朋友应该都看过Facebook创始人扎克伯格给他的女儿讲量子力学的那张照片。");
+});

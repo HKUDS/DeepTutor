@@ -5,42 +5,74 @@
 export function getVisiblePageText(
   doc: Document | undefined,
   win: Window | undefined,
+  rendition?: any,
 ): string {
   if (!doc?.body) return "";
+
+  // 1. Try exact rendition range if rendition is provided or location exists
+  if (rendition) {
+    try {
+      const loc = rendition.currentLocation?.();
+      const startCfi = loc?.start?.cfi;
+      const endCfi = loc?.end?.cfi;
+      if (startCfi && endCfi) {
+        const startRange = rendition.getRange?.(startCfi);
+        const endRange = rendition.getRange?.(endCfi);
+        if (startRange && endRange) {
+          const ownerDoc = startRange.startContainer?.ownerDocument || doc;
+          const pageRange = ownerDoc.createRange();
+          pageRange.setStart(startRange.startContainer, startRange.startOffset);
+          pageRange.setEnd(endRange.endContainer, endRange.endOffset);
+          const rangeText = pageRange.toString().trim();
+          if (rangeText && rangeText.length > 5) {
+            return rangeText;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Calculate horizontal offset in paginated multi-column layout
   const viewportWidth = win?.innerWidth || doc.documentElement?.clientWidth || 800;
   const viewportHeight = win?.innerHeight || doc.documentElement?.clientHeight || 600;
 
-  // 1. Try block elements (p, h1..h6, li, blockquote)
-  const blocks = doc.querySelectorAll("p, h1, h2, h3, h4, h5, h6, li, blockquote");
+  let startX = 0;
+  try {
+    const loc = rendition?.currentLocation?.();
+    const pageNumber = loc?.start?.displayed?.page;
+    if (typeof pageNumber === "number" && pageNumber >= 1) {
+      startX = (pageNumber - 1) * viewportWidth;
+    }
+  } catch {}
+
+  const endX = startX + viewportWidth;
+
+  // 3. Inspect block elements inside [startX, endX]
+  const blocks = doc.querySelectorAll("p, h1, h2, h3, h4, h5, h6, li, blockquote, div.bodycontent-text");
   const visibleBlocks: string[] = [];
-  let foundWideBlock = false;
 
   for (const block of Array.from(blocks)) {
     const el = block as HTMLElement;
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) continue;
 
-    // Check if element is completely on another column/page
-    if (rect.right <= 2 || rect.left >= viewportWidth - 2) continue;
-    if (rect.bottom <= 2 || rect.top >= viewportHeight - 2) continue;
+    // Check if element intersects [startX, endX] and vertical bounds
+    const isHorizontallyVisible = rect.right > startX + 2 && rect.left < endX - 2;
+    const isVerticallyVisible = rect.bottom > 2 && rect.top < viewportHeight - 2;
 
-    // If a single paragraph spans across multiple columns, switch to word-level granularity
-    if (rect.width > viewportWidth * 1.2) {
-      foundWideBlock = true;
-      break;
-    }
-
-    const text = el.innerText || el.textContent || "";
-    if (text.trim()) {
-      visibleBlocks.push(text.trim());
+    if (isHorizontallyVisible && isVerticallyVisible) {
+      const text = el.innerText || el.textContent || "";
+      if (text.trim()) {
+        visibleBlocks.push(text.trim());
+      }
     }
   }
 
-  if (visibleBlocks.length > 0 && !foundWideBlock) {
+  if (visibleBlocks.length > 0) {
     return visibleBlocks.join("\n");
   }
 
-  // 2. If blocks span across columns or no blocks found, inspect visible word spans
+  // 4. Inspect visible word spans
   const spans = doc.querySelectorAll("[data-kids-word]");
   if (spans.length > 0) {
     const visibleWords: string[] = [];
@@ -51,7 +83,7 @@ export function getVisiblePageText(
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) continue;
 
-      const isHorizontallyVisible = rect.right > 2 && rect.left < viewportWidth - 2;
+      const isHorizontallyVisible = rect.right > startX + 2 && rect.left < endX - 2;
       const isVerticallyVisible = rect.bottom > 2 && rect.top < viewportHeight - 2;
 
       if (isHorizontallyVisible && isVerticallyVisible) {
@@ -65,7 +97,7 @@ export function getVisiblePageText(
         const nextSibling = el.nextSibling;
         if (nextSibling && nextSibling.nodeType === 3) {
           const punct = nextSibling.nodeValue || "";
-          const match = punct.match(/^([.,!?:;'"”’\s]+)/);
+          const match = punct.match(/^([.,!?:;\x27"”’\s]+)/);
           if (match) {
             wordWithPunctuation += match[1].trimEnd();
           }
@@ -78,29 +110,6 @@ export function getVisiblePageText(
     if (pageText) return pageText;
   }
 
-  // 3. Fallback: direct visible children of body
-  const visibleChildren: string[] = [];
-  for (const child of Array.from(doc.body.children)) {
-    const el = child as HTMLElement;
-    if (["script", "style"].includes(el.tagName.toLowerCase())) continue;
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) continue;
-
-    if (
-      rect.right > 2 &&
-      rect.left < viewportWidth - 2 &&
-      rect.bottom > 2 &&
-      rect.top < viewportHeight - 2
-    ) {
-      const text = el.innerText || el.textContent || "";
-      if (text.trim()) visibleChildren.push(text.trim());
-    }
-  }
-
-  if (visibleChildren.length > 0) {
-    return visibleChildren.join("\n");
-  }
-
-  // 4. Final fallback to document body
+  // 5. Final fallback to document body
   return doc.body.innerText || doc.body.textContent || "";
 }
