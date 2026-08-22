@@ -264,14 +264,43 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
         try:
-            result = asyncio.run(
-                rag_search(
-                    query=query,
-                    kb_name=name,
-                    mode=mode,
-                    kb_base_dir=str(mgr.base_dir),
+            from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
+            from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+            provider = resolve_bound_provider(str(mgr.base_dir), name)
+            if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+                from deeptutor.services.rag.pipelines.pageindex.reasoning import (
+                    read_pageindex_with_agent,
                 )
-            )
+
+                reading = asyncio.run(
+                    read_pageindex_with_agent(
+                        kb_name=name,
+                        system_prompt=(
+                            "Answer the CLI user's question from the selected PageIndex "
+                            "knowledge base. Include page references from tool results."
+                        ),
+                        user_prompt=query,
+                        source="cli_kb_search",
+                        stage="search",
+                    )
+                )
+                result = {
+                    "query": query,
+                    "answer": reading.text,
+                    "content": reading.text,
+                    "sources": reading.sources,
+                    "provider": reading.tool_context.provider,
+                }
+            else:
+                result = asyncio.run(
+                    rag_search(
+                        query=query,
+                        kb_name=name,
+                        mode=mode,
+                        kb_base_dir=str(mgr.base_dir),
+                    )
+                )
         except Exception as exc:
             console.print(f"[red]Search failed: {exc}[/]")
             raise typer.Exit(code=1) from exc
@@ -281,6 +310,6 @@ def register(app: typer.Typer) -> None:
             return
 
         answer = result.get("answer") or result.get("content", "")
-        provider = result.get("provider", DEFAULT_PROVIDER)
+        provider = str(result.get("provider", DEFAULT_PROVIDER))
         console.print(f"[bold]Provider:[/] {provider}")
         console.print(f"[bold]Answer:[/]\n{answer}")

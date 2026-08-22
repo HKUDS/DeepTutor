@@ -74,6 +74,13 @@ LIGHTRAG_SERVER_KB_TYPE = "lightrag_server"
 # ``search_knowledge`` OpenAPI by the ``ima`` provider.
 IMA_KB_TYPE = "ima"
 
+# A connected MarginNote 4 library: a pointer (``device_id`` + optional
+# ``server_url``) to the user's MN4 study data synced via the official Add-on
+# API. No path on disk and no local index — MN4 objects land in a dedicated
+# SQLite store and are navigated by the MarginNote capability's own tools.
+# See ``capabilities/marginnote4``.
+MARGINNOTE4_KB_TYPE = "marginnote4"
+
 # Every pointer/connected KB type. Membership here is what makes the manager
 # skip the index pipeline, the orphan prune and the embedding reconcile.
 CONNECTED_KB_TYPES = frozenset(
@@ -83,13 +90,36 @@ CONNECTED_KB_TYPES = frozenset(
         SUBAGENT_KB_TYPE,
         LIGHTRAG_SERVER_KB_TYPE,
         IMA_KB_TYPE,
+        MARGINNOTE4_KB_TYPE,
     }
 )
+
+
+# Connected kinds the ``rag`` tool cannot retrieve from: an Obsidian vault has no
+# index at all (its capability navigates the live files) and a subagent is not a
+# document collection. The other connected kinds ARE retrievable — ``linked``
+# mounts an index built elsewhere, while ``lightrag_server`` and ``ima`` offload
+# retrieval over HTTP — so "connected" must never be used as a synonym for
+# "unsearchable" (it once cost Book generation every one of those sources).
+NON_RETRIEVABLE_KB_TYPES = frozenset({OBSIDIAN_KB_TYPE, SUBAGENT_KB_TYPE, MARGINNOTE4_KB_TYPE})
 
 
 def is_connected_kb(entry: Any) -> bool:
     """True for pointer KBs whose data lives outside ``data/knowledge_bases``."""
     return isinstance(entry, dict) and entry.get("type") in CONNECTED_KB_TYPES
+
+
+def supports_rag_retrieval(entry: Any) -> bool:
+    """Whether the ``rag`` tool can retrieve from this KB.
+
+    True for every ordinary indexed KB and for the connected kinds that resolve
+    to an index or a retrieval API. Callers that need "can I sweep this KB with
+    ``rag_search``?" must ask this rather than :func:`is_connected_kb`, whose
+    answer is about where the *documents* live.
+    """
+    if not isinstance(entry, dict):
+        return True
+    return entry.get("type") not in NON_RETRIEVABLE_KB_TYPES
 
 
 def supports_local_raw_files(entry: Any) -> bool:
@@ -119,8 +149,11 @@ __all__ = [
     "SUBAGENT_KB_TYPE",
     "LIGHTRAG_SERVER_KB_TYPE",
     "IMA_KB_TYPE",
+    "MARGINNOTE4_KB_TYPE",
     "CONNECTED_KB_TYPES",
+    "NON_RETRIEVABLE_KB_TYPES",
     "is_connected_kb",
     "supports_local_raw_files",
+    "supports_rag_retrieval",
     "external_root_of",
 ]

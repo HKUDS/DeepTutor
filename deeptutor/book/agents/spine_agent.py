@@ -167,6 +167,7 @@ class SpineAgent(BaseAgent):
             anchors.append(
                 SourceAnchor(
                     kind=_clip(str(item.get("kind") or "manual"), 32),
+                    kb_name=_clip(str(item.get("kb_name") or ""), 120),
                     ref=_clip(str(item.get("ref") or ""), 200),
                     snippet=_clip(str(item.get("snippet") or ""), 300),
                 )

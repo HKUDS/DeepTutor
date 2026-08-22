@@ -5,7 +5,8 @@
 # DeepTutor: การสอนพิเศษส่วนตัวตลอดชีวิต
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -60,10 +61,10 @@
 
 DeepTutor คือ workspace การเรียนรู้แบบ agent-native ที่เชื่อมต่อการสอนพิเศษ, การแก้ปัญหา, การสร้าง quiz, การวิจัย, การสร้างภาพ และการฝึกความเชี่ยวชาญในระบบที่ขยายได้หนึ่งเดียว
 
-- **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Quiz, Research, Visualize, Solve และ Mastery Path บนลูป agent เดียวกัน คุณเปลี่ยนวัตถุประสงค์ ไม่ใช่เอ็นจิน และบริบทเดินทางไปพร้อมกับผู้เรียน
+- **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Quiz, Research, Visualize, Solve, Mastery Path และ Immersive Reading บนลูป agent เดียวกัน คุณเปลี่ยนวัตถุประสงค์ ไม่ใช่เอ็นจิน และบริบทเดินทางไปพร้อมกับผู้เรียน
 - **บริบทการเรียนรู้ที่เชื่อมต่อกัน** — ฐานความรู้, หนังสือ, ร่าง Co-Writer, สมุดบันทึก, คลังคำถาม, บุคลิกภาพ และ Memory พร้อมใช้งานในทุกเวิร์กโฟลว์ แทนที่จะอยู่ในเครื่องมือที่แยกจากกัน
 - **ซับเอเจนต์และ Partners** — ปรึกษา coding CLI แบบสด (Claude Code, Codex, Gemini, Kimi, opencode หรือ MiMo) หรือ Partner จากทุก turn (หรือนำเข้าบทสนทนาในอดีต) และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
-- **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable
+- **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล, ไลบรารี Tencent IMA หรือ MarginNote 4 หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable
 - **เครื่องมือและทักษะที่ขยายได้** — เครื่องมือในตัว, เซิร์ฟเวอร์ MCP, แอป CLI, โมเดลสร้างรูปภาพ/วิดีโอ/เสียง และทักษะชุมชนที่ติดตั้งได้จาก EduHub
 - **หน่วยความจำที่ตรวจสอบได้** — การติดตาม L1, สรุปพื้นผิว L2 และการสังเคราะห์ L3 ทำให้การปรับแต่งส่วนบุคคลมองเห็นได้และแก้ไขได้ พร้อม Memory Graph ที่ติดตามทุกการอ้างสิทธิ์กลับไปสู่หลักฐาน
 
@@ -327,11 +328,11 @@ Chat คือความสามารถเริ่มต้นและส
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor chat agent loop" width="900">
 </div>
 
-เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `github`, และ `consult_subagent` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
+เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, และ `consult_subagent` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
 
 บริบทมีสองประเภท: **sticky session context** (subagent, knowledge bases, persona, model, voice) อยู่บน composer toolbar และคงอยู่ตลอด turns; **one-time references** (ไฟล์, ประวัติ chat, หนังสือ, notebooks, question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว
 
-Chat ยังเป็นจุดเปิดตัวสำหรับความสามารถที่ลึกกว่า: **Quiz** สำหรับการสร้างคำถาม, **Research** สำหรับรายงานที่อ้างอิง, **Visualize** สำหรับ charts / diagrams / animations และ — ภายใต้ *More Capabilities* — **Solve** สำหรับการให้เหตุผลแบบมีขั้นตอน และ **Mastery Path** สำหรับ learning-plan flows
+Chat ยังเป็นจุดเปิดตัวสำหรับความสามารถที่ลึกกว่า: **Quiz** สำหรับการสร้างคำถาม, **Visualize** สำหรับ charts / diagrams / animations, **Mastery Path** สำหรับ learning-plan flows และ **Immersive Reading** — เอกสารที่เปิดอยู่ข้าง thread โดยทุกการอ้างสิทธิ์ถูกอ้างอิงกลับไปยังหน้าที่มันมาจาก **Research** สำหรับรายงานที่อ้างอิง และ **Solve** สำหรับการให้เหตุผลแบบมีขั้นตอน อยู่ภายใต้ *More Capabilities*
 
 </details>
 
@@ -420,13 +421,13 @@ Book แปลงแหล่งที่มาที่เลือกให้
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-Knowledge bases คือคอลเลกชันเอกสารที่อยู่เบื้องหลัง RAG — รองรับ Chat turns, Co-Writer edits, Book generation และบทสนทนา Partner สิ่งที่โดดเด่นคือ **การเลือกเอ็นจิน retrieval**: **LlamaIndex** (ค่าเริ่มต้น, local vector + BM25), **PageIndex** (hosted, reasoning retrieval พร้อม page-level citations), **GraphRAG** และ **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval ที่ offload ไปยัง LightRAG instance ภายนอกที่คุณเชื่อมต่อผ่าน HTTP), **Tencent IMA** (ไลบรารีที่คุณคัดสรรใน IMA ค้นหาผ่าน OpenAPI ของมัน) หรือ **Obsidian** vault ที่เชื่อมโยง tutor อ่านและเขียนในที่ KB แต่ละอันถูกผูกกับเอ็นจินหนึ่ง
+Knowledge bases คือคอลเลกชันเอกสารที่อยู่เบื้องหลัง RAG — รองรับ Chat turns, Co-Writer edits, Book generation และบทสนทนา Partner สิ่งที่โดดเด่นคือ **การเลือกเอ็นจิน retrieval**: **LlamaIndex** (ค่าเริ่มต้น, local vector + BM25), **PageIndex** (reasoning retrieval พร้อม page-level citations, hosted หรือ self-hosted OSS), **GraphRAG** และ **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval ที่ offload ไปยัง LightRAG instance ภายนอกที่คุณเชื่อมต่อผ่าน HTTP), **Tencent IMA** (ไลบรารีที่คุณคัดสรรใน IMA — ค้นหา เรียกดู และเขียนกลับผ่าน OpenAPI ของมัน), **MarginNote 4** (ข้อมูลการเรียนใน MN4 ของคุณ — เอกสาร ข้อความที่คัดไว้ การ์ด mind-map และความเชื่อมโยงระหว่างสิ่งเหล่านั้น — ที่ถูกส่งเข้ามาโดย Add-on ของแอปและนำทางได้ด้วยเครื่องมือเฉพาะ) หรือ **Obsidian** vault ที่เชื่อมโยง tutor อ่านและเขียนในที่ KB แต่ละอันถูกผูกกับเอ็นจินหนึ่ง
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">
 </div>
 
-เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
+เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika (`TIKA_SERVER_URL`) CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
 
 </details>
 
@@ -437,7 +438,7 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
 </div>
 
-Learning Space คือชั้น library และ personalization — ที่ซึ่งสิ่งที่คงอยู่ถาวรอาศัยอยู่ **Conversations & Materials** เก็บประวัติ chat, notebooks และ question bank (แต่ละคำถามที่บันทึกเก็บคำตอบของคุณ, คำตอบอ้างอิง และคำอธิบาย) **Personalization** เก็บ mastery paths, personas (พฤติกรรมที่ตั้งค่าล่วงหน้าเช่น *peer*, *research-assistant*, *teacher*), skills (`SKILL.md` playbooks ที่ model อ่านตามต้องการ), **MCP Services** — คลังที่คัดสรรของเซิร์ฟเวอร์ MCP แบบ hosted ที่คุณติดตั้งให้ตัวเองได้ในคลิกเดียว รวมถึงเซิร์ฟเวอร์ remote ใด ๆ ที่คุณกำหนดค่าผ่าน URL — และ **CLI Apps** เครื่องมือบรรทัดคำสั่งจาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) ที่ chat agent เรียกใช้โดยตรง พร้อมคู่มือการใช้งานของแต่ละแอปที่โหลดตามต้องการ ทุกอย่างที่นี่สามารถนำมาใช้ซ้ำได้จาก Chat, Partners, Co-Writer และ Book
+Learning Space คือชั้น library และ personalization — ที่ซึ่งสิ่งที่คงอยู่ถาวรอาศัยอยู่ **Conversations & Materials** เก็บประวัติ chat, notebooks — ตอนนี้มีคอนโซลเป็นของตัวเอง พร้อมรายการที่ย้ายหรือคัดลอกระหว่าง notebooks ได้ และการ export เป็น Markdown — และ question bank (แต่ละคำถามที่บันทึกเก็บคำตอบของคุณ, คำตอบอ้างอิง และคำอธิบาย) **Personalization** เก็บ mastery paths, personas (พฤติกรรมที่ตั้งค่าล่วงหน้าเช่น *peer*, *research-assistant*, *teacher*), skills (`SKILL.md` playbooks ที่ model อ่านตามต้องการ), **MCP Services** — คลังที่คัดสรรของเซิร์ฟเวอร์ MCP แบบ hosted ที่คุณติดตั้งให้ตัวเองได้ในคลิกเดียว รวมถึงเซิร์ฟเวอร์ remote ใด ๆ ที่คุณกำหนดค่าผ่าน URL — และ **CLI Apps** เครื่องมือบรรทัดคำสั่งจาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) ที่ chat agent เรียกใช้โดยตรง พร้อมคู่มือการใช้งานของแต่ละแอปที่โหลดตามต้องการ ทุกอย่างที่นี่สามารถนำมาใช้ซ้ำได้จาก Chat, Partners, Co-Writer และ Book
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="นำเข้า skills จาก EduHub" width="900">
@@ -477,7 +478,7 @@ Settings คือ control plane การดำเนินงาน พร้�
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
 </div>
 
-ส่วนส่วนใหญ่ใช้ draft-and-apply flow เพื่อให้คุณทดสอบ provider ก่อนยืนยัน ธีมสี่แบบมาในกล่อง — Default, Cream, Dark และ Glass ไฟล์ `.env` ที่ root ของโปรเจกต์ถูกเพิกเฉยโดยเจตนา; การกำหนดค่า runtime อยู่ใน `data/user/settings/*.json` เว้นแต่ `DEEPTUTOR_HOME` หรือ `deeptutor start --home` จะชี้แอปไปที่อื่น
+ส่วนส่วนใหญ่ใช้ draft-and-apply flow เพื่อให้คุณทดสอบ provider ก่อนยืนยัน คุณยังสามารถแค่ถามใน Chat ได้เช่นกัน: ผู้ช่วยจะอ่านการกำหนดค่าปัจจุบัน, ใช้การเปลี่ยนแปลง และบอกว่าจำเป็นต้องรีสตาร์ทหรือ re-index หรือไม่ — โดยทดสอบ model ใหม่ก่อนที่จะยืนยัน จึงไม่สามารถเปลี่ยนตัวเองไปยังสิ่งที่เข้าถึงไม่ได้ API keys จะไม่ผ่านเข้าไปใน model เลย ซึ่งจะเปิดฟอร์มที่ตรงกันให้คุณแทน ธีมสี่แบบมาในกล่อง — Default, Cream, Dark และ Glass ไฟล์ `.env` ที่ root ของโปรเจกต์ถูกเพิกเฉยโดยเจตนา; การกำหนดค่า runtime อยู่ใน `data/user/settings/*.json` เว้นแต่ `DEEPTUTOR_HOME` หรือ `deeptutor start --home` จะชี้แอปไปที่อื่น
 
 **OpenAI Codex OAuth (ทดลอง)** การเลือก **OpenAI Codex** ภายใต้ **Models → LLM** จะแทนที่ช่อง API key ด้วยการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง รวมถึงผู้ใช้ทั่วไปด้วย: การ์ดของพวกเขาจะอยู่ภายใต้ **Models → LLM** และ models, catalog และการลงชื่อออกที่ได้จะเป็นส่วนตัวเฉพาะบัญชีนั้นเท่านั้น และเบราว์เซอร์ต้องเข้าถึงเครื่องที่รัน backend ได้ (บนเซิร์ฟเวอร์ remote ให้รัน `deeptutor provider login openai-codex` ที่นั่นแทน) ข้อผิดพลาดเรื่อง quota และความล้มเหลวของ catalog จะถูกรายงานตามจริงและจะไม่ตกกลับไปใช้ provider แบบเสียเงินแทนเด็ดขาด เส้นทาง compatibility นี้ยังอยู่ในขั้นทดลอง: อินเทอร์เฟซต้นทางอาจเปลี่ยนแปลงได้
 

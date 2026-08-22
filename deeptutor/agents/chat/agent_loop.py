@@ -38,6 +38,7 @@ from deeptutor.agents._shared.capability_result import emit_capability_result
 from deeptutor.agents.chat.context_budget import LLMRequestSnapshot
 from deeptutor.agents.chat.dsml_tool_calls import DSMLStreamFilter, extract_dsml_tool_calls
 from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.core.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.core.agentic.usage import message_content_chars, record_streamed_usage
 from deeptutor.core.context import UnifiedContext
@@ -51,6 +52,7 @@ from deeptutor.services.llm.request_compat import (
     is_stream_options_unsupported,
     is_tool_schema_unsupported,
     is_transient_transport_error,
+    logged_error_text,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -655,7 +657,7 @@ class AgentLoop:
             # once, only after a successful attempt.
             usage_seen: Any = None
             text_parts: list[str] = []
-            tool_acc: dict[int, dict[str, str]] = {}
+            tool_acc = ToolCallAccumulator()
             output_chars = 0
             finish_reason = ""
             think_filter = InlineThinkFilter()
@@ -723,25 +725,7 @@ class AgentLoop:
                             await _emit_segments(think_filter.feed(visible_content))
 
                     for tc_delta in getattr(delta, "tool_calls", None) or []:
-                        index = int(getattr(tc_delta, "index", 0) or 0)
-                        acc = tool_acc.setdefault(
-                            index,
-                            {"id": "", "name": "", "arguments": ""},
-                        )
-                        tcid = getattr(tc_delta, "id", None)
-                        if tcid:
-                            acc["id"] += str(tcid)
-                        fn = getattr(tc_delta, "function", None)
-                        if fn is None:
-                            continue
-                        name = getattr(fn, "name", None)
-                        arguments = getattr(fn, "arguments", None)
-                        if name:
-                            acc["name"] += str(name)
-                            output_chars += len(str(name))
-                        if arguments:
-                            acc["arguments"] += str(arguments)
-                            output_chars += len(str(arguments))
+                        output_chars += tool_acc.feed(tc_delta)
             except Exception as exc:
                 if not is_transient_transport_error(exc):
                     raise
@@ -823,15 +807,7 @@ class AgentLoop:
             output_chars=output_chars,
         )
 
-        tool_calls = [
-            {
-                "id": data.get("id") or f"call_{idx}",
-                "name": data.get("name", ""),
-                "arguments": data.get("arguments") or "{}",
-            }
-            for idx, data in sorted(tool_acc.items())
-            if data.get("name")
-        ]
+        tool_calls = tool_acc.collected()
 
         # Fallback: a DeepSeek deployment without native function calling emits
         # its tool calls as DSML markup in the content channel instead of as
@@ -894,6 +870,17 @@ class AgentLoop:
                 retry_kwargs.pop("stream_options", None)
                 return await self.client.chat.completions.create(**retry_kwargs)
             if kwargs.get("tools") and is_tool_schema_unsupported(exc):
+                # Capture the provider's raw rejection body. Without it there is
+                # no way to tell *which* parameter/shape a new model family
+                # objects to — the fallback below silently strips tools and the
+                # model degrades to prose with no visible error (see #708:
+                # gpt-5.6-luna/-terra/-sol 400 on tools, root cause still
+                # unconfirmed for lack of this exact log line).
+                logger.warning(
+                    "provider rejected tool schemas for model=%s; retrying without tools. error=%s",
+                    kwargs.get("model"),
+                    logged_error_text(exc),
+                )
                 await self.stream.progress(
                     self.pipeline._t(
                         "notices.tool_schema_fallback",

@@ -179,6 +179,14 @@ class PendingQuestion(BaseModel):
     question_type: str = "short"
     expected_answer: str = ""
     options: list[str] = Field(default_factory=list)
+    # Reference explanation and difficulty, captured when the question is
+    # posed. Server-side like ``expected_answer`` — ``public_pending_question``
+    # never projects them, so an explanation cannot leak the answer into the
+    # card the learner is about to answer. They travel with the attempt into
+    # the question bank, which is what makes a mastery mistake reviewable
+    # later instead of a bare right/wrong.
+    explanation: str = ""
+    difficulty: str = ""
     created_at: float = Field(default_factory=time.time)
 
 

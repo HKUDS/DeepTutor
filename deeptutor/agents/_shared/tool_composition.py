@@ -51,6 +51,7 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "read_memory": "has_memory",
     "list_notebook": "has_notebooks",
     "write_note": "has_notebooks",
+    "question_bank": "has_question_bank",
     "read_skill": "has_skills",
     "load_tools": "has_deferred_tools",
     "exec": "has_exec",
@@ -136,6 +137,7 @@ class ToolMountFlags:
     has_sources: bool = False
     has_memory: bool = False
     has_notebooks: bool = False
+    has_question_bank: bool = False
     has_skills: bool = False
     has_deferred_tools: bool = False
     has_exec: bool = False
@@ -294,6 +296,22 @@ def user_has_notebooks() -> bool:
         return False
 
 
+def user_has_question_bank() -> bool:
+    """Whether the learner has any saved quiz questions.
+
+    Auto-mount gate for ``question_bank``. Separate from
+    :func:`user_has_notebooks` on purpose — the bank and the notebooks are
+    different stores, and a learner routinely has one without the other.
+    Same fail-closed posture as its siblings.
+    """
+    try:
+        from deeptutor.services.session import get_sqlite_session_store
+
+        return get_sqlite_session_store().has_question_bank_entries()
+    except Exception:
+        return False
+
+
 __all__ = [
     "AUTO_MOUNTED_TOOLS",
     "ToolMountFlags",
@@ -302,4 +320,5 @@ __all__ = [
     "default_optional_tools",
     "user_has_memory",
     "user_has_notebooks",
+    "user_has_question_bank",
 ]

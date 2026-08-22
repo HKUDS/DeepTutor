@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from deeptutor.app import DeepTutorApp
+from deeptutor.services.notebook.service import NotebookCorruptedError
 
 from .common import console, print_notebook_table
 
@@ -36,7 +37,12 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Show a notebook and its records."""
         client = DeepTutorApp()
-        notebook = client.get_notebook(notebook_id)
+        try:
+            notebook = client.get_notebook(notebook_id)
+        except NotebookCorruptedError as exc:
+            # The file is still on disk; say so instead of dumping a traceback.
+            console.print(f"[red]Notebook file is damaged:[/] {exc}")
+            raise typer.Exit(code=1)
         if notebook is None:
             console.print(f"[red]Notebook not found:[/] {notebook_id}")
             raise typer.Exit(code=1)
@@ -59,7 +65,11 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Delete a notebook record."""
         client = DeepTutorApp()
-        success = client.remove_record(notebook_id, record_id)
+        try:
+            success = client.remove_record(notebook_id, record_id)
+        except NotebookCorruptedError as exc:
+            console.print(f"[red]Notebook file is damaged:[/] {exc}")
+            raise typer.Exit(code=1)
         if not success:
             console.print(f"[red]Record not found:[/] {record_id}")
             raise typer.Exit(code=1)

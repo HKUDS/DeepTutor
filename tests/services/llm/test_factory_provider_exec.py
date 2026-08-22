@@ -81,6 +81,21 @@ async def test_complete_merges_config_and_caller_extra_headers(monkeypatch) -> N
 
 
 @pytest.mark.asyncio
+async def test_complete_honors_explicit_image_fallback_override(monkeypatch) -> None:
+    cfg = _make_cfg(model="unknown-model", binding="custom", provider_name="custom")
+    provider = _FakeProvider()
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", lambda: cfg)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider",
+        lambda _config: provider,
+    )
+
+    assert await complete("hello", allow_image_fallback=False) == "ok"
+    assert provider.complete_kwargs["allow_image_fallback"] is False
+
+
+@pytest.mark.asyncio
 async def test_stream_merges_config_and_caller_extra_headers(monkeypatch) -> None:
     cfg = _make_cfg(extra_headers={"X-Config": "cfg"})
     provider = _FakeProvider(stream_chunk="A")

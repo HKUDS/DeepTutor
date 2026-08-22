@@ -5,7 +5,8 @@
 # DeepTutor: Lifelong Personalized Tutoring
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -49,12 +50,18 @@
 
 ### 📦 Releases
 
-> **[2026.8.17]** [v1.5.13](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.13) — Books stream while they compile, track your progress, and export to Markdown; a cost estimate before you approve a spine; and home starter suggestions drawn from memory.
+> **[2026.8.22]** [v1.5.16](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.16) — **MarginNote 4** libraries you connect and its add-on fills, Book pages that turn again, and tool-call ids, embeddings and temperature limits that stop breaking behind a gateway.
 
-> **[2026.8.13]** [v1.5.12](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.12) — Web search rebuilt with six new providers (**Doubao**, **Bocha**, **Zhipu**, **Firecrawl**, **Qianfan**, **Aliyun IQS**), a **LiteParse** parsing engine, MCP servers that reconnect on credential change, and **CodeBuddy** + **OrcaRouter**.
+> **[2026.8.20]** [v1.5.15](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.15) — **PageIndex OSS** you host yourself with reasoning retrieval, a question bank you can finally file into, third-party tool/capability plugins, and **Apache Tika** parsing.
+
+> **[2026.8.19]** [v1.5.14](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.14) — **Immersive Reading**: a document open beside the thread, cited page by page; DeepTutor configures itself from chat; IMA libraries you browse and write to; a notebook console.
+
+> **[2026.8.17]** [v1.5.13](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.13) — Books stream while they compile, track your progress, and export to Markdown; a cost estimate before you approve a spine; and home starter suggestions drawn from memory.
 
 <details>
 <summary><b>Past releases (more than 1 week ago)</b></summary>
+
+> **[2026.8.13]** [v1.5.12](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.12) — Web search rebuilt with six new providers (**Doubao**, **Bocha**, **Zhipu**, **Firecrawl**, **Qianfan**, **Aliyun IQS**), a **LiteParse** parsing engine, MCP servers that reconnect on credential change, and **CodeBuddy** + **OrcaRouter**.
 
 > **[2026.8.10]** [v1.5.11](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.11) — Prose around a DSML tool call stops vanishing, a truncated reply continues instead of ending, live memory usage in Settings, and LightRAG indexing off the event loop.
 
@@ -197,10 +204,10 @@
 
 DeepTutor is an agent-native learning workspace that connects tutoring, problem solving, quiz generation, research, visualization, and mastery practice in one extensible system.
 
-- **One runtime for every mode** — Chat, Quiz, Research, Visualize, Solve, and Mastery Path run on the same agent loop, so you switch the objective, not the engine, and context moves with the learner.
+- **One runtime for every mode** — Chat, Quiz, Research, Visualize, Solve, Mastery Path, and Immersive Reading run on the same agent loop, so you switch the objective, not the engine, and context moves with the learner.
 - **Connected learning context** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, and Memory stay available across every workflow instead of living in isolated tools.
 - **Subagents and Partners** — consult a live coding CLI (Claude Code, Codex, Gemini, Kimi, opencode, or MiMo) or a Partner from any turn (or import their past conversations), and run persistent IM companions on the same brain.
-- **Multi-engine knowledge** — versioned RAG libraries across LlamaIndex, PageIndex, GraphRAG, LightRAG, or a linked Obsidian vault, with pluggable document parsing.
+- **Multi-engine knowledge** — versioned RAG libraries across LlamaIndex, PageIndex, GraphRAG, LightRAG, a remote LightRAG Server, a Tencent IMA or MarginNote 4 library, or a linked Obsidian vault, with pluggable document parsing.
 - **Extensible tools and skills** — built-in tools, MCP servers, CLI apps, image / video / voice generation models, and installable community skills from EduHub.
 - **Inspectable memory** — L1 traces, L2 surface summaries, and L3 synthesis make personalization visible and editable, with a Memory Graph that traces every claim back to its evidence.
 
@@ -486,11 +493,11 @@ The loop is deliberately simple: the model thinks in rounds, calls tools when us
 <img src="assets/figs/system/chat-agent-loop.png" alt="DeepTutor chat agent loop" width="900">
 </div>
 
-User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, and `geogebra_analysis` — plus `imagegen` and `videogen` once you configure the matching generation model. Contextual tools such as `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `github`, and `consult_subagent` mount automatically when the turn has the right context.
+User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, and `geogebra_analysis` — plus `imagegen` and `videogen` once you configure the matching generation model. Contextual tools such as `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, and `consult_subagent` mount automatically when the turn has the right context.
 
 Context comes in two kinds: **sticky session context** (subagent, knowledge bases, persona, model, voice) lives on the composer toolbar and persists across turns; **one-time references** (files, chat history, books, notebooks, question bank, imported agents) come from the `+` menu for a single turn.
 
-Chat is also the launch point for deeper capabilities: **Quiz** for question generation, **Research** for cited reports, **Visualize** for charts / diagrams / animations, and — under *More Capabilities* — **Solve** for worked reasoning and **Mastery Path** for learning-plan flows.
+Chat is also the launch point for deeper capabilities: **Quiz** for question generation, **Visualize** for charts / diagrams / animations, **Mastery Path** for learning-plan flows, and **Immersive Reading** — a document open beside the thread, with every claim cited to the page it came from. **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*.
 
 </details>
 
@@ -579,13 +586,13 @@ Each chapter compiles into typed blocks — text, callouts, quizzes, flash cards
 <img src="assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-Knowledge bases are the document collections behind RAG — they ground Chat turns, Co-Writer edits, Book generation, and Partner conversations. What's distinctive is a **choice of retrieval engines**: **LlamaIndex** (the default, local vector + BM25), **PageIndex** (hosted, reasoning retrieval with page-level citations), **GraphRAG** and **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval offloaded to an external LightRAG instance you connect over HTTP), **Tencent IMA** (a library you curate in IMA, searched over its OpenAPI), or a linked **Obsidian** vault the tutor reads and writes in place. Each KB is bound to one engine.
+Knowledge bases are the document collections behind RAG — they ground Chat turns, Co-Writer edits, Book generation, and Partner conversations. What's distinctive is a **choice of retrieval engines**: **LlamaIndex** (the default, local vector + BM25), **PageIndex** (reasoning retrieval with page-level citations, hosted or self-hosted OSS), **GraphRAG** and **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval offloaded to an external LightRAG instance you connect over HTTP), **Tencent IMA** (a library you curate in IMA — searched, browsed, and written back to over its OpenAPI), **MarginNote 4** (your MN4 study data — documents, excerpts, mind-map cards and the links between them — pushed in by the app's Add-on and navigated with dedicated tools), or a linked **Obsidian** vault the tutor reads and writes in place. Each KB is bound to one engine.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Create a knowledge base" width="900">
 </div>
 
-Creating a KB, you either **create new** (upload documents and build a fresh index) or **link existing** (reuse an index built elsewhere, read in place with no re-index). Re-indexing writes a new flat `version-N` directory and keeps prior ones, so a working index is never destroyed mid-rebuild. A single document can be removed even from an **error**-state base — dropping a file that failed to parse without a full delete-and-rebuild. Document parsing — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM, or LiteParse — is chosen in **Settings → Knowledge Base**, with local model downloads off by default. Docling can also run in **remote** mode against a Docling Serve server (no local install or models needed), configured via **Settings → Document Parsing** (`mode=remote`, a server base URL, and an optional API key) or the `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables. The CLI mirrors the lifecycle with `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, and `delete`.
+Creating a KB, you either **create new** (upload documents and build a fresh index) or **link existing** (reuse an index built elsewhere, read in place with no re-index). Re-indexing writes a new flat `version-N` directory and keeps prior ones, so a working index is never destroyed mid-rebuild. A single document can be removed even from an **error**-state base — dropping a file that failed to parse without a full delete-and-rebuild. Document parsing — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM, or LiteParse — is chosen in **Settings → Knowledge Base**, with local model downloads off by default. Docling can also run in **remote** mode against a Docling Serve server (no local install or models needed), configured via **Settings → Document Parsing** (`mode=remote`, a server base URL, and an optional API key) or the `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables. Tika is remote-only and points at an Apache Tika server (`TIKA_SERVER_URL`). The CLI mirrors the lifecycle with `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, and `delete`.
 
 </details>
 
@@ -596,7 +603,7 @@ Creating a KB, you either **create new** (upload documents and build a fresh ind
 <img src="assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
 </div>
 
-Learning Space is the library and personalization layer — where the things that persist live. **Conversations & Materials** holds your chat history, notebooks, and a question bank (each saved question keeps your answer, the reference answer, and an explanation). **Personalization** holds mastery paths, personas (behavior presets such as *peer*, *research-assistant*, *teacher*), skills (`SKILL.md` playbooks the model reads on demand), **MCP Services** — a curated store of hosted MCP servers you install for yourself in one click, plus any remote server you configure by URL — and **CLI Apps**, command-line tools from the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog that the chat agent calls directly, with each app's own usage guide loaded on demand. Everything here can be reused from Chat, Partners, Co-Writer, and Book.
+Learning Space is the library and personalization layer — where the things that persist live. **Conversations & Materials** holds your chat history, notebooks — now their own console, with records that move or copy between notebooks and a Markdown export — and a question bank (each saved question keeps your answer, the reference answer, and an explanation). **Personalization** holds mastery paths, personas (behavior presets such as *peer*, *research-assistant*, *teacher*), skills (`SKILL.md` playbooks the model reads on demand), **MCP Services** — a curated store of hosted MCP servers you install for yourself in one click, plus any remote server you configure by URL — and **CLI Apps**, command-line tools from the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog that the chat agent calls directly, with each app's own usage guide loaded on demand. Everything here can be reused from Chat, Partners, Co-Writer, and Book.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="Import skills from EduHub" width="900">
@@ -636,7 +643,7 @@ Settings is the operational control plane, with a live status strip (backend hea
 <img src="assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
 </div>
 
-Most sections use a draft-and-apply flow, so you can test a provider before committing it. Four themes ship in the box — Default, Cream, Dark, and Glass. Project-root `.env` files are intentionally ignored; runtime configuration lives under `data/user/settings/*.json` unless `DEEPTUTOR_HOME` or `deeptutor start --home` points the app elsewhere.
+Most sections use a draft-and-apply flow, so you can test a provider before committing it. You can also just ask in Chat: the assistant reads the current configuration, applies a change, and says whether it needs a restart or a re-index — probing a new model before it commits, so it cannot switch itself onto something unreachable. API keys never pass through the model, which opens the matching form for you instead. Four themes ship in the box — Default, Cream, Dark, and Glass. Project-root `.env` files are intentionally ignored; runtime configuration lives under `data/user/settings/*.json` unless `DEEPTUTOR_HOME` or `deeptutor start --home` points the app elsewhere.
 
 **OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `data/system/user-secrets/<owner>/private/openai-codex/` — in the multi-container Compose deployment, outside every tree the exec sandbox can reach — and DeepTutor never reads or modifies your `~/.codex` CLI login. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself, ordinary users included: their card sits under Models → LLM, and the resulting models, catalog, and sign-out stay private to that account.
 

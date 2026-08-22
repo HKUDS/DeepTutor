@@ -23,6 +23,7 @@ def _format_sse(event: str, payload: dict[str, Any]) -> str:
 
 
 class KnowledgeTaskStreamManager:
+    _HEARTBEAT_SECONDS = 15.0
     _MAX_EVENTS_PER_TASK = 500
     _MAX_BYTES_PER_TASK = 2 * 1024 * 1024
     _MAX_RETAINED_TASKS = 32
@@ -257,7 +258,14 @@ class KnowledgeTaskStreamManager:
                 return
 
             while True:
-                item = await queue.get()
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=self._HEARTBEAT_SECONDS)
+                except TimeoutError:
+                    # SSE comments are ignored by EventSource but keep every
+                    # intermediary proxy from treating an idle indexing phase
+                    # as a dead connection.
+                    yield ": keep-alive\n\n"
+                    continue
                 yield _format_sse(item["event"], item["payload"])
                 if item["event"] in {"complete", "failed"}:
                     break
@@ -338,6 +346,10 @@ def capture_task_logs(task_id: str):
     manager.ensure_task(task_id)
 
     def emit(event: ProcessLogEvent) -> None:
+        if event.logger in {"root", "asyncio"}:
+            return
+        if event.logger == "deeptutor.knowledge.progress_tracker":
+            return
         manager.emit_process_log(task_id, event)
 
     with bind_log_context(task_id=task_id, capability="knowledge", sink="ui"):

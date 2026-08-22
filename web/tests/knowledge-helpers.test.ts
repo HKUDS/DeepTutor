@@ -2,12 +2,38 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  isMarginNoteKb,
   kbCanReindex,
+  kbDetailSections,
+  kbProvider,
+  providerUsesEmbeddingMetadata,
   resolveKnowledgeIndexFailure,
   taskFailureMessage,
+  uploadPolicyForProvider,
   providerConnectionStatus,
   type KnowledgeBase,
 } from "../lib/knowledge-helpers";
+
+test("PageIndex providers do not expose embedding metadata", () => {
+  assert.equal(providerUsesEmbeddingMetadata("pageindex"), false);
+  assert.equal(providerUsesEmbeddingMetadata("pageindex-oss"), false);
+  assert.equal(providerUsesEmbeddingMetadata("llamaindex"), true);
+  assert.equal(providerUsesEmbeddingMetadata("graphrag"), true);
+});
+
+test("PageIndex OSS upload policy accepts PDF only", () => {
+  const base = {
+    extensions: [".pdf", ".pptx", ".txt"],
+    accept: ".pdf,.pptx,.txt",
+    max_file_size_bytes: 100,
+  };
+  assert.deepEqual(uploadPolicyForProvider(base, "pageindex-oss"), {
+    extensions: [".pdf"],
+    accept: ".pdf",
+    max_file_size_bytes: 100,
+  });
+  assert.equal(uploadPolicyForProvider(base, "llamaindex"), base);
+});
 
 function kb(overrides: Partial<KnowledgeBase>): KnowledgeBase {
   return {
@@ -169,4 +195,31 @@ test("engine status follows the credential and install state", () => {
     providerConnectionStatus({ id: "graphrag", configured: false }),
     "unavailable",
   );
+});
+
+test("a MarginNote library shows devices instead of files and index versions", () => {
+  // It owns no raw documents and builds no index, so those three sections
+  // would render empty against it; what it does have is the devices that
+  // push objects into it.
+  const marginNote: KnowledgeBase = {
+    name: "MN4",
+    metadata: { type: "marginnote4", db_path: "/data/mn4/MN4.db" },
+  };
+  assert.deepEqual(kbDetailSections(marginNote), ["devices", "settings"]);
+  assert.equal(isMarginNoteKb(marginNote), true);
+  assert.equal(kbProvider(marginNote), "marginnote4");
+});
+
+test("an ordinary knowledge base has no devices section", () => {
+  const indexed: KnowledgeBase = {
+    name: "Papers",
+    statistics: { rag_provider: "llamaindex" },
+  };
+  assert.deepEqual(kbDetailSections(indexed), [
+    "files",
+    "add",
+    "versions",
+    "settings",
+  ]);
+  assert.equal(isMarginNoteKb(indexed), false);
 });

@@ -4,8 +4,8 @@ Selects a KB's index/retrieve engine by provider name. Three pipelines ship
 today:
 
 * ``llamaindex`` (default) — local vector retrieval with hybrid BM25 fusion.
-* ``pageindex``           — hosted, vectorless reasoning retrieval (needs an
-                            API key configured under Knowledge → RAG settings).
+* ``pageindex``           — PageIndex Cloud (deployment credential + MCP tools).
+* ``pageindex-oss``       — local PageIndex library using the active chat LLM.
 * ``graphrag``            — local knowledge-graph retrieval (microsoft/graphrag);
                             optional dependency, ``pip install 'deeptutor[graphrag]'``.
 * ``lightrag``            — graph + vector retrieval (HKUDS/LightRAG, multimodal
@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DEFAULT_PROVIDER = "llamaindex"
 PAGEINDEX_PROVIDER = "pageindex"
+PAGEINDEX_OSS_PROVIDER = "pageindex-oss"
 GRAPHRAG_PROVIDER = "graphrag"
 LIGHTRAG_PROVIDER = "lightrag"
 LIGHTRAG_SERVER_PROVIDER = "lightrag-server"
@@ -40,6 +41,7 @@ KNOWN_PROVIDERS = frozenset(
     {
         DEFAULT_PROVIDER,
         PAGEINDEX_PROVIDER,
+        PAGEINDEX_OSS_PROVIDER,
         GRAPHRAG_PROVIDER,
         LIGHTRAG_PROVIDER,
         LIGHTRAG_SERVER_PROVIDER,
@@ -82,6 +84,7 @@ def version_matches_provider(entry: dict[str, Any], provider: Optional[str]) -> 
     if resolved == DEFAULT_PROVIDER:
         return entry_provider in {"", DEFAULT_PROVIDER} and signature not in {
             PAGEINDEX_PROVIDER,
+            PAGEINDEX_OSS_PROVIDER,
             GRAPHRAG_PROVIDER,
             LIGHTRAG_PROVIDER,
             LIGHTRAG_SERVER_PROVIDER,
@@ -118,12 +121,12 @@ def provider_failure_summary(
 
 
 def _build_pipeline(provider: str, kb_base_dir: Optional[str], **kwargs: Any):
-    if provider == PAGEINDEX_PROVIDER:
+    if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
         from .pipelines.pageindex.pipeline import PageIndexPipeline
 
         if kb_base_dir is not None:
             kwargs.setdefault("kb_base_dir", kb_base_dir)
-        return PageIndexPipeline(**kwargs)
+        return PageIndexPipeline(provider=provider, **kwargs)
 
     if provider == GRAPHRAG_PROVIDER:
         from .pipelines.graphrag.pipeline import GraphRagPipeline
@@ -189,6 +192,15 @@ def list_pipelines() -> List[Dict[str, Any]]:
         pageindex_ready = False
 
     try:
+        from .pipelines.pageindex.client import resolve_oss_sdk_config
+
+        resolve_oss_sdk_config()
+        pageindex_oss_ready, pageindex_oss_reason = True, ""
+    except Exception as exc:
+        pageindex_oss_ready = False
+        pageindex_oss_reason = str(exc)
+
+    try:
         from .pipelines.ima.config import is_ima_configured
 
         ima_ready = is_ima_configured()
@@ -231,10 +243,18 @@ def list_pipelines() -> List[Dict[str, Any]]:
         },
         {
             "id": PAGEINDEX_PROVIDER,
-            "name": "PageIndex",
-            "description": "Hosted, vectorless engine: the chat agent reads documents through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.",
+            "name": "PageIndex Cloud",
+            "description": "Hosted, vectorless engine: the chat agent reads documents through PageIndex SDK tools. Requires an API key; PDF, Office, text and Markdown formats.",
             "configured": pageindex_ready,
             "requires_api_key": True,
+        },
+        {
+            "id": PAGEINDEX_OSS_PROVIDER,
+            "name": "PageIndex OSS",
+            "description": "Local, chunkless and vectorless document indexing. Uses the active LLM and accepts PDF files.",
+            "configured": pageindex_oss_ready,
+            "requires_api_key": False,
+            "readiness_reason": pageindex_oss_reason,
         },
         {
             "id": GRAPHRAG_PROVIDER,
@@ -271,8 +291,10 @@ def list_pipelines() -> List[Dict[str, Any]]:
             "description": (
                 "Retrieval offloaded to a knowledge base you keep in Tencent IMA. "
                 "No local index and no copy — connect a KB to its IMA library and "
-                "query it over IMA's OpenAPI. Documents are added in IMA itself. "
-                "Requires an IMA Client ID and API key."
+                "query it over IMA's OpenAPI. Chat can also browse the library's "
+                "documents, read a full source, search your IMA notes, and (when "
+                "you ask) collect a web page or save a note. Uploading files still "
+                "happens in IMA itself. Requires an IMA Client ID and API key."
             ),
             # A thin HTTPS client with no install; readiness is only about the
             # account credentials. The library id stays per-KB, set at connect
@@ -286,6 +308,7 @@ def list_pipelines() -> List[Dict[str, Any]]:
 __all__ = [
     "DEFAULT_PROVIDER",
     "PAGEINDEX_PROVIDER",
+    "PAGEINDEX_OSS_PROVIDER",
     "GRAPHRAG_PROVIDER",
     "LIGHTRAG_PROVIDER",
     "LIGHTRAG_SERVER_PROVIDER",

@@ -41,6 +41,60 @@ def test_lightrag_defaults_and_clamp(tmp_path: Path) -> None:
     assert floored["top_k"] == 1  # clamped to min
 
 
+def test_lightrag_indexing_knobs_round_trip_and_clamp(tmp_path: Path) -> None:
+    """The indexing knobs the settings UI edits, with the ranges it offers.
+
+    The NumberField min/max in EngineDetail's LightRAG form mirror these
+    clamps, so a value the UI accepts is a value the service keeps.
+    """
+    svc = RuntimeSettingsService(tmp_path, process_env={})
+    defaults = svc.load_lightrag()
+    assert defaults["max_concurrent_files"] == 1
+    assert defaults["llm_model_max_async"] == 4
+    assert defaults["entity_extract_max_gleaning"] == 1
+
+    saved = svc.save_lightrag(
+        {
+            "max_concurrent_files": 4,
+            "llm_model_max_async": 8,
+            "entity_extract_max_gleaning": 0,
+        }
+    )
+    assert saved["max_concurrent_files"] == 4
+    assert saved["llm_model_max_async"] == 8
+    assert saved["entity_extract_max_gleaning"] == 0
+
+    clamped = svc.save_lightrag(
+        {
+            "max_concurrent_files": 999,
+            "llm_model_max_async": 0,
+            "entity_extract_max_gleaning": 99,
+        }
+    )
+    assert clamped["max_concurrent_files"] == 16
+    assert clamped["llm_model_max_async"] == 1
+    assert clamped["entity_extract_max_gleaning"] == 5
+
+    # Editing one knob must not reset the query knobs beside it.
+    assert clamped["top_k"] == 60
+    assert clamped["response_type"] == "Multiple Paragraphs"
+
+
+def test_lightrag_settings_written_before_the_indexing_knobs_still_load(
+    tmp_path: Path,
+) -> None:
+    """A lightrag.json from before these knobs existed gets the defaults."""
+    (tmp_path / "lightrag.json").write_text(
+        '{"version": 1, "top_k": 25, "response_type": "Single Paragraph"}',
+        encoding="utf-8",
+    )
+    loaded = RuntimeSettingsService(tmp_path, process_env={}).load_lightrag()
+    assert loaded["top_k"] == 25
+    assert loaded["max_concurrent_files"] == 1
+    assert loaded["llm_model_max_async"] == 4
+    assert loaded["entity_extract_max_gleaning"] == 1
+
+
 def test_response_type_capped(tmp_path: Path) -> None:
     svc = RuntimeSettingsService(tmp_path, process_env={})
     saved = svc.save_graphrag({"response_type": "x" * 500})

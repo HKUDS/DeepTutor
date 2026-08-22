@@ -15,8 +15,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
-from .client import ImaAuthError, ImaClient
+from .client import ImaClient
 from .config import ImaConfig
+from .envelope import ImaAuthError
 
 
 @dataclass

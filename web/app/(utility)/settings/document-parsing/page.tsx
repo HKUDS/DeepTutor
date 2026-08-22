@@ -144,7 +144,7 @@ export default function DocumentParsingSettingsPage() {
               </h2>
               <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
                 {t(
-                  "The active engine handles all parsing. Text-only is built in and extracts plain text; markitdown is lightweight and optional; MinerU and Docling produce richer structure but may need local models or a hosted API.",
+                  "The active engine handles all parsing. Text-only is built in and extracts plain text; markitdown is lightweight and optional; MinerU and Docling produce richer structure, while Tika provides broad remote text extraction.",
                 )}
               </p>
             </header>
@@ -253,6 +253,17 @@ export default function DocumentParsingSettingsPage() {
               onInstalled={load}
               onSave={(patch) =>
                 putDocumentParsing({ engines: { liteparse: patch } })
+              }
+            />
+          )}
+
+          {data.engine === "tika" && (
+            <TikaPanel
+              slice={data.engines.tika || {}}
+              readiness={data.readiness.tika}
+              busy={busy}
+              onSave={(patch) =>
+                putDocumentParsing({ engines: { tika: patch } })
               }
             />
           )}
@@ -677,6 +688,157 @@ function DoclingPanel({
         </SettingSection>
       )}
     </>
+  );
+}
+
+const DEFAULT_TIKA_URL = "http://localhost:9998";
+
+function TikaPanel({
+  slice,
+  readiness,
+  busy,
+  onSave,
+}: {
+  slice: Record<string, unknown>;
+  readiness?: Readiness;
+  busy: boolean;
+  onSave: (patch: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const { t } = useTranslation();
+  const [draftUrl, setDraftUrl] = useState(
+    (typeof slice.server_url === "string" && slice.server_url) || "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setTestResult(null);
+    try {
+      await onSave({ server_url: draftUrl.trim() || DEFAULT_TIKA_URL });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const response = await apiFetch(
+        apiUrl("/api/v1/settings/document-parsing/tika/test"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            server_url: draftUrl.trim() || DEFAULT_TIKA_URL,
+          }),
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+        detail?: string;
+      };
+      if (!response.ok) {
+        setTestResult({
+          ok: false,
+          message: data.detail || t("Connection test failed."),
+        });
+        return;
+      }
+      setTestResult({
+        ok: Boolean(data.ok),
+        message:
+          data.message ||
+          (data.ok ? t("Ready to parse.") : t("Connection test failed.")),
+      });
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <SettingSection
+      title={t("Tika")}
+      description={t(
+        "Point at an Apache Tika server (e.g. the apache/tika docker image). No local install or models needed.",
+      )}
+    >
+      <ReadinessNotice readiness={readiness} />
+      <SettingRow
+        title={t("Server base URL")}
+        control={
+          <input
+            className={`${inputClass} w-[320px] max-w-[48vw] font-mono text-[12px]`}
+            placeholder={DEFAULT_TIKA_URL}
+            value={draftUrl}
+            onChange={(e) => {
+              setDraftUrl(e.target.value);
+              setTestResult(null);
+            }}
+          />
+        }
+      />
+      <SettingRow
+        title={t("Test connection")}
+        description={t("Pings the server /version endpoint.")}
+        control={
+          <div className="flex items-center gap-3">
+            {testResult && (
+              <span
+                className={`inline-flex max-w-[40vw] items-center gap-1 text-[12px] ${
+                  testResult.ok
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400"
+                }`}
+              >
+                {testResult.ok ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5 shrink-0" />
+                )}
+                {testResult.message}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={testConnection}
+              disabled={testing || saving || busy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
+            >
+              {testing && <Loader2 className="h-3 w-3 animate-spin" />}
+              {t("Test")}
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || busy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
+            >
+              {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+              {t("Save Tika server")}
+            </button>
+          </div>
+        }
+      />
+      <div className="px-1 pb-4">
+        <span className="text-[12px] text-[var(--muted-foreground)]">
+          {t(
+            "Settings are written to data/user/settings/document_parsing.json.",
+          )}
+        </span>
+      </div>
+    </SettingSection>
   );
 }
 

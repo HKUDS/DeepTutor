@@ -21,6 +21,7 @@ from deeptutor.knowledge.kb_types import (
     IMA_KB_TYPE,
     LIGHTRAG_SERVER_KB_TYPE,
     LINKED_KB_TYPE,
+    MARGINNOTE4_KB_TYPE,
     OBSIDIAN_KB_TYPE,
     SUBAGENT_KB_TYPE,
     external_root_of,
@@ -33,6 +34,8 @@ from deeptutor.services.rag.factory import (
     IMA_PROVIDER,
     KNOWN_PROVIDERS,
     LIGHTRAG_SERVER_PROVIDER,
+    PAGEINDEX_OSS_PROVIDER,
+    PAGEINDEX_PROVIDER,
     has_ready_provider_index,
     normalize_provider_name,
     provider_uses_embedding_versions,
@@ -465,9 +468,20 @@ class KnowledgeBaseManager:
             kb_config["progress"] = progress
 
         if status == "ready":
-            fp = _get_embedding_fingerprint()
-            if fp:
-                kb_config["embedding_model"], kb_config["embedding_dim"] = fp
+            provider = normalize_provider_name(kb_config.get("rag_provider"))
+            pageindex_provider = provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+            if pageindex_provider:
+                for key in (
+                    "embedding_model",
+                    "embedding_dim",
+                    "embedding_signature",
+                    "embedding_mismatch",
+                ):
+                    kb_config.pop(key, None)
+            else:
+                fp = _get_embedding_fingerprint()
+                if fp:
+                    kb_config["embedding_model"], kb_config["embedding_dim"] = fp
             # Record the active signature + the on-disk version registry so
             # the UI can render version chips without recomputing.
             try:
@@ -475,12 +489,11 @@ class KnowledgeBaseManager:
                     signature_from_embedding_config,
                 )
 
-                sig = signature_from_embedding_config()
+                sig = None if pageindex_provider else signature_from_embedding_config()
                 if sig is not None:
                     kb_config["embedding_signature"] = sig.hash()
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
-                    provider = normalize_provider_name(kb_config.get("rag_provider"))
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
             except Exception:  # pragma: no cover - best-effort metadata
                 pass
@@ -880,6 +893,80 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    def register_marginnote4_kb(
+        self,
+        name: str,
+        *,
+        db_path: str = "",
+        description: str = "",
+    ) -> dict:
+        """Register a connected MarginNote 4 library as a pointer KB.
+
+        Creates no folder under ``base_dir`` and runs no index pipeline: it
+        records a ``type: marginnote4`` entry whose ``db_path`` (when given)
+        the MarginNote capability binds to. When ``db_path`` is omitted the
+        capability derives a default SQLite path from the KB name, so callers
+        can leave it blank for the simple single-library case. Raises
+        ``ValueError`` on a missing name, a name clash, or a store already
+        claimed by another library.
+        """
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Knowledge base name is required.")
+
+        self.config = self._load_config()
+        knowledge_bases = self.config.setdefault("knowledge_bases", {})
+        if name in knowledge_bases:
+            raise ValueError(f"A knowledge base named '{name}' already exists.")
+
+        db_path = (db_path or "").strip()
+        claimed_by = self._marginnote4_store_owner(name, db_path, knowledge_bases)
+        if claimed_by:
+            # Distinct names can still derive one store: the default path keeps
+            # only alphanumerics, `-` and `_`, so "My Lib" and "My/Lib" both
+            # land on My_Lib.db. Sharing it would merge two libraries' objects
+            # and let either one's devices sync into the other.
+            raise ValueError(
+                f"Knowledge base '{claimed_by}' already uses that MarginNote store. "
+                "Pick a name that differs by more than punctuation."
+            )
+
+        now = datetime.now().isoformat()
+        entry: dict[str, Any] = {
+            "path": name,
+            "type": MARGINNOTE4_KB_TYPE,
+            "description": description or f"MarginNote 4 library: {name}",
+            "status": "ready",
+            "needs_reindex": False,
+            "created_at": now,
+            "updated_at": now,
+        }
+        if db_path:
+            entry["db_path"] = db_path
+        knowledge_bases[name] = entry
+        self._save_config()
+        return entry
+
+    @staticmethod
+    def _marginnote4_store_owner(
+        name: str,
+        db_path: str,
+        knowledge_bases: dict[str, Any],
+    ) -> str | None:
+        """Name of the MarginNote library already using this store, if any."""
+        from deeptutor.capabilities.marginnote4.store import resolve_db_path
+
+        def _store(kb_name: str, entry: dict) -> Path:
+            return resolve_db_path(kb_name, metadata=entry).expanduser().resolve()
+
+        wanted = _store(name, {"db_path": db_path})
+        for other_name, other in knowledge_bases.items():
+            if not isinstance(other, dict) or other.get("type") != MARGINNOTE4_KB_TYPE:
+                continue
+            if _store(other_name, other) == wanted:
+                return other_name
+        return None
+
     def register_ima_kb(
         self,
         name: str,
@@ -1087,6 +1174,8 @@ class KnowledgeBaseManager:
                 "type": kb_config.get("type"),
                 "vault_path": kb_config.get("vault_path"),
                 "external_path": kb_config.get("external_path"),
+                # MarginNote 4 pointer (SQLite store path for synced data).
+                "db_path": kb_config.get("db_path"),
                 # LightRAG server pointer (the URL is safe to surface; the API
                 # key deliberately is not).
                 "server_url": kb_config.get("server_url"),
@@ -1241,6 +1330,8 @@ class KnowledgeBaseManager:
             metadata["vault_path"] = kb_config.get("vault_path")
         if kb_config.get("external_path"):
             metadata["external_path"] = kb_config.get("external_path")
+        if kb_config.get("db_path"):
+            metadata["db_path"] = kb_config.get("db_path")
         if kb_config.get("agent_kind"):
             metadata["agent_kind"] = kb_config.get("agent_kind")
         # The server URL is shown read-only in the UI; the API key never leaves
@@ -1306,7 +1397,8 @@ class KnowledgeBaseManager:
         kb_probe_dir = kb_dir if dir_exists else None
         rag_initialized = has_ready_provider
 
-        active_signature = signature_from_embedding_config()
+        pageindex_provider = rag_provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+        active_signature = None if pageindex_provider else signature_from_embedding_config()
         if provider_uses_embedding_versions(rag_provider):
             matched_entry = (
                 find_matching_version(kb_probe_dir, active_signature)
@@ -1375,9 +1467,17 @@ class KnowledgeBaseManager:
         # reference the user's own external resource — or, for subagents, no
         # folder at all. Deleting one must only drop our pointer entry; never
         # touch what it references, and don't warn about the "missing" folder.
-        connected = is_connected_kb(config_kbs.get(name, {}))
+        entry = config_kbs.get(name, {})
+        connected = is_connected_kb(entry)
         if connected:
             dir_exists = False
+        # One connected kind does own storage we created: a MarginNote library's
+        # synced objects live in a SQLite file under our own data directory, not
+        # in an external resource the user manages. Leaving it behind would also
+        # resurrect every paired device the moment a library of the same name is
+        # connected again.
+        if entry.get("type") == MARGINNOTE4_KB_TYPE:
+            self._delete_marginnote4_store(name, entry)
 
         if not confirm:
             # Ask for confirmation in CLI
@@ -1402,7 +1502,14 @@ class KnowledgeBaseManager:
                 # leaving the KB stuck in the list is worse than orphan files on
                 # disk (issue #370).
                 try:
-                    os.chmod(path, stat.S_IWRITE)
+                    current_mode = os.stat(path).st_mode
+                    writable_mode = current_mode | stat.S_IWRITE
+                    if stat.S_ISDIR(current_mode):
+                        # POSIX directories need execute permission to remain
+                        # traversable. Replacing the whole mode with S_IWRITE
+                        # leaves an orphan that even later cleanup cannot enter.
+                        writable_mode |= stat.S_IXUSR
+                    os.chmod(path, writable_mode)
                     func(path)
                 except Exception as retry_exc:
                     logger.warning(
@@ -1427,6 +1534,27 @@ class KnowledgeBaseManager:
 
         self._save_config()
         return True
+
+    def _delete_marginnote4_store(self, name: str, entry: dict) -> None:
+        """Remove a MarginNote library's SQLite store, best-effort.
+
+        A failure here must not strand the config entry: leaving the KB in the
+        list is worse than an orphan file, exactly as for the index directory
+        above.
+        """
+        from deeptutor.capabilities.marginnote4.store import resolve_db_path
+
+        try:
+            db_path = resolve_db_path(name, metadata=entry)
+            db_path.unlink(missing_ok=True)
+            # SQLite's WAL companions, when the last connection left them.
+            for suffix in ("-wal", "-shm"):
+                db_path.with_name(db_path.name + suffix).unlink(missing_ok=True)
+        except Exception as exc:  # noqa: BLE001 - orphan file beats a stuck entry
+            logger.warning(
+                f"Could not remove the MarginNote store for KB '{name}': {exc}. "
+                "Continuing; the config entry is still cleaned up."
+            )
 
     def clean_rag_storage(self, name: str | None = None, backup: bool = True) -> bool:
         """

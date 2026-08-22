@@ -44,6 +44,7 @@ from deeptutor.core.agentic.labels import (
     classify_label,
     strip_label_probe_prefix,
 )
+from deeptutor.core.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.core.agentic.usage import (
     UsageTracker,
     message_content_chars,
@@ -171,7 +172,7 @@ async def run_labeled_step(
     saw_pre_label_think = False
     sub_trace_opened = False
     content_acc: list[str] = []
-    tc_acc: dict[int, dict[str, Any]] = {}
+    tc_acc = ToolCallAccumulator()
     usage_seen: Any = None
     output_chars_seen = 0
     finish_reason_seen: str | None = None
@@ -492,19 +493,7 @@ async def run_labeled_step(
                     await _emit_text(text)
 
             for tc_delta in getattr(delta, "tool_calls", None) or []:
-                fn_for_chars = getattr(tc_delta, "function", None)
-                output_chars_seen += len(str(getattr(fn_for_chars, "name", "") or ""))
-                output_chars_seen += len(str(getattr(fn_for_chars, "arguments", "") or ""))
-                idx = getattr(tc_delta, "index", 0)
-                entry = tc_acc.setdefault(idx, {"id": "", "name": "", "arguments": ""})
-                if getattr(tc_delta, "id", None):
-                    entry["id"] = tc_delta.id
-                fn = getattr(tc_delta, "function", None)
-                if fn is not None:
-                    if getattr(fn, "name", None):
-                        entry["name"] = entry["name"] + fn.name
-                    if getattr(fn, "arguments", None):
-                        entry["arguments"] = entry["arguments"] + fn.arguments
+                output_chars_seen += tc_acc.feed(tc_delta)
     finally:
         close = getattr(response_stream, "close", None)
         if callable(close):
@@ -561,6 +550,6 @@ async def run_labeled_step(
     # pre-label thinking.
     if binding or saw_pre_label_think:
         text = clean_thinking_tags(text, binding, model)
-    ordered_tool_calls = [tc_acc[k] for k in sorted(tc_acc.keys())]
+    ordered_tool_calls = tc_acc.ordered()
     ordered_tool_calls = [tc for tc in ordered_tool_calls if tc.get("name")]
     return LabeledStepResult(label=label, text=text, tool_calls=ordered_tool_calls)

@@ -219,6 +219,7 @@ class SourceAnchor(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     kind: str = ""  # 'kb' | 'notebook' | 'chat' | 'web' | 'manual'
+    kb_name: str = ""  # populated for KB-backed anchors
     ref: str = ""  # KB doc id, notebook record id, message id…
     snippet: str = ""  # short preview (≤300 chars)
 
@@ -329,6 +330,57 @@ class CharacterGraph(BaseModel):
             if n.id == node_id:
                 return n
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Learning captures (Book reader annotations)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class LearningCaptureStatus(str, Enum):
+    """Lifecycle state for one captured reading segment.
+
+    ``captured`` is the first persisted state after user action.
+    ``drafted`` is explicit editing or normalization.
+    ``pending_confirmation`` enters UI review.
+    ``approved`` is user-reviewed and ready for export.
+    ``delivered`` means export task is created.
+    ``imported`` means export task was imported/acknowledged in MN4.
+    ``rejected`` is a terminal, user-declined state.
+    """
+
+    CAPTURED = "captured"
+    DRAFTED = "drafted"
+    PENDING_CONFIRMATION = "pending_confirmation"
+    APPROVED = "approved"
+    DELIVERED = "delivered"
+    IMPORTED = "imported"
+    REJECTED = "rejected"
+
+
+class LearningCapture(BaseModel):
+    """One captured reading segment for manual review before MN4 writeback."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: _new_id("lc"))
+    book_id: str
+    page_id: str
+    block_id: str = ""
+    capture_type: str = "selection"
+    source_text: str = ""
+    context_before: str = ""
+    context_after: str = ""
+    source_locator: str = ""  # book/page/anchor for later traceability
+    book_title: str = ""
+    chapter_title: str = ""
+    user_note: str = ""
+    content_hash: str = ""
+    status: LearningCaptureStatus = LearningCaptureStatus.CAPTURED
+    version: int = 1
+    rejected_reason: str = ""
+    created_at: float = Field(default_factory=_now)
+    updated_at: float = Field(default_factory=_now)
 
 
 class Spine(BaseModel):
@@ -525,8 +577,13 @@ class Book(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     # KB fingerprints captured at compile-time. Used to detect KB drift.
     kb_fingerprints: dict[str, str] = Field(default_factory=dict)
+    # Per-document content hashes captured with ``kb_fingerprints``. These let
+    # drift detection narrow stale pages to pages that cited the changed files.
+    kb_document_fingerprints: dict[str, dict[str, str]] = Field(default_factory=dict)
     # Pages whose KB content has changed since they were last compiled.
     stale_page_ids: list[str] = Field(default_factory=list)
+    # Epoch seconds when the current stale set was observed.
+    stale_detected_at: float = 0.0
 
 
 __all__ = [
@@ -552,6 +609,8 @@ __all__ = [
     "SourceChunk",
     "ExplorationReport",
     "Block",
+    "LearningCaptureStatus",
+    "LearningCapture",
     "Page",
     "PageLink",
     "QuizAttempt",

@@ -10,6 +10,7 @@ Converts requested reading text into a character relationship graph by:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
 from .blocks._llm_writer import llm_json
@@ -20,6 +21,11 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _hash_text(text: str) -> str:
+    """Return a 16-character hex hash of *text*."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 MAX_NODES_CURRENT = 30
 
@@ -214,6 +220,7 @@ def render_character_graph_mermaid(graph: CharacterGraph) -> str:
 
 
 __all__ = [
+    "_hash_text",
     "extract_character_graph",
     "render_character_graph_mermaid",
 ]

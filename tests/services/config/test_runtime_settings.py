@@ -369,6 +369,39 @@ def test_docling_process_env_override(tmp_path: Path) -> None:
     assert plain.load_document_parsing()["engines"]["docling"]["api_token"] == "file-key"
 
 
+def test_tika_defaults_and_normalization(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+
+    defaults = service.load_document_parsing(include_process_overrides=False)["engines"]["tika"]
+    assert defaults["server_url"] == "http://localhost:9998"
+
+    saved = service.save_document_parsing(
+        {"engines": {"tika": {"server_url": "http://192.168.2.162:9998/"}}}
+    )["engines"]["tika"]
+    assert saved["server_url"] == "http://192.168.2.162:9998"
+    assert (
+        service.save_document_parsing({"engines": {"tika": {"server_url": ""}}})["engines"]["tika"][
+            "server_url"
+        ]
+        == "http://localhost:9998"
+    )
+
+
+def test_tika_process_env_override(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(
+        tmp_path / "settings",
+        process_env={"TIKA_SERVER_URL": "http://tika:9998"},
+    )
+    service.save_document_parsing({"engines": {"tika": {"server_url": "http://localhost:9998"}}})
+
+    assert service.load_document_parsing()["engines"]["tika"]["server_url"] == "http://tika:9998"
+    persisted = _read_json(service.path_for("document_parsing"))["engines"]["tika"]
+    assert persisted["server_url"] == "http://localhost:9998"
+
+    plain = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    assert plain.load_document_parsing()["engines"]["tika"]["server_url"] == "http://localhost:9998"
+
+
 def test_mineru_process_env_override(tmp_path: Path) -> None:
     service = RuntimeSettingsService(
         tmp_path / "settings",
@@ -423,6 +456,7 @@ def test_document_parsing_v1_to_v2_migration(tmp_path: Path) -> None:
         "markitdown",
         "pymupdf4llm",
         "liteparse",
+        "tika",
     }
     # Migration is persisted to the renamed file (v2, no top-level flat keys);
     # the legacy mineru.json is gone.

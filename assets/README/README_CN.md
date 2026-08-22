@@ -5,7 +5,8 @@
 # DeepTutor：终身个性化辅导
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -60,10 +61,10 @@
 
 DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测验生成、研究、可视化和掌握度练习整合在一个可扩展的系统中。
 
-- **统一的运行时** — Chat、Quiz、Research、Visualize、Solve 和 Mastery Path 运行在同一个智能体循环上，切换的是目标，而非引擎，上下文始终随学习者流转。
+- **统一的运行时** — Chat、Quiz、Research、Visualize、Solve、Mastery Path 和 Immersive Reading 运行在同一个智能体循环上，切换的是目标，而非引擎，上下文始终随学习者流转。
 - **互联的学习上下文** — 知识库、书籍、Co-Writer 草稿、笔记本、题库、人格预设和 Memory，在每个工作流中始终可用，而不是各自孤立。
 - **子智能体与 Partners** — 在任意对话轮次中调用实时运行的编程 CLI（Claude Code、Codex、Gemini、Kimi、opencode 或 MiMo）或 Partner（或导入其历史对话），并在同一大脑上运行持久化的 IM 伴侣。
-- **多引擎知识库** — 跨 LlamaIndex、PageIndex、GraphRAG、LightRAG 或链接的 Obsidian vault 的版本化 RAG 知识库，支持可插拔的文档解析。
+- **多引擎知识库** — 跨 LlamaIndex、PageIndex、GraphRAG、LightRAG、远程 LightRAG Server、Tencent IMA 或 MarginNote 4 知识库，或链接的 Obsidian vault 的版本化 RAG 知识库，支持可插拔的文档解析。
 - **可扩展工具与技能** — 内置工具、MCP 服务器、CLI 应用、图像 / 视频 / 语音生成模型，以及从 EduHub 安装的社区技能。
 - **可审计的记忆** — L1 追踪、L2 表面摘要和 L3 综合让个性化透明可编辑，Memory Graph 将每一条结论追溯到其原始证据。
 
@@ -327,11 +328,11 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor 聊天智能体循环" width="900">
 </div>
 
-用户可切换的工具有 `brainstorm`、`web_search`、`paper_search`、`reason` 和 `geogebra_analysis` — 配置了对应生成模型后还有 `imagegen` 和 `videogen`。上下文工具如 `rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`github` 和 `consult_subagent` 会在当前轮次具备相应上下文时自动挂载。
+用户可切换的工具有 `brainstorm`、`web_search`、`paper_search`、`reason` 和 `geogebra_analysis` — 配置了对应生成模型后还有 `imagegen` 和 `videogen`。上下文工具如 `rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github` 和 `consult_subagent` 会在当前轮次具备相应上下文时自动挂载。
 
 上下文分为两类：**粘性会话上下文**（子智能体、知识库、人格预设、模型、语音）存在于编辑器工具栏，在各轮次间持续保留；**一次性引用**（文件、聊天历史、书籍、笔记本、题库、导入的智能体）通过 `+` 菜单添加，仅用于单次对话轮次。
 
-Chat 也是进入更深层能力的入口：**Quiz** 用于题目生成，**Research** 用于带引用的报告，**Visualize** 用于图表 / 示意图 / 动画，以及 *更多能力* 下的 **Solve**（有步骤的推理）和 **Mastery Path**（学习计划流程）。
+Chat 也是进入更深层能力的入口：**Quiz** 用于题目生成，**Visualize** 用于图表 / 示意图 / 动画，**Mastery Path** 用于学习计划流程，以及 **Immersive Reading** — 在对话旁打开一份文档，每条论断都标注来源页码。**Research**（带引用的报告）和 **Solve**（有步骤的推理）则位于 *更多能力* 之下。
 
 </details>
 
@@ -420,13 +421,13 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor 知识中心" width="900">
 </div>
 
-知识库是 RAG 背后的文档集合 — 为 Chat 对话、Co-Writer 编辑、Book 生成和 Partner 对话提供依据。其独特之处在于**检索引擎的选择**：**LlamaIndex**（默认，本地向量 + BM25）、**PageIndex**（托管，支持页面级引用的推理检索）、**GraphRAG** 和 **LightRAG**（知识图谱检索）、**LightRAG Server**（将检索卸载至你通过 HTTP 连接的外部 LightRAG 实例）、**Tencent IMA**（在 IMA 中维护的知识库，通过其 OpenAPI 进行检索），或直接在原位读写的链接 **Obsidian** vault。每个 KB 绑定到单一引擎。
+知识库是 RAG 背后的文档集合 — 为 Chat 对话、Co-Writer 编辑、Book 生成和 Partner 对话提供依据。其独特之处在于**检索引擎的选择**：**LlamaIndex**（默认，本地向量 + BM25）、**PageIndex**（支持页面级引用的推理检索，托管或自托管 OSS）、**GraphRAG** 和 **LightRAG**（知识图谱检索）、**LightRAG Server**（将检索卸载至你通过 HTTP 连接的外部 LightRAG 实例）、**Tencent IMA**（在 IMA 中维护的知识库 — 通过其 OpenAPI 进行检索、浏览并写回），**MarginNote 4**（你的 MN4 学习数据 — 文档、摘录、脑图卡片及其相互链接 — 由该应用的插件推送进来，并通过专用工具进行导航），或直接在原位读写的链接 **Obsidian** vault。每个 KB 绑定到单一引擎。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="创建知识库" width="900">
 </div>
 
-创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
+创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向 Apache Tika 服务器（`TIKA_SERVER_URL`）。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
 
 </details>
 
@@ -437,7 +438,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor 学习空间中心" width="900">
 </div>
 
-学习空间是知识库和个性化层 — 持久化内容的存放之处。**对话与素材**保存聊天历史、笔记本和题库（每道保存的题目包含你的答案、参考答案和解析）。**个性化**保存掌握路径、人格预设（如*同伴*、*研究助手*、*教师*等行为预设）、技能（模型按需读取的 `SKILL.md` 剧本）、**MCP 服务** — 一键为自己安装的托管 MCP 服务器精选商店，外加通过 URL 配置的任意远程服务器 — 以及**CLI 应用**，即来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录、由聊天智能体直接调用的命令行工具，每个应用的使用指南按需加载。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
+学习空间是知识库和个性化层 — 持久化内容的存放之处。**对话与素材**保存聊天历史、笔记本 — 现已拥有独立的控制台，记录可在笔记本之间移动或复制，并支持导出为 Markdown — 以及题库（每道保存的题目包含你的答案、参考答案和解析）。**个性化**保存掌握路径、人格预设（如*同伴*、*研究助手*、*教师*等行为预设）、技能（模型按需读取的 `SKILL.md` 剧本）、**MCP 服务** — 一键为自己安装的托管 MCP 服务器精选商店，外加通过 URL 配置的任意远程服务器 — 以及**CLI 应用**，即来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录、由聊天智能体直接调用的命令行工具，每个应用的使用指南按需加载。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="从 EduHub 导入技能" width="900">
@@ -477,7 +478,7 @@ Settings 是操作控制面板，带有实时状态条（后端健康状况与�
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外观设置与主题" width="900">
 </div>
 
-大多数部分采用草稿-应用流程，因此你可以在提交前测试提供商配置。开箱即提供四种主题 — Default、Cream、Dark 和 Glass。项目根目录的 `.env` 文件被刻意忽略；运行时配置存储在 `data/user/settings/*.json` 下，除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 将应用指向其他位置。
+大多数部分采用草稿-应用流程，因此你可以在提交前测试提供商配置。你也可以直接在 Chat 中开口：助手会读取当前配置、应用变更，并告知是否需要重启或重新索引 — 在提交前先探测新模型，因此它不会把自己切换到不可达的配置上。API Key 永远不会经过模型 — 它会为你打开对应的表单来输入。开箱即提供四种主题 — Default、Cream、Dark 和 Glass。项目根目录的 `.env` 文件被刻意忽略；运行时配置存储在 `data/user/settings/*.json` 下，除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 将应用指向其他位置。
 
 **OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `data/system/user-secrets/<owner>/private/openai-codex/` 中 — 在多容器 Compose 部署中，位于 exec 沙箱可触及的所有目录树之外 — DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录 — 普通用户也不例外：他们的卡片位于**模型 → LLM**下，产生的模型、目录和退出登录操作均只对该账号私有。
 

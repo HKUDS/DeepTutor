@@ -13,6 +13,7 @@ import logging
 from typing import Any, AsyncIterator
 import uuid
 
+from deeptutor.capabilities.protocol import AGENT_OUTPUT, EVENT_METADATA
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.stream_bus import StreamBus, register_bus, unregister_bus
@@ -21,6 +22,35 @@ from deeptutor.runtime.registry.capability_registry import get_capability_regist
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
+
+
+def completion_event_fields(context: UnifiedContext, cap_name: str) -> tuple[str, dict[str, Any]]:
+    """Build CAPABILITY_COMPLETE ``agent_output`` + metadata.
+
+    Capabilities may stash a body on ``context.metadata[AGENT_OUTPUT]`` and
+    publishable extras under ``context.metadata[EVENT_METADATA]`` (both named in
+    ``deeptutor.capabilities.protocol``).
+    ``capability``, ``session_id`` and ``turn_id`` always win so consumers can
+    rely on those keys.
+
+    Only that explicit sub-dict is forwarded, never ``context.metadata`` whole.
+    Turn metadata is a scratchpad, not a wire format: it holds live callables
+    (``wait_for_user_reply``), the user's ask_user answers, and whatever else a
+    capability parked there mid-turn. Publishing it to the global EventBus —
+    whose subscribers include the Partner channels — would leak turn internals
+    to every listener and hand JSON-serialising consumers objects they cannot
+    encode. A capability that wants a value on the bus says so.
+    """
+    meta = context.metadata or {}
+    agent_output = str(meta.get(AGENT_OUTPUT) or "")
+    published = meta.get(EVENT_METADATA)
+    extras = dict(published) if isinstance(published, dict) else {}
+    return agent_output, {
+        **extras,
+        "capability": cap_name,
+        "session_id": context.session_id,
+        "turn_id": str(meta.get("turn_id") or ""),
+    }
 
 
 class ChatOrchestrator:
@@ -42,6 +72,31 @@ class ChatOrchestrator:
         """
         if not context.session_id:
             context.session_id = str(uuid.uuid4())
+
+        try:
+            from deeptutor.services.rag.pipelines.pageindex import (
+                validate_pageindex_oss_selection,
+            )
+
+            validate_pageindex_oss_selection(context.knowledge_bases)
+        except ValueError as exc:
+            bus = StreamBus()
+            await bus.error(
+                str(exc),
+                source="orchestrator",
+                metadata={"turn_terminal": True, "status": "failed"},
+            )
+            await bus.emit(
+                StreamEvent(
+                    type=StreamEventType.DONE,
+                    source="orchestrator",
+                    metadata={"status": "failed"},
+                )
+            )
+            await bus.close()
+            async for event in bus.subscribe():
+                yield event
+            return
 
         cap_name = context.active_capability or "chat"
         capability = self._cap_registry.get(cap_name)
@@ -130,17 +185,14 @@ class ChatOrchestrator:
         """Publish CAPABILITY_COMPLETE to the global EventBus."""
         try:
             bus = get_event_bus()
+            agent_output, metadata = completion_event_fields(context, cap_name)
             await bus.publish(
                 Event(
                     type=EventType.CAPABILITY_COMPLETE,
                     task_id=str(context.metadata.get("turn_id") or context.session_id),
                     user_input=context.user_message,
-                    agent_output="",
-                    metadata={
-                        "capability": cap_name,
-                        "session_id": context.session_id,
-                        "turn_id": str(context.metadata.get("turn_id", "")),
-                    },
+                    agent_output=agent_output,
+                    metadata=metadata,
                 )
             )
         except Exception:

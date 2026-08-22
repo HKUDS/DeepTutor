@@ -3,10 +3,13 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
+import httpcore
+import httpx
 import pytest
 
 from deeptutor.services.codex_auth.constants import CODEX_RESPONSES_URL
 from deeptutor.services.codex_auth.contracts import CodexAuthError, CodexToken
+from deeptutor.services.llm.exceptions import LLMProviderTransportError
 from deeptutor.services.llm.provider_core import openai_codex_provider as module
 from deeptutor.services.llm.provider_core.openai_codex_provider import (
     CodexHTTPError,
@@ -222,6 +225,40 @@ async def test_provider_does_not_expose_network_error_details(
     assert result.finish_reason == "error"
     assert "private proxy" not in result.content
     assert "token" not in result.content.lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transport_error",
+    [
+        httpx.RemoteProtocolError("private proxy host and token"),
+        httpcore.RemoteProtocolError("private proxy host and token"),
+    ],
+)
+async def test_transport_failure_raises_sanitized_retryable_error(
+    monkeypatch: pytest.MonkeyPatch,
+    transport_error: Exception,
+) -> None:
+    service = FakeCodexService()
+    sensitive_message = "private proxy host and token"
+
+    async def transport_failure(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> tuple[str, list[Any], str]:
+        raise transport_error
+
+    monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
+    monkeypatch.setattr(module, "_request_codex", transport_failure)
+
+    with pytest.raises(LLMProviderTransportError) as exc_info:
+        await OpenAICodexProvider().chat(
+            [{"role": "user", "content": "hello"}],
+        )
+
+    assert str(exc_info.value) == "Codex transport request failed."
+    assert sensitive_message not in str(exc_info.value)
+    assert exc_info.value.__cause__ is transport_error
 
 
 def test_provider_source_no_longer_imports_oauth_cli_kit() -> None:

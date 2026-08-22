@@ -310,3 +310,104 @@ def test_only_path_switching_tools_get_a_handle_on_the_live_binding(tmp_path, mo
     assert context.metadata["mastery_path_id"] == "other"
     # And the next tool call on this turn follows the new binding.
     assert capability.augment_kwargs("mastery_status", {}, context)["_mastery_path_id"] == "other"
+
+
+# ---- reads must not create paths (#909) --------------------------------------
+
+
+def _built_path(path_id: str, name: str = "Algebra") -> LearningProgress:
+    return LearningProgress(
+        book_id=path_id,
+        modules=[
+            LearningModule(
+                id="m1",
+                name=name,
+                order=0,
+                knowledge_points=[
+                    KnowledgePoint(
+                        id=f"{path_id}-kp1",
+                        name="slope",
+                        type=KnowledgeType.CONCEPT,
+                        module_id="m1",
+                    )
+                ],
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_status_on_unknown_path_creates_nothing(tmp_path, monkeypatch):
+    """A conversation that merely asks about its progress must leave no path.
+
+    The turn's path id falls back to the conversation's own scratch id, so a
+    creating read manufactured one empty path per fresh mastery chat (#909).
+    """
+    from deeptutor.capabilities.mastery.tools import MasteryStatusTool
+
+    _use_store_root(monkeypatch, tmp_path)
+    scratch_id = "unified_session_1787032617956"
+
+    result = await MasteryStatusTool().execute(_mastery_path_id=scratch_id)
+
+    assert json.loads(result.content)["status"] == "empty"
+    assert LearningStore().list_all() == []
+    assert LearningStore().exists(scratch_id) is False
+
+
+@pytest.mark.asyncio
+async def test_status_points_at_existing_paths_before_offering_to_build(tmp_path, monkeypatch):
+    """With paths built elsewhere, the tutor must look for them, not replace them."""
+    from deeptutor.capabilities.mastery.tools import MasteryStatusTool
+
+    _use_store_root(monkeypatch, tmp_path)
+    LearningStore().save(_built_path("algebra-101"))
+
+    result = await MasteryStatusTool().execute(_mastery_path_id="unified_session_123")
+
+    payload = json.loads(result.content)
+    assert payload["status"] == "empty"
+    assert "mastery_paths" in payload["message"] and "mastery_switch" in payload["message"]
+    # Still no path invented for this conversation.
+    assert LearningStore().list_all() == ["algebra-101"]
+
+
+@pytest.mark.asyncio
+async def test_status_reports_no_paths_at_all_when_the_learner_has_none(tmp_path, monkeypatch):
+    """The build prompt stays for a genuinely empty learner."""
+    from deeptutor.capabilities.mastery.tools import MasteryStatusTool
+
+    _use_store_root(monkeypatch, tmp_path)
+
+    payload = json.loads((await MasteryStatusTool().execute(_mastery_path_id="fresh")).content)
+
+    assert "mastery_build" in payload["message"]
+    assert "mastery_switch" not in payload["message"]
+
+
+@pytest.mark.asyncio
+async def test_recording_tools_refuse_an_unbuilt_path_without_creating_it(tmp_path, monkeypatch):
+    """quiz / grade / assess report the real problem instead of half-creating."""
+    from deeptutor.capabilities.mastery.tools import (
+        MasteryAssessTool,
+        MasteryGradeTool,
+        MasteryQuizTool,
+    )
+
+    _use_store_root(monkeypatch, tmp_path)
+
+    quiz = await MasteryQuizTool().execute(
+        _mastery_path_id="ghost",
+        knowledge_point_id="kp-1",
+        question="q?",
+        expected_answer="a",
+    )
+    assess = await MasteryAssessTool().execute(
+        _mastery_path_id="ghost", knowledge_point_id="kp-1", passed=True
+    )
+    grade = await MasteryGradeTool().execute(_mastery_path_id="ghost", answer="a")
+
+    for result in (quiz, assess, grade):
+        assert result.success is False
+        assert "mastery_paths" in result.content
+    assert LearningStore().list_all() == []

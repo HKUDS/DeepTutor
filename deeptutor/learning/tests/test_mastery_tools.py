@@ -922,3 +922,98 @@ async def test_leave_makes_the_conversation_own_its_scratch_path(path_id, sessio
     assert removed == ["session-1"]
     assert store.exists("session-1") is False
     assert store.exists("calculus") is True
+
+
+@pytest.mark.asyncio
+async def test_quiz_explanation_reaches_the_question_bank(path_id, session_store):
+    """A mastery mistake must be reviewable, not just scored.
+
+    The sync used to hard-code ``explanation`` and ``difficulty`` to empty, so
+    every question the mastery path contributed to the bank showed a bare
+    right/wrong with nothing saying why.
+    """
+    await _build_basic(path_id)
+    session = await session_store.create_session(title="Mastery Session")
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    quiz = json.loads(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="What does NAND return for (1, 1)?",
+                expected_answer="0",
+                question_type="short",
+                explanation="NAND is NOT AND, so two true inputs give false.",
+                difficulty="medium",
+            )
+        ).content
+    )
+
+    # The reference explanation is answer-adjacent: it must never ride along
+    # on the card the learner is about to answer.
+    rendered = json.dumps(quiz["ask_user"], ensure_ascii=False)
+    assert "NOT AND" not in rendered
+    assert "NOT AND" not in json.dumps(quiz["pending_question"], ensure_ascii=False)
+
+    await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        _session_id=session["id"],
+        _turn_id="turn_mastery_1",
+        question_id=quiz["question_id"],
+        answer="1",
+    )
+
+    entry = (await session_store.list_notebook_entries())["items"][0]
+    assert entry["is_correct"] is False
+    assert entry["explanation"] == "NAND is NOT AND, so two true inputs give false."
+    assert entry["difficulty"] == "medium"
+
+
+@pytest.mark.asyncio
+async def test_unusable_difficulty_is_dropped_not_rejected(path_id, session_store):
+    """A mislabelled difficulty must never cost the learner the question."""
+    await _build_basic(path_id)
+    session = await session_store.create_session(title="Mastery Session")
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    quiz = json.loads(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="2+2?",
+                expected_answer="4",
+                question_type="short",
+                difficulty="extremely tricky",
+            )
+        ).content
+    )
+    assert quiz["status"] == "registered"
+
+    await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        _session_id=session["id"],
+        _turn_id="turn_mastery_1",
+        question_id=quiz["question_id"],
+        answer="5",
+    )
+    entry = (await session_store.list_notebook_entries())["items"][0]
+    assert entry["difficulty"] == ""
+
+
+@pytest.mark.asyncio
+async def test_pending_question_without_explanation_still_deserializes(path_id):
+    """Paths persisted before the field existed must load unchanged."""
+    legacy = PendingQuestion.model_validate(
+        {
+            "question_id": "q1",
+            "knowledge_point_id": "kp1",
+            "prompt": "old question",
+            "expected_answer": "yes",
+        }
+    )
+    assert legacy.explanation == ""
+    assert legacy.difficulty == ""

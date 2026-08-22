@@ -5,7 +5,8 @@
 # DeepTutor：生涯にわたるパーソナライズド個別指導
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -60,10 +61,10 @@
 
 DeepTutorは、個別指導、問題解決、クイズ生成、研究、ビジュアライゼーション、習熟度練習を1つの拡張可能なシステムに統合したエージェントネイティブな学習ワークスペースです。
 
-- **すべてのモードで1つのランタイム** — Chat、Quiz、Research、Visualize、Solve、Mastery Pathが同じエージェントループで実行されるため、エンジンではなく目的を切り替えます。コンテキストは学習者とともに移動します。
+- **すべてのモードで1つのランタイム** — Chat、Quiz、Research、Visualize、Solve、Mastery Path、Immersive Readingが同じエージェントループで実行されるため、エンジンではなく目的を切り替えます。コンテキストは学習者とともに移動します。
 - **接続された学習コンテキスト** — 知識ベース、本、Co-Writerの下書き、ノートブック、問題バンク、ペルソナ、Memoryが孤立したツールに閉じ込められることなく、すべてのワークフローで利用可能です。
 - **サブエージェントとPartners** — 任意のターンからライブのコーディングCLI（Claude Code、Codex、Gemini、Kimi、opencode、MiMo）またはPartnerに相談（または過去の会話をインポート）し、同じブレインで永続的なIMコンパニオンを実行します。
-- **マルチエンジン知識** — LlamaIndex、PageIndex、GraphRAG、LightRAG、またはリンクされたObsidianボールトにまたがるバージョン管理されたRAGライブラリ（プラグ可能なドキュメント解析付き）。
+- **マルチエンジン知識** — LlamaIndex、PageIndex、GraphRAG、LightRAG、リモートのLightRAG Server、Tencent IMAまたはMarginNote 4ライブラリ、あるいはリンクされたObsidianボールトにまたがるバージョン管理されたRAGライブラリ（プラグ可能なドキュメント解析付き）。
 - **拡張可能なツールとスキル** — 組み込みツール、MCPサーバー、CLIアプリ、画像/ビデオ/音声生成モデル、EduHubからインストール可能なコミュニティスキル。
 - **検査可能なメモリ** — L1トレース、L2サーフェスサマリー、L3合成によりパーソナライズが可視化・編集可能となり、Memory Graphですべての主張を証拠まで追跡できます。
 
@@ -327,11 +328,11 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutorチャットエージェントループ" width="900">
 </div>
 
-ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`github`、`consult_subagent`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
+ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
 
 コンテキストには2種類あります：**スティッキーセッションコンテキスト**（サブエージェント、知識ベース、ペルソナ、モデル、音声）はコンポーザーツールバーに常駐し、ターンをまたいで持続します。**ワンタイム参照**（ファイル、チャット履歴、本、ノートブック、問題バンク、インポートしたエージェント）は単一のターンのために`+`メニューから追加します。
 
-Chatはより深い機能へのローンチポイントでもあります：問題生成には**Quiz**、引用付きレポートには**Research**、チャート/図/アニメーションには**Visualize**、推論問題解決には**Solve**（「その他の機能」下）、学習計画フローには**Mastery Path**。
+Chatはより深い機能へのローンチポイントでもあります：問題生成には**Quiz**、チャート/図/アニメーションには**Visualize**、学習計画フローには**Mastery Path**、そしてスレッドの横でドキュメントを開き、あらゆる主張をその出典ページまで引用する**Immersive Reading**。引用付きレポートの**Research**と推論問題解決の**Solve**は「その他の機能」の下にあります。
 
 </details>
 
@@ -420,13 +421,13 @@ Bookは選択したソースをインタラクティブな**生きている本**
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-知識ベースはRAGの背後にあるドキュメントコレクションです — Chatターン、Co-Writerの編集、Book生成、Partnerの会話をグラウンドします。特徴的なのは**検索エンジンの選択**です：**LlamaIndex**（デフォルト、ローカルベクター + BM25）、**PageIndex**（ホスト型、ページレベル引用付き推論検索）、**GraphRAG**と**LightRAG**（知識グラフ検索）、**LightRAG Server**（HTTP経由で接続する外部LightRAGインスタンスに検索をオフロード）、**Tencent IMA**（IMAでキュレートするライブラリで、そのOpenAPI経由で検索）、またはチューターがその場で読み書きするリンクされた**Obsidian**ボールト。各KBは1つのエンジンにバインドされます。
+知識ベースはRAGの背後にあるドキュメントコレクションです — Chatターン、Co-Writerの編集、Book生成、Partnerの会話をグラウンドします。特徴的なのは**検索エンジンの選択**です：**LlamaIndex**（デフォルト、ローカルベクター + BM25）、**PageIndex**（ページレベル引用付き推論検索、ホスト型またはセルフホストOSS）、**GraphRAG**と**LightRAG**（知識グラフ検索）、**LightRAG Server**（HTTP経由で接続する外部LightRAGインスタンスに検索をオフロード）、**Tencent IMA**（IMAでキュレートするライブラリで、そのOpenAPI経由で検索・閲覧・書き戻しが可能）、**MarginNote 4**（あなたのMN4学習データ — ドキュメント、抜粋、マインドマップカード、およびそれらの間のリンク — がアプリのアドオンによって取り込まれ、専用ツールでナビゲートできます）、またはチューターがその場で読み書きするリンクされた**Obsidian**ボールト。各KBは1つのエンジンにバインドされます。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="知識ベースの作成" width="900">
 </div>
 
-KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
+KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。Tikaはリモート専用で、Apache Tikaサーバー（`TIKA_SERVER_URL`）を指定します。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
 
 </details>
 
@@ -437,7 +438,7 @@ KBを作成する際は、**新規作成**（ドキュメントをアップロ�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Spaceハブ" width="900">
 </div>
 
-Learning Spaceはライブラリとパーソナライゼーション層です — 永続するものが置かれる場所です。**会話と素材**にはチャット履歴、ノートブック、問題バンク（各保存された質問にはあなたの回答、参照回答、説明が含まれます）が含まれます。**パーソナライゼーション**には習熟パス、ペルソナ（*peer*、*research-assistant*、*teacher*などの動作プリセット）、スキル（モデルがオンデマンドで読み取る`SKILL.md`プレイブック）、**MCPサービス**（ワンクリックで自分用にインストールできるホスト型MCPサーバーのキュレートされたストアと、URLで設定できる任意のリモートサーバー）、そして**CLIアプリ**（チャットエージェントが直接呼び出す[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログのコマンドラインツールで、各アプリ独自の使用ガイドがオンデマンドで読み込まれます）が含まれます。ここのものはすべてChat、Partners、Co-Writer、Bookから再利用できます。
+Learning Spaceはライブラリとパーソナライゼーション層です — 永続するものが置かれる場所です。**会話と素材**には、チャット履歴、ノートブック — 今や専用のコンソールを持ち、レコードはノートブック間を移動・コピーでき、Markdownへのエクスポートも可能です — 、そして問題バンク（各保存された質問にはあなたの回答、参照回答、説明が含まれます）が含まれます。**パーソナライゼーション**には習熟パス、ペルソナ（*peer*、*research-assistant*、*teacher*などの動作プリセット）、スキル（モデルがオンデマンドで読み取る`SKILL.md`プレイブック）、**MCPサービス**（ワンクリックで自分用にインストールできるホスト型MCPサーバーのキュレートされたストアと、URLで設定できる任意のリモートサーバー）、そして**CLIアプリ**（チャットエージェントが直接呼び出す[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログのコマンドラインツールで、各アプリ独自の使用ガイドがオンデマンドで読み込まれます）が含まれます。ここのものはすべてChat、Partners、Co-Writer、Bookから再利用できます。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="EduHubからスキルをインポート" width="900">
@@ -477,7 +478,7 @@ Settingsはオペレーションコントロールプレーンで、ライブス
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor外観設定とテーマ" width="900">
 </div>
 
-ほとんどのセクションはドラフトと適用フローを使用するため、コミットする前にプロバイダーをテストできます。4つのテーマが箱に入っています：Default、Cream、Dark、Glass。プロジェクトルートの`.env`ファイルは意図的に無視されます。ランタイム設定は`DEEPTUTOR_HOME`または`deeptutor start --home`でアプリを別の場所に向けない限り、`data/user/settings/*.json`に保存されます。
+ほとんどのセクションはドラフトと適用フローを使用するため、コミットする前にプロバイダーをテストできます。Chatで直接依頼するだけでも構いません：アシスタントが現在の設定を読み取り、変更を適用し、再起動または再インデックスが必要かどうかを教えてくれます — コミットする前に新しいモデルをプローブするため、到達不能な設定に自分自身を切り替えてしまうことはありません。APIキーがモデルを経由することは決してなく、代わりに該当するフォームを開いてくれます。4つのテーマが箱に入っています：Default、Cream、Dark、Glass。プロジェクトルートの`.env`ファイルは意図的に無視されます。ランタイム設定は`DEEPTUTOR_HOME`または`deeptutor start --home`でアプリを別の場所に向けない限り、`data/user/settings/*.json`に保存されます。
 
 **OpenAI Codex OAuth（実験的）。** Models → LLMで**OpenAI Codex**を選択すると、APIキー入力欄の代わりに、あなた自身のChatGPTプランに対して実行されるブラウザサインインに置き換わるため、`OPENAI_API_KEY`は不要になります。トークンは`data/system/user-secrets/<owner>/private/openai-codex/`にのみ保存され — マルチコンテナのComposeデプロイメントでは、execサンドボックスが到達できるすべてのツリーの外側にあります — DeepTutorがあなたの`~/.codex` CLIログインを読み取ったり変更したりすることは決してありません。モデルリストはそのアカウントのライブカタログから取得されます。サインインするとプロフィールは公開されますが、まだLLMが設定されていない場合にのみアクティブモデルになるため、気づかないうちにデプロイメントの向き先を変えることはありません。トークンは1人のプランを認可するものであるため、このプロフィールはユーザーグラントを通じて共有することはできません — 各アカウントは自分自身でサインインする必要があり（一般ユーザーも含め、そのカードはModels → LLMの下に置かれ、結果として得られるモデル、カタログ、サインアウトはそのアカウントのみに閉じます）、ブラウザはバックエンドを実行しているマシンに到達できなければなりません（リモートサーバーでは、代わりにそこで`deeptutor provider login openai-codex`を実行してください）。クォータエラーとカタログの失敗はそのまま報告され、有料プロバイダーへの自動フォールバックは決して行われません。この互換性パスは実験的です：上流のインターフェースは変更される可能性があります。
 

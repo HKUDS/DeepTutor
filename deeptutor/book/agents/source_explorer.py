@@ -34,6 +34,8 @@ import logging
 from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.core.context import UnifiedContext
+from deeptutor.core.stream_bus import StreamBus
 from deeptutor.utils.json_parser import parse_json_response
 
 from ..models import (
@@ -187,11 +189,17 @@ class SourceExplorer(BaseAgent):
         book_id: str,
         proposal: BookProposal,
         inputs: BookInputs,
+        stream: StreamBus | None = None,
     ) -> ExplorationReport:
         """Run the full design → retrieve → summarise pipeline."""
 
         intent = (inputs.user_intent or proposal.description or "").strip()
         kb_list = list(inputs.knowledge_bases or [])
+        from deeptutor.services.rag.pipelines.pageindex import (
+            validate_pageindex_oss_selection,
+        )
+
+        validate_pageindex_oss_selection(kb_list)
 
         queries = await self._design_queries(proposal=proposal, inputs=inputs)
         if not queries:
@@ -200,7 +208,7 @@ class SourceExplorer(BaseAgent):
 
         chunks: list[SourceChunk] = []
         if kb_list:
-            chunks.extend(await self._retrieve_kb_chunks(queries, kb_list))
+            chunks.extend(await self._retrieve_kb_chunks(queries, kb_list, stream=stream))
 
         chunks.extend(self._collect_non_kb_chunks(inputs))
 
@@ -331,40 +339,43 @@ class SourceExplorer(BaseAgent):
 
     @staticmethod
     def partition_knowledge_bases(kb_list: list[str]) -> tuple[list[str], list[str]]:
-        """Split *kb_list* into (retrievable, connected).
+        """Split *kb_list* into (retrievable, unreachable).
 
-        Connected KBs are pointers — an Obsidian vault, a subagent CLI, a remote
-        LightRAG or IMA library — with no local index for ``rag_search`` to hit.
-        Sweeping them anyway returned nothing and looked identical to a source
-        that simply had no relevant content, so the reader never learned their
-        vault contributed zero. Reaching them properly means driving each
-        capability, which is a separate piece of work; naming them is the
-        honest interim.
+        Only the KBs ``rag_search`` genuinely cannot reach are set aside: an
+        Obsidian vault (no index — its capability navigates live files), a
+        MarginNote 4 library (same shape: synced objects in their own store,
+        reachable only through the MN4 tools) and a connected subagent (not a
+        document collection). Sweeping those returned nothing and looked
+        identical to a source that simply had no relevant content, so the
+        reader never learned their vault contributed zero; reaching them
+        properly means driving each capability, which is separate work, and
+        naming them is the honest interim.
+
+        Every other pointer KB *is* retrievable and is swept normally — a
+        ``linked`` folder mounts an index built elsewhere, and ``lightrag_server``
+        / ``ima`` offload retrieval over HTTP. Treating "connected" as
+        "unsearchable" silently dropped those sources from every book.
         """
         retrievable: list[str] = []
-        connected: list[str] = []
+        unreachable: list[str] = []
         for kb in kb_list:
             try:
-                from deeptutor.knowledge.kb_types import is_connected_kb
+                from deeptutor.knowledge.kb_types import supports_rag_retrieval
                 from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
 
                 meta = resolve_kb_metadata(kb)
             except Exception:  # noqa: BLE001 - unresolvable → treat as ordinary
                 meta = None
-            (connected if meta and is_connected_kb(meta) else retrievable).append(kb)
-        return retrievable, connected
+            (retrievable if supports_rag_retrieval(meta) else unreachable).append(kb)
+        return retrievable, unreachable
 
     async def _retrieve_kb_chunks(
         self,
         queries: list[str],
         kb_list: list[str],
+        *,
+        stream: StreamBus | None = None,
     ) -> list[SourceChunk]:
-        try:
-            from deeptutor.tools.rag_tool import rag_search
-        except Exception as exc:  # pragma: no cover - import guard
-            logger.warning(f"rag_tool unavailable: {exc}")
-            return []
-
         kb_list, connected = self.partition_knowledge_bases(kb_list)
         if connected:
             self.skipped_knowledge_bases = list(connected)
@@ -373,6 +384,41 @@ class SourceExplorer(BaseAgent):
                 len(connected),
                 ", ".join(connected),
             )
+
+        pageindex_kbs: list[str] = []
+        traditional_kbs: list[str] = []
+        for kb in kb_list:
+            try:
+                from deeptutor.multi_user.knowledge_access import resolve_kb
+                from deeptutor.services.rag.factory import (
+                    PAGEINDEX_OSS_PROVIDER,
+                    PAGEINDEX_PROVIDER,
+                )
+                from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+                resource = resolve_kb(kb, require_write=False)
+                provider = resolve_bound_provider(str(resource.base_dir), resource.name)
+            except Exception:
+                provider = ""
+            (
+                pageindex_kbs
+                if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+                else traditional_kbs
+            ).append(kb)
+
+        pageindex_chunks = await self._retrieve_pageindex_chunks(
+            queries,
+            pageindex_kbs,
+            stream=stream,
+        )
+        if not traditional_kbs:
+            return pageindex_chunks
+
+        try:
+            from deeptutor.tools.rag_tool import rag_search
+        except Exception as exc:  # pragma: no cover - import guard
+            logger.warning(f"rag_tool unavailable: {exc}")
+            return pageindex_chunks
 
         async def _one_query(kb: str, query: str) -> list[SourceChunk]:
             try:
@@ -435,7 +481,7 @@ class SourceExplorer(BaseAgent):
         # Query-major, not KB-major: the pair list gets trimmed below, and
         # trimming a KB-major list would starve the last knowledge bases of
         # every query. Interleaving keeps coverage even when the budget bites.
-        pairs = [(kb, q) for q in queries for kb in kb_list]
+        pairs = [(kb, q) for q in queries for kb in traditional_kbs]
         if not pairs:
             return []
 
@@ -445,7 +491,7 @@ class SourceExplorer(BaseAgent):
             pairs = pairs[:MAX_RETRIEVAL_CALLS]
             logger.info(
                 f"source exploration capped at {MAX_RETRIEVAL_CALLS} retrievals "
-                f"({len(kb_list)} KBs x {len(queries)} queries); {dropped} skipped"
+                f"({len(traditional_kbs)} KBs x {len(queries)} queries); {dropped} skipped"
             )
 
         # Every pair is a retrieval plus, on most backends, an LLM synthesis
@@ -463,7 +509,60 @@ class SourceExplorer(BaseAgent):
         chunks: list[SourceChunk] = []
         for batch in gathered:
             chunks.extend(batch)
-        return chunks
+        return [*pageindex_chunks, *chunks]
+
+    async def _retrieve_pageindex_chunks(
+        self,
+        queries: list[str],
+        kb_list: list[str],
+        *,
+        stream: StreamBus | None,
+    ) -> list[SourceChunk]:
+        if not kb_list:
+            return []
+        from deeptutor.services.rag.pipelines.pageindex.reasoning import (
+            read_pageindex_with_agent,
+        )
+
+        query_block = "\n".join(f"- {query}" for query in queries)
+
+        async def read_one(kb: str) -> SourceChunk | None:
+            try:
+                result = await read_pageindex_with_agent(
+                    kb_name=kb,
+                    system_prompt=(
+                        "You are the SourceExplorer for a book workflow. Build a dense evidence "
+                        "brief that later planning and block-generation stages can reuse. Cover "
+                        "the supplied research questions, preserve concrete facts and page "
+                        "references, and do not draft the book itself."
+                    ),
+                    user_prompt=f"Collect source evidence for these questions:\n{query_block}",
+                    context=UnifiedContext(
+                        user_message=query_block,
+                        knowledge_bases=[kb],
+                    ),
+                    stream=stream,
+                    source="book_source_explorer",
+                    stage="exploration",
+                )
+            except Exception as exc:
+                logger.warning("PageIndex SourceExplorer failed for %s: %s", kb, exc)
+                return None
+            if not result.text:
+                return None
+            return SourceChunk(
+                chunk_id=f"pageindex::{kb}",
+                kb_name=kb,
+                source="kb",
+                ref=f"pageindex::{kb}",
+                text=_clip(result.text, 8000),
+                score=1.0,
+                query="; ".join(queries),
+                metadata={"provider": result.tool_context.provider, "sources": result.sources},
+            )
+
+        rows = await asyncio.gather(*(read_one(kb) for kb in kb_list))
+        return [row for row in rows if row is not None]
 
     # ------------------------------------------------------------------ #
     # Step 3 — non-KB sources (notebooks, chat, questions)

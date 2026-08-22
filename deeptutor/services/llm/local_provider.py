@@ -14,6 +14,7 @@ Key features:
 from collections.abc import AsyncGenerator
 import json
 import logging
+import re
 
 import aiohttp
 
@@ -28,6 +29,87 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _ThinkingBlockParser:
+    """Filter reasoning blocks while preserving normal response text."""
+
+    _OPEN_TAG = re.compile(r"<\s*think(?:ing)?\b[^>]*>", re.IGNORECASE)
+    _CLOSE_TAG = re.compile(r"<\s*/\s*think(?:ing)?\s*>", re.IGNORECASE)
+    _TAG_PREFIXES = (
+        "<",
+        "<t",
+        "<th",
+        "<thi",
+        "<thin",
+        "<think",
+        "<thinki",
+        "<thinkin",
+        "<thinking",
+        "</",
+        "</t",
+        "</th",
+        "</thi",
+        "</thin",
+        "</think",
+        "</thinki",
+        "</thinkin",
+        "</thinking",
+    )
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._in_thinking_block = False
+
+    @classmethod
+    def _partial_tag_suffix(cls, value: str) -> str:
+        for index in range(len(value) - 1, -1, -1):
+            suffix = value[index:]
+            if suffix.lower() in cls._TAG_PREFIXES:
+                return suffix
+        return ""
+
+    def feed(self, content: str) -> list[str]:
+        """Consume one provider chunk and return visible response fragments."""
+        if content:
+            self._buffer += content
+
+        visible: list[str] = []
+        while self._buffer:
+            if self._in_thinking_block:
+                closing = self._CLOSE_TAG.search(self._buffer)
+                if closing is None:
+                    self._buffer = self._partial_tag_suffix(self._buffer)
+                    break
+                self._buffer = self._buffer[closing.end() :]
+                self._in_thinking_block = False
+                continue
+
+            opening = self._OPEN_TAG.search(self._buffer)
+            if opening is None:
+                partial = self._partial_tag_suffix(self._buffer)
+                end = len(self._buffer) - len(partial)
+                if end:
+                    visible.append(self._buffer[:end])
+                self._buffer = partial
+                break
+
+            if opening.start():
+                visible.append(self._buffer[: opening.start()])
+            self._buffer = self._buffer[opening.end() :]
+            self._in_thinking_block = True
+
+        return visible
+
+    def finish(self) -> list[str]:
+        """Flush visible text and discard an interrupted reasoning block."""
+        if self._in_thinking_block:
+            self._buffer = ""
+            return []
+
+        visible = clean_thinking_tags(self._buffer)
+        self._buffer = ""
+        return [visible] if visible else []
 
 
 def _extract_message_from_payload(payload: dict[str, object]) -> str:
@@ -222,9 +304,7 @@ async def stream(
                         provider="local",
                     )
 
-                # Track if we're inside a thinking block
-                in_thinking_block = False
-                thinking_buffer = ""
+                thinking_parser = _ThinkingBlockParser()
 
                 async for line in response.content:
                     line_str = line.decode("utf-8").strip()
@@ -244,35 +324,8 @@ async def stream(
                             chunk_data = json.loads(data_str)
                             content = _extract_message_from_payload(chunk_data)
                             if content:
-                                # Handle thinking tags in streaming
-                                if "<think>" in content:
-                                    in_thinking_block = True
-                                    # Handle case where content has text BEFORE <think>
-                                    parts = content.split("<think>", 1)
-                                    if parts[0]:
-                                        yield parts[0]
-                                    thinking_buffer = "<think>" + parts[1]
-
-                                    # Check if closed immediately in same chunk
-                                    if "</think>" in thinking_buffer:
-                                        cleaned = clean_thinking_tags(thinking_buffer)
-                                        if cleaned:
-                                            yield cleaned
-                                        thinking_buffer = ""
-                                        in_thinking_block = False
-                                    continue
-                                elif in_thinking_block:
-                                    thinking_buffer += content
-                                    if "</think>" in thinking_buffer:
-                                        # Block finished
-                                        cleaned = clean_thinking_tags(thinking_buffer)
-                                        if cleaned:
-                                            yield cleaned
-                                        in_thinking_block = False
-                                        thinking_buffer = ""
-                                    continue
-                                else:
-                                    yield content
+                                for visible in thinking_parser.feed(content):
+                                    yield visible
 
                         except json.JSONDecodeError:
                             # Log and skip malformed JSON chunks
@@ -288,10 +341,13 @@ async def stream(
                             chunk_data = json.loads(line_str)
                             content = _extract_message_from_payload(chunk_data)
                             if content:
-                                # TODO: Implement <think> tag parsing for non-SSE JSON streams if supported
-                                yield content
+                                for visible in thinking_parser.feed(content):
+                                    yield visible
                         except json.JSONDecodeError:
                             pass
+
+                for visible in thinking_parser.finish():
+                    yield visible
 
     except LLMAPIError:
         raise  # Re-raise LLM errors as-is

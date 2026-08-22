@@ -14,12 +14,16 @@ never supplies or sees it, so it cannot read or write outside the vault.
 
 from __future__ import annotations
 
+import datetime
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from deeptutor.capabilities.obsidian import vault as vault_ops
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
+
+logger = logging.getLogger(__name__)
 
 # Tool names mounted together when an Obsidian turn is active. Single source of
 # truth so the mount policy and the registration list can't disagree.
@@ -51,8 +55,26 @@ def _no_vault_result() -> ToolResult:
     )
 
 
+def _json_default(value: Any) -> str:
+    """Render a frontmatter scalar ``json`` has no encoder for.
+
+    YAML parses an unquoted ``created: 2026-08-11`` into a ``datetime.date``,
+    and Obsidian's own Templates plugin writes dates that way. Dates and times
+    serialise as ISO-8601 — ``str()`` alone renders a ``datetime`` as
+    ``2026-08-11 00:00:00``, which is not a form the model can feed back as a
+    date. Anything else degrades to its string form rather than failing the
+    whole tool call.
+    """
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
+    return str(value)
+
+
 def _ok(payload: Any) -> ToolResult:
-    return ToolResult(content=json.dumps(payload, ensure_ascii=False), success=True)
+    return ToolResult(
+        content=json.dumps(payload, ensure_ascii=False, default=_json_default),
+        success=True,
+    )
 
 
 def _err(message: str) -> ToolResult:
@@ -70,6 +92,14 @@ class _ObsidianTool(BaseTool):
             return await self._run(root, kwargs)
         except vault_ops.VaultError as exc:
             return _err(str(exc))
+        except Exception as exc:
+            # A tool failure the model cannot see is one it cannot route around:
+            # an opaque "unknown error" sent it inventing workarounds for a
+            # cause it had no information about. Name the cause for the model
+            # and keep the traceback for the operator.
+            name = self.get_definition().name
+            logger.exception("Obsidian tool %s failed", name)
+            return _err(f"{name} failed: {type(exc).__name__}: {exc}")
 
     async def _run(self, root: Path, kwargs: dict[str, Any]) -> ToolResult:  # pragma: no cover
         raise NotImplementedError

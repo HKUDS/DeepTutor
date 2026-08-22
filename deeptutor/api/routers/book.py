@@ -9,10 +9,12 @@ create / confirm / compile / read / delete + a per-book event stream.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.http_headers import content_disposition
@@ -24,7 +26,8 @@ from deeptutor.book import (
 )
 from deeptutor.book.estimate import chapter_basis
 from deeptutor.book.export import export_filename, render_book_markdown
-from deeptutor.book.models import ContentType
+from deeptutor.book.models import ContentType, LearningCapture, LearningCaptureStatus
+from deeptutor.book.storage import get_book_storage
 from deeptutor.book.streaming import SOURCE as BOOK_SOURCE
 from deeptutor.core.stream_bus import StreamBus
 
@@ -156,6 +159,136 @@ class ResumeBookRequest(BaseModel):
     book_id: str
 
 
+def _normalize_capture_text(value: str) -> str:
+    return " ".join((value or "").strip().split())
+
+
+def _build_capture_hash(book_id: str, page_id: str, block_id: str, locator: str, text: str) -> str:
+    payload = "|".join(
+        [
+            book_id,
+            page_id,
+            block_id,
+            locator,
+            _normalize_capture_text(text),
+        ],
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _coerce_capture_status(raw: str | None) -> LearningCaptureStatus | None:
+    if raw is None:
+        return None
+    try:
+        return LearningCaptureStatus(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid capture status: {raw}",
+        ) from exc
+
+
+_CAPTURE_TRANSITIONS: dict[LearningCaptureStatus, set[LearningCaptureStatus]] = {
+    LearningCaptureStatus.CAPTURED: {
+        LearningCaptureStatus.CAPTURED,
+        LearningCaptureStatus.DRAFTED,
+        LearningCaptureStatus.PENDING_CONFIRMATION,
+        LearningCaptureStatus.APPROVED,
+        LearningCaptureStatus.REJECTED,
+    },
+    LearningCaptureStatus.DRAFTED: {
+        LearningCaptureStatus.DRAFTED,
+        LearningCaptureStatus.PENDING_CONFIRMATION,
+        LearningCaptureStatus.APPROVED,
+        LearningCaptureStatus.REJECTED,
+    },
+    LearningCaptureStatus.PENDING_CONFIRMATION: {
+        LearningCaptureStatus.PENDING_CONFIRMATION,
+        LearningCaptureStatus.APPROVED,
+        LearningCaptureStatus.REJECTED,
+    },
+    LearningCaptureStatus.APPROVED: {
+        LearningCaptureStatus.APPROVED,
+        LearningCaptureStatus.DELIVERED,
+    },
+    LearningCaptureStatus.DELIVERED: {
+        LearningCaptureStatus.DELIVERED,
+        LearningCaptureStatus.IMPORTED,
+    },
+    LearningCaptureStatus.IMPORTED: {LearningCaptureStatus.IMPORTED},
+    LearningCaptureStatus.REJECTED: {LearningCaptureStatus.REJECTED},
+}
+
+
+def _is_capture_transition_allowed(
+    current: LearningCaptureStatus,
+    requested: LearningCaptureStatus,
+) -> bool:
+    return requested in _CAPTURE_TRANSITIONS.get(current, set())
+
+
+def _derive_capture_title_values(book_id: str, page_id: str, block_id: str) -> tuple[str, str, str]:
+    engine = get_book_engine()
+    book = engine.load_book(book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    page = engine.load_page(book_id, page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    spine = engine.load_spine(book_id)
+    chapter_title = page.title
+    if spine is not None and page.chapter_id:
+        for chapter in spine.chapters:
+            if chapter.id == page.chapter_id:
+                chapter_title = chapter.title
+                break
+
+    base_locator = f"/book/{book_id}/pages/{page_id}"
+    source_locator = f"{base_locator}/block/{block_id}" if block_id else base_locator
+    return book.title, chapter_title, source_locator
+
+
+def _find_capture_duplicate(
+    storage: Any,
+    book_id: str,
+    page_id: str,
+    content_hash: str,
+) -> LearningCapture | None:
+    for capture in storage.load_learning_captures(book_id):
+        if capture.page_id != page_id:
+            continue
+        if capture.content_hash != content_hash:
+            continue
+        if capture.status == LearningCaptureStatus.REJECTED:
+            continue
+        return capture
+    return None
+
+
+class LearningCaptureCreateRequest(BaseModel):
+    page_id: str
+    block_id: str = ""
+    source_text: str
+    context_before: str = ""
+    context_after: str = ""
+    source_locator: str = ""
+    book_title: str = ""
+    chapter_title: str = ""
+    user_note: str = ""
+    status: str | None = None
+
+
+class LearningCaptureUpdateRequest(BaseModel):
+    status: str | None = None
+    user_note: str | None = None
+    rejected_reason: str | None = None
+
+
+def _capture_payload(capture: LearningCapture) -> dict[str, object]:
+    return capture.model_dump(mode="json")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # REST endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -194,6 +327,121 @@ async def list_books() -> dict[str, Any]:
 
     # One manifest read per book plus one progress read per book — off-loop.
     return {"books": await asyncio.to_thread(_collect)}
+
+
+@router.get("/books/{book_id}/learning-captures")
+async def list_learning_captures(
+    book_id: str,
+    status: str | None = Query(default=None),
+) -> dict[str, Any]:
+    engine = get_book_engine()
+    if engine.load_book(book_id) is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    parsed_status = _coerce_capture_status(status) if status is not None else None
+    storage = get_book_storage()
+    captures = storage.load_learning_captures(book_id, status=parsed_status)
+    return {"captures": [_capture_payload(capture) for capture in captures]}
+
+
+@router.post("/books/{book_id}/learning-captures")
+async def create_learning_capture(
+    book_id: str,
+    req: LearningCaptureCreateRequest,
+) -> dict[str, Any]:
+    engine = get_book_engine()
+    if engine.load_book(book_id) is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    page = engine.load_page(book_id, req.page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    source_text = _normalize_capture_text(req.source_text)
+    if not source_text:
+        raise HTTPException(status_code=400, detail="source_text is required")
+
+    book_title, chapter_title, default_source_locator = _derive_capture_title_values(
+        book_id=book_id,
+        page_id=req.page_id,
+        block_id=req.block_id,
+    )
+
+    source_locator = req.source_locator.strip() or default_source_locator
+    status = _coerce_capture_status(req.status) or LearningCaptureStatus.CAPTURED
+
+    content_hash = _build_capture_hash(
+        book_id,
+        req.page_id,
+        req.block_id,
+        source_locator,
+        source_text,
+    )
+
+    storage = get_book_storage()
+    duplicate = _find_capture_duplicate(storage, book_id, req.page_id, content_hash)
+    if duplicate is not None:
+        return {"capture": _capture_payload(duplicate)}
+
+    capture = LearningCapture(
+        book_id=book_id,
+        page_id=req.page_id,
+        block_id=req.block_id,
+        source_text=source_text,
+        context_before=_normalize_capture_text(req.context_before),
+        context_after=_normalize_capture_text(req.context_after),
+        source_locator=source_locator,
+        book_title=req.book_title or book_title,
+        chapter_title=req.chapter_title or chapter_title,
+        user_note=req.user_note.strip(),
+        content_hash=content_hash,
+        status=status,
+    )
+    storage.upsert_learning_capture(capture)
+    return {"capture": _capture_payload(capture)}
+
+
+@router.patch("/books/{book_id}/learning-captures/{capture_id}")
+async def update_learning_capture(
+    book_id: str,
+    capture_id: str,
+    req: LearningCaptureUpdateRequest,
+) -> dict[str, Any]:
+    storage = get_book_storage()
+    capture = storage.load_learning_capture(book_id, capture_id)
+    if capture is None:
+        raise HTTPException(status_code=404, detail="Learning capture not found")
+
+    requested_status = _coerce_capture_status(req.status) if req.status is not None else None
+    if requested_status is not None and not _is_capture_transition_allowed(
+        capture.status,
+        requested_status,
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Invalid state transition: {capture.status} -> {requested_status}"),
+        )
+
+    changed = False
+    updated = capture.model_copy(deep=True)
+
+    if requested_status is not None and requested_status != capture.status:
+        updated.status = requested_status
+        changed = True
+    if req.user_note is not None and req.user_note != capture.user_note:
+        updated.user_note = req.user_note
+        changed = True
+    if req.rejected_reason is not None and req.rejected_reason != capture.rejected_reason:
+        updated.rejected_reason = req.rejected_reason
+        changed = True
+
+    if not changed:
+        return {"capture": _capture_payload(capture)}
+
+    updated.version = capture.version + 1
+    updated.updated_at = time.time()
+    storage.upsert_learning_capture(updated)
+    return {"capture": _capture_payload(updated)}
 
 
 def _page_summary(page) -> dict[str, Any]:
@@ -552,9 +800,18 @@ async def book_health(book_id: str) -> dict[str, Any]:
 
 
 @router.post("/books/{book_id}/refresh-fingerprints")
-async def refresh_fingerprints(book_id: str) -> dict[str, Any]:
+async def refresh_fingerprints(book_id: str, force: bool = False) -> dict[str, Any]:
+    """Mark the current KB state as seen.
+
+    409s while pages the last drift flagged are still awaiting recompilation.
+    ``force=true`` dismisses them anyway — stale detection over-marks on
+    purpose when an anchor cannot be resolved, so the user needs a way out.
+    """
     engine = get_book_engine()
-    result = engine.refresh_kb_fingerprints(book_id)
+    try:
+        result = engine.refresh_kb_fingerprints(book_id, force=force)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return result

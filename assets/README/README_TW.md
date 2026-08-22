@@ -5,7 +5,8 @@
 # DeepTutor：終身個人化學習導師
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
+  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
 </p>
 
 <p align="center">
@@ -60,10 +61,10 @@
 
 DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統中串聯教學、解題、測驗生成、研究、視覺化與精熟練習。
 
-- **所有模式共用一套執行階段** — Chat、Quiz、Research、Visualize、Solve 與 Mastery Path 在同一個代理程式迴圈上運作；你切換的是目標而非引擎，學習情境會一路跟隨學習者。
+- **所有模式共用一套執行階段** — Chat、Quiz、Research、Visualize、Solve、Mastery Path 與 Immersive Reading 在同一個代理程式迴圈上運作；你切換的是目標而非引擎，學習情境會一路跟隨學習者。
 - **相互連結的學習情境** — 知識庫、書籍、Co-Writer 草稿、筆記本、題庫、角色設定與 Memory 在每個工作流程中皆可使用，不再分散於彼此隔離的工具。
 - **子代理程式與 Partners** — 可在任何回合諮詢即時程式設計 CLI（Claude Code、Codex、Gemini、Kimi、opencode 或 MiMo）或 Partner（也能匯入其過往對話），並讓持續運作的 IM 夥伴共用同一套核心。
-- **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG 或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。
+- **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG、遠端 LightRAG Server、Tencent IMA 或 MarginNote 4 知識庫，或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。
 - **可擴充的工具與技能** — 內建工具、MCP 伺服器、CLI 應用程式、影像／影片／語音生成模型，以及可從 EduHub 安裝的社群技能。
 - **可檢視的記憶** — L1 軌跡、L2 介面摘要與 L3 綜整讓個人化內容透明且可編輯；Memory Graph 可將每項主張追溯到其證據。
 
@@ -327,11 +328,11 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor Chat 代理程式迴圈" width="900">
 </div>
 
-使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`github` 與 `consult_subagent` 等情境式工具，會在回合具有相符情境時自動掛載。
+使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github` 與 `consult_subagent` 等情境式工具，會在回合具有相符情境時自動掛載。
 
 情境分成兩類：**固定的工作階段情境**（子代理程式、知識庫、角色設定、模型、語音）位於輸入框工具列，並會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、筆記本、題庫、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。
 
-Chat 也是進階能力的起點：**Quiz** 用於產生題目、**Research** 用於建立附引用的報告、**Visualize** 用於圖表／圖解／動畫；在 *More Capabilities* 下，還有提供完整推理解題過程的 **Solve**，以及學習計畫流程的 **Mastery Path**。
+Chat 也是進階能力的起點：**Quiz** 用於產生題目、**Visualize** 用於圖表／圖解／動畫、**Mastery Path** 用於學習計畫流程，以及 **Immersive Reading** — 在對話旁開啟文件，每項主張都會標註出自哪一頁。**Research**（建立附引用的報告）與 **Solve**（提供完整推理解題過程）則歸在 *More Capabilities* 之下。
 
 </details>
 
@@ -420,13 +421,13 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-知識庫是 RAG 背後的文件集合，可為 Chat 回合、Co-Writer 編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，本機 vector＋BM25）、**PageIndex**（託管式、可推理的檢索並附頁面層級引用）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**Tencent IMA**（在 IMA 中整理並透過其 OpenAPI 搜尋的知識庫），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
+知識庫是 RAG 背後的文件集合，可為 Chat 回合、Co-Writer 編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，本機 vector＋BM25）、**PageIndex**（可推理的檢索並附頁面層級引用，支援託管式或自架 OSS）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回）、**MarginNote 4**（你的 MN4 學習資料 — 文件、摘錄、思維導圖卡片及彼此之間的連結 — 由該應用程式的 Add-on 推送匯入，並透過專用工具進行導覽），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="建立知識庫" width="900">
 </div>
 
-建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立全新索引），或**連結現有知識庫**（重複使用在其他位置建立的索引、就地讀取且不重新建立索引）。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、markitdown 或 PyMuPDF4LLM）可在 **Settings → Knowledge Base** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可透過 **Settings → Document Parsing**（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。CLI 也提供對應的完整生命週期指令：`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 與 `delete`。
+建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立全新索引），或**連結現有知識庫**（重複使用在其他位置建立的索引、就地讀取且不重新建立索引）。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown 或 PyMuPDF4LLM）可在 **Settings → Knowledge Base** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可透過 **Settings → Document Parsing**（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至 Apache Tika 伺服器（`TIKA_SERVER_URL`）。CLI 也提供對應的完整生命週期指令：`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 與 `delete`。
 
 </details>
 
@@ -437,7 +438,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space 中心" width="900">
 </div>
 
-Learning Space 是資源庫與個人化層，也是各種持續保存內容所在之處。**Conversations & Materials** 保存聊天記錄、筆記本與題庫（每道儲存的題目都會保留你的答案、參考答案與解說）。**Personalization** 保存精熟學習路徑、角色設定（例如 *同儕*、*研究助理*、*教師*等行為預設）、技能（模型按需讀取的 `SKILL.md` 操作手冊）、**MCP Services**（為自己一鍵安裝的託管式 MCP 伺服器精選商店，以及你透過 URL 設定的任何遠端伺服器），還有 **CLI Apps**：來自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 型錄的命令列工具，聊天代理程式可直接呼叫，並按需載入各應用程式的使用指南。這裡的所有內容都能從 Chat、Partners、Co-Writer 與 Book 重複使用。
+Learning Space 是資源庫與個人化層，也是各種持續保存內容所在之處。**Conversations & Materials** 保存聊天記錄、筆記本 — 現已擁有專屬控制台，紀錄可在筆記本之間搬移或複製，並支援匯出為 Markdown — 與題庫（每道儲存的題目都會保留你的答案、參考答案與解說）。**Personalization** 保存精熟學習路徑、角色設定（例如 *同儕*、*研究助理*、*教師*等行為預設）、技能（模型按需讀取的 `SKILL.md` 操作手冊）、**MCP Services**（為自己一鍵安裝的託管式 MCP 伺服器精選商店，以及你透過 URL 設定的任何遠端伺服器），還有 **CLI Apps**：來自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 型錄的命令列工具，聊天代理程式可直接呼叫，並按需載入各應用程式的使用指南。這裡的所有內容都能從 Chat、Partners、Co-Writer 與 Book 重複使用。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="從 EduHub 匯入技能" width="900">
@@ -477,7 +478,7 @@ Settings 是操作控制中心，提供即時狀態列（後端健康狀況，�
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外觀設定與主題" width="900">
 </div>
 
-大多數區段採用草稿後套用的流程，因此可先測試供應商再確認變更。內建四種主題：Default、Cream、Dark 與 Glass。系統會刻意忽略專案根目錄的 `.env` 檔案；除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 將應用程式指向其他位置，否則執行階段設定位於 `data/user/settings/*.json`。
+大多數區段採用草稿後套用的流程，因此可先測試供應商再確認變更。你也可以直接在 Chat 中提出要求：助理會讀取目前設定、套用變更，並告知是否需要重新啟動或重新建立索引 — 在正式套用新模型前先行探測，因此不會把自己切換到無法連線的設定上。API key 絕不會經過模型，助理會改為替你開啟對應的表單。內建四種主題：Default、Cream、Dark 與 Glass。系統會刻意忽略專案根目錄的 `.env` 檔案；除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 將應用程式指向其他位置，否則執行階段設定位於 `data/user/settings/*.json`。
 
 **OpenAI Codex OAuth（實驗性功能）。** 在 Models → LLM 下選擇 **OpenAI Codex** 後，API key 欄位會改為透過瀏覽器登入自己的 ChatGPT 方案，因此不需要 `OPENAI_API_KEY`。Token 只會存放在 `data/system/user-secrets/<owner>/private/openai-codex/`；在多容器 Compose 部署中，此位置不屬於 exec 沙箱可觸及的任何目錄，而 DeepTutor 絕不會讀取或修改 `~/.codex` CLI 登入。模型清單來自該帳號的即時型錄；登入會發布設定檔，但只有在尚未設定 LLM 時，才會將其設為目前使用的模型。由於 token 授權的是個人方案，該設定檔不能透過使用者授權分享；每個帳號（包括一般使用者）都要自行登入。其卡片位於 Models → LLM，產生的模型、型錄與登出狀態也只屬於該帳號。
 

@@ -36,6 +36,7 @@ def _coerce_anchors(sources: list[dict] | None) -> list[SourceAnchor]:
         anchors.append(
             SourceAnchor(
                 kind="kb",
+                kb_name=str(src.get("kb_name") or src.get("kb") or "")[:120],
                 ref=str(ref)[:200],
                 snippet=str(snippet)[:300],
             )
@@ -74,6 +75,7 @@ async def optional_rag_lookup(*, query: str, ctx) -> RagLookup:
         anchors = [
             SourceAnchor(
                 kind=c.source or "kb",
+                kb_name=str(c.kb_name or ctx.primary_kb or "")[:120],
                 ref=str(c.ref or c.chunk_id or "")[:200],
                 snippet=str(c.text or "")[:300],
             )
@@ -86,6 +88,20 @@ async def optional_rag_lookup(*, query: str, ctx) -> RagLookup:
     # ── Step 2: fall back to a live RAG call ─────────────────────────
     if not ctx.rag_enabled or not ctx.primary_kb:
         return RagLookup()
+
+    try:
+        from deeptutor.multi_user.knowledge_access import resolve_kb
+        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
+        from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+        resource = resolve_kb(ctx.primary_kb, require_write=False)
+        provider = resolve_bound_provider(str(resource.base_dir), resource.name)
+        if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+            # PageIndex evidence is gathered once by SourceExplorer's own agent
+            # loop and reused through relevant_chunks; never fall back to search().
+            return RagLookup()
+    except Exception:
+        pass
 
     try:
         from deeptutor.tools.rag_tool import rag_search
@@ -113,9 +129,12 @@ async def optional_rag_lookup(*, query: str, ctx) -> RagLookup:
 
     answer = str(result.get("answer") or result.get("content") or "").strip()
     sources = result.get("sources")
+    anchors = _coerce_anchors(sources if isinstance(sources, list) else None)
+    for anchor in anchors:
+        anchor.kb_name = anchor.kb_name or str(ctx.primary_kb or "")[:120]
     return RagLookup(
         text=answer,
-        anchors=_coerce_anchors(sources if isinstance(sources, list) else None),
+        anchors=anchors,
         used=bool(answer or sources),
     )
 

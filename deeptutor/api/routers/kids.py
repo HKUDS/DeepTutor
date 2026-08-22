@@ -335,8 +335,6 @@ async def get_kids_quiz(
             # Cache the fallback so submit can grade it
             import hashlib
 
-            from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
-
             fallback_result = KidsQuizResult(
                 document_id=document_id,
                 section_id=request.section_id,
