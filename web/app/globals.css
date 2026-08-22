@@ -1047,3 +1047,16 @@ a[href^="#dt-locator-"]:hover {
     animation: none !important;
   }
 }
+/* Kids reader controls must stay inside iOS/iPadOS dynamic visual viewport. */
+.kids-reader-shell {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.kids-reader-actions {
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+}

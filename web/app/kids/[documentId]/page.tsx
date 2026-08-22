@@ -23,6 +23,7 @@ import {
   stopKidsSpeech,
   subscribeKidsSpeechState,
 } from "@/lib/kids-learning/pronunciation";
+import { getVisiblePageText } from "@/lib/kids-learning/visible-page-text";
 
 const ReactReader = dynamic(
   () => import("react-reader").then((m) => m.ReactReader),
@@ -263,15 +264,12 @@ export default function KidsReaderPage() {
       try {
         const contents = (renditionRef.current as any)?.getContents?.();
         if (contents && contents.length > 0) {
-          for (const content of contents) {
-            const doc = content?.document as Document | undefined;
-            if (doc?.body) {
-              const bodyText = doc.body.innerText || doc.body.textContent || "";
-              if (bodyText.trim()) {
-                textToRead = bodyText.trim();
-                break;
-              }
-            }
+          const content = contents[0];
+          const doc = content?.document as Document | undefined;
+          const win = content?.window as Window | undefined;
+          const visible = getVisiblePageText(doc, win);
+          if (visible && visible.trim()) {
+            textToRead = visible.trim();
           }
         }
       } catch {}
@@ -532,7 +530,7 @@ export default function KidsReaderPage() {
   }
 
  return (
-   <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#fef9f0" }}>
+   <div className="kids-reader-shell" style={{ display: "flex", flexDirection: "column", background: "#fef9f0" }}>
       {/* Exit PIN modal */}
       {showExitPin && (
         <div style={{
@@ -683,10 +681,9 @@ export default function KidsReaderPage() {
         />
       </div>
 
-      <div style={{
+      <div className="kids-reader-actions" style={{
         display: "flex",
         gap: 10,
-        padding: "10px 16px",
         background: "white",
         boxShadow: "0 -2px 6px rgba(0,0,0,0.06)",
         justifyContent: "center",

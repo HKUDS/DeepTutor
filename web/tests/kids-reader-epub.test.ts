@@ -9,6 +9,7 @@ const readerSource = readFileSync(
   "utf8",
 );
 const apiSource = readFileSync(path.resolve(process.cwd(), "lib/kids-api.ts"), "utf8");
+const globalCss = readFileSync(path.resolve(process.cwd(), "app/globals.css"), "utf8");
 
 test("kids reader loads EPUBs through the authorized kids endpoint", () => {
   // react-reader consumes a plain URL, so a raw kids route would not receive
@@ -54,8 +55,18 @@ test("kids reader protects the restored learning golden path", () => {
   assert.match(readerSource, /stopKidsSpeech/);
   assert.match(readerSource, /shownSectionIdsRef/);
   assert.match(readerSource, /handleReadAloud/);
-  assert.match(readerSource, /doc\.body\.innerText/);
+  assert.match(readerSource, /getVisiblePageText/);
   assert.doesNotMatch(readerSource, /speechSynthesis/);
+});
+
+test("kids reader keeps actions inside the iPad dynamic viewport", () => {
+  assert.match(readerSource, /className="kids-reader-shell"/);
+  assert.match(readerSource, /className="kids-reader-actions"/);
+  assert.doesNotMatch(readerSource, /style=\{\{ height: "100vh"/);
+  assert.match(globalCss, /\.kids-reader-shell\s*\{/);
+  assert.match(globalCss, /height:\s*100dvh/);
+  assert.match(globalCss, /\.kids-reader-actions\s*\{/);
+  assert.match(globalCss, /padding-bottom:\s*max\(10px,\s*env\(safe-area-inset-bottom\)\)/);
 });
 
 test("kids reader maps EPUB navigation to backend reading sections", () => {

@@ -1,5 +1,7 @@
 """Unit and integration tests for Kids Interactive Books (Math and Digital Books)."""
 
+import json
+
 import time
 import pytest
 from fastapi import FastAPI
@@ -92,6 +94,20 @@ def mock_interactive_book(tmp_path, monkeypatch) -> Book:
                 payload={"text": "三角形有3条边，正方形有4条边！"},
             ),
             Block(
+                id="blk_section_1",
+                type=BlockType.SECTION,
+                payload={
+                    "intro": "我们先一起认识身边的图形。",
+                    "subsections": [
+                        {
+                            "heading": "图形藏在哪里",
+                            "body": "### 图形藏在哪里\n\nThinking Process:\n\n1. 分析题目。",
+                        }
+                    ],
+                    "bridge_text": "Thinking Process: internal transition",
+                },
+            ),
+            Block(
                 id="blk_anim_1",
                 type=BlockType.ANIMATION,
                 title="图形变变变",
@@ -156,6 +172,34 @@ def test_kids_manager_assign_and_progress(clean_kids_manager, sample_profile, mo
     assert assignment.content_type == "interactive_book"
     assert assignment.book_id == mock_interactive_book.id
     assert assignment.status == "active"
+
+    # Updating an existing assignment must persist the new unlock boundary.
+    updated_assignment = clean_kids_manager.assign_interactive_book(
+        sample_profile.id,
+        mock_interactive_book.id,
+        available_through_page_order=0,
+    )
+    assert updated_assignment.available_through_page_order == 0
+    stored_assignment = next(
+        a
+        for a in json.loads(clean_kids_manager._assignments_path().read_text(encoding="utf-8"))
+        if a["book_id"] == mock_interactive_book.id
+    )
+    assert stored_assignment["available_through_page_order"] == 0
+
+    # Assignments are global storage; writing for another child must not erase this child.
+    second_profile = clean_kids_manager.create_profile(name="Second Child")
+    clean_kids_manager.assign_interactive_book(
+        second_profile.id,
+        mock_interactive_book.id,
+        available_through_page_order=0,
+    )
+    stored_profile_ids = [
+        a["profile_id"]
+        for a in json.loads(clean_kids_manager._assignments_path().read_text(encoding="utf-8"))
+        if a["book_id"] == mock_interactive_book.id
+    ]
+    assert set(stored_profile_ids) == {sample_profile.id, second_profile.id}
 
     # Progress tracking
     prog = clean_kids_manager.update_kids_interactive_progress(
@@ -225,6 +269,11 @@ def test_child_interactive_book_endpoints(kids_client, sample_profile, clean_kid
     assert "correct_answer" not in q_data
     assert "explanation" not in q_data
     assert q_data["question"] == "三角形有几条边？"
+    section_blk = next(b for b in page_data["blocks"] if b["type"] == "section")
+    assert section_blk["payload"]["intro"] == "我们先一起认识身边的图形。"
+    assert section_blk["payload"]["subsections"][0]["body"] == "### 图形藏在哪里"
+    assert "bridge_text" not in section_blk["payload"]
+    assert "Thinking Process" not in json.dumps(page_data, ensure_ascii=False)
 
     # 6. Submit quiz answer — server grades and awards stars
     submit_resp = kids_client.post(

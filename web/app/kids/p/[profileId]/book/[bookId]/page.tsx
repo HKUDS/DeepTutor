@@ -19,6 +19,13 @@ import {
   HelpCircle,
   Trophy,
 } from "lucide-react";
+import SimpleMarkdownRenderer from "@/components/common/SimpleMarkdownRenderer";
+import { Mermaid } from "@/components/Mermaid";
+import {
+  speakKidsText,
+  stopKidsSpeech,
+  subscribeKidsSpeechState,
+} from "@/lib/kids-learning/pronunciation";
 
 export default function KidsInteractiveBookReader() {
   const router = useRouter();
@@ -41,6 +48,14 @@ export default function KidsInteractiveBookReader() {
 
   // Audio / TTS state
   const [speakingBlockId, setSpeakingBlockId] = useState<string | null>(null);
+
+  useEffect(() => {
+    return subscribeKidsSpeechState((state) => {
+      if (!state.isPlaying) {
+        setSpeakingBlockId(null);
+      }
+    });
+  }, []);
 
   // Celebration state
   const [celebrateStars, setCelebrateStars] = useState<number | null>(null);
@@ -113,9 +128,7 @@ export default function KidsInteractiveBookReader() {
   // Navigate pages
   const goToPage = async (newIdx: number) => {
     if (newIdx < 0 || newIdx >= allPages.length) return;
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
+    stopKidsSpeech();
     setSpeakingBlockId(null);
     setCurrentPageIndex(newIdx);
     const targetPage = allPages[newIdx];
@@ -131,19 +144,16 @@ export default function KidsInteractiveBookReader() {
 
   // TTS Read Aloud
   const speakText = (blockId: string, text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     if (speakingBlockId === blockId) {
-      window.speechSynthesis.cancel();
+      stopKidsSpeech();
       setSpeakingBlockId(null);
       return;
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.85;
-    utterance.onend = () => setSpeakingBlockId(null);
-    utterance.onerror = () => setSpeakingBlockId(null);
     setSpeakingBlockId(blockId);
-    window.speechSynthesis.speak(utterance);
+    speakKidsText(blockId, text, {
+      onError: () => setSpeakingBlockId(null),
+      onEnd: () => setSpeakingBlockId(null),
+    });
   };
 
   // Submit Quiz Block
@@ -320,9 +330,39 @@ function renderBlock(
 ) {
   const payload = block.payload || {};
 
-  // 1. Text Block
-  if (block.type === "text" || block.type === "section" || block.type === "callout") {
-    const text = (payload.text as string) || (payload.content as string) || (payload.markdown as string) || "";
+  // 1. Callout Block (Distinct highlighted tip / key idea card)
+  if (block.type === "callout") {
+    const title = block.title || (payload.label as string) || "核心要点";
+    const body = (payload.body as string) || (payload.text as string) || "";
+    const isSpeaking = speakingId === block.id;
+    return (
+      <div style={S.calloutBlock}>
+        <div style={S.textHeader}>
+          <div style={S.mediaHeader}>
+            <Sparkles size={20} color="#d97706" />
+            <span style={{ ...S.mediaBadge, background: "#fef3c7", color: "#92400e" }}>
+              {title}
+            </span>
+          </div>
+          <button
+            style={S.speakBtn}
+            onClick={() => speakText(block.id, body)}
+            title={isSpeaking ? "停止朗读" : "语音朗读"}
+          >
+            {isSpeaking ? <VolumeX size={20} color="#e53e3e" /> : <Volume2 size={20} color="#667eea" />}
+            <span style={{ fontSize: 13, marginLeft: 4 }}>{isSpeaking ? "停止" : "读给我听"}</span>
+          </button>
+        </div>
+        <div style={S.calloutContent}>
+          <SimpleMarkdownRenderer content={body} className="text-[17px] leading-8 text-[#78350f]" />
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Text & Section Block
+  if (block.type === "text" || block.type === "section") {
+    const text = readableBlockText(payload);
     const isSpeaking = speakingId === block.id;
     return (
       <div style={S.textBlock}>
@@ -337,7 +377,9 @@ function renderBlock(
             <span style={{ fontSize: 13, marginLeft: 4 }}>{isSpeaking ? "停止" : "读给我听"}</span>
           </button>
         </div>
-        <div style={S.textContent}>{text}</div>
+        <div style={S.textContent}>
+          <SimpleMarkdownRenderer content={text} className="text-[17px] leading-8" />
+        </div>
       </div>
     );
   }
@@ -373,12 +415,20 @@ function renderBlock(
     const svgContent = payload.svg as string;
     const imgUrl = payload.image_url as string;
     const caption = (payload.caption as string) || "";
+    const chartCode =
+      payload.render_type === "mermaid"
+        ? typeof payload.code === "string"
+          ? payload.code
+          : ((payload.code as { content?: string })?.content || "")
+        : "";
     // Safe image source: if SVG string is provided, encode as data URI for <img> tag (non-executable)
     const safeSrc = imgUrl || (svgContent ? `data:image/svg+xml;utf8,${encodeURIComponent(svgContent)}` : "");
 
     return (
       <div style={S.figureBlock}>
-        {safeSrc ? (
+        {chartCode ? (
+          <Mermaid chart={chartCode} className="bg-white" />
+        ) : safeSrc ? (
           <img src={safeSrc} alt={caption || "数学图示"} style={S.figureImg} />
         ) : (
           <div style={S.placeholderMedia}>数学图示</div>
@@ -388,20 +438,32 @@ function renderBlock(
     );
   }
 
+  if (block.type === "code") {
+    const code = (payload.code as string) || "";
+    const explanation = (payload.explanation as string) || "";
+    return (
+      <QuantumCodeRunnerWidget
+        code={code}
+        explanation={explanation}
+        title={block.title}
+      />
+    );
+  }
+
   // 4. Interactive Manipulative Widget (Safe native React controls)
   if (block.type === "interactive") {
-    const title = (payload.title as string) || "动手探索";
+    const title = (payload.title as string) || "动手探索：双缝干涉量子实验室";
     const description = (payload.description as string) || (payload.prompt as string) || "";
     return (
       <div style={S.interactiveBlock}>
         <div style={S.mediaHeader}>
-          <HelpCircle size={20} color="#319795" />
+          <HelpCircle size={20} color="#318795" />
           <span style={{ ...S.mediaBadge, background: "#e6fffa", color: "#234e52" }}>
             {title}
           </span>
         </div>
         {description && <p style={{ color: "#2d3748", marginBottom: 12 }}>{description}</p>}
-        <InteractiveCounterWidget />
+        <DoubleSlitLabWidget payload={payload} />
       </div>
     );
   }
@@ -508,38 +570,313 @@ function renderBlock(
   return null;
 }
 
-// Sub-component for safe interactive manipulatives (Number/Counter widget)
-function InteractiveCounterWidget() {
-  const [count, setCount] = useState(3);
+function readableBlockText(payload: Record<string, unknown>): string {
+  const directText =
+    (payload.text as string) ||
+    (payload.content as string) ||
+    (payload.markdown as string);
+  if (directText) return directText;
+
+  const intro = (payload.intro as string) || "";
+  const subsections = (payload.subsections as Record<string, unknown>[]) || [];
+  const subsectionText = subsections
+    .map((subsection) => {
+      const heading = (subsection.heading as string) || "";
+      const body = (subsection.body as string) || "";
+      if (!heading) return body;
+      if (body.startsWith("### ") || body.startsWith("## ") || body.startsWith("# ")) {
+        return body;
+      }
+      return `### ${heading}\n\n${body}`;
+    })
+    .filter(Boolean);
+  const takeaway = (payload.key_takeaway as string) || "";
+  const takeawayFormatted = takeaway ? `> 💡 **小结**：${takeaway}` : "";
+
+  return [intro, ...subsectionText, takeawayFormatted].filter(Boolean).join("\n\n");
+}
+
+function DoubleSlitLabWidget({ payload }: { payload: Record<string, unknown> }) {
+  const [photonCount, setPhotonCount] = useState(0);
+  const [color, setColor] = useState<"red" | "green" | "blue">("green");
+  const [slitGap, setSlitGap] = useState<"narrow" | "wide">("narrow");
+  const [hits, setHits] = useState<number[]>([]);
+  const [isFiring, setIsFiring] = useState(false);
+
+  const colorHex = color === "red" ? "#ef4444" : color === "green" ? "#10b981" : "#3b82f6";
+
+  const firePhotons = (amount = 10) => {
+    const newHits: number[] = [];
+    const fringeFreq = slitGap === "narrow" ? 0.08 : 0.14;
+
+    for (let i = 0; i < amount; i++) {
+      let x = 0;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const candidateX = (Math.random() - 0.5) * 160;
+        const env = Math.exp(-(candidateX * candidateX) / (2 * 45 * 45));
+        const wave = Math.cos(candidateX * fringeFreq);
+        const prob = env * wave * wave;
+        if (Math.random() < prob) {
+          x = candidateX;
+          break;
+        }
+      }
+      newHits.push(x);
+    }
+
+    setHits((prev) => [...prev.slice(-300), ...newHits]);
+    setPhotonCount((prev) => prev + amount);
+  };
+
+  useEffect(() => {
+    if (!isFiring) return;
+    const interval = window.setInterval(() => {
+      firePhotons(6);
+    }, 100);
+    return () => window.clearInterval(interval);
+  }, [isFiring, slitGap, color]);
+
+  const clearScreen = () => {
+    setHits([]);
+    setPhotonCount(0);
+    setIsFiring(false);
+  };
+
   return (
-    <div style={S.counterContainer}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "#2d3748", marginBottom: 8 }}>
-        点击按钮数一数，观察数量变化：
+    <div style={S.widgetCard}>
+      <div style={S.widgetToolbar}>
+        <div style={S.toolbarGroup}>
+          <span style={S.controlLabel}>光源:</span>
+          {(["red", "green", "blue"] as const).map((c) => (
+            <button
+              key={c}
+              style={{
+                ...S.colorBtn,
+                background: c === "red" ? "#fee2e2" : c === "green" ? "#d1fae5" : "#dbeafe",
+                borderColor: color === c ? (c === "red" ? "#dc2626" : c === "green" ? "#059669" : "#2563eb") : "#e2e8f0",
+                color: c === "red" ? "#991b1b" : c === "green" ? "#065f46" : "#1e40af",
+                fontWeight: color === c ? 800 : 500,
+              }}
+              onClick={() => setColor(c)}
+            >
+              {c === "red" ? "红光" : c === "green" ? "绿光" : "蓝光"}
+            </button>
+          ))}
+        </div>
+
+        <div style={S.toolbarGroup}>
+          <span style={S.controlLabel}>间距:</span>
+          <button
+            style={{
+              ...S.pillBtn,
+              background: slitGap === "narrow" ? "#667eea" : "#edf2f7",
+              color: slitGap === "narrow" ? "white" : "#4a5568",
+            }}
+            onClick={() => { setSlitGap("narrow"); setHits([]); setPhotonCount(0); }}
+          >
+            窄缝
+          </button>
+          <button
+            style={{
+              ...S.pillBtn,
+              background: slitGap === "wide" ? "#667eea" : "#edf2f7",
+              color: slitGap === "wide" ? "white" : "#4a5568",
+            }}
+            onClick={() => { setSlitGap("wide"); setHits([]); setPhotonCount(0); }}
+          >
+            宽缝
+          </button>
+        </div>
+
+        <div style={S.toolbarGroup}>
+          <button
+            style={{
+              ...S.actionBtn,
+              background: isFiring ? "#ef4444" : "#10b981",
+              color: "white",
+            }}
+            onClick={() => setIsFiring(!isFiring)}
+          >
+            {isFiring ? "⏹ 暂停" : "🚀 持续发射"}
+          </button>
+          <button style={S.pillBtn} onClick={() => firePhotons(20)}>
+            +20 颗
+          </button>
+          <button style={{ ...S.pillBtn, color: "#718096" }} onClick={clearScreen}>
+            清空
+          </button>
+        </div>
       </div>
-      <div style={S.counterRow}>
-        <button
-          style={S.counterBtn}
-          onClick={() => setCount(Math.max(0, count - 1))}
-          disabled={count <= 0}
-        >
-          - 减 1
-        </button>
-        <span style={S.counterVal}>{count}</span>
-        <button
-          style={S.counterBtn}
-          onClick={() => setCount(Math.min(20, count + 1))}
-          disabled={count >= 20}
-        >
-          + 加 1
-        </button>
+
+      <div style={S.labCanvasContainer}>
+        <div style={S.laserEmitter}>
+          <div style={{ ...S.laserNozzle, background: colorHex }} />
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>单光子源</div>
+        </div>
+
+        <div style={S.slitsBarrier}>
+          <div style={S.barrierWall} />
+          <div style={{ ...S.slitHole, height: slitGap === "narrow" ? 8 : 14 }} />
+          <div style={{ ...S.barrierCenterBlock, height: slitGap === "narrow" ? 14 : 26 }} />
+          <div style={{ ...S.slitHole, height: slitGap === "narrow" ? 8 : 14 }} />
+          <div style={S.barrierWall} />
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>双缝</div>
+        </div>
+
+        <div style={S.screenArea}>
+          <div style={S.screenDetector}>
+            {hits.map((x, idx) => (
+              <div
+                key={idx}
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: `calc(50% + ${x}px)`,
+                  width: 3.5,
+                  height: 3.5,
+                  borderRadius: "50%",
+                  background: colorHex,
+                  boxShadow: `0 0 3px ${colorHex}`,
+                  opacity: 0.85,
+                  transform: "translate(-50%, -50%)",
+                }}
+              />
+            ))}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", marginTop: 4 }}>
+            探测屏（{photonCount} 颗）
+          </div>
+        </div>
       </div>
-      <div style={S.dotGrid}>
-        {Array.from({ length: count }).map((_, i) => (
-          <span key={i} style={S.visualDot}>
-            🍎
+
+      <div style={S.labInsightBox}>
+        <div style={{ fontWeight: 700, color: "#115e59", marginBottom: 2 }}>
+          💡 实验观察结论：
+        </div>
+        <div style={{ fontSize: 14, color: "#134e4a", lineHeight: 1.6 }}>
+          即便每次只发射<b>单个光子</b>，只要光子数量累加，探测屏上依然会慢慢显现出<b>明暗相间的波干涉条纹</b>！这生动证明了微观粒子的波粒二象性。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuantumCodeRunnerWidget({
+  code,
+  explanation,
+  title,
+}: {
+  code: string;
+  explanation: string;
+  title?: string;
+}) {
+  const [isRunning, setIsRunning] = useState(false);
+  const [runsCount, setRunsCount] = useState<number>(1);
+  const [history, setHistory] = useState<{ heads: number; tails: number; logs: string[] } | null>(null);
+
+  const handleRun = () => {
+    setIsRunning(true);
+    setTimeout(() => {
+      let heads = 0;
+      let tails = 0;
+      const logs: string[] = [];
+      for (let i = 0; i < runsCount; i++) {
+        const isHead = Math.random() < 0.5;
+        if (isHead) heads++;
+        else tails++;
+        if (runsCount <= 10) {
+          logs.push(`观测测量 #${i + 1}：硬币塌缩为【${isHead ? "正面 🪙" : "反面 🌕"}】`);
+        }
+      }
+      if (runsCount > 10) {
+        logs.push(`完成 ${runsCount} 次连续量子测量：正面 ${heads} 次 (${Math.round((heads / runsCount) * 100)}%)，反面 ${tails} 次 (${Math.round((tails / runsCount) * 100)}%)`);
+      }
+      setHistory({ heads, tails, logs });
+      setIsRunning(false);
+    }, 350);
+  };
+
+  const total = history ? history.heads + history.tails : 0;
+  const headPct = total > 0 ? Math.round((history!.heads / total) * 100) : 50;
+
+  return (
+    <div style={S.codeBlock}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <div style={S.mediaHeader}>
+          <HelpCircle size={20} color="#0d9488" />
+          <span style={{ ...S.mediaBadge, background: "#ccfbf1", color: "#115e59" }}>
+            {title || "可运行代码实验"}
           </span>
-        ))}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 13, color: "#64748b" }}>模拟:</span>
+          {[1, 10, 100].map((n) => (
+            <button
+              key={n}
+              style={{
+                padding: "3px 8px",
+                borderRadius: 8,
+                border: "1px solid",
+                borderColor: runsCount === n ? "#0d9488" : "#cbd5e1",
+                background: runsCount === n ? "#f0fdfa" : "white",
+                color: runsCount === n ? "#0f766e" : "#64748b",
+                fontSize: 12,
+                fontWeight: runsCount === n ? 700 : 500,
+                cursor: "pointer",
+              }}
+              onClick={() => setRunsCount(n)}
+            >
+              {n}次
+            </button>
+          ))}
+          <button
+            style={{
+              padding: "5px 12px",
+              borderRadius: 8,
+              border: "none",
+              background: isRunning ? "#94a3b8" : "#0d9488",
+              color: "white",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: isRunning ? "not-allowed" : "pointer",
+            }}
+            disabled={isRunning}
+            onClick={handleRun}
+          >
+            {isRunning ? "运行中..." : "▶ 运行模拟"}
+          </button>
+        </div>
       </div>
+
+      <pre style={S.codePre}>
+        <code>{code}</code>
+      </pre>
+
+      {history && (
+        <div style={S.terminalBox}>
+          <div style={S.terminalHeader}>🖥️ 模拟运行结果输出：</div>
+          {history.logs.map((log, idx) => (
+            <div key={idx} style={S.terminalLine}>
+              {log}
+            </div>
+          ))}
+
+          {total > 1 && (
+            <div style={{ marginTop: 10, background: "#082f49", padding: 8, borderRadius: 8 }}>
+              <div style={{ fontSize: 12, color: "#38bdf8", marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
+                <span>正面: {history.heads} ({headPct}%)</span>
+                <span>反面: {history.tails} ({100 - headPct}%)</span>
+              </div>
+              <div style={{ height: 8, background: "#1e293b", borderRadius: 4, overflow: "hidden", display: "flex" }}>
+                <div style={{ width: `${headPct}%`, background: "#38bdf8", transition: "width 0.3s" }} />
+                <div style={{ width: `${100 - headPct}%`, background: "#f59e0b", transition: "width 0.3s" }} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {explanation && <p style={S.captionText}>{explanation}</p>}
     </div>
   );
 }
@@ -579,9 +916,12 @@ const S: Record<string, React.CSSProperties> = {
   spinner: { fontSize: 24, fontWeight: 700, color: "#4338ca" },
   container: {
     minHeight: "100vh",
+    height: "100vh",
+    overflowY: "auto",
     background: "linear-gradient(180deg, #f0fdf4 0%, #fef3e7 50%, #eff6ff 100%)",
     display: "flex",
     flexDirection: "column",
+    WebkitOverflowScrolling: "touch",
   },
   header: {
     position: "sticky",
@@ -619,7 +959,7 @@ const S: Record<string, React.CSSProperties> = {
   },
   mainContent: {
     flex: 1,
-    padding: "24px 16px 80px 16px",
+    padding: "24px 16px 140px 16px",
     display: "flex",
     justifyContent: "center",
   },
@@ -700,12 +1040,101 @@ const S: Record<string, React.CSSProperties> = {
     textAlign: "center",
   },
   figureImg: { maxWidth: "100%", maxHeight: 350, objectFit: "contain", borderRadius: 8 },
+  codeBlock: {
+    background: "#f0fdfa",
+    borderRadius: 18,
+    padding: 16,
+    border: "1px solid #ccfbf1",
+  },
+  codePre: {
+    margin: 0,
+    padding: 16,
+    borderRadius: 12,
+    background: "#12343b",
+    color: "#d9f8f2",
+    overflowX: "auto",
+    fontSize: 14,
+    lineHeight: 1.6,
+  },
+  calloutBlock: {
+    background: "#fffdf0",
+    borderRadius: 18,
+    padding: "20px 22px",
+    border: "1px solid #fef08a",
+    boxShadow: "0 2px 10px rgba(234, 179, 8, 0.05)",
+  },
+  calloutContent: { marginTop: 8 },
   interactiveBlock: {
     background: "#f0fdfa",
     borderRadius: 18,
     padding: 16,
     border: "1px solid #ccfbf1",
   },
+  widgetCard: {
+    background: "white",
+    borderRadius: 16,
+    padding: 18,
+  },
+  widgetToolbar: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 12,
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+    background: "#f8fafc",
+    padding: 10,
+    borderRadius: 12,
+  },
+  toolbarGroup: { display: "flex", alignItems: "center", gap: 6 },
+  controlLabel: { fontSize: 12, fontWeight: 700, color: "#475569" },
+  colorBtn: { padding: "3px 8px", borderRadius: 6, border: "1.5px solid", fontSize: 12, cursor: "pointer" },
+  pillBtn: { padding: "4px 9px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  actionBtn: { padding: "5px 12px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  labCanvasContainer: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    background: "#091428",
+    borderRadius: 14,
+    height: 220,
+    padding: "0 20px",
+    position: "relative",
+    overflow: "hidden",
+  },
+  laserEmitter: { display: "flex", flexDirection: "column", alignItems: "center" },
+  laserNozzle: { width: 24, height: 14, borderRadius: "4px 0 0 4px", boxShadow: "0 0 10px currentColor" },
+  slitsBarrier: { display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "center" },
+  barrierWall: { width: 8, height: 60, background: "#475569", borderRadius: 2 },
+  slitHole: { width: 8, background: "transparent" },
+  barrierCenterBlock: { width: 8, background: "#475569", borderRadius: 2 },
+  screenArea: { display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "center" },
+  screenDetector: {
+    width: 120,
+    height: 170,
+    background: "rgba(15, 23, 42, 0.8)",
+    border: "2px solid #334155",
+    borderRadius: 8,
+    position: "relative",
+    overflow: "hidden",
+  },
+  labInsightBox: {
+    marginTop: 12,
+    background: "#e6fffa",
+    borderRadius: 10,
+    padding: "10px 14px",
+    border: "1px solid #b2f5ea",
+  },
+  terminalBox: {
+    marginTop: 12,
+    background: "#0c1322",
+    borderRadius: 12,
+    padding: 14,
+    fontFamily: "ui-monospace, monospace",
+    border: "1px solid #1e293b",
+  },
+  terminalHeader: { fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 6 },
+  terminalLine: { fontSize: 13, color: "#a5f3fc", lineHeight: 1.6 },
   counterContainer: {
     background: "white",
     borderRadius: 12,

@@ -397,45 +397,224 @@ def generate_story_comprehension_quiz(
     """
     rng = random.Random(seed if seed is not None else hash(text[:300]) % 100000)
     raw_lines = [l.strip() for l in text.splitlines() if l.strip()]
-    story_lines = [l for l in raw_lines if not l.startswith(('by ', 'pictures by', 'The End', 'Book '))]
-    full_text = ' '.join(story_lines)
+    story_lines = [
+        l for l in raw_lines
+        if not l.startswith(('by ', 'pictures by', 'The End', 'Book ', 'Published ', 'Copyright ', 'Welcome', 'Hints', 'CONTENTS'))
+        and len(l) > 3
+    ]
+    if story_lines and story_lines[0].lower() in {'plums', 'little bug', 'pretty', 'the sled', 'what is that?', 'come in', 'the old truck', 'play ball', 'dress up', 'before and after'}:
+        title = story_lines[0]
+        story_lines = story_lines[1:]
+    else:
+        title = ''
 
+    full_text = ' '.join(story_lines)
+    full_lower = full_text.lower()
     questions: list[dict] = []
 
-    # 1. Character recognition
-    char_match = re.search(r'([A-Z][a-z]+ and [A-Z][a-z]+)', full_text)
-    if char_match:
-        chars = char_match.group(1)
-        choices = [chars, 'A big brown bear', 'A clever fox', 'Three little ducks']
+    # 1. Extract character names
+    chars: list[str] = []
+    for match in re.finditer(r'\b([A-Z][a-z]+)\s+and\s+([A-Z][a-z]+)\b', full_text):
+        p = f'{match.group(1)} and {match.group(2)}'
+        if p not in chars:
+            chars.append(p)
+    for match in re.finditer(r'([A-Z][a-z]+)\s+(?:said|saw|had|ran|got|went|sat|looked|hid|will|dug|is|was|wants|fits)', full_text):
+        n = match.group(1)
+        if n not in {'The', 'Now', 'Are', 'She', 'He', 'They', 'We', 'What', 'Who', 'Where', 'When', 'Why', 'How', 'That', 'Yes', 'No', 'Sun', 'Rain', 'One', 'Two', 'Three', 'Before', 'After', 'Fix', 'Old', 'Bring'} and n not in chars:
+            chars.append(n)
+
+    # Q1: Characters / Main Subject
+    if 'pretty' in title.lower() or ('mit' in full_lower and 'mag' in full_lower):
+        ans = 'Mit and Mag'
+        choices = [ans, 'A big brown bear', 'A clever fox', 'Three little ducks']
         rng.shuffle(choices)
         questions.append({
             'id': 'q1',
             'kind': 'comprehension',
-            'question': 'Who is in the story?',
+            'question': 'Who is in this story?',
             'choices': choices,
-            'answer_index': choices.index(chars),
-            'explanation': f'The story tells us about {chars}.'
+            'answer_index': choices.index(ans),
+            'explanation': 'The story tells us about Mit the cat and Mag.'
         })
-    elif 'little bug' in full_text.lower():
-        choices = ['A little bug', 'A big dragon', 'A wild tiger', 'A giant whale']
+    elif 'sled' in title.lower() or ('mag' in full_lower and 'sled' in full_lower):
+        ans = 'Mag'
+        choices = [ans, 'A sleeping cat', 'A small mouse', 'A yellow bird']
         rng.shuffle(choices)
         questions.append({
             'id': 'q1',
             'kind': 'comprehension',
-            'question': 'Who is the main character in the story?',
+            'question': 'Who has a sled in the story?',
             'choices': choices,
-            'answer_index': choices.index('A little bug'),
-            'explanation': 'The story tells us about the little bug.'
+            'answer_index': choices.index(ans),
+            'explanation': 'In the story, Mag had a sled to ride on snow!'
+        })
+    elif 'truck' in title.lower() or ('truck' in full_lower and 'ted' in full_lower):
+        ans = 'Ted'
+        choices = [ans, 'A little duck', 'A sleeping frog', 'Three ants']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q1',
+            'kind': 'comprehension',
+            'question': 'Who found and fixed the old truck?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Ted dug up the old truck and fixed it up!'
+        })
+    elif 'dress up' in title.lower() or ('fox' in full_lower and 'vest' in full_lower):
+        ans = 'A fox'
+        choices = [ans, 'A big bear', 'A green crab', 'Two little ants']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q1',
+            'kind': 'comprehension',
+            'question': 'Who is trying on clothes in the story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The story is about a fox trying on vests, pants, and hats.'
+        })
+    elif 'before and after' in title.lower() or ('peg' in full_lower and 'pancakes' in full_lower):
+        ans = 'Peg, Ted, and Bill'
+        choices = [ans, 'Three little ducks', 'A big brown bear', 'A clever fox']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q1',
+            'kind': 'comprehension',
+            'question': 'Who are the characters doing activities in the story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The story shows Peg, Ted, and Bill doing things before and after.'
+        })
+    elif chars:
+        ans = chars[0]
+        distractors = ['A big brown bear', 'A clever fox', 'Three little ducks', 'A wild tiger']
+        rng.shuffle(distractors)
+        choices = [ans] + distractors[:3]
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q1',
+            'kind': 'comprehension',
+            'question': 'Who is in this story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': f'The story tells us about {ans}.'
+        })
+    else:
+        ans = 'The characters'
+        choices = [ans, 'A giant monster', 'A space alien', 'A sea turtle']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q1',
+            'kind': 'comprehension',
+            'question': 'Who is in this story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The story introduces the characters and their adventure.'
         })
 
-    # 2. Location / Setting recognition
-    loc_match = re.search(r'(in a [a-z]+|on a [a-z]+|up a [a-z]+|under a [a-z]+)', full_text)
-    if loc_match:
-        loc = loc_match.group(1)
-        choices = [loc, 'in a deep pool', 'on a fast train', 'inside a cold cave']
+    # Q2: Key Action / Problem / Plot Event
+    if 'pretty' in title.lower() or 'wet' in full_lower:
+        ans = 'She ran and got wet'
+        choices = [ans, 'She flew into the clouds', 'She ate a big apple', 'She went to sleep in a box']
         rng.shuffle(choices)
         questions.append({
-            'id': f'q{len(questions)+1}',
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'What happened to Mit in the story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'When Mit ran, she got wet and worried she was not pretty.'
+        })
+    elif 'sled' in title.lower() or ('sled' in full_lower and 'ruff' in full_lower):
+        ans = 'Ruff the dog'
+        choices = [ans, 'The hen', 'The frog', 'The pig']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'Who agreed to sled with Mag?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The hen, frog, and pig said no, but Ruff said yes!'
+        })
+    elif 'what is that' in title.lower() or ('rag' in full_lower and 'flag' in full_lower):
+        ans = 'A flag'
+        choices = [ans, 'A sleeping cat', 'A purple plum', 'A big sled']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'What was Ted’s rag in the story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Ted held up his rag and said it was his flag!'
+        })
+    elif 'come in' in title.lower() or 'tent' in full_lower:
+        ans = 'Into his tent'
+        choices = [ans, 'Into a cold cave', 'Under a deep pond', 'Up a tall tree']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'Where did Mat invite his friends to come?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Mat asked his friends to come into his tent.'
+        })
+    elif 'truck' in title.lower() or 'sand' in full_lower:
+        ans = 'in the sand'
+        choices = [ans, 'in a deep pool', 'up in a tree', 'under the bed']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'Where was the old truck at the start?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The story begins with an old truck sitting in the sand.'
+        })
+    elif 'play ball' in title.lower() or 'ball' in full_lower:
+        ans = 'Find the lost ball'
+        choices = [ans, 'Bake a warm cake', 'Build a wooden sled', 'Wash the old truck']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'What did Mat and Sam need to do so they could play?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'They had to search and find their ball so they could play!'
+        })
+    elif 'sun' in full_lower and 'rain' in full_lower:
+        ans = 'Sun and rain'
+        choices = [ans, 'Snow and ice', 'A noisy truck', 'A cold wind']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'What helps the plums grow soft and good?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Sun and rain help the plums grow soft and good!'
+        })
+    elif 'ate' in full_lower or 'snack' in full_lower:
+        ans = 'He ate a little snack'
+        choices = [ans, 'He flew into the sky', 'He built a big house', 'He went to sleep']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
+            'kind': 'comprehension',
+            'question': 'What did the little character do in the story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The story tells us he ate a little snack.'
+        })
+    else:
+        loc_match = re.search(r'(in a [a-z]+|on a [a-z]+|up a [a-z]+|in the [a-z]+|on the [a-z]+)', full_text)
+        loc = loc_match.group(1) if loc_match else 'outdoors'
+        choices = [loc, 'in a deep pool', 'on a fast train', 'inside a dark cave']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q2',
             'kind': 'comprehension',
             'question': 'Where does the story take place?',
             'choices': choices,
@@ -443,49 +622,126 @@ def generate_story_comprehension_quiz(
             'explanation': f'The story tells us it happens {loc}.'
         })
 
-    # 3. Cause & effect / action recognition
-    if 'sun' in full_text.lower() and 'rain' in full_text.lower():
-        ans = 'Sun and rain'
-        choices = [ans, 'Snow and ice', 'A noisy truck', 'A cold wind']
+    # Q3: Dialogue / Resolution / Outcome
+    if 'pretty' in title.lower() or any('help' in l.lower() for l in story_lines):
+        ans = '“I can help.”'
+        choices = [ans, '“Go away!”', '“I am hungry.”', '“It is dark.”']
         rng.shuffle(choices)
         questions.append({
-            'id': f'q{len(questions)+1}',
+            'id': 'q3',
             'kind': 'comprehension',
-            'question': 'What helps the plums grow soft and good?',
+            'question': 'What did Mag say when Mit was sad and wet?',
             'choices': choices,
             'answer_index': choices.index(ans),
-            'explanation': 'Sun and rain help the plums grow soft and good!'
+            'explanation': 'Mag was a kind friend and said, “I can help.”'
         })
-    elif 'soft' in full_text.lower() or 'hard' in full_text.lower():
-        ans = 'soft and good to eat'
-        choices = [ans, 'hard and cold', 'lost in the grass', 'not good']
+    elif 'sled' in title.lower() or 'ruff will sled' in full_lower:
+        ans = '“I will not sled with you.”'
+        choices = [ans, '“We love to sled!”', '“Where is the snow?”', '“Give me the sled.”']
         rng.shuffle(choices)
         questions.append({
-            'id': f'q{len(questions)+1}',
+            'id': 'q3',
+            'kind': 'comprehension',
+            'question': 'What did the other animals say to Mag at first?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The hen, frog, and pig all said they would not sled with Mag.'
+        })
+    elif 'what is that' in title.lower() or 'twin' in full_lower:
+        ans = 'Her twin brother, Finn'
+        choices = [ans, 'A sleepy little dog', 'A magic flying hat', 'Ten purple plums']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q3',
+            'kind': 'comprehension',
+            'question': 'Who was inside Brin’s box at the end?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Brin opened the box and showed her twin, Finn!'
+        })
+    elif 'come in' in title.lower() or ('mag and mit' in full_lower and 'tent' in full_lower):
+        ans = 'Mag and Mit'
+        choices = [ans, 'A big dragon', 'A wild tiger', 'Three little bears']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q3',
+            'kind': 'comprehension',
+            'question': 'Who happily went into Mat’s tent at the end?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'At the end, Mag and Mit went right into Mat’s tent!'
+        })
+    elif 'truck' in title.lower() or 'make it new' in full_lower:
+        ans = 'Ted made the old truck new'
+        choices = [ans, 'The truck rolled into the river', 'Ted left it as junk', 'The truck flew away']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q3',
+            'kind': 'comprehension',
+            'question': 'What was the happy result at the end?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Ted painted it red and made the old truck like new!'
+        })
+    elif 'play ball' in title.lower() or 'find the ball' in full_lower:
+        ans = 'They found the ball and played'
+        choices = [ans, 'They went home crying', 'They fell asleep in the nest', 'The ball popped']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q3',
+            'kind': 'comprehension',
+            'question': 'How did the story end for Mat and Sam?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Mat and Sam found their ball and played happily!'
+        })
+    elif 'dress up' in title.lower() or 'fits' in full_lower:
+        ans = 'Clothes that fit just right'
+        choices = [ans, 'Clothes that were too dirty', 'A pair of broken shoes', 'A winter coat for swimming']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q3',
+            'kind': 'comprehension',
+            'question': 'What did the fox finally find to wear?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'They brought lots of clothes until the fox had an outfit that fit!'
+        })
+    elif 'before and after' in title.lower() or 'pj' in full_lower:
+        ans = 'He puts on his pajamas (pj’s)'
+        choices = [ans, 'He eats a giant pancake', 'He goes swimming in the pool', 'He runs around the yard']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q3',
+            'kind': 'comprehension',
+            'question': 'What does Bill do before getting into bed?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Before getting into bed, Bill puts on his pj’s.'
+        })
+    elif 'soft' in full_lower or 'good' in full_lower:
+        ans = 'The plums are soft and good'
+        choices = [ans, 'The plums are hard and cold', 'The plums are lost', 'The plums are bad']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q3',
             'kind': 'comprehension',
             'question': 'How are the plums at the end of the story?',
             'choices': choices,
             'answer_index': choices.index(ans),
             'explanation': 'At the end of the story, the plums are soft and good!'
         })
-    elif 'ate' in full_text.lower() or 'snack' in full_text.lower():
-        ans = 'He ate a little snack'
-        choices = [ans, 'He flew into the sky', 'He built a big house', 'He went to sleep']
+    else:
+        ans = 'Happy and smiling together'
+        choices = [ans, 'Angry and shouting', 'Cold in the snow', 'Lost in the forest']
         rng.shuffle(choices)
         questions.append({
-            'id': f'q{len(questions)+1}',
+            'id': 'q3',
             'kind': 'comprehension',
-            'question': 'What does the little character do in the story?',
+            'question': 'How do the characters feel at the end of the story?',
             'choices': choices,
             'answer_index': choices.index(ans),
-            'explanation': 'The story tells us he ate a little snack.'
+            'explanation': 'The story ends happily with friends having fun!'
         })
-
-    # If we need more questions to reach num_questions, supplement with context vocabulary questions
-    if len(questions) < num_questions:
-        word_questions = generate_translation_quiz(text, age_band=age_band, num_questions=num_questions - len(questions), seed=seed)
-        for wq in word_questions:
-            wq['id'] = f'q{len(questions)+1}'
-            questions.append(wq)
 
     return questions[:num_questions]

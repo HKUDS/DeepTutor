@@ -238,7 +238,7 @@ def test_kids_epub_quiz_partial_score_does_not_award_stars_or_complete(tmp_path,
     assert payload["completed_section_ids"] == []
 
 
-def test_kids_epub_quiz_falls_back_to_real_story_words(tmp_path, monkeypatch):
+def test_kids_epub_quiz_falls_back_to_story_comprehension(tmp_path, monkeypatch):
     manager = get_kids_manager()
     monkeypatch.setattr(manager, "_kids_root", lambda: tmp_path / "kids")
     profile = manager.create_profile(name="Reader")
@@ -273,6 +273,8 @@ def test_kids_epub_quiz_falls_back_to_real_story_words(tmp_path, monkeypatch):
     assert response.status_code == 200
     questions = response.json()["questions"]
     assert len(questions) == 3
+    assert all(question["kind"] == "comprehension" for question in questions)
+    assert not any(re.search(r'What does ".+" mean\?', question["question"]) for question in questions)
     assert all(question["question"] != "str" for question in questions)
     assert all(set(question["choices"]) != {"a", "b", "c", "d"} for question in questions)
     assert "answer_index" not in response.text
@@ -329,7 +331,11 @@ def test_kids_quiz_is_capped_at_three_questions():
         prompt_version="test-v1",
     )
 
-    assert len(_fill_kids_quiz_to_three(object(), "doc", "section", "6-8", result).questions) == 3
+    filled = _fill_kids_quiz_to_three(object(), "doc", "section", "6-8", result)
+    assert len(filled.questions) == 3
+    assert all(
+        question.kind != "sight_word" for question in filled.questions
+    )
 
 
 def _word_hint_client(tmp_path, monkeypatch):

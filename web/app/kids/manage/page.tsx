@@ -126,7 +126,7 @@ export default function KidsManagePage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f7fafc", padding: "24px 16px" }}>
+    <div style={{ minHeight: "100vh", height: "100vh", overflowY: "auto", background: "#f7fafc", padding: "24px 16px", WebkitOverflowScrolling: "touch" }}>
       <div style={{ maxWidth: 800, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>

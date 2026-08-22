@@ -1964,12 +1964,20 @@ class ImmersiveReadingService:
     def _save_kids_quiz_cache(
         self, document_id: str, section_id: str, result: KidsQuizResult
     ) -> None:
-        """Persist a quiz result (used by fallback quiz generation)."""
+        """Persist a story-comprehension quiz result for reuse."""
+        if any(question.kind == "sight_word" for question in result.questions):
+            logger.warning(
+                "Refusing to cache a kids quiz containing sight-word questions for %s/%s",
+                document_id,
+                section_id,
+            )
+            return
         quiz_path = self._kids_quiz_path(document_id, section_id)
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
 
     KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v4"
+    KIDS_QUIZ_SUPPORTED_CACHE_VERSIONS = frozenset({"kids-quiz-v4", "kids-quiz-fallback-v4"})
 
     def _kids_fallback_questions(
         self, content: str, age_band: str, existing_questions: list[KidsQuizQuestion]
@@ -1985,7 +1993,7 @@ class ImmersiveReadingService:
             questions.append(
                 KidsQuizQuestion(
                     id=f"fallback-q{i}",
-                    kind="sight_word",
+                    kind=fallback["kind"],
                     question=fallback["question"],
                     choices=fallback["choices"],
                     answer_index=fallback["answer_index"],
@@ -1994,6 +2002,29 @@ class ImmersiveReadingService:
             )
             existing_texts.add(fallback["question"].strip().lower())
         return questions
+
+    def _load_valid_kids_quiz_cache(
+        self, cached: Any, *, content_hash: str, age_band: str
+    ) -> KidsQuizResult | None:
+        if not isinstance(cached, dict):
+            return None
+        # A missing age band must not inherit the model default: old caches were
+        # shared across profiles and have no reliable age provenance.
+        if cached.get("age_band") != age_band:
+            return None
+        try:
+            result = KidsQuizResult.model_validate(cached)
+        except ValueError:
+            return None
+        if (
+            result.content_hash != content_hash
+            or result.age_band != age_band
+            or result.prompt_version not in self.KIDS_QUIZ_SUPPORTED_CACHE_VERSIONS
+            or not result.questions
+            or any(question.kind == "sight_word" for question in result.questions)
+        ):
+            return None
+        return result
 
     async def generate_kids_quiz(
         self,
@@ -2013,8 +2044,11 @@ class ImmersiveReadingService:
         cfg = get_llm_config()
         model_name = str(getattr(cfg, "model", "") or "")
 
-        if not force_refresh and cached and cached.get("content_hash") == content_hash:
-            result = KidsQuizResult(**cached)
+        cached_result = self._load_valid_kids_quiz_cache(
+            cached, content_hash=content_hash, age_band=age_band
+        )
+        if not force_refresh and cached_result is not None:
+            result = cached_result
             if len(result.questions) > 3:
                 result.questions = result.questions[:3]
                 result.prompt_version = self.KIDS_QUIZ_PROMPT_VERSION
@@ -2103,6 +2137,8 @@ class ImmersiveReadingService:
             question_text = str(q.get("question", "")).strip()
             clean_choices = [str(c).strip() for c in choices[:4]]
             placeholder_choices = {"a", "b", "c", "d"}
+            if str(q.get("kind", "comprehension")) == "sight_word":
+                continue
             if (
                 not question_text
                 or question_text.lower() == "str"
@@ -2116,7 +2152,7 @@ class ImmersiveReadingService:
             questions.append(
                 KidsQuizQuestion(
                     id=q.get("id", f"q{i + 1}"),
-                    kind=q.get("kind", "comprehension"),
+                    kind="sequence" if q.get("kind") == "sequence" else "comprehension",
                     question=question_text,
                     choices=clean_choices,
                     answer_index=max(0, min(len(choices) - 1, int(q.get("answer_index", 0)))),
@@ -2138,6 +2174,7 @@ class ImmersiveReadingService:
             content_hash=content_hash,
             model=model_name,
             prompt_version=self.KIDS_QUIZ_PROMPT_VERSION,
+            age_band=age_band,
         )
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))

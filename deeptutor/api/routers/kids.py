@@ -318,9 +318,14 @@ def _resolve_kids_reading_section(ir, document_id: str, requested_section_id: st
 
 def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: str, result):
     """Guard the endpoint contract even when a provider/fake returns fewer questions."""
-    if result is not None and len(result.questions) > 3:
+    if result is None:
+        return None
+
+    # Vocabulary drills belong to a separate practice flow, not a reading quiz.
+    result.questions = [question for question in result.questions if question.kind != "sight_word"]
+    if len(result.questions) > 3:
         result.questions = result.questions[:3]
-    if result is None or len(result.questions) >= 3:
+    if len(result.questions) >= 3:
         return result
 
     try:
@@ -328,10 +333,10 @@ def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: st
     except Exception:
         section_text = ""
 
-    from deeptutor.immersive_reading.sight_words import generate_translation_quiz
+    from deeptutor.immersive_reading.sight_words import generate_story_comprehension_quiz
 
     existing = {q.question.strip().lower() for q in result.questions}
-    fallbacks = generate_translation_quiz(section_text, age_band=age_band, num_questions=9)
+    fallbacks = generate_story_comprehension_quiz(section_text, age_band=age_band, num_questions=9)
     for i, fallback in enumerate(fallbacks, start=len(result.questions) + 1):
         if len(result.questions) == 3:
             break
@@ -340,7 +345,7 @@ def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: st
         result.questions.append(
             KidsQuizQuestion(
                 id=f"fallback-q{i}",
-                kind="sight_word",
+                kind=fallback["kind"],
                 question=fallback["question"],
                 choices=fallback["choices"],
                 answer_index=fallback["answer_index"],
@@ -349,8 +354,9 @@ def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: st
         )
         existing.add(fallback["question"].strip().lower())
 
-    result.prompt_version = "kids-quiz-fallback-v3"
+    result.prompt_version = "kids-quiz-fallback-v4"
     result.generated_at = time.time()
+    result.age_band = age_band
     if hasattr(ir, "_save_kids_quiz_cache"):
         ir._save_kids_quiz_cache(document_id, section_id, result)
     return result
@@ -384,8 +390,9 @@ def _build_fallback_kids_quiz(
             for q in fallback_qs
         ],
         content_hash=hashlib.sha256(section_text.encode()).hexdigest(),
-        model="sight-words-fallback",
-        prompt_version="kids-quiz-fallback-v3",
+        model="story-comprehension-fallback",
+        prompt_version="kids-quiz-fallback-v4",
+        age_band=age_band,
     )
 
 @router.post("/books/{document_id}/quiz")
@@ -407,6 +414,7 @@ async def get_kids_quiz(
     age_band = profile.age_band if profile else "6-8"
     section_text = ir.get_section(document_id, section.id).get("content", "")
 
+    should_cache_fallback = False
     try:
         result = await ir.generate_kids_quiz(
             document_id, section.id, force_refresh=request.force_refresh, age_band=age_band
@@ -416,10 +424,11 @@ async def get_kids_quiz(
     except Exception as exc:
         logger.warning("LLM quiz failed, using deterministic fallback: %s", exc)
         result = _build_fallback_kids_quiz(document_id, section.id, section_text, age_band)
-        if result.questions:
-            ir._save_kids_quiz_cache(document_id, section.id, result)
+        should_cache_fallback = True
 
     result = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, result)
+    if should_cache_fallback and result is not None and result.questions:
+        ir._save_kids_quiz_cache(document_id, section.id, result)
     if not result.questions:
         return {
             "questions": [],
@@ -448,6 +457,7 @@ async def submit_kids_quiz(
         raise HTTPException(status_code=404, detail="Book not found")
     profile = manager.get_profile(profile_id)
     age_band = profile.age_band if profile else "6-8"
+    should_cache_fallback = False
     try:
         cached = await ir.generate_kids_quiz(document_id, section.id, age_band=age_band)
     except ValueError as exc:
@@ -459,9 +469,11 @@ async def submit_kids_quiz(
         except Exception:
             section_text = ""
         cached = _build_fallback_kids_quiz(document_id, section.id, section_text, age_band)
-        ir._save_kids_quiz_cache(document_id, section.id, cached)
+        should_cache_fallback = True
 
     cached = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, cached)
+    if should_cache_fallback and cached is not None and cached.questions:
+        ir._save_kids_quiz_cache(document_id, section.id, cached)
 
     correct = 0
     per_question: list[dict[str, Any]] = []
@@ -715,6 +727,25 @@ async def exit_verify(request: ExitVerifyRequest) -> dict:
 
 # ── Interactive Books (Kids Math & Interactive Digital Books) ────────────────
 
+_REASONING_MARKER = re.compile(r"\bthinking\s+process\s*:", re.IGNORECASE)
+_PRIVATE_PAYLOAD_KEYS = {"bridge_text", "reasoning", "thinking_process"}
+
+
+def _sanitize_child_payload(value: Any) -> Any:
+    """Remove model reasoning traces before a generated page reaches a child."""
+    if isinstance(value, str):
+        match = _REASONING_MARKER.search(value)
+        return value[: match.start()].rstrip() if match else value
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_child_payload(child)
+            for key, child in value.items()
+            if key not in _PRIVATE_PAYLOAD_KEYS
+        }
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_child_payload(child) for child in value]
+    return value
+
 
 @router.get("/interactive-books/{book_id}")
 async def get_kids_interactive_book(
@@ -838,6 +869,7 @@ async def get_kids_interactive_page(
                 q_safe.pop("correct_answer", None)
                 q_safe.pop("answer", None)
                 q_safe.pop("explanation", None)
+                q_safe.pop("choice_diagnoses", None)
                 safe_questions.append(q_safe)
             payload["questions"] = safe_questions
             b_dict["payload"] = payload
@@ -852,7 +884,7 @@ async def get_kids_interactive_page(
                 payload["video_url"] = f"/api/v1/kids/interactive-books/{book_id}/assets/{rel_path}"
                 b_dict["payload"] = payload
 
-        safe_blocks.append(b_dict)
+        safe_blocks.append(_sanitize_child_payload(b_dict))
 
     page_data = page.model_dump(mode="json")
     page_data["blocks"] = safe_blocks
@@ -953,12 +985,20 @@ async def submit_kids_interactive_quiz(
         is_correct = child_ans == expected_ans
         if is_correct:
             correct += 1
+
+        choice_diagnoses = q.get("choice_diagnoses", [])
+        explanation = ""
+        if 0 <= child_ans < len(choice_diagnoses) and choice_diagnoses[child_ans]:
+            explanation = choice_diagnoses[child_ans]
+        else:
+            explanation = q.get("explanation", "")
+
         # Never leak raw correct_answer index; only provide correctness and pedagogical explanation
         per_question.append(
             {
                 "id": q.get("id", str(i)),
                 "correct": is_correct,
-                "explanation": q.get("explanation", ""),
+                "explanation": explanation,
             }
         )
 

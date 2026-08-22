@@ -183,6 +183,7 @@ class KidsQuizResult(BaseModel):
     content_hash: str = ""
     model: str = ""
     prompt_version: str = ""
+    age_band: str = "6-8"
     generated_at: float = Field(default_factory=time.time)
 
 
