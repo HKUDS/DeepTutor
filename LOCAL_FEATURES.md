@@ -11,6 +11,8 @@ tests intact.
   - Kids standalone experience and its child-facing API under `/api/v1/kids`.
   - Parent management API under `/api/v1/kids-admin`.
   - `AUTH_ALLOW_REGISTRATION` and the persisted `auth.allow_registration` setting.
+  - Partner Feishu/Lark and WeCom QR-code channel onboarding with short-lived
+    credentials, administrator-only routes, masked responses, and explicit apply.
 - `upstream-v1.5.16`
   - MarginNote 4 connected knowledge base type.
   - Device pairing, one-time device tokens, incremental sync, heartbeat, and revoke.
@@ -58,6 +60,9 @@ Run these before releasing or merging upstream changes into this fork:
   tests/immersive_reading/test_kids_reading_endpoints.py \
   tests/immersive_reading/test_kids_interactive_books.py \
   tests/immersive_reading/test_kids_quiz_cache.py \
+  tests/api/test_partners_router.py \
+  tests/services/partners/test_channel_onboarding.py \
+  tests/services/partners/test_feishu_domain_initialization.py \
   tests/api/test_marginnote4_router.py \
   tests/capabilities/marginnote4 \
   tests/knowledge/test_marginnote4_kb.py

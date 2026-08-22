@@ -14,6 +14,10 @@ def test_required_local_and_upstream_route_families_are_installed():
     assert any(path.startswith("/api/v1/kids/") for path in paths)
     assert any(path.startswith("/api/v1/kids-admin/") for path in paths)
     assert any(path.startswith("/api/v1/marginnote4/") for path in paths)
+    assert any(
+        path.startswith("/api/v1/partners/") and path.endswith("/channel-onboarding/start")
+        for path in paths
+    )
     assert __version__ == "1.5.16"
 
 
