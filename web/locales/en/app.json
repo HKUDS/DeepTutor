@@ -3284,5 +3284,9 @@
   "visitor": "visitor",
   "whisper": "whisper",
   "you": "you",
+  "e.g. HKUDS/DeepTutor": "e.g. HKUDS/DeepTutor",
+  "main": "main",
+  "docs/": "docs/",
+  "*.md": "*.md",
   "Session {{id}}": "Session {{id}}"
 }

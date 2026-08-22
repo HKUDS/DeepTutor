@@ -313,3 +313,102 @@ def register(app: typer.Typer) -> None:
         provider = str(result.get("provider", DEFAULT_PROVIDER))
         console.print(f"[bold]Provider:[/] {provider}")
         console.print(f"[bold]Answer:[/]\n{answer}")
+
+    # ── GitHub source commands ──────────────────────────────────────
+
+    @app.command("add-github-source")
+    def kb_add_github_source(
+        name: str = typer.Argument(..., help="KB name."),
+        repo: str = typer.Option(..., "--repo", "-r", help="GitHub repo as owner/name or URL."),
+        branch: str = typer.Option("main", "--branch", "-b", help="Branch to track."),
+        path: str = typer.Option("", "--path", "-p", help="Subdirectory prefix (e.g. docs/)."),
+        glob: str = typer.Option("*.md", "--glob", "-g", help="File glob pattern."),
+    ) -> None:
+        """Add a GitHub repo as a Markdown document source for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+        try:
+            info = mgr.add_github_source(name, repo, branch, path, glob)
+        except Exception as exc:
+            console.print(f"[red]Failed: {exc}[/]")
+            raise typer.Exit(code=1) from exc
+        console.print("[green]GitHub source added:[/]")
+        console.print_json(json.dumps(info, ensure_ascii=False))
+
+    @app.command("remove-github-source")
+    def kb_remove_github_source(
+        name: str = typer.Argument(..., help="KB name."),
+        source_id: str = typer.Option(..., "--source-id", "-s", help="Source ID to remove."),
+    ) -> None:
+        """Remove a GitHub source from a KB."""
+        mgr = _get_kb_manager()
+        ok = mgr.remove_github_source(name, source_id)
+        if ok:
+            console.print(f"[green]Removed '{source_id}'.[/]")
+        else:
+            console.print(f"[yellow]Source '{source_id}' not found.[/]")
+
+    @app.command("list-sources")
+    def kb_list_sources(
+        name: str = typer.Argument(..., help="KB name."),
+    ) -> None:
+        """List GitHub sources for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+
+        gh_sources = mgr.get_github_sources(name)
+
+        if not gh_sources:
+            console.print("[dim]No sources for this KB.[/]")
+            return
+
+        table = Table(title=f"GitHub Sources - {name}")
+        table.add_column("ID", style="dim")
+        table.add_column("Repo")
+        table.add_column("Branch")
+        table.add_column("Status")
+        table.add_column("Files", justify="right")
+        for source in gh_sources:
+            table.add_row(
+                source.get("id", ""),
+                source.get("repo", ""),
+                source.get("branch", ""),
+                source.get("last_sync_status", "pending"),
+                str(source.get("files_synced", 0)),
+            )
+        console.print(table)
+
+    @app.command("sync")
+    def kb_sync(name: str = typer.Argument(..., help="KB name.")) -> None:
+        """Immediately sync all GitHub sources for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+
+        gh_sources = mgr.get_github_sources(name)
+        if not gh_sources:
+            console.print("[yellow]No sources to sync.[/]")
+            raise typer.Exit(code=0)
+
+        from deeptutor.services.github_source.sync import sync_source as gh_sync
+
+        for src in gh_sources:
+            if not src.get("enabled", True):
+                continue
+            console.print(f"Syncing GitHub [bold]{src.get('repo')}[/] ...")
+            try:
+                r = asyncio.run(gh_sync(kb_name=name, source=src, base_dir=str(mgr.base_dir)))
+            except Exception as exc:
+                console.print(f"  [red]Error: {exc}[/]")
+                continue
+            if r.skipped:
+                console.print("  [dim]Up to date.[/]")
+            elif r.ok:
+                console.print(f"  [green]+{r.files_added} ~{r.files_updated} -{r.files_removed}[/]")
+            else:
+                console.print(f"  [red]Failed: {r.error}[/]")
