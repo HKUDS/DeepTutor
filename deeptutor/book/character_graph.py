@@ -27,6 +27,7 @@ def _hash_text(text: str) -> str:
     """Return a 16-character hex hash of *text*."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
+
 MAX_NODES_CURRENT = 30
 
 

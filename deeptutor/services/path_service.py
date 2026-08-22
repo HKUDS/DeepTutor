@@ -402,6 +402,7 @@ class PathService:
         root = self.get_immersive_reading_pairing_root(pairing_id)
         (root / "sections").mkdir(parents=True, exist_ok=True)
         return root
+
     def ensure_immersive_reading_document_root(self, document_id: str) -> Path:
         root = self.get_immersive_reading_document_root(document_id)
         (root / "sections").mkdir(parents=True, exist_ok=True)

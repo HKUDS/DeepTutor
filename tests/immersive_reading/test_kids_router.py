@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 FastAPI = pytest.importorskip("fastapi").FastAPI
 TestClient = pytest.importorskip("fastapi.testclient").TestClient
@@ -15,10 +16,10 @@ from deeptutor.services.path_service import PathService
 
 @pytest.fixture
 def app_and_client(tmp_path, monkeypatch):
-    import deeptutor.immersive_reading.service as service_module
+    import deeptutor.api.routers.immersive_reading as ir_router
     import deeptutor.api.routers.kids as kids_router
     import deeptutor.api.routers.kids_admin as kids_admin_router
-    import deeptutor.api.routers.immersive_reading as ir_router
+    import deeptutor.immersive_reading.service as service_module
 
     paths = PathService(workspace_root=tmp_path / "data")
     monkeypatch.setattr(service_module, "get_path_service", lambda: paths)
@@ -32,8 +33,10 @@ def app_and_client(tmp_path, monkeypatch):
             max_tokens=4_096,
         ),
     )
+
     async def mock_llm_fail(**kwargs):
         raise ConnectionError("No network during test")
+
     monkeypatch.setattr(service_module, "complete", mock_llm_fail)
 
     ir_service = ImmersiveReadingService()
@@ -112,6 +115,7 @@ def test_kids_admin_book_assignment_and_adult_library(app_and_client) -> None:
         f"# Chapter 3\nEscape through the broken fence. {padding}"
     )
     doc = ir_service.import_document("charlotte.txt", source.encode("utf-8"))
+    doc_id = doc["id"]
     profile = kids_manager.create_profile(name="Ben", birth_date="2018-03-01")
 
     # Adult library lists imported docs and assigned profile ids
@@ -119,22 +123,22 @@ def test_kids_admin_book_assignment_and_adult_library(app_and_client) -> None:
     assert res.status_code == 200
     docs = res.json()["documents"]
     assert len(docs) == 1
-    assert docs[0]["id"] == doc["id"]
+    assert docs[0]["id"] == doc_id
 
     # Assign book through Chapter 2 (index 2)
     res = client.post(
         f"/api/v1/kids-admin/profiles/{profile.id}/books",
-        json={"document_id": doc["id"], "available_through_section_index": 2},
+        json={"document_id": doc_id, "available_through_section_index": 2},
     )
     assert res.status_code == 200
-    assert res.json()["assignment"]["document_id"] == doc["id"]
+    assert res.json()["assignment"]["document_id"] == doc_id
 
     # List assigned books
     res = client.get(f"/api/v1/kids-admin/profiles/{profile.id}/books")
     assert res.status_code == 200
     lib = res.json()["library"]
     assert len(lib) == 1
-    assert lib[0]["document"]["id"] == doc["id"]
+    assert lib[0]["document"]["id"] == doc_id
 
 
 def test_kids_child_auth_and_chapter_gating(app_and_client) -> None:
@@ -148,9 +152,10 @@ def test_kids_child_auth_and_chapter_gating(app_and_client) -> None:
         f"# Chapter 3\nPeter escapes back home to his mother. {padding}"
     )
     doc = ir_service.import_document("peter_rabbit.txt", source.encode("utf-8"))
+    doc_id = doc["id"]
     profile = kids_manager.create_profile(name="Peter", birth_date="2019-01-01", parent_pin="1234")
     # Gated through index 2 (Front Matter is 0, Chapter 1 is 1, Chapter 2 is 2)
-    kids_manager.assign_book(profile.id, doc["id"], available_through_section_index=2)
+    kids_manager.assign_book(profile.id, doc_id, available_through_section_index=2)
 
     # 1. Bootstrap
     res = client.get("/api/v1/kids/bootstrap")
@@ -170,8 +175,9 @@ def test_kids_child_auth_and_chapter_gating(app_and_client) -> None:
 
     headers = {"Authorization": f"Bearer {token}"}
 
+    doc_id = doc["id"]
     # 3. Get book detail (allowed sections only: Front Matter, Chapter 1, Chapter 2)
-    res = client.get(f"/api/v1/kids/books/{doc["id"]}", headers=headers)
+    res = client.get(f"/api/v1/kids/books/{doc_id}", headers=headers)
     assert res.status_code == 200
     data = res.json()
     assert data["document"]["title"] == "peter_rabbit"
@@ -179,13 +185,13 @@ def test_kids_child_auth_and_chapter_gating(app_and_client) -> None:
 
     # 4. Access allowed section (Chapter 1)
     sec_1 = doc["sections"][1]["id"]
-    res = client.get(f"/api/v1/kids/books/{doc["id"]}/sections/{sec_1}", headers=headers)
+    res = client.get(f"/api/v1/kids/books/{doc_id}/sections/{sec_1}", headers=headers)
     assert res.status_code == 200
     assert "Peter runs away" in res.json()["content"]
 
     # 5. Access disallowed section (Chapter 3, index 3) -> 403
     sec_3 = doc["sections"][3]["id"]
-    res = client.get(f"/api/v1/kids/books/{doc["id"]}/sections/{sec_3}", headers=headers)
+    res = client.get(f"/api/v1/kids/books/{doc_id}/sections/{sec_3}", headers=headers)
     assert res.status_code == 403
     assert "not available yet" in res.json()["detail"]
 
@@ -201,8 +207,9 @@ def test_kids_quiz_and_progress_flow(app_and_client) -> None:
         f"# Chapter 3\nThe bird flew high in the blue sky. {padding}"
     )
     doc = ir_service.import_document("animals.txt", source.encode("utf-8"))
+    doc_id = doc["id"]
     profile = kids_manager.create_profile(name="Tommy", birth_date="2020-05-01")
-    kids_manager.assign_book(profile.id, doc["id"])
+    kids_manager.assign_book(profile.id, doc_id)
 
     # Select profile (no pin needed)
     res = client.post("/api/v1/kids/select-profile", json={"profile_id": profile.id})
@@ -214,7 +221,7 @@ def test_kids_quiz_and_progress_flow(app_and_client) -> None:
 
     # 1. Update reading progress
     res = client.put(
-        f"/api/v1/kids/books/{doc["id"]}/progress",
+        f"/api/v1/kids/books/{doc_id}/progress",
         headers=headers,
         json={
             "section_id": sec_1,
@@ -230,7 +237,7 @@ def test_kids_quiz_and_progress_flow(app_and_client) -> None:
 
     # 2. Get quiz (falls back to deterministic sight-words quiz)
     res = client.post(
-        f"/api/v1/kids/books/{doc["id"]}/quiz",
+        f"/api/v1/kids/books/{doc_id}/quiz",
         headers=headers,
         json={"section_id": sec_1},
     )
@@ -241,14 +248,15 @@ def test_kids_quiz_and_progress_flow(app_and_client) -> None:
     assert "answer_index" not in questions[0]
 
     # 3. Submit quiz with correct answers
-    cached_quiz = ir_service._kids_quiz_path(doc["id"], sec_1)
+    cached_quiz = ir_service._kids_quiz_path(doc_id, sec_1)
     import json
+
     with open(cached_quiz) as f:
         q_data = json.load(f)
     correct_answers = [q["answer_index"] for q in q_data["questions"]]
 
     res = client.post(
-        f"/api/v1/kids/books/{doc["id"]}/quiz/submit",
+        f"/api/v1/kids/books/{doc_id}/quiz/submit",
         headers=headers,
         json={"section_id": sec_1, "answers": correct_answers},
     )

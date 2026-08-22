@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 from io import BytesIO
 import json
-import pytest
 from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
+
+import pytest
 
 FastAPI = pytest.importorskip("fastapi").FastAPI
 TestClient = pytest.importorskip("fastapi.testclient").TestClient
@@ -32,7 +33,10 @@ def _create_story_epub() -> bytes:
             compress_type=ZIP_DEFLATED,
         )
 
-        padding = "The little explorer walked along the winding trail noticing every green leaf and bright flower. " * 8
+        padding = (
+            "The little explorer walked along the winding trail noticing every green leaf and bright flower. "
+            * 8
+        )
         chap1_html = f"""<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><title>Chapter 1: The Magic Compass</title></head>
@@ -110,10 +114,10 @@ def _create_story_epub() -> bytes:
 
 @pytest.fixture
 def reading_environment(tmp_path, monkeypatch):
-    import deeptutor.immersive_reading.service as service_module
+    import deeptutor.api.routers.immersive_reading as ir_router
     import deeptutor.api.routers.kids as kids_router
     import deeptutor.api.routers.kids_admin as kids_admin_router
-    import deeptutor.api.routers.immersive_reading as ir_router
+    import deeptutor.immersive_reading.service as service_module
 
     paths = PathService(workspace_root=tmp_path / "data")
     monkeypatch.setattr(service_module, "get_path_service", lambda: paths)
@@ -127,8 +131,10 @@ def reading_environment(tmp_path, monkeypatch):
             max_tokens=4_096,
         ),
     )
+
     async def mock_llm_fail(**kwargs):
         raise ConnectionError("Offline test")
+
     monkeypatch.setattr(service_module, "complete", mock_llm_fail)
 
     ir_service = ImmersiveReadingService()
@@ -223,6 +229,7 @@ def test_full_kids_book_reading_flow(reading_environment) -> None:
     # 8. Child translates a word
     async def mock_translate(text, target_language="Chinese"):
         return f"指南针 ({text})"
+
     ir_service.translate = mock_translate
 
     res = client.post(

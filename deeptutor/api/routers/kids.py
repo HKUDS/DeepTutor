@@ -333,8 +333,6 @@ async def get_kids_quiz(
                 for q in fallback_qs
             ]
             # Cache the fallback so submit can grade it
-            import hashlib
-
             fallback_result = KidsQuizResult(
                 document_id=document_id,
                 section_id=request.section_id,
@@ -394,6 +392,7 @@ async def submit_kids_quiz(
     quiz_path = ir._kids_quiz_path(document_id, request.section_id)
     if quiz_path.exists():
         from deeptutor.immersive_reading.service import _read_json
+
         raw_cached = _read_json(quiz_path)
         if raw_cached and raw_cached.get("questions"):
             cached = KidsQuizResult(**raw_cached)
