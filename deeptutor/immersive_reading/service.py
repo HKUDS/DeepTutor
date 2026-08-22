@@ -2226,7 +2226,7 @@ class ImmersiveReadingService:
         _write_json(quiz_path, result.model_dump(mode="json"))
         return result
 
-    KIDS_LEARN_PROMPT_VERSION = "kids-learn-v1"
+    KIDS_LEARN_PROMPT_VERSION = "kids-learn-v4"
 
     def _kids_learn_path(self, document_id: str, section_id: str, content_hash: str) -> Path:
         return self._document_root(document_id) / "kids-learn" / section_id / f"{content_hash}.json"
@@ -2245,58 +2245,266 @@ class ImmersiveReadingService:
             s.strip()
             for p in paragraphs
             for s in re.split(r"(?<=[。！？!?；;])\s*|(?<=\.)\s+", p)
-            if 12 <= len(s.strip()) <= 240
+            if len(s.strip()) >= 4
         ]
-        informative = [s for s in sentences if _CJK_RE.search(s) or len(s.split()) >= 6]
-        overview = (
-            informative[0] if informative else (paragraphs[0] if paragraphs else visible_text[:160])
-        )
+        substantive = [s for s in sentences if len(s) >= 12]
+
+        stopwords = {
+            "什么",
+            "怎样",
+            "怎么",
+            "到底",
+            "有些",
+            "因此",
+            "所以",
+            "因为",
+            "如果",
+            "但是",
+            "然而",
+            "不仅",
+            "而且",
+            "大家",
+            "我们",
+            "他们",
+            "她们",
+            "它们",
+            "自己",
+            "可以",
+            "没有",
+            "不是",
+            "就是",
+            "也是",
+            "还是",
+            "为了",
+            "根据",
+            "关于",
+            "对于",
+            "非常",
+            "比较",
+            "更加",
+            "已经",
+            "正在",
+            "一直",
+            "开始",
+            "结束",
+            "出现",
+            "很多",
+            "一些",
+            "这个",
+            "那个",
+            "这些",
+            "那些",
+            "地方",
+            "时候",
+            "其实",
+            "当然",
+            "不过",
+            "由于",
+            "虽然",
+            "尽管",
+            "只要",
+            "只有",
+            "这样",
+            "那样",
+            "一样",
+            "特别",
+            "十分",
+            "极其",
+            "相当",
+            "稍微",
+            "有点",
+            "随后",
+            "接着",
+            "然后",
+            "当时",
+            "后来",
+            "其中",
+            "代表",
+            "人物",
+            "著名",
+            "一个",
+            "一种",
+            "观点",
+            "故事",
+            "例子",
+            "大家看",
+            "这个问题",
+            "那么简单",
+            "一加一",
+            "等于二",
+        }
+        bad_affixes = {
+            "在",
+            "上",
+            "下",
+            "里",
+            "中",
+            "个",
+            "把",
+            "了",
+            "的",
+            "和",
+            "是",
+            "到",
+            "去",
+            "被",
+            "让",
+            "与",
+            "写",
+            "讲",
+            "看",
+            "说",
+            "有",
+        }
+
+        # Select a substantial 1-2 sentence overview rather than just a heading
+        if len(substantive) >= 2:
+            sep = "" if language == "zh" else " "
+            overview = sep.join(substantive[:2])
+        elif substantive:
+            overview = substantive[0]
+        elif paragraphs:
+            overview = paragraphs[0]
+        else:
+            overview = visible_text[:160]
 
         definition_terms: list[str] = []
-        for sentence in informative:
+        for s in substantive or sentences:
             for match in re.finditer(
-                r"([^，。！？；：,!?;:\s]{2,16})(?:是|是指|叫做|叫)(?:什么|怎样|什么样)", sentence
+                r"“([^”]{2,12})”|被称为“?([^”，。！？]{2,12})”?|叫(?:做)?“?([^”，。！？]{2,12})”?",
+                s,
             ):
-                term = match.group(1).strip()
-                if term and term not in definition_terms:
-                    definition_terms.append(term)
+                for g in match.groups():
+                    if not g:
+                        continue
+                    cand = g.strip()
+                    cand = re.sub(r"的(?:学科|理论|假说|观点|现象|学问|领域)$", "", cand).strip()
+                    if not re.search(r"[\u4e00-\u9fffA-Za-z]", cand) or re.match(
+                        r"^[\d+=*/\-\s]+$", cand
+                    ):
+                        continue
+                    if cand and cand not in stopwords and cand not in definition_terms:
+                        definition_terms.append(cand)
+            for match in re.finditer(
+                r"([^，。！？；：,!?;:\s]{2,16})(?:是|是指|叫做|叫)(?:什么|怎样|什么样)", s
+            ):
+                cand = match.group(1).strip()
+                cand = re.sub(r"的(?:学科|理论|假说|观点|现象|学问|领域)$", "", cand).strip()
+                if cand and cand not in stopwords and cand not in definition_terms:
+                    definition_terms.append(cand)
 
         cjk_counts: dict[str, int] = {}
         compact = re.sub(r"\s+", "", visible_text)
-        for size in (4, 3, 2):
+        for size in (5, 4, 3, 2):
             for i in range(0, max(0, len(compact) - size + 1)):
                 token = compact[i : i + size]
                 if not all(_CJK_RE.match(char) for char in token):
                     continue
+                if token in stopwords or token[0] in bad_affixes or token[-1] in bad_affixes:
+                    continue
                 cjk_counts[token] = cjk_counts.get(token, 0) + 1
         repeated = sorted(
             (term for term, count in cjk_counts.items() if count >= 2),
-            key=lambda term: (cjk_counts[term] * len(term), len(term)),
+            key=lambda term: (cjk_counts[term] * (len(term) ** 1.5), len(term)),
             reverse=True,
         )
-        for term in repeated:
-            if term not in definition_terms:
-                definition_terms.append(term)
+
+        def _overlaps(t: str, c: str) -> bool:
+            if t in c or c in t:
+                return True
+            common = set(t) & set(c)
+            if len(common) >= 2 and (len(common) >= len(t) - 1 or len(common) >= len(c) - 1):
+                return True
+            return False
+
+        candidate_terms = list(definition_terms)
+        for t in repeated:
+            if not any(_overlaps(t, c) for c in candidate_terms) and t not in candidate_terms:
+                candidate_terms.append(t)
 
         concepts: list[KidsLearnConcept] = []
-        for term in definition_terms:
-            supporting = next((s for s in informative if term in s), "")
-            if not supporting:
+        for term in candidate_terms:
+            matching_s = [s for s in (substantive or sentences) if term in s]
+            if not matching_s:
                 continue
-            concepts.append(KidsLearnConcept(term=term, explanation=supporting, analogy=""))
+            best_explanation = max(matching_s, key=len)
+            if len(best_explanation) < 10 and substantive:
+                best_explanation = f"{best_explanation}。{substantive[0]}"
+
+            concepts.append(KidsLearnConcept(term=term, explanation=best_explanation, analogy=""))
             if len(concepts) == 3:
                 break
 
+        if not concepts:
+            if language == "zh":
+                for sentence in substantive or sentences or paragraphs:
+                    chunks = [
+                        c.strip()
+                        for c in re.split(
+                            r"[，。！？；：、“”‘’（）《》\s的了在是和就都到给让把很对]+", sentence
+                        )
+                        if 2 <= len(c.strip()) <= 12
+                    ]
+                    for chunk in chunks:
+                        cand = chunk[:4] if len(chunk) >= 4 else chunk
+                        if cand not in stopwords and cand not in [c.term for c in concepts]:
+                            concepts.append(
+                                KidsLearnConcept(term=cand, explanation=sentence, analogy="")
+                            )
+                            if len(concepts) == 2:
+                                break
+                    if len(concepts) >= 2:
+                        break
+            else:
+                for sentence in substantive or sentences or paragraphs:
+                    words = [
+                        w.strip('.,!?;:"()[]')
+                        for w in sentence.split()
+                        if len(w.strip('.,!?;:"()[]')) >= 3
+                    ]
+                    for w in words:
+                        if w.lower() not in {
+                            "the",
+                            "and",
+                            "this",
+                            "that",
+                            "with",
+                            "from",
+                            "they",
+                            "have",
+                            "were",
+                            "what",
+                            "when",
+                            "your",
+                        } and w not in [c.term for c in concepts]:
+                            concepts.append(
+                                KidsLearnConcept(term=w, explanation=sentence, analogy="")
+                            )
+                            if len(concepts) == 2:
+                                break
+                    if len(concepts) >= 2:
+                        break
+
+        terms = [c.term for c in concepts]
+        top_term = terms[0] if terms else ("这一页" if language == "zh" else "this page")
+
         if language == "zh":
+            prompt = f"想一想：这一页中【{top_term}】的核心含义是什么？"
+            hint = f"结合页面里关于“{top_term}”的具体事件和结论来回答。"
+            answer = (
+                concepts[0].explanation
+                if concepts and len(concepts[0].explanation) >= 15
+                else overview
+            )
             reflection = KidsLearnReflection(
-                prompt="用自己的话说说，这一页主要讲了什么？",
-                hint="先看第一句和反复出现的关键词，再把它们连成一句话。",
-                answer=overview,
+                prompt=prompt,
+                hint=hint,
+                answer=answer,
             )
         else:
             reflection = KidsLearnReflection(
-                prompt="Explain this page in your own words.",
-                hint="Start with the first sentence, then use a repeated key word.",
+                prompt=f"What is the key idea behind {top_term} on this page?",
+                hint="Think about the main events and conclusions described on this page.",
                 answer=overview,
             )
 
@@ -2357,27 +2565,27 @@ class ImmersiveReadingService:
             if section is None:
                 raise ValueError("Reading section not found")
             age_instruction = {
-                "3-5": "For ages 3-5, use very short sentences.",
-                "6-8": "For ages 6-8, use simple sentences.",
-                "9-12": "For ages 9-12, use clear but substantive sentences.",
-            }.get(age_band, "For ages 6-8, use simple sentences.")
+                "3-5": "For ages 3-5, use very short, vivid sentences.",
+                "6-8": "For ages 6-8, use simple, engaging sentences.",
+                "9-12": "For ages 9-12, use clear, thought-provoking sentences.",
+            }.get(age_band, "For ages 6-8, use simple, engaging sentences.")
             language_label = "Simplified Chinese" if language == "zh" else "English"
             system = (
-                "You create a short concept guide for one visible page of a children's book. "
-                "Use only information stated or directly implied by the page. "
-                "Return JSON only: "
-                '{"overview":"...","concepts":[{"term":"...","explanation":"...","analogy":"..."}],'
-                '"reflection":{"prompt":"...","hint":"...","answer":"..."}}. '
-                "Use 2 or 3 concepts. Every analogy must be a child-friendly everyday comparison. "
+                "You are an encouraging, vivid teacher creating a concept guide for children reading one page of a book. "
+                "Focus strictly on the specific content and characters on this visible page (do not just repeat the book/chapter title). "
+                "Return JSON only in this schema: "
+                '{"overview":"1-2 sentence child-friendly summary of this page","concepts":[{"term":"key term/name","explanation":"simple 1-2 sentence explanation of what it means or what happened","analogy":"fun everyday comparison"}],'
+                '"reflection":{"prompt":"open-ended thought question for the child","hint":"a gentle clue","answer":"a clear reference answer"}}. '
+                "Use 2 or 3 distinct concepts. "
                 f"{age_instruction} Write every value in {language_label}."
             )
             raw = await complete(
-                prompt=f"Page title: {section.title}\n\n<visible_page>\n{visible_text}\n</visible_page>",
+                prompt=f"Page text:\n<visible_page>\n{visible_text}\n</visible_page>",
                 system_prompt=system,
                 temperature=0.2,
                 max_tokens=1200,
                 max_retries=0,
-                timeout=6,
+                timeout=12,
                 response_format={"type": "json_object"},
             )
             parsed = parse_json_response(raw)

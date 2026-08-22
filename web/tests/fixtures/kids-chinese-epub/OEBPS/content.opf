@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="book">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>孩子的量子世界</dc:title>
+    <dc:language>zh</dc:language>
+    <dc:identifier id="book">kids-chinese-quantum</dc:identifier>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/dtbncx+xml"/>
+    <item id="chap1" href="chap01.html" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx"><itemref idref="chap1"/></spine>
+</package>

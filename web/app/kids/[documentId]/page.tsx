@@ -4,14 +4,22 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Languages, Volume2, VolumeX } from "lucide-react";
+import { ReactReaderStyle } from "react-reader";
 import {
   kidsApi,
   resolveKidsReadingSectionId,
+  type KidsLearnResult,
   type KidsWordHint,
   type KidsReadingSection,
   type KidsSafeQuestion,
   type KidsQuizGrade,
 } from "@/lib/kids-api";
+import { GuidedLearnModal } from "@/components/kids/GuidedLearnModal";
+import {
+  detectKidsReadingLanguage,
+  kidsLearningCopy,
+  type KidsLearningLanguage,
+} from "@/lib/kids-learning/learn-language";
 import { shouldOpenChapterCheck } from "@/lib/kids-learning/chapter-check";
 import {
   createInitialWordHintState,
@@ -35,6 +43,25 @@ type NavItem = any;
 
 const ENGLISH_WORD_RE = /([A-Za-z][A-Za-z'-]*)/g;
 const ENGLISH_WORD_TEST_RE = /[A-Za-z][A-Za-z'-]*/;
+
+const kidsReaderStyles = {
+  ...ReactReaderStyle,
+  tocArea: {
+    ...ReactReaderStyle.tocArea,
+    background: "#fff8eb",
+  },
+  tocAreaButton: {
+    ...ReactReaderStyle.tocAreaButton,
+    color: "#3730a3",
+    fontSize: "0.95em",
+    fontWeight: 700,
+    borderBottom: "1px solid #f2d9a8",
+  },
+  tocButtonBar: {
+    ...ReactReaderStyle.tocButtonBar,
+    background: "#6d28d9",
+  },
+};
 
 function decorateEpubWords(document: Document | undefined): void {
   if (!document?.body || document.body.dataset.kidsWordsReady === "true") return;
@@ -85,6 +112,12 @@ export default function KidsReaderPage() {
   const [location, setLocation] = useState<string | null>(null);
   const [toc, setToc] = useState<NavItem[]>([]);
   const [showLearn, setShowLearn] = useState(false);
+  const [learningMode, setLearningMode] = useState<"learn" | "quiz">("quiz");
+  const [learnResult, setLearnResult] = useState<KidsLearnResult | null>(null);
+  const [learnLoading, setLearnLoading] = useState(false);
+  const [learnError, setLearnError] = useState("");
+  const [contentLanguage, setContentLanguage] = useState<KidsLearningLanguage>("en");
+  const [helpLanguage, setHelpLanguage] = useState<KidsLearningLanguage>("en");
   const [questions, setQuestions] = useState<KidsSafeQuestion[]>([]);
   const [quizLoading, setQuizLoading] = useState(false);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -112,6 +145,8 @@ export default function KidsReaderPage() {
   const completedSectionIdsRef = useRef<string[]>([]);
   const shownSectionIdsRef = useRef<string[]>([]);
   const quizLoadTokenRef = useRef(0);
+  const lastRelocatedCfiRef = useRef<string>("");
+  const learningAbortRef = useRef<AbortController | null>(null);
   const sawInitialSectionRef = useRef(false);
   const sectionsRef = useRef<KidsReadingSection[]>([]);
   const tocRef = useRef<NavItem[]>([]);
@@ -125,6 +160,7 @@ export default function KidsReaderPage() {
         if (cancelled) return;
         const doc = data.document as Record<string, any>;
         setBookTitle(doc.title || "Book");
+        setContentLanguage(doc.content_language === "zh" ? "zh" : "en");
         setStars(data.progress?.total_stars || 0);
         completedSectionIdsRef.current = data.progress?.completed_section_ids || [];
         const docSections = Array.isArray(doc.sections) ? doc.sections : [];
@@ -143,7 +179,7 @@ export default function KidsReaderPage() {
       } catch {
         if (!cancelled) {
           setBookTitle("Book");
-          setLoadError("This book could not be opened. Please go back to Books and try again.");
+          setLoadError("OPEN_BOOK_FAILED");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -176,7 +212,10 @@ export default function KidsReaderPage() {
     if (!pid) return;
     kidsApi.bootstrap().then(({ profiles }) => {
       const p = profiles.find((x) => x.id === pid);
-      if (p) setProfileHasPin(!!p.has_pin);
+      if (p) {
+        setProfileHasPin(!!p.has_pin);
+        setHelpLanguage(p.help_language === "zh" ? "zh" : "en");
+      }
     }).catch(() => {});
   }, []);
 
@@ -270,7 +309,7 @@ export default function KidsReaderPage() {
           const content = contents[0];
           const doc = content?.document as Document | undefined;
           const win = content?.window as Window | undefined;
-          const visible = getVisiblePageText(doc, win);
+          const visible = getVisiblePageText(doc, win, renditionRef.current);
           if (visible && visible.trim()) {
             textToRead = visible.trim();
           }
@@ -293,19 +332,36 @@ export default function KidsReaderPage() {
     narrate(id, text);
   }, [narrate]);
 
+  const getVisibleText = useCallback(() => {
+    try {
+      const contents = (renditionRef.current as any)?.getContents?.();
+      const content = contents?.[0];
+      return getVisiblePageText(
+        content?.document as Document | undefined,
+        content?.window as Window | undefined,
+        renditionRef.current,
+      ).trim();
+    } catch {
+      return "";
+    }
+  }, []);
+
   const handleTranslate = useCallback(async (text: string) => {
     setTranslateText(text);
     setTranslating(true);
     setTranslateResult("");
+    const pageLanguage = detectKidsReadingLanguage(text || getVisibleText(), contentLanguage);
+    const targetLanguage =
+      pageLanguage === "zh" ? "English" : helpLanguage === "zh" ? "Chinese" : "English";
     try {
-      const { translation } = await kidsApi.translate(text);
+      const { translation } = await kidsApi.translate(text, targetLanguage);
       setTranslateResult(translation);
     } catch {
-      setTranslateResult("Translation unavailable");
+      setTranslateResult(kidsLearningCopy(pageLanguage).translateUnavailable);
     } finally {
       setTranslating(false);
     }
-  }, []);
+  }, [contentLanguage, getVisibleText, helpLanguage]);
 
   const closeWordHint = useCallback(() => {
     setWordHintState(null);
@@ -417,7 +473,130 @@ export default function KidsReaderPage() {
     }
   }, [documentId, wordHintData, wordHintState]);
 
+  const closeLearnQuestions = useCallback(() => {
+    quizLoadTokenRef.current += 1;
+    learningAbortRef.current?.abort();
+    learningAbortRef.current = null;
+    setShowLearn(false);
+    setQuizLoading(false);
+    setLearnLoading(false);
+    setLearnError("");
+    setLearnResult(null);
+    stopSpeaking();
+  }, [stopSpeaking]);
+
+  const beginLearningRequest = useCallback(() => {
+    learningAbortRef.current?.abort();
+    const controller = new AbortController();
+    learningAbortRef.current = controller;
+    window.setTimeout(() => controller.abort(), 15000);
+    return controller;
+  }, []);
+
+  const loadConceptLearn = useCallback(async () => {
+    const token = ++quizLoadTokenRef.current;
+    const controller = beginLearningRequest();
+    const visibleText = getVisibleText().slice(0, 3000);
+    if (!visibleText.trim()) {
+      const pageLanguage = detectKidsReadingLanguage(visibleText, contentLanguage);
+      setContentLanguage(pageLanguage);
+      setWordHintState(null);
+      setWordHintData(null);
+      setWordHintMessage("");
+      setLearningMode("learn");
+      setShowLearn(true);
+      setLearnResult(null);
+      setLearnError(kidsLearningCopy(pageLanguage).learnError);
+      setLearnLoading(false);
+      stopSpeaking();
+      return;
+    }
+    const pageLanguage = detectKidsReadingLanguage(visibleText, contentLanguage);
+    setContentLanguage(pageLanguage);
+    setWordHintState(null);
+    setWordHintData(null);
+    setWordHintMessage("");
+    setLearningMode("learn");
+    setShowLearn(true);
+    setLearnResult(null);
+    setLearnError("");
+    stopSpeaking();
+    setLearnLoading(true);
+
+    const sectionId =
+      currentSectionIdRef.current ||
+      resolveKidsReadingSectionId(currentHrefRef.current, tocRef.current, sectionsRef.current) ||
+      (sectionsRef.current.find((s) => s.checkpoint_kind === "chapter")?.id || sectionsRef.current[0]?.id || "");
+    try {
+      const result = await kidsApi.getLearn(
+        documentId,
+        { section_id: sectionId, visible_text: visibleText },
+        controller.signal,
+      );
+      if (token !== quizLoadTokenRef.current) return;
+      setContentLanguage(result.language);
+      setLearnResult(result);
+    } catch (error) {
+      if (token !== quizLoadTokenRef.current || (error instanceof DOMException && error.name === "AbortError")) return;
+      setLearnError(kidsLearningCopy(pageLanguage).learnError);
+    } finally {
+      if (token === quizLoadTokenRef.current) setLearnLoading(false);
+    }
+  }, [
+    beginLearningRequest,
+    contentLanguage,
+    documentId,
+    getVisibleText,
+    stopSpeaking,
+  ]);
+
+  const loadLearnQuestions = useCallback(async (sectionIdOverride?: string) => {
+    const token = ++quizLoadTokenRef.current;
+    const controller = beginLearningRequest();
+    setWordHintState(null);
+    setWordHintData(null);
+    setWordHintMessage("");
+    setShowLearn(true);
+    setLearningMode("quiz");
+    setLearnResult(null);
+    setLearnError("");
+    setGrade(null);
+    setAnswers({});
+    stopSpeaking();
+    setQuizLoading(true);
+    try {
+      const sectionId =
+        sectionIdOverride ||
+        currentSectionIdRef.current ||
+        resolveKidsReadingSectionId(currentHrefRef.current, tocRef.current, sectionsRef.current);
+      quizSectionIdRef.current = sectionId;
+      const { questions: qs, language } = await kidsApi.getQuiz(
+        documentId,
+        sectionId,
+        false,
+        controller.signal,
+      );
+      if (token !== quizLoadTokenRef.current) return;
+      setQuestions(qs);
+      if (language) setContentLanguage(language);
+    } catch (error) {
+      if (token !== quizLoadTokenRef.current || (error instanceof DOMException && error.name === "AbortError")) return;
+      if (token !== quizLoadTokenRef.current) return;
+      setQuestions([]);
+    } finally {
+      if (token === quizLoadTokenRef.current) setQuizLoading(false);
+    }
+  }, [beginLearningRequest, documentId, stopSpeaking]);
+
   const handleLearnClick = useCallback(() => {
+    const visibleText = getVisibleText();
+    const pageLanguage = detectKidsReadingLanguage(visibleText, contentLanguage);
+    setContentLanguage(pageLanguage);
+    if (pageLanguage === "zh") {
+      void loadConceptLearn();
+      return;
+    }
+
     if (renditionRef.current) {
       const selection = renditionRef.current.getRange?.();
       const text = selection?.toString()?.trim();
@@ -453,41 +632,13 @@ export default function KidsReaderPage() {
       choices: wordsInChapter,
       wrongAttempts: 0,
     });
-  }, [openWordHint, stopSpeaking]);
-
-  const closeLearnQuestions = useCallback(() => {
-    quizLoadTokenRef.current += 1;
-    setShowLearn(false);
-    setQuizLoading(false);
-    stopSpeaking();
-  }, [stopSpeaking]);
-
-  const loadLearnQuestions = useCallback(async (sectionIdOverride?: string) => {
-    const token = ++quizLoadTokenRef.current;
-    setWordHintState(null);
-    setWordHintData(null);
-    setWordHintMessage("");
-    setShowLearn(true);
-    setGrade(null);
-    setAnswers({});
-    stopSpeaking();
-    setQuizLoading(true);
-    try {
-      const sectionId =
-        sectionIdOverride ||
-        currentSectionIdRef.current ||
-        resolveKidsReadingSectionId(currentHrefRef.current, tocRef.current, sectionsRef.current);
-      quizSectionIdRef.current = sectionId;
-      const { questions: qs } = await kidsApi.getQuiz(documentId, sectionId);
-      if (token !== quizLoadTokenRef.current) return;
-      setQuestions(qs);
-    } catch {
-      if (token !== quizLoadTokenRef.current) return;
-      setQuestions([]);
-    } finally {
-      if (token === quizLoadTokenRef.current) setQuizLoading(false);
-    }
-  }, [documentId, stopSpeaking]);
+  }, [
+    contentLanguage,
+    getVisibleText,
+    loadConceptLearn,
+    openWordHint,
+    stopSpeaking,
+  ]);
 
   const submitLearnAnswers = async () => {
     setSubmitting(true);
@@ -510,6 +661,8 @@ export default function KidsReaderPage() {
     }
   };
 
+  const copy = kidsLearningCopy(contentLanguage);
+
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#e0f2ff" }}>
@@ -524,9 +677,9 @@ export default function KidsReaderPage() {
         <div style={{ textAlign: "center", maxWidth: 360, padding: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>Book</div>
           <p style={{ fontSize: 18, color: "#4a3f6b", marginBottom: 20 }}>
-            {loadError || "Opening book..."}
+            {loadError === "OPEN_BOOK_FAILED" ? copy.openBookError : copy.openingBook}
           </p>
-          <button style={toolbarBtn} onClick={() => router.push("/kids")}>Books</button>
+          <button style={toolbarBtn} onClick={() => router.push("/kids")}>{copy.books}</button>
         </div>
       </div>
     );
@@ -589,11 +742,11 @@ export default function KidsReaderPage() {
        zIndex: 10,
        flexShrink: 0,
      }}>
-        <button onClick={handleExitClick} style={toolbarBtn}>Books</button>
+        <button onClick={handleExitClick} style={toolbarBtn}>{copy.books}</button>
        <div style={{ flex: 1, textAlign: "center", fontWeight: 700, fontSize: 18, color: "#4a3f6b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
          {bookTitle}
        </div>
-        <div style={{ fontSize: 22 }}>Stars: {stars}</div>
+        <div style={{ fontSize: 22 }}>{copy.stars}: {stars}</div>
         <button
           style={secondaryToolBtn}
           title="Translate selected words"
@@ -620,9 +773,25 @@ export default function KidsReaderPage() {
           }}
           epubInitOptions={{ openAs: "epub" }}
           epubOptions={{ allowScriptedContent: false }}
+          readerStyles={kidsReaderStyles}
           getRendition={(rendition: Rendition) => {
             renditionRef.current = rendition;
             rendition.themes.fontSize("120%");
+            // Fix: iOS/iPadOS WebKit mid-line CJK punctuation.
+            // iOS WebKit can fall back to fonts whose punctuation glyphs
+            // sit at the vertical center of the em-box instead of on the
+            // baseline.  PingFang SC is the system CJK font on Apple devices
+            // and renders punctuation correctly; forcing baseline alignment
+            // ensures commas and periods stay at the text baseline.
+            rendition.themes.register({
+              "body, p, span, div": {
+                "font-family":
+                  "PingFang SC, Hiragino Sans GB, Microsoft YaHei, WenQuanYi Micro Hei, sans-serif",
+              },
+              "body *": {
+                "vertical-align": "baseline",
+              },
+            });
             void rendition.book.ready
               .then(() => rendition.book.locations.generate(256))
               .then(() => rendition.reportLocation());
@@ -646,6 +815,9 @@ export default function KidsReaderPage() {
             });
             rendition.on("relocated", (location: any) => {
               const href = location?.start?.href || "";
+              const cfi = location?.start?.cfi || "";
+              const cfiChanged = !!cfi && cfi !== lastRelocatedCfiRef.current;
+              lastRelocatedCfiRef.current = cfi;
               const previousSectionId = currentSectionIdRef.current;
               const previousSectionKind = sectionsRef.current.find(
                 (section) => section.id === previousSectionId,
@@ -659,9 +831,30 @@ export default function KidsReaderPage() {
               const currentSectionKind = sectionsRef.current.find(
                 (section) => section.id === currentSectionIdRef.current,
               )?.checkpoint_kind;
+              if (cfiChanged && sawInitialSectionRef.current) {
+                quizLoadTokenRef.current += 1;
+                learningAbortRef.current?.abort();
+                learningAbortRef.current = null;
+                setShowLearn(false);
+                setLearningMode("quiz");
+                setLearnResult(null);
+                setLearnLoading(false);
+                setLearnError("");
+                setQuizLoading(false);
+                stopKidsSpeech();
+                setSpeakingId(null);
+              }
               saveProgress(location?.start?.cfi || "", href);
-              const isInitialRelocation = !sawInitialSectionRef.current;
+              const isFirstMount = !sawInitialSectionRef.current;
               sawInitialSectionRef.current = true;
+              if (isFirstMount) {
+                return;
+              }
+              const hasCrossedSection =
+                Boolean(previousSectionId) && previousSectionId !== currentSectionIdRef.current;
+              if (!hasCrossedSection && !cfiChanged) {
+                return;
+              }
 
               const target = shouldOpenChapterCheck({
                 currentSectionId: currentSectionIdRef.current,
@@ -674,7 +867,7 @@ export default function KidsReaderPage() {
                 completedSectionIds: completedSectionIdsRef.current,
                 shownSectionIds: shownSectionIdsRef.current,
               });
-              if (target && !(isInitialRelocation && target === "current")) {
+              if (target) {
                 const sectionId = target === "previous" ? previousSectionId : currentSectionIdRef.current;
                 shownSectionIdsRef.current = [...new Set([...shownSectionIdsRef.current, sectionId])];
                 void loadLearnQuestions(sectionId);
@@ -698,13 +891,13 @@ export default function KidsReaderPage() {
           style={{ ...bottomActionBtn, background: speakingId === "read-aloud" ? "#fed7d7" : "#e9d8fd" }}
           onClick={handleReadAloud}
         >
-          {speakingId === "read-aloud" ? "Stop" : "Read Aloud"}
+          {speakingId === "read-aloud" ? copy.stop : copy.readAloud}
         </button>
         <button style={{ ...bottomActionBtn, background: "#fed7aa" }} onClick={handleLearnClick}>
-          Learn
+          {copy.learn}
         </button>
         <button style={{ ...bottomActionBtn, background: "#c7d2fe" }} onClick={() => loadLearnQuestions()}>
-          Quiz
+          {copy.quiz}
         </button>
       </div>
 
@@ -716,7 +909,7 @@ export default function KidsReaderPage() {
               {translating ? "..." : translateResult}
             </div>
             <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={() => setTranslateText(null)}>
-              Close
+              {copy.close}
             </button>
           </div>
         </div>
@@ -861,15 +1054,19 @@ export default function KidsReaderPage() {
                   {wordHintState.choices.map((choice) => (
                     <div key={choice} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
                       <button
+                        type="button"
                         style={{
                           flex: 1,
                           padding: "12px 14px",
                           borderRadius: 12,
-                          border: "3px solid #e2e8f0",
-                          background: "white",
+                          border: "2px solid #cbd5e1",
+                          background: "#ffffff",
+                          color: "#0f172a",
                           fontSize: 16,
+                          fontWeight: 600,
                           textAlign: "left",
                           cursor: "pointer",
+                          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
                         }}
                         onClick={() => void checkWordHintChoice(choice)}
                       >
@@ -953,13 +1150,32 @@ export default function KidsReaderPage() {
       {showLearn && (
         <div style={popupOverlay} onClick={closeLearnQuestions}>
           <div style={popupBox} onClick={(e) => e.stopPropagation()}>
-            {grade && grade.score === grade.total ? (
+            {learningMode === "learn" ? (
+              <>
+                <GuidedLearnModal
+                  result={learnResult}
+                  loading={learnLoading}
+                  error={learnError}
+                  copy={copy}
+                  speakingId={speakingId}
+                  onSpeak={speakQuizText}
+                  onClose={closeLearnQuestions}
+                  onRetry={loadConceptLearn}
+                />
+                <button
+                  style={{ ...bigBtn, width: "100%", background: "#e2e8f0" }}
+                  onClick={closeLearnQuestions}
+                >
+                  {copy.close}
+                </button>
+              </>
+            ) : grade && grade.score === grade.total ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: 64 }}>
-                  {grade.score === grade.total ? "Great!" : grade.score > 0 ? "Keep thinking!" : "Try again!"}
+                  {grade.score === grade.total ? copy.great : grade.score > 0 ? copy.keepThinking : copy.tryAgainHeading}
                 </div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: kidsModalHeadingColor, marginTop: 8 }}>
-                  {grade.score} / {grade.total} correct!
+                  {copy.correctCount.replace("{score}", String(grade.score)).replace("{total}", String(grade.total))}
                 </div>
                 <div style={{ fontSize: 32, marginTop: 8 }}>
                   {"*".repeat(grade.stars)}{".".repeat(3 - grade.stars)}
@@ -978,12 +1194,12 @@ export default function KidsReaderPage() {
                     textAlign: "left",
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 20 }}>{q.correct ? "Yes" : "No"}</span>
+                      <span style={{ fontSize: 20 }}>{q.correct ? copy.correct : copy.thinkAgain}</span>
                       <button
                         style={speechBtn}
-                        title={speakingId === `answer-${i}` ? "Stop answer" : "Read answer"}
-                        aria-label={speakingId === `answer-${i}` ? "Stop answer" : "Read answer"}
-                        onClick={() => speakQuizText(`answer-${i}`, `${q.correct ? "Yes" : "No"}. ${q.explanation}`)}
+                        title={speakingId === `answer-${i}` ? copy.stopAnswer : copy.readAnswer}
+                        aria-label={speakingId === `answer-${i}` ? copy.stopAnswer : copy.readAnswer}
+                        onClick={() => speakQuizText(`answer-${i}`, `${q.correct ? copy.correct : copy.thinkAgain}. ${q.explanation}`)}
                       >
                         {speakingId === `answer-${i}` ? <VolumeX size={15} /> : <Volume2 size={15} />}
                       </button>
@@ -995,42 +1211,42 @@ export default function KidsReaderPage() {
                   style={{ ...bigBtn, marginTop: 16, background: "#667eea", color: "white" }}
                   onClick={closeLearnQuestions}
                 >
-                  Done!
+                  {copy.close}
                 </button>
               </div>
             ) : quizLoading ? (
               <div style={{ textAlign: "center", padding: 40 }}>
                 <div style={{ fontSize: 48 }}>?</div>
-                <p style={{ fontSize: 18, color: kidsModalAccentColor }}>Getting 3 questions...</p>
+                <p style={{ fontSize: 18, color: kidsModalAccentColor }}>{copy.quizLoading}</p>
                 <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={closeLearnQuestions}>
-                  Close
+                  {copy.close}
                 </button>
               </div>
             ) : questions.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40 }}>
-                <p style={{ fontSize: 18, color: "#e53e3e" }}>Read a little more first!</p>
+                <p style={{ fontSize: 18, color: "#e53e3e" }}>{copy.quizEmpty}</p>
                 <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={closeLearnQuestions}>
-                  Close
+                  {copy.close}
                 </button>
               </div>
             ) : (
               <div>
                 <h2 style={{ fontSize: 24, fontWeight: 800, color: kidsModalHeadingColor, marginBottom: 16 }}>
-                  Look and Think
+                  {copy.lookAndThink}
                 </h2>
                 <p style={{ fontSize: 15, color: kidsModalTextColor, marginBottom: 16 }}>
-                  Look closely, then choose what you think.
+                  {copy.quizIntro}
                 </p>
                 {questions.map((q, qi) => (
                   <div key={qi} style={{ marginBottom: 20 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: kidsModalTextColor }}>
-                        Question {qi + 1}
+                        {copy.question} {qi + 1}
                       </div>
                       <button
                         style={speechBtn}
-                        title={speakingId === `question-${qi}` ? "Stop question" : "Read question"}
-                        aria-label={speakingId === `question-${qi}` ? "Stop question" : "Read question"}
+                        title={speakingId === `question-${qi}` ? copy.stopQuestion : copy.readQuestion}
+                        aria-label={speakingId === `question-${qi}` ? copy.stopQuestion : copy.readQuestion}
                         onClick={() => speakQuizText(`question-${qi}`, q.question)}
                       >
                         {speakingId === `question-${qi}` ? <VolumeX size={15} /> : <Volume2 size={15} />}
@@ -1046,25 +1262,29 @@ export default function KidsReaderPage() {
                         return (
                           <div key={ci} style={{ display: "flex", alignItems: "stretch", gap: 6 }}>
                             <button
+                              type="button"
                               onClick={() => setAnswers({ ...answers, [qi]: ci })}
                               disabled={isCorrectChoice}
                               style={{
                                 flex: 1,
                                 padding: "12px 14px",
                                 borderRadius: 12,
-                                border: answers[qi] === ci ? "3px solid #667eea" : "3px solid #e2e8f0",
-                                background: answers[qi] === ci ? "#e9d8fd" : "white",
+                                border: answers[qi] === ci ? "3px solid #667eea" : "2px solid #cbd5e1",
+                                background: answers[qi] === ci ? "#ede9fe" : "#ffffff",
+                                color: answers[qi] === ci ? "#3730a3" : "#0f172a",
                                 fontSize: 16,
+                                fontWeight: answers[qi] === ci ? 700 : 600,
                                 cursor: isCorrectChoice ? "default" : "pointer",
                                 textAlign: "left",
+                                boxShadow: answers[qi] === ci ? "0 2px 8px rgba(102, 126, 234, 0.2)" : "0 1px 3px rgba(0, 0, 0, 0.05)",
                               }}
                             >
                               {c}
                             </button>
                             <button
                               style={speechBtn}
-                              title={speakingId === `choice-${qi}-${ci}` ? `Stop ${c}` : `Read ${c}`}
-                              aria-label={speakingId === `choice-${qi}-${ci}` ? `Stop ${c}` : `Read ${c}`}
+                              title={speakingId === `choice-${qi}-${ci}` ? `${copy.stopChoice}: ${c}` : `${copy.readChoice}: ${c}`}
+                              aria-label={speakingId === `choice-${qi}-${ci}` ? `${copy.stopChoice}: ${c}` : `${copy.readChoice}: ${c}`}
                               onClick={() => speakQuizText(`choice-${qi}-${ci}`, c)}
                             >
                               {speakingId === `choice-${qi}-${ci}` ? (
@@ -1079,7 +1299,7 @@ export default function KidsReaderPage() {
                     </div>
                     {grade?.per_question?.[qi] && !grade.per_question[qi].correct && (
                       <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "#fff5f5", color: "#c53030", fontWeight: 700 }}>
-                        Think again
+                        {copy.thinkAgain}
                       </div>
                     )}
                   </div>
@@ -1089,7 +1309,7 @@ export default function KidsReaderPage() {
                   onClick={submitLearnAnswers}
                   disabled={submitting || questions.some((_, i) => answers[i] === undefined)}
                 >
-                  {submitting ? "Checking..." : grade && grade.score < grade.total ? "Try Again" : "Check My Thinking"}
+                  {submitting ? copy.checking : grade && grade.score < grade.total ? copy.tryAgain : copy.submit}
                 </button>
               </div>
             )}
@@ -1111,8 +1331,8 @@ const toolbarBtn: React.CSSProperties = {
   color: "#4a5568",
 };
 
-const kidsModalHeadingColor = "#1f2937";
-const kidsModalTextColor = "#374151";
+const kidsModalHeadingColor = "#111827";
+const kidsModalTextColor = "#1e293b";
 const kidsModalAccentColor = "#4338ca";
 
 const bigBtn: React.CSSProperties = {

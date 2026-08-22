@@ -43,6 +43,8 @@ The active Kids feature set is a coherent product, not a demo:
   interactive-book progress.
 - Authorized EPUB delivery and navigation mapped to backend reading sections.
 - Visible-page text extraction for narration and guided questions.
+- Source-grounded current-page concept learning with progressive reflection
+  support for Chinese readers.
 - Progressive word hints, word exploration, bilingual pronunciation, and shared
   speech playback state.
 - Age-band story comprehension quizzes with deterministic fallback, age-aware
@@ -60,6 +62,8 @@ Run these before releasing or merging upstream changes into this fork:
   tests/immersive_reading/test_kids_reading_endpoints.py \
   tests/immersive_reading/test_kids_interactive_books.py \
   tests/immersive_reading/test_kids_quiz_cache.py \
+  tests/immersive_reading/test_kids_learn.py \
+  tests/immersive_reading/test_kids_learn_endpoints.py \
   tests/api/test_partners_router.py \
   tests/services/partners/test_channel_onboarding.py \
   tests/services/partners/test_feishu_domain_initialization.py \

@@ -42,6 +42,8 @@ export interface KidsReadingSection {
   index: number;
   checkpoint_kind?: string;
   source_href?: string;
+  source_start?: number;
+  source_end?: number;
 }
 
 export interface KidsReaderTocItem {
@@ -63,11 +65,20 @@ export function resolveKidsReadingSectionId(
   toc: KidsReaderTocItem[],
   sections: KidsReadingSection[],
 ): string {
+  if (!sections || sections.length === 0) return "";
   const resourceName = _resourceName(href);
   const sourceHrefMatch = sections.find(
     (section) => section.source_href && _resourceName(section.source_href) === resourceName,
   );
   if (sourceHrefMatch) return sourceHrefMatch.id;
+
+  const currentTocItem = toc.find((item) => item.href && _resourceName(item.href) === resourceName);
+  const tocTitle = currentTocItem?.label || currentTocItem?.title || "";
+  const normalizedTocTitle = _normalizedTitle(tocTitle);
+  if (normalizedTocTitle) {
+    const matched = sections.find((section) => _normalizedTitle(section.title) === normalizedTocTitle);
+    if (matched) return matched.id;
+  }
 
   const chapterMatch = resourceName.match(/chap(?:ter)?[_-]?(\d+)/);
   if (chapterMatch) {
@@ -77,13 +88,27 @@ export function resolveKidsReadingSectionId(
     if (chapter) return chapter.id;
   }
 
-  const currentTocItem = toc.find((item) => item.href && _resourceName(item.href) === resourceName);
-  const tocTitle = currentTocItem?.label || currentTocItem?.title || "";
-  const normalizedTocTitle = _normalizedTitle(tocTitle);
+  const digitsMatch = resourceName.match(/(\d+)/);
+  if (digitsMatch) {
+    const fileNum = Number(digitsMatch[1]);
+    const spine1Based = fileNum + 1;
+    for (const s of sections) {
+      if (typeof s.source_start === "number" && typeof s.source_end === "number") {
+        if (s.source_start <= spine1Based && spine1Based <= s.source_end) {
+          return s.id;
+        }
+      }
+    }
+    for (const s of sections) {
+      if (typeof s.source_start === "number" && typeof s.source_end === "number") {
+        if (s.source_start <= fileNum && fileNum <= s.source_end) {
+          return s.id;
+        }
+      }
+    }
+  }
 
-  return (
-    sections.find((section) => _normalizedTitle(section.title) === normalizedTocTitle)?.id || ""
-  );
+  return "";
 }
 
 export interface KidsLearningProgress {
@@ -204,6 +229,23 @@ export interface KidsWordHintReveal {
   correct_choice: string;
   chinese: string;
   explanation: string;
+}
+
+export interface KidsLearnConcept {
+  term: string;
+  explanation: string;
+  analogy?: string;
+}
+
+export interface KidsLearnResult {
+  document_id: string;
+  section_id: string;
+  overview: string;
+  concepts: KidsLearnConcept[];
+  reflection: { prompt: string; hint: string; answer: string };
+  language: "en" | "zh";
+  source: "generated" | "fallback";
+  content_hash?: string;
 }
 
 // ── Admin (parent) API ─────────────────────────────────────────────────────
@@ -367,15 +409,26 @@ export const kidsApi = {
       body: JSON.stringify(data),
     }),
 
-  getQuiz: (documentId: string, sectionId: string, forceRefresh = false) =>
-    kidsRequest<{ questions: KidsSafeQuestion[]; section_id: string }>(
+  getQuiz: (documentId: string, sectionId: string, forceRefresh = false, signal?: AbortSignal) =>
+    kidsRequest<{ questions: KidsSafeQuestion[]; section_id: string; language?: "en" | "zh" }>(
       `/books/${documentId}/quiz`,
       {
         method: "POST",
         body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }),
-        signal: AbortSignal.timeout(12000),
+        signal: signal || AbortSignal.timeout(12000),
       },
     ),
+
+  getLearn: (
+    documentId: string,
+    data: { section_id: string; visible_text: string; force_refresh?: boolean },
+    signal?: AbortSignal,
+  ) =>
+    kidsRequest<KidsLearnResult>(`/books/${documentId}/learn`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      signal,
+    }),
 
   submitQuiz: (documentId: string, sectionId: string, answers: number[]) =>
     kidsRequest<KidsQuizGrade>(`/books/${documentId}/quiz/submit`, {
@@ -415,10 +468,11 @@ export const kidsApi = {
       body: JSON.stringify({ hint_id: hintId }),
     }),
 
-  translate: (text: string, targetLanguage = "Chinese") =>
+  translate: (text: string, targetLanguage = "Chinese", signal?: AbortSignal) =>
     kidsRequest<{ translation: string }>("/translate", {
       method: "POST",
       body: JSON.stringify({ text, target_language: targetLanguage }),
+      signal,
     }),
 
   exitVerify: (profileId: string, pin: string) =>

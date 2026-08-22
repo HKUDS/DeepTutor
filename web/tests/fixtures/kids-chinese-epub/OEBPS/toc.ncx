@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head/>
+  <docTitle><text>孩子的量子世界</text></docTitle>
+  <navMap>
+    <navPoint id="nav1" playOrder="1">
+      <navLabel><text>第1讲 量子世界</text></navLabel>
+      <content src="chap01.html"/>
+    </navPoint>
+  </navMap>
+</ncx>

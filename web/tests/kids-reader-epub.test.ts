@@ -23,17 +23,17 @@ test("kids reader loads EPUBs through the authorized kids endpoint", () => {
 });
 
 test("kids reader centers guided learning and demotes translation", () => {
-  assert.match(readerSource, /Look and Think/);
-  assert.match(readerSource, /Think again/);
-  assert.match(readerSource, />\s*Learn\s*</);
-  assert.match(readerSource, />\s*Quiz\s*</);
+  assert.match(readerSource, /lookAndThink/);
+  assert.match(readerSource, /thinkAgain/);
+  assert.match(readerSource, /\{copy\.learn\}/);
+  assert.match(readerSource, /\{copy\.quiz\}/);
   assert.match(readerSource, /result\.total_stars/);
   assert.doesNotMatch(readerSource, />\s*Translate\s*</);
   assert.match(readerSource, /Languages/);
 });
 
 test("kids reader always offers three guided questions with pronunciation", () => {
-  assert.match(readerSource, /Getting 3 questions/);
+  assert.match(readerSource, /quizLoading/);
   assert.match(readerSource, /speakQuizText/);
   assert.match(readerSource, /question-\$\{qi\}/);
   assert.match(readerSource, /choice-\$\{qi\}-\$\{ci\}/);
@@ -41,6 +41,38 @@ test("kids reader always offers three guided questions with pronunciation", () =
   assert.match(readerSource, /Volume2/);
   assert.match(readerSource, /shouldOpenChapterCheck/);
   assert.match(readerSource, /loadLearnQuestions\(sectionId\)/);
+});
+
+test("kids reader routes Chinese pages to concept learning and English pages to word hints", () => {
+  const learnLanguageSource = readFileSync(
+    path.resolve(process.cwd(), "lib/kids-learning/learn-language.ts"),
+    "utf8",
+  );
+  const guidedLearnSource = readFileSync(
+    path.resolve(process.cwd(), "components/kids/GuidedLearnModal.tsx"),
+    "utf8",
+  );
+
+  assert.match(readerSource, /detectKidsReadingLanguage/);
+  assert.match(readerSource, /loadConceptLearn/);
+  assert.match(readerSource, /kidsApi\.getLearn/);
+  assert.match(readerSource, /AbortController/);
+  assert.match(readerSource, /learningAbortRef\.current\?\.abort\(\)/);
+  assert.match(readerSource, /content_language/);
+  assert.match(readerSource, /targetLanguage/);
+  assert.doesNotMatch(readerSource, /targetLanguage = "Chinese"/);
+  assert.match(learnLanguageSource, /这一页讲了什么/);
+  assert.match(learnLanguageSource, /关键概念/);
+  assert.match(learnLanguageSource, /想一想/);
+  assert.match(guidedLearnSource, /showHint/);
+  assert.match(guidedLearnSource, /showAnswer/);
+  assert.match(guidedLearnSource, /learn-overview/);
+});
+
+test("kids concept learning refuses to disguise a book title as visible page text", () => {
+  assert.doesNotMatch(readerSource, /bookTitle \|\| "Story"/);
+  assert.match(readerSource, /if \(!visibleText\.trim\(\)\)/);
+  assert.match(readerSource, /setLearnError\(kidsLearningCopy\(pageLanguage\)\.learnError\)/);
 });
 
 test("kids reader protects the restored learning golden path", () => {
@@ -72,6 +104,13 @@ test("kids reader keeps actions inside the iPad dynamic viewport", () => {
   assert.match(globalCss, /padding-bottom:\s*max\(10px,\s*env\(safe-area-inset-bottom\)\)/);
 });
 
+test("kids reader keeps the table of contents readable", () => {
+  assert.match(readerSource, /ReactReaderStyle/);
+  assert.match(readerSource, /readerStyles=\{kidsReaderStyles\}/);
+  assert.match(readerSource, /color: "#3730a3"/);
+  assert.doesNotMatch(readerSource, /color: "#aaa"/);
+});
+
 test("kids reader keeps learning modal text readable", () => {
   const wordHintModalSource = readerSource.slice(
     readerSource.indexOf("{wordHintState &&"),
@@ -79,8 +118,8 @@ test("kids reader keeps learning modal text readable", () => {
   );
   const quizModalSource = readerSource.slice(readerSource.indexOf("{showLearn &&"));
 
-  assert.match(readerSource, /kidsModalHeadingColor = "#1f2937"/);
-  assert.match(readerSource, /kidsModalTextColor = "#374151"/);
+  assert.match(readerSource, /kidsModalHeadingColor = "#111827"/);
+  assert.match(readerSource, /kidsModalTextColor = "#1e293b"/);
   assert.match(readerSource, /kidsModalAccentColor = "#4338ca"/);
   for (const modalSource of [wordHintModalSource, quizModalSource]) {
     assert.ok(modalSource.length > 100);
@@ -112,4 +151,11 @@ test("kids reader maps EPUB navigation to backend reading sections", () => {
   assert.equal(resolveKidsReadingSectionId("OEBPS/chap02.html", [], sections), "section_0006");
   assert.equal(resolveKidsReadingSectionId("OEBPS/explicit.xhtml", [], sections), "section_0007");
   assert.equal(resolveKidsReadingSectionId("unknown.html", [], []), "");
+
+  const spineSections = [
+    { id: "section_0001", title: "版权信息", index: 0, checkpoint_kind: "none", source_start: 1, source_end: 2 },
+    { id: "section_0002", title: "第1讲 量子世界是什么样的", index: 1, checkpoint_kind: "chapter", source_start: 3, source_end: 31 },
+  ];
+  assert.equal(resolveKidsReadingSectionId("text00000.html", [], spineSections), "section_0001");
+  assert.equal(resolveKidsReadingSectionId("text00002.html", [], spineSections), "section_0002");
 });

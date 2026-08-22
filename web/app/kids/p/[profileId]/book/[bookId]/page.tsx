@@ -493,15 +493,17 @@ function renderBlock(
                   return (
                     <button
                       key={cIdx}
+                      type="button"
                       style={{
                         ...S.choiceBtn,
-                        borderColor: isSelected ? "#667eea" : "#e2e8f0",
-                        background: isSelected ? "#edf2f7" : "white",
-                        fontWeight: isSelected ? 700 : 500,
+                        borderColor: isSelected ? "#667eea" : "#cbd5e1",
+                        background: isSelected ? "#ede9fe" : "#ffffff",
+                        color: isSelected ? "#3730a3" : "#0f172a",
+                        fontWeight: isSelected ? 700 : 600,
                       }}
                       onClick={() => onSelectChoice(qIdx, cIdx)}
                     >
-                      <span style={S.choicePrefix}>{String.fromCharCode(65 + cIdx)}.</span>
+                      <span style={{ ...S.choicePrefix, color: isSelected ? "#4338ca" : "#475569" }}>{String.fromCharCode(65 + cIdx)}.</span>
                       {choice}
                     </button>
                   );
@@ -1189,12 +1191,15 @@ const S: Record<string, React.CSSProperties> = {
     alignItems: "center",
     padding: "10px 14px",
     borderRadius: 12,
-    border: "2px solid",
+    border: "2px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#0f172a",
     fontSize: 16,
+    fontWeight: 600,
     cursor: "pointer",
     textAlign: "left",
   },
-  choicePrefix: { fontWeight: 800, marginRight: 8, color: "#718096" },
+  choicePrefix: { fontWeight: 800, marginRight: 8, color: "#475569" },
   feedbackBox: {
     marginTop: 12,
     padding: 12,

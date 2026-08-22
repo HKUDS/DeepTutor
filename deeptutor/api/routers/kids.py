@@ -91,17 +91,47 @@ def _normalize_learning_anchor(value: str) -> str:
     return " ".join(normalized.split()).casefold()
 
 
+def _strip_learning_whitespace(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    return re.sub(r"\s+", "", normalized).casefold()
+
+
 def _is_visible_text_anchored(visible_text: str, section_text: str) -> bool:
+    if not visible_text or not section_text:
+        return False
     visible = _normalize_learning_anchor(visible_text)
     full = _normalize_learning_anchor(section_text)
     if not visible or not full:
         return False
     if visible in full:
         return True
-    paragraphs = [
-        _normalize_learning_anchor(p) for p in re.split(r"\n+", visible_text) if p.strip()
-    ]
-    return any(len(p) >= 20 and p in full for p in paragraphs)
+
+    clean_visible = _strip_learning_whitespace(visible_text)
+    clean_full = _strip_learning_whitespace(section_text)
+    if not clean_visible or not clean_full:
+        return False
+    if clean_visible in clean_full:
+        return True
+
+    paragraphs = [p.strip() for p in re.split(r"[\n\r]+", visible_text) if p.strip()]
+    for p in paragraphs:
+        cp = _strip_learning_whitespace(p)
+        if len(cp) >= 10 and cp in clean_full:
+            return True
+        norm_p = _normalize_learning_anchor(p)
+        if len(norm_p) >= 20 and norm_p in full:
+            return True
+
+    if len(clean_visible) >= 20:
+        for i in range(0, len(clean_visible) - 19, 10):
+            chunk = clean_visible[i : i + 20]
+            if chunk in clean_full:
+                return True
+    elif len(clean_visible) >= 6:
+        if clean_visible in clean_full:
+            return True
+
+    return False
 
 
 # ── Bootstrap & profile selection ───────────────────────────────────────────
@@ -335,15 +365,39 @@ async def get_kids_learn(
     """Get an unscored concept guide for the currently visible page."""
     manager = get_kids_manager()
     ir = get_immersive_reading_service()
+    doc = None
+    try:
+        doc = ir.load_document(document_id)
+    except Exception:
+        pass
+
     section = _resolve_kids_reading_section(ir, document_id, request.section_id)
     if section is None or not manager.is_section_allowed(profile_id, document_id, section.index):
         raise HTTPException(status_code=404, detail="Book not found")
-    if section.checkpoint_kind != "chapter":
-        raise HTTPException(status_code=400, detail="Learn is available in chapters")
 
-    section_text = ir.get_section(document_id, section.id).get("content", "")
+    section_text = ""
+    try:
+        section_text = ir.get_section(document_id, section.id).get("content", "")
+    except Exception:
+        pass
+
     if not _is_visible_text_anchored(request.visible_text, section_text):
-        raise HTTPException(status_code=400, detail="Page text does not match this chapter")
+        found_section = None
+        if doc and getattr(doc, "sections", None):
+            for candidate in doc.sections:
+                if not manager.is_section_allowed(profile_id, document_id, candidate.index):
+                    continue
+                try:
+                    cand_text = ir.get_section(document_id, candidate.id).get("content", "")
+                    if _is_visible_text_anchored(request.visible_text, cand_text):
+                        found_section = candidate
+                        section = candidate
+                        section_text = cand_text
+                        break
+                except Exception:
+                    continue
+        if not found_section:
+            raise HTTPException(status_code=400, detail="Page text does not match this chapter")
 
     profile = manager.get_profile(profile_id)
     age_band = profile.age_band if profile else "6-8"
@@ -376,22 +430,61 @@ def _resolve_kids_reading_section(ir, document_id: str, requested_section_id: st
         return SimpleNamespace(
             id=requested_section_id, index=0, title="", checkpoint_kind="chapter"
         )
-    if doc is None:
+    if doc is None or not getattr(doc, "sections", None):
         return None
+    if not requested_section_id:
+        chapter = next(
+            (s for s in doc.sections if getattr(s, "checkpoint_kind", "") == "chapter"), None
+        )
+        return chapter or doc.sections[0]
+
     section = next((s for s in doc.sections if s.id == requested_section_id), None)
     if section is not None:
         return section
 
     requested = requested_section_id.split("?")[0].split("/")[-1].lower()
+    for s in doc.sections:
+        s_href = getattr(s, "source_href", None)
+        if s_href and s_href.split("?")[0].split("/")[-1].lower() == requested:
+            return s
+
     chapter_match = re.search(r"chap(?:ter)?[_-]?(\d+)", requested)
-    chapters = [s for s in doc.sections if s.checkpoint_kind == "chapter"]
+    chapters = [s for s in doc.sections if getattr(s, "checkpoint_kind", "") == "chapter"]
     if chapter_match:
         chapter_number = int(chapter_match.group(1))
         if 1 <= chapter_number <= len(chapters):
             return chapters[chapter_number - 1]
 
+    digits_match = re.search(r"(\d+)", requested)
+    if digits_match:
+        file_num = int(digits_match.group(1))
+        spine_1based = file_num + 1
+        for s in doc.sections:
+            s_start = getattr(s, "source_start", None)
+            s_end = getattr(s, "source_end", None)
+            if s_start is not None and s_end is not None:
+                if s_start <= spine_1based <= s_end:
+                    return s
+        for s in doc.sections:
+            s_start = getattr(s, "source_start", None)
+            s_end = getattr(s, "source_end", None)
+            if s_start is not None and s_end is not None:
+                if s_start <= file_num <= s_end:
+                    return s
+
     normalized = " ".join(requested.replace("-", " ").split())
-    return next((s for s in doc.sections if " ".join(s.title.lower().split()) == normalized), None)
+    matched = next(
+        (
+            s
+            for s in doc.sections
+            if " ".join(getattr(s, "title", "").lower().split()) == normalized
+        ),
+        None,
+    )
+    if matched:
+        return matched
+
+    return None
 
 
 def _fill_kids_quiz_to_three(

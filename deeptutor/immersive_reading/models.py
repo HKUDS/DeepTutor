@@ -188,6 +188,39 @@ class KidsQuizResult(BaseModel):
     generated_at: float = Field(default_factory=time.time)
 
 
+class KidsLearnConcept(BaseModel):
+    """One concept highlighted on the currently visible page."""
+
+    term: str
+    explanation: str
+    analogy: str = ""
+
+
+class KidsLearnReflection(BaseModel):
+    """An unscored reflection prompt with progressive support."""
+
+    prompt: str
+    hint: str
+    answer: str
+
+
+class KidsLearnResult(BaseModel):
+    """Cached concept guide for one visible page."""
+
+    document_id: str
+    section_id: str
+    overview: str
+    concepts: list[KidsLearnConcept] = Field(default_factory=list)
+    reflection: KidsLearnReflection
+    content_hash: str = ""
+    model: str = ""
+    prompt_version: str = ""
+    age_band: str = "6-8"
+    language: Literal["en", "zh"] = "en"
+    source: Literal["generated", "fallback"] = "generated"
+    generated_at: float = Field(default_factory=time.time)
+
+
 class KidsProfile(BaseModel):
     """A child profile managed by the parent (adult user)."""
 
@@ -310,6 +343,9 @@ __all__ = [
     "FocusAttemptRecord",
     "FocusCheckResult",
     "KidsBookAssignment",
+    "KidsLearnConcept",
+    "KidsLearnReflection",
+    "KidsLearnResult",
     "KidsInteractiveBookProgress",
     "KidsLearningProgress",
     "KidsProfile",
