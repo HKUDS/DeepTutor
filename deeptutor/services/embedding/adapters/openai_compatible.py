@@ -243,6 +243,10 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                             rate_limit_retries += 1
                             api_key = self._auth_api_key()
                             self._set_auth_header(headers, api_key)
+                            # 火山 RPM 是滑动窗口：换 key 后立即重试仍会被拒。
+                            # 按 Retry-After 等待（无头时保守 30s）让窗口滑过。
+                            retry_after = float(response.headers.get("Retry-After", 0))
+                            await asyncio.sleep(max(retry_after, 30))
                             continue
                         retry_after = float(response.headers.get("Retry-After", 0))
                         raise EmbeddingProviderError(

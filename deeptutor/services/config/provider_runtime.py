@@ -975,8 +975,10 @@ def resolve_embedding_runtime_config(
         dimension=dimension,
         send_dimensions=send_dimensions,
         request_timeout=60,
-        batch_size=10,
-        batch_delay=0.0,
+        # YuEdu fork: 火山 plan 的 embedding RPM 极低，必须允许 profile 里限速
+        # （model_catalog embedding profile 的 batch_size/batch_delay 字段，默认与上游一致）
+        batch_size=_clamp_batch_size(profile),
+        batch_delay=_clamp_batch_delay(profile),
     )
 
 
@@ -1365,3 +1367,16 @@ __all__ = [
     "resolve_search_runtime_config",
     "search_provider_state",
 ]
+
+def _clamp_batch_size(profile: dict | None) -> int:
+    try:
+        return max(1, int((profile or {}).get("batch_size", 10)))
+    except Exception:
+        return 10
+
+
+def _clamp_batch_delay(profile: dict | None) -> float:
+    try:
+        return max(0.0, float((profile or {}).get("batch_delay", 0.0)))
+    except Exception:
+        return 0.0
