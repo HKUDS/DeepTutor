@@ -354,6 +354,10 @@ async def test_explicit_non_choice_rejects_options(path_id, question_type):
     [
         ("A: first, B: second", "must be an array"),
         (["A: first", "A: second", "B: third"], "labels must be unique"),
+        (["A: repeated answer", "B: repeated answer"], "bodies must be unique"),
+        (["A: Repeated   answer", "B: repeated answer"], "bodies must be unique"),
+        (["A: repeated\nanswer", "B: repeated answer"], "bodies must be unique"),
+        (["A: Straße", "B: STRASSE"], "bodies must be unique"),
         (["A: first", ""], "non-empty strings"),
     ],
 )
@@ -373,6 +377,7 @@ async def test_choice_quiz_rejects_malformed_options(path_id, options, error):
 
     assert result.success is False
     assert error in result.content
+    assert LearningStore().load(path_id).pending_question is None
 
 
 @pytest.mark.asyncio

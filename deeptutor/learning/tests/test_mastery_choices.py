@@ -29,6 +29,13 @@ def test_parse_options_reads_labelled_bodies():
     }
 
 
+def test_parse_options_reads_multiline_bodies():
+    assert parse_options(["A: first\nanswer", "B: second answer"]) == {
+        "A": "first\nanswer",
+        "B": "second answer",
+    }
+
+
 def test_parse_options_keeps_bare_labels_for_legacy_data():
     assert parse_options(["A", "B", "C", "D"]) == {"A": "A", "B": "B", "C": "C", "D": "D"}
 

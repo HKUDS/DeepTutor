@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from deeptutor.learning.models import PendingQuestion
 
 
-OPTION_PREFIX_RE = re.compile(r"^\s*([A-Z])\s*[.:：、)）-]\s*(.+)$", re.IGNORECASE)
+OPTION_PREFIX_RE = re.compile(r"^\s*([A-Z])\s*[.:：、)）-]\s*(.+)$", re.IGNORECASE | re.DOTALL)
 
 
 def parse_options(options: list[str]) -> dict[str, str]:

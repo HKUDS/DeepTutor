@@ -167,7 +167,12 @@ def _normalize_quiz_contract(
             "the labels A/B/C/D. Retry mastery_quiz with the exact option "
             "descriptions you will show through ask_user."
         )
-
+    normalized_bodies = {" ".join(body.split()).casefold() for body in choice_options.values()}
+    if len(normalized_bodies) != len(choice_options):
+        raise ValueError(
+            "Choice option bodies must be unique; retry mastery_quiz with "
+            "distinct answer text for every option."
+        )
     resolved_expected = resolve_answer(expected_answer, choice_options)
     if not resolved_expected:
         raise ValueError(
