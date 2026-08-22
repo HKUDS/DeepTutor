@@ -69,6 +69,22 @@ test("kids reader keeps actions inside the iPad dynamic viewport", () => {
   assert.match(globalCss, /padding-bottom:\s*max\(10px,\s*env\(safe-area-inset-bottom\)\)/);
 });
 
+test("kids reader keeps learning modal text readable", () => {
+  const wordHintModalSource = readerSource.slice(
+    readerSource.indexOf("{wordHintState &&"),
+    readerSource.indexOf("{showLearn &&"),
+  );
+  const quizModalSource = readerSource.slice(readerSource.indexOf("{showLearn &&"));
+
+  assert.match(readerSource, /kidsModalHeadingColor = "#1f2937"/);
+  assert.match(readerSource, /kidsModalTextColor = "#374151"/);
+  assert.match(readerSource, /kidsModalAccentColor = "#4338ca"/);
+  for (const modalSource of [wordHintModalSource, quizModalSource]) {
+    assert.ok(modalSource.length > 100);
+    assert.doesNotMatch(modalSource, /color:\s*"#(?:7c6f9b|4a3f6b|667eea)"/);
+  }
+});
+
 test("kids reader maps EPUB navigation to backend reading sections", () => {
   const sections = [
     { id: "section_0004", title: "Contents", index: 3, checkpoint_kind: "none" },

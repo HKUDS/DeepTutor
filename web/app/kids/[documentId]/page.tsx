@@ -723,11 +723,11 @@ export default function KidsReaderPage() {
         <div style={popupOverlay} onClick={closeWordHint}>
           <div style={popupBox} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <h2 style={{ fontSize: 30, fontWeight: 800, color: "#4a3f6b", margin: 0 }}>
+              <h2 style={{ fontSize: 30, fontWeight: 800, color: kidsModalHeadingColor, margin: 0 }}>
                 {wordHintState.word}
               </h2>
               {wordHintData?.phonetic && (
-                <span style={{ fontSize: 15, color: "#7c6f9b" }}>/{wordHintData.phonetic}/</span>
+                <span style={{ fontSize: 15, color: kidsModalTextColor }}>/{wordHintData.phonetic}/</span>
               )}
               <button
                 style={{ ...speechBtn, marginLeft: "auto" }}
@@ -740,7 +740,7 @@ export default function KidsReaderPage() {
             </div>
 
             {wordHintBusy ? (
-              <p style={{ fontSize: 18, color: "#667eea", textAlign: "center", padding: 24 }}>
+              <p style={{ fontSize: 18, color: kidsModalAccentColor, textAlign: "center", padding: 24 }}>
                 Thinking together...
               </p>
             ) : wordHintState.phase === "picker" ? (
@@ -759,7 +759,7 @@ export default function KidsReaderPage() {
                 }}>
                   Explore Words
                 </div>
-                <p style={{ fontSize: 18, color: "#4a3f6b", margin: "0 0 14px" }}>
+                <p style={{ fontSize: 18, color: kidsModalHeadingColor, margin: "0 0 14px" }}>
                   Tap any word in the story, or pick a word below to start guessing:
                 </p>
                 {wordHintState.choices.length > 0 ? (
@@ -784,7 +784,7 @@ export default function KidsReaderPage() {
                     ))}
                   </div>
                 ) : (
-                  <p style={{ fontSize: 16, color: "#7c6f9b", marginBottom: 16 }}>
+                  <p style={{ fontSize: 16, color: kidsModalTextColor, marginBottom: 16 }}>
                     Tap any word directly in the book to explore!
                   </p>
                 )}
@@ -797,7 +797,7 @@ export default function KidsReaderPage() {
               </div>
             ) : !wordHintData?.available ? (
               <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 20, color: "#4a3f6b" }}>{wordHintMessage}</p>
+                <p style={{ fontSize: 20, color: kidsModalHeadingColor }}>{wordHintMessage}</p>
                 <button style={{ ...bigBtn, background: "#e2e8f0" }} onClick={closeWordHint}>
                   Keep Reading
                 </button>
@@ -818,7 +818,7 @@ export default function KidsReaderPage() {
                 }}>
                   Thinking Clue
                 </div>
-                <p style={{ fontSize: 20, lineHeight: 1.5, color: "#2d3748" }}>
+                <p style={{ fontSize: 20, lineHeight: 1.5, color: kidsModalHeadingColor }}>
                   {wordHintData.english_hint}
                 </p>
                 <button
@@ -831,7 +831,7 @@ export default function KidsReaderPage() {
               </div>
             ) : wordHintState.phase === "choices" ? (
               <div>
-                <p style={{ fontSize: 17, color: "#7c6f9b", marginBottom: 10 }}>
+                  <p style={{ fontSize: 17, color: kidsModalTextColor, marginBottom: 10 }}>
                   Guess first. You can listen and think.
                 </p>
                 <div style={{ display: "grid", gap: 8 }}>
@@ -868,7 +868,7 @@ export default function KidsReaderPage() {
                   ))}
                 </div>
                 {wordHintState.feedback && (
-                  <p style={{ fontSize: 19, fontWeight: 800, color: "#4a3f6b", marginTop: 12 }}>
+                  <p style={{ fontSize: 19, fontWeight: 800, color: kidsModalHeadingColor, marginTop: 12 }}>
                     {wordHintState.feedback}
                   </p>
                 )}
@@ -885,9 +885,9 @@ export default function KidsReaderPage() {
             ) : wordHintState.phase === "correct" ? (
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: 48 }}>🌟</div>
-                <p style={{ fontSize: 20, color: "#2d3748" }}>{wordHintState.feedback}</p>
+                <p style={{ fontSize: 20, color: kidsModalHeadingColor }}>{wordHintState.feedback}</p>
                 {wordHintState.correctChoice && (
-                  <p style={{ fontSize: 16, color: "#4a5568", margin: "0 0 16px" }}>
+                  <p style={{ fontSize: 16, color: kidsModalTextColor, margin: "0 0 16px" }}>
                     &ldquo;{wordHintState.word}&rdquo; means {wordHintState.correctChoice}.
                   </p>
                 )}
@@ -900,17 +900,17 @@ export default function KidsReaderPage() {
               </div>
             ) : (
               <div>
-                <p style={{ fontSize: 18, fontWeight: 700, color: "#4a3f6b", margin: "0 0 6px", lineHeight: 1.4 }}>
+                <p style={{ fontSize: 18, fontWeight: 700, color: kidsModalHeadingColor, margin: "0 0 6px", lineHeight: 1.4 }}>
                   {wordHintState.correctChoice}
                 </p>
                 {wordHintState.chinese && (
-                  <p style={{ fontSize: 20, fontWeight: 800, color: "#2d3748", margin: "0 0 10px", lineHeight: 1.4 }}>
+                  <p style={{ fontSize: 20, fontWeight: 800, color: kidsModalHeadingColor, margin: "0 0 10px", lineHeight: 1.4 }}>
                     {wordHintState.chinese.replace(/\\n|\n/g, " ")}
                   </p>
                 )}
                 {wordHintState.explanation && (
                   <div style={{ padding: "10px 14px", background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", marginBottom: 16 }}>
-                    <p style={{ fontSize: 15, color: "#4a5568", margin: 0, lineHeight: 1.5 }}>
+                    <p style={{ fontSize: 15, color: kidsModalTextColor, margin: 0, lineHeight: 1.5 }}>
                       {wordHintState.explanation}
                     </p>
                   </div>
@@ -935,14 +935,14 @@ export default function KidsReaderPage() {
                 <div style={{ fontSize: 64 }}>
                   {grade.score === grade.total ? "Great!" : grade.score > 0 ? "Keep thinking!" : "Try again!"}
                 </div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#4a3f6b", marginTop: 8 }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: kidsModalHeadingColor, marginTop: 8 }}>
                   {grade.score} / {grade.total} correct!
                 </div>
                 <div style={{ fontSize: 32, marginTop: 8 }}>
                   {"*".repeat(grade.stars)}{".".repeat(3 - grade.stars)}
                 </div>
                 {grade.new_stars_awarded > 0 && (
-                  <div style={{ fontSize: 18, color: "#667eea", marginTop: 8 }}>
+                  <div style={{ fontSize: 18, color: kidsModalAccentColor, marginTop: 8 }}>
                     {grade.encouragements[0]}
                   </div>
                 )}
@@ -965,7 +965,7 @@ export default function KidsReaderPage() {
                         {speakingId === `answer-${i}` ? <VolumeX size={15} /> : <Volume2 size={15} />}
                       </button>
                     </div>
-                    <div style={{ fontSize: 14, color: "#4a5568", marginTop: 6 }}>{q.explanation}</div>
+                    <div style={{ fontSize: 14, color: kidsModalTextColor, marginTop: 6 }}>{q.explanation}</div>
                   </div>
                 ))}
                 <button
@@ -978,7 +978,7 @@ export default function KidsReaderPage() {
             ) : quizLoading ? (
               <div style={{ textAlign: "center", padding: 40 }}>
                 <div style={{ fontSize: 48 }}>?</div>
-                <p style={{ fontSize: 18, color: "#667eea" }}>Getting 3 questions...</p>
+                <p style={{ fontSize: 18, color: kidsModalAccentColor }}>Getting 3 questions...</p>
                 <button style={{ ...bigBtn, marginTop: 16, background: "#e2e8f0" }} onClick={closeLearnQuestions}>
                   Close
                 </button>
@@ -992,16 +992,16 @@ export default function KidsReaderPage() {
               </div>
             ) : (
               <div>
-                <h2 style={{ fontSize: 24, fontWeight: 800, color: "#4a3f6b", marginBottom: 16 }}>
+                <h2 style={{ fontSize: 24, fontWeight: 800, color: kidsModalHeadingColor, marginBottom: 16 }}>
                   Look and Think
                 </h2>
-                <p style={{ fontSize: 15, color: "#7c6f9b", marginBottom: 16 }}>
+                <p style={{ fontSize: 15, color: kidsModalTextColor, marginBottom: 16 }}>
                   Look closely, then choose what you think.
                 </p>
                 {questions.map((q, qi) => (
                   <div key={qi} style={{ marginBottom: 20 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#7c6f9b" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: kidsModalTextColor }}>
                         Question {qi + 1}
                       </div>
                       <button
@@ -1013,7 +1013,7 @@ export default function KidsReaderPage() {
                         {speakingId === `question-${qi}` ? <VolumeX size={15} /> : <Volume2 size={15} />}
                       </button>
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: "#2d3748", marginBottom: 8, textAlign: "left" }}>
+                    <div style={{ fontSize: 18, fontWeight: 600, color: kidsModalHeadingColor, marginBottom: 8, textAlign: "left" }}>
                       {q.question}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -1088,6 +1088,10 @@ const toolbarBtn: React.CSSProperties = {
   color: "#4a5568",
 };
 
+const kidsModalHeadingColor = "#1f2937";
+const kidsModalTextColor = "#374151";
+const kidsModalAccentColor = "#4338ca";
+
 const bigBtn: React.CSSProperties = {
   border: "none",
   borderRadius: 16,
@@ -1135,7 +1139,7 @@ const speechBtn: React.CSSProperties = {
   border: "2px solid #e2e8f0",
   borderRadius: 12,
   background: "#f7fafc",
-  color: "#667eea",
+  color: kidsModalAccentColor,
   cursor: "pointer",
 };
 
