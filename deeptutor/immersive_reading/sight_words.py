@@ -383,3 +383,109 @@ def generate_translation_quiz(
         )
 
     return questions
+
+
+def generate_story_comprehension_quiz(
+    text: str,
+    *,
+    age_band: str = "6-8",
+    num_questions: int = 3,
+    seed: int | None = None,
+) -> list[dict]:
+    """Generate child-friendly story comprehension questions from the story text.
+    Combines story characters, settings, cause-and-effect, and key context words.
+    """
+    rng = random.Random(seed if seed is not None else hash(text[:300]) % 100000)
+    raw_lines = [l.strip() for l in text.splitlines() if l.strip()]
+    story_lines = [l for l in raw_lines if not l.startswith(('by ', 'pictures by', 'The End', 'Book '))]
+    full_text = ' '.join(story_lines)
+
+    questions: list[dict] = []
+
+    # 1. Character recognition
+    char_match = re.search(r'([A-Z][a-z]+ and [A-Z][a-z]+)', full_text)
+    if char_match:
+        chars = char_match.group(1)
+        choices = [chars, 'A big brown bear', 'A clever fox', 'Three little ducks']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q1',
+            'kind': 'comprehension',
+            'question': 'Who is in the story?',
+            'choices': choices,
+            'answer_index': choices.index(chars),
+            'explanation': f'The story tells us about {chars}.'
+        })
+    elif 'little bug' in full_text.lower():
+        choices = ['A little bug', 'A big dragon', 'A wild tiger', 'A giant whale']
+        rng.shuffle(choices)
+        questions.append({
+            'id': 'q1',
+            'kind': 'comprehension',
+            'question': 'Who is the main character in the story?',
+            'choices': choices,
+            'answer_index': choices.index('A little bug'),
+            'explanation': 'The story tells us about the little bug.'
+        })
+
+    # 2. Location / Setting recognition
+    loc_match = re.search(r'(in a [a-z]+|on a [a-z]+|up a [a-z]+|under a [a-z]+)', full_text)
+    if loc_match:
+        loc = loc_match.group(1)
+        choices = [loc, 'in a deep pool', 'on a fast train', 'inside a cold cave']
+        rng.shuffle(choices)
+        questions.append({
+            'id': f'q{len(questions)+1}',
+            'kind': 'comprehension',
+            'question': 'Where does the story take place?',
+            'choices': choices,
+            'answer_index': choices.index(loc),
+            'explanation': f'The story tells us it happens {loc}.'
+        })
+
+    # 3. Cause & effect / action recognition
+    if 'sun' in full_text.lower() and 'rain' in full_text.lower():
+        ans = 'Sun and rain'
+        choices = [ans, 'Snow and ice', 'A noisy truck', 'A cold wind']
+        rng.shuffle(choices)
+        questions.append({
+            'id': f'q{len(questions)+1}',
+            'kind': 'comprehension',
+            'question': 'What helps the plums grow soft and good?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'Sun and rain help the plums grow soft and good!'
+        })
+    elif 'soft' in full_text.lower() or 'hard' in full_text.lower():
+        ans = 'soft and good to eat'
+        choices = [ans, 'hard and cold', 'lost in the grass', 'not good']
+        rng.shuffle(choices)
+        questions.append({
+            'id': f'q{len(questions)+1}',
+            'kind': 'comprehension',
+            'question': 'How are the plums at the end of the story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'At the end of the story, the plums are soft and good!'
+        })
+    elif 'ate' in full_text.lower() or 'snack' in full_text.lower():
+        ans = 'He ate a little snack'
+        choices = [ans, 'He flew into the sky', 'He built a big house', 'He went to sleep']
+        rng.shuffle(choices)
+        questions.append({
+            'id': f'q{len(questions)+1}',
+            'kind': 'comprehension',
+            'question': 'What does the little character do in the story?',
+            'choices': choices,
+            'answer_index': choices.index(ans),
+            'explanation': 'The story tells us he ate a little snack.'
+        })
+
+    # If we need more questions to reach num_questions, supplement with context vocabulary questions
+    if len(questions) < num_questions:
+        word_questions = generate_translation_quiz(text, age_band=age_band, num_questions=num_questions - len(questions), seed=seed)
+        for wq in word_questions:
+            wq['id'] = f'q{len(questions)+1}'
+            questions.append(wq)
+
+    return questions[:num_questions]

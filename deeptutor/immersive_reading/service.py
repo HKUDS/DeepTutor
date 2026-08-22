@@ -1969,15 +1969,15 @@ class ImmersiveReadingService:
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
 
-    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v3"
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v4"
 
     def _kids_fallback_questions(
         self, content: str, age_band: str, existing_questions: list[KidsQuizQuestion]
     ) -> list[KidsQuizQuestion]:
-        from deeptutor.immersive_reading.sight_words import generate_translation_quiz
+        from deeptutor.immersive_reading.sight_words import generate_story_comprehension_quiz
 
         existing_texts = {q.question.strip().lower() for q in existing_questions}
-        fallbacks = generate_translation_quiz(content, age_band=age_band, num_questions=9)
+        fallbacks = generate_story_comprehension_quiz(content, age_band=age_band, num_questions=9)
         questions: list[KidsQuizQuestion] = []
         for i, fallback in enumerate(fallbacks, start=len(existing_questions) + 1):
             if fallback["question"].strip().lower() in existing_texts:
@@ -2046,31 +2046,34 @@ class ImmersiveReadingService:
 
         if age_band == "9-12":
             system = (
-                "You create vocabulary quizzes for readers aged 9-12. "
-                "Generate exactly 3 multiple-choice questions asking what words from the story mean. "
-                "Choose interesting or challenging words (not basic words like 'the' or 'and'). "
-                "Definitions should be clear and simple but not childish. "
-                "For example, for the word 'venture', return question \"What does 'venture' mean?\" and choices "
-                '["a risky journey", "a type of food", "a loud noise", "a small animal"]. '
-                "Use concrete story words, not schema placeholders. Each question has exactly 4 choices. Return JSON only: "
-                '{"questions":[{"id":"q1","kind":"comprehension","question":"What does venture mean?",'
-                '"choices":["a risky journey","a type of food","a loud noise","a small animal"],'
-                '"answer_index":0,"explanation":"Venture means a risky journey."}]}'
+                "You create engaging reading comprehension quizzes for readers aged 9-12. "
+                "Based on the provided story text, generate exactly 3 multiple-choice questions: "
+                "1. Question 1 (Plot & Character): What happens or why does a character take action? "
+                "2. Question 2 (Inference & Cause/Effect): What can be inferred or what is the consequence of an event? "
+                "3. Question 3 (Vocabulary in Context or Theme): What does a key phrase mean in context or what is the main lesson? "
+                "Each question must have exactly 4 choices (one correct, three plausible distractors). "
+                "Return JSON only matching the schema: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"...","choices":["a","b","c","d"],"answer_index":0,"explanation":"..."}]}'
+            )
+        elif age_band == "6-8":
+            system = (
+                "You create fun, child-friendly reading comprehension quizzes for early readers aged 6-8. "
+                "Based on the provided story text, generate exactly 3 multiple-choice questions that test STORY UNDERSTANDING (not just dictionary definitions): "
+                "1. Question 1 (Story detail / Who or Where): Who is in the story, or where does the action happen? (e.g. 'Where are the plums in the story?' Choices: ['in a tree', 'under the bed', 'on a truck', 'in a pool']) "
+                "2. Question 2 (Cause & Effect / What happened): Why did something happen or what helped something change? (e.g. 'What makes the plums soft and good?' Choices: ['Sun and rain', 'Snow and ice', 'A big rock', 'A small bug']) "
+                "3. Question 3 (Story conclusion / Meaning in context): How does the story end, or how do the characters feel? (e.g. 'How are the plums at the end of the story?' Choices: ['soft and good to eat', 'hard and cold', 'lost far away', 'not good']) "
+                "Keep questions and choices very simple, short, and clear (2-6 words per choice). "
+                "Each question must have exactly 4 choices and exactly 1 correct answer. "
+                "Return JSON only matching the schema: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"...","choices":["a","b","c","d"],"answer_index":0,"explanation":"..."}]}'
             )
         else:
             system = (
-                "You create simple vocabulary quizzes for children learning English. "
-                "Generate exactly 3 multiple-choice questions. "
-                "Each question asks what a word from the story means, using very simple English. "
-                "For example, for the word 'said', return question \"What does 'said' mean?\" and choices "
-                '["talked", "ran", "sat", "ate"]. '
-                "Pick words that actually appear in the story. "
-                "Use very short, simple definitions a child can understand. "
-                "Each question has exactly 4 choices. "
-                "Use concrete story words, not schema placeholders. Return JSON only: "
-                '{"questions":[{"id":"q1","kind":"comprehension","question":"What does said mean?",'
-                '"choices":["talked","ran","sat","ate"],"answer_index":0,'
-                '"explanation":"Said means talked."}]}'
+                "You create simple picture-book quizzes for young children aged 3-5. "
+                "Based on the story text, generate exactly 3 very simple multiple-choice questions about the characters and main objects in the story. "
+                "Choices must be 1-3 simple words. Each question has 4 choices. "
+                "Return JSON only matching the schema: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"...","choices":["a","b","c","d"],"answer_index":0,"explanation":"..."}]}'
             )
 
         raw = await complete(
@@ -2333,14 +2336,15 @@ class KidsManager:
         available_through_section_id: str = "",
         available_through_section_index: int = 999,
     ) -> KidsBookAssignment:
-        existing = self.list_assignments(profile_id)
+        all_assignments = self.list_assignments()
+        existing = [a for a in all_assignments if a.profile_id == profile_id]
         match = next((a for a in existing if a.document_id == document_id), None)
         if match:
             match.status = "active"
             match.available_through_section_id = available_through_section_id
             match.available_through_section_index = available_through_section_index
             match.updated_at = time.time()
-            self._save_assignments()
+            self._save_assignments(all_assignments)
             return match
 
         ir_service = get_immersive_reading_service()
@@ -2356,8 +2360,8 @@ class KidsManager:
             available_through_section_index=available_through_section_index,
             sort_order=sort_order,
         )
-        existing.append(assignment)
-        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in existing])
+        all_assignments.append(assignment)
+        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in all_assignments])
         return assignment
 
     def assign_interactive_book(
@@ -2368,7 +2372,8 @@ class KidsManager:
         title: str = "",
         available_through_page_order: int = 999,
     ) -> KidsBookAssignment:
-        existing = self.list_assignments(profile_id)
+        all_assignments = self.list_assignments()
+        existing = [a for a in all_assignments if a.profile_id == profile_id]
         match = next(
             (a for a in existing if a.book_id == book_id and a.content_type == "interactive_book"),
             None,
@@ -2377,7 +2382,7 @@ class KidsManager:
             match.status = "active"
             match.available_through_page_order = available_through_page_order
             match.updated_at = time.time()
-            self._save_assignments()
+            self._save_assignments(all_assignments)
             return match
 
         from deeptutor.book.storage import get_book_storage
@@ -2395,8 +2400,8 @@ class KidsManager:
             available_through_page_order=available_through_page_order,
             sort_order=sort_order,
         )
-        existing.append(assignment)
-        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in existing])
+        all_assignments.append(assignment)
+        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in all_assignments])
         return assignment
 
     def unassign_book(self, profile_id: str, document_id: str) -> None:
@@ -2437,8 +2442,8 @@ class KidsManager:
         _write_json(self._assignments_path(), [aa.model_dump(mode="json") for aa in assignments])
         return a
 
-    def _save_assignments(self) -> None:
-        assignments = self.list_assignments()
+    def _save_assignments(self, assignments: list[KidsBookAssignment] | None = None) -> None:
+        assignments = assignments if assignments is not None else self.list_assignments()
         _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
 
     def get_kids_library(self, profile_id: str) -> list[dict[str, Any]]:
