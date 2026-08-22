@@ -7,8 +7,10 @@ cookie or Authorization header and gates access to only the assigned books.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
+import json
 import logging
 import re
 import time
@@ -19,6 +21,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
+from deeptutor.immersive_reading.kids_word_hints import build_kids_word_hint
 from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
 from deeptutor.immersive_reading.service import get_kids_manager
 
@@ -476,11 +479,7 @@ async def submit_kids_quiz(
         )
 
     total = len(cached.questions)
-    stars = 1 if correct > 0 else 0
-    if correct >= total * 0.6:
-        stars = 2
-    if correct == total:
-        stars = 3
+    stars = 3 if total > 0 and correct == total else 0
 
     encouragements = [
         "Great job!"
@@ -510,6 +509,165 @@ async def submit_kids_quiz(
         "completed_section_ids": progress.completed_section_ids,
         "per_question": per_question,
         "encouragements": encouragements,
+    }
+
+
+# ── Translation (for double-tap Chinese) ────────────────────────────────────
+
+
+# ── Guided word hints ───────────────────────────────────────────────────────
+
+
+class KidsWordHintRequest(BaseModel):
+    word: str = Field(min_length=1, max_length=80)
+    section_id: str = Field(min_length=1, max_length=120)
+    context: str = Field(default="", max_length=2000)
+
+
+class KidsWordHintChoicesRequest(BaseModel):
+    hint_id: str = Field(min_length=10, max_length=4096)
+
+
+class KidsWordHintCheckRequest(KidsWordHintChoicesRequest):
+    choice: str = Field(min_length=1, max_length=500)
+    attempt: int = Field(default=1, ge=1, le=2)
+
+
+def _hint_payload_bytes(payload: dict[str, Any]) -> bytes:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+
+
+def _encode_word_hint_token(
+    *,
+    document_id: str,
+    profile_id: str,
+    section_id: str,
+    hint,
+) -> str:
+    payload = {
+        "v": 1,
+        "document_id": document_id,
+        "profile_id": profile_id,
+        "section_id": section_id,
+        "word": hint.word,
+        "correct_choice": hint.correct_choice,
+        "chinese": hint.chinese,
+        "choices": list(hint.choices),
+    }
+    encoded = base64.urlsafe_b64encode(_hint_payload_bytes(payload)).decode().rstrip("=")
+    signature = hmac.new(_DEVICE_SECRET.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _decode_word_hint_token(
+    token: str, *, document_id: str, profile_id: str
+) -> dict[str, Any] | None:
+    try:
+        encoded, signature = token.rsplit(".", 1)
+        expected = hmac.new(_DEVICE_SECRET.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        padding = "=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+    if payload.get("document_id") != document_id or payload.get("profile_id") != profile_id:
+        return None
+    if payload.get("v") != 1 or not isinstance(payload.get("choices"), list):
+        return None
+    return payload
+
+
+def _authorized_hint_section(document_id: str, section_id: str, profile_id: str):
+    manager = get_kids_manager()
+    ir = get_immersive_reading_service()
+    section = _resolve_kids_reading_section(ir, document_id, section_id)
+    if section is None or not manager.is_section_allowed(profile_id, document_id, section.index):
+        return None
+    return section
+
+
+@router.post("/books/{document_id}/word-hint")
+async def get_kids_word_hint(
+    document_id: str,
+    request: KidsWordHintRequest,
+    profile_id: str = Depends(_require_profile),
+) -> dict:
+    section = _authorized_hint_section(document_id, request.section_id, profile_id)
+    if section is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    profile = get_kids_manager().get_profile(profile_id)
+    hint = build_kids_word_hint(request.word, profile.age_band if profile else "6-8")
+    if hint is None:
+        return {"available": False, "word": request.word.strip()}
+    return {
+        "available": True,
+        "hint_id": _encode_word_hint_token(
+            document_id=document_id,
+            profile_id=profile_id,
+            section_id=section.id,
+            hint=hint,
+        ),
+        "word": hint.word,
+        "phonetic": hint.phonetic,
+        "english_hint": hint.english_hint,
+    }
+
+
+@router.post("/books/{document_id}/word-hint/choices")
+async def get_kids_word_hint_choices(
+    document_id: str,
+    request: KidsWordHintChoicesRequest,
+    profile_id: str = Depends(_require_profile),
+) -> dict:
+    payload = _decode_word_hint_token(
+        request.hint_id, document_id=document_id, profile_id=profile_id
+    )
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Word hint not found")
+    return {"choices": payload["choices"]}
+
+
+@router.post("/books/{document_id}/word-hint/check")
+async def check_kids_word_hint(
+    document_id: str,
+    request: KidsWordHintCheckRequest,
+    profile_id: str = Depends(_require_profile),
+) -> dict:
+    payload = _decode_word_hint_token(
+        request.hint_id, document_id=document_id, profile_id=profile_id
+    )
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Word hint not found")
+    correct = request.choice == payload["correct_choice"]
+    if correct:
+        return {"correct": True, "feedback": "Yes! You thought it out."}
+    if request.attempt < 2:
+        return {"correct": False, "feedback": "Think again."}
+    return {
+        "correct": False,
+        "feedback": "Let us look together.",
+        "correct_choice": payload["correct_choice"],
+        "chinese": payload["chinese"],
+        "explanation": f'"{payload["word"]}" means {payload["correct_choice"].lower()}.',
+    }
+
+
+@router.post("/books/{document_id}/word-hint/reveal")
+async def reveal_kids_word_hint(
+    document_id: str,
+    request: KidsWordHintChoicesRequest,
+    profile_id: str = Depends(_require_profile),
+) -> dict:
+    payload = _decode_word_hint_token(
+        request.hint_id, document_id=document_id, profile_id=profile_id
+    )
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Word hint not found")
+    return {
+        "correct_choice": payload["correct_choice"],
+        "chinese": payload["chinese"],
+        "explanation": f'"{payload["word"]}" means {payload["correct_choice"].lower()}.',
     }
 
 
