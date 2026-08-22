@@ -19,6 +19,7 @@ const STREAM_CHARACTER_LIMIT = 80;
 
 let currentAudio: HTMLAudioElement | null = null;
 let currentUtterance: SpeechSynthesisUtterance | null = null;
+let speechSessionToken = 0;
 const activeUtterances = new Set<SpeechSynthesisUtterance>();
 const audioCache = new Map<string, HTMLAudioElement>();
 
@@ -62,9 +63,10 @@ export function subscribeKidsSpeechState(
 
 export function cleanTextForSpeech(text: string): string {
   if (!text) return "";
+  const isChinese = /[\u4e00-\u9fa5]/.test(text);
   return text
     // Strip markdown code fences and inline code
-    .replace(/```[\s\S]*?```/g, " 代码示例 ")
+    .replace(/```[\s\S]*?```/g, isChinese ? " 代码示例 " : " code example ")
     .replace(/`([^`]+)`/g, "$1")
     // Strip markdown headers
     .replace(/^#{1,6}\s+/gm, "")
@@ -81,10 +83,50 @@ export function cleanTextForSpeech(text: string): string {
     .replace(/[💡⭐🎉❓🍎🪙🌕🚀⏹🔄✨🔍🔢📖•]/g, "")
     // Strip LaTeX math delimiters
     .replace(/\$([^$]+)\$/g, "$1")
-    // Clean up excessive whitespace & line breaks into natural pauses
-    .replace(/\n+/g, "，")
-    .replace(/\s+/g, " ")
+    // Replace multiple newlines with single newline for natural pauses
+    .replace(/\n{2,}/g, "\n")
+    .replace(/[ \t]+/g, " ")
     .trim();
+}
+
+export function splitTextIntoSentences(text: string): string[] {
+  if (!text) return [];
+  const isChinese = /[\u4e00-\u9fa5]/.test(text);
+  // Split on sentence endings and newlines
+  const rawChunks = text
+    .split(isChinese ? /(?<=[。！？；\n]+)/ : /(?<=[.?!;:\n]+)\s+/)
+    .map((s) => s.replace(/\n+/g, " ").trim())
+    .filter(Boolean);
+
+  const sentences: string[] = [];
+  for (const chunk of rawChunks) {
+    if (chunk.length <= 160) {
+      sentences.push(chunk);
+    } else {
+      const subChunks = chunk
+        .split(isChinese ? /(?<=[，、])/ : /(?<=[,])\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const sub of subChunks) {
+        if (sub.length <= 160) {
+          sentences.push(sub);
+        } else {
+          const words = sub.split(/\s+/);
+          let current = "";
+          for (const w of words) {
+            if ((current + " " + w).trim().length > 160) {
+              if (current) sentences.push(current.trim());
+              current = w;
+            } else {
+              current = current ? current + " " + w : w;
+            }
+          }
+          if (current.trim()) sentences.push(current.trim());
+        }
+      }
+    }
+  }
+  return sentences.length > 0 ? sentences : [text.trim()];
 }
 
 export function detectTextLanguage(text: string): "zh-CN" | "en-US" {
@@ -107,6 +149,7 @@ export function shouldUsePronunciationStream(text: string): boolean {
 }
 
 export function stopKidsSpeech(): void {
+  speechSessionToken += 1;
   if (currentAudio) {
     try {
       currentAudio.pause();
@@ -169,6 +212,7 @@ function selectVoice(synthesis: SpeechSynthesis, lang: string): SpeechSynthesisV
 }
 
 function speakWithWebSpeech(
+  id: string,
   text: string,
   lang: KidsSpeechAccent,
   handlers: KidsSpeechHandlers,
@@ -186,41 +230,71 @@ function speakWithWebSpeech(
   if (!cleaned) return false;
 
   const effectiveLang = detectTextLanguage(cleaned);
-  const utterance = new SpeechSynthesisUtterance(cleaned);
-  utterance.lang = effectiveLang;
-  utterance.rate = effectiveLang.startsWith("zh") ? CHINESE_RATE : DEFAULT_RATE;
-  utterance.pitch = 1.0;
-  const voice = selectVoice(synthesis, effectiveLang);
-  if (voice) utterance.voice = voice;
+  const sentences = splitTextIntoSentences(cleaned);
+  if (sentences.length === 0) return false;
 
-  currentUtterance = utterance;
-  activeUtterances.add(utterance);
-  utterance.onstart = () => {
-    notify({ isPlaying: true, text: cleaned, accent: effectiveLang });
-    handlers.onStart?.();
-  };
-  utterance.onend = () => {
-    activeUtterances.delete(utterance);
-    if (currentUtterance === utterance) currentUtterance = null;
-    notify({ isPlaying: false, text: null, accent: null });
-    handlers.onEnd?.();
-  };
-  utterance.onerror = (event) => {
-    activeUtterances.delete(utterance);
-    if (currentUtterance === utterance) currentUtterance = null;
-    notify({ isPlaying: false, text: null, accent: null });
-    handlers.onError?.(event.error || "Speech synthesis error");
+  speechSessionToken += 1;
+  const sessionToken = speechSessionToken;
+  let currentIndex = 0;
+
+  const speakNext = () => {
+    if (sessionToken !== speechSessionToken) return;
+    if (currentIndex >= sentences.length) {
+      currentUtterance = null;
+      notify({ isPlaying: false, text: null, accent: null });
+      handlers.onEnd?.();
+      return;
+    }
+
+    const sentence = sentences[currentIndex];
+    const utterance = new SpeechSynthesisUtterance(sentence);
+    utterance.lang = effectiveLang;
+    utterance.rate = effectiveLang.startsWith("zh") ? CHINESE_RATE : DEFAULT_RATE;
+    utterance.pitch = 1.0;
+    const voice = selectVoice(synthesis, effectiveLang);
+    if (voice) utterance.voice = voice;
+
+    currentUtterance = utterance;
+    activeUtterances.add(utterance);
+
+    utterance.onstart = () => {
+      if (sessionToken !== speechSessionToken) return;
+      if (currentIndex === 0) {
+        notify({ isPlaying: true, text: id, accent: effectiveLang });
+        handlers.onStart?.();
+      }
+    };
+
+    utterance.onend = () => {
+      activeUtterances.delete(utterance);
+      if (sessionToken !== speechSessionToken) return;
+      currentIndex += 1;
+      speakNext();
+    };
+
+    utterance.onerror = (event) => {
+      activeUtterances.delete(utterance);
+      if (sessionToken !== speechSessionToken) return;
+      if (event.error === "interrupted" || event.error === "canceled") {
+        return;
+      }
+      currentUtterance = null;
+      notify({ isPlaying: false, text: null, accent: null });
+      handlers.onError?.(event.error || "Speech synthesis error");
+    };
+
+    try {
+      synthesis.speak(utterance);
+    } catch (error) {
+      activeUtterances.delete(utterance);
+      currentUtterance = null;
+      notify({ isPlaying: false, text: null, accent: null });
+      handlers.onError?.(error instanceof Error ? error : String(error));
+    }
   };
 
-  try {
-    synthesis.speak(utterance);
-    return true;
-  } catch (error) {
-    activeUtterances.delete(utterance);
-    currentUtterance = null;
-    handlers.onError?.(error instanceof Error ? error : String(error));
-    return false;
-  }
+  speakNext();
+  return true;
 }
 
 export function speakKidsText(
@@ -235,7 +309,7 @@ export function speakKidsText(
   const accent: KidsSpeechAccent = isChinese ? "zh-CN" : "en-US";
 
   if (isChinese || !shouldUsePronunciationStream(clean) || typeof window === "undefined" || typeof Audio === "undefined") {
-    return speakWithWebSpeech(clean, accent, handlers);
+    return speakWithWebSpeech(id, clean, accent, handlers);
   }
 
   const url = getKidsPronunciationAudioUrl(clean, accent);
@@ -260,7 +334,7 @@ export function speakKidsText(
     if (currentAudio === audio) currentAudio = null;
     audio?.removeEventListener("ended", finish);
     audio?.removeEventListener("error", fallback);
-    speakWithWebSpeech(clean, accent, handlers);
+    speakWithWebSpeech(id, clean, accent, handlers);
   };
 
   audio.addEventListener("ended", finish, { once: true });
@@ -275,6 +349,6 @@ export function speakKidsText(
     return true;
   } catch {
     fallback();
-    return speakWithWebSpeech(clean, accent, handlers);
+    return speakWithWebSpeech(id, clean, accent, handlers);
   }
 }

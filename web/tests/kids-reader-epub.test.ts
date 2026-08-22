@@ -53,6 +53,8 @@ test("kids reader protects the restored learning golden path", () => {
   assert.match(readerSource, /speakKidsText/);
   assert.match(readerSource, /stopKidsSpeech/);
   assert.match(readerSource, /shownSectionIdsRef/);
+  assert.match(readerSource, /handleReadAloud/);
+  assert.match(readerSource, /doc\.body\.innerText/);
   assert.doesNotMatch(readerSource, /speechSynthesis/);
 });
 

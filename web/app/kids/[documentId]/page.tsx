@@ -235,14 +235,58 @@ export default function KidsReaderPage() {
     if (!started) setSpeakingId(null);
   }, [speakingId, stopSpeaking]);
 
-  const speakSelection = useCallback(() => {
-    if (!renditionRef.current) return;
-    const selection = renditionRef.current.getRange?.();
-    if (!selection) return;
-    const text = selection.toString();
-    if (!text.trim()) return;
-    narrate("read-aloud", text);
-  }, [narrate]);
+  const handleReadAloud = useCallback(() => {
+    if (speakingId === "read-aloud") {
+      stopSpeaking();
+      return;
+    }
+
+    let textToRead = "";
+    try {
+      const iframeWindow = (renditionRef.current as any)?.getContents?.()?.[0]?.window;
+      const iframeSel = iframeWindow?.getSelection?.()?.toString()?.trim();
+      if (iframeSel) {
+        textToRead = iframeSel;
+      }
+    } catch {}
+
+    if (!textToRead) {
+      try {
+        const winSel = window.getSelection?.()?.toString()?.trim();
+        if (winSel) {
+          textToRead = winSel;
+        }
+      } catch {}
+    }
+
+    if (!textToRead && renditionRef.current) {
+      try {
+        const contents = (renditionRef.current as any)?.getContents?.();
+        if (contents && contents.length > 0) {
+          for (const content of contents) {
+            const doc = content?.document as Document | undefined;
+            if (doc?.body) {
+              const bodyText = doc.body.innerText || doc.body.textContent || "";
+              if (bodyText.trim()) {
+                textToRead = bodyText.trim();
+                break;
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (!textToRead && bookTitle) {
+      textToRead = bookTitle;
+    }
+
+    if (!textToRead.trim()) return;
+
+    narrate("read-aloud", textToRead);
+  }, [bookTitle, narrate, speakingId, stopSpeaking]);
+
+  const speakSelection = handleReadAloud;
 
   const speakQuizText = useCallback((id: string, text: string) => {
     narrate(id, text);
@@ -568,7 +612,7 @@ export default function KidsReaderPage() {
         <ReactReader
           url={epubUrl}
           location={location ?? null}
-          locationChanged={(loc: string) => setLocation(loc)}
+          locationChanged={(loc: string) => { stopKidsSpeech(); setLocation(loc); }}
           tocChanged={(t: NavItem[]) => {
             setToc(t);
             tocRef.current = t;
@@ -652,7 +696,7 @@ export default function KidsReaderPage() {
       }}>
         <button
           style={{ ...bottomActionBtn, background: speakingId === "read-aloud" ? "#fed7d7" : "#e9d8fd" }}
-          onClick={speakingId === "read-aloud" ? stopSpeaking : speakSelection}
+          onClick={handleReadAloud}
         >
           {speakingId === "read-aloud" ? "Stop" : "Read Aloud"}
         </button>
