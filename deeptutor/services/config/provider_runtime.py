@@ -736,6 +736,13 @@ def resolve_llm_runtime_config(
     active_api_base = _as_str((profile or {}).get("base_url"))
     active_api_version = _as_str((profile or {}).get("api_version"))
     reasoning_effort = _as_str((model or {}).get("reasoning_effort")) or None
+    # Per-conversation override (#641): an explicit reasoning_effort on the
+    # caller's LLMSelection takes precedence over the profile/model default
+    # resolved above. The model/global config value stays the fallback when
+    # no override is present, preserving today's behavior.
+    selection_effort = LLMSelection.from_payload(llm_selection)
+    if selection_effort is not None and selection_effort.reasoning_effort:
+        reasoning_effort = selection_effort.reasoning_effort
     active_extra_headers = _to_headers((profile or {}).get("extra_headers"))
     context_window = _coerce_optional_int((model or {}).get("context_window"))
     if context_window is None:

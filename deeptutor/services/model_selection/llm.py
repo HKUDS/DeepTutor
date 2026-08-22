@@ -8,6 +8,22 @@ from typing import Any
 
 from deeptutor.services.provider_registry import find_by_name
 
+# Reasoning-effort vocabulary already used elsewhere in the codebase (see
+# services/llm/reasoning_params.py and services/subagent/models.py) — kept
+# here as the single source of truth for what a conversation-level override
+# (#641) may request. Not every provider/model supports every value; callers
+# that need a narrower, model-specific list should filter client-side before
+# submitting a selection.
+VALID_REASONING_EFFORTS: tuple[str, ...] = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class LLMSelection:
@@ -15,10 +31,17 @@ class LLMSelection:
 
     The selection intentionally carries IDs only. Provider secrets stay in the
     server-side catalog and are resolved only at runtime.
+
+    ``reasoning_effort`` is an optional per-conversation override (#641):
+    when set, it takes precedence over the profile/model's own
+    ``reasoning_effort`` default for calls made with this selection. ``None``
+    means "no override" — the existing profile/global/provider default
+    resolution applies unchanged.
     """
 
     profile_id: str
     model_id: str
+    reasoning_effort: str | None = None
 
     @classmethod
     def from_payload(cls, value: Any) -> "LLMSelection | None":
@@ -35,10 +58,21 @@ class LLMSelection:
             return None
         if not profile_id or not model_id:
             raise ValueError("Invalid LLM selection: profile_id and model_id are required.")
-        return cls(profile_id=profile_id, model_id=model_id)
+
+        reasoning_effort = str(value.get("reasoning_effort") or "").strip().lower() or None
+        if reasoning_effort is not None and reasoning_effort not in VALID_REASONING_EFFORTS:
+            raise ValueError(
+                "Invalid LLM selection: unsupported reasoning_effort "
+                f"{reasoning_effort!r}. Expected one of "
+                f"{', '.join(VALID_REASONING_EFFORTS)}."
+            )
+        return cls(profile_id=profile_id, model_id=model_id, reasoning_effort=reasoning_effort)
 
     def to_dict(self) -> dict[str, str]:
-        return {"profile_id": self.profile_id, "model_id": self.model_id}
+        payload = {"profile_id": self.profile_id, "model_id": self.model_id}
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
+        return payload
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -135,4 +169,9 @@ def apply_llm_selection_to_catalog(
     raise ValueError("Invalid LLM selection: selected profile/model was not found.")
 
 
-__all__ = ["LLMSelection", "apply_llm_selection_to_catalog", "list_llm_options"]
+__all__ = [
+    "LLMSelection",
+    "VALID_REASONING_EFFORTS",
+    "apply_llm_selection_to_catalog",
+    "list_llm_options",
+]
