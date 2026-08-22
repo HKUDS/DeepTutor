@@ -223,6 +223,42 @@ export function useChatAutoScroll({
     };
   }, [hasMessages, isStreaming, pinToBottom]);
 
+  // QuizViewer is loaded with ``next/dynamic({ssr:false})``. The first JS
+  // chunk can land after the 4s generic post-stream window, leaving the
+  // card below the fold until the user scrolls (issue #955). Watch for
+  // ``[data-chat-grow]`` so expanding a trace ``<details>`` still does not
+  // re-pin after the short window.
+  const LATE_VIEWER_AUTOSCROLL_WINDOW_MS = 12_000;
+  useEffect(() => {
+    if (isStreaming || !hasMessages) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const pinGrowTarget = (): boolean => {
+      if (!shouldAutoScrollRef.current) return false;
+      if (!container.querySelector("[data-chat-grow]")) return false;
+      pinToBottom();
+      return true;
+    };
+
+    if (pinGrowTarget()) return;
+
+    const deadline = performance.now() + LATE_VIEWER_AUTOSCROLL_WINDOW_MS;
+    const mo = new MutationObserver(() => {
+      if (performance.now() > deadline) return;
+      if (pinGrowTarget()) mo.disconnect();
+    });
+    mo.observe(container, { childList: true, subtree: true });
+    const stopTimer = window.setTimeout(
+      () => mo.disconnect(),
+      LATE_VIEWER_AUTOSCROLL_WINDOW_MS,
+    );
+    return () => {
+      window.clearTimeout(stopTimer);
+      mo.disconnect();
+    };
+  }, [hasMessages, isStreaming, pinToBottom]);
+
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
