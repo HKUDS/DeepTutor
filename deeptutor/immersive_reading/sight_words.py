@@ -391,12 +391,17 @@ def generate_story_comprehension_quiz(
     *,
     age_band: str = "6-8",
     num_questions: int = 3,
+    language: str = "en",
     seed: int | None = None,
 ) -> list[dict]:
     """Generate child-friendly story comprehension questions from the story text.
     Combines story characters, settings, cause-and-effect, and key context words.
     """
     rng = random.Random(seed if seed is not None else hash(text[:300]) % 100000)
+    if language == "zh":
+        return _generate_chinese_comprehension_quiz(
+            text, num_questions=num_questions, rng=rng
+        )
     raw_lines = [l.strip() for l in text.splitlines() if l.strip()]
     story_lines = [
         l for l in raw_lines
@@ -745,4 +750,101 @@ def generate_story_comprehension_quiz(
             'explanation': 'The story ends happily with friends having fun!'
         })
 
+    return questions[:num_questions]
+
+
+def detect_quiz_language(text: str, preferred_language: str = "en") -> str:
+    """Choose a quiz language from the reading material, not the prompt template."""
+    readable = [char for char in text if not char.isspace()]
+    if not readable:
+        return "zh" if preferred_language == "zh" else "en"
+    cjk_count = sum(1 for char in readable if "\u4e00" <= char <= "\u9fff")
+    return "zh" if cjk_count / len(readable) >= 0.15 else "en"
+
+
+def _generate_chinese_comprehension_quiz(
+    text: str, *, num_questions: int, rng: random.Random
+) -> list[dict]:
+    """Build content-anchored Chinese questions for Chinese children's books."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    topic = next(
+        (
+            line
+            for line in lines
+            if 4 <= len(line) <= 40
+            and not line.startswith(("版权信息", "目录", "出版", "作者", "责任编辑"))
+        ),
+        "这一章的内容",
+    )
+    normalized = "".join(text.split())
+    sentence_parts = []
+    for part in re.split(r"[。！？；]", normalized):
+        part = part.strip("，、： ""''“”")
+        if 14 <= len(part) <= 48 and not re.match(r"^\d|^(版权|目录|出版|作者|责任编辑)", part):
+            sentence_parts.append(part)
+    if not sentence_parts:
+        sentence_parts = [topic]
+
+    exact_distractors = [
+        "外星人每天开着飞船去上学",
+        "魔法帽子能变出吃不完的糖果",
+        "石头晚上会自己唱歌跳舞",
+    ]
+    topic_distractors = [
+        "白雪公主和七个小矮人",
+        "三只小猪盖砖头房子",
+        "小猫开着消防车去买鱼",
+    ]
+
+    def choice_question(number, question, correct, distractors, explanation):
+        choices = [correct, *distractors[:3]]
+        rng.shuffle(choices)
+        return {
+            "id": f"q{number}",
+            "kind": "comprehension",
+            "question": question,
+            "choices": choices,
+            "answer_index": choices.index(correct),
+            "explanation": explanation,
+        }
+
+    questions = [
+        choice_question(
+            1,
+            "这一章主要在讲什么？",
+            topic,
+            topic_distractors,
+            f"这一章的标题和开头都在讲：{topic}。",
+        )
+    ]
+    exact_templates = [
+        ("下面哪句话来自这一章？", "这一章里出现了这句话。"),
+        ("根据这一章，哪个说法是对的？", "这句话来自刚才读过的内容。"),
+        ("读完后能知道什么？", "这个答案可以直接从这一章找到。"),
+    ]
+    used = set()
+    template_index = 0
+    while len(questions) < num_questions and template_index < len(exact_templates):
+        candidate = next((item for item in sentence_parts if item not in used), None)
+        if candidate is None:
+            break
+        used.add(candidate)
+        question, explanation = exact_templates[template_index]
+        questions.append(
+            choice_question(
+                len(questions) + 1, question, candidate, exact_distractors, explanation
+            )
+        )
+        template_index += 1
+
+    while len(questions) < num_questions:
+        questions.append(
+            choice_question(
+                len(questions) + 1,
+                "下面哪句话来自这一章？",
+                sentence_parts[0],
+                exact_distractors,
+                "这句话来自刚才读过的内容。",
+            )
+        )
     return questions[:num_questions]

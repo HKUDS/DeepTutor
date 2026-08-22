@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,10 @@ import pytest
 from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
 import deeptutor.immersive_reading.service as service_module
 from deeptutor.immersive_reading.service import ImmersiveReadingService
+from deeptutor.immersive_reading.sight_words import (
+    detect_quiz_language,
+    generate_story_comprehension_quiz,
+)
 
 CONTENT = "Mit sat in the sun. Mag saw Mit. Mit ran and got wet."
 
@@ -24,7 +29,22 @@ def comprehension_question(number: int) -> KidsQuizQuestion:
     )
 
 
-def llm_payload() -> str:
+def llm_payload(language: str = "en") -> str:
+    if language == "zh":
+        return json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "llm-1",
+                        "kind": "comprehension",
+                        "question": "这一章主要讲什么？",
+                        "choices": ["量子世界", "白雪公主", "三只小猪", "小猫开车"],
+                        "answer_index": 0,
+                        "explanation": "这一章讲量子世界。",
+                    }
+                ]
+            }
+        )
     return json.dumps(
         {
             "questions": [
@@ -83,7 +103,8 @@ def make_service(tmp_path, monkeypatch):
 
     async def fake_complete(**_kwargs):
         calls["complete"] += 1
-        return llm_payload()
+        system_prompt = str(_kwargs.get("system_prompt", ""))
+        return llm_payload("zh" if "Simplified Chinese" in system_prompt else "en")
 
     monkeypatch.setattr(
         service_module, "get_llm_config", lambda: SimpleNamespace(model="test-model")
@@ -92,7 +113,7 @@ def make_service(tmp_path, monkeypatch):
     return service, quiz_path, calls
 
 
-def write_cache(path, *, age_band="6-8", sight_word=False):
+def write_cache(path, *, age_band="6-8", language="en", sight_word=False):
     questions = [comprehension_question(i) for i in range(1, 4)]
     if sight_word:
         questions[0] = KidsQuizQuestion(
@@ -109,8 +130,9 @@ def write_cache(path, *, age_band="6-8", sight_word=False):
         questions=questions,
         content_hash=hashlib.sha256(CONTENT.encode("utf-8")).hexdigest(),
         model="cached-model",
-        prompt_version="kids-quiz-v4",
+        prompt_version="kids-quiz-v5",
         age_band=age_band,
+        language=language,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(result.model_dump_json(), encoding="utf-8")
@@ -171,6 +193,19 @@ async def test_age_band_change_bypasses_cache(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_language_change_bypasses_cache(tmp_path, monkeypatch):
+    service, quiz_path, calls = make_service(tmp_path, monkeypatch)
+    write_cache(quiz_path, language="en")
+
+    result = await service.generate_kids_quiz(
+        "document-1", "section-1", age_band="6-8", language="zh"
+    )
+
+    assert calls["complete"] == 1
+    assert result.language == "zh"
+
+
+@pytest.mark.asyncio
 async def test_cache_without_age_provenance_is_regenerated(tmp_path, monkeypatch):
     service, quiz_path, calls = make_service(tmp_path, monkeypatch)
     write_cache(quiz_path)
@@ -197,3 +232,22 @@ def test_sight_word_quiz_is_never_written_to_cache(tmp_path, monkeypatch):
     service._save_kids_quiz_cache("document-1", "section-1", result)
 
     assert not quiz_path.exists()
+
+
+def test_chinese_fallback_comprehension_is_content_anchored():
+    content = (
+        "第1讲 量子世界是什么样的\n"
+        "很多小朋友应该都看过Facebook创始人扎克伯格给他的女儿讲量子力学的那张照片。\n"
+        "一个由量子力学主宰的世界，到底是什么样的？\n"
+        "牛顿对人类认识经典世界做出了很大的贡献。\n"
+    )
+
+    assert detect_quiz_language(content, preferred_language="en") == "zh"
+    questions = generate_story_comprehension_quiz(content, language="zh")
+
+    assert len(questions) == 3
+    assert all(question["kind"] == "comprehension" for question in questions)
+    assert all(re.search(r"[\u4e00-\u9fff]", question["question"]) for question in questions)
+    assert any(
+        "量子世界" in question["choices"][question["answer_index"]] for question in questions
+    )

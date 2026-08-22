@@ -184,6 +184,7 @@ class KidsQuizResult(BaseModel):
     model: str = ""
     prompt_version: str = ""
     age_band: str = "6-8"
+    language: Literal["en", "zh"] = "en"
     generated_at: float = Field(default_factory=time.time)
 
 

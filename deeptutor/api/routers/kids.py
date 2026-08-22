@@ -24,6 +24,7 @@ from deeptutor.immersive_reading import get_immersive_reading_service
 from deeptutor.immersive_reading.kids_word_hints import build_kids_word_hint
 from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
 from deeptutor.immersive_reading.service import get_kids_manager
+from deeptutor.immersive_reading.sight_words import detect_quiz_language
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -316,7 +317,9 @@ def _resolve_kids_reading_section(ir, document_id: str, requested_section_id: st
     return next((s for s in doc.sections if " ".join(s.title.lower().split()) == normalized), None)
 
 
-def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: str, result):
+def _fill_kids_quiz_to_three(
+    ir, document_id: str, section_id: str, age_band: str, language: str, result
+):
     """Guard the endpoint contract even when a provider/fake returns fewer questions."""
     if result is None:
         return None
@@ -336,7 +339,9 @@ def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: st
     from deeptutor.immersive_reading.sight_words import generate_story_comprehension_quiz
 
     existing = {q.question.strip().lower() for q in result.questions}
-    fallbacks = generate_story_comprehension_quiz(section_text, age_band=age_band, num_questions=9)
+    fallbacks = generate_story_comprehension_quiz(
+        section_text, age_band=age_band, num_questions=9, language=language
+    )
     for i, fallback in enumerate(fallbacks, start=len(result.questions) + 1):
         if len(result.questions) == 3:
             break
@@ -354,9 +359,10 @@ def _fill_kids_quiz_to_three(ir, document_id: str, section_id: str, age_band: st
         )
         existing.add(fallback["question"].strip().lower())
 
-    result.prompt_version = "kids-quiz-fallback-v4"
+    result.prompt_version = "kids-quiz-fallback-v5"
     result.generated_at = time.time()
     result.age_band = age_band
+    result.language = language
     if hasattr(ir, "_save_kids_quiz_cache"):
         ir._save_kids_quiz_cache(document_id, section_id, result)
     return result
@@ -370,11 +376,13 @@ def _safe_kids_questions(result):
 
 
 def _build_fallback_kids_quiz(
-    document_id: str, section_id: str, section_text: str, age_band: str
+    document_id: str, section_id: str, section_text: str, age_band: str, language: str
 ) -> KidsQuizResult:
     from deeptutor.immersive_reading.sight_words import generate_story_comprehension_quiz
 
-    fallback_qs = generate_story_comprehension_quiz(section_text, age_band=age_band, num_questions=3)
+    fallback_qs = generate_story_comprehension_quiz(
+        section_text, age_band=age_band, num_questions=3, language=language
+    )
     return KidsQuizResult(
         document_id=document_id,
         section_id=section_id,
@@ -391,9 +399,11 @@ def _build_fallback_kids_quiz(
         ],
         content_hash=hashlib.sha256(section_text.encode()).hexdigest(),
         model="story-comprehension-fallback",
-        prompt_version="kids-quiz-fallback-v4",
+        prompt_version="kids-quiz-fallback-v5",
         age_band=age_band,
+        language=language,
     )
+
 
 @router.post("/books/{document_id}/quiz")
 async def get_kids_quiz(
@@ -413,20 +423,30 @@ async def get_kids_quiz(
     profile = manager.get_profile(profile_id)
     age_band = profile.age_band if profile else "6-8"
     section_text = ir.get_section(document_id, section.id).get("content", "")
+    language = detect_quiz_language(
+        section_text,
+        preferred_language=profile.help_language if profile else "en",
+    )
 
     should_cache_fallback = False
     try:
         result = await ir.generate_kids_quiz(
-            document_id, section.id, force_refresh=request.force_refresh, age_band=age_band
+            document_id,
+            section.id,
+            force_refresh=request.force_refresh,
+            age_band=age_band,
+            language=language,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("LLM quiz failed, using deterministic fallback: %s", exc)
-        result = _build_fallback_kids_quiz(document_id, section.id, section_text, age_band)
+        result = _build_fallback_kids_quiz(
+            document_id, section.id, section_text, age_band, language
+        )
         should_cache_fallback = True
 
-    result = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, result)
+    result = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, language, result)
     if should_cache_fallback and result is not None and result.questions:
         ir._save_kids_quiz_cache(document_id, section.id, result)
     if not result.questions:
@@ -457,9 +477,19 @@ async def submit_kids_quiz(
         raise HTTPException(status_code=404, detail="Book not found")
     profile = manager.get_profile(profile_id)
     age_band = profile.age_band if profile else "6-8"
+    try:
+        section_text = ir.get_section(document_id, section.id).get("content", "")
+    except Exception:
+        section_text = ""
+    language = detect_quiz_language(
+        section_text,
+        preferred_language=profile.help_language if profile else "en",
+    )
     should_cache_fallback = False
     try:
-        cached = await ir.generate_kids_quiz(document_id, section.id, age_band=age_band)
+        cached = await ir.generate_kids_quiz(
+            document_id, section.id, age_band=age_band, language=language
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -468,10 +498,12 @@ async def submit_kids_quiz(
             section_text = ir.get_section(document_id, section.id).get("content", "")
         except Exception:
             section_text = ""
-        cached = _build_fallback_kids_quiz(document_id, section.id, section_text, age_band)
+        cached = _build_fallback_kids_quiz(
+            document_id, section.id, section_text, age_band, language
+        )
         should_cache_fallback = True
 
-    cached = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, cached)
+    cached = _fill_kids_quiz_to_three(ir, document_id, section.id, age_band, language, cached)
     if should_cache_fallback and cached is not None and cached.questions:
         ir._save_kids_quiz_cache(document_id, section.id, cached)
 
@@ -877,7 +909,11 @@ async def get_kids_interactive_page(
         if b.type == "animation" or b_dict.get("type") == "animation":
             payload = dict(b_dict.get("payload", {}))
             video_url = payload.get("video_url", "")
-            if video_url and not video_url.startswith("http") and not video_url.startswith("/api/v1/kids/"):
+            if (
+                video_url
+                and not video_url.startswith("http")
+                and not video_url.startswith("/api/v1/kids/")
+            ):
                 rel_path = video_url.lstrip("/")
                 if rel_path.startswith(f"book_{book_id}/assets/"):
                     rel_path = rel_path[len(f"book_{book_id}/assets/") :]
@@ -1113,6 +1149,7 @@ async def get_kids_interactive_cover(
     if cover_file.is_file():
         return FileResponse(cover_file, media_type="image/png")
     raise HTTPException(status_code=404, detail="No custom cover")
+
 
 @router.get("/books/{document_id}/epub")
 async def get_kids_epub(

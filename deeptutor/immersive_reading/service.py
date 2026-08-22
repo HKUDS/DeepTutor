@@ -60,6 +60,7 @@ FAST_DEEP_MAX_TOKENS = 32_000
 FAST_ROUTER_CONFIDENCE_THRESHOLD = 0.62
 FAST_PASSAGE_CONFIDENCE_THRESHOLD = 0.55
 _SAFE_ID = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _HEADING_RE = re.compile(
     r"^(?:\s{0,3}#{1,4}\s+(.+?)\s*|\s*((?:chapter|book|part)\s+[\divxlcdm]+(?:\s*[:.\-–—]\s*.*)?|第[〇零一二三四五六七八九十百千两\d]+[章节回部卷](?:\s+.*)?))$",
     re.IGNORECASE,
@@ -1965,6 +1966,15 @@ class ImmersiveReadingService:
         self, document_id: str, section_id: str, result: KidsQuizResult
     ) -> None:
         """Persist a story-comprehension quiz result for reuse."""
+        if result.language == "zh" and any(
+            not _CJK_RE.search(question.question) for question in result.questions
+        ):
+            logger.warning(
+                "Refusing to cache a mixed-language kids quiz for %s/%s",
+                document_id,
+                section_id,
+            )
+            return
         if any(question.kind == "sight_word" for question in result.questions):
             logger.warning(
                 "Refusing to cache a kids quiz containing sight-word questions for %s/%s",
@@ -1976,16 +1986,22 @@ class ImmersiveReadingService:
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
 
-    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v4"
-    KIDS_QUIZ_SUPPORTED_CACHE_VERSIONS = frozenset({"kids-quiz-v4", "kids-quiz-fallback-v4"})
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v5"
+    KIDS_QUIZ_SUPPORTED_CACHE_VERSIONS = frozenset({"kids-quiz-v5", "kids-quiz-fallback-v5"})
 
     def _kids_fallback_questions(
-        self, content: str, age_band: str, existing_questions: list[KidsQuizQuestion]
+        self,
+        content: str,
+        age_band: str,
+        existing_questions: list[KidsQuizQuestion],
+        language: str = "en",
     ) -> list[KidsQuizQuestion]:
         from deeptutor.immersive_reading.sight_words import generate_story_comprehension_quiz
 
         existing_texts = {q.question.strip().lower() for q in existing_questions}
-        fallbacks = generate_story_comprehension_quiz(content, age_band=age_band, num_questions=9)
+        fallbacks = generate_story_comprehension_quiz(
+            content, age_band=age_band, num_questions=9, language=language
+        )
         questions: list[KidsQuizQuestion] = []
         for i, fallback in enumerate(fallbacks, start=len(existing_questions) + 1):
             if fallback["question"].strip().lower() in existing_texts:
@@ -2004,13 +2020,15 @@ class ImmersiveReadingService:
         return questions
 
     def _load_valid_kids_quiz_cache(
-        self, cached: Any, *, content_hash: str, age_band: str
+        self, cached: Any, *, content_hash: str, age_band: str, language: str
     ) -> KidsQuizResult | None:
         if not isinstance(cached, dict):
             return None
         # A missing age band must not inherit the model default: old caches were
         # shared across profiles and have no reliable age provenance.
         if cached.get("age_band") != age_band:
+            return None
+        if cached.get("language", "en") != language:
             return None
         try:
             result = KidsQuizResult.model_validate(cached)
@@ -2019,9 +2037,14 @@ class ImmersiveReadingService:
         if (
             result.content_hash != content_hash
             or result.age_band != age_band
+            or result.language != language
             or result.prompt_version not in self.KIDS_QUIZ_SUPPORTED_CACHE_VERSIONS
             or not result.questions
             or any(question.kind == "sight_word" for question in result.questions)
+            or (
+                language == "zh"
+                and any(not _CJK_RE.search(question.question) for question in result.questions)
+            )
         ):
             return None
         return result
@@ -2033,6 +2056,7 @@ class ImmersiveReadingService:
         *,
         force_refresh: bool = False,
         age_band: str = "6-8",
+        language: str = "en",
     ) -> KidsQuizResult:
         """Generate (or load cached) 3 multiple-choice questions for a section."""
         quiz_path = self._kids_quiz_path(document_id, section_id)
@@ -2045,7 +2069,7 @@ class ImmersiveReadingService:
         model_name = str(getattr(cfg, "model", "") or "")
 
         cached_result = self._load_valid_kids_quiz_cache(
-            cached, content_hash=content_hash, age_band=age_band
+            cached, content_hash=content_hash, age_band=age_band, language=language
         )
         if not force_refresh and cached_result is not None:
             result = cached_result
@@ -2061,7 +2085,9 @@ class ImmersiveReadingService:
                 # Older caches could contain only one valid question. Upgrade them
                 # synchronously so a child never waits for the model to click Learn.
                 result.questions.extend(
-                    self._kids_fallback_questions(content, age_band, result.questions)[: 3 - len(result.questions)]
+                    self._kids_fallback_questions(
+                        content, age_band, result.questions, language=language
+                    )[: 3 - len(result.questions)]
                 )
                 result.prompt_version = self.KIDS_QUIZ_PROMPT_VERSION
                 result.generated_at = time.time()
@@ -2081,10 +2107,10 @@ class ImmersiveReadingService:
         if age_band == "9-12":
             system = (
                 "You create engaging reading comprehension quizzes for readers aged 9-12. "
-                "Based on the provided story text, generate exactly 3 multiple-choice questions: "
-                "1. Question 1 (Plot & Character): What happens or why does a character take action? "
-                "2. Question 2 (Inference & Cause/Effect): What can be inferred or what is the consequence of an event? "
-                "3. Question 3 (Vocabulary in Context or Theme): What does a key phrase mean in context or what is the main lesson? "
+                "Based on the provided reading text, generate exactly 3 multiple-choice questions about its actual meaning: "
+                "1. Question 1 (Main subject or people): Who or what is this section mainly about? "
+                "2. Question 2 (Detail, inference, or cause/effect): What happens, why does it happen, or what can be inferred? "
+                "3. Question 3 (Key idea in context): What does an important phrase mean here, or what is the main conclusion? "
                 "Each question must have exactly 4 choices (one correct, three plausible distractors). "
                 "Return JSON only matching the schema: "
                 '{"questions":[{"id":"q1","kind":"comprehension","question":"...","choices":["a","b","c","d"],"answer_index":0,"explanation":"..."}]}'
@@ -2092,10 +2118,10 @@ class ImmersiveReadingService:
         elif age_band == "6-8":
             system = (
                 "You create fun, child-friendly reading comprehension quizzes for early readers aged 6-8. "
-                "Based on the provided story text, generate exactly 3 multiple-choice questions that test STORY UNDERSTANDING (not just dictionary definitions): "
-                "1. Question 1 (Story detail / Who or Where): Who is in the story, or where does the action happen? (e.g. 'Where are the plums in the story?' Choices: ['in a tree', 'under the bed', 'on a truck', 'in a pool']) "
-                "2. Question 2 (Cause & Effect / What happened): Why did something happen or what helped something change? (e.g. 'What makes the plums soft and good?' Choices: ['Sun and rain', 'Snow and ice', 'A big rock', 'A small bug']) "
-                "3. Question 3 (Story conclusion / Meaning in context): How does the story end, or how do the characters feel? (e.g. 'How are the plums at the end of the story?' Choices: ['soft and good to eat', 'hard and cold', 'lost far away', 'not good']) "
+                "Based on the provided reading text, generate exactly 3 multiple-choice questions that test understanding of the actual text (not dictionary definitions): "
+                "1. Question 1 (Main subject / Who or Where): Who or what is this section about, or where does it happen? "
+                "2. Question 2 (Detail or Cause & Effect): What happened, why did it happen, or what helped something change? "
+                "3. Question 3 (Conclusion / Meaning in context): What is the result, or what does an important phrase mean here? "
                 "Keep questions and choices very simple, short, and clear (2-6 words per choice). "
                 "Each question must have exactly 4 choices and exactly 1 correct answer. "
                 "Return JSON only matching the schema: "
@@ -2104,11 +2130,17 @@ class ImmersiveReadingService:
         else:
             system = (
                 "You create simple picture-book quizzes for young children aged 3-5. "
-                "Based on the story text, generate exactly 3 very simple multiple-choice questions about the characters and main objects in the story. "
+                "Based on the reading text, generate exactly 3 very simple multiple-choice questions about the people, subjects, and main objects in the text. "
                 "Choices must be 1-3 simple words. Each question has 4 choices. "
                 "Return JSON only matching the schema: "
                 '{"questions":[{"id":"q1","kind":"comprehension","question":"...","choices":["a","b","c","d"],"answer_index":0,"explanation":"..."}]}'
             )
+
+        language_label = "Simplified Chinese" if language == "zh" else "English"
+        system += (
+            f" Write every question, choice, and explanation in {language_label}. "
+            "Do not switch languages. Proper nouns may remain in their original form."
+        )
 
         raw = await complete(
             prompt=(
@@ -2139,10 +2171,13 @@ class ImmersiveReadingService:
             placeholder_choices = {"a", "b", "c", "d"}
             if str(q.get("kind", "comprehension")) == "sight_word":
                 continue
+            chinese_choices = sum(bool(_CJK_RE.search(choice)) for choice in clean_choices)
             if (
                 not question_text
                 or question_text.lower() == "str"
                 or any(not choice for choice in clean_choices)
+                or (language == "zh" and not _CJK_RE.search(question_text))
+                or (language == "zh" and chinese_choices < max(2, len(clean_choices) - 1))
                 or (
                     len(clean_choices) == 4
                     and {choice.lower() for choice in clean_choices} == placeholder_choices
@@ -2165,7 +2200,11 @@ class ImmersiveReadingService:
 
         needed = 3 - len(questions)
         if needed > 0:
-            questions.extend(self._kids_fallback_questions(content, age_band, questions)[:needed])
+            questions.extend(
+                self._kids_fallback_questions(content, age_band, questions, language=language)[
+                    :needed
+                ]
+            )
 
         result = KidsQuizResult(
             document_id=document_id,
@@ -2175,6 +2214,7 @@ class ImmersiveReadingService:
             model=model_name,
             prompt_version=self.KIDS_QUIZ_PROMPT_VERSION,
             age_band=age_band,
+            language=language,
         )
         quiz_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(quiz_path, result.model_dump(mode="json"))
@@ -2445,7 +2485,10 @@ class KidsManager:
         assignments = [
             a
             for a in self.list_assignments()
-            if not (a.profile_id == profile_id and (a.document_id == document_id or a.book_id == document_id))
+            if not (
+                a.profile_id == profile_id
+                and (a.document_id == document_id or a.book_id == document_id)
+            )
         ]
         _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
 
@@ -2457,7 +2500,8 @@ class KidsManager:
             (
                 i
                 for i, a in enumerate(assignments)
-            if a.profile_id == profile_id and (a.document_id == document_id or a.book_id == document_id)
+                if a.profile_id == profile_id
+                and (a.document_id == document_id or a.book_id == document_id)
             ),
             None,
         )
@@ -2489,6 +2533,7 @@ class KidsManager:
         assignments.sort(key=lambda a: a.sort_order)
         ir_service = get_immersive_reading_service()
         from deeptutor.book.storage import get_book_storage
+
         book_storage = get_book_storage()
 
         library: list[dict[str, Any]] = []
@@ -2506,7 +2551,9 @@ class KidsManager:
                             "id": book.id,
                             "title": book.title or a.document_title or a.book_id,
                             "description": book.description,
-                            "status": book.status.value if hasattr(book.status, "value") else str(book.status),
+                            "status": book.status.value
+                            if hasattr(book.status, "value")
+                            else str(book.status),
                             "page_count": book.page_count,
                             "chapter_count": book.chapter_count,
                             "cover_url": f"/api/v1/kids/interactive-books/{book.id}/cover",

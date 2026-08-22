@@ -33,6 +33,7 @@ class FakeQuizReadingService:
         *,
         force_refresh: bool = False,
         age_band: str = "6-8",
+        language: str = "en",
     ):
         assert document_id == "readingdoc001"
         assert section_id == "section-1"
@@ -79,6 +80,7 @@ class FailingQuizReadingService:
         *,
         force_refresh: bool = False,
         age_band: str = "6-8",
+        language: str = "en",
     ):
         raise RuntimeError("placeholder model output")
 
@@ -88,7 +90,7 @@ class FailingQuizReadingService:
     def get_section(self, document_id: str, section_id: str):
         assert document_id == "readingdoc001"
         assert section_id == "section-1"
-        return {"content": "The plum is a little fruit. said Mac."}
+        return {"content": "量子世界和我们每天看见的世界不一样。科学家用量子力学解释很小的粒子。"}
 
 
 class FakeWordHintReadingService:
@@ -274,7 +276,14 @@ def test_kids_epub_quiz_falls_back_to_story_comprehension(tmp_path, monkeypatch)
     questions = response.json()["questions"]
     assert len(questions) == 3
     assert all(question["kind"] == "comprehension" for question in questions)
-    assert not any(re.search(r'What does ".+" mean\?', question["question"]) for question in questions)
+    assert all(re.search(r"[\u4e00-\u9fff]", question["question"]) for question in questions)
+    assert all(
+        any(re.search(r"[\u4e00-\u9fff]", choice) for choice in question["choices"])
+        for question in questions
+    )
+    assert not any(
+        re.search(r'What does ".+" mean\?', question["question"]) for question in questions
+    )
     assert all(question["question"] != "str" for question in questions)
     assert all(set(question["choices"]) != {"a", "b", "c", "d"} for question in questions)
     assert "answer_index" not in response.text
@@ -331,11 +340,9 @@ def test_kids_quiz_is_capped_at_three_questions():
         prompt_version="test-v1",
     )
 
-    filled = _fill_kids_quiz_to_three(object(), "doc", "section", "6-8", result)
+    filled = _fill_kids_quiz_to_three(object(), "doc", "section", "6-8", "en", result)
     assert len(filled.questions) == 3
-    assert all(
-        question.kind != "sight_word" for question in filled.questions
-    )
+    assert all(question.kind != "sight_word" for question in filled.questions)
 
 
 def _word_hint_client(tmp_path, monkeypatch):
