@@ -366,9 +366,9 @@ def _safe_kids_questions(result):
 def _build_fallback_kids_quiz(
     document_id: str, section_id: str, section_text: str, age_band: str
 ) -> KidsQuizResult:
-    from deeptutor.immersive_reading.sight_words import generate_translation_quiz
+    from deeptutor.immersive_reading.sight_words import generate_story_comprehension_quiz
 
-    fallback_qs = generate_translation_quiz(section_text, age_band=age_band, num_questions=3)
+    fallback_qs = generate_story_comprehension_quiz(section_text, age_band=age_band, num_questions=3)
     return KidsQuizResult(
         document_id=document_id,
         section_id=section_id,
