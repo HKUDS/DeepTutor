@@ -818,9 +818,29 @@ export default function KidsReaderPage() {
                 }}>
                   Thinking Clue
                 </div>
-                <p style={{ fontSize: 20, lineHeight: 1.5, color: "#2d3748" }}>
-                  {wordHintData.english_hint}
-                </p>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <p style={{ fontSize: 20, lineHeight: 1.5, color: "#2d3748", flex: 1, margin: 0 }}>
+                    {wordHintData.english_hint}
+                  </p>
+                  <button
+                    style={speechBtn}
+                    title={
+                      speakingId === "hint-clue" ? "Stop thinking clue" : "Read thinking clue"
+                    }
+                    aria-label={
+                      speakingId === "hint-clue" ? "Stop thinking clue" : "Read thinking clue"
+                    }
+                    onClick={() =>
+                      narrate("hint-clue", wordHintData.english_hint || wordHintState.word)
+                    }
+                  >
+                    {speakingId === "hint-clue" ? (
+                      <VolumeX size={16} />
+                    ) : (
+                      <Volume2 size={16} />
+                    )}
+                  </button>
+                </div>
                 <button
                   style={{ ...bigBtn, width: "100%", background: "#667eea", color: "white" }}
                   onClick={() => void showWordHintChoices()}

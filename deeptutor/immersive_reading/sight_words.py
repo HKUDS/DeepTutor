@@ -137,6 +137,7 @@ VOCAB_6_8_EXTRA: dict[str, str] = {
     "pancakes": "flat round cakes you eat for breakfast",
     "mag": "a short word for a magazine",
     "tag": "a game where you touch someone",
+    "picture": "a drawing, a photo, or an image",
 }
 
 # ── Tier 3: Ages 9-12 (fourth to seventh grade) ─────────────────────────────

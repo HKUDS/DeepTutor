@@ -421,3 +421,39 @@ def test_kids_word_hint_rejects_unauthorized_section(tmp_path, monkeypatch):
         headers=headers,
     )
     assert response.status_code == 404
+
+
+def test_kids_word_hint_uses_simple_dictionary_for_pictures(tmp_path, monkeypatch):
+    client, headers = _word_hint_client(tmp_path, monkeypatch)
+    endpoint = "/api/v1/kids/books/readingdoc001/word-hint"
+
+    initial = client.post(
+        endpoint,
+        json={"word": "pictures", "section_id": "section-1", "context": ""},
+        headers=headers,
+    )
+    assert initial.status_code == 200
+    payload = initial.json()
+    assert payload["available"] is True
+    assert "visual representation" not in payload["english_hint"]
+
+    choices = client.post(
+        f"{endpoint}/choices",
+        json={"hint_id": payload["hint_id"]},
+        headers=headers,
+    ).json()["choices"]
+    assert len(choices) == 3
+    assert all(len(choice) <= 80 for choice in choices)
+    assert all(not re.search(r"[\u4e00-\u9fff]", choice) for choice in choices)
+
+
+def test_kids_word_hint_rejects_ecdict_only_word(tmp_path, monkeypatch):
+    client, headers = _word_hint_client(tmp_path, monkeypatch)
+    response = client.post(
+        "/api/v1/kids/books/readingdoc001/word-hint",
+        json={"word": "sepulchral", "section_id": "section-1", "context": ""},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"available": False, "word": "sepulchral"}

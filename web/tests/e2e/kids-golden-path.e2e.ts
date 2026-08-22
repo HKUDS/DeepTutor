@@ -133,6 +133,7 @@ test("kids golden path guides words, auto-checks chapters, and narrates", async 
   await reader.getByText("plum", { exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "plum" })).toBeVisible();
   await expect(page.getByText("Picture a small, juicy fruit growing on a sunny tree. What is it?")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Read thinking clue" })).toBeVisible();
   const hintCard = page.locator("div[role], section, body").filter({ hasText: "plum" }).last();
   await expect(hintCard).not.toContainText("李子");
 

@@ -7,7 +7,7 @@ import hashlib
 import re
 import sqlite3
 
-from deeptutor.immersive_reading.sight_words import _get_dictionary
+from deeptutor.immersive_reading.sight_words import _build_lookup, _get_dictionary
 from deeptutor.services.path_service import get_path_service
 
 _WORD_RE = re.compile(r"[A-Za-z]+(?:['’-][A-Za-z]+)?")
@@ -106,6 +106,8 @@ _KIDS_CHINESE: dict[str, str] = {
     "book": "书，书本",
     "hand": "手",
     "leg": "腿",
+    "picture": "图画，照片，图像",
+    "pictures": "图画，照片，图像",
 }
 
 _KIDS_THINKING_CLUES: dict[str, str] = {
@@ -201,17 +203,20 @@ _KIDS_THINKING_CLUES: dict[str, str] = {
     "book": "Pages bound together filled with fun stories to read.",
     "hand": "The end of your arm with five fingers you use to hold things.",
     "leg": "The part of your body you use to stand, walk, and run.",
+    "picture": "Think about a drawing, a photo, or something you see on a screen. What is it?",
+    "pictures": "Think about drawings, photos, or things you see on a screen. What are they?",
 }
 
 
 def _generate_thinking_clue(word: str, definition: str) -> str:
     if word in _KIDS_THINKING_CLUES:
         return _KIDS_THINKING_CLUES[word]
-    if definition.startswith(("to ", "to\t")):
+    normalized_definition = definition.lower()
+    if normalized_definition.startswith(("to ", "to\t")):
         return f"Think about an action! Can you guess what someone does when they {word}?"
-    if definition.startswith(("a ", "an ", "the ", "something ")):
+    if normalized_definition.startswith(("a ", "an ", "the ", "something ")):
         return f"Picture what this could be in the world! Can you guess what \"{word}\" is?"
-    if definition.startswith(("very ", "not ", "feeling ", "having ", "showing ", "full of ")):
+    if normalized_definition.startswith(("very ", "not ", "feeling ", "having ", "showing ", "full of ")):
         return "Think about describing something! Can you guess what quality this word shows?"
     return f"Look closely at the story clues! Can you guess what \"{word}\" means here?"
 
@@ -226,17 +231,17 @@ class KidsWordHint:
     choices: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class _SimpleDictionaryEntry:
+    word: str
+    definition: str
+    part_of_speech: str
+    phonetic: str
+
+
 def normalize_hint_word(raw_word: str) -> str:
     match = _WORD_RE.search(raw_word or "")
     return (match.group(0) if match else "").lower()
-
-
-def _first_english_definition(value: str) -> str:
-    for line in (value or "").splitlines():
-        cleaned = _POS_PREFIX_RE.sub("", line.strip(" ;:"))
-        if cleaned and not re.search(r"[\u4e00-\u9fff]", cleaned):
-            return cleaned
-    return ""
 
 
 def _concise_chinese(value: str) -> str:
@@ -258,17 +263,52 @@ def _concise_chinese(value: str) -> str:
     return cleaned
 
 
-def _ecdict_lookup(word: str) -> tuple[str, str, str, str] | None:
-    path = get_path_service().get_immersive_reading_dir() / "dictionaries" / "ecdict.db"
-    if not path.is_file():
-        return None
+def _word_form_candidates(word: str) -> tuple[str, ...]:
+    """Return a word followed by conservative child-reader inflections."""
     candidates = [word]
+    if word.endswith("ies") and len(word) > 4:
+        candidates.append(word[:-3] + "y")
+    if word.endswith(("ches", "shes", "sses", "xes")) and len(word) > 4:
+        candidates.append(word[:-2])
     if word.endswith("s") and len(word) > 3:
         candidates.append(word[:-1])
     if word.endswith("ing") and len(word) > 5:
         candidates.extend((word[:-3], word[:-3] + "e"))
     if word.endswith("ed") and len(word) > 4:
         candidates.extend((word[:-2], word[:-1]))
+    return tuple(dict.fromkeys(candidates))
+
+
+def _kids_simple_lookup(word: str) -> _SimpleDictionaryEntry | None:
+    path = get_path_service().get_immersive_reading_dir() / "dictionaries" / "kids_simple.db"
+    if not path.is_file():
+        return None
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+            connection.row_factory = sqlite3.Row
+            for candidate in _word_form_candidates(word):
+                row = connection.execute(
+                    "SELECT word, definition, part_of_speech, phonetic "
+                    "FROM entries WHERE word = ? LIMIT 1",
+                    (candidate,),
+                ).fetchone()
+                if row is not None:
+                    return _SimpleDictionaryEntry(
+                        word=str(row["word"]),
+                        definition=str(row["definition"]),
+                        part_of_speech=str(row["part_of_speech"]),
+                        phonetic=str(row["phonetic"] or ""),
+                    )
+    except sqlite3.Error:
+        return None
+    return None
+
+
+def _ecdict_lookup(word: str) -> tuple[str, str, str] | None:
+    path = get_path_service().get_immersive_reading_dir() / "dictionaries" / "ecdict.db"
+    if not path.is_file():
+        return None
+    candidates = _word_form_candidates(word)
 
     try:
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
@@ -281,10 +321,9 @@ def _ecdict_lookup(word: str) -> tuple[str, str, str, str] | None:
                 ).fetchone()
                 if row is None:
                     continue
-                definition = _first_english_definition(str(row["definition"] or ""))
                 chinese = _concise_chinese(str(row["translation"] or ""))
-                if definition and chinese:
-                    return str(row["word"]), str(row["phonetic"] or ""), definition, chinese
+                if chinese:
+                    return str(row["word"]), str(row["phonetic"] or ""), chinese
     except sqlite3.Error:
         return None
     return None
@@ -310,25 +349,23 @@ def build_kids_word_hint(raw_word: str, age_band: str = "6-8") -> KidsWordHint |
     if not word:
         return None
 
-    curated_chinese = _KIDS_CHINESE.get(word, "")
-    age_definitions = _get_dictionary(age_band)
-    definition = age_definitions.get(word, "")
-    phonetic = ""
-    chinese = ""
-    if definition:
-        # The child dictionary is English-first. Chinese is loaded lazily from ECDICT
-        # so the API contract can keep it out of the first two learning stages.
-        ec_entry = _ecdict_lookup(word)
-        if ec_entry:
-            _, phonetic, _, chinese = ec_entry
-    else:
-        ec_entry = _ecdict_lookup(word)
-        if ec_entry is None:
-            return None
-        _, phonetic, definition, chinese = ec_entry
+    simple_entry = _kids_simple_lookup(word)
+    support_word = simple_entry.word if simple_entry else word
+    definition = _build_lookup(age_band).get(word, "")
+    if not definition and simple_entry is not None:
+        definition = simple_entry.definition
+    if not definition:
+        return None
 
-    if curated_chinese:
-        chinese = curated_chinese
+    # ECDICT is support data only: pronunciation and Chinese. English choices
+    # must come from a child-safe English source.
+    ec_entry = _ecdict_lookup(support_word)
+    phonetic = simple_entry.phonetic if simple_entry else ""
+    chinese = ""
+    if ec_entry:
+        phonetic = phonetic or ec_entry[1]
+        chinese = ec_entry[2]
+    chinese = _KIDS_CHINESE.get(word) or _KIDS_CHINESE.get(support_word) or chinese
 
     if not chinese:
         return None
