@@ -37,6 +37,34 @@ def _resolve_adapter_class(binding: str) -> type[BaseEmbeddingAdapter]:
 class EmbeddingClient:
     """Unified embedding client for RAG and retrieval services."""
 
+    # 全局发帖节流：KB reindex 会为多文档并行创建多个 EmbeddingClient，
+    # 每个实例自己的 batch_delay 管不住跨实例的叠加并发。火山 plan 档
+    # RPM 极低，叠加即 429 风暴（08-22 历史库六烧根因）。类级锁把所有
+    # 实例的实际 HTTP 发帖串行化，并按 batch_delay 强制全局最小间隔。
+    _spacing_lock: Any = None
+    _last_request_monotonic: float = 0.0
+
+    @classmethod
+    def _global_spacing_lock(cls):
+        import asyncio
+
+        if cls._spacing_lock is None:
+            cls._spacing_lock = asyncio.Lock()
+        return cls._spacing_lock
+
+    @classmethod
+    async def _pace_global_request_interval(cls, batch_delay: float) -> None:
+        from time import monotonic
+
+        if batch_delay <= 0:
+            return
+        elapsed = monotonic() - cls._last_request_monotonic
+        if elapsed < batch_delay:
+            import asyncio
+
+            await asyncio.sleep(batch_delay - elapsed)
+        cls._last_request_monotonic = monotonic()
+
     def __init__(self, config: Optional[EmbeddingConfig] = None):
         self.config = config or get_embedding_config()
         self.logger = logging.getLogger(__name__)
@@ -111,7 +139,12 @@ class EmbeddingClient:
                 input_type=role,
             )
             try:
-                response = await self.adapter.embed(request)
+                # 全局发帖节流：锁住"等待间隔+发帖"整个动作，跨实例串行。
+                async with EmbeddingClient._global_spacing_lock():
+                    await EmbeddingClient._pace_global_request_interval(
+                        self.config.batch_delay
+                    )
+                    response = await self.adapter.embed(request)
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics
                 # show actionable info instead of a bare exception string.
