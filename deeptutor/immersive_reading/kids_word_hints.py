@@ -13,6 +13,101 @@ from deeptutor.services.path_service import get_path_service
 _WORD_RE = re.compile(r"[A-Za-z]+(?:['’-][A-Za-z]+)?")
 _POS_PREFIX_RE = re.compile(r"^(?:[a-z]{1,5}\.|[a-z]{1,5}\s+)\s*", re.IGNORECASE)
 
+_KIDS_CHINESE: dict[str, str] = {
+    # Actions
+    "said": "说，讲（say 的过去式）",
+    "find": "寻找，找到",
+    "make": "制作，做",
+    "help": "帮助，帮忙",
+    "run": "奔跑，跑",
+    "jump": "跳跃，跳",
+    "swim": "游泳",
+    "sit": "坐下，坐",
+    "look": "看，注视",
+    "play": "玩耍，玩",
+    "eat": "吃，吃东西",
+    "sleep": "睡觉，休息",
+    "wear": "穿，戴（衣服）",
+    "wash": "清洗，洗",
+    "test": "测试，检验",
+    "dip": "浸，蘸，快速泡水",
+    "fit": "合适，合身",
+    "come": "来，过来",
+    # Food & nature
+    "plum": "李子",
+    "plums": "李子（复数）",
+    "snack": "点心，零食，小吃",
+    "ham": "火腿",
+    "cake": "蛋糕",
+    "soup": "热汤，汤",
+    "pancakes": "薄煎饼，松饼",
+    "food": "食物",
+    "milk": "牛奶",
+    "egg": "鸡蛋，卵",
+    "sun": "太阳，阳光",
+    "moon": "月亮",
+    "star": "星星",
+    "tree": "树，大树",
+    "flower": "花朵，鲜花",
+    "rain": "雨水，下雨",
+    "snow": "雪花，下雪",
+    "grass": "青草，草地",
+    "leaf": "树叶，叶子",
+    "twig": "小树枝，细枝",
+    "rock": "石头，岩石",
+    # Describing words / Adjectives
+    "good": "好的，优秀的",
+    "bad": "坏的，不好的",
+    "big": "大的，巨大的",
+    "small": "小的，小巧的",
+    "little": "小的，可爱的",
+    "hot": "热的，烫的",
+    "cold": "冷的，寒冷的",
+    "fast": "快的，迅速的",
+    "slow": "慢的，缓慢的",
+    "hard": "硬的，坚硬的",
+    "soft": "软的，柔软的",
+    "old": "旧的，年老的",
+    "new": "新的，崭新的",
+    "long": "长的",
+    "short": "短的，矮的",
+    "pretty": "漂亮的，好看的",
+    "funny": "好笑的，滑稽的",
+    "happy": "开心的，快乐的",
+    "sad": "伤心的，难过的",
+    # Creatures & Objects
+    "bug": "小虫，昆虫",
+    "cat": "小猫",
+    "dog": "小狗",
+    "bird": "小鸟，鸟类",
+    "fish": "鱼，鱼类",
+    "pig": "小猪",
+    "fox": "狐狸",
+    "duck": "鸭子",
+    "bear": "熊",
+    "frog": "青蛙",
+    "rabbit": "兔子",
+    "hat": "帽子",
+    "pants": "裤子",
+    "vest": "背心，马甲",
+    "dress": "连衣裙",
+    "truck": "大卡车，货车",
+    "sled": "雪橇",
+    "flag": "旗帜，旗子",
+    "card": "卡片",
+    "pool": "水池，游泳池",
+    "pot": "深锅，罐子",
+    "pan": "平底锅",
+    "bag": "包，袋子",
+    "mat": "地垫，小垫子",
+    "box": "盒子，箱子",
+    "bed": "床",
+    "pen": "笔，钢笔",
+    "book": "书，书本",
+    "hand": "手",
+    "leg": "腿",
+}
+
 _KIDS_THINKING_CLUES: dict[str, str] = {
     # Actions
     "said": "Think about using your voice to talk with someone. What did they do?",
@@ -145,8 +240,22 @@ def _first_english_definition(value: str) -> str:
 
 
 def _concise_chinese(value: str) -> str:
-    first = next((line.strip() for line in (value or "").splitlines() if line.strip()), "")
-    return _POS_PREFIX_RE.sub("", first).strip()
+    if not value:
+        return ""
+    normalized = value.replace("\\n", "\n").replace("\r", "")
+    lines = [line.strip() for line in normalized.splitlines() if line.strip() and not line.strip().startswith("[")]
+    if not lines:
+        return ""
+    preferred = lines[0]
+    for line in lines:
+        if "过去式" in line or "名词" in line or "动词" in line or "形容词" in line:
+            preferred = line
+            break
+    cleaned = _POS_PREFIX_RE.sub("", preferred).strip()
+    parts = [p.strip() for p in re.split(r"[;,，；]", cleaned) if p.strip() and not p.strip().startswith(("(", "（"))]
+    if parts:
+        return "，".join(parts[:3])
+    return cleaned
 
 
 def _ecdict_lookup(word: str) -> tuple[str, str, str, str] | None:
@@ -201,6 +310,7 @@ def build_kids_word_hint(raw_word: str, age_band: str = "6-8") -> KidsWordHint |
     if not word:
         return None
 
+    curated_chinese = _KIDS_CHINESE.get(word, "")
     age_definitions = _get_dictionary(age_band)
     definition = age_definitions.get(word, "")
     phonetic = ""
@@ -216,6 +326,9 @@ def build_kids_word_hint(raw_word: str, age_band: str = "6-8") -> KidsWordHint |
         if ec_entry is None:
             return None
         _, phonetic, definition, chinese = ec_entry
+
+    if curated_chinese:
+        chinese = curated_chinese
 
     if not chinese:
         return None

@@ -859,14 +859,20 @@ export default function KidsReaderPage() {
               </div>
             ) : (
               <div>
-                <p style={{ fontSize: 21, fontWeight: 800, color: "#2d3748" }}>
+                <p style={{ fontSize: 18, fontWeight: 700, color: "#4a3f6b", margin: "0 0 6px", lineHeight: 1.4 }}>
                   {wordHintState.correctChoice}
                 </p>
-                <p style={{ fontSize: 18, color: "#4a3f6b" }}>{wordHintState.chinese}</p>
-                {wordHintState.explanation && (
-                  <p style={{ fontSize: 15, color: "#7c6f9b", marginTop: 8 }}>
-                    {wordHintState.explanation}
+                {wordHintState.chinese && (
+                  <p style={{ fontSize: 20, fontWeight: 800, color: "#2d3748", margin: "0 0 10px", lineHeight: 1.4 }}>
+                    {wordHintState.chinese.replace(/\\n|\n/g, " ")}
                   </p>
+                )}
+                {wordHintState.explanation && (
+                  <div style={{ padding: "10px 14px", background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", marginBottom: 16 }}>
+                    <p style={{ fontSize: 15, color: "#4a5568", margin: 0, lineHeight: 1.5 }}>
+                      {wordHintState.explanation}
+                    </p>
+                  </div>
                 )}
                 <button
                   style={{ ...bigBtn, width: "100%", background: "#667eea", color: "white" }}
@@ -1105,10 +1111,12 @@ const popupOverlay: React.CSSProperties = {
 const popupBox: React.CSSProperties = {
   background: "white",
   borderRadius: 24,
-  padding: 28,
+  padding: 24,
   maxWidth: 500,
   width: "90%",
-  maxHeight: "80vh",
+  maxHeight: "88vh",
   overflowY: "auto",
+  boxSizing: "border-box",
+  WebkitOverflowScrolling: "touch",
   boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
 };
