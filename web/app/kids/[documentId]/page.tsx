@@ -689,6 +689,20 @@ export default function KidsReaderPage() {
               </div>
             ) : wordHintState.phase === "hint" ? (
               <div>
+                <div style={{
+                  display: "inline-block",
+                  padding: "3px 8px",
+                  background: "#e0e7ff",
+                  color: "#4338ca",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginBottom: 8,
+                }}>
+                  Thinking Clue
+                </div>
                 <p style={{ fontSize: 20, lineHeight: 1.5, color: "#2d3748" }}>
                   {wordHintData.english_hint}
                 </p>
@@ -755,8 +769,13 @@ export default function KidsReaderPage() {
               </div>
             ) : wordHintState.phase === "correct" ? (
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 56 }}>Yes!</div>
+                <div style={{ fontSize: 48 }}>🌟</div>
                 <p style={{ fontSize: 20, color: "#2d3748" }}>{wordHintState.feedback}</p>
+                {wordHintState.correctChoice && (
+                  <p style={{ fontSize: 16, color: "#4a5568", margin: "0 0 16px" }}>
+                    &ldquo;{wordHintState.word}&rdquo; means {wordHintState.correctChoice}.
+                  </p>
+                )}
                 <button
                   style={{ ...bigBtn, background: "#667eea", color: "white" }}
                   onClick={closeWordHint}

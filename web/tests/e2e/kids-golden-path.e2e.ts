@@ -67,7 +67,7 @@ test.beforeEach(async ({ page }) => {
         hint_id: "hint-001",
         word: "plum",
         phonetic: "plʌm",
-        english_hint: "It is a small sweet fruit.",
+        english_hint: "Picture a small, juicy fruit growing on a sunny tree. What is it?",
       });
     }
     if (suffix === "/books/golden/word-hint/choices") {
@@ -132,7 +132,7 @@ test("kids golden path guides words, auto-checks chapters, and narrates", async 
 
   await reader.getByText("plum", { exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "plum" })).toBeVisible();
-  await expect(page.getByText("It is a small sweet fruit.")).toBeVisible();
+  await expect(page.getByText("Picture a small, juicy fruit growing on a sunny tree. What is it?")).toBeVisible();
   const hintCard = page.locator("div[role], section, body").filter({ hasText: "plum" }).last();
   await expect(hintCard).not.toContainText("李子");
 
