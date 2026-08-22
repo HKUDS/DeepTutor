@@ -228,7 +228,10 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         )
         last_exc: Exception | None = None
         rate_limit_retries = 0
-        for attempt in range(1 + self._MAX_RETRIES):
+        # 槽位必须 > 限流重试上限：429 的 continue 也消耗 attempt，若循环
+        # 先耗尽而 last_exc 仍为 None，会静默落到循环外的 data 引用上
+        # （UnboundLocalError）。多给 4 个槽位兜住 8 轮限流 + 网络重试。
+        for attempt in range(1 + max(self._MAX_RETRIES, 10)):
             try:
                 async with httpx.AsyncClient(
                     timeout=timeout, verify=not disable_ssl_verify_enabled()
