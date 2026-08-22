@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl, wsUrl } from "@/lib/api";
-import { taskFailureMessage, type ProgressInfo } from "@/lib/knowledge-helpers";
+import {
+  progressMessage,
+  taskFailureMessage,
+  type ProgressInfo,
+} from "@/lib/knowledge-helpers";
+import { useTranslation } from "react-i18next";
 
 export type TaskKind = "create" | "upload" | "reindex" | "retry";
 
@@ -27,10 +32,12 @@ export function taskStateAfterProgress(
   current: TaskState,
   expectedTaskId: string | undefined,
   progress: ProgressInfo,
+  /** Defaults to the key itself, i.e. the untranslated English. */
+  t: (key: string, options?: Record<string, unknown>) => string = (key) => key,
 ): TaskState {
   const taskId = expectedTaskId || progress.task_id;
   if (taskId && current.taskId !== taskId) return current;
-  const logs = appendTaskLog(current.logs, progress.message);
+  const logs = appendTaskLog(current.logs, progressMessage(progress, t));
   if (progress.stage === "completed") {
     return { ...current, logs, executing: false, error: null };
   }
@@ -39,7 +46,7 @@ export function taskStateAfterProgress(
       ...current,
       logs,
       executing: false,
-      error: progress.error || progress.message || "Task failed",
+      error: progress.error || progressMessage(progress, t) || "Task failed",
       errorCode: progress.error_code,
       retryable: progress.retryable,
     };
@@ -60,6 +67,9 @@ interface UseKnowledgeProgressOptions {
 }
 
 export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
+  // Progress lines arrive as English templates plus values; this hook is the
+  // first place that knows the viewer's language.
+  const { t } = useTranslation();
   const onCompleteRef = useRef(options?.onComplete);
   const onTaskSettledRef = useRef(options?.onTaskSettled);
   useEffect(() => {
@@ -148,6 +158,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
               current,
               expectedTaskId,
               progress,
+              t,
             );
             if (finalState === current) return prev;
             const startedAt =
@@ -182,7 +193,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
         delete socketsRef.current[kbName];
       };
     },
-    [closeSocket, closeSource, setProgress],
+    [closeSocket, closeSource, setProgress, t],
   );
 
   const openTaskStream = useCallback(
@@ -243,6 +254,27 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
             (event as MessageEvent).data,
           ) as ProgressInfo;
           setProgress(kbName, payload);
+          // The progress bar reads `percent`; the log box reads `task.logs`.
+          // Also surface the message so "Describing images: m/n" and
+          // "Embedding batches: N/M" stream into the log box live (not only at
+          // completion). Dedupe against the last line: process_log may already
+          // have emitted the same message via _task_log.
+          const line = progressMessage(payload, t);
+          if (line) {
+            setTasksByKb((prev) => {
+              const current = prev[kbName];
+              if (!current || current.taskId !== taskId) return prev;
+              const logs = appendTaskLog(current.logs, line);
+              if (logs === current.logs) return prev;
+              return {
+                ...prev,
+                [kbName]: {
+                  ...current,
+                  logs,
+                },
+              };
+            });
+          }
         } catch {
           // ignore malformed progress
         }
@@ -326,7 +358,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
         // authoritative terminal-state fallback while SSE reconnects.
       };
     },
-    [closeSource, setProgress],
+    [closeSource, setProgress, t],
   );
 
   const startTask = useCallback(

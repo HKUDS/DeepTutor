@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from llama_index.core import Document
 from llama_index.core.schema import ImageNode
@@ -26,6 +26,8 @@ from deeptutor.services.embedding import get_embedding_client
 from deeptutor.services.llm.client import get_llm_client
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.utils.document_validator import DocumentValidator
+
+from .config import image_description_limits
 
 IMAGE_DESCRIPTION_SYSTEM_PROMPT = (
     "You describe images for a retrieval-augmented knowledge base. "
@@ -60,7 +62,11 @@ class LlamaIndexDocumentLoader:
     def __init__(self, logger=None) -> None:
         self.logger = logger or logging.getLogger(__name__)
 
-    async def load(self, file_paths: Iterable[str]) -> list[Any]:
+    async def load(
+        self,
+        file_paths: Iterable[str],
+        image_progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[Any]:
         documents: list[Any] = []
         image_sources: list[_ImageSource] = []
         classification = FileTypeRouter.classify_files(list(file_paths))
@@ -87,7 +93,11 @@ class LlamaIndexDocumentLoader:
             image_sources.append(_ImageSource(path=path, origin=path))
 
         if image_sources:
-            documents.extend(await self._load_image_nodes(image_sources))
+            documents.extend(
+                await self._load_image_nodes(
+                    image_sources, image_progress_callback=image_progress_callback
+                )
+            )
 
         for file_path_str in classification.unsupported:
             self.logger.warning(f"Skipped unsupported file: {Path(file_path_str).name}")
@@ -149,7 +159,12 @@ class LlamaIndexDocumentLoader:
             )
         return images
 
-    async def _load_image_nodes(self, sources: list[_ImageSource]) -> list[ImageNode]:
+    async def _load_image_nodes(
+        self,
+        sources: list[_ImageSource],
+        *,
+        image_progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[ImageNode]:
         try:
             embedding_client = get_embedding_client()
         except Exception as exc:
@@ -182,36 +197,77 @@ class LlamaIndexDocumentLoader:
 
         embedded: list[_ImageSource] = []
         descriptions: list[str] = []
-        contents = []
-        for source in sources:
+        contents: list[dict[str, str]] = []
+        completed = 0
+        total = len(sources)
+        concurrency, timeout_seconds = image_description_limits()
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def _describe_one(
+            source: _ImageSource,
+        ) -> tuple[_ImageSource, str, dict[str, str]] | None:
+            nonlocal completed
+            result: tuple[_ImageSource, str, dict[str, str]] | None = None
             try:
-                image_payload = self._load_image_payload(source.path)
-                description = await self._describe_image(
-                    llm_client,
-                    source.path,
-                    image_payload["base64"],
-                    image_payload["mimetype"],
-                )
-                if not description:
-                    self.logger.warning(
-                        "Skipped image because the configured multimodal LLM "
-                        f"returned no description: {source.path.name}"
+                try:
+                    async with semaphore:
+                        image_payload = self._load_image_payload(source.path)
+                        description = await asyncio.wait_for(
+                            self._describe_image(
+                                llm_client,
+                                source.path,
+                                image_payload["base64"],
+                                image_payload["mimetype"],
+                            ),
+                            timeout=timeout_seconds,
+                        )
+                except asyncio.TimeoutError:
+                    self.logger.error(
+                        "Image description timed out after %ss: %s",
+                        timeout_seconds,
+                        source.path.name,
                     )
-                    continue
-                contents.append({"image": image_payload["data_uri"]})
-                embedded.append(source)
-                descriptions.append(description)
-            except OSError as exc:
-                self.logger.error(f"Failed to read image {source.path.name}: {exc}")
-            except Exception as exc:
-                self.logger.error(
-                    "Failed to describe image %s with configured multimodal LLM "
-                    "(binding=%s, model=%s): %s",
-                    source.path.name,
-                    llm_client.config.binding,
-                    llm_client.config.model,
-                    exc,
-                )
+                except OSError as exc:
+                    self.logger.error(f"Failed to read image {source.path.name}: {exc}")
+                except Exception as exc:
+                    self.logger.error(
+                        "Failed to describe image %s with configured multimodal LLM "
+                        "(binding=%s, model=%s): %s",
+                        source.path.name,
+                        llm_client.config.binding,
+                        llm_client.config.model,
+                        exc,
+                    )
+                else:
+                    if not description:
+                        self.logger.warning(
+                            "Skipped image because the configured multimodal LLM "
+                            f"returned no description: {source.path.name}"
+                        )
+                    else:
+                        result = (
+                            source,
+                            description,
+                            {"image": image_payload["data_uri"]},
+                        )
+            finally:
+                completed += 1
+                if image_progress_callback:
+                    try:
+                        image_progress_callback(completed, total)
+                    except Exception:
+                        pass
+            return result
+
+        # gather preserves input order, so embedded/descriptions/contents stay
+        # aligned regardless of completion order.
+        results = await asyncio.gather(*(_describe_one(source) for source in sources))
+        for result in results:
+            if result is None:
+                continue
+            embedded.append(result[0])
+            descriptions.append(result[1])
+            contents.append(result[2])
 
         if not contents:
             return []

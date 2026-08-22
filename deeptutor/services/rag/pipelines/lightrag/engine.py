@@ -14,6 +14,9 @@ native query modes.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+import inspect
 import logging
 from pathlib import Path
 from typing import Any
@@ -120,6 +123,59 @@ async def insert(rag: Any, content_list: list[dict], *, file_name: str, doc_id: 
     )
 
 
+def _managed_queue_funcs(lightrag: Any) -> Iterable[Callable[..., Any]]:
+    """Yield each current LightRAG queue wrapper exactly once."""
+    role_funcs = getattr(lightrag, "role_llm_funcs", {})
+    candidates: list[object] = []
+    if isinstance(role_funcs, Mapping):
+        candidates.extend(role_funcs.values())
+
+    embedding = getattr(lightrag, "embedding_func", None)
+    candidates.append(getattr(embedding, "func", None))
+    candidates.append(getattr(lightrag, "rerank_model_func", None))
+
+    seen: set[int] = set()
+    for candidate in candidates:
+        if not callable(candidate) or id(candidate) in seen:
+            continue
+        seen.add(id(candidate))
+        yield candidate
+
+
+async def _shutdown_queues(lightrag: Any, *, cancel_pending: bool) -> None:
+    """Bound cleanup of LightRAG's role, embedding, and rerank queues."""
+    shutdowns: list[Awaitable[Any]] = []
+    for func in _managed_queue_funcs(lightrag):
+        shutdown = getattr(func, "shutdown", None)
+        if callable(shutdown):
+            result = shutdown(graceful=not cancel_pending, timeout=5.0)
+            if inspect.isawaitable(result):
+                shutdowns.append(result)
+    if not shutdowns:
+        return
+
+    results = await asyncio.gather(*shutdowns, return_exceptions=True)
+    failures = [result for result in results if isinstance(result, BaseException)]
+    if failures:
+        raise RuntimeError(
+            f"Failed to shut down {len(failures)} LightRAG managed queue(s)"
+        ) from failures[0]
+
+
+async def finalize(rag: Any, *, cancel_pending: bool) -> None:
+    """Stop managed work before finalizing RAG-Anything storage resources."""
+    lightrag = getattr(rag, "lightrag", None)
+    if lightrag is not None:
+        await _shutdown_queues(lightrag, cancel_pending=cancel_pending)
+
+    finalizer = getattr(rag, "finalize_storages", None)
+    if not callable(finalizer):
+        return
+    result = finalizer()
+    if inspect.isawaitable(result):
+        await result
+
+
 async def ensure_ready(rag: Any) -> None:
     """Ensure RAG-Anything has an initialized LightRAG instance."""
     if getattr(rag, "lightrag", None) is not None:
@@ -156,4 +212,4 @@ async def query(rag: Any, question: str, mode: str | None = None) -> str:
     return result if isinstance(result, str) else str(result)
 
 
-__all__ = ["build_rag", "insert", "ensure_ready", "query"]
+__all__ = ["build_rag", "ensure_ready", "finalize", "insert", "query"]

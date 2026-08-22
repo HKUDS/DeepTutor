@@ -971,7 +971,12 @@ function BookPageInner() {
                   void compilePage(pageId, true);
                 }}
               />
-              <div className="min-h-0 flex-1">
+              {/* The reader owns the height that is left; the capture inbox
+                  sits under it at its natural height. Both need this to be a
+                  flex column — a plain block here collapses `PageReader`'s
+                  `h-full` to auto, which stops the body scrolling and pushes
+                  the page-turn footer out of view. */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <PageReader
                     page={selectedPage}
@@ -1027,7 +1032,7 @@ function BookPageInner() {
                     }
                   />
                 </div>
-                <div className="border-t border-[var(--border)]">
+                <div className="shrink-0 border-t border-[var(--border)] px-8 py-3">
                   <LearningCapturePanel
                     captures={learningCaptures}
                     loading={loadingLearningCaptures}

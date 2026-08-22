@@ -61,6 +61,9 @@ export interface LlamaIndexConfig {
   /** Chunk geometry — applies to documents indexed after the change. */
   chunk_size: number;
   chunk_overlap: number;
+  /** Bounded multimodal LLM work during image-heavy indexing. */
+  image_description_concurrency: number;
+  image_description_timeout_seconds: number;
 }
 
 export interface GraphRagConfig {
@@ -594,7 +597,7 @@ export interface KnowledgeTaskResponse {
   noop?: boolean;
 }
 
-async function readErrorDetail(
+export async function readErrorDetail(
   res: Response,
   fallback: string,
 ): Promise<string> {
@@ -663,6 +666,34 @@ export async function connectObsidianVault(payload: {
     status: string;
     name: string;
     vault_path: string;
+  };
+}
+
+export async function connectMarginNote4Library(payload: {
+  name: string;
+  description?: string;
+}): Promise<{ status: string; name: string; db_path?: string }> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/connect-marginnote4"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // `db_path` is deliberately not sent: leaving it blank keeps one rule for
+    // where the store lives (derived from the name), which is what lets the
+    // pairing endpoints, the Add-on's syncs and the capability binding agree.
+    body: JSON.stringify({
+      name: payload.name,
+      description: payload.description ?? "",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to connect MarginNote 4 library"),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as {
+    status: string;
+    name: string;
+    db_path?: string;
   };
 }
 

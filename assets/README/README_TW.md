@@ -64,7 +64,7 @@ DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統�
 - **所有模式共用一套執行階段** — Chat、Quiz、Research、Visualize、Solve、Mastery Path 與 Immersive Reading 在同一個代理程式迴圈上運作；你切換的是目標而非引擎，學習情境會一路跟隨學習者。
 - **相互連結的學習情境** — 知識庫、書籍、Co-Writer 草稿、筆記本、題庫、角色設定與 Memory 在每個工作流程中皆可使用，不再分散於彼此隔離的工具。
 - **子代理程式與 Partners** — 可在任何回合諮詢即時程式設計 CLI（Claude Code、Codex、Gemini、Kimi、opencode 或 MiMo）或 Partner（也能匯入其過往對話），並讓持續運作的 IM 夥伴共用同一套核心。
-- **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG、遠端 LightRAG Server 或 Tencent IMA 知識庫，或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。
+- **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG、遠端 LightRAG Server、Tencent IMA 或 MarginNote 4 知識庫，或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。
 - **可擴充的工具與技能** — 內建工具、MCP 伺服器、CLI 應用程式、影像／影片／語音生成模型，以及可從 EduHub 安裝的社群技能。
 - **可檢視的記憶** — L1 軌跡、L2 介面摘要與 L3 綜整讓個人化內容透明且可編輯；Memory Graph 可將每項主張追溯到其證據。
 
@@ -421,7 +421,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-知識庫是 RAG 背後的文件集合，可為 Chat 回合、Co-Writer 編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，本機 vector＋BM25）、**PageIndex**（可推理的檢索並附頁面層級引用，支援託管式或自架 OSS）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
+知識庫是 RAG 背後的文件集合，可為 Chat 回合、Co-Writer 編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，本機 vector＋BM25）、**PageIndex**（可推理的檢索並附頁面層級引用，支援託管式或自架 OSS）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回）、**MarginNote 4**（你的 MN4 學習資料 — 文件、摘錄、思維導圖卡片及彼此之間的連結 — 由該應用程式的 Add-on 推送匯入，並透過專用工具進行導覽），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="建立知識庫" width="900">

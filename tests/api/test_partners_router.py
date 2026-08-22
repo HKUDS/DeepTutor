@@ -88,6 +88,141 @@ class TestCreate:
         assert _create(client, partner_id="bob", name="Bob", mcp_tools=None).status_code == 200
         assert client.get("/api/v1/partners/bob").json()["mcp_tools"] is None
 
+
+class TestChannelOnboarding:
+    def _install_feishu_manager(self, monkeypatch) -> None:
+        from urllib.parse import parse_qs
+
+        from deeptutor.api.routers import partners as router_mod
+        from deeptutor.services.partners.channel_onboarding import (
+            ChannelOnboardingManager,
+        )
+
+        polls = [
+            {"error": "authorization_pending"},
+            {
+                "client_id": "cli_app",
+                "client_secret": "app_secret",
+                "user_info": {"open_id": "ou_scanner"},
+            },
+        ]
+
+        def handler(request):
+            if request.url.path != "/oauth/v1/app/registration":
+                raise AssertionError(request.url)
+            form = {key: values[0] for key, values in parse_qs(request.content.decode()).items()}
+            if form["action"] == "init":
+                return __import__("httpx").Response(
+                    200, json={"supported_auth_methods": ["client_secret"]}
+                )
+            if form["action"] == "begin":
+                return __import__("httpx").Response(
+                    200,
+                    json={
+                        "device_code": "device-code",
+                        "verification_uri_complete": "https://accounts.feishu.cn/scan",
+                        "interval": 1,
+                        "expire_in": 60,
+                    },
+                )
+            return __import__("httpx").Response(400, json=polls.pop(0))
+
+        transport = __import__("httpx").MockTransport(handler)
+        manager = ChannelOnboardingManager(
+            client_factory=lambda: __import__("httpx").AsyncClient(transport=transport)
+        )
+        monkeypatch.setattr(router_mod, "get_channel_onboarding_manager", lambda: manager)
+
+    def test_start_status_apply_and_terminal_apply(self, client, monkeypatch, isolated_root):
+        self._install_feishu_manager(monkeypatch)
+        assert _create(client).status_code == 200
+
+        started = client.post(
+            "/api/v1/partners/ada/channel-onboarding/start",
+            json={"channel": "feishu"},
+        )
+        assert started.status_code == 200
+        body = started.json()
+        assert body["status"] == "pending_scan"
+        assert "device-code" not in json.dumps(body)
+
+        session_id = body["session_id"]
+        assert (
+            client.get(f"/api/v1/partners/ada/channel-onboarding/{session_id}").json()["status"]
+            == "pending_scan"
+        )
+        ready = client.get(f"/api/v1/partners/ada/channel-onboarding/{session_id}").json()
+        assert ready["status"] == "ready"
+
+        applied = client.post(f"/api/v1/partners/ada/channel-onboarding/{session_id}/apply")
+        assert applied.status_code == 200
+        assert applied.json()["channels"]["feishu"]["app_secret"] == "***"
+
+        config = yaml.safe_load((isolated_root / "partners" / "ada" / "config.yaml").read_text())
+        assert config["channels"]["feishu"]["app_secret"] == "app_secret"
+        assert config["channels"]["feishu"]["allow_from"] == ["ou_scanner"]
+
+        repeat = client.post(f"/api/v1/partners/ada/channel-onboarding/{session_id}/apply")
+        assert repeat.status_code == 409
+
+    def test_onboarding_errors_and_scope(self, client, monkeypatch):
+        self._install_feishu_manager(monkeypatch)
+        assert _create(client).status_code == 200
+
+        missing = client.post(
+            "/api/v1/partners/ghost/channel-onboarding/start",
+            json={"channel": "feishu"},
+        )
+        assert missing.status_code == 404
+
+        invalid = client.post(
+            "/api/v1/partners/ada/channel-onboarding/start",
+            json={"channel": "telegram"},
+        )
+        assert invalid.status_code == 422
+
+        started = client.post(
+            "/api/v1/partners/ada/channel-onboarding/start",
+            json={"channel": "feishu"},
+        ).json()
+        assert (
+            client.get(
+                f"/api/v1/partners/bob/channel-onboarding/{started['session_id']}"
+            ).status_code
+            == 404
+        )
+        assert (
+            client.get("/api/v1/partners/ada/channel-onboarding/not-a-session").status_code == 404
+        )
+        not_ready = client.post(
+            f"/api/v1/partners/ada/channel-onboarding/{started['session_id']}/apply"
+        )
+        assert not_ready.status_code == 409
+
+        cancelled = client.delete(
+            f"/api/v1/partners/ada/channel-onboarding/{started['session_id']}"
+        )
+        assert cancelled.json()["status"] == "cancelled"
+
+    def test_onboarding_routes_inherit_the_full_partners_admin_gate(self):
+        from deeptutor.api.main import app
+        from deeptutor.api.routers.auth import require_admin
+
+        included = next(
+            route
+            for route in app.routes
+            if getattr(getattr(route, "include_context", None), "prefix", None)
+            == "/api/v1/partners"
+        )
+        assert any(
+            route.path == "/{partner_id}/channel-onboarding/start"
+            for route in included.original_router.routes
+        )
+        assert any(
+            getattr(dependency, "dependency", None) is require_admin
+            for dependency in included.include_context.dependencies
+        )
+
     def test_duplicate_id_conflicts(self, client):
         assert _create(client).status_code == 200
         assert _create(client).status_code == 409

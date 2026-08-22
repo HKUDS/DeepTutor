@@ -862,7 +862,7 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
 
             initializer.progress_tracker.update(
                 ProgressStage.COMPLETED,
-                "Knowledge base initialization complete!",
+                message_key="Knowledge base initialization complete!",
                 current=1,
                 total=1,
                 indexed_count=indexed_count,
@@ -925,7 +925,8 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
             if initializer.progress_tracker:
                 initializer.progress_tracker.update(
                     ProgressStage.ERROR,
-                    f"Initialization failed: {error_msg}",
+                    message_key="Initialization failed: {{error}}",
+                    message_params={"error": error_msg},
                     error=error_msg,
                     **failure_metadata,
                 )
@@ -965,7 +966,8 @@ async def run_upload_processing_task(
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Validating {len(uploaded_file_paths)} file(s)...",
+                message_key="Validating {{count}} file(s)...",
+                message_params={"count": len(uploaded_file_paths)},
                 current=0,
                 total=len(uploaded_file_paths),
             )
@@ -991,7 +993,8 @@ async def run_upload_processing_task(
             _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Staged {len(staged_files)} new file(s)",
+                message_key="Staged {{count}} new file(s)",
+                message_params={"count": len(staged_files)},
                 current=0,
                 total=len(staged_files),
             )
@@ -1000,7 +1003,7 @@ async def run_upload_processing_task(
                 _task_log(task_id, "No new files to process (all duplicates or invalid)")
                 progress_tracker.update(
                     ProgressStage.COMPLETED,
-                    "No new files to process (all duplicates or invalid)",
+                    message_key="No new files to process (all duplicates or invalid)",
                     current=0,
                     total=0,
                 )
@@ -1029,7 +1032,8 @@ async def run_upload_processing_task(
                     )
                 progress_tracker.update(
                     ProgressStage.ERROR,
-                    f"Processing failed: {error_msg}",
+                    message_key="Processing failed: {{error}}",
+                    message_params={"error": error_msg},
                     current=index_result.processed_count,
                     total=len(staged_files),
                     error=error_msg,
@@ -1049,7 +1053,7 @@ async def run_upload_processing_task(
 
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                "Saving metadata...",
+                message_key="Saving metadata...",
                 current=index_result.processed_count,
                 total=len(staged_files),
             )
@@ -1070,7 +1074,8 @@ async def run_upload_processing_task(
             num_processed = index_result.processed_count
             progress_tracker.update(
                 ProgressStage.COMPLETED,
-                f"Successfully processed {num_processed} files!",
+                message_key="Successfully processed {{count}} files!",
+                message_params={"count": num_processed},
                 current=num_processed,
                 total=num_processed,
                 indexed_count=num_processed,
@@ -1098,7 +1103,8 @@ async def run_upload_processing_task(
 
             progress_tracker.update(
                 ProgressStage.ERROR,
-                f"Processing failed: {error_msg}",
+                message_key="Processing failed: {{error}}",
+                message_params={"error": error_msg},
                 error=error_msg,
                 **failure_metadata,
             )
@@ -1293,6 +1299,8 @@ class LlamaIndexConfigUpdate(BaseModel):
     bm25_top_k_multiplier: int | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
+    image_description_concurrency: int | None = None
+    image_description_timeout_seconds: int | None = None
 
 
 @router.get("/rag-pipelines/llamaindex/config")
@@ -1311,8 +1319,8 @@ async def get_llamaindex_pipeline_config():
 async def update_llamaindex_pipeline_config(payload: LlamaIndexConfigUpdate):
     """Persist the LlamaIndex engine knobs.
 
-    Retrieval knobs take effect on the next query; chunk geometry only changes
-    how documents indexed *after* the save are split.
+    Retrieval knobs take effect on the next query; indexing knobs only affect
+    documents processed after the save.
     """
     try:
         from deeptutor.services.config import get_runtime_settings_service
@@ -1724,6 +1732,41 @@ async def connect_obsidian_vault(payload: ConnectObsidianRequest):
         raise
     except Exception as e:
         logger.error(f"Error connecting Obsidian vault: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ConnectMarginNote4Request(BaseModel):
+    name: str
+    db_path: str = ""
+    description: str = ""
+
+
+@router.post("/connect-marginnote4")
+async def connect_marginnote4(payload: ConnectMarginNote4Request):
+    """Register a connected MarginNote 4 library as a knowledge base.
+
+    Creates a ``type: marginnote4`` pointer so the MarginNote capability can
+    bind to it on turns where the user selects this KB. When ``db_path`` is
+    omitted the capability derives a default SQLite path from the KB name.
+    """
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required.")
+    try:
+        manager = get_kb_manager()
+        entry = manager.register_marginnote4_kb(
+            name,
+            db_path=(payload.db_path or "").strip(),
+            description=(payload.description or "").strip(),
+        )
+        result = {"status": "connected", "name": name}
+        if entry.get("db_path"):
+            result["db_path"] = entry["db_path"]
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error connecting MarginNote 4 library: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2670,7 +2713,8 @@ async def create_knowledge_base(
 
         progress_tracker.update(
             ProgressStage.PROCESSING_DOCUMENTS,
-            f"Saved {len(uploaded_files)} files, preparing to process...",
+            message_key="Saved {{count}} files, preparing to process...",
+            message_params={"count": len(uploaded_files)},
             current=0,
             total=len(uploaded_files),
         )
@@ -2729,7 +2773,8 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             progress_tracker.task_id = task_id
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Re-indexing {len(file_paths)} document(s) with the active embedding model...",
+                message_key="Re-indexing {{count}} document(s) with the active embedding model...",
+                message_params={"count": len(file_paths)},
                 current=0,
                 total=len(file_paths),
             )
@@ -2744,7 +2789,8 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             def _on_progress(batch_num: int, total_batches: int) -> None:
                 progress_tracker.update(
                     ProgressStage.PROCESSING_DOCUMENTS,
-                    f"Embedding batches: {batch_num}/{total_batches}",
+                    message_key="Embedding batches: {{current}}/{{total}}",
+                    message_params={"current": batch_num, "total": total_batches},
                     current=batch_num,
                     total=total_batches,
                 )

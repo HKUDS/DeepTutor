@@ -37,6 +37,7 @@ from deeptutor.core.agentic import (
     dispatch_tool_calls,
 )
 from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.core.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
@@ -277,7 +278,7 @@ class ContextExplorer:
             kwargs["tool_choice"] = "auto"
 
         text_parts: list[str] = []
-        tool_acc: dict[int, dict[str, str]] = {}
+        tool_acc = ToolCallAccumulator()
         output_chars = 0
         response_stream = await client.chat.completions.create(**kwargs)
         try:
@@ -304,37 +305,14 @@ class ContextExplorer:
                         content, source=EXPLORE_SOURCE, stage=EXPLORE_STAGE, metadata=chunk_meta
                     )
                 for tc in getattr(delta, "tool_calls", None) or []:
-                    index = int(getattr(tc, "index", 0) or 0)
-                    acc = tool_acc.setdefault(index, {"id": "", "name": "", "arguments": ""})
-                    tcid = getattr(tc, "id", None)
-                    if tcid:
-                        acc["id"] += str(tcid)
-                    fn = getattr(tc, "function", None)
-                    if fn is None:
-                        continue
-                    name = getattr(fn, "name", None)
-                    arguments = getattr(fn, "arguments", None)
-                    if name:
-                        acc["name"] += str(name)
-                        output_chars += len(str(name))
-                    if arguments:
-                        acc["arguments"] += str(arguments)
-                        output_chars += len(str(arguments))
+                    output_chars += tool_acc.feed(tc)
         finally:
             close = getattr(response_stream, "close", None)
             if callable(close):
                 with suppress(Exception):
                     await close()
 
-        tool_calls = [
-            {
-                "id": data.get("id") or f"call_{idx}",
-                "name": data.get("name", ""),
-                "arguments": data.get("arguments") or "{}",
-            }
-            for idx, data in sorted(tool_acc.items())
-            if data.get("name")
-        ]
+        tool_calls = tool_acc.collected()
         return _CallResult(
             text="".join(text_parts), tool_calls=tool_calls, output_chars=output_chars
         )

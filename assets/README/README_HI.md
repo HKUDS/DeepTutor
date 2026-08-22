@@ -64,7 +64,7 @@ DeepTutor एक agent-native learning workspace है जो tutoring, problem
 - **हर मोड के लिए एक रनटाइम** — Chat, Quiz, Research, Visualize, Solve, Mastery Path और Immersive Reading एक ही agent loop पर चलते हैं, इसलिए आप objective बदलते हैं, engine नहीं, और context learner के साथ बना रहता है।
 - **जुड़ा हुआ लर्निंग कॉन्टेक्स्ट** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, और Memory सभी workflows में उपलब्ध रहते हैं, isolated tools में बंद रहने की बजाय।
 - **सब-एजेंट और Partners** — किसी भी turn से एक live coding CLI (Claude Code, Codex, Gemini, Kimi, opencode, या MiMo) या एक Partner से सलाह लें (या उनकी पिछली conversations import करें), और same brain पर persistent IM companions चलाएं।
-- **मल्टी-इंजन नॉलेज** — LlamaIndex, PageIndex, GraphRAG, LightRAG, एक remote LightRAG Server या Tencent IMA library, या एक linked Obsidian vault के साथ versioned RAG libraries, pluggable document parsing के साथ।
+- **मल्टी-इंजन नॉलेज** — LlamaIndex, PageIndex, GraphRAG, LightRAG, एक remote LightRAG Server, एक Tencent IMA या MarginNote 4 library, या एक linked Obsidian vault के साथ versioned RAG libraries, pluggable document parsing के साथ।
 - **एक्सटेंसिबल टूल्स और स्किल्स** — built-in tools, MCP servers, CLI apps, image / video / voice generation models, और EduHub से installable community skills।
 - **इंस्पेक्टेबल मेमोरी** — L1 traces, L2 surface summaries, और L3 synthesis personalization को visible और editable बनाते हैं, एक Memory Graph के साथ जो हर दावे को उसके साक्ष्य तक trace करता है।
 
@@ -421,7 +421,7 @@ Book selected sources को एक interactive **living book** में बद
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-Knowledge bases RAG के पीछे document collections हैं — वे Chat turns, Co-Writer edits, Book generation, और Partner conversations को ground करते हैं। जो distinctive है वह है **retrieval engines का choice**: **LlamaIndex** (default, local vector + BM25), **PageIndex** (reasoning retrieval with page-level citations, hosted या self-hosted OSS), **GraphRAG** और **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval एक external LightRAG instance पर offload किया जाता है जिसे आप HTTP पर connect करते हैं), **Tencent IMA** (एक library जिसे आप IMA में curate करते हैं — इसके OpenAPI पर search, browse, और write back किया जाता है), या एक linked **Obsidian** vault जिसे tutor in-place पढ़ता और लिखता है। हर KB एक engine से bound होती है।
+Knowledge bases RAG के पीछे document collections हैं — वे Chat turns, Co-Writer edits, Book generation, और Partner conversations को ground करते हैं। जो distinctive है वह है **retrieval engines का choice**: **LlamaIndex** (default, local vector + BM25), **PageIndex** (reasoning retrieval with page-level citations, hosted या self-hosted OSS), **GraphRAG** और **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval एक external LightRAG instance पर offload किया जाता है जिसे आप HTTP पर connect करते हैं), **Tencent IMA** (एक library जिसे आप IMA में curate करते हैं — इसके OpenAPI पर search, browse, और write back किया जाता है), **MarginNote 4** (आपका MN4 study data — documents, excerpts, mind-map cards और उनके बीच के links — जिन्हें app का Add-on push करता है और dedicated tools से navigate किया जाता है), या एक linked **Obsidian** vault जिसे tutor in-place पढ़ता और लिखता है। हर KB एक engine से bound होती है।
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="एक knowledge base बनाएं" width="900">

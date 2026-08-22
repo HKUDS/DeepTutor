@@ -1842,7 +1842,16 @@ def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
     original_update = knowledge_router_module.ProgressTracker.update
 
     def _record_update(self, stage, message="", current=0, total=0, **kwargs):
-        updates.append((message, current, total))
+        # Producers name a template plus its values so the web log box can
+        # translate; record the line a consumer actually sees, which is what
+        # this test is about.
+        from deeptutor.knowledge.progress_tracker import render_message_template
+
+        key = kwargs.get("message_key")
+        rendered = message or (
+            render_message_template(key, kwargs.get("message_params") or {}) if key else ""
+        )
+        updates.append((rendered, current, total))
         return original_update(
             self,
             stage,

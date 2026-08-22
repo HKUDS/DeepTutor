@@ -149,7 +149,8 @@ class KnowledgeBaseInitializer:
 
         self.progress_tracker.update(
             ProgressStage.PROCESSING_DOCUMENTS,
-            f"Starting to process documents with {provider} provider...",
+            message_key="Starting to process documents with {{provider}} provider...",
+            message_params={"provider": provider},
             current=0,
             total=0,
         )
@@ -161,14 +162,15 @@ class KnowledgeBaseInitializer:
         if not doc_files:
             self.progress_tracker.update(
                 ProgressStage.ERROR,
-                "No documents found to process",
+                message_key="No documents found to process",
                 error="No documents found",
             )
             raise ValueError("No documents found to process")
 
         self.progress_tracker.update(
             ProgressStage.PROCESSING_DOCUMENTS,
-            f"Found {len(doc_files)} documents, starting to process...",
+            message_key="Found {{count}} documents, starting to process...",
+            message_params={"count": len(doc_files)},
             current=0,
             total=len(doc_files),
         )
@@ -182,9 +184,19 @@ class KnowledgeBaseInitializer:
         def _on_progress(batch_num, total_batches):
             self.progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Embedding batches: {batch_num}/{total_batches} complete",
+                message_key="Embedding batches: {{current}}/{{total}} complete",
+                message_params={"current": batch_num, "total": total_batches},
                 current=batch_num,
                 total=total_batches,
+            )
+
+        def _on_image_progress(current: int, total: int):
+            self.progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                message_key="Describing images: {{current}}/{{total}}",
+                message_params={"current": current, "total": total},
+                current=current,
+                total=total,
             )
 
         try:
@@ -192,11 +204,12 @@ class KnowledgeBaseInitializer:
                 kb_name=self.kb_name,
                 file_paths=file_paths,
                 progress_callback=_on_progress,
+                image_progress_callback=_on_image_progress,
             )
             if not success:
                 self.progress_tracker.update(
                     ProgressStage.ERROR,
-                    "Document processing failed",
+                    message_key="Document processing failed",
                     error="RAG pipeline returned failure",
                 )
                 raise RuntimeError("RAG pipeline returned failure")
@@ -204,7 +217,7 @@ class KnowledgeBaseInitializer:
             self._update_metadata_with_provider(provider)
             self.progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                "Documents processed successfully",
+                message_key="Documents processed successfully",
                 current=len(doc_files),
                 total=len(doc_files),
             )
@@ -213,7 +226,7 @@ class KnowledgeBaseInitializer:
             logger.error(f"Error processing documents: {error_msg}")
             self.progress_tracker.update(
                 ProgressStage.ERROR,
-                "Failed to process documents",
+                message_key="Failed to process documents",
                 error=error_msg,
             )
             raise

@@ -33,6 +33,7 @@ from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
 from deeptutor.services.llm.usage_frame import token_counts
+from deeptutor.services.provider_registry import model_overrides_for
 
 if TYPE_CHECKING:
     from deeptutor.services.provider_registry import ProviderSpec
@@ -299,18 +300,13 @@ class OpenAICompatProvider(LLMProvider):
         else:
             kwargs["max_tokens"] = max(1, max_tokens)
 
-        if spec:
-            model_lower = model_name.lower()
-            for pattern, overrides in spec.model_overrides:
-                if pattern in model_lower:
-                    for key, value in overrides.items():
-                        # None means "drop this parameter" — e.g. Kimi models
-                        # reject any explicit temperature and must be sent none.
-                        if value is None:
-                            kwargs.pop(key, None)
-                        else:
-                            kwargs[key] = value
-                    break
+        for key, value in model_overrides_for(model_name, spec).items():
+            # None means "drop this parameter" — e.g. Kimi models reject any
+            # explicit temperature and must be sent none.
+            if value is None:
+                kwargs.pop(key, None)
+            else:
+                kwargs[key] = value
 
         kwargs.update(
             build_openai_compatible_reasoning_kwargs(

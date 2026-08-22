@@ -70,7 +70,11 @@ export interface SessionActivity {
   isEmpty: boolean;
 }
 
-export function buildSessionActivity(messages: MessageItem[]): SessionActivity {
+export function buildSessionActivity(
+  messages: MessageItem[],
+  options?: { availableKbNames?: Set<string> },
+): SessionActivity {
+  const availableKbNames = options?.availableKbNames;
   const toolCounts = new Map<string, number>();
   const kbs = new Set<string>();
   const historySessionIds = new Set<string>();
@@ -106,7 +110,9 @@ export function buildSessionActivity(messages: MessageItem[]): SessionActivity {
 
     const snap: MessageRequestSnapshot | undefined = msg.requestSnapshot;
     if (snap) {
-      snap.knowledgeBases?.forEach((k) => kbs.add(k));
+      snap.knowledgeBases?.forEach((k) => {
+        if (!availableKbNames || availableKbNames.has(k)) kbs.add(k);
+      });
       snap.historyReferences?.forEach((s) => historySessionIds.add(s));
       snap.bookReferences?.forEach((b) => {
         bookIds.add(b.book_id);

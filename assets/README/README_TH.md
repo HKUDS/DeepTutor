@@ -64,7 +64,7 @@ DeepTutor คือ workspace การเรียนรู้แบบ agent-n
 - **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Quiz, Research, Visualize, Solve, Mastery Path และ Immersive Reading บนลูป agent เดียวกัน คุณเปลี่ยนวัตถุประสงค์ ไม่ใช่เอ็นจิน และบริบทเดินทางไปพร้อมกับผู้เรียน
 - **บริบทการเรียนรู้ที่เชื่อมต่อกัน** — ฐานความรู้, หนังสือ, ร่าง Co-Writer, สมุดบันทึก, คลังคำถาม, บุคลิกภาพ และ Memory พร้อมใช้งานในทุกเวิร์กโฟลว์ แทนที่จะอยู่ในเครื่องมือที่แยกจากกัน
 - **ซับเอเจนต์และ Partners** — ปรึกษา coding CLI แบบสด (Claude Code, Codex, Gemini, Kimi, opencode หรือ MiMo) หรือ Partner จากทุก turn (หรือนำเข้าบทสนทนาในอดีต) และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
-- **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล หรือไลบรารี Tencent IMA หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable
+- **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล, ไลบรารี Tencent IMA หรือ MarginNote 4 หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable
 - **เครื่องมือและทักษะที่ขยายได้** — เครื่องมือในตัว, เซิร์ฟเวอร์ MCP, แอป CLI, โมเดลสร้างรูปภาพ/วิดีโอ/เสียง และทักษะชุมชนที่ติดตั้งได้จาก EduHub
 - **หน่วยความจำที่ตรวจสอบได้** — การติดตาม L1, สรุปพื้นผิว L2 และการสังเคราะห์ L3 ทำให้การปรับแต่งส่วนบุคคลมองเห็นได้และแก้ไขได้ พร้อม Memory Graph ที่ติดตามทุกการอ้างสิทธิ์กลับไปสู่หลักฐาน
 
@@ -421,7 +421,7 @@ Book แปลงแหล่งที่มาที่เลือกให้
 <img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-Knowledge bases คือคอลเลกชันเอกสารที่อยู่เบื้องหลัง RAG — รองรับ Chat turns, Co-Writer edits, Book generation และบทสนทนา Partner สิ่งที่โดดเด่นคือ **การเลือกเอ็นจิน retrieval**: **LlamaIndex** (ค่าเริ่มต้น, local vector + BM25), **PageIndex** (reasoning retrieval พร้อม page-level citations, hosted หรือ self-hosted OSS), **GraphRAG** และ **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval ที่ offload ไปยัง LightRAG instance ภายนอกที่คุณเชื่อมต่อผ่าน HTTP), **Tencent IMA** (ไลบรารีที่คุณคัดสรรใน IMA — ค้นหา เรียกดู และเขียนกลับผ่าน OpenAPI ของมัน) หรือ **Obsidian** vault ที่เชื่อมโยง tutor อ่านและเขียนในที่ KB แต่ละอันถูกผูกกับเอ็นจินหนึ่ง
+Knowledge bases คือคอลเลกชันเอกสารที่อยู่เบื้องหลัง RAG — รองรับ Chat turns, Co-Writer edits, Book generation และบทสนทนา Partner สิ่งที่โดดเด่นคือ **การเลือกเอ็นจิน retrieval**: **LlamaIndex** (ค่าเริ่มต้น, local vector + BM25), **PageIndex** (reasoning retrieval พร้อม page-level citations, hosted หรือ self-hosted OSS), **GraphRAG** และ **LightRAG** (knowledge-graph retrieval), **LightRAG Server** (retrieval ที่ offload ไปยัง LightRAG instance ภายนอกที่คุณเชื่อมต่อผ่าน HTTP), **Tencent IMA** (ไลบรารีที่คุณคัดสรรใน IMA — ค้นหา เรียกดู และเขียนกลับผ่าน OpenAPI ของมัน), **MarginNote 4** (ข้อมูลการเรียนใน MN4 ของคุณ — เอกสาร ข้อความที่คัดไว้ การ์ด mind-map และความเชื่อมโยงระหว่างสิ่งเหล่านั้น — ที่ถูกส่งเข้ามาโดย Add-on ของแอปและนำทางได้ด้วยเครื่องมือเฉพาะ) หรือ **Obsidian** vault ที่เชื่อมโยง tutor อ่านและเขียนในที่ KB แต่ละอันถูกผูกกับเอ็นจินหนึ่ง
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">

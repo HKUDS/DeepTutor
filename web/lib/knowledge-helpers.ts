@@ -42,7 +42,11 @@ export function uploadPolicyForProvider(
 export interface ProgressInfo {
   task_id?: string;
   stage?: string;
+  /** Rendered English. Prefer `progressMessage()`, which translates. */
   message?: string;
+  /** English `{{name}}` template the backend formatted `message` from. */
+  message_key?: string;
+  message_params?: Record<string, string | number>;
   current?: number;
   total?: number;
   percent?: number;
@@ -53,6 +57,22 @@ export interface ProgressInfo {
   error?: string;
   error_code?: string;
   retryable?: boolean;
+}
+
+/**
+ * The progress line to show, translated when the backend named its template.
+ *
+ * Indexing runs detached from any request, so the backend has no viewer
+ * language and sends the English template plus its values; `t()` is where the
+ * language is actually known. Falls back to the rendered English for progress
+ * emitted before a producer was converted.
+ */
+export function progressMessage(
+  progress: Pick<ProgressInfo, "message" | "message_key" | "message_params">,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string | undefined {
+  if (!progress.message_key) return progress.message;
+  return t(progress.message_key, progress.message_params ?? {});
 }
 
 export interface KnowledgeIndexFailure {
@@ -94,6 +114,8 @@ export interface KnowledgeBase {
     type?: string;
     /** Absolute path of a connected Obsidian vault (when type === "obsidian"). */
     vault_path?: string;
+    /** SQLite store of a connected MarginNote 4 library (when type === "marginnote4"). */
+    db_path?: string;
     /** Backend of a connected subagent (when type === "subagent"): "claude_code" | "codex" | "gemini" | "kimi" | "opencode" | "mimo" | "partner". */
     agent_kind?: string;
     /** Bound partner id when agent_kind === "partner". */
@@ -191,9 +213,44 @@ export const formatKnowledgeTimestamp = (value?: string): string | null => {
   return parsed ? parsed.toLocaleString() : value || null;
 };
 
+export const MARGINNOTE4_KB_TYPE = "marginnote4";
+
+/**
+ * A connected MarginNote 4 library.
+ *
+ * It owns no documents and no index: the Add-on pushes objects into its own
+ * store and the MarginNote tools read them, so the file, add-documents and
+ * index-version surfaces have nothing to act on.
+ */
+export const isMarginNoteKb = (kb: KnowledgeBase): boolean =>
+  kb.metadata?.type === MARGINNOTE4_KB_TYPE;
+
+export const KB_DETAIL_SECTIONS = [
+  "files",
+  "add",
+  "versions",
+  "devices",
+  "settings",
+] as const;
+
+export type KbDetailSection = (typeof KB_DETAIL_SECTIONS)[number];
+
+/**
+ * The detail sections a KB has something to show in.
+ *
+ * A MarginNote library owns no raw files and builds no index, so files /
+ * add-documents / index-versions would all render empty against it; what it
+ * does have is the devices that feed it. Every other KB has the reverse.
+ */
+export const kbDetailSections = (kb: KnowledgeBase): KbDetailSection[] =>
+  isMarginNoteKb(kb)
+    ? ["devices", "settings"]
+    : KB_DETAIL_SECTIONS.filter((section) => section !== "devices");
+
 /** The retrieval engine a KB is bound to. Connected vaults badge by source. */
 export const kbProvider = (kb: KnowledgeBase): string => {
   if (kb.metadata?.type === "obsidian") return "obsidian";
+  if (isMarginNoteKb(kb)) return MARGINNOTE4_KB_TYPE;
   return (
     (kb.statistics?.rag_provider as string | undefined) ||
     (kb.metadata?.rag_provider as string | undefined) ||
