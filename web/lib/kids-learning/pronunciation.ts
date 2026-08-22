@@ -1,4 +1,4 @@
-export type KidsSpeechAccent = "en-US" | "en-GB";
+export type KidsSpeechAccent = "en-US" | "en-GB" | "zh-CN";
 
 export interface KidsSpeechPlaybackState {
   isPlaying: boolean;
@@ -13,6 +13,7 @@ interface KidsSpeechHandlers {
 }
 
 const DEFAULT_RATE = 0.88;
+const CHINESE_RATE = 0.95;
 const STREAM_WORD_LIMIT = 5;
 const STREAM_CHARACTER_LIMIT = 80;
 
@@ -27,6 +28,18 @@ let currentState: KidsSpeechPlaybackState = {
   accent: null,
 };
 const stateListeners = new Set<(state: KidsSpeechPlaybackState) => void>();
+
+// Pre-warm browser voices table if available
+if (typeof window !== "undefined" && window.speechSynthesis) {
+  try {
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis?.getVoices();
+    };
+  } catch {
+    // Ignore non-standard speech synthesis implementations.
+  }
+}
 
 function notify(next: KidsSpeechPlaybackState): void {
   currentState = { ...next };
@@ -45,6 +58,37 @@ export function subscribeKidsSpeechState(
   stateListeners.add(listener);
   listener(currentState);
   return () => stateListeners.delete(listener);
+}
+
+export function cleanTextForSpeech(text: string): string {
+  if (!text) return "";
+  return text
+    // Strip markdown code fences and inline code
+    .replace(/```[\s\S]*?```/g, " 代码示例 ")
+    .replace(/`([^`]+)`/g, "$1")
+    // Strip markdown headers
+    .replace(/^#{1,6}\s+/gm, "")
+    // Strip markdown bold / italic
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    // Strip markdown bullet points, numbers and blockquotes
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/^\s*>\s+/gm, "")
+    // Strip emojis & decorative symbols that cause robotic pauses
+    .replace(/[💡⭐🎉❓🍎🪙🌕🚀⏹🔄✨🔍🔢📖•]/g, "")
+    // Strip LaTeX math delimiters
+    .replace(/\$([^$]+)\$/g, "$1")
+    // Clean up excessive whitespace & line breaks into natural pauses
+    .replace(/\n+/g, "，")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function detectTextLanguage(text: string): "zh-CN" | "en-US" {
+  return /[\u4e00-\u9fa5]/.test(text) ? "zh-CN" : "en-US";
 }
 
 export function getKidsPronunciationAudioUrl(
@@ -84,28 +128,49 @@ export function stopKidsSpeech(): void {
   if (currentState.isPlaying) notify({ isPlaying: false, text: null, accent: null });
 }
 
-function selectVoice(synthesis: SpeechSynthesis, accent: KidsSpeechAccent): SpeechSynthesisVoice | null {
+function selectVoice(synthesis: SpeechSynthesis, lang: string): SpeechSynthesisVoice | null {
   const voices = synthesis.getVoices();
   if (!voices.length) return null;
-  const prefix = accent.toLowerCase();
-  const english = voices
-    .map((voice) => ({ voice, lang: voice.lang.toLowerCase().replace("_", "-") }))
-    .sort((a, b) => a.lang.localeCompare(b.lang));
-  const matched = english.filter(({ lang }) => lang.startsWith(prefix));
-  const preferred =
-    matched.find(({ voice }) => voice.localService && /natural|siri|enhanced/i.test(voice.name)) ??
-    matched.find(({ voice }) => voice.localService) ??
-    matched.find(({ voice }) => /natural|siri|enhanced|samantha|daniel|alex/i.test(voice.name)) ??
-    matched[0] ??
-    english.find(({ lang }) => lang.startsWith("en")) ??
-    english[0] ??
-    null;
-  return preferred ? preferred.voice : null;
+  const isChinese = lang.startsWith("zh");
+  const targetPrefix = isChinese ? "zh" : "en";
+
+  const matching = voices.filter((v) => {
+    const vLang = v.lang.toLowerCase().replace("_", "-");
+    return vLang.startsWith(targetPrefix);
+  });
+
+  if (isChinese) {
+    // Select natural, clear Chinese voices across OS/browsers
+    const preferredChinese =
+      matching.find((v) => /natural|neural/i.test(v.name) && /xiaoxiao|yunxi|yunjian|xiaoyi|zhiwei/i.test(v.name)) ??
+      matching.find((v) => /tingting|ting-ting|meijia|yu-shu|sin-ji/i.test(v.name)) ??
+      matching.find((v) => /google.*普通话|google.*國語/i.test(v.name)) ??
+      matching.find((v) => /natural|enhanced/i.test(v.name)) ??
+      matching.find((v) => v.localService && (v.lang.toLowerCase() === "zh-cn" || v.lang.toLowerCase() === "zh_cn")) ??
+      matching.find((v) => v.lang.toLowerCase().startsWith("zh-cn")) ??
+      matching[0] ??
+      voices.find((v) => v.lang.toLowerCase().startsWith("zh")) ??
+      null;
+    if (preferredChinese) return preferredChinese;
+  } else {
+    // Select natural, clear English voices
+    const preferredEnglish =
+      matching.find((v) => /natural|neural/i.test(v.name) && /jenny|guy|aria/i.test(v.name)) ??
+      matching.find((v) => /natural|siri|enhanced/i.test(v.name)) ??
+      matching.find((v) => /google.*us english|samantha|daniel|alex/i.test(v.name)) ??
+      matching.find((v) => v.localService) ??
+      matching[0] ??
+      voices.find((v) => v.lang.toLowerCase().startsWith("en")) ??
+      null;
+    if (preferredEnglish) return preferredEnglish;
+  }
+
+  return voices.find((v) => v.default) || voices[0] || null;
 }
 
 function speakWithWebSpeech(
   text: string,
-  accent: KidsSpeechAccent,
+  lang: KidsSpeechAccent,
   handlers: KidsSpeechHandlers,
 ): boolean {
   if (typeof window === "undefined" || !window.speechSynthesis) return false;
@@ -117,16 +182,21 @@ function speakWithWebSpeech(
     // Continue with a fresh utterance if cancel is rejected.
   }
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = accent;
-  utterance.rate = DEFAULT_RATE;
-  const voice = selectVoice(synthesis, accent);
+  const cleaned = cleanTextForSpeech(text);
+  if (!cleaned) return false;
+
+  const effectiveLang = detectTextLanguage(cleaned);
+  const utterance = new SpeechSynthesisUtterance(cleaned);
+  utterance.lang = effectiveLang;
+  utterance.rate = effectiveLang.startsWith("zh") ? CHINESE_RATE : DEFAULT_RATE;
+  utterance.pitch = 1.0;
+  const voice = selectVoice(synthesis, effectiveLang);
   if (voice) utterance.voice = voice;
 
   currentUtterance = utterance;
   activeUtterances.add(utterance);
   utterance.onstart = () => {
-    notify({ isPlaying: true, text, accent });
+    notify({ isPlaying: true, text: cleaned, accent: effectiveLang });
     handlers.onStart?.();
   };
   utterance.onend = () => {
@@ -161,9 +231,10 @@ export function speakKidsText(
   const clean = text.trim();
   if (!clean) return false;
   stopKidsSpeech();
-  const accent: KidsSpeechAccent = "en-US";
+  const isChinese = /[\u4e00-\u9fa5]/.test(clean);
+  const accent: KidsSpeechAccent = isChinese ? "zh-CN" : "en-US";
 
-  if (!shouldUsePronunciationStream(clean) || typeof window === "undefined" || typeof Audio === "undefined") {
+  if (isChinese || !shouldUsePronunciationStream(clean) || typeof window === "undefined" || typeof Audio === "undefined") {
     return speakWithWebSpeech(clean, accent, handlers);
   }
 

@@ -377,17 +377,37 @@ export default function KidsReaderPage() {
       const selection = renditionRef.current.getRange?.();
       const text = selection?.toString()?.trim();
       if (text) {
-        const word = text.split(/\s+/)[0];
-        void openWordHint(word, text);
-        return;
+        const word = text.split(/\s+/)[0].replace(/[^A-Za-z'-]/g, "");
+        if (word) {
+          void openWordHint(word, text);
+          return;
+        }
       }
     }
+
+    const doc = (renditionRef.current as any)?.getContents?.()?.[0]?.document;
+    const wordsInChapter: string[] = [];
+    if (doc) {
+      const spans = doc.querySelectorAll("[data-kids-word]");
+      for (const span of Array.from(spans)) {
+        const w = (span as HTMLElement).dataset.kidsWord;
+        if (w && w.length >= 3 && !wordsInChapter.includes(w)) {
+          wordsInChapter.push(w);
+          if (wordsInChapter.length >= 6) break;
+        }
+      }
+    }
+
     stopSpeaking();
     setShowLearn(false);
     setWordHintBusy(false);
     setWordHintData(null);
-    setWordHintMessage("Tap any word in the story to explore its meaning!");
-    setWordHintState(createInitialWordHintState("Explore"));
+    setWordHintState({
+      word: "Explore Words",
+      phase: "picker",
+      choices: wordsInChapter,
+      wrongAttempts: 0,
+    });
   }, [openWordHint, stopSpeaking]);
 
   const closeLearnQuestions = useCallback(() => {
@@ -621,23 +641,25 @@ export default function KidsReaderPage() {
 
       <div style={{
         display: "flex",
-        gap: 8,
+        gap: 10,
         padding: "10px 16px",
         background: "white",
         boxShadow: "0 -2px 6px rgba(0,0,0,0.06)",
         justifyContent: "center",
+        alignItems: "center",
         flexShrink: 0,
+        zIndex: 10,
       }}>
         <button
-          style={{ ...bigBtn, background: speakingId === "read-aloud" ? "#fed7d7" : "#e9d8fd" }}
+          style={{ ...bottomActionBtn, background: speakingId === "read-aloud" ? "#fed7d7" : "#e9d8fd" }}
           onClick={speakingId === "read-aloud" ? stopSpeaking : speakSelection}
         >
           {speakingId === "read-aloud" ? "Stop" : "Read Aloud"}
         </button>
-        <button style={learnBtn} onClick={handleLearnClick}>
+        <button style={{ ...bottomActionBtn, background: "#fed7aa" }} onClick={handleLearnClick}>
           Learn
         </button>
-        <button style={quizBtn} onClick={() => loadLearnQuestions()}>
+        <button style={{ ...bottomActionBtn, background: "#c7d2fe" }} onClick={() => loadLearnQuestions()}>
           Quiz
         </button>
       </div>
@@ -680,6 +702,58 @@ export default function KidsReaderPage() {
               <p style={{ fontSize: 18, color: "#667eea", textAlign: "center", padding: 24 }}>
                 Thinking together...
               </p>
+            ) : wordHintState.phase === "picker" ? (
+              <div>
+                <div style={{
+                  display: "inline-block",
+                  padding: "3px 8px",
+                  background: "#e0e7ff",
+                  color: "#4338ca",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginBottom: 8,
+                }}>
+                  Explore Words
+                </div>
+                <p style={{ fontSize: 18, color: "#4a3f6b", margin: "0 0 14px" }}>
+                  Tap any word in the story, or pick a word below to start guessing:
+                </p>
+                {wordHintState.choices.length > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                    {wordHintState.choices.map((w) => (
+                      <button
+                        key={w}
+                        style={{
+                          padding: "10px 18px",
+                          borderRadius: 14,
+                          border: "2px solid #667eea",
+                          background: "#f0f4ff",
+                          color: "#4338ca",
+                          fontSize: 18,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                        onClick={() => void openWordHint(w, "")}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 16, color: "#7c6f9b", marginBottom: 16 }}>
+                    Tap any word directly in the book to explore!
+                  </p>
+                )}
+                <button
+                  style={{ ...bigBtn, width: "100%", background: "#e2e8f0" }}
+                  onClick={closeWordHint}
+                >
+                  Keep Reading
+                </button>
+              </div>
             ) : !wordHintData?.available ? (
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: 20, color: "#4a3f6b" }}>{wordHintMessage}</p>
@@ -977,16 +1051,20 @@ const bigBtn: React.CSSProperties = {
   color: "#2d3748",
 };
 
-const learnBtn: React.CSSProperties = {
-  ...bigBtn,
-  background: "#fed7aa",
-  minWidth: 130,
-};
-
-const quizBtn: React.CSSProperties = {
-  ...bigBtn,
-  background: "#c7d2fe",
-  minWidth: 130,
+const bottomActionBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 16,
+  padding: "12px 18px",
+  fontSize: 17,
+  fontWeight: 700,
+  cursor: "pointer",
+  color: "#2d3748",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: 100,
+  flex: "1 1 auto",
+  maxWidth: 160,
 };
 
 const secondaryToolBtn: React.CSSProperties = {

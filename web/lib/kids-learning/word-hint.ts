@@ -1,4 +1,4 @@
-export type KidsWordHintPhase = "hint" | "choices" | "reveal" | "correct";
+export type KidsWordHintPhase = "picker" | "hint" | "choices" | "reveal" | "correct";
 
 export interface KidsWordHintState {
   word: string;

@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  cleanTextForSpeech,
+  detectTextLanguage,
   getKidsPronunciationAudioUrl,
   shouldUsePronunciationStream,
   subscribeKidsSpeechState,
@@ -26,4 +28,14 @@ test("kids pronunciation exposes one shared playback state", () => {
   unsubscribe();
 
   assert.deepEqual(seen, [false]);
+});
+
+test("kids pronunciation cleans markdown and detects language accurately", () => {
+  const markdownSample = "### 探索范围：我们能看到什么？\n\n* **光的波粒二象性**：解释为什么光既是波又是粒子（光子）。\n\n💡 提示：重点关注 $h/4\\pi$";
+  const cleaned = cleanTextForSpeech(markdownSample);
+  assert.doesNotMatch(cleaned, /###|\*\*|\*|💡|\$/);
+  assert.match(cleaned, /探索范围：我们能看到什么？/);
+  assert.match(cleaned, /光的波粒二象性：解释为什么光既是波又是粒子/);
+  assert.equal(detectTextLanguage(cleaned), "zh-CN");
+  assert.equal(detectTextLanguage("The little plum is on the mat."), "en-US");
 });
