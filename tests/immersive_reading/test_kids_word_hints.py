@@ -68,8 +68,7 @@ def test_simple_wiktionary_parser_extracts_child_readable_definition():
 
     assert parsed is not None
     assert parsed.definition == (
-        "A picture is marks on a flat object, like paper, that show shapes, "
-        "people, or things."
+        "A picture is marks on a flat object, like paper, that show shapes, people, or things."
     )
     assert parsed.part_of_speech == "noun"
     assert parsed.phonetic == "/ˈpɪktʃɚ/"

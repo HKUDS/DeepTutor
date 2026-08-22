@@ -215,10 +215,12 @@ def _generate_thinking_clue(word: str, definition: str) -> str:
     if normalized_definition.startswith(("to ", "to\t")):
         return f"Think about an action! Can you guess what someone does when they {word}?"
     if normalized_definition.startswith(("a ", "an ", "the ", "something ")):
-        return f"Picture what this could be in the world! Can you guess what \"{word}\" is?"
-    if normalized_definition.startswith(("very ", "not ", "feeling ", "having ", "showing ", "full of ")):
+        return f'Picture what this could be in the world! Can you guess what "{word}" is?'
+    if normalized_definition.startswith(
+        ("very ", "not ", "feeling ", "having ", "showing ", "full of ")
+    ):
         return "Think about describing something! Can you guess what quality this word shows?"
-    return f"Look closely at the story clues! Can you guess what \"{word}\" means here?"
+    return f'Look closely at the story clues! Can you guess what "{word}" means here?'
 
 
 @dataclass(frozen=True)
@@ -248,7 +250,11 @@ def _concise_chinese(value: str) -> str:
     if not value:
         return ""
     normalized = value.replace("\\n", "\n").replace("\r", "")
-    lines = [line.strip() for line in normalized.splitlines() if line.strip() and not line.strip().startswith("[")]
+    lines = [
+        line.strip()
+        for line in normalized.splitlines()
+        if line.strip() and not line.strip().startswith("[")
+    ]
     if not lines:
         return ""
     preferred = lines[0]
@@ -257,7 +263,11 @@ def _concise_chinese(value: str) -> str:
             preferred = line
             break
     cleaned = _POS_PREFIX_RE.sub("", preferred).strip()
-    parts = [p.strip() for p in re.split(r"[;,，；]", cleaned) if p.strip() and not p.strip().startswith(("(", "（"))]
+    parts = [
+        p.strip()
+        for p in re.split(r"[;,，；]", cleaned)
+        if p.strip() and not p.strip().startswith(("(", "（"))
+    ]
     if parts:
         return "，".join(parts[:3])
     return cleaned

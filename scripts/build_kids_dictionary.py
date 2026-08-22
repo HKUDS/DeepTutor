@@ -173,8 +173,7 @@ def write_database(
             """
         )
         connection.executemany(
-            "INSERT INTO entries(word, definition, part_of_speech, phonetic) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO entries(word, definition, part_of_speech, phonetic) VALUES (?, ?, ?, ?)",
             (
                 (item.word, item.definition, item.part_of_speech, item.phonetic)
                 for item in definitions
@@ -231,9 +230,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(
-            "data/user/workspace/immersive_reading/dictionaries/kids_simple.db"
-        ),
+        default=Path("data/user/workspace/immersive_reading/dictionaries/kids_simple.db"),
     )
     parser.add_argument(
         "--dump",
@@ -257,10 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if missing:
         preview = ", ".join(missing[:30])
         suffix = "" if len(missing) <= 30 else ", ..."
-        print(
-            f"Skipped {len(missing)} YLE words without a usable definition: "
-            f"{preview}{suffix}"
-        )
+        print(f"Skipped {len(missing)} YLE words without a usable definition: {preview}{suffix}")
     return 0
 
 

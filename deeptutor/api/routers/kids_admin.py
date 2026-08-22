@@ -215,7 +215,9 @@ async def list_available_interactive_books() -> dict:
                     "id": book.id,
                     "title": book.title or b_id,
                     "description": book.description,
-                    "status": book.status.value if hasattr(book.status, "value") else str(book.status),
+                    "status": book.status.value
+                    if hasattr(book.status, "value")
+                    else str(book.status),
                     "page_count": book.page_count,
                     "chapter_count": book.chapter_count,
                     "language": book.language,
@@ -229,7 +231,10 @@ async def list_available_interactive_books() -> dict:
         b["assigned_profile_ids"] = [
             a.profile_id
             for a in assignments
-            if (a.book_id == b["id"] or (a.content_type == "interactive_book" and a.document_id == b["id"]))
+            if (
+                a.book_id == b["id"]
+                or (a.content_type == "interactive_book" and a.document_id == b["id"])
+            )
             and a.status == "active"
         ]
 
@@ -243,9 +248,7 @@ class AssignInteractiveBookRequest(BaseModel):
 
 
 @router.post("/profiles/{profile_id}/interactive-books")
-async def assign_interactive_book(
-    profile_id: str, request: AssignInteractiveBookRequest
-) -> dict:
+async def assign_interactive_book(profile_id: str, request: AssignInteractiveBookRequest) -> dict:
     """Assign an interactive book from BookEngine to a child profile."""
     manager = get_kids_manager()
     if manager.get_profile(profile_id) is None:
