@@ -51,6 +51,7 @@ test("kids reader protects the restored learning golden path", () => {
   assert.match(readerSource, /data-kids-word/);
   assert.match(readerSource, /hint-clue/);
   assert.match(readerSource, /Read thinking clue/);
+  assert.match(readerSource, /onEnd: \(\) => \{/);
   assert.match(readerSource, /locations\.generate\(256\)/);
   assert.match(readerSource, /reportLocation/);
   assert.match(readerSource, /speakKidsText/);

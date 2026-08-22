@@ -229,11 +229,14 @@ export default function KidsReaderPage() {
       return;
     }
     const started = speakKidsText(id, text, {
+      onEnd: () => {
+        setSpeakingId((currentId) => (currentId === id ? null : currentId));
+      },
       onError: () => {
-        setSpeakingId(null);
+        setSpeakingId((currentId) => (currentId === id ? null : currentId));
       },
     });
-    if (!started) setSpeakingId(null);
+    setSpeakingId(started ? id : null);
   }, [speakingId, stopSpeaking]);
 
   const handleReadAloud = useCallback(() => {
