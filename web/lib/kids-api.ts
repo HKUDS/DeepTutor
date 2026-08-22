@@ -41,6 +41,7 @@ export interface KidsReadingSection {
   title: string;
   index: number;
   checkpoint_kind?: string;
+  source_href?: string;
 }
 
 export interface KidsReaderTocItem {
@@ -63,6 +64,19 @@ export function resolveKidsReadingSectionId(
   sections: KidsReadingSection[],
 ): string {
   const resourceName = _resourceName(href);
+  const sourceHrefMatch = sections.find(
+    (section) => section.source_href && _resourceName(section.source_href) === resourceName,
+  );
+  if (sourceHrefMatch) return sourceHrefMatch.id;
+
+  const chapterMatch = resourceName.match(/chap(?:ter)?[_-]?(\d+)/);
+  if (chapterMatch) {
+    const chapterNumber = Number(chapterMatch[1]);
+    const checkpointChapters = sections.filter((section) => section.checkpoint_kind === "chapter");
+    const chapter = checkpointChapters[chapterNumber - 1];
+    if (chapter) return chapter.id;
+  }
+
   const currentTocItem = toc.find((item) => item.href && _resourceName(item.href) === resourceName);
   const tocTitle = currentTocItem?.label || currentTocItem?.title || "";
   const normalizedTocTitle = _normalizedTitle(tocTitle);
@@ -164,6 +178,32 @@ export interface KidsQuizGrade {
   per_question: { id: string; correct: boolean; explanation: string }[];
   encouragements: string[];
   completed_section_ids?: string[];
+}
+
+export interface KidsWordHint {
+  available: boolean;
+  hint_id?: string;
+  word: string;
+  phonetic?: string;
+  english_hint?: string;
+}
+
+export interface KidsWordHintChoices {
+  choices: string[];
+}
+
+export interface KidsWordHintCheck {
+  correct: boolean;
+  feedback: string;
+  correct_choice?: string;
+  chinese?: string;
+  explanation?: string;
+}
+
+export interface KidsWordHintReveal {
+  correct_choice: string;
+  chinese: string;
+  explanation: string;
 }
 
 // ── Admin (parent) API ─────────────────────────────────────────────────────
@@ -341,6 +381,38 @@ export const kidsApi = {
     kidsRequest<KidsQuizGrade>(`/books/${documentId}/quiz/submit`, {
       method: "POST",
       body: JSON.stringify({ section_id: sectionId, answers }),
+    }),
+
+  getWordHint: (
+    documentId: string,
+    data: { word: string; section_id: string; context?: string },
+  ) =>
+    kidsRequest<KidsWordHint>(`/books/${documentId}/word-hint`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getWordHintChoices: (documentId: string, hintId: string) =>
+    kidsRequest<KidsWordHintChoices>(`/books/${documentId}/word-hint/choices`, {
+      method: "POST",
+      body: JSON.stringify({ hint_id: hintId }),
+    }),
+
+  checkWordHint: (
+    documentId: string,
+    hintId: string,
+    choice: string,
+    attempt: number,
+  ) =>
+    kidsRequest<KidsWordHintCheck>(`/books/${documentId}/word-hint/check`, {
+      method: "POST",
+      body: JSON.stringify({ hint_id: hintId, choice, attempt }),
+    }),
+
+  revealWordHint: (documentId: string, hintId: string) =>
+    kidsRequest<KidsWordHintReveal>(`/books/${documentId}/word-hint/reveal`, {
+      method: "POST",
+      body: JSON.stringify({ hint_id: hintId }),
     }),
 
   translate: (text: string, targetLanguage = "Chinese") =>
