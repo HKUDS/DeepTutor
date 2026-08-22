@@ -228,6 +228,7 @@ export const isMarginNoteKb = (kb: KnowledgeBase): boolean =>
 export const KB_DETAIL_SECTIONS = [
   "files",
   "add",
+  "github",
   "versions",
   "devices",
   "settings",

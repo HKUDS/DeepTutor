@@ -3300,5 +3300,9 @@
   "visitor": "来访者",
   "whisper": "密语",
   "you": "你",
+  "e.g. HKUDS/DeepTutor": "例如 HKUDS/DeepTutor",
+  "main": "main",
+  "docs/": "docs/",
+  "*.md": "*.md",
   "Session {{id}}": "会话 {{id}}"
 }

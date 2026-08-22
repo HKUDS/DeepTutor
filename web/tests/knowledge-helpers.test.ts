@@ -218,6 +218,7 @@ test("an ordinary knowledge base has no devices section", () => {
   assert.deepEqual(kbDetailSections(indexed), [
     "files",
     "add",
+    "github",
     "versions",
     "settings",
   ]);

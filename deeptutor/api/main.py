@@ -145,6 +145,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to start cron service: {e}")
 
+    try:
+        from deeptutor.services.github_source.sync_service import get_sync_service
+
+        await get_sync_service().start()
+    except Exception as e:
+        logger.warning(f"Failed to start GitHub source sync: {e}")
+
     # Ping PocketBase if configured — logs a warning (not an error) if unreachable
     try:
         from deeptutor.services.pocketbase_client import ping_pocketbase
@@ -182,6 +189,13 @@ async def lifespan(app: FastAPI):
         await get_cron_service().stop()
     except Exception as e:
         logger.warning(f"Failed to stop cron service: {e}")
+
+    try:
+        from deeptutor.services.github_source.sync_service import get_sync_service
+
+        await get_sync_service().stop()
+    except Exception as e:
+        logger.warning(f"Failed to stop GitHub source sync: {e}")
 
     # Stop partners
     try:
