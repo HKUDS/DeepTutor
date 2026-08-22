@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const epubBody = readFileSync(
   path.resolve(process.cwd(), "tests/fixtures/kids-golden.epub"),
@@ -26,6 +26,49 @@ const progress = {
   time_spent_seconds: 0,
   last_read_at: 0,
 };
+
+async function pageTextIsVisible(page: Page, text: string) {
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    try {
+      const visible = await frame.evaluate((needle) => {
+        const frameRect = window.frameElement?.getBoundingClientRect();
+        const viewport = window.frameElement
+          ?.closest(".epub-container")
+          ?.getBoundingClientRect();
+        return Array.from(document.querySelectorAll("p")).some((node) => {
+          const rect = node.getBoundingClientRect();
+          const left = rect.left + (frameRect?.left ?? 0);
+          const right = rect.right + (frameRect?.left ?? 0);
+          const top = rect.top + (frameRect?.top ?? 0);
+          const bottom = rect.bottom + (frameRect?.top ?? 0);
+          return (
+            node.textContent?.includes(needle) === true &&
+            rect.width > 0 &&
+            rect.height > 0 &&
+            (!viewport ||
+              (right > viewport.left &&
+                bottom > viewport.top &&
+                left < viewport.right &&
+                top < viewport.bottom))
+          );
+        });
+      }, text);
+      if (visible) return true;
+    } catch {
+      // EPUB.js can replace an iframe while Playwright is polling.
+    }
+  }
+  return false;
+}
+
+async function expectPageTextVisible(page: Page, text: string) {
+  await expect.poll(() => pageTextIsVisible(page, text)).toBe(true);
+}
+
+async function expectPageTextHidden(page: Page, text: string) {
+  await expect.poll(() => pageTextIsVisible(page, text)).toBe(false);
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -257,6 +300,68 @@ test("kids golden path guides words, auto-checks chapters, and narrates", async 
   await expect(page.getByText("3 / 3 correct!")).toBeVisible();
   await expect(page.getByText("Stars: 3")).toBeVisible();
   await expect(page.getByRole("button", { name: "Read answer" })).toHaveCount(3);
+});
+
+test("kids EPUB reader supports page turns without blocking word learning", async ({ page }) => {
+  await page.setViewportSize({ width: 500, height: 500 });
+  await page.goto("/kids/golden");
+
+  await expect(page.getByText("Kids Golden Path")).toBeVisible();
+  await expectPageTextVisible(page, "The good plum is in the tree.");
+
+  await page.keyboard.press("ArrowRight");
+  await expectPageTextVisible(page, "We love sweet plums in summer days");
+  await expectPageTextHidden(page, "The good plum is in the tree.");
+  await page.keyboard.press("ArrowLeft");
+  await expectPageTextVisible(page, "The good plum is in the tree.");
+  await expectPageTextHidden(page, "We love sweet plums in summer days");
+
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expectPageTextVisible(page, "We love sweet plums in summer days");
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await expectPageTextVisible(page, "The good plum is in the tree.");
+
+  const contentFrame = page.frames().at(-1);
+  await contentFrame?.evaluate(() => {
+    const target = document.body;
+    const touch = (type: "touchstart" | "touchend", x: number) => {
+      const point = new Touch({ identifier: 1, target, clientX: x, clientY: 200 });
+      target.dispatchEvent(
+        new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches: type === "touchstart" ? [point] : [],
+          changedTouches: [point],
+        }),
+      );
+    };
+    touch("touchstart", 300);
+    touch("touchend", 180);
+  });
+  await expectPageTextVisible(page, "We love sweet plums in summer days");
+  await expectPageTextHidden(page, "The good plum is in the tree.");
+
+  await page.getByRole("button", { name: "Quiz", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Look and Think" })).toBeVisible();
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowRight");
+  await expectPageTextVisible(page, "We love sweet plums in summer days");
+  await expectPageTextHidden(page, "The good plum is in the tree.");
+  await page.getByRole("button", { name: "a small sweet fruit", exact: true }).click();
+  await page.getByRole("button", { name: "nice, not bad", exact: true }).click();
+  await page.getByRole("button", { name: "take or receive", exact: true }).click();
+  await page.getByRole("button", { name: "Submit" }).click();
+  await expect(page.getByText("3 / 3 correct!")).toBeVisible();
+  const closeQuizButton = page.getByRole("button", { name: "Close", exact: true }).last();
+  await closeQuizButton.click();
+  await expect(closeQuizButton).toBeHidden();
+
+  await page.keyboard.press("ArrowLeft");
+  await expectPageTextVisible(page, "The good plum is in the tree.");
+  await expectPageTextHidden(page, "We love sweet plums in summer days");
+  const reader = page.frameLocator("iframe").last();
+  await reader.getByText("plum", { exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "plum" })).toBeVisible();
 });
 
 test("kids Chinese learn uses guided concepts and Chinese quiz feedback", async ({ page }) => {

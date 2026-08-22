@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   kidsApi,
@@ -26,6 +26,14 @@ import {
   stopKidsSpeech,
   subscribeKidsSpeechState,
 } from "@/lib/kids-learning/pronunciation";
+import {
+  createKidsPageTurnGestureTracker,
+  shouldAllowKidsPageTurnGesture,
+  shouldAllowKidsPageTurnKeyboard,
+} from "@/lib/kids-learning/page-turn";
+
+const PREVIOUS_PAGE_LABEL = "上一页";
+const NEXT_PAGE_LABEL = "下一页";
 
 export default function KidsInteractiveBookReader() {
   const router = useRouter();
@@ -40,6 +48,10 @@ export default function KidsInteractiveBookReader() {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState<KidsInteractivePage | null>(null);
   const [progress, setProgress] = useState<KidsInteractiveBookProgress | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
+  const currentPageIndexRef = useRef(0);
+  const pageLoadTokenRef = useRef(0);
+  const pageTurnTrackerRef = useRef(createKidsPageTurnGestureTracker());
 
   // Quiz state: blockId -> answers / grade / loading
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number[]>>({});
@@ -60,9 +72,10 @@ export default function KidsInteractiveBookReader() {
   // Celebration state
   const [celebrateStars, setCelebrateStars] = useState<number | null>(null);
 
-  const loadPageContent = useCallback(async (pageId: string) => {
+  const loadPageContent = useCallback(async (pageId: string, loadToken: number) => {
     try {
       const res = await kidsApi.getInteractivePage(bookId, pageId);
+      if (loadToken !== pageLoadTokenRef.current) return;
       setCurrentPage(res.page);
       setProgress(res.progress);
       const answersMap: Record<string, number[]> = {};
@@ -74,7 +87,9 @@ export default function KidsInteractiveBookReader() {
       }
       setQuizAnswers((prev) => ({ ...prev, ...answersMap }));
     } catch (err: unknown) {
-      console.error("Failed to load page:", err);
+      if (loadToken === pageLoadTokenRef.current) {
+        console.error("Failed to load page:", err);
+      }
     }
   }, [bookId]);
 
@@ -109,7 +124,11 @@ export default function KidsInteractiveBookReader() {
           if (foundIdx >= 0) initialIdx = foundIdx;
         }
         setCurrentPageIndex(initialIdx);
-        await loadPageContent(pagesList[initialIdx].id);
+        currentPageIndexRef.current = initialIdx;
+        const loadToken = ++pageLoadTokenRef.current;
+        setPageLoading(true);
+        await loadPageContent(pagesList[initialIdx].id, loadToken);
+        if (loadToken === pageLoadTokenRef.current) setPageLoading(false);
       } else {
         setError("This book has no pages available yet.");
       }
@@ -128,19 +147,43 @@ export default function KidsInteractiveBookReader() {
   // Navigate pages
   const goToPage = async (newIdx: number) => {
     if (newIdx < 0 || newIdx >= allPages.length) return;
+    const loadToken = ++pageLoadTokenRef.current;
+    currentPageIndexRef.current = newIdx;
     stopKidsSpeech();
     setSpeakingBlockId(null);
     setCurrentPageIndex(newIdx);
+    setPageLoading(true);
     const targetPage = allPages[newIdx];
-    await loadPageContent(targetPage.id);
+    await loadPageContent(targetPage.id, loadToken);
+    if (loadToken !== pageLoadTokenRef.current) return;
     try {
       const updated = await kidsApi.updateInteractiveProgress(bookId, {
         page_id: targetPage.id,
         page_order: newIdx,
       });
+      if (loadToken !== pageLoadTokenRef.current) return;
       setProgress(updated.progress);
-    } catch {}
+    } catch {
+      // Progress refresh is best-effort; the page content above remains usable.
+    } finally {
+      if (loadToken === pageLoadTokenRef.current) setPageLoading(false);
+    }
   };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+        return;
+      }
+      if (!shouldAllowKidsPageTurnKeyboard(event.target)) return;
+      event.preventDefault();
+      const delta = event.key === "ArrowLeft" ? -1 : 1;
+      void goToPage(currentPageIndexRef.current + delta);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   // TTS Read Aloud
   const speakText = (blockId: string, text: string) => {
@@ -236,9 +279,61 @@ export default function KidsInteractiveBookReader() {
       </header>
 
       {/* Main Content Area */}
-      <main style={S.mainContent}>
+      <main
+        style={S.mainContent}
+        aria-busy={pageLoading}
+        onPointerDown={(event) => {
+          if (
+            event.isPrimary &&
+            event.button === 0 &&
+            shouldAllowKidsPageTurnGesture(event.target)
+          ) {
+            pageTurnTrackerRef.current.begin(event.pointerId, event.clientX, event.clientY);
+          }
+        }}
+        onPointerUp={(event) => {
+          const selectedText = window.getSelection()?.toString().trim() || "";
+          if (selectedText.length > 2) {
+            pageTurnTrackerRef.current.cancel();
+            return;
+          }
+          const direction = pageTurnTrackerRef.current.end(
+            event.pointerId,
+            event.clientX,
+            event.clientY,
+          );
+          if (!direction) return;
+          event.preventDefault();
+          void goToPage(
+            currentPageIndexRef.current + (direction === "next" ? 1 : -1),
+          );
+        }}
+        onPointerCancel={() => pageTurnTrackerRef.current.cancel()}
+      >
+        <button
+          type="button"
+          aria-label={PREVIOUS_PAGE_LABEL}
+          title={PREVIOUS_PAGE_LABEL}
+          style={S.pageTurnHotzone}
+          disabled={currentPageIndex <= 0}
+          onClick={() => goToPage(currentPageIndexRef.current - 1)}
+        />
+        <button
+          type="button"
+          aria-label={NEXT_PAGE_LABEL}
+          title={NEXT_PAGE_LABEL}
+          style={{ ...S.pageTurnHotzone, left: "auto", right: 0 }}
+          disabled={currentPageIndex >= allPages.length - 1}
+          onClick={() => goToPage(currentPageIndexRef.current + 1)}
+        />
         {currentPage && (
-          <div style={S.pageCard}>
+          <div
+            style={{
+              ...S.pageCard,
+              opacity: pageLoading ? 0.65 : 1,
+              transition: "opacity 120ms ease",
+            }}
+          >
             <div style={S.pageTitleRow}>
               <h1 style={S.pageHeading}>{currentPage.title || `第 ${currentPageIndex + 1} 节`}</h1>
               {isCompleted && (
@@ -276,11 +371,11 @@ export default function KidsInteractiveBookReader() {
       </main>
 
       {/* Bottom Sticky Page Switcher */}
-      <footer style={S.footer}>
+      <footer className="kids-interactive-footer" style={S.footer}>
         <button
           style={{ ...S.navBtn, opacity: currentPageIndex <= 0 ? 0.4 : 1 }}
           disabled={currentPageIndex <= 0}
-          onClick={() => goToPage(currentPageIndex - 1)}
+          onClick={() => goToPage(currentPageIndexRef.current - 1)}
         >
           <ChevronLeft size={22} /> 上一页
         </button>
@@ -307,7 +402,7 @@ export default function KidsInteractiveBookReader() {
             opacity: currentPageIndex >= allPages.length - 1 ? 0.5 : 1,
           }}
           disabled={currentPageIndex >= allPages.length - 1}
-          onClick={() => goToPage(currentPageIndex + 1)}
+          onClick={() => goToPage(currentPageIndexRef.current + 1)}
         >
           下一页 <ChevronRight size={22} />
         </button>
@@ -389,7 +484,7 @@ function renderBlock(
     const videoUrl = (payload.video_url as string) || (payload.url as string) || "";
     const caption = (payload.caption as string) || (payload.description as string) || "";
     return (
-      <div style={S.animationBlock}>
+      <div style={S.animationBlock} data-kids-no-page-swipe>
         <div style={S.mediaHeader}>
           <Sparkles size={20} color="#805ad5" />
           <span style={S.mediaBadge}>数学动画演示</span>
@@ -455,7 +550,7 @@ function renderBlock(
     const title = (payload.title as string) || "动手探索：双缝干涉量子实验室";
     const description = (payload.description as string) || (payload.prompt as string) || "";
     return (
-      <div style={S.interactiveBlock}>
+      <div style={S.interactiveBlock} data-kids-no-page-swipe>
         <div style={S.mediaHeader}>
           <HelpCircle size={20} color="#318795" />
           <span style={{ ...S.mediaBadge, background: "#e6fffa", color: "#234e52" }}>
@@ -474,7 +569,7 @@ function renderBlock(
     const allAnswered = questions.length > 0 && answers.length >= questions.length && answers.every((a) => a >= 0);
 
     return (
-      <div style={S.quizBlock}>
+      <div style={S.quizBlock} data-kids-no-page-swipe>
         <div style={S.quizHeader}>
           <Trophy size={24} color="#d69e2e" />
           <h3 style={S.quizTitle}>闯关挑战小测验</h3>
@@ -802,7 +897,7 @@ function QuantumCodeRunnerWidget({
   const headPct = total > 0 ? Math.round((history!.heads / total) * 100) : 50;
 
   return (
-    <div style={S.codeBlock}>
+    <div style={S.codeBlock} data-kids-no-page-swipe>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div style={S.mediaHeader}>
           <HelpCircle size={20} color="#0d9488" />
@@ -918,8 +1013,8 @@ const S: Record<string, React.CSSProperties> = {
   spinner: { fontSize: 24, fontWeight: 700, color: "#4338ca" },
   container: {
     minHeight: "100vh",
-    height: "100vh",
-    overflowY: "auto",
+    height: "100dvh",
+    overflowY: "hidden",
     background: "linear-gradient(180deg, #f0fdf4 0%, #fef3e7 50%, #eff6ff 100%)",
     display: "flex",
     flexDirection: "column",
@@ -961,9 +1056,14 @@ const S: Record<string, React.CSSProperties> = {
   },
   mainContent: {
     flex: 1,
-    padding: "24px 16px 140px 16px",
+    minHeight: 0,
+    boxSizing: "border-box",
+    padding: "24px max(16px, min(18vw, 96px)) 24px max(16px, min(18vw, 96px))",
+    position: "relative",
     display: "flex",
     justifyContent: "center",
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
   },
   pageCard: {
     background: "white",
@@ -971,6 +1071,8 @@ const S: Record<string, React.CSSProperties> = {
     padding: "32px 28px",
     maxWidth: 800,
     width: "100%",
+    position: "relative",
+    zIndex: 1,
     boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
   },
   pageTitleRow: {
@@ -1217,10 +1319,7 @@ const S: Record<string, React.CSSProperties> = {
     textAlign: "center",
   },
   footer: {
-    position: "fixed",
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flexShrink: 0,
     background: "rgba(255, 255, 255, 0.95)",
     backdropFilter: "blur(8px)",
     padding: "12px 24px",
@@ -1228,6 +1327,20 @@ const S: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     boxShadow: "0 -2px 10px rgba(0,0,0,0.05)",
+  },
+  pageTurnHotzone: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: "min(18vw, 96px)",
+    zIndex: 2,
+    border: "none",
+    padding: 0,
+    background: "transparent",
+    cursor: "pointer",
+    touchAction: "pan-y",
+    WebkitTapHighlightColor: "transparent",
   },
   navBtn: {
     display: "flex",
@@ -1241,6 +1354,8 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     color: "#4a5568",
     cursor: "pointer",
+    minHeight: 48,
+    minWidth: 108,
   },
   btnPrimary: {
     background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
@@ -1251,8 +1366,18 @@ const S: Record<string, React.CSSProperties> = {
     padding: "10px 20px",
     fontWeight: 700,
   },
-  pageDots: { display: "flex", gap: 6, alignItems: "center" },
-  dot: { width: 10, height: 10, borderRadius: "50%", border: "none", cursor: "pointer" },
+  pageDots: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    overflowX: "auto",
+    justifyContent: "center",
+    padding: "0 8px",
+    WebkitOverflowScrolling: "touch",
+  },
+  dot: { width: 18, height: 18, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0 },
   celebrationOverlay: {
     position: "fixed",
     inset: 0,

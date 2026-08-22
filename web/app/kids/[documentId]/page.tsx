@@ -31,6 +31,13 @@ import {
   stopKidsSpeech,
   subscribeKidsSpeechState,
 } from "@/lib/kids-learning/pronunciation";
+import {
+  createKidsPageTurnGestureTracker,
+  getKidsPageTurnDirectionForLayout,
+  resolveKidsPageTurnSwipe,
+  shouldAllowKidsPageTurnGesture,
+  shouldAllowKidsPageTurnKeyboard,
+} from "@/lib/kids-learning/page-turn";
 import { getVisiblePageText } from "@/lib/kids-learning/visible-page-text";
 
 const ReactReader = dynamic(
@@ -60,6 +67,17 @@ const kidsReaderStyles = {
   tocButtonBar: {
     ...ReactReaderStyle.tocButtonBar,
     background: "#6d28d9",
+  },
+  reader: {
+    ...ReactReaderStyle.reader,
+    top: 56,
+    right: "max(20px, min(18vw, 96px))",
+    bottom: 16,
+    left: "max(20px, min(18vw, 96px))",
+  },
+  arrow: {
+    ...ReactReaderStyle.arrow,
+    display: "none",
   },
 };
 
@@ -138,7 +156,12 @@ export default function KidsReaderPage() {
   const [exitPinError, setExitPinError] = useState("");
   const [profileHasPin, setProfileHasPin] = useState(false);
   const [profileId, setProfileId] = useState("");
+  const [isRtl, setIsRtl] = useState(false);
   const renditionRef = useRef<Rendition | null>(null);
+  const isRtlRef = useRef(false);
+  const pageTurnTrackerRef = useRef(createKidsPageTurnGestureTracker());
+  const keyboardPageTurnBlockedRef = useRef(false);
+  const lastPageKeyEventRef = useRef<KeyboardEvent | null>(null);
   const currentHrefRef = useRef<string>("");
   const currentSectionIdRef = useRef<string>("");
   const quizSectionIdRef = useRef<string>("");
@@ -261,6 +284,34 @@ export default function KidsReaderPage() {
     stopKidsSpeech();
     setSpeakingId(null);
   }, []);
+
+  const turnPage = useCallback((direction: "previous" | "next") => {
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+    const layoutDirection = getKidsPageTurnDirectionForLayout(direction, isRtlRef.current);
+    if (layoutDirection === "previous") rendition.prev();
+    else rendition.next();
+  }, []);
+
+  const handlePageKey = useCallback((event: KeyboardEvent) => {
+    if (lastPageKeyEventRef.current === event) return;
+    lastPageKeyEventRef.current = event;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (keyboardPageTurnBlockedRef.current) return;
+    if (!shouldAllowKidsPageTurnKeyboard(event.target)) return;
+    turnPage(event.key === "ArrowLeft" ? "previous" : "next");
+  }, [turnPage]);
+
+  useEffect(() => {
+    keyboardPageTurnBlockedRef.current =
+      showLearn || Boolean(wordHintState) || showExitPin || Boolean(translateText);
+  }, [showExitPin, showLearn, translateText, wordHintState]);
+
+  useEffect(() => {
+    window.addEventListener("keyup", handlePageKey);
+    return () => window.removeEventListener("keyup", handlePageKey);
+  }, [handlePageKey]);
 
   const narrate = useCallback((id: string, text: string) => {
     if (speakingId === id) {
@@ -763,6 +814,60 @@ export default function KidsReaderPage() {
       </div>
 
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        <button
+          type="button"
+          aria-label={copy.previousPage}
+          title={copy.previousPage}
+          style={pageTurnHotzone}
+          onPointerDown={(event) => {
+            if (event.isPrimary && event.button === 0) {
+              pageTurnTrackerRef.current.begin(event.pointerId, event.clientX, event.clientY);
+            }
+          }}
+          onPointerUp={(event) => {
+            const direction = pageTurnTrackerRef.current.end(
+              event.pointerId,
+              event.clientX,
+              event.clientY,
+            );
+            if (direction) turnPage(direction);
+          }}
+          onPointerCancel={() => pageTurnTrackerRef.current.cancel()}
+          onClick={(event) => {
+            if (pageTurnTrackerRef.current.consumeClick()) {
+              event.preventDefault();
+              return;
+            }
+            turnPage("previous");
+          }}
+        />
+        <button
+          type="button"
+          aria-label={copy.nextPage}
+          title={copy.nextPage}
+          style={{ ...pageTurnHotzone, left: "auto", right: 0 }}
+          onPointerDown={(event) => {
+            if (event.isPrimary && event.button === 0) {
+              pageTurnTrackerRef.current.begin(event.pointerId, event.clientX, event.clientY);
+            }
+          }}
+          onPointerUp={(event) => {
+            const direction = pageTurnTrackerRef.current.end(
+              event.pointerId,
+              event.clientX,
+              event.clientY,
+            );
+            if (direction) turnPage(direction);
+          }}
+          onPointerCancel={() => pageTurnTrackerRef.current.cancel()}
+          onClick={(event) => {
+            if (pageTurnTrackerRef.current.consumeClick()) {
+              event.preventDefault();
+              return;
+            }
+            turnPage("next");
+          }}
+        />
         <ReactReader
           url={epubUrl}
           location={location ?? null}
@@ -773,6 +878,9 @@ export default function KidsReaderPage() {
           }}
           epubInitOptions={{ openAs: "epub" }}
           epubOptions={{ allowScriptedContent: false }}
+          isRTL={isRtl}
+          // react-reader's public type omits the runtime KeyboardEvent argument.
+          handleKeyPress={handlePageKey as unknown as () => void}
           readerStyles={kidsReaderStyles}
           getRendition={(rendition: Rendition) => {
             renditionRef.current = rendition;
@@ -793,8 +901,49 @@ export default function KidsReaderPage() {
               },
             });
             void rendition.book.ready
-              .then(() => rendition.book.locations.generate(256))
+              .then(() => {
+                const direction = rendition.book.package?.metadata?.direction;
+                const rtl = direction === "rtl";
+                isRtlRef.current = rtl;
+                setIsRtl(rtl);
+                return rendition.book.locations.generate(256);
+              })
               .then(() => rendition.reportLocation());
+            rendition.hooks.content.register((contents: any) => {
+              const doc = contents?.document as Document | undefined;
+              if (!doc) return;
+              if (doc.body?.dataset.kidsPageTurnReady === "true") return;
+              if (doc.body) doc.body.dataset.kidsPageTurnReady = "true";
+              let gesture: { x: number; y: number } | null = null;
+              const onTouchStart = (event: TouchEvent) => {
+                gesture = null;
+                if (event.touches.length !== 1) return;
+                const touch = event.touches[0];
+                if (!shouldAllowKidsPageTurnGesture(touch.target)) return;
+                gesture = { x: touch.clientX, y: touch.clientY };
+              };
+              const onTouchEnd = (event: TouchEvent) => {
+                if (!gesture || event.changedTouches.length !== 1) return;
+                const touch = event.changedTouches[0];
+                const startX = gesture.x;
+                const startY = gesture.y;
+                gesture = null;
+                const selectedText = doc.getSelection?.()?.toString() || "";
+                if (selectedText.length > 2) return;
+                const direction = resolveKidsPageTurnSwipe(
+                  startX,
+                  startY,
+                  touch.clientX,
+                  touch.clientY,
+                );
+                if (!direction) return;
+                event.preventDefault();
+                turnPage(direction);
+              };
+              doc.addEventListener("touchstart", onTouchStart, { passive: true });
+              doc.addEventListener("touchend", onTouchEnd, { passive: false });
+              doc.addEventListener("keyup", handlePageKey);
+            });
             rendition.on("rendered", (_section: unknown, view: any) => {
               decorateEpubWords(view?.document);
             });
@@ -1370,6 +1519,21 @@ const secondaryToolBtn: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   borderRadius: 12,
+};
+
+const pageTurnHotzone: React.CSSProperties = {
+  position: "absolute",
+  top: 56,
+  bottom: 16,
+  left: 0,
+  width: "min(18vw, 96px)",
+  zIndex: 30,
+  border: "none",
+  padding: 0,
+  background: "transparent",
+  cursor: "pointer",
+  touchAction: "pan-y",
+  WebkitTapHighlightColor: "transparent",
 };
 
 const speechBtn: React.CSSProperties = {

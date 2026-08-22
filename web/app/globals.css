@@ -1060,3 +1060,8 @@ a[href^="#dt-locator-"]:hover {
   padding: 10px 16px;
   padding-bottom: max(10px, env(safe-area-inset-bottom));
 }
+
+.kids-interactive-footer {
+  box-sizing: border-box;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}

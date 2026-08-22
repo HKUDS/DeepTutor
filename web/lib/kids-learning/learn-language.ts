@@ -54,6 +54,8 @@ export interface KidsLearningCopy {
   stopAnswer: string;
   translateTitle: string;
   translateUnavailable: string;
+  previousPage: string;
+  nextPage: string;
   openingBook: string;
   openBookError: string;
 }
@@ -102,6 +104,8 @@ const zhCopy: KidsLearningCopy = {
   stopAnswer: "停止朗读解析",
   translateTitle: "翻译",
   translateUnavailable: "翻译暂时不可用",
+  previousPage: "上一页",
+  nextPage: "下一页",
   openingBook: "正在打开书...",
   openBookError: "这本书暂时打不开。请回到书架再试一次。",
 };
@@ -150,6 +154,8 @@ const enCopy: KidsLearningCopy = {
   stopAnswer: "Stop answer",
   translateTitle: "Translate",
   translateUnavailable: "Translation unavailable",
+  previousPage: "Previous page",
+  nextPage: "Next page",
   openingBook: "Opening book...",
   openBookError: "This book could not be opened. Please go back to Books and try again.",
 };
