@@ -372,6 +372,24 @@ export default function KidsReaderPage() {
     }
   }, [documentId, wordHintData, wordHintState]);
 
+  const handleLearnClick = useCallback(() => {
+    if (renditionRef.current) {
+      const selection = renditionRef.current.getRange?.();
+      const text = selection?.toString()?.trim();
+      if (text) {
+        const word = text.split(/\s+/)[0];
+        void openWordHint(word, text);
+        return;
+      }
+    }
+    stopSpeaking();
+    setShowLearn(false);
+    setWordHintBusy(false);
+    setWordHintData(null);
+    setWordHintMessage("Tap any word in the story to explore its meaning!");
+    setWordHintState(createInitialWordHintState("Explore"));
+  }, [openWordHint, stopSpeaking]);
+
   const closeLearnQuestions = useCallback(() => {
     quizLoadTokenRef.current += 1;
     setShowLearn(false);
@@ -616,8 +634,11 @@ export default function KidsReaderPage() {
         >
           {speakingId === "read-aloud" ? "Stop" : "Read Aloud"}
         </button>
-        <button style={learnBtn} onClick={() => loadLearnQuestions()}>
+        <button style={learnBtn} onClick={handleLearnClick}>
           Learn
+        </button>
+        <button style={quizBtn} onClick={() => loadLearnQuestions()}>
+          Quiz
         </button>
       </div>
 
@@ -940,7 +961,13 @@ const bigBtn: React.CSSProperties = {
 const learnBtn: React.CSSProperties = {
   ...bigBtn,
   background: "#fed7aa",
-  minWidth: 160,
+  minWidth: 130,
+};
+
+const quizBtn: React.CSSProperties = {
+  ...bigBtn,
+  background: "#c7d2fe",
+  minWidth: 130,
 };
 
 const secondaryToolBtn: React.CSSProperties = {

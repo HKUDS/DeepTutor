@@ -25,6 +25,7 @@ test("kids reader centers guided learning and demotes translation", () => {
   assert.match(readerSource, /Look and Think/);
   assert.match(readerSource, /Think again/);
   assert.match(readerSource, />\s*Learn\s*</);
+  assert.match(readerSource, />\s*Quiz\s*</);
   assert.match(readerSource, /result\.total_stars/);
   assert.doesNotMatch(readerSource, />\s*Translate\s*</);
   assert.match(readerSource, /Languages/);
