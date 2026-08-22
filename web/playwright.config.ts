@@ -3,7 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 const BASE_URL =
   process.env.WEB_BASE_URL ||
   process.env.NEXT_PUBLIC_API_BASE ||
-  "http://localhost:3000";
+  "http://localhost:3782";
+const BASE_PORT = new URL(BASE_URL).port || "80";
 const SERIAL_MODE = process.env.PW_SERIAL === "1";
 
 export default defineConfig({
@@ -32,7 +33,7 @@ export default defineConfig({
   webServer: process.env.WEB_BASE_URL
     ? undefined
     : {
-        command: "npm run start -- --port 3000",
+        command: `npm run start -- --port ${BASE_PORT}`,
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
