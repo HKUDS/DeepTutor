@@ -83,21 +83,18 @@ def _client_cache_key(
     )
 
 
-def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -> Any:
-    # A stale SSL_CERT_FILE (common with cloned conda envs) makes httpx's
-    # create_ssl_context raise FileNotFoundError mid-__init__, aborting client
-    # construction. Drop broken CA paths first so TLS uses its default CA config.
-    sanitize_invalid_ssl_env()
-
-
 def _build_openai_client(
     config: LLMClientConfig,
     *,
     disable_ssl_verify: bool,
     sdk_max_retries: int | None = None,
 ) -> Any:
+    # A stale SSL_CERT_FILE (common with cloned conda envs) makes httpx's
+    # create_ssl_context raise FileNotFoundError mid-__init__, aborting client
+    # construction. Drop broken CA paths first so TLS uses its default CA config.
+    sanitize_invalid_ssl_env()
     if isinstance(config.api_key, list):
-        keys = [str(key).strip() for key in config.api_key if str(key).strip()]
+        keys = [str(key).strip() for key in config.api_key if str(key or "").strip()]
         clients = {
             key: _build_openai_client(
                 replace(config, api_key=key),

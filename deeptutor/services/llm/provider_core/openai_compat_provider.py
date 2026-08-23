@@ -139,7 +139,9 @@ class OpenAICompatProvider(LLMProvider):
         effective_base = api_base or (spec.default_api_base if spec else None) or None
         self._effective_base = effective_base
         endpoint = (effective_base or "").rstrip("/")
-        placeholder_key = api_key in {None, "", "no-key", "sk-no-key-required"}
+        # api_key may be a list (key pool); only the resolved primary key
+        # counts for the configured-key check.
+        placeholder_key = primary_key in {None, "", "no-key", "sk-no-key-required"}
         if (
             provider_name == "openai"
             and (not endpoint or endpoint == "https://api.openai.com/v1")
