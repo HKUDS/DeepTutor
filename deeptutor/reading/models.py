@@ -23,6 +23,7 @@ from typing import Any, Literal
 # model and the UI ("page 12" vs "chapter 3"); the addressing is identical.
 UnitKind = Literal["page", "chapter", "slide", "section"]
 RenderMode = Literal["text", "pdf", "epub"]
+SourceType = Literal["upload", "url_snapshot", "kb_file", "kb_web_tutorial"]
 
 AnnotationKind = Literal["highlight", "underline", "note"]
 
@@ -130,6 +131,7 @@ class OutlineEntry:
     title: str
     level: int = 1
     synthesised: bool = False
+    source_url: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -137,6 +139,7 @@ class OutlineEntry:
             "title": self.title,
             "level": self.level,
             "synthesised": self.synthesised,
+            "source_url": self.source_url,
         }
 
 
@@ -204,6 +207,14 @@ class MaterialManifest:
     # Selects the faithful renderer without overloading ``has_raw_view``.
     # The legacy boolean remains PDF-only until every client understands EPUB.
     render_mode: RenderMode = "text"
+    source_type: SourceType = "upload"
+    source_ref: str = ""
+    source_url: str = ""
+    kb_name: str = ""
+    kb_path: str = ""
+    revision_id: str = ""
+    captured_at: float = 0.0
+    previous_revision_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -220,6 +231,14 @@ class MaterialManifest:
             "created_at": self.created_at,
             "has_raw_view": self.has_raw_view,
             "render_mode": self.render_mode,
+            "source_type": self.source_type,
+            "source_ref": self.source_ref,
+            "source_url": self.source_url,
+            "kb_name": self.kb_name,
+            "kb_path": self.kb_path,
+            "revision_id": self.revision_id,
+            "captured_at": self.captured_at,
+            "previous_revision_id": self.previous_revision_id,
         }
 
     @classmethod
@@ -228,6 +247,7 @@ class MaterialManifest:
         render_mode = str(data.get("render_mode") or "")
         if render_mode not in ("text", "pdf", "epub"):
             render_mode = "pdf" if data.get("has_raw_view") else "text"
+        source_type = str(data.get("source_type") or "upload")
         return cls(
             material_id=str(data.get("material_id") or ""),
             filename=str(data.get("filename") or ""),
@@ -242,6 +262,18 @@ class MaterialManifest:
             created_at=float(data.get("created_at") or 0.0),
             has_raw_view=bool(data.get("has_raw_view")),
             render_mode=render_mode,  # type: ignore[arg-type]
+            source_type=(
+                source_type
+                if source_type in ("upload", "url_snapshot", "kb_file", "kb_web_tutorial")
+                else "upload"
+            ),  # type: ignore[arg-type]
+            source_ref=str(data.get("source_ref") or ""),
+            source_url=str(data.get("source_url") or ""),
+            kb_name=str(data.get("kb_name") or ""),
+            kb_path=str(data.get("kb_path") or ""),
+            revision_id=str(data.get("revision_id") or ""),
+            captured_at=float(data.get("captured_at") or 0.0),
+            previous_revision_id=str(data.get("previous_revision_id") or ""),
         )
 
 
@@ -267,6 +299,8 @@ class Annotation:
     author: str = "user"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    revision_id: str = ""
+    migration_status: Literal["native", "migrated", "needs_review"] = "native"
 
     def touched(self, **changes: Any) -> "Annotation":
         return replace(self, updated_at=time.time(), **changes)
@@ -284,6 +318,8 @@ class Annotation:
             "author": self.author,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "revision_id": self.revision_id,
+            "migration_status": self.migration_status,
         }
 
     @classmethod
@@ -295,6 +331,7 @@ class Annotation:
             for rect in (Rect.from_any(raw) for raw in (data.get("rects") or []))
             if rect is not None and not rect.is_degenerate
         )
+        migration_status = str(data.get("migration_status") or "native")
         return cls(
             annotation_id=str(data.get("annotation_id") or ""),
             locator=max(1, int(data.get("locator") or 1)),
@@ -307,6 +344,12 @@ class Annotation:
             author=str(data.get("author") or "user"),
             created_at=float(data.get("created_at") or 0.0),
             updated_at=float(data.get("updated_at") or 0.0),
+            revision_id=str(data.get("revision_id") or ""),
+            migration_status=(
+                migration_status
+                if migration_status in ("native", "migrated", "needs_review")
+                else "native"
+            ),  # type: ignore[arg-type]
         )
 
 
@@ -351,6 +394,7 @@ __all__ = [
     "RenderMode",
     "Rect",
     "SearchHit",
+    "SourceType",
     "UnitKind",
     "UnitReference",
 ]

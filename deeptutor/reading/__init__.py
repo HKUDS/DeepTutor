@@ -38,6 +38,7 @@ from deeptutor.reading.models import (
     Rect,
     RenderMode,
     SearchHit,
+    SourceType,
     UnitKind,
     UnitReference,
 )
@@ -53,6 +54,12 @@ from deeptutor.reading.service import (
     verify_quote,
 )
 from deeptutor.reading.store import ReadingStore, content_hash
+from deeptutor.reading.sources import (
+    FileSourceAdapter,
+    ReadingSourceAdapter,
+    ReadingSourcePayload,
+    markdown_payload,
+)
 
 __all__ = [
     "ANNOTATION_COLORS",
@@ -74,12 +81,17 @@ __all__ = [
     "SearchHit",
     "SearchResult",
     "RenderMode",
+    "SourceType",
     "UnitKind",
     "UnitReference",
+    "FileSourceAdapter",
+    "ReadingSourceAdapter",
+    "ReadingSourcePayload",
     "content_hash",
     "export_material",
     "extract_material",
     "material_summary",
+    "markdown_payload",
     "parse_locators",
     "render_outline",
     "render_units",

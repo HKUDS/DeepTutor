@@ -1,16 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Loader2, Trash2, Upload } from "lucide-react";
+import { Database, FileText, Globe, Loader2, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   deleteMaterial,
+  createMaterialFromKb,
+  createMaterialFromUrl,
   getSupportedFormats,
   listMaterials,
   uploadMaterial,
   type MaterialDetail,
   type MaterialInfo,
 } from "@/lib/reading-api";
+import { listKnowledgeBases } from "@/lib/knowledge-api";
 
 export interface MaterialPickerProps {
   onOpen: (material: MaterialDetail | MaterialInfo) => void;
@@ -38,6 +41,10 @@ export function MaterialPicker({
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [urlInput, setUrlInput] = useState("");
+  const [kbNames, setKbNames] = useState<string[]>([]);
+  const [kbName, setKbName] = useState("");
+  const [kbPath, setKbPath] = useState("");
 
   const reload = useCallback(async () => {
     try {
@@ -71,6 +78,53 @@ export function MaterialPicker({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    void listKnowledgeBases()
+      .then((rows) => {
+        const names = rows.map((row) => row.name).filter(Boolean);
+        setKbNames(names);
+        setKbName((current) => current || names[0] || "");
+      })
+      .catch(() => setKbNames([]));
+  }, []);
+
+  const openUrl = useCallback(async () => {
+    const url = urlInput.trim();
+    if (!url || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const material = await createMaterialFromUrl(url);
+      setUrlInput("");
+      await reload();
+      onOpen(material);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("This page could not be opened."));
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, onOpen, reload, t, urlInput]);
+
+  const openKbFile = useCallback(async () => {
+    const filePath = kbPath.trim();
+    if (!kbName || !filePath || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const material = await createMaterialFromKb({
+        kb_name: kbName,
+        file_path: filePath,
+      });
+      setKbPath("");
+      await reload();
+      onOpen(material);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("This knowledge-base file could not be opened."));
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, kbName, kbPath, onOpen, reload, t]);
 
   const ingest = useCallback(
     async (file: File | undefined | null) => {
@@ -109,6 +163,71 @@ export function MaterialPicker({
   return (
     <div className="flex h-full flex-col items-center overflow-y-auto px-6 py-8">
       <div className="w-full max-w-[520px]">
+        <div className="mb-4 space-y-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/45 p-3">
+          <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--foreground)]">
+            <Globe size={14} />
+            {t("Read a web page")}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(event) => setUrlInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void openUrl();
+              }}
+              placeholder="https://docs.example.com/tutorial"
+              className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12px] outline-none focus:border-[var(--ring)]"
+            />
+            <button
+              type="button"
+              onClick={() => void openUrl()}
+              disabled={busy || !urlInput.trim()}
+              className="rounded-lg bg-[var(--primary)] px-3 py-2 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-45"
+            >
+              {t("Open")}
+            </button>
+          </div>
+          <p className="text-[10.5px] text-[var(--muted-foreground)]">
+            {t("DeepTutor saves a stable reading snapshot and keeps the original link.")}
+          </p>
+        </div>
+
+        {kbNames.length > 0 && (
+          <div className="mb-4 space-y-2 rounded-2xl border border-[var(--border)] bg-[var(--card)]/45 p-3">
+            <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--foreground)]">
+              <Database size={14} />
+              {t("Open from a knowledge base")}
+            </div>
+            <div className="grid grid-cols-[minmax(110px,0.7fr)_minmax(0,1.3fr)_auto] gap-2">
+              <select
+                value={kbName}
+                onChange={(event) => setKbName(event.target.value)}
+                className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-2 text-[12px]"
+              >
+                {kbNames.map((name) => <option key={name}>{name}</option>)}
+              </select>
+              <input
+                value={kbPath}
+                onChange={(event) => setKbPath(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void openKbFile();
+                }}
+                placeholder={t("File path in KB")}
+                className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12px]"
+              />
+              <button
+                type="button"
+                onClick={() => void openKbFile()}
+                disabled={busy || !kbName || !kbPath.trim()}
+                className="rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-medium disabled:opacity-45"
+              >
+                {t("Open")}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div
           onDragOver={(event) => {
             event.preventDefault();

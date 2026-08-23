@@ -37,6 +37,14 @@ export interface MaterialInfo {
   has_raw_view: boolean;
   render_mode: RenderMode;
   annotation_count: number;
+  source_type?: "upload" | "url_snapshot" | "kb_file" | "kb_web_tutorial";
+  source_ref?: string;
+  source_url?: string;
+  kb_name?: string;
+  kb_path?: string;
+  revision_id?: string;
+  captured_at?: number;
+  previous_revision_id?: string;
 }
 
 export interface OutlineRow {
@@ -44,6 +52,7 @@ export interface OutlineRow {
   title: string;
   level: number;
   synthesised: boolean;
+  source_url?: string;
 }
 
 export interface MaterialDetail extends MaterialInfo {
@@ -81,6 +90,8 @@ export interface AnnotationItem {
   author: string;
   created_at: number;
   updated_at: number;
+  revision_id?: string;
+  migration_status?: "native" | "migrated" | "needs_review";
 }
 
 export interface AnnotationDraft {
@@ -167,6 +178,50 @@ export async function uploadMaterial(file: File): Promise<MaterialDetail> {
   form.append("file", file, file.name);
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials`), { method: "POST", body: form }),
+  );
+}
+
+export async function createMaterialFromUrl(url: string): Promise<MaterialDetail> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/from-url`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }),
+  );
+}
+
+export async function createMaterialFromKb(input: {
+  kb_name: string;
+  file_path?: string;
+  web_source_id?: string;
+}): Promise<MaterialDetail> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/from-kb`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function listMaterialRevisions(materialId: string): Promise<MaterialInfo[]> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/revisions`), {
+      cache: "no-store",
+    }),
+  );
+}
+
+export async function activateMaterialRevision(
+  materialId: string,
+  revisionId: string,
+): Promise<MaterialDetail> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/revisions/${revisionId}/activate`),
+      { method: "POST" },
+    ),
   );
 }
 

@@ -16,11 +16,14 @@ pulling the whole file before rendering page one.
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace as dataclass_replace
 import logging
 from pathlib import Path
 import shutil
 import tempfile
 from typing import Any, Literal
+from urllib.parse import urldefrag, urlparse, urlunparse
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.params import File
@@ -34,12 +37,16 @@ from deeptutor.multi_user.learning_access import (
 from deeptutor.reading import (
     ANNOTATION_COLORS,
     Annotation,
+    FileSourceAdapter,
     MaterialNotFound,
+    OutlineEntry,
     ReadingError,
     ReadingPosition,
+    ReadingSourcePayload,
     ReadingStore,
     ReadingUpgradeConflict,
     export_material,
+    markdown_payload,
     render_outline,
 )
 from deeptutor.utils.document_validator import DocumentValidator
@@ -99,6 +106,14 @@ class MaterialInfo(BaseModel):
     has_raw_view: bool = False
     render_mode: Literal["text", "pdf", "epub"] = "text"
     annotation_count: int = 0
+    source_type: str = "upload"
+    source_ref: str = ""
+    source_url: str = ""
+    kb_name: str = ""
+    kb_path: str = ""
+    revision_id: str = ""
+    captured_at: float = 0.0
+    previous_revision_id: str = ""
 
 
 class MaterialDetail(MaterialInfo):
@@ -159,6 +174,8 @@ class AnnotationInfo(BaseModel):
     author: str
     created_at: float
     updated_at: float
+    revision_id: str = ""
+    migration_status: str = "native"
 
 
 class PositionPayload(BaseModel):
@@ -175,6 +192,16 @@ class SupportedFormats(BaseModel):
     extensions: list[str]
     max_bytes: int
     raw_view_extensions: list[str]
+
+
+class UrlMaterialRequest(BaseModel):
+    url: str
+
+
+class KbMaterialRequest(BaseModel):
+    kb_name: str
+    file_path: str = ""
+    web_source_id: str = ""
 
 
 # === Routes ===================================================================
@@ -255,12 +282,111 @@ async def upload_material(file: UploadFile = File(...)) -> MaterialDetail:  # no
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+@router.post("/materials/from-url", response_model=MaterialDetail)
+async def material_from_url(payload: UrlMaterialRequest) -> MaterialDetail:
+    """Capture one public web page and open its stable local snapshot."""
+    try:
+        assert_learning_material("", upload=True)
+    except PermissionError as exc:
+        raise _http_error(exc) from exc
+    url = _normalise_public_url(payload.url)
+    try:
+        from deeptutor.services.web_source.crawler import crawl_docs_site
+
+        result = await crawl_docs_site(url, max_depth=0, max_pages=1)
+        if not result.pages:
+            detail = "; ".join(result.errors) or "No readable page was returned."
+            raise ReadingError(f"The page could not be captured: {detail}")
+        page = result.pages[0]
+        source = markdown_payload(
+            source_type="url_snapshot",
+            source_ref=page.canonical_url or page.url or url,
+            title=page.title or urlparse(url).path.rsplit("/", 1)[-1] or urlparse(url).netloc,
+            markdown=page.markdown,
+            filename=_web_filename(page.title, url),
+            source_url=page.canonical_url or page.url or url,
+        )
+        manifest = _store().ingest_source(source)
+        return _detail(_store(), manifest)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/from-kb", response_model=MaterialDetail)
+async def material_from_kb(payload: KbMaterialRequest) -> MaterialDetail:
+    """Open an access-checked KB file or a crawled tutorial in the reader."""
+    if bool(payload.file_path.strip()) == bool(payload.web_source_id.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Choose exactly one of file_path or web_source_id.",
+        )
+    try:
+        from deeptutor.multi_user.knowledge_access import manager_for_resource, resolve_kb
+
+        resource = resolve_kb(payload.kb_name, require_write=False)
+        manager = manager_for_resource(resource)
+        kb_dir = manager.get_knowledge_base_path(resource.name)
+        raw_dir = (kb_dir / "raw").resolve()
+        if payload.file_path:
+            target = _safe_kb_file(raw_dir, payload.file_path)
+            adapter = FileSourceAdapter(
+                path=target,
+                filename=target.name,
+                source_type="kb_file",
+                source_ref=f"{resource.id}:{payload.file_path}",
+                kb_name=resource.id,
+                kb_path=payload.file_path,
+            )
+            source = await asyncio.to_thread(adapter.build)
+        else:
+            source = await asyncio.to_thread(
+                _kb_tutorial_payload,
+                manager,
+                resource.id,
+                resource.name,
+                raw_dir,
+                payload.web_source_id,
+            )
+        store = _store()
+        manifest = await asyncio.to_thread(store.ingest_source, source)
+        return _detail(store, manifest)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.get("/materials/{material_id}", response_model=MaterialDetail)
 async def get_material(material_id: str) -> MaterialDetail:
     store = _store()
     try:
         assert_learning_material(material_id)
         return _detail(store, store.manifest(material_id))
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/materials/{material_id}/revisions", response_model=list[MaterialInfo])
+async def list_revisions(material_id: str) -> list[MaterialInfo]:
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        return [_info(store, row, annotation_count=False) for row in store.revisions(material_id)]
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post(
+    "/materials/{material_id}/revisions/{revision_id}/activate",
+    response_model=MaterialDetail,
+)
+async def activate_revision(material_id: str, revision_id: str) -> MaterialDetail:
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        return _detail(store, store.switch_revision(material_id, revision_id))
     except Exception as exc:
         raise _http_error(exc) from exc
 
@@ -412,9 +538,19 @@ async def export(
 # === Helpers ==================================================================
 
 
-def _info(store: ReadingStore, manifest: Any) -> MaterialInfo:
+def _info(
+    store: ReadingStore,
+    manifest: Any,
+    *,
+    annotation_count: bool = True,
+) -> MaterialInfo:
     return MaterialInfo(
-        **manifest.to_dict() | {"annotation_count": len(store.annotations(manifest.material_id))}
+        **manifest.to_dict()
+        | {
+            "annotation_count": (
+                len(store.annotations(manifest.material_id)) if annotation_count else 0
+            )
+        }
     )
 
 
@@ -433,6 +569,140 @@ def _detail(store: ReadingStore, manifest: Any) -> MaterialDetail:
 
 def _annotation_info(row: Annotation) -> AnnotationInfo:
     return AnnotationInfo(**row.to_dict())
+
+
+def _normalise_public_url(value: str) -> str:
+    raw = str(value or "").strip()
+    parsed = urlparse(raw)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Enter a complete http:// or https:// URL.")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Authenticated URLs are not supported.")
+    clean, _ = urldefrag(raw)
+    parsed = urlparse(clean)
+    host = (parsed.hostname or "").lower()
+    netloc = host
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    return urlunparse(
+        (parsed.scheme.lower(), netloc, parsed.path or "/", parsed.params, parsed.query, "")
+    )
+
+
+def _web_filename(title: str, url: str) -> str:
+    import re
+
+    candidate = re.sub(r"[^\w\-. ]+", " ", str(title or ""), flags=re.UNICODE).strip()
+    if not candidate:
+        candidate = urlparse(url).path.rstrip("/").rsplit("/", 1)[-1] or "web-page"
+    return f"{candidate[:120]}.md"
+
+
+def _safe_kb_file(raw_dir: Path, file_path: str) -> Path:
+    target = (raw_dir / file_path).resolve()
+    try:
+        target.relative_to(raw_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Access denied") from exc
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Knowledge-base file not found")
+    return target
+
+
+def _navigation_rows(nodes: list[dict[str, Any]], level: int = 1) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for node in nodes:
+        file_path = str(node.get("file_path") or "")
+        if file_path:
+            rows.append(
+                {
+                    "file_path": file_path,
+                    "title": str(node.get("title") or Path(file_path).stem),
+                    "level": level,
+                    "url": str(node.get("url") or ""),
+                }
+            )
+        rows.extend(_navigation_rows(node.get("children") or [], level + 1))
+    return rows
+
+
+def _kb_tutorial_payload(
+    manager: Any,
+    resource_id: str,
+    kb_name: str,
+    raw_dir: Path,
+    source_id: str,
+) -> ReadingSourcePayload:
+    from deeptutor.reading.extract import split_into_sections
+
+    source = next(
+        (row for row in manager.get_web_sources(kb_name) if row.get("id") == source_id),
+        None,
+    )
+    if source is None:
+        raise HTTPException(status_code=404, detail="Web source not found")
+    page_manifest = source.get("page_manifest") or {}
+    if not page_manifest:
+        raise ReadingError("Sync this web source before opening the tutorial.")
+
+    navigation = source.get("navigation") or {}
+    rows = _navigation_rows(navigation.get("nodes") or [])
+    known = {row["file_path"] for row in rows}
+    for file_path, metadata in sorted(page_manifest.items()):
+        if metadata.get("status") == "deleted" or file_path in known:
+            continue
+        section_path = metadata.get("section_path") or []
+        rows.append(
+            {
+                "file_path": file_path,
+                "title": metadata.get("title") or Path(file_path).stem,
+                "level": max(1, len(section_path)),
+                "url": metadata.get("canonical_url") or metadata.get("url") or "",
+            }
+        )
+
+    units: list[str] = []
+    outline: list[OutlineEntry] = []
+    included_paths: list[str] = []
+    for row in rows:
+        target = _safe_kb_file(raw_dir, row["file_path"])
+        try:
+            markdown = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ReadingError(f"{target.name} is not readable Markdown") from exc
+        sections = split_into_sections(markdown)
+        if not sections:
+            continue
+        start = len(units) + 1
+        units.extend(sections)
+        included_paths.append(row["file_path"])
+        outline.append(
+            OutlineEntry(
+                locator=start,
+                title=str(row["title"]),
+                level=max(1, int(row["level"])),
+                synthesised=navigation.get("kind") != "original",
+                source_url=str(row["url"]),
+            )
+        )
+
+    if not units:
+        raise ReadingError("The synced tutorial has no readable pages.")
+    url = str(source.get("url") or "")
+    return ReadingSourcePayload(
+        source_type="kb_web_tutorial",
+        source_ref=f"{resource_id}:web:{source_id}",
+        filename=f"{urlparse(url).hostname or source_id}-tutorial.md",
+        title=urlparse(url).hostname or "Web tutorial",
+        units=tuple(units),
+        unit="section",
+        outline=tuple(outline),
+        source_url=url,
+        kb_name=resource_id,
+        kb_path="\n".join(included_paths),
+        raw_bytes=b"",
+        has_raw_view=False,
+    )
 
 
 def _attachment_header(filename: str) -> str:

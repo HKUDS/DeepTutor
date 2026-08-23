@@ -50,6 +50,7 @@ from deeptutor.reading.models import (
     ReadingUpgradeConflict,
     UnitReference,
 )
+from deeptutor.reading.sources import ReadingSourcePayload
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ POSITION_NAME = "position.json"
 UNIT_REFS_NAME = "unit_refs.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
+REVISIONS_DIR = "revisions"
 
 # Material ids are content hashes, so this is both an id validator and the
 # traversal guard for every path built from a caller-supplied id.
@@ -253,6 +255,191 @@ class ReadingStore:
                 shutil.rmtree(backup_dir, ignore_errors=True)
             return manifest
 
+    def ingest_source(self, payload: ReadingSourcePayload) -> MaterialManifest:
+        """Persist a URL/KB source under a stable id with immutable revisions.
+
+        The stable id is derived from provenance rather than content.  A changed
+        snapshot therefore updates the existing reading item, while the content
+        hash remains the revision id.  Uploads keep using :meth:`ingest`.
+        """
+        if payload.source_type == "upload":
+            raise ReadingError("upload sources must use ingest()")
+        if not payload.source_ref.strip():
+            raise ReadingError("reading source has no stable reference")
+        if not payload.units or not any(unit.strip() for unit in payload.units):
+            raise ReadingError(f"{payload.filename}: no readable text was extracted")
+
+        material_id = content_hash(
+            f"{payload.source_type}\0{payload.source_ref}".encode("utf-8")
+        )
+        revision_id = payload.content_hash
+        material_dir = self._dir(material_id)
+
+        with self._locked(material_id):
+            existing = self._load_manifest(material_id)
+            if existing is not None and existing.revision_id == revision_id:
+                return existing
+
+            previous_revision = existing.revision_id if existing else ""
+            if existing and previous_revision:
+                self._snapshot_active_revision(material_id, previous_revision)
+
+            manifest = MaterialManifest(
+                material_id=material_id,
+                filename=payload.filename,
+                unit=payload.unit,
+                unit_count=len(payload.units),
+                mime=payload.mime,
+                title=payload.title,
+                source_hash=revision_id,
+                extractor=payload.extractor,
+                byte_size=len(payload.raw_bytes),
+                char_count=sum(len(unit) for unit in payload.units),
+                created_at=existing.created_at if existing else time.time(),
+                has_raw_view=payload.has_raw_view,
+                render_mode=payload.render_mode,
+                source_type=payload.source_type,
+                source_ref=payload.source_ref,
+                source_url=payload.source_url,
+                kb_name=payload.kb_name,
+                kb_path=payload.kb_path,
+                revision_id=revision_id,
+                captured_at=payload.captured_at,
+                previous_revision_id=previous_revision,
+            )
+            old_annotations = self.annotations(material_id) if existing else []
+            self._write_active_payload(material_dir, manifest, payload)
+            if existing:
+                self._write_annotations(
+                    material_id,
+                    self._migrate_annotations(old_annotations, payload.units, revision_id),
+                )
+                self._migrate_progress(material_id, existing, manifest)
+            self._snapshot_active_revision(material_id, revision_id)
+            return manifest
+
+    def _write_active_payload(
+        self,
+        material_dir: Path,
+        manifest: MaterialManifest,
+        payload: ReadingSourcePayload,
+    ) -> None:
+        units_dir = material_dir / UNITS_DIR
+        if units_dir.exists():
+            shutil.rmtree(units_dir, ignore_errors=True)
+        units_dir.mkdir(parents=True, exist_ok=True)
+        for index, unit in enumerate(payload.units, start=1):
+            self._unit_file(material_dir, index).write_text(unit, encoding="utf-8")
+
+        if (material_dir / RAW_DIR).exists():
+            shutil.rmtree(material_dir / RAW_DIR, ignore_errors=True)
+        if payload.render_mode != "text" and payload.raw_bytes:
+            raw_dir = material_dir / RAW_DIR
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            (raw_dir / _safe_filename(payload.filename, fallback="material")).write_bytes(
+                payload.raw_bytes
+            )
+
+        outline = payload.outline or synthesise_outline(payload.units)
+        _atomic_write(
+            material_dir / OUTLINE_NAME,
+            json.dumps([entry.to_dict() for entry in outline], ensure_ascii=False),
+        )
+        _atomic_write(
+            material_dir / UNIT_REFS_NAME,
+            json.dumps([entry.to_dict() for entry in payload.unit_refs], ensure_ascii=False),
+        )
+        _atomic_write(
+            material_dir / MANIFEST_NAME,
+            json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
+        )
+
+    def _snapshot_active_revision(self, material_id: str, revision_id: str) -> None:
+        if not revision_id or not _MATERIAL_ID_RE.match(revision_id):
+            return
+        material_dir = self._dir(material_id)
+        revision_dir = material_dir / REVISIONS_DIR / revision_id
+        revision_dir.mkdir(parents=True, exist_ok=True)
+        for name in (
+            MANIFEST_NAME,
+            OUTLINE_NAME,
+            UNIT_REFS_NAME,
+            ANNOTATIONS_NAME,
+            POSITION_NAME,
+        ):
+            source = material_dir / name
+            if source.is_file():
+                shutil.copy2(source, revision_dir / name)
+        source_units = material_dir / UNITS_DIR
+        target_units = revision_dir / UNITS_DIR
+        if source_units.is_dir() and not target_units.exists():
+            shutil.copytree(source_units, target_units)
+        source_raw = material_dir / RAW_DIR
+        target_raw = revision_dir / RAW_DIR
+        if source_raw.is_dir() and not target_raw.exists():
+            shutil.copytree(source_raw, target_raw)
+
+    @staticmethod
+    def _migrate_annotations(
+        annotations: Sequence[Annotation],
+        units: Sequence[str],
+        revision_id: str,
+    ) -> list[Annotation]:
+        migrated: list[Annotation] = []
+        for row in annotations:
+            quote = row.quote.strip()
+            matches = [index for index, unit in enumerate(units, start=1) if quote and quote in unit]
+            if len(matches) == 1:
+                migrated.append(
+                    dataclass_replace(
+                        row,
+                        locator=matches[0],
+                        rects=(),
+                        source_anchor="",
+                        revision_id=revision_id,
+                        migration_status="migrated",
+                        updated_at=time.time(),
+                    )
+                )
+            else:
+                migrated.append(
+                    dataclass_replace(
+                        row,
+                        locator=min(max(1, row.locator), len(units)),
+                        rects=(),
+                        source_anchor="",
+                        revision_id=revision_id,
+                        migration_status="needs_review",
+                        updated_at=time.time(),
+                    )
+                )
+        return migrated
+
+    def _migrate_progress(
+        self,
+        material_id: str,
+        old: MaterialManifest,
+        new: MaterialManifest,
+    ) -> None:
+        position = self.position(material_id)
+        if position.locator == 1 and not position.source_anchor and position.percentage == 0.0:
+            return
+        old_locator = max(1, position.locator)
+        ratio = (old_locator - 1) / max(1, old.unit_count - 1)
+        self.save_position(
+            material_id,
+            ReadingPosition(
+                locator=min(
+                    new.unit_count,
+                    max(1, round(ratio * max(0, new.unit_count - 1)) + 1),
+                ),
+                # Renderer-native anchors are revision-specific. Retaining
+                # one could silently jump to the wrong paragraph after sync.
+                source_anchor="",
+                percentage=position.percentage,
+            ),
+        )
+
     def _is_complete(self, material_id: str, manifest: MaterialManifest) -> bool:
         """Whether a previously ingested material is still fully on disk."""
         material_dir = self._dir(material_id)
@@ -363,6 +550,7 @@ class ReadingStore:
                             title=str(row.get("title") or ""),
                             level=max(1, int(row.get("level") or 1)),
                             synthesised=bool(row.get("synthesised")),
+                            source_url=str(row.get("source_url") or ""),
                         )
                     )
                 except (KeyError, TypeError, ValueError):
@@ -440,6 +628,66 @@ class ReadingStore:
             shutil.rmtree(material_dir, ignore_errors=True)
         return not material_dir.exists()
 
+    # -- revisions / progress -------------------------------------------
+
+    def revisions(self, material_id: str) -> list[MaterialManifest]:
+        """Return all stored revisions, newest capture first."""
+        current = self.manifest(material_id)
+        if current.source_type == "upload":
+            return [current]
+        revision_root = self._dir(material_id) / REVISIONS_DIR
+        found: dict[str, MaterialManifest] = {current.revision_id: current}
+        if revision_root.is_dir():
+            for child in revision_root.iterdir():
+                data = _read_json(child / MANIFEST_NAME)
+                if isinstance(data, dict):
+                    item = MaterialManifest.from_dict(data)
+                    if item.revision_id:
+                        found[item.revision_id] = item
+        return sorted(found.values(), key=lambda row: row.captured_at, reverse=True)
+
+    def switch_revision(self, material_id: str, revision_id: str) -> MaterialManifest:
+        """Make a stored revision active without deleting the current one."""
+        current = self.manifest(material_id)
+        if current.source_type == "upload":
+            raise ReadingError("uploaded materials do not have revisions")
+        revision = self._validate_id(revision_id)
+        if revision == current.revision_id:
+            return current
+        source_dir = self._dir(material_id) / REVISIONS_DIR / revision
+        data = _read_json(source_dir / MANIFEST_NAME)
+        if not isinstance(data, dict):
+            raise MaterialNotFound(f"revision {revision_id!r} not found")
+
+        with self._locked(material_id):
+            self._snapshot_active_revision(material_id, current.revision_id)
+            material_dir = self._dir(material_id)
+            for dirname in (UNITS_DIR, RAW_DIR):
+                target = material_dir / dirname
+                if target.exists():
+                    shutil.rmtree(target, ignore_errors=True)
+                source = source_dir / dirname
+                if source.is_dir():
+                    shutil.copytree(source, target)
+            for name in (
+                OUTLINE_NAME,
+                UNIT_REFS_NAME,
+                ANNOTATIONS_NAME,
+                POSITION_NAME,
+            ):
+                source = source_dir / name
+                target = material_dir / name
+                if source.is_file():
+                    shutil.copy2(source, target)
+                else:
+                    target.unlink(missing_ok=True)
+            manifest = MaterialManifest.from_dict(data)
+            _atomic_write(
+                material_dir / MANIFEST_NAME,
+                json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
+            )
+            return manifest
+
     # -- annotations ------------------------------------------------------
 
     def annotations(self, material_id: str) -> list[Annotation]:
@@ -480,6 +728,8 @@ class ReadingStore:
             stored = annotation
             if not stored.annotation_id:
                 stored = dataclass_replace(stored, annotation_id=uuid.uuid4().hex[:12])
+            if not stored.revision_id:
+                stored = dataclass_replace(stored, revision_id=manifest.revision_id)
             now = time.time()
             index = next(
                 (i for i, row in enumerate(existing) if row.annotation_id == stored.annotation_id),
@@ -544,6 +794,7 @@ __all__ = [
     "MAX_READ_CHARS",
     "OUTLINE_NAME",
     "RAW_DIR",
+    "REVISIONS_DIR",
     "UNITS_DIR",
     "ReadingStore",
     "content_hash",
