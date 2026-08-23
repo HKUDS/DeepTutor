@@ -42,6 +42,7 @@ import uuid
 from deeptutor.reading.extract import extract_material, synthesise_outline
 from deeptutor.reading.models import (
     Annotation,
+    BilingualGroup,
     MaterialManifest,
     MaterialNotFound,
     OutlineEntry,
@@ -59,9 +60,11 @@ OUTLINE_NAME = "outline.json"
 ANNOTATIONS_NAME = "annotations.json"
 POSITION_NAME = "position.json"
 UNIT_REFS_NAME = "unit_refs.json"
+BILINGUAL_UNITS_NAME = "bilingual_units.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
 REVISIONS_DIR = "revisions"
+ASSETS_DIR = "_snapshot_assets"
 
 # Material ids are content hashes, so this is both an id validator and the
 # traversal guard for every path built from a caller-supplied id.
@@ -174,11 +177,8 @@ class ReadingStore:
                 )
                 if not wants_epub_upgrade:
                     return existing
-                if self.annotations(material_id):
-                    raise ReadingUpgradeConflict(
-                        "This EPUB was imported by the legacy text reader and has annotations. "
-                        "Export those annotations before replacing it with the source-faithful version."
-                    )
+                # Legacy text imports can now be repaired safely. Quote anchors
+                # migrate when unique; ambiguous marks are retained for review.
 
             extraction = extract_material(path)
             material_dir = self._dir(material_id)
@@ -217,11 +217,20 @@ class ReadingStore:
                 extractor=extraction.extractor,
                 byte_size=len(data),
                 char_count=extraction.char_count,
-                created_at=time.time(),
+                created_at=existing.created_at if existing else time.time(),
                 # Compatibility: old clients route this boolean directly to
                 # pdf.js. EPUB dispatch is carried by ``render_mode`` instead.
                 has_raw_view=extraction.render_mode == "pdf",
                 render_mode=extraction.render_mode,
+                content_format=(
+                    extraction.render_mode
+                    if extraction.render_mode in ("pdf", "epub")
+                    else (
+                        "markdown"
+                        if Path(display_name).suffix.lower() in {".md", ".markdown"}
+                        else "plain_text"
+                    )
+                ),
             )
             # Manifest last: its presence is the "this material is usable"
             # signal, so it must not appear before the units it describes.
@@ -230,9 +239,9 @@ class ReadingStore:
                 json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
             )
 
-            # A repair or compatible re-ingest keeps user-owned state. EPUB
-            # legacy upgrades with annotations were rejected above because
-            # their old locators cannot be mapped safely to the spine.
+            old_annotations = self.annotations(material_id) if existing else []
+            old_outline = self.outline(material_id) if existing else []
+            # A repair or compatible re-ingest keeps user-owned state.
             for state_name in (ANNOTATIONS_NAME, POSITION_NAME):
                 source_state = material_dir / state_name
                 if source_state.is_file():
@@ -253,6 +262,24 @@ class ReadingStore:
             finally:
                 shutil.rmtree(stage_dir, ignore_errors=True)
                 shutil.rmtree(backup_dir, ignore_errors=True)
+            if existing:
+                self._write_annotations(
+                    material_id,
+                    self._migrate_annotations(
+                        old_annotations,
+                        extraction.units,
+                        "",
+                        old_outline=old_outline,
+                        new_outline=outline,
+                    ),
+                )
+                self._migrate_progress(
+                    material_id,
+                    existing,
+                    manifest,
+                    old_outline=old_outline,
+                    new_outline=outline,
+                )
             return manifest
 
     def ingest_source(self, payload: ReadingSourcePayload) -> MaterialManifest:
@@ -269,9 +296,7 @@ class ReadingStore:
         if not payload.units or not any(unit.strip() for unit in payload.units):
             raise ReadingError(f"{payload.filename}: no readable text was extracted")
 
-        material_id = content_hash(
-            f"{payload.source_type}\0{payload.source_ref}".encode("utf-8")
-        )
+        material_id = content_hash(f"{payload.source_type}\0{payload.source_ref}".encode("utf-8"))
         revision_id = payload.content_hash
         material_dir = self._dir(material_id)
 
@@ -309,10 +334,25 @@ class ReadingStore:
                 previous_revision_id=previous_revision,
                 tutorial_available=payload.tutorial_available,
                 navigation_kind=payload.navigation_kind,
+                content_format=payload.content_format,
+                bilingual_available=bool(
+                    payload.bilingual_groups
+                    or payload.bilingual_languages
+                    or payload.bilingual_pairing_ids
+                ),
+                bilingual_languages=payload.bilingual_languages,
+                bilingual_pairing_ids=payload.bilingual_pairing_ids,
             )
             old_annotations = self.annotations(material_id) if existing else []
             new_outline = list(payload.outline or synthesise_outline(payload.units))
             self._write_active_payload(material_dir, manifest, payload)
+            for asset in payload.snapshot_assets:
+                asset_dir = self.root / ASSETS_DIR
+                asset_dir.mkdir(parents=True, exist_ok=True)
+                target = asset_dir / asset.asset_id
+                if not target.exists():
+                    target.write_bytes(asset.data)
+                _atomic_write(asset_dir / f"{asset.asset_id}.mime", asset.mime)
             if existing:
                 self._write_annotations(
                     material_id,
@@ -365,6 +405,17 @@ class ReadingStore:
             material_dir / UNIT_REFS_NAME,
             json.dumps([entry.to_dict() for entry in payload.unit_refs], ensure_ascii=False),
         )
+        if payload.bilingual_groups:
+            _atomic_write(
+                material_dir / BILINGUAL_UNITS_NAME,
+                json.dumps(
+                    [row.to_dict() for row in payload.bilingual_groups],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+        else:
+            (material_dir / BILINGUAL_UNITS_NAME).unlink(missing_ok=True)
         _atomic_write(
             material_dir / MANIFEST_NAME,
             json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
@@ -382,6 +433,7 @@ class ReadingStore:
             UNIT_REFS_NAME,
             ANNOTATIONS_NAME,
             POSITION_NAME,
+            BILINGUAL_UNITS_NAME,
         ):
             source = material_dir / name
             if source.is_file():
@@ -420,9 +472,7 @@ class ReadingStore:
             ]
             if len(matches) != 1 and preferred is not None:
                 matches = [
-                    index
-                    for index, unit in enumerate(units, start=1)
-                    if quote and quote in unit
+                    index for index, unit in enumerate(units, start=1) if quote and quote in unit
                 ]
             if len(matches) == 1:
                 migrated.append(
@@ -506,16 +556,18 @@ class ReadingStore:
             key=lambda row: row.locator,
         )
         active_index = next(
-            (index for index in range(len(ordered) - 1, -1, -1) if ordered[index].locator <= locator),
+            (
+                index
+                for index in range(len(ordered) - 1, -1, -1)
+                if ordered[index].locator <= locator
+            ),
             None,
         )
         if active_index is None:
             return None
         start = ordered[active_index].locator
         stop = (
-            ordered[active_index + 1].locator
-            if active_index + 1 < len(ordered)
-            else unit_count + 1
+            ordered[active_index + 1].locator if active_index + 1 < len(ordered) else unit_count + 1
         )
         return range(start, max(start + 1, stop))
 
@@ -685,6 +737,21 @@ class ReadingStore:
             return None
         return self._find_raw(self._dir(material_id))
 
+    def snapshot_asset(self, asset_id: str) -> tuple[Path, str]:
+        candidate = str(asset_id or "").lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", candidate):
+            raise ReadingError("invalid snapshot asset id")
+        path = self.root / ASSETS_DIR / candidate
+        if not path.is_file():
+            raise MaterialNotFound("snapshot asset not found")
+        try:
+            mime = (self.root / ASSETS_DIR / f"{candidate}.mime").read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            mime = "application/octet-stream"
+        return path, mime.strip()
+
     def unit_references(self, material_id: str) -> list[UnitReference]:
         """Source-native addresses aligned with the numeric locator space."""
         manifest = self.manifest(material_id)
@@ -693,6 +760,20 @@ class ReadingStore:
             return [UnitReference(locator=index) for index in range(1, manifest.unit_count + 1)]
         refs = [UnitReference.from_dict(row) for row in rows if isinstance(row, dict)]
         return [row for row in refs if 1 <= row.locator <= manifest.unit_count]
+
+    def bilingual_groups(self, material_id: str, locator: int) -> list[BilingualGroup]:
+        """Return validated alignment groups for one access-checked locator."""
+        manifest = self.manifest(material_id)
+        if not 1 <= locator <= manifest.unit_count:
+            raise ReadingError(
+                f"{manifest.unit} {locator} is out of range — "
+                f"this material has {manifest.unit_count}."
+            )
+        rows = _read_json(self._dir(material_id) / BILINGUAL_UNITS_NAME)
+        if not isinstance(rows, list):
+            return []
+        parsed = [BilingualGroup.from_dict(row) for row in rows if isinstance(row, dict)]
+        return [row for row in parsed if row.locator == locator]
 
     def position(self, material_id: str) -> ReadingPosition:
         """Return the last viewport, defaulting to the first locator."""
@@ -784,6 +865,7 @@ class ReadingStore:
                 UNIT_REFS_NAME,
                 ANNOTATIONS_NAME,
                 POSITION_NAME,
+                BILINGUAL_UNITS_NAME,
             ):
                 source = source_dir / name
                 target = material_dir / name
@@ -797,6 +879,48 @@ class ReadingStore:
                 json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
             )
             return manifest
+
+    def repair_legacy_epub(
+        self, material_id: str, legacy_root: Path | None = None
+    ) -> MaterialManifest:
+        """Upgrade a text-only EPUB in place using one exact-hash legacy source.
+
+        The search is deliberately deterministic: no match or more than one
+        match is surfaced for explicit user choice instead of guessing.
+        """
+        manifest = self.manifest(material_id)
+        is_legacy = manifest.filename.lower().endswith(".epub") and (
+            manifest.render_mode == "text" or self.raw_path(material_id) is None
+        )
+        if not is_legacy:
+            return manifest
+        root = legacy_root or self.root.parent / "immersive_reading"
+        if not root.is_dir():
+            raise ReadingError(
+                "The legacy EPUB library could not be found. Choose the original EPUB to repair this material."
+            )
+        expected = manifest.source_hash or manifest.material_id
+        matches: list[Path] = []
+        for candidate in root.rglob("original.epub"):
+            try:
+                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            except OSError:
+                continue
+            if (
+                digest == expected
+                or digest.startswith(expected)
+                or digest.startswith(manifest.material_id)
+            ):
+                matches.append(candidate)
+        if not matches:
+            raise ReadingError(
+                "No matching original EPUB was found. Choose the original EPUB to repair this material."
+            )
+        if len(matches) != 1:
+            raise ReadingUpgradeConflict(
+                "More than one matching original EPUB was found. Choose which original EPUB should repair this material."
+            )
+        return self.ingest(matches[0], filename=manifest.filename)
 
     def link_source_to_kb(self, material_id: str, *, kb_name: str) -> MaterialManifest:
         """Associate an online snapshot with a KB without changing its identity.
@@ -816,10 +940,7 @@ class ReadingStore:
                 json.dumps(linked.to_dict(), ensure_ascii=False, indent=2),
             )
             revision_manifest = (
-                self._dir(material_id)
-                / REVISIONS_DIR
-                / linked.revision_id
-                / MANIFEST_NAME
+                self._dir(material_id) / REVISIONS_DIR / linked.revision_id / MANIFEST_NAME
             )
             if revision_manifest.parent.is_dir():
                 _atomic_write(
@@ -930,6 +1051,8 @@ def _guess_mime(filename: str) -> str:
 
 __all__ = [
     "ANNOTATIONS_NAME",
+    "ASSETS_DIR",
+    "BILINGUAL_UNITS_NAME",
     "MANIFEST_NAME",
     "MAX_READ_CHARS",
     "OUTLINE_NAME",

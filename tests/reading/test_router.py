@@ -229,9 +229,7 @@ def test_url_snapshot_keeps_identity_and_creates_revisions(
     assert changed_body["material_id"] == first_body["material_id"]
     assert changed_body["revision_id"] != first_body["revision_id"]
 
-    revisions = client.get(
-        f"/api/v1/reading/materials/{first_body['material_id']}/revisions"
-    )
+    revisions = client.get(f"/api/v1/reading/materials/{first_body['material_id']}/revisions")
     assert revisions.status_code == 200
     assert {row["revision_id"] for row in revisions.json()} == {
         first_body["revision_id"],
@@ -386,7 +384,7 @@ def test_tutorial_import_keeps_missing_pages_in_outline(
 
     source = {
         "id": "source1",
-        "url": "https://docs.example.com/",
+        "url": "docs.example.com/",
         "last_synced_at": "2026-08-23T12:00:00Z",
         "page_manifest": {
             "intro.md": {"title": "Intro", "status": "active"},
@@ -429,8 +427,92 @@ def test_tutorial_import_keeps_missing_pages_in_outline(
     assert opened.status_code == 200, opened.text
     body = opened.json()
     assert body["source_type"] == "kb_web_tutorial"
+    assert body["source_url"] == "https://docs.example.com/"
     assert body["unit_count"] == 2
     assert body["outline"][1]["title"].endswith("unavailable")
+
+
+def test_bilingual_tutorial_exposes_collapsible_alignment_groups(
+    client: TestClient,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from deeptutor.multi_user import knowledge_access
+    from deeptutor.services.web_source import bilingual_store
+
+    kb_dir = tmp_path / "knowledge_bases" / "docs"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "index.md").write_text(
+        "<!-- source: https://docs.example.com/ -->\n\n# Documentation\n\nBody",
+        encoding="utf-8",
+    )
+    bilingual_store.save_alignment(
+        kb_dir,
+        "docs.example.com",
+        "index.md",
+        {
+            "groups": [
+                {
+                    "group_id": "heading",
+                    "en_content": "# Documentation",
+                    "zh_content": "# 文档",
+                    "confidence": 1.0,
+                    "low_confidence": False,
+                },
+                {
+                    "group_id": "body",
+                    "en_content": "Body",
+                    "zh_content": "正文",
+                    "confidence": 0.2,
+                    "low_confidence": True,
+                },
+            ]
+        },
+    )
+    source = {
+        "id": "source1",
+        "url": "https://docs.example.com/",
+        "page_manifest": {"index.md": {"status": "active"}},
+        "navigation": {
+            "kind": "original",
+            "nodes": [
+                {
+                    "title": "Documentation",
+                    "url": "https://docs.example.com/",
+                    "file_path": "index.md",
+                    "pair_key": "docs.example.com",
+                    "children": [],
+                }
+            ],
+        },
+    }
+
+    class FakeManager:
+        def get_knowledge_base_path(self, _name: str) -> Path:
+            return kb_dir
+
+        def get_web_sources(self, _name: str):
+            return [source]
+
+    resource = SimpleNamespace(id="user:kb:docs", name="docs")
+    monkeypatch.setattr(knowledge_access, "resolve_kb", lambda *_a, **_kw: resource)
+    monkeypatch.setattr(knowledge_access, "manager_for_resource", lambda _resource: FakeManager())
+
+    opened = client.post(
+        "/api/v1/reading/materials/from-kb",
+        json={"kb_name": "docs", "web_source_id": "source1"},
+    )
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    assert body["content_format"] == "markdown"
+    assert body["bilingual_available"] is True
+    assert body["bilingual_languages"] == ["en", "zh"]
+
+    unit = client.get(f"/api/v1/reading/materials/{body['material_id']}/units/1/bilingual")
+    assert unit.status_code == 200, unit.text
+    assert [row["group_id"] for row in unit.json()["groups"]] == ["heading", "body"]
+    assert unit.json()["groups"][1]["low_confidence"] is True
 
 
 def test_saving_url_snapshot_to_kb_does_not_rebuild_material(

@@ -23,7 +23,14 @@ from typing import Any, Literal
 # model and the UI ("page 12" vs "chapter 3"); the addressing is identical.
 UnitKind = Literal["page", "chapter", "slide", "section"]
 RenderMode = Literal["text", "pdf", "epub"]
-SourceType = Literal["upload", "url_snapshot", "kb_file", "kb_web_tutorial"]
+ContentFormat = Literal["plain_text", "markdown", "pdf", "epub"]
+SourceType = Literal[
+    "upload",
+    "url_snapshot",
+    "kb_file",
+    "kb_web_tutorial",
+    "derived_epub",
+]
 
 AnnotationKind = Literal["highlight", "underline", "note"]
 
@@ -168,6 +175,47 @@ class UnitReference:
 
 
 @dataclass(frozen=True, slots=True)
+class BilingualGroup:
+    """One source/translation alignment attached to a numeric locator."""
+
+    group_id: str
+    locator: int
+    source_markdown: str
+    translation_markdown: str = ""
+    source_language: str = "en"
+    target_language: str = "zh"
+    confidence: float = 1.0
+    low_confidence: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "group_id": self.group_id,
+            "locator": self.locator,
+            "source_markdown": self.source_markdown,
+            "translation_markdown": self.translation_markdown,
+            "source_language": self.source_language,
+            "target_language": self.target_language,
+            "confidence": self.confidence,
+            "low_confidence": self.low_confidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "BilingualGroup":
+        return cls(
+            group_id=str(data.get("group_id") or ""),
+            locator=max(1, int(data.get("locator") or 1)),
+            source_markdown=str(data.get("source_markdown") or data.get("en_content") or ""),
+            translation_markdown=str(
+                data.get("translation_markdown") or data.get("zh_content") or ""
+            ),
+            source_language=str(data.get("source_language") or "en"),
+            target_language=str(data.get("target_language") or "zh"),
+            confidence=float(data.get("confidence") or 0.0),
+            low_confidence=bool(data.get("low_confidence")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SearchHit:
     """One search match, addressed by locator with surrounding context."""
 
@@ -217,6 +265,10 @@ class MaterialManifest:
     previous_revision_id: str = ""
     tutorial_available: bool = False
     navigation_kind: str = ""
+    content_format: ContentFormat = "plain_text"
+    bilingual_available: bool = False
+    bilingual_languages: tuple[str, ...] = ()
+    bilingual_pairing_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -243,6 +295,10 @@ class MaterialManifest:
             "previous_revision_id": self.previous_revision_id,
             "tutorial_available": self.tutorial_available,
             "navigation_kind": self.navigation_kind,
+            "content_format": self.content_format,
+            "bilingual_available": self.bilingual_available,
+            "bilingual_languages": list(self.bilingual_languages),
+            "bilingual_pairing_ids": list(self.bilingual_pairing_ids),
         }
 
     @classmethod
@@ -252,6 +308,17 @@ class MaterialManifest:
         if render_mode not in ("text", "pdf", "epub"):
             render_mode = "pdf" if data.get("has_raw_view") else "text"
         source_type = str(data.get("source_type") or "upload")
+        content_format = str(data.get("content_format") or "")
+        if content_format not in ("plain_text", "markdown", "pdf", "epub"):
+            if render_mode in ("pdf", "epub"):
+                content_format = render_mode
+            elif str(data.get("mime") or "").lower() in {
+                "text/markdown",
+                "text/x-markdown",
+            } or str(data.get("filename") or "").lower().endswith((".md", ".markdown")):
+                content_format = "markdown"
+            else:
+                content_format = "plain_text"
         return cls(
             material_id=str(data.get("material_id") or ""),
             filename=str(data.get("filename") or ""),
@@ -268,7 +335,8 @@ class MaterialManifest:
             render_mode=render_mode,  # type: ignore[arg-type]
             source_type=(
                 source_type
-                if source_type in ("upload", "url_snapshot", "kb_file", "kb_web_tutorial")
+                if source_type
+                in ("upload", "url_snapshot", "kb_file", "kb_web_tutorial", "derived_epub")
                 else "upload"
             ),  # type: ignore[arg-type]
             source_ref=str(data.get("source_ref") or ""),
@@ -280,6 +348,12 @@ class MaterialManifest:
             previous_revision_id=str(data.get("previous_revision_id") or ""),
             tutorial_available=bool(data.get("tutorial_available")),
             navigation_kind=str(data.get("navigation_kind") or ""),
+            content_format=content_format,  # type: ignore[arg-type]
+            bilingual_available=bool(data.get("bilingual_available")),
+            bilingual_languages=tuple(str(row) for row in data.get("bilingual_languages") or ()),
+            bilingual_pairing_ids=tuple(
+                str(row) for row in data.get("bilingual_pairing_ids") or ()
+            ),
         )
 
 

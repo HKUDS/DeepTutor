@@ -38,6 +38,7 @@ from deeptutor.multi_user.learning_access import (
 from deeptutor.reading import (
     ANNOTATION_COLORS,
     Annotation,
+    BilingualGroup,
     FileSourceAdapter,
     MaterialNotFound,
     OutlineEntry,
@@ -47,8 +48,11 @@ from deeptutor.reading import (
     ReadingStore,
     ReadingUpgradeConflict,
     export_material,
+    localize_snapshot_images,
     markdown_payload,
+    normalize_snapshot_links,
     render_outline,
+    sanitize_snapshot_markdown,
 )
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -117,6 +121,10 @@ class MaterialInfo(BaseModel):
     previous_revision_id: str = ""
     tutorial_available: bool = False
     navigation_kind: str = ""
+    content_format: Literal["plain_text", "markdown", "pdf", "epub"] = "plain_text"
+    bilingual_available: bool = False
+    bilingual_languages: list[str] = Field(default_factory=list)
+    bilingual_pairing_ids: list[str] = Field(default_factory=list)
 
 
 class MaterialDetail(MaterialInfo):
@@ -129,6 +137,11 @@ class UnitText(BaseModel):
     locator: int
     unit: str
     text: str
+
+
+class BilingualUnit(BaseModel):
+    locator: int
+    groups: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AnnotationPayload(BaseModel):
@@ -212,6 +225,17 @@ class KbMaterialRequest(BaseModel):
 
 class SaveToKbRequest(BaseModel):
     kb_name: str
+
+
+class RepairEpubRequest(BaseModel):
+    """Reserved for future explicit-file repair; fixed roots stay server-owned."""
+
+    pass
+
+
+class EpubPairingRequest(BaseModel):
+    english_material_id: str
+    chinese_material_id: str
 
 
 # === Routes ===================================================================
@@ -312,6 +336,7 @@ async def material_from_url(payload: UrlMaterialRequest) -> MaterialDetail:
             detail = "; ".join(result.errors) or "No readable page was returned."
             raise ReadingError(f"The page could not be captured: {detail}")
         source = _web_crawl_payload(result, url=url, whole_tutorial=payload.whole_tutorial)
+        source = await localize_snapshot_images(source)
         store = _store()
         manifest = store.ingest_source(source)
         return _detail(store, manifest)
@@ -357,6 +382,7 @@ async def material_from_kb(payload: KbMaterialRequest) -> MaterialDetail:
                 payload.web_source_id,
             )
         store = _store()
+        source = await localize_snapshot_images(source)
         manifest = await asyncio.to_thread(store.ingest_source, source)
         return _detail(store, manifest)
     except HTTPException:
@@ -370,9 +396,79 @@ async def get_material(material_id: str) -> MaterialDetail:
     store = _store()
     try:
         assert_learning_material(material_id)
-        return _detail(store, store.manifest(material_id))
+        manifest = store.manifest(material_id)
+        if manifest.filename.lower().endswith(".epub") and manifest.render_mode == "text":
+            try:
+                manifest = await asyncio.to_thread(store.repair_legacy_epub, material_id)
+            except ReadingError:
+                # Opening still succeeds so the UI can preserve access to the
+                # legacy text and offer explicit-file repair when necessary.
+                pass
+        return _detail(store, manifest)
     except Exception as exc:
         raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/repair-epub", response_model=MaterialDetail)
+async def repair_legacy_epub(
+    material_id: str,
+    _payload: RepairEpubRequest | None = None,
+) -> MaterialDetail:
+    """Recover a legacy text-only EPUB when exactly one source hash matches."""
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        manifest = await asyncio.to_thread(store.repair_legacy_epub, material_id)
+        return _detail(store, manifest)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/materials/{material_id}/epub-pairing-candidates")
+async def epub_pairing_candidates(material_id: str) -> list[dict[str, Any]]:
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        from deeptutor.reading.epub_bilingual import recommend_epub_candidates
+
+        return await asyncio.to_thread(recommend_epub_candidates, store, material_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/epub-pairings")
+async def epub_pairings() -> list[dict[str, Any]]:
+    from deeptutor.reading.epub_bilingual import list_epub_pairings
+
+    return list_epub_pairings(_store())
+
+
+@router.post("/epub-pairings")
+async def create_epub_pair(payload: EpubPairingRequest) -> dict[str, Any]:
+    store = _store()
+    try:
+        assert_learning_material(payload.english_material_id)
+        assert_learning_material(payload.chinese_material_id)
+        from deeptutor.reading.epub_bilingual import create_epub_pairing
+
+        pairing, manifest = await asyncio.to_thread(
+            create_epub_pairing,
+            store,
+            payload.english_material_id,
+            payload.chinese_material_id,
+        )
+        return {"pairing": pairing, "material": _detail(store, manifest).model_dump()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/epub-pairings/{pairing_id}")
+async def remove_epub_pairing(pairing_id: str) -> dict[str, Any]:
+    from deeptutor.reading.epub_bilingual import delete_epub_pairing
+
+    if not delete_epub_pairing(_store(), pairing_id):
+        raise HTTPException(status_code=404, detail="EPUB pairing not found")
+    return {"status": "ok", "pairing_id": pairing_id}
 
 
 @router.post("/materials/{material_id}/save-to-kb", response_model=MaterialDetail)
@@ -452,6 +548,20 @@ async def get_unit(material_id: str, locator: int) -> UnitText:
         raise _http_error(exc) from exc
 
 
+@router.get(
+    "/materials/{material_id}/units/{locator}/bilingual",
+    response_model=BilingualUnit,
+)
+async def get_bilingual_unit(material_id: str, locator: int) -> BilingualUnit:
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        groups = store.bilingual_groups(material_id, locator)
+        return BilingualUnit(locator=locator, groups=[row.to_dict() for row in groups])
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.get("/materials/{material_id}/raw")
 async def get_raw(material_id: str) -> FileResponse:
     """The original bytes, for the faithful viewer. Serves Range requests."""
@@ -473,6 +583,16 @@ async def get_raw(material_id: str) -> FileResponse:
         filename=manifest.filename,
         content_disposition_type="inline",
     )
+
+
+@router.get("/snapshot-assets/{asset_id}")
+async def get_snapshot_asset(asset_id: str) -> FileResponse:
+    """Serve one content-addressed, SSRF-checked image from this user's cache."""
+    try:
+        path, mime = _store().snapshot_asset(asset_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return FileResponse(path, media_type=mime, content_disposition_type="inline")
 
 
 @router.get("/materials/{material_id}/annotations", response_model=list[AnnotationInfo])
@@ -619,13 +739,28 @@ def _normalise_public_url(value: str) -> str:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="The URL contains an invalid port.") from exc
     if port and not (
-        parsed.scheme.lower() == "http" and port == 80
-        or parsed.scheme.lower() == "https" and port == 443
+        parsed.scheme.lower() == "http"
+        and port == 80
+        or parsed.scheme.lower() == "https"
+        and port == 443
     ):
         netloc += f":{port}"
     return urlunparse(
         (parsed.scheme.lower(), netloc, parsed.path or "/", parsed.params, parsed.query, "")
     )
+
+
+def _normalise_stored_source_url(value: Any) -> str:
+    """Normalize legacy KB source URLs without turning bad data into links."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if not urlparse(raw).scheme:
+        raw = f"https://{raw.lstrip('/')}"
+    try:
+        return _normalise_public_url(raw)
+    except HTTPException:
+        return ""
 
 
 def _web_filename(title: str, url: str) -> str:
@@ -689,9 +824,7 @@ def _web_crawl_payload(result: Any, *, url: str, whole_tutorial: bool) -> Readin
         identity = page.canonical_url or page.url
         if identity in seen_pages:
             continue
-        rows.append(
-            {"page": page, "title": page.title or identity, "url": identity, "level": 1}
-        )
+        rows.append({"page": page, "title": page.title or identity, "url": identity, "level": 1})
 
     units: list[str] = []
     outline: list[OutlineEntry] = []
@@ -706,7 +839,7 @@ def _web_crawl_payload(result: Any, *, url: str, whole_tutorial: bool) -> Readin
             )
             row_title = f"{row['title']} — unavailable"
         else:
-            sections = split_into_sections(page.markdown)
+            sections = split_into_sections(sanitize_snapshot_markdown(page.markdown))
             if not sections:
                 continue
             units.extend(sections)
@@ -757,6 +890,8 @@ def _navigation_rows(nodes: list[dict[str, Any]], level: int = 1) -> list[dict[s
                     "title": str(node.get("title") or Path(file_path).stem),
                     "level": level,
                     "url": str(node.get("url") or ""),
+                    "file_path_zh": str(node.get("file_path_zh") or ""),
+                    "pair_key": str(node.get("pair_key") or ""),
                 }
             )
         rows.extend(_navigation_rows(node.get("children") or [], level + 1))
@@ -771,6 +906,7 @@ def _kb_tutorial_payload(
     source_id: str,
 ) -> ReadingSourcePayload:
     from deeptutor.reading.extract import split_into_sections
+    from deeptutor.services.web_source import bilingual_store
 
     source = next(
         (row for row in manager.get_web_sources(kb_name) if row.get("id") == source_id),
@@ -821,6 +957,8 @@ def _kb_tutorial_payload(
     units: list[str] = []
     outline: list[OutlineEntry] = []
     included_paths: list[str] = []
+    bilingual_groups: list[BilingualGroup] = []
+    pairing_ids: set[str] = set()
     for row in rows:
         try:
             target = _safe_kb_file(raw_dir, row["file_path"])
@@ -845,15 +983,59 @@ def _kb_tutorial_payload(
             )
             continue
         try:
-            markdown = target.read_text(encoding="utf-8")
+            markdown = normalize_snapshot_links(
+                sanitize_snapshot_markdown(target.read_text(encoding="utf-8")),
+                str(row["url"]),
+            )
         except UnicodeDecodeError as exc:
             raise ReadingError(f"{target.name} is not readable Markdown") from exc
-        sections = split_into_sections(markdown)
+        pair_key = str(row.get("pair_key") or source_id if source is not None else "")
+        alignment = (
+            bilingual_store.load_alignment(raw_dir.parent, pair_key, row["file_path"])
+            if pair_key
+            else None
+        )
+        aligned_rows = [
+            item
+            for item in (alignment or {}).get("groups", [])
+            if isinstance(item, dict) and str(item.get("en_content") or "").strip()
+        ]
+        sections = (
+            (
+                "\n\n".join(
+                    normalize_snapshot_links(
+                        str(item.get("en_content") or ""), str(row["url"])
+                    )
+                    for item in aligned_rows
+                ),
+            )
+            if aligned_rows
+            else split_into_sections(markdown)
+        )
         if not sections:
             continue
         start = len(units) + 1
         units.extend(sections)
         included_paths.append(row["file_path"])
+        if aligned_rows:
+            pairing_ids.add(pair_key)
+            for index, item in enumerate(aligned_rows, start=1):
+                bilingual_groups.append(
+                    BilingualGroup(
+                        group_id=str(
+                            item.get("group_id") or f"{pair_key}:{row['file_path']}:{index}"
+                        ),
+                        locator=start,
+                        source_markdown=normalize_snapshot_links(
+                            str(item.get("en_content") or ""), str(row["url"])
+                        ),
+                        translation_markdown=normalize_snapshot_links(
+                            str(item.get("zh_content") or ""), str(row["url"])
+                        ),
+                        confidence=float(item.get("confidence") or 0.0),
+                        low_confidence=bool(item.get("low_confidence")),
+                    )
+                )
         outline.append(
             OutlineEntry(
                 locator=start,
@@ -866,7 +1048,7 @@ def _kb_tutorial_payload(
 
     if not units:
         raise ReadingError("The synced tutorial has no readable pages.")
-    url = str(source.get("url") or "")
+    url = _normalise_stored_source_url(source.get("url"))
     captured_at = _timestamp(source.get("last_synced_at"))
     return ReadingSourcePayload(
         source_type="kb_web_tutorial",
@@ -882,6 +1064,10 @@ def _kb_tutorial_payload(
         raw_bytes=b"",
         has_raw_view=False,
         captured_at=captured_at,
+        content_format="markdown",
+        bilingual_groups=tuple(bilingual_groups),
+        bilingual_languages=("en", "zh") if bilingual_groups else (),
+        bilingual_pairing_ids=tuple(sorted(pairing_ids)),
     )
 
 

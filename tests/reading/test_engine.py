@@ -6,6 +6,8 @@ path service, a user workspace, or an LLM.
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 from pathlib import Path
 import zipfile
@@ -14,6 +16,7 @@ import pytest
 
 from deeptutor.reading import (
     Annotation,
+    MaterialManifest,
     MaterialNotFound,
     ReadingError,
     ReadingStore,
@@ -25,6 +28,7 @@ from deeptutor.reading import (
     search_material,
     verify_quote,
 )
+from deeptutor.reading.epub_bilingual import build_bilingual_epub
 from deeptutor.reading.extract import (
     SECTION_TARGET_CHARS,
     extract_material,
@@ -165,6 +169,105 @@ def test_epub_preserves_spine_units_source_hrefs_and_nested_outline(tmp_path: Pa
     ]
 
 
+def test_legacy_epub_unique_hash_repair_preserves_identity_and_migrates_state(
+    tmp_path: Path,
+) -> None:
+    store = ReadingStore(tmp_path / "reading")
+    original = _write_epub(tmp_path / "source.epub")
+    digest = hashlib.sha256(original.read_bytes()).hexdigest()
+    material_id = digest[:16]
+    material_dir = store.root / material_id
+    (material_dir / "units").mkdir(parents=True)
+    (material_dir / "units" / "0001.txt").write_text(
+        "First Chapter\nAlpha source text.", encoding="utf-8"
+    )
+    (material_dir / "manifest.json").write_text(
+        json.dumps(
+            MaterialManifest(
+                material_id=material_id,
+                filename="book.epub",
+                unit="section",
+                unit_count=1,
+                source_hash=digest,
+                extractor="text",
+            ).to_dict()
+        ),
+        encoding="utf-8",
+    )
+    store.save_annotation(
+        material_id,
+        Annotation(annotation_id="", locator=1, quote="Alpha source text."),
+    )
+    legacy = tmp_path / "immersive_reading" / "old"
+    legacy.mkdir(parents=True)
+    (legacy / "original.epub").write_bytes(original.read_bytes())
+
+    repaired = store.repair_legacy_epub(material_id, tmp_path / "immersive_reading")
+
+    assert repaired.material_id == material_id
+    assert repaired.render_mode == "epub"
+    assert repaired.content_format == "epub"
+    assert store.raw_path(material_id).read_bytes() == original.read_bytes()  # type: ignore[union-attr]
+    annotation = store.annotations(material_id)[0]
+    assert annotation.migration_status == "migrated"
+    assert annotation.locator == 1
+
+
+def test_legacy_epub_repair_refuses_ambiguous_hash_matches(tmp_path: Path) -> None:
+    store = ReadingStore(tmp_path / "reading")
+    original = _write_epub(tmp_path / "source.epub")
+    digest = hashlib.sha256(original.read_bytes()).hexdigest()
+    material_id = digest[:16]
+    material_dir = store.root / material_id
+    (material_dir / "units").mkdir(parents=True)
+    (material_dir / "units" / "0001.txt").write_text("Readable", encoding="utf-8")
+    (material_dir / "manifest.json").write_text(
+        json.dumps(
+            MaterialManifest(
+                material_id=material_id,
+                filename="book.epub",
+                unit="section",
+                unit_count=1,
+                source_hash=digest,
+                extractor="text",
+            ).to_dict()
+        ),
+        encoding="utf-8",
+    )
+    for name in ("one", "two"):
+        target = tmp_path / "legacy" / name
+        target.mkdir(parents=True)
+        (target / "original.epub").write_bytes(original.read_bytes())
+
+    with pytest.raises(ReadingError, match="More than one"):
+        store.repair_legacy_epub(material_id, tmp_path / "legacy")
+
+
+def test_bilingual_epub_keeps_package_resources_and_injects_closed_details(
+    tmp_path: Path,
+) -> None:
+    english = _write_epub(tmp_path / "english.epub")
+    chinese = _write_epub(tmp_path / "chinese.epub")
+    with zipfile.ZipFile(english, "a") as archive:
+        archive.writestr("OEBPS/images/插图.png", b"PNG-resource")
+        archive.writestr("OEBPS/styles/book.css", "body { background: url('../images/插图.png'); }")
+
+    rendered = build_bilingual_epub(
+        english,
+        chinese,
+        ["Alpha source text.", "Beta source text."],
+        ["中文第一段。", "中文第二段。"],
+    )
+
+    with zipfile.ZipFile(io.BytesIO(rendered)) as archive:
+        assert archive.read("OEBPS/images/插图.png") == b"PNG-resource"
+        assert b"background: url('../images/" in archive.read("OEBPS/styles/book.css")
+        chapter = archive.read("OEBPS/chapters/one.xhtml").decode("utf-8")
+        assert '<details class="dt-zh" data-low-confidence="false">' in chapter
+        assert '<details class="dt-zh" open' not in chapter
+        assert "中文第一段" in chapter
+
+
 def test_pptx_slides_become_units_when_the_extractor_marks_them(tmp_path: Path) -> None:
     pytest.importorskip("pptx")
     from pptx import Presentation
@@ -285,20 +388,20 @@ def test_reupload_upgrades_legacy_epub_when_it_has_no_annotations(
     assert store.raw_path(upgraded.material_id) is not None
 
 
-def test_reupload_rejects_legacy_epub_upgrade_with_annotations(
+def test_reupload_migrates_legacy_epub_annotations_by_unique_quote(
     store: ReadingStore, tmp_path: Path
 ) -> None:
-    from deeptutor.reading import ReadingUpgradeConflict
-
     path = _write_epub(tmp_path / "book.epub")
     first = store.ingest(path)
     store.save_annotation(first.material_id, Annotation(annotation_id="", locator=1, quote="Alpha"))
     _downgrade_epub_manifest_to_legacy_text(store, first.material_id)
 
-    with pytest.raises(ReadingUpgradeConflict):
-        store.ingest(path)
+    upgraded = store.ingest(path)
 
-    assert [row.quote for row in store.annotations(first.material_id)] == ["Alpha"]
+    assert upgraded.render_mode == "epub"
+    migrated = store.annotations(first.material_id)[0]
+    assert migrated.quote == "Alpha"
+    assert migrated.migration_status == "migrated"
 
 
 def test_reingesting_the_same_bytes_reuses_the_material_and_its_annotations(

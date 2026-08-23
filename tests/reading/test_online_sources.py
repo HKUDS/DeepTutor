@@ -3,6 +3,7 @@
 from dataclasses import replace
 from pathlib import Path
 
+import httpx
 import pytest
 
 from deeptutor.reading import (
@@ -12,6 +13,9 @@ from deeptutor.reading import (
     ReadingSourcePayload,
     ReadingStore,
     Rect,
+    localize_snapshot_images,
+    markdown_payload,
+    sanitize_snapshot_markdown,
 )
 
 
@@ -35,6 +39,100 @@ def payload(
         source_url="https://docs.example.com/tutorial",
         captured_at=captured_at,
     )
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "<!-- source: https://docs.example.com/ -->\n\n",
+        r"\<!-- source: https://docs.example.com/ \-->" + "\n\n",
+    ],
+)
+def test_snapshot_source_comment_is_removed_only_from_document_start(prefix: str) -> None:
+    markdown = prefix + "# Documentation\n\nBody\n\n<!-- source: keep in prose -->"
+    clean = sanitize_snapshot_markdown(markdown)
+
+    assert clean.startswith("# Documentation")
+    assert "keep in prose" in clean
+    source = markdown_payload(
+        source_type="url_snapshot",
+        source_ref="https://docs.example.com/",
+        title="Documentation",
+        markdown=markdown,
+        filename="index.md",
+    )
+    assert source.content_format == "markdown"
+    assert not source.units[0].startswith("<!-- source:")
+
+
+@pytest.mark.asyncio
+async def test_snapshot_images_are_cached_and_rewritten_to_local_authenticated_paths(
+    store: ReadingStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.web_source import crawler
+
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://docs.example.com/images/figure.png"
+        return httpx.Response(
+            200,
+            headers={"content-type": "image/png"},
+            content=b"PNG-safe-bytes",
+            request=request,
+        )
+
+    source = markdown_payload(
+        source_type="url_snapshot",
+        source_ref="https://docs.example.com/guide/",
+        title="Guide",
+        markdown="![Figure](../images/figure.png)",
+        filename="guide.md",
+        source_url="https://docs.example.com/guide/",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        localized = await localize_snapshot_images(source, client=client)
+    manifest = store.ingest_source(localized)
+
+    assert "docs.example.com" not in store.unit_text(manifest.material_id, 1)
+    assert "/api/v1/reading/snapshot-assets/" in store.unit_text(manifest.material_id, 1)
+    assert len(localized.snapshot_assets) == 1
+    path, mime = store.snapshot_asset(localized.snapshot_assets[0].asset_id)
+    assert path.read_bytes() == b"PNG-safe-bytes"
+    assert mime == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_image_rejects_wrong_mime_and_does_not_hotlink(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.web_source import crawler
+
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            content=b"not an image",
+            request=request,
+        )
+
+    source = markdown_payload(
+        source_type="url_snapshot",
+        source_ref="https://docs.example.com/",
+        title="Guide",
+        markdown="![Figure](/private-looking-resource)",
+        filename="guide.md",
+        source_url="https://docs.example.com/",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        localized = await localize_snapshot_images(source, client=client)
+
+    assert localized.snapshot_assets == ()
+    assert "https://" not in localized.units[0]
+    assert "Image unavailable" in localized.units[0]
 
 
 def test_stable_identity_idempotence_and_revision_history(store: ReadingStore) -> None:
@@ -94,9 +192,7 @@ def test_unique_quote_and_position_migrate_without_stale_geometry(
         ReadingPosition(locator=2, source_anchor="old-position-anchor", percentage=0.7),
     )
 
-    changed = store.ingest_source(
-        payload("One revised", "Middle", "A unique portable quote moved")
-    )
+    changed = store.ingest_source(payload("One revised", "Middle", "A unique portable quote moved"))
 
     migrated = store.annotations(changed.material_id)[0]
     assert migrated.annotation_id == saved.annotation_id
