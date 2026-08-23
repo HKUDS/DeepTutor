@@ -282,6 +282,7 @@ class LlamaIndexDocumentLoader:
                 except Exception as exc:
                     self.logger.error("Failed to describe image %s: %s", source.path.name, exc)
                     return None
+
         description_results = await asyncio.gather(*(describe(source) for source in sources))
         described = [result for result in description_results if result is not None]
         description_failures = [

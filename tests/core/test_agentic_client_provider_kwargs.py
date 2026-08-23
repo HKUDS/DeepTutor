@@ -171,9 +171,7 @@ async def test_build_openai_client_rotates_api_keys_after_429(monkeypatch) -> No
 
     class FakeClient:
         def __init__(self, api_key: str, **_kwargs) -> None:
-            self.chat = type(
-                "Chat", (), {"completions": FakeCompletions(api_key)}
-            )()
+            self.chat = type("Chat", (), {"completions": FakeCompletions(api_key)})()
 
         async def close(self) -> None:
             return None

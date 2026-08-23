@@ -597,7 +597,9 @@ def _as_api_key(value: Any) -> str | list[str]:
 
 
 def _primary_api_key(value: str | list[str]) -> str:
-    return value[0] if isinstance(value, list) and value else value if isinstance(value, str) else ""
+    return (
+        value[0] if isinstance(value, list) and value else value if isinstance(value, str) else ""
+    )
 
 
 def _to_headers(value: Any) -> dict[str, str]:
@@ -1367,6 +1369,7 @@ __all__ = [
     "resolve_search_runtime_config",
     "search_provider_state",
 ]
+
 
 def _clamp_batch_size(profile: dict | None) -> int:
     try:

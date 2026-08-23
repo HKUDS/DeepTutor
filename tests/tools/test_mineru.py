@@ -421,9 +421,7 @@ def test_parse_cloud_retries_429_with_next_token(
             seen_auth.append((headers or {}).get("Authorization", ""))
             if len(seen_auth) == 1:
                 return _Resp(status=429)
-            return _Resp(
-                {"code": 0, "data": {"batch_id": "B", "file_urls": ["https://up"]}}
-            )
+            return _Resp({"code": 0, "data": {"batch_id": "B", "file_urls": ["https://up"]}})
 
         def get(self, _path, timeout=None, headers=None):  # noqa: ANN001
             return _Resp(

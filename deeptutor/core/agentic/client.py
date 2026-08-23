@@ -88,6 +88,8 @@ def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -
     # create_ssl_context raise FileNotFoundError mid-__init__, aborting client
     # construction. Drop broken CA paths first so TLS uses its default CA config.
     sanitize_invalid_ssl_env()
+
+
 def _build_openai_client(
     config: LLMClientConfig,
     *,
@@ -160,9 +162,7 @@ class _KeyRotatingCompletions:
 class _KeyRotatingClient:
     def __init__(self, key_pool: KeyPool, clients: dict[str, Any]) -> None:
         self._clients = clients
-        self.chat = SimpleNamespace(
-            completions=_KeyRotatingCompletions(key_pool, clients)
-        )
+        self.chat = SimpleNamespace(completions=_KeyRotatingCompletions(key_pool, clients))
 
     async def close(self) -> None:
         await asyncio.gather(*(_close_client(client) for client in self._clients.values()))

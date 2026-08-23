@@ -142,8 +142,8 @@ class EmbeddingClient:
                 # event loop 互斥（asyncio 锁在新 loop 模型下失效的教训）。
                 # asyncio.sleep 换成阻塞等待发帖侧可接受：DT 的 embedding
                 # 并发都在后台线程里，阻塞不伤 API 主线程。
-                from time import monotonic as _mono
                 import time as _time
+                from time import monotonic as _mono
 
                 _lock = EmbeddingClient._hold_spacing_lock()
                 try:
