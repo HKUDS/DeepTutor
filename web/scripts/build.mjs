@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -38,6 +38,23 @@ function restoreAll(snapshots) {
   for (const [path, contents] of snapshots) restore(path, contents);
 }
 
+function completeStandaloneBundle() {
+  const distDir = path.resolve(
+    webRoot,
+    process.env.DEEPTUTOR_NEXT_DIST_DIR || ".next",
+  );
+  const standaloneDir = path.join(distDir, "standalone");
+  mkdirSync(path.join(standaloneDir, ".next"), { recursive: true });
+  cpSync(path.join(distDir, "static"), path.join(standaloneDir, ".next", "static"), {
+    recursive: true,
+    force: true,
+  });
+  cpSync(path.join(webRoot, "public"), path.join(standaloneDir, "public"), {
+    recursive: true,
+    force: true,
+  });
+}
+
 const snapshots = generatedPaths
   .filter((path) => process.env.DEEPTUTOR_BUILD_SKIP_MISSING !== "1")
   .map((path) => [path, snapshot(path)]);
@@ -45,7 +62,7 @@ const snapshots = generatedPaths
 const isEntry =
   import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
 
-export { restoreAll };
+export { completeStandaloneBundle, restoreAll };
 
 if (isEntry) {
   const result = spawnSync(
@@ -58,5 +75,7 @@ if (isEntry) {
     console.error(result.error);
     process.exit(1);
   }
-  process.exit(result.status ?? 1);
+  const status = result.status ?? 1;
+  if (status === 0) completeStandaloneBundle();
+  process.exit(status);
 }

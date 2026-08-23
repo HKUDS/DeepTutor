@@ -35,3 +35,11 @@ test("the build wrapper restores every generated checked-in input", () => {
     "wrapper must preserve Next build diagnostics",
   );
 });
+
+test("the build wrapper makes the standalone output self-contained", () => {
+  const source = read("scripts", "build.mjs");
+  assert.match(source, /function completeStandaloneBundle\(\)/);
+  assert.match(source, /path\.join\(standaloneDir, "\.next", "static"\)/);
+  assert.match(source, /path\.join\(standaloneDir, "public"\)/);
+  assert.match(source, /if \(status === 0\) completeStandaloneBundle\(\)/);
+});

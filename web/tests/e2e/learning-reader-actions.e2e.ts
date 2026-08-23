@@ -96,7 +96,15 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("learning account uses schema-driven reading actions", async ({ page }) => {
+test("learning account uses schema-driven reading actions", async ({ page, context }, testInfo) => {
+  // Auth-enabled production builds gate /home in middleware before browser
+  // route fixtures can answer /api/v1/auth/status. The middleware only checks
+  // JWT shape and expiry; backend authorization remains mocked below.
+  await context.addCookies([{
+    name: "dt_token",
+    value: "e30.eyJleHAiOjQxMDI0NDQ4MDB9.fixture",
+    url: String(testInfo.project.use.baseURL || "http://localhost:3782"),
+  }]);
   await page.goto("/home");
 
   await expect(page.getByRole("button", { name: "Immersive Reading" })).toBeVisible();
