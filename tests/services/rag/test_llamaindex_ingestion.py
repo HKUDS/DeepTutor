@@ -56,8 +56,17 @@ def test_progress_disabled_when_stdout_is_not_a_tty(monkeypatch) -> None:
     assert should_show_progress() is True
 
 
-def test_documents_to_nodes_defaults_to_no_progress_in_headless(monkeypatch) -> None:
-    """Default show_progress must be False so a broken stdout pipe can't crash indexing."""
+def test_documents_to_nodes_resolves_progress_at_call_time(monkeypatch) -> None:
+    """The tqdm decision must be made per call, not frozen at import.
+
+    ``show_progress: bool = should_show_progress()`` would evaluate once when the
+    module is first imported, baking in whatever ``sys.stdout`` looked like then:
+    a server started from a terminal would keep writing tqdm bars into a pipe
+    that can close mid-indexing (the BrokenPipeError this guards against), and a
+    piped CLI would never show progress again. Both directions are asserted so a
+    regression to a default-argument call cannot pass under pytest's captured,
+    non-tty stdout.
+    """
     from deeptutor.services.rag.pipelines.llamaindex import ingestion
 
     captured: dict[str, object] = {}
@@ -69,10 +78,17 @@ def test_documents_to_nodes_defaults_to_no_progress_in_headless(monkeypatch) -> 
 
     monkeypatch.setattr(ingestion, "build_ingestion_pipeline", lambda: FakePipeline())
 
-    class _NonTtyStream:
-        def isatty(self) -> bool:
-            return False
+    class _Stream:
+        def __init__(self, tty: bool) -> None:
+            self._tty = tty
 
-    monkeypatch.setattr("sys.stdout", _NonTtyStream())
+        def isatty(self) -> bool:
+            return self._tty
+
+    monkeypatch.setattr("sys.stdout", _Stream(tty=False))
     ingestion.documents_to_nodes([Document(text="x")])
     assert captured["show_progress"] is False
+
+    monkeypatch.setattr("sys.stdout", _Stream(tty=True))
+    ingestion.documents_to_nodes([Document(text="x")])
+    assert captured["show_progress"] is True

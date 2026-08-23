@@ -20,7 +20,6 @@ from deeptutor.services.rag.index_versioning import (
 )
 
 from . import ingestion, retrievers, vector_store
-from .config import should_show_progress
 
 
 @dataclass(frozen=True)
@@ -87,7 +86,7 @@ def resolve_add_storage_plan(kb_dir: Path, signature: EmbeddingSignature | None)
 
 
 def create_index(
-    documents: list[Any], storage_dir: Path, *, show_progress: bool = should_show_progress()
+    documents: list[Any], storage_dir: Path, *, show_progress: bool | None = None
 ) -> int:
     index, count = ingestion.create_index_from_documents(
         documents, storage_dir, show_progress=show_progress
@@ -100,9 +99,7 @@ def insert_documents(existing_storage: Path, storage_dir: Path, documents: list[
     index = vector_store.load_index(existing_storage)
     _validate_persisted_embeddings(index, existing_storage)
     if hasattr(index, "insert_nodes"):
-        count = ingestion.insert_documents_into_index(
-            index, documents, show_progress=should_show_progress()
-        )
+        count = ingestion.insert_documents_into_index(index, documents)
     else:
         # Some tests use a tiny fake index that only implements insert().
         for document in documents:

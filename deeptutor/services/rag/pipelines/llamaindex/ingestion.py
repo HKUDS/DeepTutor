@@ -61,14 +61,19 @@ def _has_precomputed_embedding(document: Any) -> bool:
         return True
 
 
-def documents_to_nodes(
-    documents: list[Any], *, show_progress: bool = should_show_progress()
-) -> list[Any]:
+def documents_to_nodes(documents: list[Any], *, show_progress: bool | None = None) -> list[Any]:
     """Convert LlamaIndex documents into embedded nodes.
 
     Pre-embedded nodes, such as ImageNode instances produced by the document
     loader, pass through unchanged so they are not re-embedded as text.
+
+    ``show_progress=None`` resolves the tqdm decision at call time. It must not
+    be a default-argument call: Python evaluates those once at import, which
+    would freeze whatever ``sys.stdout`` happened to be when the module first
+    loaded.
     """
+    if show_progress is None:
+        show_progress = should_show_progress()
     text_documents = [
         document for document in documents if not _has_precomputed_embedding(document)
     ]
@@ -83,13 +88,15 @@ def documents_to_nodes(
 
 
 def create_index_from_documents(
-    documents: list[Any], storage_dir: Path, *, show_progress: bool = should_show_progress()
+    documents: list[Any], storage_dir: Path, *, show_progress: bool | None = None
 ) -> tuple[VectorStoreIndex, int]:
     """Create and persist a VectorStoreIndex from documents.
 
     Uses a FAISS-backed store when available and all node embeddings share one
     dimension; otherwise LlamaIndex's default SimpleVectorStore.
     """
+    if show_progress is None:
+        show_progress = should_show_progress()
     nodes = documents_to_nodes(documents, show_progress=show_progress)
     storage_context = vector_store.storage_context_for_nodes(nodes)
     index = VectorStoreIndex(
@@ -100,7 +107,7 @@ def create_index_from_documents(
 
 
 def insert_documents_into_index(
-    index: Any, documents: list[Any], *, show_progress: bool = should_show_progress()
+    index: Any, documents: list[Any], *, show_progress: bool | None = None
 ) -> int:
     """Transform documents once, then insert nodes into an existing index."""
     nodes = documents_to_nodes(documents, show_progress=show_progress)
