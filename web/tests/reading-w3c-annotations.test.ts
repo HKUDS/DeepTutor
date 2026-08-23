@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import type { AnnotationItem } from "@/lib/reading-api";
@@ -7,6 +9,11 @@ import {
   toRecogitoTextAnnotation,
   toW3CTextAnnotation,
 } from "@/lib/reading-w3c-annotations";
+
+const textUnitViewSource = readFileSync(
+  path.join(process.cwd(), "components/reading/TextUnitView.tsx"),
+  "utf8",
+);
 
 function annotation(overrides: Partial<AnnotationItem> = {}): AnnotationItem {
   return {
@@ -105,4 +112,9 @@ test("resolved selectors map to both W3C and Recogito annotation contracts", () 
   assert.equal(w3c?.body[0].purpose, "commenting");
   assert.equal(recogito?.properties.annotationId, "mark-1");
   assert.equal(recogito?.target.selector[0].start, 6);
+});
+
+test("annotation clicks use the Recogito click lifecycle event", () => {
+  assert.match(textUnitViewSource, /instance\.on\("clickAnnotation"/);
+  assert.doesNotMatch(textUnitViewSource, /instance\.on\("selectionChanged"/);
 });

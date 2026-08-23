@@ -249,8 +249,8 @@ export function TextUnitView({
         )
         .filter((annotation) => annotation !== null);
       instance.setAnnotations(rows);
-      instance.on("selectionChanged", (selected) => {
-        const id = selected[0]?.id;
+      instance.on("clickAnnotation", (selected) => {
+        const id = selected.id;
         const annotation = annotations.find((row) => row.annotation_id === id);
         if (annotation) onAnnotationClick?.(annotation);
       });
