@@ -1587,6 +1587,8 @@ class AgenticChatPipeline:
         return "".join(blocks)
 
     def _workspace_system_note(self, context: UnifiedContext) -> str:
+        import sys
+
         if not getattr(self, "_exec_enabled", False):
             return ""
         try:
@@ -1601,7 +1603,20 @@ class AgenticChatPipeline:
             )
         except Exception:
             return ""
+        is_windows = sys.platform == "win32"
         if self.language == "zh":
+            if is_windows:
+                return (
+                    "[本轮工作区]\n"
+                    f"脚本和临时文件应写入：{exec_dir}\n"
+                    "相对路径会解析到这个目录。需要创建 PDF、图片、表格或其他下载文件时，"
+                    "通过 exec 使用 PowerShell here-string 将脚本写入文件再运行，例如：\n"
+                    "  @'\n...Python 脚本内容...\n'@ | Set-Content -Encoding utf8 gen.py\n"
+                    "  python gen.py\n"
+                    "不要使用 bash heredoc（<<'PY'）或 POSIX 重定向语法——当前为 Windows 环境。"
+                    "生成的文件会自动以可下载卡片呈现给用户——在回答里描述你做了什么即可，"
+                    "不要粘贴原始 URL。"
+                )
             return (
                 "[本轮工作区]\n"
                 f"脚本和临时文件应写入：{exec_dir}\n"
@@ -1609,6 +1624,19 @@ class AgenticChatPipeline:
                 "直接通过 exec 写入并运行脚本（如 heredoc：python - <<'PY' … PY，"
                 "或 cat > gen.py <<'EOF' … EOF 后再运行）。生成的文件会自动以可下载"
                 "卡片呈现给用户——在回答里描述你做了什么即可，不要粘贴原始 URL。"
+            )
+        if is_windows:
+            return (
+                "[Turn workspace]\n"
+                f"Scripts and temporary files should be written under: {exec_dir}\n"
+                "Relative paths resolve to this directory. When creating PDFs, images, "
+                "spreadsheets, or other downloadable files, write the script to a file "
+                "through exec with a PowerShell here-string, then run it, for example:\n"
+                "  @'\n...Python script contents...\n'@ | Set-Content -Encoding utf8 gen.py\n"
+                "  python gen.py\n"
+                "Do not use Bash heredoc (<<'PY') or POSIX redirection syntax; this is a Windows environment. "
+                "Generated files are shown to the user automatically as downloadable cards "
+                "-- describe what you made, and do not paste raw URLs."
             )
         return (
             "[Turn workspace]\n"

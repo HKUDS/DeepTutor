@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 from typing import Any
 
 from deeptutor.capabilities.ima import IMA_TOOL_TYPES
@@ -305,6 +306,35 @@ class CodeExecutionTool(_PromptHintsMixin, BaseTool):
         "cc": "c",
     }
 
+    @classmethod
+    def _command_for_platform(cls, language: str, *, has_stdin: bool) -> str:
+        """Build the shell command understood by the selected host platform."""
+        if sys.platform != "win32":
+            source_name, command_template = cls._LANGUAGES[language]
+            stdin_redirect = "< stdin.txt" if has_stdin else ""
+            return command_template.format(src=source_name, stdin=stdin_redirect).strip()
+
+        commands = {
+            "python": "python main.py",
+            # Use syntax supported by Windows PowerShell 5 as well as 7;
+            # ``&&`` only exists in PowerShell 7.
+            "c": "gcc main.c -O2 -o prog.exe; if ($LASTEXITCODE -eq 0) { .\\prog.exe }",
+            "cpp": "g++ -std=c++17 -O2 main.cpp -o prog.exe; if ($LASTEXITCODE -eq 0) { .\\prog.exe }",
+        }
+        command = commands[language]
+        # PowerShell's pipeline supplies stdin without relying on POSIX `<`.
+        if not has_stdin:
+            return command
+        if language == "python":
+            return "Get-Content stdin.txt | python main.py"
+        compiler, source = ("gcc", "main.c") if language == "c" else ("g++", "main.cpp")
+        flags = "-O2" if language == "c" else "-std=c++17 -O2"
+        return (
+            "$stdinText = Get-Content -Raw stdin.txt; "
+            f"{compiler} {flags} {source} -o prog.exe; "
+            "if ($LASTEXITCODE -eq 0) { $stdinText | .\\prog.exe }"
+        )
+
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="code_execution",
@@ -368,7 +398,7 @@ class CodeExecutionTool(_PromptHintsMixin, BaseTool):
         if not code:
             raise ValueError("code_execution requires non-empty 'code'.")
         language = self._resolve_language(kwargs.get("language"))
-        source_name, command_template = self._LANGUAGES[language]
+        source_name, _ = self._LANGUAGES[language]
 
         try:
             timeout = int(kwargs.get("timeout") or 30)
@@ -396,11 +426,10 @@ class CodeExecutionTool(_PromptHintsMixin, BaseTool):
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / source_name).write_text(code, encoding="utf-8")
 
-        stdin_redirect = ""
-        if str(kwargs.get("stdin") or "") != "":
+        has_stdin = str(kwargs.get("stdin") or "") != ""
+        if has_stdin:
             (run_dir / "stdin.txt").write_text(str(kwargs["stdin"]), encoding="utf-8")
-            stdin_redirect = "< stdin.txt"
-        command = command_template.format(src=source_name, stdin=stdin_redirect).strip()
+        command = self._command_for_platform(language, has_stdin=has_stdin)
 
         limits = ResourceLimits(timeout_s=timeout)
         request = ExecRequest(
@@ -414,7 +443,7 @@ class CodeExecutionTool(_PromptHintsMixin, BaseTool):
         # The source file, compiled binary, and stdin scratch are inputs we
         # wrote ourselves — exclude them so only program-generated files
         # surface as artifacts.
-        meta_files = {source_name, "prog", "stdin.txt"}
+        meta_files = {source_name, "prog", "prog.exe", "stdin.txt"}
         artifacts = [
             artifact
             for artifact in collect_public_artifacts(str(run_dir))

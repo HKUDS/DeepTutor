@@ -301,6 +301,18 @@ async def test_code_execution_tool_compiles_cpp(tmp_path, monkeypatch: pytest.Mo
     assert captured["command"] == "c++ -std=c++17 -O2 main.cpp -o prog && ./prog"
 
 
+def test_code_execution_tool_uses_windows_shell_syntax(monkeypatch: pytest.MonkeyPatch) -> None:
+    import deeptutor.tools.builtin as builtin
+
+    monkeypatch.setattr(builtin.sys, "platform", "win32")
+
+    assert CodeExecutionTool._command_for_platform("python", has_stdin=False) == "python main.py"
+    assert (
+        CodeExecutionTool._command_for_platform("cpp", has_stdin=True)
+        == "$stdinText = Get-Content -Raw stdin.txt; g++ -std=c++17 -O2 main.cpp -o prog.exe; if ($LASTEXITCODE -eq 0) { $stdinText | .\\prog.exe }"
+    )
+
+
 @pytest.mark.asyncio
 async def test_code_execution_tool_rejects_bad_input() -> None:
     tool = CodeExecutionTool()
