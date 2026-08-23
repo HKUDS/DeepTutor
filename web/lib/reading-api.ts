@@ -107,6 +107,31 @@ export interface SupportedFormats {
   raw_view_extensions: string[];
 }
 
+export interface ReadingExtensionAction {
+  id: string;
+  label: string;
+  trigger: string;
+  requires: string[];
+}
+
+export interface ReadingExtensionManifest {
+  id: string;
+  version: string;
+  name: string;
+  protocol_version: string;
+  actions: ReadingExtensionAction[];
+  result_types: string[];
+}
+
+export interface ReadingExtensionResult {
+  type: "browser_speech" | "card" | "quiz" | "feedback" | string;
+  interaction_id: string;
+  title: string;
+  message: string;
+  payload: Record<string, unknown>;
+  event_id?: string;
+}
+
 const BASE = "/api/v1/reading";
 
 /** Surface the server's own message — it explains what the user can do next. */
@@ -116,6 +141,11 @@ async function unwrap<T>(response: Response): Promise<T> {
   try {
     const body = (await response.json()) as { detail?: unknown };
     if (typeof body?.detail === "string" && body.detail) detail = body.detail;
+    else if (
+      typeof body?.detail === "object" &&
+      body.detail !== null &&
+      "message" in body.detail
+    ) detail = String((body.detail as { message: unknown }).message);
   } catch {
     // Non-JSON error body (a proxy page, say) — keep the status line.
   }
@@ -164,6 +194,58 @@ export async function getUnitText(
     await apiFetch(apiUrl(`${BASE}/materials/${materialId}/units/${locator}`), {
       cache: "no-store",
     }),
+  );
+}
+
+export async function listReadingExtensions(): Promise<ReadingExtensionManifest[]> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/extensions`), { cache: "no-store" }),
+  );
+}
+
+export async function runReadingExtension(
+  materialId: string,
+  extensionId: string,
+  action: string,
+  context: {
+    locator: number;
+    source_anchor?: string;
+    selection?: string;
+    visible_text?: string;
+    locale?: string;
+  },
+): Promise<ReadingExtensionResult> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(
+        `${BASE}/materials/${encodeURIComponent(materialId)}/extensions/${encodeURIComponent(extensionId)}/actions/${encodeURIComponent(action)}`,
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(context),
+      },
+    ),
+  );
+}
+
+export async function submitReadingInteraction(
+  materialId: string,
+  extensionId: string,
+  interactionId: string,
+  values: Record<string, unknown>,
+): Promise<ReadingExtensionResult> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(
+        `${BASE}/materials/${encodeURIComponent(materialId)}/extensions/${encodeURIComponent(extensionId)}/interactions/${encodeURIComponent(interactionId)}/submit`,
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values }),
+      },
+    ),
   );
 }
 

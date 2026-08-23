@@ -368,6 +368,7 @@ from deeptutor.api.routers import (
     question_notebook,
     quiz_judge,
     reading,
+    reading_extensions,
     sessions,
     settings,
     skills,
@@ -385,17 +386,26 @@ from deeptutor.multi_user.router import router as multi_user_router  # noqa: E40
 
 # Auth router is public — login/logout/register/status require no token
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(outputs.router, prefix="/api/outputs", tags=["outputs"])
 
 # All other routers require a valid session when AUTH_ENABLED=true.
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
-from deeptutor.api.routers.auth import require_admin, require_auth  # noqa: E402
+from deeptutor.api.routers.auth import (  # noqa: E402
+    require_admin,
+    require_learning_surface,
+)
 
-_auth = [Depends(require_auth)]
+_auth = [Depends(require_learning_surface)]
 # Partner data is anchored at the admin workspace (data/partners) and shared
 # process-wide, so management is admin-gated in multi-user deployments
 # (single-user local runs are implicitly admin — no behaviour change there).
 _admin = [Depends(require_admin)]
+
+app.include_router(
+    outputs.router,
+    prefix="/api/outputs",
+    tags=["outputs"],
+    dependencies=_auth,
+)
 
 app.include_router(
     multi_user_router,
@@ -440,6 +450,19 @@ app.include_router(
     tags=["kids"],
 )
 app.include_router(reading.router, prefix="/api/v1/reading", tags=["reading"], dependencies=_auth)
+app.include_router(
+    reading_extensions.router,
+    prefix="/api/v1/reading",
+    tags=["reading-extensions"],
+    dependencies=_auth,
+)
+app.add_api_route(
+    "/api/v1/learning/records",
+    reading_extensions.list_learning_records,
+    methods=["GET"],
+    tags=["learning-records"],
+    dependencies=_auth,
+)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
     capabilities_settings.router,

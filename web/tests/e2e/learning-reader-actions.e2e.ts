@@ -76,11 +76,27 @@ test.beforeEach(async ({ page }) => {
     if (path === "/api/v1/reading/materials/learning-material/units/2") {
       return json({ locator: 2, unit: "page", text: "Light can also behave like particles." });
     }
+    if (path === "/api/v1/reading/extensions") {
+      return json([
+        { id: "read_aloud", version: "1", name: "Read aloud", protocol_version: "1", result_types: ["browser_speech"], actions: [{ id: "read", label: "Read aloud", trigger: "toolbar", requires: ["visible_text"] }] },
+        { id: "guided_learn", version: "1", name: "Learn", protocol_version: "1", result_types: ["card"], actions: [{ id: "explain", label: "Learn", trigger: "toolbar", requires: ["visible_text"] }] },
+        { id: "quiz", version: "1", name: "Test", protocol_version: "1", result_types: ["quiz"], actions: [{ id: "start", label: "Test", trigger: "toolbar", requires: ["visible_text"] }] },
+      ]);
+    }
+    if (path.endsWith("/extensions/read_aloud/actions/read")) {
+      return json({ type: "browser_speech", interaction_id: "", title: "Read aloud", message: "", payload: { text: "Light can behave like a wave.", locale: "en" } });
+    }
+    if (path.endsWith("/extensions/guided_learn/actions/explain")) {
+      return json({ type: "card", interaction_id: "", title: "Guided learning", message: "", payload: { overview: "Light has wave and particle behavior.", concepts: ["Wave behavior", "Particle behavior"], reflection: "What evidence supports both?" } });
+    }
+    if (path.endsWith("/extensions/quiz/actions/start")) {
+      return json({ type: "quiz", interaction_id: "quiz-1", title: "Three-question check", message: "", payload: { questions: [{ id: "q1", prompt: "Which statement appears?", choices: ["Wave behavior", "Sound only"] }, { id: "q2", prompt: "Which statement appears?", choices: ["Particle behavior", "Neither"] }, { id: "q3", prompt: "Which statement appears?", choices: ["Light", "Darkness only"] }] } });
+    }
     return json({ detail: "Not found in learning-reader fixture" }, 404);
   });
 });
 
-test("learning account opens reading mode and prefills guided actions", async ({ page }) => {
+test("learning account uses schema-driven reading actions", async ({ page }) => {
   await page.goto("/home");
 
   await expect(page.getByRole("button", { name: "Immersive Reading" })).toBeVisible();
@@ -95,20 +111,15 @@ test("learning account opens reading mode and prefills guided actions", async ({
 
     await expect(page.getByRole("button", { name: "Read aloud" })).toBeVisible();
     await page.getByRole("button", { name: "Read aloud" }).click();
-    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
 
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page.getByRole("button", { name: "Read aloud" })).toBeVisible();
     await expect(page.getByText("Page 2 of 3")).toBeVisible();
 
     await page.getByRole("button", { name: "Learn" }).click();
-    const composer = page.locator("textarea").last();
-    await expect.poll(async () => composer.inputValue()).toContain(
-    "Using only Page 2 of the currently open reading material, explain it for ages 6-8",
-  );
+    await expect(page.getByText("Light has wave and particle behavior.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Test" }).click();
-  await expect.poll(async () => composer.inputValue()).toContain(
-    "Ask only question 1 first",
-  );
+    await page.getByRole("button", { name: "Test" }).click();
+    await expect(page.getByText("Three-question check")).toBeVisible();
+    await expect(page.getByText("Which statement appears?").first()).toBeVisible();
 });

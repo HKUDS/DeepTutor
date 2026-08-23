@@ -16,6 +16,7 @@ from .config_cmd import register as register_config
 from .init_cmd import register as register_init
 from .kb import register as register_kb
 from .memory import register as register_memory
+from .migrate import register as register_migrate
 from .notebook import register as register_notebook
 from .partner import register as register_partner
 from .plugin import register as register_plugin
@@ -44,6 +45,7 @@ session_app = typer.Typer(help="Manage shared sessions.")
 notebook_app = typer.Typer(help="Manage notebooks and imported markdown records.")
 provider_app = typer.Typer(help="Manage provider OAuth login.")
 book_app = typer.Typer(help="Manage interactive Books (BookEngine).")
+migrate_app = typer.Typer(help="Run safe, explicit data migrations.")
 
 app.add_typer(partner_app, name="partner")
 app.add_typer(chat_app, name="chat")
@@ -57,6 +59,7 @@ app.add_typer(session_app, name="session")
 app.add_typer(notebook_app, name="notebook")
 app.add_typer(provider_app, name="provider")
 app.add_typer(book_app, name="book")
+app.add_typer(migrate_app, name="migrate")
 
 register_partner(partner_app)
 register_chat(chat_app)
@@ -69,6 +72,7 @@ register_session(session_app)
 register_notebook(notebook_app)
 register_provider(provider_app)
 register_book(book_app)
+register_migrate(migrate_app)
 register_init(app)
 
 

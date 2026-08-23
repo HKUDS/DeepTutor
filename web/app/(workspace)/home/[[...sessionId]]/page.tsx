@@ -78,7 +78,6 @@ import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
-import { READER_LEARNING_ACTION_EVENT } from "@/lib/reading-learning-actions";
 import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
 import { readChatLaunchIntent } from "@/lib/chat-launch-intent";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
@@ -700,24 +699,6 @@ export default function ChatPage() {
     window.addEventListener(READER_ASK_EVENT, onReaderAsk);
     return () => window.removeEventListener(READER_ASK_EVENT, onReaderAsk);
   }, [handlePrefillComposer, t]);
-
-  useEffect(() => {
-    const onReaderLearningAction = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{ prompt?: string }>
-      ).detail;
-      const prompt = detail?.prompt?.trim();
-      if (!prompt) return;
-      setCapability("immersive_reading");
-      handlePrefillComposer(prompt);
-    };
-    window.addEventListener(READER_LEARNING_ACTION_EVENT, onReaderLearningAction);
-    return () =>
-      window.removeEventListener(
-        READER_LEARNING_ACTION_EVENT,
-        onReaderLearningAction,
-      );
-  }, [handlePrefillComposer, setCapability]);
 
   const activeCap = useMemo(
     () => getCapability(state.activeCapability, capabilities),

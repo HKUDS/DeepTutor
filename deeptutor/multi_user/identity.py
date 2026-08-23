@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import logging
+import os
 from pathlib import Path
 import secrets
 import threading
@@ -82,7 +83,12 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _write_users(users: dict[str, dict[str, Any]]) -> None:
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    USERS_FILE.write_text(json.dumps(users, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp = USERS_FILE.parent / f".{USERS_FILE.name}.{uuid4().hex[:8]}.tmp"
+    try:
+        tmp.write_text(json.dumps(users, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, USERS_FILE)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _migrate_legacy_users() -> dict[str, dict[str, Any]] | None:

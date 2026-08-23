@@ -121,6 +121,12 @@ async def websocket_chat(websocket: WebSocket):
             kb_name = data.get("kb_name", "")
             enable_rag = data.get("enable_rag", False)
             enable_web_search = data.get("enable_web_search", False)
+            from deeptutor.multi_user.learning_access import current_learning_policy
+
+            if current_learning_policy() is not None:
+                kb_name = ""
+                enable_rag = False
+                enable_web_search = False
 
             if not message:
                 await websocket.send_json({"type": "error", "message": "Message is required"})

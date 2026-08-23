@@ -69,6 +69,7 @@ async def list_plugins():
     tool_registry = get_tool_registry()
     capability_registry = get_capability_registry()
     plugin_manifests = _discover_plugins()
+    from deeptutor.reading.extensions import get_reading_extension_registry
 
     tools = [
         {
@@ -108,6 +109,10 @@ async def list_plugins():
         "tools": tools,
         "capabilities": capabilities,
         "plugins": plugins,
+        "reading_extensions": [
+            extension.manifest.model_dump()
+            for extension in get_reading_extension_registry().all()
+        ],
     }
 
 

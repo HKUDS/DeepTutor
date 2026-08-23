@@ -8,6 +8,12 @@ tests intact.
 ## Status ledger
 
 - `active`
+  - Learning Accounts on the shared `deeptutor.reading` / `ReaderPane` stack,
+    with server-enforced surfaces, assigned materials, upload policy, locked
+    persona, and per-account Reading extension allowlists.
+  - Schema-driven `deeptutor.reading_extensions`, neutral idempotent learning
+    records, and the `deeptutor migrate kids-to-learning` copy migration with
+    one-time activation codes. Extensions never inject frontend JavaScript.
   - Kids standalone experience and its child-facing API under `/api/v1/kids`.
   - Parent management API under `/api/v1/kids-admin`.
   - `AUTH_ALLOW_REGISTRATION` and the persisted `auth.allow_registration` setting.
@@ -23,6 +29,11 @@ tests intact.
   - Local MN4 write-back experiments and review UI work.
   - Chrome/MarginNote realtime probe and sync-coordinator work.
   - Historical preservation worktrees not merged into this integration branch.
+- `retiring-after-migration-observation`
+  - Standalone Kids profiles, device tokens, parent PIN entry, duplicated EPUB
+    viewer, and Kids progress stores. They remain available during this release
+    candidate so rollback is possible; after migration acceptance `/kids`
+    becomes read-only for one release, then these paths are removed.
 - `forbidden-regression`
   - Removing or weakening Kids child session authentication.
   - Removing parent PIN verification or its rate limiting.
@@ -73,6 +84,9 @@ Run these before releasing or merging upstream changes into this fork:
 ```bash
 .venv/bin/python -m pytest \
   tests/test_local_feature_contract.py \
+  tests/multi_user/test_learning_policy.py \
+  tests/multi_user/test_kids_to_learning_migration.py \
+  tests/reading/test_extensions.py \
   tests/immersive_reading/test_kids_reading_endpoints.py \
   tests/immersive_reading/test_kids_interactive_books.py \
   tests/immersive_reading/test_kids_quiz_cache.py \

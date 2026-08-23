@@ -117,9 +117,9 @@ class ReadingStore:
         """
         if self._root_override is not None:
             return self._root_override
-        from deeptutor.services.path_service import PathService
+        from deeptutor.multi_user.paths import get_current_path_service
 
-        return PathService.get_instance().get_workspace_feature_dir("reading")
+        return get_current_path_service().get_workspace_feature_dir("reading")  # type: ignore[arg-type]
 
     def _dir(self, material_id: str) -> Path:
         return self.root / self._validate_id(material_id)

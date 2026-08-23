@@ -32,8 +32,24 @@ from deeptutor.kids_rewards import (
     record_kids_reward_event,
 )
 
-router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _reject_learning_account(
+    dt_token: str | None = Cookie(default=None, alias="dt_token"),
+) -> None:
+    """Keep the legacy device API from becoming a Learning Account bypass."""
+    if not dt_token:
+        return
+    from deeptutor.multi_user.learning_access import learning_policy_for_user
+    from deeptutor.services.auth import decode_token
+
+    payload = decode_token(dt_token)
+    if payload and learning_policy_for_user(payload.user_id, is_admin=payload.role == "admin"):
+        raise HTTPException(status_code=403, detail="Use the Reading workspace for this account.")
+
+
+router = APIRouter(dependencies=[Depends(_reject_learning_account)])
 
 # Simple device-token signing — not JWT-grade, but sufficient for local family use.
 _DEVICE_SECRET = "deeptutor-kids-device-v1"

@@ -34,7 +34,63 @@ def apply_learning_policy(payload: dict[str, Any]) -> dict[str, Any]:
         raise PermissionError(
             "This learning account cannot use this mode. Please choose Chat or Immersive Reading."
         )
-    return {**payload, "persona": str(policy.get("locked_persona") or "")}
+    return {
+        **payload,
+        "persona": str(policy.get("locked_persona") or ""),
+        # Learning accounts never inherit the broad Chat tool surface from a
+        # stale session or a crafted WebSocket payload. Reading's context tools
+        # are mounted server-side from the open material and remain available.
+        "tools": [],
+        "enabled_tools": [],
+        "knowledge_bases": [],
+        "kb_name": "",
+        "enable_rag": False,
+        "enable_web_search": False,
+        "partner_id": None,
+        "bot_id": None,
+    }
 
 
-__all__ = ["apply_learning_policy", "current_learning_policy", "learning_policy_for_user"]
+def assert_learning_surface(surface: str) -> None:
+    """Deny a server surface not explicitly exposed to a Learning Account."""
+    policy = current_learning_policy()
+    if policy is None:
+        return
+    if surface not in set(policy.get("allowed_surfaces") or ["chat", "reading"]):
+        raise PermissionError(f"This learning account cannot use the {surface} surface.")
+
+
+def assert_learning_material(material_id: str, *, upload: bool = False) -> None:
+    """Enforce upload and assigned-material policy in the authenticated scope."""
+    policy = current_learning_policy()
+    if policy is None:
+        return
+    has_reading = isinstance(policy.get("reading"), dict)
+    reading = policy.get("reading") if has_reading else {}
+    if upload:
+        if has_reading and not bool(reading.get("allow_upload")):
+            raise PermissionError("This learning account cannot upload reading materials.")
+        return
+    assigned = set(reading.get("material_ids") or (["*"] if not has_reading else []))
+    if "*" not in assigned and str(material_id or "") not in assigned:
+        raise PermissionError("This reading material is not assigned to this learning account.")
+
+
+def allowed_reading_extensions() -> set[str] | None:
+    """None means unrestricted (ordinary/admin); a set is the learner allowlist."""
+    policy = current_learning_policy()
+    if policy is None:
+        return None
+    if not isinstance(policy.get("reading"), dict):
+        return {"read_aloud", "guided_learn", "quiz"}
+    return set(policy["reading"].get("extensions") or [])
+
+
+__all__ = [
+    "allowed_reading_extensions",
+    "apply_learning_policy",
+    "assert_learning_material",
+    "assert_learning_surface",
+    "current_learning_policy",
+    "learning_policy_for_user",
+]

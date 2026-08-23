@@ -92,6 +92,12 @@ function learningPreset(
       locked_persona: "teacher",
       allowed_capabilities: ["chat", "immersive_reading"],
       default_capability: "immersive_reading",
+      allowed_surfaces: ["chat", "reading"],
+      reading: {
+        allow_upload: false,
+        material_ids: [],
+        extensions: ["read_aloud", "guided_learn", "vocabulary", "quiz"],
+      },
     },
   };
 }
@@ -351,6 +357,45 @@ export function GrantEditor({ userId }: { userId: string }) {
     );
   }
 
+  function updateReadingPolicy(
+    update: (reading: NonNullable<LearningPolicy["reading"]>) => NonNullable<LearningPolicy["reading"]>,
+  ) {
+    setGrant((current) => {
+      if (!current.learning_policy) return current;
+      const reading = current.learning_policy.reading ?? {
+        allow_upload: true,
+        material_ids: [],
+        extensions: ["read_aloud", "guided_learn", "quiz"],
+      };
+      return {
+        ...current,
+        learning_policy: {
+          ...current.learning_policy,
+          allowed_surfaces: current.learning_policy.allowed_surfaces ?? ["chat", "reading"],
+          reading: update(reading),
+        },
+      };
+    });
+  }
+
+  function toggleReadingMaterial(materialId: string) {
+    updateReadingPolicy((reading) => ({
+      ...reading,
+      material_ids: reading.material_ids.includes(materialId)
+        ? reading.material_ids.filter((id) => id !== materialId)
+        : [...reading.material_ids, materialId],
+    }));
+  }
+
+  function toggleReadingExtension(extensionId: string) {
+    updateReadingPolicy((reading) => ({
+      ...reading,
+      extensions: reading.extensions.includes(extensionId)
+        ? reading.extensions.filter((id) => id !== extensionId)
+        : [...reading.extensions, extensionId],
+    }));
+  }
+
   // Named apart from the imported `toggleName` helper it wraps, and narrowed to
   // the one key that still uses it: MCP rows go through McpToolGroups now.
   function toggleGrantTool(key: "enabled_tools", name: string) {
@@ -511,6 +556,50 @@ export function GrantEditor({ userId }: { userId: string }) {
                       <div className="flex h-8 items-center gap-1.5">
                         <GraduationCap size={14} className="text-[var(--muted-foreground)]" />
                         <span>Chat · Immersive Reading</span>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-3 grid gap-3 lg:grid-cols-2">
+                      <div>
+                        <div className="mb-1 text-[11px] text-[var(--muted-foreground)]">Assigned reading materials</div>
+                        <div className="grid gap-1 sm:grid-cols-2">
+                          {(resources?.reading_materials ?? []).map((material) => (
+                            <CheckRow
+                              key={material.material_id}
+                              label={material.title || material.filename}
+                              description={material.filename}
+                              checked={Boolean(grant.learning_policy?.reading?.material_ids.includes(material.material_id))}
+                              disabled={controlsDisabled}
+                              onToggle={() => toggleReadingMaterial(material.material_id)}
+                            />
+                          ))}
+                          {(resources?.reading_materials ?? []).length === 0 ? (
+                            <p className="text-[11px] text-[var(--muted-foreground)]">Upload books in Reading before assigning them.</p>
+                          ) : null}
+                        </div>
+                        <label className="mt-2 flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={grant.learning_policy.reading?.allow_upload ?? true}
+                            disabled={controlsDisabled}
+                            onChange={(event) => updateReadingPolicy((reading) => ({ ...reading, allow_upload: event.target.checked }))}
+                          />
+                          Allow learner uploads
+                        </label>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[11px] text-[var(--muted-foreground)]">Reading extensions</div>
+                        <div className="grid gap-1 sm:grid-cols-2">
+                          {(resources?.reading_extensions ?? []).map((extension) => (
+                            <CheckRow
+                              key={extension.id}
+                              label={extension.name}
+                              description={`${extension.id} · ${extension.version}`}
+                              checked={Boolean(grant.learning_policy?.reading?.extensions.includes(extension.id))}
+                              disabled={controlsDisabled}
+                              onToggle={() => toggleReadingExtension(extension.id)}
+                            />
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>

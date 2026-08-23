@@ -27,6 +27,10 @@ from fastapi.params import File
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from deeptutor.multi_user.learning_access import (
+    assert_learning_material,
+    current_learning_policy,
+)
 from deeptutor.reading import (
     ANNOTATION_COLORS,
     Annotation,
@@ -51,7 +55,13 @@ _UPLOAD_CHUNK = 1024 * 1024
 
 
 def _store() -> ReadingStore:
-    return ReadingStore()
+    # Resolve the authenticated workspace explicitly. ReadingStore's default
+    # remains useful for CLI/engine callers, but HTTP must never fall back to
+    # the process-global admin PathService.
+    from deeptutor.multi_user.paths import get_current_path_service
+
+    root = get_current_path_service().get_workspace_feature_dir("reading")  # type: ignore[arg-type]
+    return ReadingStore(root)
 
 
 def _http_error(exc: Exception) -> HTTPException:
@@ -63,6 +73,8 @@ def _http_error(exc: Exception) -> HTTPException:
     """
     if isinstance(exc, MaterialNotFound):
         return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, PermissionError):
+        return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, ReadingUpgradeConflict):
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ReadingError):
@@ -185,7 +197,15 @@ async def supported_formats() -> SupportedFormats:
 async def list_materials() -> list[MaterialInfo]:
     store = _store()
     try:
-        return [_info(store, manifest) for manifest in store.list_materials()]
+        manifests = store.list_materials()
+        policy = current_learning_policy()
+        if policy is not None:
+            has_reading = isinstance(policy.get("reading"), dict)
+            reading = policy.get("reading") if has_reading else {}
+            assigned = set(reading.get("material_ids") or (["*"] if not has_reading else []))
+            if "*" not in assigned:
+                manifests = [row for row in manifests if row.material_id in assigned]
+        return [_info(store, manifest) for manifest in manifests]
     except Exception as exc:
         raise _http_error(exc) from exc
 
@@ -197,6 +217,10 @@ async def upload_material(file: UploadFile = File(...)) -> MaterialDetail:  # no
     The upload is streamed to a temp file with a running size check, so an
     oversized file is rejected before it is fully buffered rather than after.
     """
+    try:
+        assert_learning_material("", upload=True)
+    except PermissionError as exc:
+        raise _http_error(exc) from exc
     filename = (file.filename or "").strip()
     if not filename:
         raise HTTPException(status_code=400, detail="The upload has no filename.")
@@ -235,6 +259,7 @@ async def upload_material(file: UploadFile = File(...)) -> MaterialDetail:  # no
 async def get_material(material_id: str) -> MaterialDetail:
     store = _store()
     try:
+        assert_learning_material(material_id)
         return _detail(store, store.manifest(material_id))
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -244,6 +269,7 @@ async def get_material(material_id: str) -> MaterialDetail:
 async def delete_material(material_id: str) -> dict[str, Any]:
     store = _store()
     try:
+        assert_learning_material(material_id)
         removed = store.delete(material_id)
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -257,6 +283,7 @@ async def get_unit(material_id: str, locator: int) -> UnitText:
     """One unit's text — the reader's text view, and the only view for non-PDFs."""
     store = _store()
     try:
+        assert_learning_material(material_id)
         manifest = store.manifest(material_id)
         return UnitText(
             locator=locator,
@@ -272,6 +299,7 @@ async def get_raw(material_id: str) -> FileResponse:
     """The original bytes, for the faithful viewer. Serves Range requests."""
     store = _store()
     try:
+        assert_learning_material(material_id)
         manifest = store.manifest(material_id)
         path = store.raw_path(material_id)
     except Exception as exc:
@@ -293,6 +321,7 @@ async def get_raw(material_id: str) -> FileResponse:
 async def list_annotations(material_id: str) -> list[AnnotationInfo]:
     store = _store()
     try:
+        assert_learning_material(material_id)
         return [_annotation_info(row) for row in store.annotations(material_id)]
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -303,6 +332,7 @@ async def get_position(material_id: str) -> PositionInfo:
     """Return the user's last durable viewport for this material."""
     store = _store()
     try:
+        assert_learning_material(material_id)
         return PositionInfo(**store.position(material_id).to_dict())
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -313,6 +343,7 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
     """Persist a validated numeric locator plus an optional renderer anchor."""
     store = _store()
     try:
+        assert_learning_material(material_id)
         saved = store.save_position(
             material_id,
             ReadingPosition(
@@ -331,6 +362,7 @@ async def save_annotation(material_id: str, payload: AnnotationPayload) -> Annot
     """Create or update one annotation (id absent = create)."""
     store = _store()
     try:
+        assert_learning_material(material_id)
         saved = store.save_annotation(material_id, payload.to_annotation())
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -341,6 +373,7 @@ async def save_annotation(material_id: str, payload: AnnotationPayload) -> Annot
 async def delete_annotation(material_id: str, annotation_id: str) -> dict[str, Any]:
     store = _store()
     try:
+        assert_learning_material(material_id)
         removed = store.delete_annotation(material_id, annotation_id)
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -362,6 +395,7 @@ async def export(
     """
     store = _store()
     try:
+        assert_learning_material(material_id)
         result = export_material(store, material_id, fmt=fmt)
     except Exception as exc:
         raise _http_error(exc) from exc

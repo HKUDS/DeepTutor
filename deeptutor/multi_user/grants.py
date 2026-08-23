@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
+import re
 from typing import Any
 
 from .identity import get_user_by_id
@@ -15,6 +17,8 @@ GRANTS_DIR = SYSTEM_ROOT / "grants"
 LEARNING_CAPABILITIES = {"chat", "immersive_reading"}
 LEARNING_AGE_BANDS = {"6-8", "9-12", "13-15"}
 LEARNING_PERSONAS = {"teacher"}
+LEARNING_SURFACES = {"chat", "reading"}
+_EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
 
 def empty_grant(user_id: str) -> dict[str, Any]:
@@ -64,12 +68,29 @@ def _normalize_learning_policy(value: Any) -> dict[str, Any] | None:
         return {}
 
     capabilities = _normalize_tool_list(value.get("allowed_capabilities")) or []
-    return {
+    has_reading = isinstance(value.get("reading"), dict)
+    raw_reading = value.get("reading") if has_reading else {}
+    material_ids = _normalize_tool_list(raw_reading.get("material_ids")) or []
+    extensions = _normalize_tool_list(raw_reading.get("extensions")) or []
+    # Compatibility: grants written before surfaces/reading existed keep the
+    # exact old behavior (Chat + Reading, with uploads allowed). New grants can
+    # narrow either dimension explicitly.
+    surfaces = _normalize_tool_list(value.get("allowed_surfaces"))
+    normalized = {
         "age_band": str(value.get("age_band") or "").strip(),
         "locked_persona": str(value.get("locked_persona") or "").strip(),
         "allowed_capabilities": capabilities,
         "default_capability": str(value.get("default_capability") or "chat").strip(),
     }
+    if surfaces is not None:
+        normalized["allowed_surfaces"] = surfaces
+    if has_reading:
+        normalized["reading"] = {
+            "allow_upload": bool(raw_reading.get("allow_upload", True)),
+            "material_ids": material_ids,
+            "extensions": extensions,
+        }
+    return normalized
 
 
 def grant_path(user_id: str) -> Path:
@@ -129,7 +150,12 @@ def save_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     validate_grant(grant)
     path = grant_path(user_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(grant, indent=2, ensure_ascii=False), encoding="utf-8")
+    stage = path.with_suffix(".json.staging")
+    try:
+        stage.write_text(json.dumps(grant, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(stage, path)
+    finally:
+        stage.unlink(missing_ok=True)
     return grant
 
 
@@ -177,6 +203,31 @@ def validate_grant(grant: dict[str, Any]) -> None:
         )
     if policy.get("default_capability") not in capability_set:
         raise ValueError("learning_policy.default_capability must be allowed")
+    surfaces = policy.get("allowed_surfaces", ["chat", "reading"])
+    if not isinstance(surfaces, list) or not surfaces:
+        raise ValueError("learning_policy.allowed_surfaces cannot be empty")
+    unknown_surfaces = set(surfaces) - LEARNING_SURFACES
+    if unknown_surfaces:
+        raise ValueError(
+            "learning_policy.allowed_surfaces contains unsupported values: "
+            f"{', '.join(sorted(unknown_surfaces))}"
+        )
+    reading = policy.get("reading", {})
+    if not isinstance(reading, dict):
+        raise ValueError("learning_policy.reading must be an object")
+    material_ids = reading.get("material_ids") or []
+    if not isinstance(material_ids, list):
+        raise ValueError("learning_policy.reading.material_ids must be an array")
+    invalid_extensions = sorted(
+        extension
+        for extension in set(reading.get("extensions") or [])
+        if not _EXTENSION_ID_RE.fullmatch(str(extension))
+    )
+    if invalid_extensions:
+        raise ValueError(
+            "learning_policy.reading.extensions contains invalid ids: "
+            f"{', '.join(invalid_extensions)}"
+        )
 
 
 def public_grant(user_id: str) -> dict[str, Any]:

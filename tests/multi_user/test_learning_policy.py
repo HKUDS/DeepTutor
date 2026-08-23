@@ -5,10 +5,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from starlette.requests import Request
 
 from deeptutor.multi_user.grants import load_grant, normalize_grant, save_grant
 from deeptutor.multi_user.learning_access import (
+    allowed_reading_extensions,
     apply_learning_policy,
+    assert_learning_material,
+    assert_learning_surface,
     current_learning_policy,
     learning_policy_for_user,
 )
@@ -62,7 +66,17 @@ def test_learning_policy_rejects_unsupported_modes(grantable_alice, as_user):
     with as_user(grantable_alice):
         with pytest.raises(PermissionError):
             apply_learning_policy({"capability": "deep_research"})
-        assert apply_learning_policy({"capability": "chat", "persona": ""})["persona"] == "teacher"
+        applied = apply_learning_policy(
+            {
+                "capability": "chat",
+                "persona": "",
+                "tools": ["exec"],
+                "knowledge_bases": ["private"],
+            }
+        )
+        assert applied["persona"] == "teacher"
+        assert applied["tools"] == []
+        assert applied["knowledge_bases"] == []
 
 
 def test_learning_policy_validation_rejects_invalid_shape(grantable_alice):
@@ -80,10 +94,61 @@ def test_learning_policy_validation_rejects_invalid_shape(grantable_alice):
         )
 
 
+def test_extended_learning_policy_enforces_surfaces_materials_and_extensions(
+    grantable_alice, as_user
+):
+    save_grant(
+        grantable_alice,
+        {
+            "learning_policy": {
+                "age_band": "9-12",
+                "locked_persona": "teacher",
+                "allowed_capabilities": ["chat", "immersive_reading"],
+                "default_capability": "immersive_reading",
+                "allowed_surfaces": ["chat", "reading"],
+                "reading": {
+                    "allow_upload": False,
+                    "material_ids": ["abc12345"],
+                    "extensions": ["read_aloud", "quiz"],
+                },
+            }
+        },
+    )
+    with as_user(grantable_alice):
+        assert_learning_surface("reading")
+        with pytest.raises(PermissionError):
+            assert_learning_surface("knowledge")
+        assert_learning_material("abc12345")
+        with pytest.raises(PermissionError):
+            assert_learning_material("def67890")
+        with pytest.raises(PermissionError):
+            assert_learning_material("", upload=True)
+        assert allowed_reading_extensions() == {"read_aloud", "quiz"}
+
+
 def test_admin_policy_is_always_none(as_user):
     with as_user("u_admin", role="admin"):
         assert current_learning_policy() is None
         assert learning_policy_for_user("u_admin", is_admin=True) is None
+
+
+@pytest.mark.asyncio
+async def test_http_surface_guard_returns_403_for_default_denied_surface(
+    monkeypatch, as_user
+):
+    from fastapi import HTTPException
+
+    from deeptutor.api.routers.auth import require_learning_surface
+
+    request = Request({"type": "http", "method": "GET", "path": "/api/v1/memory", "headers": []})
+    monkeypatch.setattr(
+        "deeptutor.multi_user.learning_access.current_learning_policy",
+        lambda: {"allowed_surfaces": ["chat", "reading"]},
+    )
+    with as_user("u_alice"):
+        with pytest.raises(HTTPException) as exc:
+            await require_learning_surface(request)
+    assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio

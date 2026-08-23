@@ -98,6 +98,7 @@ class RegisterRequest(BaseModel):
     username: str
     password: str
 
+
     @field_validator("username")
     @classmethod
     def username_valid(cls, v: str) -> str:
@@ -120,6 +121,10 @@ class RegisterRequest(BaseModel):
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
         return v
+
+
+class LearningActivationRequest(RegisterRequest):
+    code: str
 
 
 class SetRoleRequest(BaseModel):
@@ -351,6 +356,33 @@ async def require_admin(
     return payload
 
 
+def _learning_surface_for_path(path: str) -> str:
+    if path.startswith("/api/v1/reading") or path == "/api/v1/learning/records":
+        return "reading"
+    if path.startswith(("/api/v1/chat", "/api/v1/sessions")):
+        return "chat"
+    return ""
+
+
+async def require_learning_surface(
+    request: Request,
+    _: TokenPayload | None = Depends(require_auth),
+) -> None:
+    """Second-stage HTTP guard installed after ``require_auth``.
+
+    A Learning Account is default-denied: only Chat and Reading routes map to
+    named surfaces. Ordinary users, admins and auth-disabled local mode retain
+    their existing access.
+    """
+    from deeptutor.multi_user.learning_access import assert_learning_surface
+
+    surface = _learning_surface_for_path(request.url.path)
+    try:
+        assert_learning_surface(surface)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
 def _local_admin_token_payload() -> TokenPayload:
     """Synthetic admin payload used when AUTH_ENABLED=false.
 
@@ -486,6 +518,21 @@ async def login(body: LoginRequest, response: Response) -> dict:
         "role": result.role,
         "is_admin": result.role == "admin",
     }
+
+
+@router.post("/activate-learning")
+async def activate_learning_account(body: LearningActivationRequest) -> dict[str, bool]:
+    """Set a migrated learner's password with a single-use seven-day code."""
+    if POCKETBASE_ENABLED:
+        raise HTTPException(status_code=409, detail="Learning activation is unavailable in PocketBase mode.")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    from deeptutor.multi_user.activation import activate
+    from deeptutor.services.auth import hash_password
+
+    if not activate(body.username, body.code, hash_password(body.password)):
+        raise HTTPException(status_code=400, detail="Activation code is invalid, expired, or already used.")
+    return {"ok": True}
 
 
 @router.post("/logout")

@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AudioLines,
-  ClipboardCheck,
   Crosshair,
   Download,
   FileText,
@@ -11,7 +9,6 @@ import {
   Loader2,
   PanelRightClose,
   PanelRightOpen,
-  Sparkles,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -24,15 +21,9 @@ import {
 import { locatorFromHref } from "@/lib/reading-citations";
 import {
   fetchExport,
-  getUnitText,
   type AnnotationColor,
   type AnnotationItem,
 } from "@/lib/reading-api";
-import {
-  buildReaderLearningPrompt,
-  dispatchReaderLearningAction,
-} from "@/lib/reading-learning-actions";
-import { speakBrowserText, stopKidsSpeech } from "@/lib/kids-learning/pronunciation";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
 import { EpubDocumentView } from "./EpubDocumentView";
@@ -43,6 +34,7 @@ import {
   type SelectionPayload,
 } from "./PdfDocumentView";
 import { ReaderResizeHandle } from "./ReaderResizeHandle";
+import { ReadingExtensionBar } from "./ReadingExtensionBar";
 import { TextUnitView, unitLabel } from "./TextUnitView";
 
 /** Event the reader dispatches to prefill the composer from a selection. */
@@ -75,9 +67,8 @@ export interface ReaderPaneProps {
 export function ReaderPane({
   onClose,
   learningActionsEnabled = false,
-  learningAgeBand = "9-12",
 }: ReaderPaneProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   // Document + annotations live in the provider (workspace layout), so they
   // survive the remount that sending the first message causes.
   const {
@@ -108,11 +99,8 @@ export function ReaderPane({
   const [showOutline, setShowOutline] = useState(false);
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
-  const [speechLoading, setSpeechLoading] = useState(false);
-  const [speechPlaying, setSpeechPlaying] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
   const nonceRef = useRef(0);
-  const speechTokenRef = useRef(0);
 
   // -- persisted auto-jump preference --------------------------------------
 
@@ -123,10 +111,6 @@ export function ReaderPane({
     } catch {
       // Private mode / storage disabled — keep the default.
     }
-  }, []);
-
-  useEffect(() => {
-    return () => stopKidsSpeech();
   }, []);
 
   const toggleAutoJump = useCallback(() => {
@@ -330,81 +314,6 @@ export function ReaderPane({
     }
   }, [material, exporting, t, dismissError, setError]);
 
-  const stopReadAloud = useCallback(() => {
-    speechTokenRef.current += 1;
-    stopKidsSpeech();
-    setSpeechLoading(false);
-    setSpeechPlaying(false);
-  }, []);
-
-  const readAloud = useCallback(async () => {
-    if (!material) return;
-    if (speechPlaying) {
-      stopReadAloud();
-      return;
-    }
-    const token = ++speechTokenRef.current;
-    setSpeechLoading(true);
-    dismissError();
-    try {
-      const unit = await getUnitText(material.material_id, currentLocator);
-      if (token !== speechTokenRef.current) return;
-      const started = speakBrowserText(material.material_id, unit.text, {
-        onEnd: () => {
-          if (token !== speechTokenRef.current) return;
-          setSpeechPlaying(false);
-        },
-        onError: (error) => {
-          if (token !== speechTokenRef.current) return;
-          setSpeechPlaying(false);
-          setError(error instanceof Error ? error.message : String(error));
-        },
-      });
-      if (!started) {
-        setError(t("No speech voices are available."));
-        return;
-      }
-      setSpeechPlaying(true);
-    } catch (error) {
-      if (token !== speechTokenRef.current) return;
-      setError(error instanceof Error ? error.message : t("Could not read this page aloud."));
-    } finally {
-      if (token === speechTokenRef.current) setSpeechLoading(false);
-    }
-  }, [
-    material,
-    speechPlaying,
-    currentLocator,
-    stopReadAloud,
-    dismissError,
-    setError,
-    t,
-  ]);
-
-  useEffect(() => {
-    stopReadAloud();
-  }, [material?.material_id, currentLocator, stopReadAloud]);
-
-  const sendLearningAction = useCallback(
-    (action: "learn" | "quiz") => {
-      if (!material) return;
-      stopReadAloud();
-      dispatchReaderLearningAction(
-        action,
-        buildReaderLearningPrompt(
-          action,
-          {
-            locator: currentLocator,
-            unit: t(unitLabel(material.unit)),
-            ageBand: learningAgeBand,
-          },
-          i18n.language,
-        ),
-      );
-    },
-    [material, currentLocator, learningAgeBand, stopReadAloud, t, i18n.language],
-  );
-
   // -- render --------------------------------------------------------------
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
@@ -502,39 +411,17 @@ export function ReaderPane({
         </div>
       )}
 
-      {learningActionsEnabled && material && (
-        <div className="grid shrink-0 grid-cols-3 gap-1.5 border-b border-[var(--border)] bg-[var(--muted)]/25 px-2.5 py-2">
-          <button
-            type="button"
-            onClick={() => void readAloud()}
-            disabled={speechLoading}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-55"
-          >
-            {speechLoading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <AudioLines size={14} />
-            )}
-            <span className="truncate">{speechPlaying ? t("Stop") : t("Read aloud")}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => sendLearningAction("learn")}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
-          >
-            <Sparkles size={14} />
-            <span className="truncate">{t("Learn")}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => sendLearningAction("quiz")}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
-          >
-            <ClipboardCheck size={14} />
-            <span className="truncate">{t("Test")}</span>
-          </button>
-        </div>
-      )}
+      {learningActionsEnabled && material ? (
+        <ReadingExtensionBar
+          materialId={material.material_id}
+          locator={currentLocator}
+          selection={selection ? {
+            quote: selection.quote,
+            sourceAnchor: selection.sourceAnchor,
+          } : null}
+          onError={setError}
+        />
+      ) : null}
 
       {showOutline && material && outlineRows.length > 0 && (
         <nav className="dt-reader-scroll max-h-[34%] shrink-0 overflow-y-auto border-b border-[var(--border)] bg-[var(--muted)]/25 px-2 py-1.5">

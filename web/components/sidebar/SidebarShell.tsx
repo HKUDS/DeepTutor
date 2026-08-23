@@ -27,6 +27,7 @@ import { useTranslation } from "react-i18next";
 import SessionList from "@/components/SessionList";
 import { useSidebarDrawer } from "@/components/layout/AppShell";
 import { useDevice } from "@/hooks/useDevice";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import type { SessionSummary } from "@/lib/session-api";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -149,6 +150,7 @@ export function SidebarShell({
   const { has } = useCapabilityAccess();
   const { sidebarCollapsed, setSidebarCollapsed: setCollapsed } = useAppShell();
   const { isMobile } = useDevice();
+  const { learningPolicy } = useAuthStatus();
   const drawer = useSidebarDrawer();
 
   // Inside the mobile drawer the icon-only rail is pointless — the panel is
@@ -169,6 +171,10 @@ export function SidebarShell({
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(collapsed) : footerSlot;
   const [recentsCollapsed, setRecentsCollapsed] = useState(false);
+  const primaryNav = learningPolicy
+    ? PRIMARY_NAV.filter((item) => item.href === "/home")
+    : PRIMARY_NAV;
+  const secondaryNav = learningPolicy ? [] : SECONDARY_NAV;
 
   // Hydrate Recents collapse from localStorage after first render to stay SSR-safe.
   useEffect(() => {
@@ -231,7 +237,7 @@ export function SidebarShell({
 
         {/* Primary nav */}
         <nav className="mt-1 flex w-full flex-col items-center gap-1 px-1.5">
-          {PRIMARY_NAV.map((item) => {
+          {primaryNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const locked = navLocked(item);
             const description = locked
@@ -291,7 +297,7 @@ export function SidebarShell({
         {/* Secondary nav + footer */}
         <div className="flex w-full flex-col items-center gap-1 px-1.5">
           <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
-          {SECONDARY_NAV.map((item) => {
+          {secondaryNav.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
               <Link
@@ -371,7 +377,7 @@ export function SidebarShell({
       {/* Primary nav */}
       <nav className="px-2 pt-1">
         <div className="space-y-px">
-          {PRIMARY_NAV.map((item) => {
+        {primaryNav.map((item) => {
             const active = pathname.startsWith(item.href);
             const locked = navLocked(item);
             if (locked) {
@@ -472,7 +478,7 @@ export function SidebarShell({
 
       {/* Secondary nav + footer */}
       <div className="border-t border-[var(--border)]/40 px-2 py-2">
-        {SECONDARY_NAV.map((item) => {
+        {secondaryNav.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link

@@ -233,6 +233,11 @@ async def websocket_quiz_judge(websocket: WebSocket):
     user_token = await ws_require_auth(websocket)
     if user_token is ws_auth_failed:
         return
+    from deeptutor.multi_user.learning_access import current_learning_policy
+
+    if current_learning_policy() is not None:
+        await websocket.close(code=4003, reason="Use the authorized Reading quiz extension.")
+        return
 
     await websocket.accept()
 

@@ -24,6 +24,12 @@ export interface LearningPolicy {
   locked_persona: string;
   allowed_capabilities: string[];
   default_capability: string;
+  allowed_surfaces?: string[];
+  reading?: {
+    allow_upload: boolean;
+    material_ids: string[];
+    extensions: string[];
+  };
 }
 
 /**
@@ -65,6 +71,26 @@ export async function login(
 
     const data = await res.json().catch(() => ({}));
     return { ok: false, error: extractDetail(data.detail) ?? "Login failed" };
+  } catch {
+    return { ok: false, error: "Could not reach the server" };
+  }
+}
+
+export async function activateLearningAccount(
+  username: string,
+  code: string,
+  password: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch(apiUrl("/api/v1/auth/activate-learning"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, code, password }),
+      skipAuthRedirect: true,
+    });
+    if (res.ok) return { ok: true };
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: extractDetail(data.detail) };
   } catch {
     return { ok: false, error: "Could not reach the server" };
   }
