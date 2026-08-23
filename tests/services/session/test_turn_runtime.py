@@ -16,6 +16,28 @@ from deeptutor.services.session.turn_runtime import (
     _should_capture_assistant_content,
 )
 
+
+@pytest.mark.asyncio
+async def test_learning_policy_rejects_before_capability_config(tmp_path, monkeypatch) -> None:
+    """The account policy is enforced before public config validation."""
+    from deeptutor.multi_user import learning_access
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+    from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+
+    def _deny(_payload: dict) -> dict:
+        raise PermissionError("mode denied")
+
+    def _explode(_capability: str, _config: dict) -> dict:
+        raise AssertionError("denied turns must not reach capability config validation")
+
+    monkeypatch.setattr(learning_access, "apply_learning_policy", _deny)
+    monkeypatch.setattr("deeptutor.runtime.request_contracts.validate_capability_config", _explode)
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "chat.db"))
+
+    with pytest.raises(RuntimeError, match="mode denied"):
+        await runtime.start_turn({"capability": "deep_research"})
+
+
 # ---------------------------------------------------------------------------
 # _should_capture_assistant_content
 # ---------------------------------------------------------------------------

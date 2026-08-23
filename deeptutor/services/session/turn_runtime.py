@@ -803,6 +803,12 @@ class TurnRuntimeManager:
             ) from exc
 
     async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        from deeptutor.multi_user.learning_access import apply_learning_policy
+
+        try:
+            payload = apply_learning_policy(payload)
+        except PermissionError as exc:
+            raise RuntimeError(str(exc)) from exc
         capability = str(payload.get("capability") or "chat")
         if not payload.get("language"):
             from deeptutor.services.settings.interface_settings import (

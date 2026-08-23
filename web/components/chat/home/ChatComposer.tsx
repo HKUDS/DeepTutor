@@ -229,6 +229,7 @@ export default memo(function ChatComposer({
   onPersonaSelectionChange,
   personaSelectorOpen,
   onPersonaSelectorOpenChange,
+  personaLocked = false,
   agentsAvailable = true,
   onToggleMemoryFile,
   onSend,
@@ -335,6 +336,8 @@ export default memo(function ChatComposer({
   onPersonaSelectionChange?: (persona: string) => void;
   personaSelectorOpen?: boolean;
   onPersonaSelectorOpenChange?: (open: boolean) => void;
+  /** Suppress persona entry points when the account policy fixes one persona. */
+  personaLocked?: boolean;
   /** Hide the My Agents reference entry (e.g. the quiz follow-up surface). */
   agentsAvailable?: boolean;
   onToggleMemoryFile: (file: SpaceMemoryFile) => void;
@@ -734,7 +737,7 @@ export default memo(function ChatComposer({
             onSelectAgent={onSelectAgent}
             selectedCounts={spaceSelectionCounts}
             knowledgeAvailable={false}
-            personaAvailable={!onPersonaSelectionChange}
+            personaAvailable={!personaLocked && !onPersonaSelectionChange}
             onSelectAttach={handlePickFiles}
             agentsAvailable={agentsAvailable}
             onSelectNotebookPicker={onSelectNotebookPicker}
@@ -862,6 +865,7 @@ export default memo(function ChatComposer({
               <div className="relative">
                 <button
                   ref={capBtnRef}
+                  aria-label={t(activeCap.label)}
                   onClick={() => onSetCapMenuOpen((v) => !v)}
                   className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                     capMenuOpen
@@ -1018,7 +1022,7 @@ export default memo(function ChatComposer({
                         variant="toolbar"
                         selectedCounts={spaceSelectionCounts}
                         knowledgeAvailable={false}
-                        personaAvailable={!onPersonaSelectionChange}
+                        personaAvailable={!personaLocked && !onPersonaSelectionChange}
                         agentsAvailable={agentsAvailable}
                         onSelectItem={(key) => {
                           onSetSpaceMenuOpen(false);
@@ -1057,7 +1061,7 @@ export default memo(function ChatComposer({
                     onToggle={onToggleKB}
                   />
                 ) : null}
-                {onPersonaSelectionChange ? (
+                {onPersonaSelectionChange && !personaLocked ? (
                   <PersonaSelector
                     value={personaSelection ?? ""}
                     onChange={onPersonaSelectionChange}

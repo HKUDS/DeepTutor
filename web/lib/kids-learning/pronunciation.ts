@@ -297,6 +297,19 @@ function speakWithWebSpeech(
   return true;
 }
 
+export function speakBrowserText(
+  id: string,
+  text: string,
+  handlers: KidsSpeechHandlers = {},
+): boolean {
+  const clean = text.trim();
+  if (!clean) return false;
+  if (typeof window === "undefined" || !window.speechSynthesis) return false;
+  if (!window.speechSynthesis.getVoices().length) return false;
+  const language = detectTextLanguage(clean);
+  return speakWithWebSpeech(id, clean, language, handlers);
+}
+
 export function speakKidsText(
   id: string,
   text: string,

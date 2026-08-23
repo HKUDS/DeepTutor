@@ -14,6 +14,17 @@ export type GrantPayload = {
   mcp_tools: string[] | null;
   /** null = follow deployment exec policy, false = always disabled. */
   exec_enabled: boolean | null;
+  /** null = no learning restrictions; otherwise enforced server-side. */
+  learning_policy: LearningPolicy | null;
+  /** null = follow deployment policy, [] = none, array = whitelist. */
+  cli_apps?: string[] | null;
+};
+
+export type LearningPolicy = {
+  age_band: "6-8" | "9-12" | "13-15";
+  locked_persona: "teacher";
+  allowed_capabilities: Array<"chat" | "immersive_reading">;
+  default_capability: "chat" | "immersive_reading";
 };
 
 export type ToolOption = { name: string; description?: string };

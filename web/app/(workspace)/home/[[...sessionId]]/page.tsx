@@ -69,6 +69,7 @@ import {
   type MessageRequestSnapshot,
 } from "@/context/UnifiedChatContext";
 import { useAppShell } from "@/context/AppShellContext";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 
 import { READER_ASK_EVENT, ReaderPane } from "@/components/reading/ReaderPane";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
@@ -77,6 +78,7 @@ import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
+import { READER_LEARNING_ACTION_EVENT } from "@/lib/reading-learning-actions";
 import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
 import { readChatLaunchIntent } from "@/lib/chat-launch-intent";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
@@ -335,8 +337,11 @@ interface PendingAttachment {
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-function getCapability(value: string | null): CapabilityDef {
-  return CAPABILITIES.find((c) => c.value === (value || "")) ?? CAPABILITIES[0];
+function getCapability(
+  value: string | null,
+  available: CapabilityDef[] = CAPABILITIES,
+): CapabilityDef {
+  return available.find((c) => c.value === (value || "")) ?? available[0];
 }
 
 /**
@@ -377,6 +382,8 @@ export default function ChatPage() {
   const { t } = useTranslation();
   const sessionIdParam = params.sessionId?.[0] ?? null;
   const { setActiveSessionId, language: appLanguage } = useAppShell();
+  const authStatus = useAuthStatus();
+  const learningPolicy = authStatus.learningPolicy;
 
   const {
     state,
@@ -400,6 +407,18 @@ export default function ChatPage() {
   } = useUnifiedChat();
 
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const capabilities = useMemo(
+    () =>
+      learningPolicy
+        ? CAPABILITIES.filter((capability) =>
+            learningPolicy.allowed_capabilities.includes(
+              capability.value || "chat",
+            ),
+          )
+        : CAPABILITIES,
+    [learningPolicy],
+  );
+  const learningDefaultAppliedRef = useRef(false);
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
   const availableKbNames = useMemo(
     () => new Set(knowledgeBases.map((kb) => kb.name)),
@@ -682,15 +701,61 @@ export default function ChatPage() {
     return () => window.removeEventListener(READER_ASK_EVENT, onReaderAsk);
   }, [handlePrefillComposer, t]);
 
+  useEffect(() => {
+    const onReaderLearningAction = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ prompt?: string }>
+      ).detail;
+      const prompt = detail?.prompt?.trim();
+      if (!prompt) return;
+      setCapability("immersive_reading");
+      handlePrefillComposer(prompt);
+    };
+    window.addEventListener(READER_LEARNING_ACTION_EVENT, onReaderLearningAction);
+    return () =>
+      window.removeEventListener(
+        READER_LEARNING_ACTION_EVENT,
+        onReaderLearningAction,
+      );
+  }, [handlePrefillComposer, setCapability]);
+
   const activeCap = useMemo(
-    () => getCapability(state.activeCapability),
-    [state.activeCapability],
+    () => getCapability(state.activeCapability, capabilities),
+    [state.activeCapability, capabilities],
   );
   const isQuizMode = activeCap.value === "deep_question";
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
   const isReadingMode = activeCap.value === "immersive_reading";
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
+
+  useEffect(() => {
+    if (authStatus.loading || !learningPolicy) return;
+    setPersonaSelection(learningPolicy.locked_persona);
+    if (!learningDefaultAppliedRef.current) {
+      // Wait for a URL-selected session snapshot before deciding whether its
+      // saved mode is absent, allowed, or needs replacement.
+      if (sessionIdParam && state.sessionId !== sessionIdParam) return;
+      learningDefaultAppliedRef.current = true;
+      if (state.activeCapability === null) {
+        setCapability(learningPolicy.default_capability);
+        return;
+      }
+    }
+    const currentCapability = state.activeCapability || "chat";
+    if (!learningPolicy.allowed_capabilities.includes(currentCapability)) {
+      setCapability(learningPolicy.default_capability);
+    }
+  }, [
+    authStatus.loading,
+    learningPolicy,
+    sessionIdParam,
+    setCapability,
+    setPersonaSelection,
+    state.sessionId,
+    state.activeCapability,
+    state.personaSelection,
+  ]);
 
   // Edit-invalidates-confirm wrappers — flipping any field after the user
   // hit *Confirm* should restore the gate so they re-confirm intentionally.
@@ -1336,8 +1401,9 @@ export default function ChatPage() {
 
   const handleSelectCapability = useCallback(
     (value: string) => {
+      learningDefaultAppliedRef.current = true;
       const cap =
-        CAPABILITIES.find((c) => c.value === value) ?? CAPABILITIES[0];
+        capabilities.find((c) => c.value === value) ?? capabilities[0];
       const storageKey = cap.value || "chat";
       const config = resolveCapabilityPlaygroundConfig(
         capabilityConfigs,
@@ -1363,7 +1429,7 @@ export default function ChatPage() {
       setCapabilityConfigConfirmed(false);
       setCapMenuOpen(false);
     },
-    [capabilityConfigs, setCapability, setKBs, setTools, userEnabledTools],
+    [capabilityConfigs, capabilities, setCapability, setKBs, setTools, userEnabledTools],
   );
 
   const fileToAttachment = useCallback(
@@ -2054,7 +2120,16 @@ export default function ChatPage() {
             data-reader-open={isReadingMode ? "true" : "false"}
             className="dt-reader-shell"
           >
-            {isReadingMode && <ReaderPane onClose={() => setCapability("")} />}
+            {isReadingMode && (
+              <ReaderPane
+                onClose={() => {
+                  learningDefaultAppliedRef.current = true;
+                  setCapability("");
+                }}
+                learningActionsEnabled={Boolean(learningPolicy)}
+                learningAgeBand={learningPolicy?.age_band}
+              />
+            )}
           </div>
           <div
             // When the preview drawer is open AND the viewport is wide enough,
@@ -2290,7 +2365,8 @@ export default function ChatPage() {
                 capabilityNeedsConfig={capabilityNeedsConfig}
                 capabilityConfigConfirmed={capabilityConfigConfirmed}
                 onRequestConfigConfirm={ensureActivityPanelOpen}
-                capabilities={CAPABILITIES}
+                capabilities={capabilities}
+                personaLocked={Boolean(learningPolicy)}
                 onSetCapMenuOpen={setCapMenuOpen}
                 onSetSpaceMenuOpen={setSpaceMenuOpen}
                 onToggleKB={handleToggleKB}

@@ -16,6 +16,14 @@ export interface AuthStatus {
   is_admin?: boolean;
   /** Avatar marker: "", "icon:<name>:<color>", or "img:<version>". */
   avatar?: string;
+  learning_policy?: LearningPolicy | null;
+}
+
+export interface LearningPolicy {
+  age_band: string;
+  locked_persona: string;
+  allowed_capabilities: string[];
+  default_capability: string;
 }
 
 /**

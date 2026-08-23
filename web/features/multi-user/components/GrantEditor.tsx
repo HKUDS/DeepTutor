@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, Save } from "lucide-react";
+import { AlertCircle, CheckCircle2, GraduationCap, Loader2, Save } from "lucide-react";
 import McpToolGroups from "@/components/common/McpToolGroups";
 import { toggleToolName as toggleName } from "@/lib/mcp-tool-groups";
 import { fetchAdminResources, fetchUserGrant, saveUserGrant } from "../api";
-import type { GrantPayload, MultiUserResources } from "../types";
+import type { GrantPayload, LearningPolicy, MultiUserResources } from "../types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -19,9 +19,13 @@ function emptyGrant(userId: string): GrantPayload {
     partners: [],
     enabled_tools: null,
     mcp_tools: null,
+    cli_apps: null,
     exec_enabled: null,
+    learning_policy: null,
   };
 }
+
+const LEARNING_AGE_BANDS = ["6-8", "9-12", "13-15"] as const;
 
 function hasModel(grant: GrantPayload, profileId: string, modelId?: string) {
   return grant.models.llm.some((item) => {
@@ -33,6 +37,63 @@ function hasModel(grant: GrantPayload, profileId: string, modelId?: string) {
 
 function grantFingerprint(grant: GrantPayload): string {
   return JSON.stringify(grant);
+}
+
+function learningPreset(
+  userId: string,
+  resources: MultiUserResources | null,
+  currentGrant: GrantPayload,
+): GrantPayload {
+  const assignedModel = (currentGrant.models.llm || []).find((item) => {
+    const assigned = item as { profile_id?: string; model_ids?: string[] };
+    const profile = resources?.models.llm.find(
+      (candidate) => candidate.profile_id === assigned.profile_id,
+    );
+    const modelId = Array.isArray(assigned.model_ids)
+      ? assigned.model_ids[0]
+      : undefined;
+    return Boolean(
+      profile && modelId && profile.models?.some((model) => model.model_id === modelId),
+    );
+  });
+  const assignedProfile = resources?.models.llm.find(
+    (candidate) => candidate.profile_id === assignedModel?.profile_id,
+  );
+  const assignedModelId = Array.isArray(assignedModel?.model_ids)
+    ? assignedModel?.model_ids?.[0]
+    : undefined;
+  const firstProfile = resources?.models.llm.find(
+    (profile) => (profile.models ?? []).length > 0,
+  );
+  const firstModel = firstProfile?.models?.[0];
+  const modelProfile = assignedProfile && assignedModelId ? assignedProfile : firstProfile;
+  const modelId = assignedProfile && assignedModelId ? assignedModelId : firstModel?.model_id;
+  return {
+    version: 2,
+    user_id: userId,
+    models: {
+      llm: modelProfile && modelId
+        ? [{
+            profile_id: modelProfile.profile_id,
+            model_ids: [modelId],
+            source: "admin",
+          }]
+        : [],
+    },
+    knowledge_bases: [],
+    skills: [],
+    partners: [],
+    enabled_tools: [],
+    mcp_tools: [],
+    cli_apps: [],
+    exec_enabled: false,
+    learning_policy: {
+      age_band: "9-12",
+      locked_persona: "teacher",
+      allowed_capabilities: ["chat", "immersive_reading"],
+      default_capability: "immersive_reading",
+    },
+  };
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -274,6 +335,22 @@ export function GrantEditor({ userId }: { userId: string }) {
     setGrant((current) => ({ ...current, [key]: value }));
   }
 
+  function enableLearningSpace() {
+    setGrant((current) => learningPreset(userId, resources, current));
+  }
+
+  function disableLearningSpace() {
+    setGrant((current) => ({ ...current, learning_policy: null }));
+  }
+
+  function setLearningAgeBand(ageBand: LearningPolicy["age_band"]) {
+    setGrant((current) =>
+      current.learning_policy
+        ? { ...current, learning_policy: { ...current.learning_policy, age_band: ageBand } }
+        : current,
+    );
+  }
+
   // Named apart from the imported `toggleName` helper it wraps, and narrowed to
   // the one key that still uses it: MCP rows go through McpToolGroups now.
   function toggleGrantTool(key: "enabled_tools", name: string) {
@@ -377,6 +454,69 @@ export function GrantEditor({ userId }: { userId: string }) {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-gutter:stable]">
           <div className="grid gap-5 md:grid-cols-3">
+            <section className="min-w-0 md:col-span-3">
+              <SectionTitle>Learning space</SectionTitle>
+              <div className="rounded-lg border border-[var(--border)]/60 p-3">
+                <CheckRow
+                  label="Learning space"
+                  description="Fixed teacher persona; Chat and Immersive Reading only"
+                  checked={Boolean(grant.learning_policy)}
+                  disabled={controlsDisabled}
+                  onToggle={() =>
+                    grant.learning_policy
+                      ? disableLearningSpace()
+                      : enableLearningSpace()
+                  }
+                />
+                {grant.learning_policy && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="text-xs text-[var(--foreground)]">
+                      <span className="mb-1 block text-[11px] text-[var(--muted-foreground)]">
+                        Age band
+                      </span>
+                      <select
+                        value={grant.learning_policy.age_band}
+                        disabled={controlsDisabled}
+                        onChange={(event) =>
+                          setLearningAgeBand(
+                            event.target
+                              .value as NonNullable<GrantPayload["learning_policy"]>["age_band"],
+                          )
+                        }
+                        className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2"
+                      >
+                        {LEARNING_AGE_BANDS.map((band) => (
+                          <option key={band} value={band}>
+                            {band}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs text-[var(--foreground)]">
+                      <span className="mb-1 block text-[11px] text-[var(--muted-foreground)]">
+                        Persona
+                      </span>
+                      <select
+                        value={grant.learning_policy.locked_persona}
+                        disabled
+                        className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2"
+                      >
+                        <option value="teacher">teacher</option>
+                      </select>
+                    </label>
+                    <div className="text-xs">
+                      <span className="mb-1 block text-[11px] text-[var(--muted-foreground)]">
+                        Modes
+                      </span>
+                      <div className="flex h-8 items-center gap-1.5">
+                        <GraduationCap size={14} className="text-[var(--muted-foreground)]" />
+                        <span>Chat · Immersive Reading</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
             <section className="min-w-0">
               <SectionTitle>Models</SectionTitle>
               <div className="space-y-1.5 text-xs">

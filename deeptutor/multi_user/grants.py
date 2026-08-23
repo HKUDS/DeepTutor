@@ -12,6 +12,10 @@ from .paths import SYSTEM_ROOT, ensure_system_dirs
 
 GRANTS_DIR = SYSTEM_ROOT / "grants"
 
+LEARNING_CAPABILITIES = {"chat", "immersive_reading"}
+LEARNING_AGE_BANDS = {"6-8", "9-12", "13-15"}
+LEARNING_PERSONAS = {"teacher"}
+
 
 def empty_grant(user_id: str) -> dict[str, Any]:
     return {
@@ -41,6 +45,7 @@ def empty_grant(user_id: str) -> dict[str, Any]:
         "mcp_tools": None,
         "cli_apps": None,
         "exec_enabled": None,
+        "learning_policy": None,
     }
 
 
@@ -50,6 +55,21 @@ def _normalize_tool_list(value: Any) -> list[str] | None:
     if not isinstance(value, list):
         return None
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _normalize_learning_policy(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return {}
+
+    capabilities = _normalize_tool_list(value.get("allowed_capabilities")) or []
+    return {
+        "age_band": str(value.get("age_band") or "").strip(),
+        "locked_persona": str(value.get("locked_persona") or "").strip(),
+        "allowed_capabilities": capabilities,
+        "default_capability": str(value.get("default_capability") or "chat").strip(),
+    }
 
 
 def grant_path(user_id: str) -> Path:
@@ -84,6 +104,7 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
         base[key] = _normalize_tool_list(payload.get(key))
     exec_enabled = payload.get("exec_enabled")
     base["exec_enabled"] = bool(exec_enabled) if isinstance(exec_enabled, bool) else None
+    base["learning_policy"] = _normalize_learning_policy(payload.get("learning_policy"))
     return base
 
 
@@ -131,6 +152,31 @@ def validate_grant(grant: dict[str, Any]) -> None:
                 walk(child, f"{trail}[{index}]")
 
     walk(grant)
+    policy = grant.get("learning_policy")
+    if policy is None:
+        return
+    if not isinstance(policy, dict):
+        raise ValueError("learning_policy must be an object or null")
+    if policy.get("age_band") not in LEARNING_AGE_BANDS:
+        raise ValueError(
+            f"learning_policy.age_band must be one of: {', '.join(sorted(LEARNING_AGE_BANDS))}"
+        )
+    if policy.get("locked_persona") not in LEARNING_PERSONAS:
+        raise ValueError(
+            f"learning_policy.locked_persona must be one of: {', '.join(sorted(LEARNING_PERSONAS))}"
+        )
+    capabilities = policy.get("allowed_capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+        raise ValueError("learning_policy.allowed_capabilities cannot be empty")
+    capability_set = set(capabilities)
+    unknown = capability_set - LEARNING_CAPABILITIES
+    if unknown:
+        raise ValueError(
+            "learning_policy.allowed_capabilities contains unsupported values: "
+            f"{', '.join(sorted(unknown))}"
+        )
+    if policy.get("default_capability") not in capability_set:
+        raise ValueError("learning_policy.default_capability must be allowed")
 
 
 def public_grant(user_id: str) -> dict[str, Any]:

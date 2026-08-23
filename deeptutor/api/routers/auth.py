@@ -30,6 +30,7 @@ _SECURE = bool(load_auth_settings()["cookie_secure"])
 _SAMESITE = "none" if _SECURE else "lax"
 
 from deeptutor.multi_user.context import set_current_user, user_from_token_payload
+from deeptutor.multi_user.learning_access import learning_policy_for_user
 from deeptutor.multi_user.paths import local_admin_user
 from deeptutor.services.auth import (
     AUTH_ALLOW_REGISTRATION,
@@ -144,6 +145,7 @@ class AuthStatusResponse(BaseModel):
     role: str | None = None
     is_admin: bool = False
     avatar: str = ""
+    learning_policy: dict | None = None
 
 
 class UserInfo(BaseModel):
@@ -431,6 +433,11 @@ async def auth_status(
         role=payload.role if payload else None,
         is_admin=payload.role == "admin" if payload else False,
         avatar=avatar,
+        learning_policy=(
+            learning_policy_for_user(payload.user_id, is_admin=payload.role == "admin")
+            if payload
+            else None
+        ),
     )
 
 

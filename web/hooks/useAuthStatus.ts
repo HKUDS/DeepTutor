@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchAuthStatus } from "@/lib/auth";
+import { fetchAuthStatus, type LearningPolicy } from "@/lib/auth";
 
 export interface AuthStatusState {
   /** Whether auth is enabled on the backend. */
@@ -10,6 +10,7 @@ export interface AuthStatusState {
   authenticated: boolean;
   /** Whether the authenticated user is an admin. */
   isAdmin: boolean;
+  learningPolicy: LearningPolicy | null;
   /** True until the first status fetch resolves. */
   loading: boolean;
 }
@@ -18,6 +19,7 @@ const INITIAL: AuthStatusState = {
   enabled: false,
   authenticated: false,
   isAdmin: false,
+  learningPolicy: null,
   loading: true,
 };
 
@@ -44,6 +46,7 @@ function loadAuthStatus(): Promise<AuthStatusState> {
         enabled: Boolean(status?.enabled),
         authenticated: Boolean(status?.authenticated),
         isAdmin: status?.role === "admin",
+        learningPolicy: status?.learning_policy ?? null,
         loading: false,
       }))
       .finally(() => {
