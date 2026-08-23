@@ -29,6 +29,8 @@ tests intact.
   - Exposing child library, EPUB, progress, quiz, asset, or interactive-book
     routes outside their profile/session contract.
   - Deleting Kids regression tests or reducing guided-learning coverage.
+  - Moving Kids reward rules, reward persistence, or reward copy back into the
+    core Kids product.
   - Routing MarginNote libraries through generic RAG instead of their own tools.
 
 ## Kids capability promise
@@ -39,8 +41,17 @@ The active Kids feature set is a coherent product, not a demo:
   parent unlock/exit verification.
 - Parent profile management, book assignment, interactive-book assignment, and
   learning reports.
-- Per-profile library isolation, reading progress, quiz scores, star awards, and
+- Per-profile library isolation, reading progress, quiz scores, and
   interactive-book progress.
+- The fork-local `deeptutor.kids_reward_providers` extension point. Core emits
+  only neutral learning events; an optional provider owns its reward ledger,
+  idempotency, copy, snapshot, and persistence. No default reward package ships
+  with the core application. A provider failure must never block reading or
+  quiz submission.
+- A fork-local switch-time Kids dual-track sync tool. It merges learning facts
+  between the legacy checkout and this extension build while preserving and
+  restoring legacy star fields. It is not a live shared database; both UIs must
+  be stopped while it runs.
 - Authorized EPUB delivery and navigation mapped to backend reading sections.
 - Visible-page text extraction for narration and guided questions.
 - Source-grounded current-page concept learning with progressive reflection
@@ -67,6 +78,9 @@ Run these before releasing or merging upstream changes into this fork:
   tests/immersive_reading/test_kids_quiz_cache.py \
   tests/immersive_reading/test_kids_learn.py \
   tests/immersive_reading/test_kids_learn_endpoints.py \
+  tests/immersive_reading/test_kids_rewards.py \
+  tests/scripts/test_kids_dual_track_sync.py \
+  tests/cli/test_plugin_cli.py \
   tests/api/test_partners_router.py \
   tests/services/partners/test_channel_onboarding.py \
   tests/services/partners/test_feishu_domain_initialization.py \

@@ -288,9 +288,7 @@ class KidsInteractiveBookProgress(BaseModel):
     current_page_id: str = ""
     current_page_order: int = 0
     completed_page_ids: list[str] = Field(default_factory=list)
-    total_stars: int = 0
     quiz_scores: dict[str, int] = Field(default_factory=dict)
-    quiz_stars_awarded: dict[str, int] = Field(default_factory=dict)
     time_spent_seconds: float = 0.0
     last_read_at: float = 0.0
     updated_at: float = Field(default_factory=time.time)
@@ -307,11 +305,9 @@ class KidsLearningProgress(BaseModel):
     epub_cfi: str = ""
     section_href: str = ""
     completed_section_ids: list[str] = Field(default_factory=list)
-    total_stars: int = 0
     quiz_attempts: int = 0
     quiz_best_score: int = 0
     quiz_scores: dict[str, int] = Field(default_factory=dict)
-    quiz_stars_awarded: dict[str, int] = Field(default_factory=dict)
     time_spent_seconds: float = 0.0
     last_read_at: float = 0.0
     updated_at: float = Field(default_factory=time.time)
@@ -324,16 +320,6 @@ class KidsQuizSubmission(BaseModel):
     document_id: str
     section_id: str
     answers: list[int] = Field(default_factory=list)
-
-
-class KidsQuizGradeResult(BaseModel):
-    """Grading result returned to the child after submission."""
-
-    score: int
-    total: int
-    stars: int
-    per_question: list[dict[str, Any]] = Field(default_factory=list)
-    encouragements: list[str] = Field(default_factory=list)
 
 
 __all__ = [
@@ -349,7 +335,6 @@ __all__ = [
     "KidsInteractiveBookProgress",
     "KidsLearningProgress",
     "KidsProfile",
-    "KidsQuizGradeResult",
     "KidsQuizQuestion",
     "KidsQuizResult",
     "KidsQuizSubmission",

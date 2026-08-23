@@ -3051,13 +3051,6 @@ class KidsManager:
             )
         return progress
 
-    def add_stars(self, profile_id: str, document_id: str, stars: int) -> KidsLearningProgress:
-        progress = self.load_kids_progress(profile_id, document_id)
-        progress.total_stars += max(0, stars)
-        progress.updated_at = time.time()
-        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
-        return progress
-
     def record_quiz(
         self, profile_id: str, document_id: str, score: int, total: int
     ) -> KidsLearningProgress:
@@ -3075,23 +3068,17 @@ class KidsManager:
         section_id: str,
         score: int,
         total: int,
-        earned_stars: int,
-    ) -> tuple[KidsLearningProgress, int]:
-        """Record one section quiz and award only newly earned stars."""
+    ) -> KidsLearningProgress:
+        """Record one section quiz as a neutral learning fact."""
         progress = self.load_kids_progress(profile_id, document_id)
         key = section_id or "section-0"
-        previous_stars = progress.quiz_stars_awarded.get(key, 0)
-        new_stars = max(0, earned_stars - previous_stars)
-        if earned_stars > previous_stars:
-            progress.quiz_stars_awarded[key] = earned_stars
-        progress.total_stars += new_stars
         previous_score = progress.quiz_scores.get(key, 0)
         progress.quiz_scores[key] = max(previous_score, score)
         progress.quiz_attempts += 1
         progress.quiz_best_score = max(progress.quiz_best_score, score)
         progress.updated_at = time.time()
         _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
-        return progress, new_stars
+        return progress
 
     def get_report(self, profile_id: str) -> dict[str, Any]:
         """Aggregate learning report for a child profile."""
@@ -3099,13 +3086,11 @@ class KidsManager:
         if profile is None:
             raise ValueError("Profile not found")
         library = self.get_kids_library(profile_id)
-        total_stars = sum(item["progress"]["total_stars"] for item in library)
         total_time = sum(item["progress"]["time_spent_seconds"] for item in library)
         total_quizzes = sum(item["progress"]["quiz_attempts"] for item in library)
         return {
             "profile": profile.model_dump(mode="json"),
             "books": library,
-            "total_stars": total_stars,
             "total_time_seconds": total_time,
             "total_quiz_attempts": total_quizzes,
             "total_books": len(library),
@@ -3166,19 +3151,13 @@ class KidsManager:
         block_id: str,
         score: int,
         total: int,
-        earned_stars: int,
-    ) -> tuple[KidsInteractiveBookProgress, int]:
+    ) -> KidsInteractiveBookProgress:
         progress = self.load_kids_interactive_progress(profile_id, book_id)
-        previous_stars = progress.quiz_stars_awarded.get(block_id, 0)
-        new_stars = max(0, earned_stars - previous_stars)
-        if earned_stars > previous_stars:
-            progress.quiz_stars_awarded[block_id] = earned_stars
-        progress.total_stars += new_stars
         previous_score = progress.quiz_scores.get(block_id, 0)
         progress.quiz_scores[block_id] = max(previous_score, score)
         progress.updated_at = time.time()
         self.save_kids_interactive_progress(progress)
-        return progress, new_stars
+        return progress
 
     def is_interactive_page_allowed(self, profile_id: str, book_id: str, page_order: int) -> bool:
         assignments = self.list_assignments(profile_id)

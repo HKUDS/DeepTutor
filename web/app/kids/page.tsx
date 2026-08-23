@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { kidsApi, type KidsProfile, type KidsLibraryItem } from "@/lib/kids-api";
+import { RewardSnapshotView } from "@/components/kids/RewardSnapshot";
+import {
+  kidsApi,
+  type KidsProfile,
+  type KidsLibraryItem,
+  type KidsRewardSnapshot,
+} from "@/lib/kids-api";
 
 const AVATAR_EMOJIS = ["🦊", "🐼", "🦄", "🐸", "🐱", "🐶", "🦁", "🐰"];
 
@@ -12,6 +18,7 @@ export default function KidsPage() {
   const [profiles, setProfiles] = useState<KidsProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<KidsProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
+  const [reward, setReward] = useState<KidsRewardSnapshot | null>(null);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   const [error, setError] = useState("");
@@ -74,8 +81,11 @@ export default function KidsPage() {
     try {
       const { token } = await kidsApi.selectProfile(profile.id);
       localStorage.setItem("dt_kids_token", token);
-      const { library: lib } = await kidsApi.library(profile.id);
+      localStorage.setItem("dt_kids_profile_id", profile.id);
+      const { library: lib } = await kidsApi.library();
+      const { reward: nextReward } = await kidsApi.getRewards();
       setLibrary(lib);
+      setReward(nextReward);
       setStage("shelf");
     } catch {
       setError("Cannot load books. Try again!");
@@ -87,8 +97,11 @@ export default function KidsPage() {
     try {
       const { token } = await kidsApi.parentUnlock(selectedProfile.id, pinInput);
       localStorage.setItem("dt_kids_token", token);
-      const { library: lib } = await kidsApi.library(selectedProfile.id);
+      localStorage.setItem("dt_kids_profile_id", selectedProfile.id);
+      const { library: lib } = await kidsApi.library();
+      const { reward: nextReward } = await kidsApi.getRewards();
       setLibrary(lib);
+      setReward(nextReward);
       setStage("shelf");
     } catch {
       setPinError("Wrong PIN. Try again!");
@@ -110,6 +123,7 @@ export default function KidsPage() {
     localStorage.removeItem("dt_kids_token");
     localStorage.removeItem("dt_kids_profile_id");
     setSelectedProfile(null);
+    setReward(null);
     setStage("picker");
   };
 
@@ -240,10 +254,8 @@ export default function KidsPage() {
           {AVATAR_EMOJIS[profiles.findIndex((p) => p.id === selectedProfile?.id) % AVATAR_EMOJIS.length]}{" "}
           {selectedProfile?.name}&apos;s Books
         </h1>
-        <div style={styles.starsBadge}>
-          ⭐ {library.reduce((sum, b) => sum + (b.progress?.total_stars || 0), 0)}
-        </div>
       </div>
+      <RewardSnapshotView reward={reward} />
 
       {library.length === 0 ? (
         <div style={styles.emptyShelf}>
@@ -294,9 +306,6 @@ export default function KidsPage() {
                     </span>
                   </div>
                   <div style={styles.bookTitle}>{title}</div>
-                  <div style={styles.bookStars}>
-                    ⭐ {item.progress?.total_stars || 0}
-                  </div>
                   {completed > 0 && (
                     <div style={styles.bookProgress}>
                       已学完 {completed} 节
@@ -415,14 +424,6 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
   },
   shelfTitle: { fontSize: 24, fontWeight: 800, color: "#4a3f6b", margin: 0, flex: 1, textAlign: "center" as const },
-  starsBadge: {
-    background: "#fef3c7",
-    borderRadius: 20,
-    padding: "8px 16px",
-    fontSize: 18,
-    fontWeight: 700,
-    color: "#92400e",
-  },
   emptyShelf: { textAlign: "center", marginTop: 80 },
   bookGrid: {
     display: "grid",
@@ -450,7 +451,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   bookInfo: { padding: "12px 14px", textAlign: "left" as const },
   bookTitle: { fontSize: 16, fontWeight: 700, color: "#2d3748", lineHeight: 1.3 },
-  bookStars: { fontSize: 14, color: "#d69e2e", marginTop: 4 },
   bookProgress: { fontSize: 12, color: "#718096", marginTop: 2 },
   nextReadBadge: {
     fontSize: 13,

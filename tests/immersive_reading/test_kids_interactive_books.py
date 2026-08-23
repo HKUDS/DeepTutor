@@ -1,12 +1,15 @@
 """Unit and integration tests for Kids Interactive Books (Math and Digital Books)."""
 
 import json
-
 import time
-import pytest
+from types import SimpleNamespace
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
+import deeptutor.api.routers.kids as kids_router_module
+import deeptutor.api.routers.kids_admin as kids_admin_router_module
 from deeptutor.book.models import (
     Block,
     BlockType,
@@ -18,14 +21,19 @@ from deeptutor.book.models import (
     Spine,
 )
 from deeptutor.book.storage import get_book_storage
+import deeptutor.core.entry_points as entry_point_module
 from deeptutor.immersive_reading.models import (
     KidsBookAssignment,
     KidsInteractiveBookProgress,
     KidsProfile,
 )
 from deeptutor.immersive_reading.service import get_kids_manager
-import deeptutor.api.routers.kids as kids_router_module
-import deeptutor.api.routers.kids_admin as kids_admin_router_module
+from deeptutor.kids_rewards import (
+    KidsRewardEvent,
+    RewardSnapshot,
+    get_kids_reward_providers,
+    reset_kids_reward_provider_cache_for_tests,
+)
 
 
 @pytest.fixture
@@ -162,6 +170,16 @@ def kids_client(clean_kids_manager, sample_profile, mock_interactive_book) -> Te
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def isolated_reward_provider_cache(monkeypatch):
+    reset_kids_reward_provider_cache_for_tests()
+    monkeypatch.setattr(
+        entry_point_module, "entry_points", lambda *, group: []
+    )
+    yield
+    reset_kids_reward_provider_cache_for_tests()
+
+
 def test_kids_manager_assign_and_progress(clean_kids_manager, sample_profile, mock_interactive_book):
     """Verify assignment and progress tracking on KidsManager layer."""
     assignment = clean_kids_manager.assign_interactive_book(
@@ -214,20 +232,18 @@ def test_kids_manager_assign_and_progress(clean_kids_manager, sample_profile, mo
     assert "pg_01" in prog.completed_page_ids
     assert prog.time_spent_seconds >= 45.0
 
-    # Idempotent quiz grading & star awards
-    prog, stars1 = clean_kids_manager.record_interactive_quiz_result(
-        sample_profile.id, mock_interactive_book.id, "blk_quiz_1", score=1, total=1, earned_stars=3
+    # Quiz grading remains a neutral learning fact.
+    prog = clean_kids_manager.record_interactive_quiz_result(
+        sample_profile.id, mock_interactive_book.id, "blk_quiz_1", score=1, total=1
     )
-    assert stars1 == 3
-    assert prog.total_stars == 3
-    assert prog.quiz_stars_awarded["blk_quiz_1"] == 3
+    assert prog.quiz_scores["blk_quiz_1"] == 1
+    assert "total_stars" not in prog.model_dump(mode="json")
+    assert "quiz_stars_awarded" not in prog.model_dump(mode="json")
 
-    # Retrying with same score does NOT award duplicate stars
-    prog, stars2 = clean_kids_manager.record_interactive_quiz_result(
-        sample_profile.id, mock_interactive_book.id, "blk_quiz_1", score=1, total=1, earned_stars=3
+    prog = clean_kids_manager.record_interactive_quiz_result(
+        sample_profile.id, mock_interactive_book.id, "blk_quiz_1", score=1, total=1
     )
-    assert stars2 == 0
-    assert prog.total_stars == 3
+    assert prog.quiz_scores["blk_quiz_1"] == 1
 
 
 def test_child_interactive_book_endpoints(kids_client, sample_profile, clean_kids_manager, mock_interactive_book):
@@ -246,7 +262,7 @@ def test_child_interactive_book_endpoints(kids_client, sample_profile, clean_kid
     headers = {"Authorization": f"Bearer {token}"}
 
     # 3. Check library listing
-    lib_resp = kids_client.get("/api/v1/kids/library", headers={"X-Profile-Id": sample_profile.id})
+    lib_resp = kids_client.get("/api/v1/kids/library", headers=headers)
     assert lib_resp.status_code == 200
     library = lib_resp.json()["library"]
     assert len(library) == 1
@@ -275,7 +291,7 @@ def test_child_interactive_book_endpoints(kids_client, sample_profile, clean_kid
     assert "bridge_text" not in section_blk["payload"]
     assert "Thinking Process" not in json.dumps(page_data, ensure_ascii=False)
 
-    # 6. Submit quiz answer — server grades and awards stars
+    # 6. Submit quiz answer — server grades without core reward fields
     submit_resp = kids_client.post(
         f"/api/v1/kids/interactive-books/{mock_interactive_book.id}/quiz/submit",
         headers=headers,
@@ -284,10 +300,76 @@ def test_child_interactive_book_endpoints(kids_client, sample_profile, clean_kid
     assert submit_resp.status_code == 200
     grade = submit_resp.json()
     assert grade["score"] == 1
-    assert grade["stars"] == 3
-    assert grade["new_stars_awarded"] == 3
+    assert grade["reward"] is None
+    assert not any(
+        key in grade
+        for key in ("stars", "new_stars_awarded", "total_stars", "encouragements")
+    )
     assert grade["per_question"][0]["correct"] is True
     assert "三角形有3条边" in grade["per_question"][0]["explanation"]
+
+
+def test_interactive_quiz_dispatches_reward_event(
+    kids_client,
+    sample_profile,
+    clean_kids_manager,
+    mock_interactive_book,
+    monkeypatch,
+):
+    class RewardProvider:
+        name = "interactive_fake"
+        version = "1.0.0"
+
+        def __init__(self) -> None:
+            self.events: list[KidsRewardEvent] = []
+
+        def record(self, event: KidsRewardEvent) -> RewardSnapshot:
+            self.events.append(event)
+            return self.snapshot(event.profile_id)
+
+        def snapshot(self, profile_id: str) -> RewardSnapshot:
+            return RewardSnapshot(
+                provider=self.name,
+                title="My rewards",
+                message="Nice work!",
+            )
+
+    provider = RewardProvider()
+    clean_kids_manager.assign_interactive_book(
+        sample_profile.id, mock_interactive_book.id, available_through_page_order=1
+    )
+    selected = kids_client.post(
+        "/api/v1/kids/select-profile", json={"profile_id": sample_profile.id}
+    )
+    headers = {"Authorization": f"Bearer {selected.json()['token']}"}
+    reset_kids_reward_provider_cache_for_tests()
+    monkeypatch.setattr(
+        entry_point_module,
+        "entry_points",
+        lambda *, group: [SimpleNamespace(name=provider.name, load=lambda: provider)],
+    )
+    assert get_kids_reward_providers(refresh=True) == [provider]
+
+    response = kids_client.post(
+        f"/api/v1/kids/interactive-books/{mock_interactive_book.id}/quiz/submit",
+        headers=headers,
+        json={"page_id": "pg_01", "block_id": "blk_quiz_1", "answers": [1]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["score"] == 1
+    assert payload["reward"]["provider"] == "interactive_fake"
+    assert len(provider.events) == 1
+    event = provider.events[0]
+    assert event.profile_id == sample_profile.id
+    assert event.content_type == "interactive_book"
+    assert event.content_id == mock_interactive_book.id
+    assert event.item_id == "blk_quiz_1"
+    assert event.kind == "quiz_submitted"
+    assert event.score == 1
+    assert event.total == 1
+    assert event.completed is True
 
 
 def test_parent_admin_interactive_books(kids_client, sample_profile, clean_kids_manager, mock_interactive_book):

@@ -18,11 +18,9 @@ const progress = {
   epub_cfi: "",
   section_href: "",
   completed_section_ids: [],
-  total_stars: 0,
   quiz_attempts: 0,
   quiz_best_score: 0,
   quiz_scores: {},
-  quiz_stars_awarded: {},
   time_spent_seconds: 0,
   last_read_at: 0,
 };
@@ -221,25 +219,25 @@ test.beforeEach(async ({ page }) => {
       return json({
         score: 3,
         total: 3,
-        stars: 3,
-        new_stars_awarded: 3,
-        total_stars: 3,
+        reward: null,
         completed_section_ids: ["section_0001"],
         per_question: [
           { id: "q1", correct: true, explanation: "" },
           { id: "q2", correct: true, explanation: "" },
           { id: "q3", correct: true, explanation: "" },
         ],
-        encouragements: ["Great job!"],
       });
     }
     if (suffix === "/books/chinese/quiz/submit") {
       return json({
         score: 3,
         total: 3,
-        stars: 3,
-        new_stars_awarded: 3,
-        total_stars: 3,
+        reward: {
+          provider: "e2e_rewards",
+          title: "Learning rewards",
+          message: "You finished this chapter.",
+          items: [{ provider_label: "Points", value: "10" }],
+        },
         language: "zh",
         completed_section_ids: ["section_0001"],
         per_question: [
@@ -247,7 +245,6 @@ test.beforeEach(async ({ page }) => {
           { id: "q2", correct: true, explanation: "科学家研究很小的粒子。" },
           { id: "q3", correct: true, explanation: "两个世界的规律不一样。" },
         ],
-        encouragements: ["全部答对，太棒了！"],
       });
     }
     return json({ detail: "Not found" }, 404);
@@ -298,7 +295,7 @@ test("kids golden path guides words, auto-checks chapters, and narrates", async 
   await page.getByRole("button", { name: "take or receive", exact: true }).click();
   await page.getByRole("button", { name: "Submit" }).click();
   await expect(page.getByText("3 / 3 correct!")).toBeVisible();
-  await expect(page.getByText("Stars: 3")).toBeVisible();
+  await expect(page.getByText("Stars: 3")).toBeHidden();
   await expect(page.getByRole("button", { name: "Read answer" })).toHaveCount(3);
 });
 
@@ -396,6 +393,8 @@ test("kids Chinese learn uses guided concepts and Chinese quiz feedback", async 
   await page.getByRole("button", { name: "规律不一样", exact: true }).click();
   await page.getByRole("button", { name: "提交" }).click();
   await expect(page.getByText("答对 3 / 3 题")).toBeVisible();
-  await expect(page.getByText("星星: 3")).toBeVisible();
-  await expect(page.getByText("全部答对，太棒了！")).toBeVisible();
+  await expect(page.getByText("星星: 3")).toBeHidden();
+  await expect(page.getByText("Learning rewards")).toBeVisible();
+  await expect(page.getByText("You finished this chapter.")).toBeVisible();
+  await expect(page.getByText("e2e_rewards")).toBeVisible();
 });

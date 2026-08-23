@@ -66,7 +66,7 @@ test.beforeEach(async ({ page }) => {
           current_page_id: "pg_01",
           current_page_order: 0,
           completed_page_ids: [],
-          total_stars: 0,
+          quiz_scores: {},
           last_read_at: 0,
         },
       });
@@ -86,7 +86,7 @@ test.beforeEach(async ({ page }) => {
           current_page_id: target.id,
           current_page_order: pages.findIndex((item) => item.id === target.id),
           completed_page_ids: [],
-          total_stars: 0,
+          quiz_scores: {},
           last_read_at: 0,
         },
       });
@@ -100,7 +100,7 @@ test.beforeEach(async ({ page }) => {
           current_page_id: body.page_id,
           current_page_order: body.page_order || 0,
           completed_page_ids: [],
-          total_stars: 0,
+          quiz_scores: {},
           last_read_at: 0,
         },
       });

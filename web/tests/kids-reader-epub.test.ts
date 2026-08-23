@@ -10,6 +10,10 @@ const readerSource = readFileSync(
 );
 const apiSource = readFileSync(path.resolve(process.cwd(), "lib/kids-api.ts"), "utf8");
 const globalCss = readFileSync(path.resolve(process.cwd(), "app/globals.css"), "utf8");
+const rewardSource = readFileSync(
+  path.resolve(process.cwd(), "components/kids/RewardSnapshot.tsx"),
+  "utf8",
+);
 
 test("kids reader loads EPUBs through the authorized kids endpoint", () => {
   // react-reader consumes a plain URL, so a raw kids route would not receive
@@ -27,9 +31,20 @@ test("kids reader centers guided learning and demotes translation", () => {
   assert.match(readerSource, /thinkAgain/);
   assert.match(readerSource, /\{copy\.learn\}/);
   assert.match(readerSource, /\{copy\.quiz\}/);
-  assert.match(readerSource, /result\.total_stars/);
+  assert.match(readerSource, /RewardSnapshotView/);
+  assert.match(readerSource, /grade\.reward/);
   assert.doesNotMatch(readerSource, />\s*Translate\s*</);
   assert.match(readerSource, /Languages/);
+});
+
+test("kids reward presentation is provider-owned and optional", () => {
+  assert.doesNotMatch(apiSource, /total_stars|new_stars_awarded|encouragements/);
+  assert.match(apiSource, /KidsRewardSnapshot/);
+  assert.match(apiSource, /getRewards/);
+  assert.match(rewardSource, /reward\.provider/);
+  assert.match(rewardSource, /reward\.title/);
+  assert.match(rewardSource, /reward\.items/);
+  assert.match(rewardSource, /if \(!reward\) return null/);
 });
 
 test("kids reader always offers three guided questions with pronunciation", () => {

@@ -6,14 +6,29 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
 import deeptutor.api.routers.kids as kids_router_module
+from deeptutor.core import entry_points as entry_point_module
 from deeptutor.immersive_reading.models import (
     KidsBookAssignment,
     KidsQuizQuestion,
     KidsQuizResult,
 )
 from deeptutor.immersive_reading.service import _write_json, get_kids_manager
+from deeptutor.kids_rewards import reset_kids_reward_provider_cache_for_tests
+
+
+@pytest.fixture(autouse=True)
+def isolated_reward_provider_cache(monkeypatch):
+    reset_kids_reward_provider_cache_for_tests()
+    monkeypatch.setattr(
+        entry_point_module,
+        "entry_points",
+        lambda *, group: [],
+    )
+    yield
+    reset_kids_reward_provider_cache_for_tests()
 
 
 class FakeImmersiveReadingService:
@@ -155,7 +170,48 @@ def test_kids_epub_requires_device_session(tmp_path, monkeypatch):
     assert authorized.headers["content-type"] == "application/epub+zip"
 
 
-def test_kids_epub_quiz_stars_are_idempotent_per_section(tmp_path, monkeypatch):
+def test_kids_profile_and_library_require_pin_or_device_session(tmp_path, monkeypatch):
+    manager = get_kids_manager()
+    monkeypatch.setattr(manager, "_kids_root", lambda: tmp_path / "kids")
+    profile = manager.create_profile(name="Protected Reader", parent_pin="1234")
+    _write_json(
+        manager._assignments_path(),
+        [
+            KidsBookAssignment(
+                id="assignment001",
+                profile_id=profile.id,
+                document_id="readingdoc001",
+                document_title="Reading Doc",
+            ).model_dump(mode="json")
+        ],
+    )
+
+    app = FastAPI()
+    app.include_router(kids_router_module.router, prefix="/api/v1/kids")
+    client = TestClient(app)
+    select_without_pin = client.post(
+        "/api/v1/kids/select-profile", json={"profile_id": profile.id}
+    )
+    assert select_without_pin.status_code == 403
+
+    library_without_session = client.get(
+        "/api/v1/kids/library", headers={"X-Profile-Id": profile.id}
+    )
+    assert library_without_session.status_code == 401
+
+    selected = client.post(
+        "/api/v1/kids/select-profile",
+        json={"profile_id": profile.id, "pin": "1234"},
+    )
+    assert selected.status_code == 200
+    library = client.get(
+        "/api/v1/kids/library",
+        headers={"Authorization": f"Bearer {selected.json()['token']}"},
+    )
+    assert library.status_code == 200
+
+
+def test_kids_epub_quiz_learning_facts_are_idempotent_per_section(tmp_path, monkeypatch):
     manager = get_kids_manager()
     monkeypatch.setattr(manager, "_kids_root", lambda: tmp_path / "kids")
     profile = manager.create_profile(name="Reader")
@@ -190,14 +246,19 @@ def test_kids_epub_quiz_stars_are_idempotent_per_section(tmp_path, monkeypatch):
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert first.json()["new_stars_awarded"] == 3
-    assert first.json()["total_stars"] == 3
-    assert second.json()["new_stars_awarded"] == 0
-    assert second.json()["total_stars"] == 3
+    assert first.json()["score"] == 3
+    assert first.json()["completed_section_ids"] == ["section-1"]
+    assert second.json()["score"] == 3
+    assert second.json()["completed_section_ids"] == ["section-1"]
+    assert first.json()["reward"] is None
+    assert not any(
+        key in first.json()
+        for key in ("stars", "new_stars_awarded", "total_stars", "encouragements")
+    )
     assert "answer_index" not in first.text
 
 
-def test_kids_epub_quiz_partial_score_does_not_award_stars_or_complete(tmp_path, monkeypatch):
+def test_kids_epub_quiz_partial_score_does_not_complete(tmp_path, monkeypatch):
     manager = get_kids_manager()
     monkeypatch.setattr(manager, "_kids_root", lambda: tmp_path / "kids")
     profile = manager.create_profile(name="Reader")
@@ -234,9 +295,7 @@ def test_kids_epub_quiz_partial_score_does_not_award_stars_or_complete(tmp_path,
     payload = response.json()
     assert payload["score"] == 2
     assert payload["total"] == 3
-    assert payload["stars"] == 0
-    assert payload["new_stars_awarded"] == 0
-    assert payload["total_stars"] == 0
+    assert payload["reward"] is None
     assert payload["completed_section_ids"] == []
 
 

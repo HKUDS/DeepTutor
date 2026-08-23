@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
 from deeptutor.immersive_reading.service import get_kids_manager
+from deeptutor.kids_rewards import kids_reward_snapshot
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -195,6 +196,15 @@ async def learning_report(profile_id: str) -> dict:
         return manager.get_report(profile_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/profiles/{profile_id}/rewards")
+async def kids_rewards_report(profile_id: str) -> dict:
+    manager = get_kids_manager()
+    if manager.get_profile(profile_id) is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    reward = kids_reward_snapshot(profile_id)
+    return {"reward": reward.model_dump(mode="json") if reward else None}
 
 
 # ── Available Interactive Books ─────────────────────────────────────────────

@@ -17,8 +17,8 @@ import {
   ChevronRight,
   CheckCircle2,
   HelpCircle,
-  Trophy,
 } from "lucide-react";
+import { RewardSnapshotView } from "@/components/kids/RewardSnapshot";
 import SimpleMarkdownRenderer from "@/components/common/SimpleMarkdownRenderer";
 import { Mermaid } from "@/components/Mermaid";
 import {
@@ -68,9 +68,6 @@ export default function KidsInteractiveBookReader() {
       }
     });
   }, []);
-
-  // Celebration state
-  const [celebrateStars, setCelebrateStars] = useState<number | null>(null);
 
   const loadPageContent = useCallback(async (pageId: string, loadToken: number) => {
     try {
@@ -212,10 +209,6 @@ export default function KidsInteractiveBookReader() {
       });
       setQuizGrades((prev) => ({ ...prev, [blockId]: grade }));
       setProgress(grade.progress);
-      if (grade.new_stars_awarded > 0) {
-        setCelebrateStars(grade.new_stars_awarded);
-        setTimeout(() => setCelebrateStars(null), 3000);
-      }
     } catch (err) {
       console.error("Quiz submission failed:", err);
     } finally {
@@ -249,19 +242,6 @@ export default function KidsInteractiveBookReader() {
 
   return (
     <div style={S.container}>
-      {/* Floating Star Celebration Banner */}
-      {celebrateStars !== null && (
-        <div style={S.celebrationOverlay}>
-          <div style={S.celebrationBox}>
-            <Trophy size={48} color="#d69e2e" />
-            <h2 style={{ margin: "12px 0 4px 0", color: "#744210" }}>太棒啦！</h2>
-            <p style={{ margin: 0, fontSize: 18, color: "#b7791f" }}>
-              获得 +{celebrateStars} 颗新星星 ⭐！
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Top Navigation Bar */}
       <header style={S.header}>
         <button style={S.backBtn} onClick={() => router.push(`/kids/p/${profileId}`)} title="返回书架">
@@ -272,9 +252,6 @@ export default function KidsInteractiveBookReader() {
           <div style={S.pageProgressText}>
             第 {currentPageIndex + 1} / {allPages.length} 页
           </div>
-        </div>
-        <div style={S.starBadge}>
-          ⭐ <span style={{ fontWeight: 800 }}>{progress?.total_stars || 0}</span>
         </div>
       </header>
 
@@ -563,7 +540,7 @@ function renderBlock(
     );
   }
 
-  // 5. Quiz Block (Gamified Questions)
+  // 5. Quiz Block
   if (block.type === "quiz") {
     const questions = (payload.questions as { id?: string; question: string; choices: string[] }[]) || [];
     const allAnswered = questions.length > 0 && answers.length >= questions.length && answers.every((a) => a >= 0);
@@ -571,7 +548,6 @@ function renderBlock(
     return (
       <div style={S.quizBlock} data-kids-no-page-swipe>
         <div style={S.quizHeader}>
-          <Trophy size={24} color="#d69e2e" />
           <h3 style={S.quizTitle}>闯关挑战小测验</h3>
         </div>
 
@@ -644,9 +620,10 @@ function renderBlock(
           </button>
           {grade && (
             <div style={S.gradeSummary}>
-              得分: {grade.score} / {grade.total} (获得 {grade.stars} 颗星 ⭐)
+              得分: {grade.score} / {grade.total}
             </div>
           )}
+          <RewardSnapshotView reward={grade?.reward ?? null} />
         </div>
       </div>
     );
@@ -1046,14 +1023,6 @@ const S: Record<string, React.CSSProperties> = {
   headerCenter: { textAlign: "center", flex: 1, margin: "0 12px" },
   bookTitle: { fontSize: 18, fontWeight: 800, color: "#2d3748" },
   pageProgressText: { fontSize: 13, color: "#718096", marginTop: 2 },
-  starBadge: {
-    background: "#fef3c7",
-    borderRadius: 20,
-    padding: "6px 14px",
-    fontSize: 16,
-    color: "#92400e",
-    fontWeight: 700,
-  },
   mainContent: {
     flex: 1,
     minHeight: 0,
@@ -1378,22 +1347,6 @@ const S: Record<string, React.CSSProperties> = {
     WebkitOverflowScrolling: "touch",
   },
   dot: { width: 18, height: 18, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0 },
-  celebrationOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.3)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 999,
-  },
-  celebrationBox: {
-    background: "white",
-    borderRadius: 24,
-    padding: "28px 48px",
-    textAlign: "center",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-  },
   errorCard: {
     background: "white",
     borderRadius: 20,

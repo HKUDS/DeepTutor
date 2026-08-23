@@ -26,6 +26,11 @@ from deeptutor.immersive_reading.kids_word_hints import build_kids_word_hint
 from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
 from deeptutor.immersive_reading.service import get_kids_manager
 from deeptutor.immersive_reading.sight_words import detect_quiz_language
+from deeptutor.kids_rewards import (
+    build_kids_reward_event,
+    kids_reward_snapshot,
+    record_kids_reward_event,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -161,6 +166,7 @@ async def bootstrap() -> dict:
 
 class SelectProfileRequest(BaseModel):
     profile_id: str
+    pin: str = ""
 
 
 @router.post("/select-profile")
@@ -174,6 +180,8 @@ async def select_profile(request: SelectProfileRequest) -> dict:
     profile = manager.get_profile(request.profile_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="Profile not found")
+    if profile.pin_hash and not manager.verify_parent_pin(profile.id, request.pin):
+        raise HTTPException(status_code=403, detail="Invalid PIN or too many attempts")
     token = _sign_device_token(request.profile_id)
     profile_data = {
         "id": profile.id,
@@ -222,15 +230,19 @@ async def parent_unlock(request: ParentUnlockRequest) -> dict:
 
 
 @router.get("/library")
-async def kids_library(profile_id: str = Header(default="", alias="X-Profile-Id")) -> dict:
-    """List assigned books for a profile (no device token needed — just profile_id).
-
-    This is also called from bootstrap before a token is issued.
-    """
+async def kids_library(profile_id: str = Depends(_require_profile)) -> dict:
+    """List assigned books for the authenticated child profile."""
     manager = get_kids_manager()
     if manager.get_profile(profile_id) is None:
         raise HTTPException(status_code=404, detail="Profile not found")
     return {"library": manager.get_kids_library(profile_id)}
+
+
+@router.get("/rewards")
+async def get_kids_rewards(profile_id: str = Depends(_require_profile)) -> dict:
+    """Return the optional provider-owned reward snapshot."""
+    reward = kids_reward_snapshot(profile_id)
+    return {"reward": reward.model_dump(mode="json") if reward else None}
 
 
 # ── Book access (device-session gated) ──────────────────────────────────────
@@ -698,42 +710,47 @@ async def submit_kids_quiz(
         )
 
     total = len(cached.questions)
-    stars = 3 if total > 0 and correct == total else 0
-
-    encouragements = (
-        ["全部答对，太棒了！"]
-        if correct == total
-        else ["有进步，再想想！"]
-        if correct > 0
-        else ["继续读一读，再试一次！"]
-        if language == "zh"
-        else ["Great job!"]
-        if correct == total
-        else ["Good try!"]
-        if correct > 0
-        else ["Keep reading and try again!"]
-    )
-
-    progress, new_stars = manager.record_reading_quiz_result(
+    completed = total > 0 and correct == total
+    progress = manager.record_reading_quiz_result(
         profile_id,
         document_id,
         section.id,
         correct,
         total,
-        stars,
     )
-    if correct == total:
+    if completed:
         progress = manager.mark_section_completed(profile_id, document_id, section.id)
+    quiz_event = build_kids_reward_event(
+        profile_id=profile_id,
+        content_type="reading",
+        content_id=document_id,
+        item_id=section.id,
+        kind="quiz_submitted",
+        score=correct,
+        total=total,
+        completed=completed,
+    )
+    reward = record_kids_reward_event(quiz_event)
+    if completed:
+        record_kids_reward_event(
+            build_kids_reward_event(
+                profile_id=profile_id,
+                content_type="reading",
+                content_id=document_id,
+                item_id=section.id,
+                kind="section_completed",
+                score=correct,
+                total=total,
+                completed=True,
+            )
+        )
 
     return {
         "score": correct,
         "total": total,
-        "stars": stars,
-        "new_stars_awarded": new_stars,
-        "total_stars": progress.total_stars,
+        "reward": reward.model_dump(mode="json") if reward else None,
         "completed_section_ids": progress.completed_section_ids,
         "per_question": per_question,
-        "encouragements": encouragements,
         "language": language,
     }
 
@@ -1221,32 +1238,27 @@ async def submit_kids_interactive_quiz(
         )
 
     total = len(questions)
-    stars = 1 if correct > 0 else 0
-    if total > 0 and correct >= total * 0.6:
-        stars = 2
-    if total > 0 and correct == total:
-        stars = 3
-
-    encouragements = [
-        "太棒了！全部回答正确！🌟"
-        if correct == total
-        else "很棒的尝试！继续加油！✨"
-        if correct > 0
-        else "别灰心，再看一遍讲解试试看！💪"
-    ]
-
-    progress, new_stars = manager.record_interactive_quiz_result(
-        profile_id, book_id, request.block_id, correct, total, stars
+    progress = manager.record_interactive_quiz_result(
+        profile_id, book_id, request.block_id, correct, total
+    )
+    reward = record_kids_reward_event(
+        build_kids_reward_event(
+            profile_id=profile_id,
+            content_type="interactive_book",
+            content_id=book_id,
+            item_id=request.block_id,
+            kind="quiz_submitted",
+            score=correct,
+            total=total,
+            completed=total > 0 and correct == total,
+        )
     )
 
     return {
         "score": correct,
         "total": total,
-        "stars": stars,
-        "new_stars_awarded": new_stars,
-        "total_stars": progress.total_stars,
+        "reward": reward.model_dump(mode="json") if reward else None,
         "per_question": per_question,
-        "encouragements": encouragements,
         "progress": progress.model_dump(mode="json"),
     }
 

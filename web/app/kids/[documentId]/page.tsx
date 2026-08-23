@@ -15,6 +15,7 @@ import {
   type KidsQuizGrade,
 } from "@/lib/kids-api";
 import { GuidedLearnModal } from "@/components/kids/GuidedLearnModal";
+import { RewardSnapshotView } from "@/components/kids/RewardSnapshot";
 import {
   detectKidsReadingLanguage,
   kidsLearningCopy,
@@ -145,7 +146,6 @@ export default function KidsReaderPage() {
   const [translateText, setTranslateText] = useState<string | null>(null);
   const [translateResult, setTranslateResult] = useState("");
   const [translating, setTranslating] = useState(false);
-  const [stars, setStars] = useState(0);
   const [wordHintData, setWordHintData] = useState<KidsWordHint | null>(null);
   const [wordHintState, setWordHintState] = useState<KidsWordHintState | null>(null);
   const [wordHintBusy, setWordHintBusy] = useState(false);
@@ -184,7 +184,6 @@ export default function KidsReaderPage() {
         const doc = data.document as Record<string, any>;
         setBookTitle(doc.title || "Book");
         setContentLanguage(doc.content_language === "zh" ? "zh" : "en");
-        setStars(data.progress?.total_stars || 0);
         completedSectionIdsRef.current = data.progress?.completed_section_ids || [];
         const docSections = Array.isArray(doc.sections) ? doc.sections : [];
         sectionsRef.current = docSections;
@@ -703,7 +702,6 @@ export default function KidsReaderPage() {
         answerArr,
       );
       setGrade(result);
-      setStars(result.total_stars);
       completedSectionIdsRef.current = result.completed_section_ids || completedSectionIdsRef.current;
     } catch {
       // ignore
@@ -797,7 +795,6 @@ export default function KidsReaderPage() {
        <div style={{ flex: 1, textAlign: "center", fontWeight: 700, fontSize: 18, color: "#4a3f6b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
          {bookTitle}
        </div>
-        <div style={{ fontSize: 22 }}>{copy.stars}: {stars}</div>
         <button
           style={secondaryToolBtn}
           title="Translate selected words"
@@ -1326,14 +1323,9 @@ export default function KidsReaderPage() {
                 <div style={{ fontSize: 28, fontWeight: 800, color: kidsModalHeadingColor, marginTop: 8 }}>
                   {copy.correctCount.replace("{score}", String(grade.score)).replace("{total}", String(grade.total))}
                 </div>
-                <div style={{ fontSize: 32, marginTop: 8 }}>
-                  {"*".repeat(grade.stars)}{".".repeat(3 - grade.stars)}
+                <div style={{ marginTop: 12 }}>
+                  <RewardSnapshotView reward={grade.reward} />
                 </div>
-                {grade.new_stars_awarded > 0 && (
-                  <div style={{ fontSize: 18, color: kidsModalAccentColor, marginTop: 8 }}>
-                    {grade.encouragements[0]}
-                  </div>
-                )}
                 {grade.per_question.map((q, i) => (
                   <div key={i} style={{
                     marginTop: 12,

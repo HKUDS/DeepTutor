@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { kidsAdminApi, type KidsProfile, type KidsLibraryItem } from "@/lib/kids-api";
+import { RewardSnapshotView } from "@/components/kids/RewardSnapshot";
+import {
+  kidsAdminApi,
+  type KidsProfile,
+  type KidsLibraryItem,
+  type KidsRewardSnapshot,
+} from "@/lib/kids-api";
 
 const AVATARS = ["🦊", "🐼", "🦄", "🐸", "🐱", "🐶", "🦁", "🐰"];
 
@@ -9,6 +15,7 @@ export default function KidsManagePage() {
   const [profiles, setProfiles] = useState<KidsProfile[]>([]);
   const [selected, setSelected] = useState<KidsProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
+  const [reward, setReward] = useState<KidsRewardSnapshot | null>(null);
   const [allDocs, setAllDocs] = useState<Record<string, any>[]>([]);
   const [availableBooks, setAvailableBooks] = useState<Record<string, any>[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -36,12 +43,16 @@ export default function KidsManagePage() {
 
   const loadLibrary = useCallback(async (profileId: string) => {
     try {
-      const [lib, docs] = await Promise.all([
+      const [lib, docs, interactiveBooks] = await Promise.all([
         kidsAdminApi.listAssignedBooks(profileId),
         kidsAdminApi.adultLibrary(),
+        kidsAdminApi.listAvailableBooks(),
       ]);
+      const rewards = await kidsAdminApi.getRewards(profileId);
       setLibrary(lib.library);
       setAllDocs(docs.documents);
+      setAvailableBooks(interactiveBooks.books);
+      setReward(rewards.reward);
     } catch {
       // ignore
     }
@@ -62,6 +73,8 @@ export default function KidsManagePage() {
   useEffect(() => {
     if (selected) {
       loadLibrary(selected.id);
+    } else {
+      setReward(null);
     }
   }, [selected, loadLibrary]);
 
@@ -272,6 +285,9 @@ export default function KidsManagePage() {
               <div style={{ fontSize: 12, color: "#a0aec0", marginTop: 8 }}>
                 Bookmark this on your child&apos;s device — they tap it to go straight to their books.
               </div>
+              <div style={{ marginTop: 12 }}>
+                <RewardSnapshotView reward={reward} />
+              </div>
             </div>
 
             {/* Assigned books */}
@@ -296,13 +312,10 @@ export default function KidsManagePage() {
                         background: isInteractive ? "#f3e8ff" : "#e0f2fe",
                         color: isInteractive ? "#6b21a8" : "#0369a1",
                       }}>
-                        {isInteractive ? "🔢 数学/交互书" : "📖 绘本"}
+                        {isInteractive ? "🔢 互动书" : "📖 绘本"}
                       </span>
                       <span style={{ flex: 1, fontSize: 15 }}>
                         {title}
-                      </span>
-                      <span style={{ fontSize: 13, color: "#d69e2e" }}>
-                        {item.progress.total_stars} stars ⭐
                       </span>
                       <button
                         onClick={() => {
@@ -328,7 +341,7 @@ export default function KidsManagePage() {
               <div style={{ ...cardStyle, marginBottom: 16, background: "#faf5ff", border: "1px solid #e9d8fd" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                   <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#553c9a" }}>
-                    🔢 Add Interactive Math Books (BookEngine)
+                    🔢 Add Interactive Books
                   </h3>
                   <a href="/book" target="_blank" style={{ fontSize: 12, color: "#667eea", textDecoration: "underline" }}>
                     Create New Book in Book Studio ↗

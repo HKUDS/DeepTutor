@@ -13,12 +13,21 @@ def test_required_local_and_upstream_route_families_are_installed():
 
     assert any(path.startswith("/api/v1/kids/") for path in paths)
     assert any(path.startswith("/api/v1/kids-admin/") for path in paths)
+    assert "/api/v1/kids/rewards" in paths
+    assert "/api/v1/kids-admin/profiles/{profile_id}/rewards" in paths
     assert any(path.startswith("/api/v1/marginnote4/") for path in paths)
     assert any(
         path.startswith("/api/v1/partners/") and path.endswith("/channel-onboarding/start")
         for path in paths
     )
     assert __version__ == "1.5.16"
+
+
+def test_kids_reward_extension_is_fork_local():
+    from deeptutor.kids_rewards import ENTRY_POINT_GROUP, ENTRY_POINT_SCOPE
+
+    assert ENTRY_POINT_GROUP == "deeptutor.kids_reward_providers"
+    assert ENTRY_POINT_SCOPE == "fork-local"
 
 
 def test_registration_setting_survives_default_save_and_process_override(tmp_path):

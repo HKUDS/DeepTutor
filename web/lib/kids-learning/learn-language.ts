@@ -12,7 +12,6 @@ export function detectKidsReadingLanguage(
 
 export interface KidsLearningCopy {
   books: string;
-  stars: string;
   readAloud: string;
   stop: string;
   learn: string;
@@ -62,7 +61,6 @@ export interface KidsLearningCopy {
 
 const zhCopy: KidsLearningCopy = {
   books: "书架",
-  stars: "星星",
   readAloud: "朗读",
   stop: "停止",
   learn: "学习",
@@ -112,7 +110,6 @@ const zhCopy: KidsLearningCopy = {
 
 const enCopy: KidsLearningCopy = {
   books: "Books",
-  stars: "Stars",
   readAloud: "Read Aloud",
   stop: "Stop",
   learn: "Learn",

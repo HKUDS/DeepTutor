@@ -120,9 +120,9 @@ export interface KidsLearningProgress {
   epub_cfi: string;
   section_href: string;
   completed_section_ids: string[];
-  total_stars: number;
   quiz_attempts: number;
   quiz_best_score: number;
+  quiz_scores: Record<string, number>;
   time_spent_seconds: number;
   last_read_at: number;
 }
@@ -133,12 +133,23 @@ export interface KidsInteractiveBookProgress {
   current_page_id: string;
   current_page_order: number;
   completed_page_ids: string[];
-  total_stars: number;
   quiz_scores: Record<string, number>;
-  quiz_stars_awarded: Record<string, number>;
   time_spent_seconds: number;
   last_read_at: number;
   updated_at?: number;
+}
+
+export interface KidsRewardDisplayItem {
+  provider_label: string;
+  value: string;
+  detail?: string;
+}
+
+export interface KidsRewardSnapshot {
+  provider: string;
+  title: string;
+  message: string;
+  items?: KidsRewardDisplayItem[];
 }
 
 export interface KidsLibraryItem {
@@ -179,11 +190,8 @@ export interface KidsInteractivePage {
 export interface KidsInteractiveQuizGrade {
   score: number;
   total: number;
-  stars: number;
-  new_stars_awarded: number;
-  total_stars: number;
+  reward: KidsRewardSnapshot | null;
   per_question: { id: string; correct: boolean; explanation: string }[];
-  encouragements: string[];
   progress: KidsInteractiveBookProgress;
 }
 
@@ -197,11 +205,8 @@ export interface KidsSafeQuestion {
 export interface KidsQuizGrade {
   score: number;
   total: number;
-  stars: number;
-  new_stars_awarded: number;
-  total_stars: number;
+  reward: KidsRewardSnapshot | null;
   per_question: { id: string; correct: boolean; explanation: string }[];
-  encouragements: string[];
   completed_section_ids?: string[];
 }
 
@@ -319,6 +324,9 @@ export const kidsAdminApi = {
   learningReport: (profileId: string) =>
     adminRequest<Record<string, unknown>>(`/profiles/${profileId}/report`),
 
+  getRewards: (profileId: string) =>
+    adminRequest<{ reward: KidsRewardSnapshot | null }>(`/profiles/${profileId}/rewards`),
+
   listAvailableBooks: () =>
     adminRequest<{ books: Record<string, unknown>[] }>("/available-books"),
 
@@ -375,10 +383,9 @@ export const kidsApi = {
       body: JSON.stringify({ profile_id: profileId, pin }),
     }),
 
-  library: (profileId: string) =>
-    kidsRequest<{ library: KidsLibraryItem[] }>("/library", {
-      headers: { "X-Profile-Id": profileId },
-    }),
+  library: () => kidsRequest<{ library: KidsLibraryItem[] }>("/library"),
+
+  getRewards: () => kidsRequest<{ reward: KidsRewardSnapshot | null }>("/rewards"),
 
   getBook: (documentId: string) =>
     kidsRequest<{ document: Record<string, unknown>; progress: KidsLearningProgress }>(

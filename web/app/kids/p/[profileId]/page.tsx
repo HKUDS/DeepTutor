@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { RewardSnapshotView } from "@/components/kids/RewardSnapshot";
 import {
   kidsApi,
   type KidsProfile,
   type KidsLibraryItem,
+  type KidsRewardSnapshot,
 } from "@/lib/kids-api";
 
 /**
@@ -33,6 +35,7 @@ export default function KidsProfileEntryPage() {
   >("loading");
   const [profile, setProfile] = useState<KidsProfile | null>(null);
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
+  const [reward, setReward] = useState<KidsRewardSnapshot | null>(null);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   const [error, setError] = useState("");
@@ -46,9 +49,11 @@ export default function KidsProfileEntryPage() {
       const { token } = await kidsApi.selectProfile(p.id);
       localStorage.setItem("dt_kids_token", token);
       localStorage.setItem("dt_kids_profile_id", p.id);
-      const { library: lib } = await kidsApi.library(p.id);
+      const { library: lib } = await kidsApi.library();
+      const { reward: nextReward } = await kidsApi.getRewards();
       setProfile(p);
       setLibrary(lib);
+      setReward(nextReward);
       setStage("shelf");
     } catch {
       setError("Cannot load books. Try again!");
@@ -69,13 +74,17 @@ export default function KidsProfileEntryPage() {
 
     if (storedToken && storedPid === profileId) {
       try {
-        const { library: lib } = await kidsApi.library(profileId);
+        const { library: lib } = await kidsApi.library();
         try {
           const { profiles } = await kidsApi.bootstrap();
           const p = profiles.find((x) => x.id === profileId);
           if (p) setProfile(p);
         } catch {}
         setLibrary(lib);
+        try {
+          const { reward: nextReward } = await kidsApi.getRewards();
+          setReward(nextReward);
+        } catch {}
         setStage("shelf");
         return;
       } catch {
@@ -121,8 +130,10 @@ export default function KidsProfileEntryPage() {
       const { token } = await kidsApi.parentUnlock(profile.id, pinInput);
       localStorage.setItem("dt_kids_token", token);
       localStorage.setItem("dt_kids_profile_id", profile.id);
-      const { library: lib } = await kidsApi.library(profile.id);
+      const { library: lib } = await kidsApi.library();
+      const { reward: nextReward } = await kidsApi.getRewards();
       setLibrary(lib);
+      setReward(nextReward);
       setStage("shelf");
     } catch {
       setPinError("Wrong PIN. Try again!");
@@ -143,6 +154,7 @@ export default function KidsProfileEntryPage() {
   const doExit = () => {
     localStorage.removeItem("dt_kids_token");
     localStorage.removeItem("dt_kids_profile_id");
+    setReward(null);
     router.push("/kids");
   };
 
@@ -249,10 +261,8 @@ export default function KidsProfileEntryPage() {
       <div style={S.shelfHeader}>
         <button style={S.backBtn} onClick={handleExitClick}>👈</button>
         <h1 style={S.shelfTitle}>{profile?.name}&apos;s Books</h1>
-        <div style={S.starsBadge}>
-          ⭐ {library.reduce((s, b) => s + (b.progress?.total_stars || 0), 0)}
-        </div>
       </div>
+      <RewardSnapshotView reward={reward} />
 
       {library.length === 0 ? (
         <div style={S.emptyShelf}>
@@ -294,11 +304,10 @@ export default function KidsProfileEntryPage() {
                       background: isInteractive ? "#f3e8ff" : "#e0f2fe",
                       color: isInteractive ? "#6b21a8" : "#0369a1",
                     }}>
-                      {isInteractive ? "🔢 趣味数学" : "📖 故事绘本"}
+                      {isInteractive ? "🔢 互动书" : "📖 故事绘本"}
                     </span>
                   </div>
                   <div style={S.bookTitle}>{title}</div>
-                  <div style={S.bookStars}>⭐ {item.progress?.total_stars || 0}</div>
                   {completed > 0 && (
                     <div style={S.bookProgress}>
                       已学完 {completed} 节
@@ -369,10 +378,6 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 24, fontWeight: 800, color: "#4a3f6b",
     margin: 0, flex: 1, textAlign: "center",
   },
-  starsBadge: {
-    background: "#fef3c7", borderRadius: 20, padding: "8px 16px",
-    fontSize: 18, fontWeight: 700, color: "#92400e",
-  },
   emptyShelf: { textAlign: "center", marginTop: 80 },
   bookGrid: {
     display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
@@ -386,7 +391,6 @@ const S: Record<string, React.CSSProperties> = {
   bookCover: { width: "100%", height: 200, objectFit: "cover", background: "#f7fafc" },
   bookInfo: { padding: "12px 14px", textAlign: "left" },
   bookTitle: { fontSize: 16, fontWeight: 700, color: "#2d3748", lineHeight: 1.3 },
-  bookStars: { fontSize: 14, color: "#d69e2e", marginTop: 4 },
   bookProgress: { fontSize: 12, color: "#718096", marginTop: 2 },
   nextReadBadge: { fontSize: 13, fontWeight: 700, color: "#667eea", marginTop: 6 },
 };

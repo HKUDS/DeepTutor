@@ -2,7 +2,8 @@
 CLI Plugin Command
 ==================
 
-List and inspect registered plugins (tools, capabilities, playground).
+List and inspect registered plugins (tools, capabilities, playground) and
+fork-local Kids reward providers.
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ console = Console()
 def register(app: typer.Typer) -> None:
     @app.command("list")
     def plugin_list() -> None:
-        """List all registered tools and capabilities."""
+        """List registered plugins and fork-local reward providers."""
+        from deeptutor.kids_rewards import get_kids_reward_providers
         from deeptutor.runtime.registry.capability_registry import get_capability_registry
         from deeptutor.runtime.registry.tool_registry import get_tool_registry
 
@@ -29,21 +31,36 @@ def register(app: typer.Typer) -> None:
         table = Table(title="Registered Plugins")
         table.add_column("Name", style="bold")
         table.add_column("Type")
+        table.add_column("Status")
         table.add_column("Description")
 
         for defn in tr.get_definitions():
-            table.add_row(defn.name, "tool", defn.description[:80])
+            table.add_row(defn.name, "tool", "enabled", defn.description[:80])
 
         for m in cr.get_manifests():
-            table.add_row(m["name"], "capability", m["description"][:80])
+            table.add_row(m["name"], "capability", "enabled", m["description"][:80])
+
+        for index, provider in enumerate(get_kids_reward_providers()):
+            table.add_row(
+                provider.name,
+                "fork-local kids reward",
+                "active" if index == 0 else "not enabled",
+                f"v{provider.version}; provider-owned rewards",
+            )
 
         console.print(table)
 
     @app.command("info")
     def plugin_info(name: str = typer.Argument(..., help="Tool or capability name.")) -> None:
-        """Show details of a tool or capability."""
+        """Show details of a tool, capability, or reward provider."""
         import json
 
+        from deeptutor.kids_rewards import (
+            ENTRY_POINT_GROUP,
+            ENTRY_POINT_SCOPE,
+            active_kids_reward_provider,
+            get_kids_reward_providers,
+        )
         from deeptutor.runtime.registry.capability_registry import get_capability_registry
         from deeptutor.runtime.registry.tool_registry import get_tool_registry
 
@@ -71,6 +88,27 @@ def register(app: typer.Typer) -> None:
                         "tools_used": cap.manifest.tools_used,
                         "config_defaults": cap.manifest.config_defaults,
                         "availability": asdict(availability),
+                    },
+                    indent=2,
+                )
+            )
+            return
+
+        provider = next(
+            (candidate for candidate in get_kids_reward_providers() if candidate.name == name),
+            None,
+        )
+        if provider:
+            console.print_json(
+                json.dumps(
+                    {
+                        "name": provider.name,
+                        "type": "fork-local kids reward",
+                        "entry_point_group": ENTRY_POINT_GROUP,
+                        "scope": ENTRY_POINT_SCOPE,
+                        "version": provider.version,
+                        "status": "active" if active_kids_reward_provider() is provider else "not enabled",
+                        "interface": ["record(event)", "snapshot(profile_id)"],
                     },
                     indent=2,
                 )

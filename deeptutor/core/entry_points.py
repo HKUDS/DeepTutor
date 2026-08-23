@@ -1,10 +1,9 @@
 """Load an entry-point group without letting one bad plugin take the app down.
 
-DeepTutor exposes two plugin groups — ``deeptutor.plugins`` for capabilities the
-registry can run, ``deeptutor.loop_capabilities`` for chat-loop capabilities —
-and both need the same plumbing: read the group, import each target, hand it to
-a group-specific coercer, and skip whatever fails with a warning naming the
-entry point. Only the coercer differs, so only the coercer lives at the call
+DeepTutor entry-point groups share one loader: read the group, import each
+target, hand it to a group-specific coercer, and skip whatever fails with a
+warning naming the entry point. The fork-local Kids reward group also uses this
+narrow path. Only the coercer differs, so only the coercer lives at the call
 site.
 
 Third-party code runs at import time here, which is what an entry point is; the
