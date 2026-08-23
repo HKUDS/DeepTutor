@@ -3341,5 +3341,14 @@
   "Open in Immersive Reading": "在沉浸式阅读中打开",
   "This reading material could not be opened.": "无法打开此阅读材料。",
   "Read whole tutorial": "阅读整套教程",
-  "Read tutorial": "阅读教程"
+  "Read tutorial": "阅读教程",
+  "This tutorial could not be opened.": "无法打开整套教程。",
+  "Smaller text": "减小字号",
+  "Larger text": "增大字号",
+  "Use sans-serif font": "使用无衬线字体",
+  "Use serif font": "使用衬线字体",
+  "Change line width": "切换行宽",
+  "Change reading theme": "切换阅读主题",
+  "Show assistant": "显示 AI 助手",
+  "Hide assistant": "收起 AI 助手"
 }

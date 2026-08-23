@@ -281,6 +281,7 @@ class ReadingStore:
                 return existing
 
             previous_revision = existing.revision_id if existing else ""
+            old_outline = self.outline(material_id) if existing else []
             if existing and previous_revision:
                 self._snapshot_active_revision(material_id, previous_revision)
 
@@ -306,15 +307,30 @@ class ReadingStore:
                 revision_id=revision_id,
                 captured_at=payload.captured_at,
                 previous_revision_id=previous_revision,
+                tutorial_available=payload.tutorial_available,
+                navigation_kind=payload.navigation_kind,
             )
             old_annotations = self.annotations(material_id) if existing else []
+            new_outline = list(payload.outline or synthesise_outline(payload.units))
             self._write_active_payload(material_dir, manifest, payload)
             if existing:
                 self._write_annotations(
                     material_id,
-                    self._migrate_annotations(old_annotations, payload.units, revision_id),
+                    self._migrate_annotations(
+                        old_annotations,
+                        payload.units,
+                        revision_id,
+                        old_outline=old_outline,
+                        new_outline=new_outline,
+                    ),
                 )
-                self._migrate_progress(material_id, existing, manifest)
+                self._migrate_progress(
+                    material_id,
+                    existing,
+                    manifest,
+                    old_outline=old_outline,
+                    new_outline=new_outline,
+                )
             self._snapshot_active_revision(material_id, revision_id)
             return manifest
 
@@ -384,11 +400,30 @@ class ReadingStore:
         annotations: Sequence[Annotation],
         units: Sequence[str],
         revision_id: str,
+        *,
+        old_outline: Sequence[OutlineEntry] = (),
+        new_outline: Sequence[OutlineEntry] = (),
     ) -> list[Annotation]:
         migrated: list[Annotation] = []
         for row in annotations:
             quote = row.quote.strip()
-            matches = [index for index, unit in enumerate(units, start=1) if quote and quote in unit]
+            preferred = ReadingStore._matching_outline_range(
+                row.locator,
+                old_outline,
+                new_outline,
+                len(units),
+            )
+            matches = [
+                index
+                for index, unit in enumerate(units, start=1)
+                if quote and quote in unit and (preferred is None or index in preferred)
+            ]
+            if len(matches) != 1 and preferred is not None:
+                matches = [
+                    index
+                    for index, unit in enumerate(units, start=1)
+                    if quote and quote in unit
+                ]
             if len(matches) == 1:
                 migrated.append(
                     dataclass_replace(
@@ -420,24 +455,99 @@ class ReadingStore:
         material_id: str,
         old: MaterialManifest,
         new: MaterialManifest,
+        *,
+        old_outline: Sequence[OutlineEntry] = (),
+        new_outline: Sequence[OutlineEntry] = (),
     ) -> None:
         position = self.position(material_id)
         if position.locator == 1 and not position.source_anchor and position.percentage == 0.0:
             return
         old_locator = max(1, position.locator)
-        ratio = (old_locator - 1) / max(1, old.unit_count - 1)
+        preferred = self._matching_outline_range(
+            old_locator,
+            old_outline,
+            new_outline,
+            new.unit_count,
+        )
+        if preferred:
+            old_section = self._outline_range(old_locator, old_outline, old.unit_count)
+            old_offset = old_locator - (old_section.start if old_section else old_locator)
+            old_span = len(old_section) if old_section else 1
+            section_ratio = old_offset / max(1, old_span - 1)
+            migrated_locator = min(
+                preferred.stop - 1,
+                preferred.start + round(section_ratio * max(0, len(preferred) - 1)),
+            )
+        else:
+            ratio = (old_locator - 1) / max(1, old.unit_count - 1)
+            migrated_locator = min(
+                new.unit_count,
+                max(1, round(ratio * max(0, new.unit_count - 1)) + 1),
+            )
         self.save_position(
             material_id,
             ReadingPosition(
-                locator=min(
-                    new.unit_count,
-                    max(1, round(ratio * max(0, new.unit_count - 1)) + 1),
-                ),
+                locator=migrated_locator,
                 # Renderer-native anchors are revision-specific. Retaining
                 # one could silently jump to the wrong paragraph after sync.
                 source_anchor="",
                 percentage=position.percentage,
             ),
+        )
+
+    @staticmethod
+    def _outline_range(
+        locator: int,
+        outline: Sequence[OutlineEntry],
+        unit_count: int,
+    ) -> range | None:
+        ordered = sorted(
+            (row for row in outline if 1 <= row.locator <= unit_count),
+            key=lambda row: row.locator,
+        )
+        active_index = next(
+            (index for index in range(len(ordered) - 1, -1, -1) if ordered[index].locator <= locator),
+            None,
+        )
+        if active_index is None:
+            return None
+        start = ordered[active_index].locator
+        stop = (
+            ordered[active_index + 1].locator
+            if active_index + 1 < len(ordered)
+            else unit_count + 1
+        )
+        return range(start, max(start + 1, stop))
+
+    @staticmethod
+    def _matching_outline_range(
+        old_locator: int,
+        old_outline: Sequence[OutlineEntry],
+        new_outline: Sequence[OutlineEntry],
+        new_unit_count: int,
+    ) -> range | None:
+        old_rows = sorted(old_outline, key=lambda row: row.locator)
+        old_row = next(
+            (row for row in reversed(old_rows) if row.locator <= old_locator),
+            None,
+        )
+        if old_row is None:
+            return None
+        candidates: list[OutlineEntry] = []
+        if old_row.source_url:
+            candidates = [row for row in new_outline if row.source_url == old_row.source_url]
+        if len(candidates) != 1:
+            candidates = [
+                row
+                for row in new_outline
+                if row.title == old_row.title and row.level == old_row.level
+            ]
+        if len(candidates) != 1:
+            return None
+        return ReadingStore._outline_range(
+            candidates[0].locator,
+            new_outline,
+            new_unit_count,
         )
 
     def _is_complete(self, material_id: str, manifest: MaterialManifest) -> bool:

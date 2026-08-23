@@ -22,6 +22,9 @@ test("reader focus mode is application fullscreen and Escape exits", () => {
   const reader = source("components/reading/ReaderPane.tsx");
 
   assert.match(reader, /fixed inset-0 z-50/);
+  assert.match(reader, /dataset\.readerFocus/);
+  assert.match(reader, /Show assistant/);
+  assert.match(reader, /Hide assistant/);
   assert.match(reader, /event\.key === "Escape"/);
   assert.match(reader, /setFocusMode\(false\)/);
   assert.doesNotMatch(reader, /requestFullscreen\(/);
@@ -35,7 +38,20 @@ test("reader preserves source provenance, revisions and migration review", () =>
   assert.match(reader, /material\.captured_at/);
   assert.match(reader, /activateMaterialRevision/);
   assert.match(reader, /saveMaterialToKb/);
+  assert.match(reader, /getReadingPosition/);
+  assert.match(reader, /saveReadingPosition/);
   assert.match(annotations, /migration_status === "needs_review"/);
+});
+
+test("reader upgrades the stable URL source and persists local reading preferences", () => {
+  const reader = source("components/reading/ReaderPane.tsx");
+  const textReader = source("components/reading/TextUnitView.tsx");
+
+  assert.match(reader, /createMaterialFromUrl\(material\.source_ref/);
+  assert.match(reader, /whole_tutorial: true/);
+  assert.match(textReader, /dt\.reader\.textPreferences/);
+  assert.match(textReader, /window\.localStorage\.setItem/);
+  assert.match(textReader, /sm:hidden/);
 });
 
 test("KB file and web tutorial actions launch Immersive Reading", () => {
@@ -49,4 +65,5 @@ test("KB file and web tutorial actions launch Immersive Reading", () => {
   assert.match(webSources, /reading_material=/);
   assert.match(home, /setCapability\("immersive_reading"\)/);
   assert.match(home, /getReadingMaterial/);
+  assert.match(home, /new URLSearchParams\(window\.location\.search\)/);
 });

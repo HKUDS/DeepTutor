@@ -1,11 +1,13 @@
 """Pure store coverage for versioned web and knowledge-base reading sources."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from deeptutor.reading import (
     Annotation,
+    OutlineEntry,
     ReadingPosition,
     ReadingSourcePayload,
     ReadingStore,
@@ -18,13 +20,18 @@ def store(tmp_path: Path) -> ReadingStore:
     return ReadingStore(root=tmp_path / "materials")
 
 
-def payload(*units: str, captured_at: float = 1.0) -> ReadingSourcePayload:
+def payload(
+    *units: str,
+    captured_at: float = 1.0,
+    outline: tuple[OutlineEntry, ...] = (),
+) -> ReadingSourcePayload:
     return ReadingSourcePayload(
         source_type="url_snapshot",
         source_ref="https://docs.example.com/tutorial",
         filename="tutorial.md",
         title="Tutorial",
         units=tuple(units),
+        outline=outline,
         source_url="https://docs.example.com/tutorial",
         captured_at=captured_at,
     )
@@ -43,6 +50,29 @@ def test_stable_identity_idempotence_and_revision_history(store: ReadingStore) -
         first.revision_id,
         changed.revision_id,
     }
+
+
+def test_reader_metadata_participates_in_revision_identity() -> None:
+    base = payload("Same readable content")
+    discovered = replace(
+        base,
+        tutorial_available=True,
+        navigation_kind="original",
+    )
+    generated_outline = replace(
+        base,
+        outline=(
+            OutlineEntry(
+                locator=1,
+                title="Tutorial",
+                level=1,
+                synthesised=True,
+            ),
+        ),
+    )
+
+    assert discovered.content_hash != base.content_hash
+    assert generated_outline.content_hash != base.content_hash
 
 
 def test_unique_quote_and_position_migrate_without_stale_geometry(
@@ -79,6 +109,99 @@ def test_unique_quote_and_position_migrate_without_stale_geometry(
     assert position.locator == 3
     assert position.percentage == 0.7
     assert position.source_anchor == ""
+
+
+@pytest.mark.parametrize("with_source_urls", [True, False])
+def test_outline_identity_guides_quote_and_progress_migration(
+    store: ReadingStore,
+    with_source_urls: bool,
+) -> None:
+    intro_url = "https://docs.example.com/tutorial/intro" if with_source_urls else ""
+    install_url = "https://docs.example.com/tutorial/install" if with_source_urls else ""
+    old_outline = (
+        OutlineEntry(locator=1, title="Introduction", level=1, source_url=intro_url),
+        OutlineEntry(locator=3, title="Installation", level=1, source_url=install_url),
+    )
+    first = store.ingest_source(
+        payload(
+            "Intro start",
+            "portable quote in the introduction",
+            "Install start",
+            "portable quote in installation",
+            outline=old_outline,
+        )
+    )
+    store.save_annotation(
+        first.material_id,
+        Annotation(annotation_id="", locator=4, quote="portable quote"),
+    )
+    store.save_position(first.material_id, ReadingPosition(locator=4, percentage=0.8))
+
+    # The sections swap order and the quote occurs in both. Source URL is the
+    # preferred identity; title + level is the compatibility fallback for
+    # older outlines that did not preserve provenance.
+    new_outline = (
+        OutlineEntry(locator=1, title="Installation", level=1, source_url=install_url),
+        OutlineEntry(locator=3, title="Introduction", level=1, source_url=intro_url),
+    )
+    changed = store.ingest_source(
+        payload(
+            "Install revised",
+            "portable quote in installation revised",
+            "Intro revised",
+            "portable quote in the introduction revised",
+            captured_at=2,
+            outline=new_outline,
+        )
+    )
+
+    migrated = store.annotations(changed.material_id)[0]
+    assert migrated.locator == 2
+    assert migrated.migration_status == "migrated"
+    position = store.position(changed.material_id)
+    assert position.locator == 2
+    assert position.percentage == 0.8
+
+
+def test_outline_title_fallback_survives_changed_page_url(store: ReadingStore) -> None:
+    first = store.ingest_source(
+        payload(
+            "Old section",
+            "quote that should migrate",
+            outline=(
+                OutlineEntry(
+                    locator=1,
+                    title="Install",
+                    level=2,
+                    source_url="https://docs.example.com/v1/install",
+                ),
+            ),
+        )
+    )
+    store.save_annotation(
+        first.material_id,
+        Annotation(annotation_id="", locator=2, quote="quote that should migrate"),
+    )
+
+    changed = store.ingest_source(
+        payload(
+            "New section",
+            "quote that should migrate in v2",
+            captured_at=2,
+            outline=(
+                OutlineEntry(
+                    locator=1,
+                    title="Install",
+                    level=2,
+                    source_url="https://docs.example.com/v2/install",
+                ),
+            ),
+        )
+    )
+
+    migrated = store.annotations(changed.material_id)[0]
+    assert migrated.locator == 2
+    assert migrated.migration_status == "migrated"
 
 
 @pytest.mark.parametrize(

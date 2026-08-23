@@ -855,6 +855,49 @@ body[data-picker-open] .dt-mark-pulse {
   }
 }
 
+/* Focus reading escapes the transformed split-pane containing block. The
+   assistant stays mounted as the existing chat column and can be revealed as
+   a genuine, collapsible side panel without duplicating chat state. */
+.dt-reader-shell[data-reader-focus="true"] {
+  --reader-assistant-width: clamp(320px, 36vw, 520px);
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  width: 100%;
+  transform: none;
+  visibility: visible;
+  transition: none;
+}
+.dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"] {
+  right: var(--reader-assistant-width);
+  width: auto;
+}
+.dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"]
+  ~ .chat-preview-shell {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 101;
+  width: clamp(320px, 36vw, 520px);
+  height: 100dvh;
+  padding: 0;
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  box-shadow: -12px 0 30px rgb(0 0 0 / 0.08);
+}
+@media (max-width: 767px) {
+  .dt-reader-shell[data-reader-focus="true"] {
+    --reader-assistant-width: min(88vw, 380px);
+  }
+  .dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"] {
+    right: 0;
+    width: 100%;
+  }
+  .dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"]
+    ~ .chat-preview-shell {
+    width: min(88vw, 380px);
+  }
+}
+
 /* pdf.js text layer. Flattened from pdfjs-dist's own stylesheet (which uses
    nested CSS this build's PostCSS pipeline does not compile) and scoped to the
    class pdf.js itself sets. The spans are transparent and sit exactly over the

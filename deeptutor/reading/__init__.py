@@ -53,13 +53,13 @@ from deeptutor.reading.service import (
     search_material,
     verify_quote,
 )
-from deeptutor.reading.store import ReadingStore, content_hash
 from deeptutor.reading.sources import (
     FileSourceAdapter,
     ReadingSourceAdapter,
     ReadingSourcePayload,
     markdown_payload,
 )
+from deeptutor.reading.store import ReadingStore, content_hash
 
 __all__ = [
     "ANNOTATION_COLORS",

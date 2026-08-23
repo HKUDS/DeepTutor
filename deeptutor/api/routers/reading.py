@@ -115,6 +115,8 @@ class MaterialInfo(BaseModel):
     revision_id: str = ""
     captured_at: float = 0.0
     previous_revision_id: str = ""
+    tutorial_available: bool = False
+    navigation_kind: str = ""
 
 
 class MaterialDetail(MaterialInfo):
@@ -197,6 +199,9 @@ class SupportedFormats(BaseModel):
 
 class UrlMaterialRequest(BaseModel):
     url: str
+    whole_tutorial: bool = False
+    max_depth: int = Field(default=3, ge=1, le=5)
+    max_pages: int = Field(default=200, ge=1, le=200)
 
 
 class KbMaterialRequest(BaseModel):
@@ -298,19 +303,15 @@ async def material_from_url(payload: UrlMaterialRequest) -> MaterialDetail:
     try:
         from deeptutor.services.web_source.crawler import crawl_docs_site
 
-        result = await crawl_docs_site(url, max_depth=0, max_pages=1)
+        result = await crawl_docs_site(
+            url,
+            max_depth=payload.max_depth if payload.whole_tutorial else 0,
+            max_pages=payload.max_pages if payload.whole_tutorial else 1,
+        )
         if not result.pages:
             detail = "; ".join(result.errors) or "No readable page was returned."
             raise ReadingError(f"The page could not be captured: {detail}")
-        page = result.pages[0]
-        source = markdown_payload(
-            source_type="url_snapshot",
-            source_ref=page.canonical_url or page.url or url,
-            title=page.title or urlparse(url).path.rsplit("/", 1)[-1] or urlparse(url).netloc,
-            markdown=page.markdown,
-            filename=_web_filename(page.title, url),
-            source_url=page.canonical_url or page.url or url,
-        )
+        source = _web_crawl_payload(result, url=url, whole_tutorial=payload.whole_tutorial)
         store = _store()
         manifest = store.ingest_source(source)
         return _detail(store, manifest)
@@ -634,6 +635,104 @@ def _web_filename(title: str, url: str) -> str:
     if not candidate:
         candidate = urlparse(url).path.rstrip("/").rsplit("/", 1)[-1] or "web-page"
     return f"{candidate[:120]}.md"
+
+
+def _web_crawl_payload(result: Any, *, url: str, whole_tutorial: bool) -> ReadingSourcePayload:
+    """Turn a safe crawler result into one local snapshot or a site reader."""
+    from deeptutor.reading.extract import split_into_sections
+
+    first = result.pages[0]
+    source_url = first.canonical_url or first.url or url
+    title = first.title or urlparse(url).path.rsplit("/", 1)[-1] or urlparse(url).netloc
+    navigation_kind = str(result.navigation_kind or "")
+    tutorial_available = bool(
+        len(result.navigation_links) > 1 or getattr(result, "truncated", False)
+    )
+    if not whole_tutorial:
+        source = markdown_payload(
+            source_type="url_snapshot",
+            source_ref=url,
+            title=title,
+            markdown=first.markdown,
+            filename=_web_filename(first.title, url),
+            source_url=source_url,
+        )
+        return dataclass_replace(
+            source,
+            captured_at=_timestamp(first.fetched_at),
+            tutorial_available=tutorial_available,
+            navigation_kind=navigation_kind,
+        )
+
+    pages_by_url: dict[str, Any] = {}
+    for page in result.pages:
+        for page_url in (page.url, page.canonical_url, page.requested_url):
+            if page_url:
+                pages_by_url[urldefrag(page_url)[0].rstrip("/")] = page
+    rows: list[dict[str, Any]] = []
+    seen_pages: set[str] = set()
+    for nav in result.navigation_links:
+        nav_url = urldefrag(str(nav.get("url") or ""))[0]
+        key = nav_url.rstrip("/")
+        page = pages_by_url.get(key)
+        rows.append(
+            {
+                "page": page,
+                "title": str(nav.get("title") or getattr(page, "title", "") or nav_url),
+                "url": nav_url,
+                "level": max(1, int(nav.get("depth") or 0) + 1),
+            }
+        )
+        if page is not None:
+            seen_pages.add(page.canonical_url or page.url)
+    for page in result.pages:
+        identity = page.canonical_url or page.url
+        if identity in seen_pages:
+            continue
+        rows.append(
+            {"page": page, "title": page.title or identity, "url": identity, "level": 1}
+        )
+
+    units: list[str] = []
+    outline: list[OutlineEntry] = []
+    for row in rows:
+        page = row["page"]
+        start = len(units) + 1
+        if page is None:
+            units.append(
+                "# Page unavailable\n\n"
+                "This page appeared in the site navigation but could not be captured. "
+                "Retry the tutorial to fetch it again."
+            )
+            row_title = f"{row['title']} — unavailable"
+        else:
+            sections = split_into_sections(page.markdown)
+            if not sections:
+                continue
+            units.extend(sections)
+            row_title = row["title"]
+        outline.append(
+            OutlineEntry(
+                locator=start,
+                title=str(row_title),
+                level=int(row["level"]),
+                synthesised=navigation_kind != "original",
+                source_url=str(row["url"]),
+            )
+        )
+    return ReadingSourcePayload(
+        source_type="url_snapshot",
+        source_ref=url,
+        filename=_web_filename(title, url),
+        title=title,
+        units=tuple(units),
+        unit="section",
+        outline=tuple(outline),
+        source_url=source_url,
+        captured_at=_timestamp(first.fetched_at),
+        tutorial_available=False,
+        navigation_kind=navigation_kind,
+    )
 
 
 def _safe_kb_file(raw_dir: Path, file_path: str) -> Path:

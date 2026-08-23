@@ -440,13 +440,6 @@ export default function ChatPage() {
         : new URLSearchParams(window.location.search).get("agent");
   }
   const agentPreselectDoneRef = useRef(false);
-  const pendingReadingMaterialRef = useRef<string | null | undefined>(undefined);
-  if (pendingReadingMaterialRef.current === undefined) {
-    pendingReadingMaterialRef.current =
-      typeof window === "undefined"
-        ? null
-        : new URLSearchParams(window.location.search).get("reading_material");
-  }
   const readingLaunchDoneRef = useRef(false);
   const {
     options: llmOptions,
@@ -723,19 +716,30 @@ export default function ChatPage() {
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
 
   useEffect(() => {
-    const materialId = pendingReadingMaterialRef.current;
+    // Read the query after mount. Initializing this value during render makes
+    // the server pass permanently cache `null`, so hydration never sees links
+    // launched from Knowledge Center.
+    const materialId = new URLSearchParams(window.location.search).get(
+      "reading_material",
+    );
     if (!materialId || readingLaunchDoneRef.current) return;
-    readingLaunchDoneRef.current = true;
-    setCapability("immersive_reading");
-    void getReadingMaterial(materialId)
-      .then((material) => openReadingMaterial(material))
-      .catch((error) =>
-        setReadingError(
-          error instanceof Error
-            ? error.message
-            : t("This reading material could not be opened."),
-        ),
-      );
+    // The chat provider selects its first draft in a mount effect. Defer one
+    // task so SET_CAPABILITY has a selected session to update instead of being
+    // dropped by the reducer on a cold /home launch.
+    const timer = window.setTimeout(() => {
+      readingLaunchDoneRef.current = true;
+      setCapability("immersive_reading");
+      void getReadingMaterial(materialId)
+        .then((material) => openReadingMaterial(material))
+        .catch((error) =>
+          setReadingError(
+            error instanceof Error
+              ? error.message
+              : t("This reading material could not be opened."),
+          ),
+        );
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [openReadingMaterial, setCapability, setReadingError, t]);
 
   useEffect(() => {

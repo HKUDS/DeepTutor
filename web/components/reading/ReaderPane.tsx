@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookmarkPlus,
+  BookOpenText,
   Crosshair,
   Download,
   ExternalLink,
@@ -10,6 +11,7 @@ import {
   List,
   Loader2,
   Maximize2,
+  MessageSquareText,
   Minimize2,
   PanelRightClose,
   PanelRightOpen,
@@ -25,9 +27,12 @@ import {
 import { locatorFromHref } from "@/lib/reading-citations";
 import {
   activateMaterialRevision,
+  createMaterialFromUrl,
   fetchExport,
+  getReadingPosition,
   listMaterialRevisions,
   saveMaterialToKb,
+  saveReadingPosition,
   type AnnotationColor,
   type AnnotationItem,
   type MaterialInfo,
@@ -75,7 +80,6 @@ export interface ReaderPaneProps {
  */
 export function ReaderPane({
   onClose,
-  learningActionsEnabled = false,
 }: ReaderPaneProps) {
   const { t } = useTranslation();
   // Document + annotations live in the provider (workspace layout), so they
@@ -110,11 +114,24 @@ export function ReaderPane({
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
   const [focusMode, setFocusMode] = useState(false);
+  const [assistantPanelOpen, setAssistantPanelOpen] = useState(false);
   const [revisions, setRevisions] = useState<MaterialInfo[]>([]);
   const [switchingRevision, setSwitchingRevision] = useState(false);
   const [kbChoices, setKbChoices] = useState<string[]>([]);
   const [savingToKb, setSavingToKb] = useState(false);
+  const [openingTutorial, setOpeningTutorial] = useState(false);
+  const readerRef = useRef<HTMLDivElement | null>(null);
   const nonceRef = useRef(0);
+  const restoringPositionRef = useRef("");
+  const positionMaterialKeyRef = useRef("");
+  const positionSaveTimerRef = useRef<number | null>(null);
+  const positionMaterialKey = material
+    ? `${material.material_id}:${material.revision_id ?? ""}`
+    : "";
+  if (positionMaterialKeyRef.current !== positionMaterialKey) {
+    positionMaterialKeyRef.current = positionMaterialKey;
+    restoringPositionRef.current = material?.material_id ?? "";
+  }
 
   // -- persisted auto-jump preference --------------------------------------
 
@@ -130,11 +147,26 @@ export function ReaderPane({
   useEffect(() => {
     if (!focusMode) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFocusMode(false);
+      if (event.key === "Escape") {
+        setFocusMode(false);
+        setAssistantPanelOpen(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [focusMode]);
+
+  useEffect(() => {
+    const shell = readerRef.current?.closest<HTMLElement>(".dt-reader-shell");
+    if (!shell) return;
+    shell.dataset.readerFocus = focusMode ? "true" : "false";
+    shell.dataset.readerAssistant =
+      focusMode && assistantPanelOpen ? "true" : "false";
+    return () => {
+      delete shell.dataset.readerFocus;
+      delete shell.dataset.readerAssistant;
+    };
+  }, [assistantPanelOpen, focusMode]);
 
   useEffect(() => {
     if (!material || material.source_type === "upload") {
@@ -179,12 +211,76 @@ export function ReaderPane({
 
   // -- viewport reporting --------------------------------------------------
 
+  const requestJump = useCallback((locator: number, quote?: string) => {
+    nonceRef.current += 1;
+    setJump({ locator, quote, nonce: nonceRef.current });
+  }, []);
+
+  useEffect(() => {
+    if (!material || material.render_mode === "epub") return;
+    let cancelled = false;
+    restoringPositionRef.current = material.material_id;
+    void getReadingPosition(material.material_id)
+      .then((position) => {
+        if (cancelled) return;
+        const locator = Math.min(
+          material.unit_count,
+          Math.max(1, position.locator || 1),
+        );
+        setCurrentLocator(locator);
+        reportViewport({ locator });
+        if (locator > 1 || position.source_anchor) {
+          requestJump(locator, position.source_anchor || undefined);
+        }
+      })
+      .catch(() => {
+        // A missing position is equivalent to the first locator.
+      })
+      .finally(() => {
+        if (!cancelled) restoringPositionRef.current = "";
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [material, reportViewport, requestJump]);
+
   const handleVisibleLocator = useCallback(
     (locator: number) => {
       setCurrentLocator(locator);
       reportViewport({ locator });
+      if (
+        !material ||
+        material.render_mode === "epub" ||
+        restoringPositionRef.current === material.material_id
+      ) {
+        return;
+      }
+      if (positionSaveTimerRef.current) {
+        window.clearTimeout(positionSaveTimerRef.current);
+      }
+      positionSaveTimerRef.current = window.setTimeout(() => {
+        void saveReadingPosition(material.material_id, {
+          locator,
+          source_anchor: "",
+          percentage:
+            material.unit_count > 1
+              ? (locator - 1) / (material.unit_count - 1)
+              : 0,
+        }).catch(() => {
+          // Progress persistence must never interrupt reading.
+        });
+      }, 250);
     },
-    [reportViewport],
+    [material, reportViewport],
+  );
+
+  useEffect(
+    () => () => {
+      if (positionSaveTimerRef.current) {
+        window.clearTimeout(positionSaveTimerRef.current);
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -192,11 +288,6 @@ export function ReaderPane({
   }, [selection, reportViewport]);
 
   // -- reader actions from the assistant -----------------------------------
-
-  const requestJump = useCallback((locator: number, quote?: string) => {
-    nonceRef.current += 1;
-    setJump({ locator, quote, nonce: nonceRef.current });
-  }, []);
 
   useEffect(() => {
     const onReaderAction = (event: Event) => {
@@ -407,6 +498,26 @@ export function ReaderPane({
     [dismissError, material, openMaterial, savingToKb, setError, t],
   );
 
+  const openWholeTutorial = useCallback(async () => {
+    if (!material?.source_ref || openingTutorial) return;
+    setOpeningTutorial(true);
+    dismissError();
+    try {
+      const next = await createMaterialFromUrl(material.source_ref, {
+        whole_tutorial: true,
+      });
+      await openMaterial(next);
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : t("This tutorial could not be opened."),
+      );
+    } finally {
+      setOpeningTutorial(false);
+    }
+  }, [dismissError, material, openMaterial, openingTutorial, setError, t]);
+
   // -- render --------------------------------------------------------------
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
@@ -419,6 +530,7 @@ export function ReaderPane({
 
   return (
     <div
+      ref={readerRef}
       data-focus-mode={focusMode ? "true" : "false"}
       className={
         focusMode
@@ -427,7 +539,7 @@ export function ReaderPane({
       }
     >
       {!focusMode && <ReaderResizeHandle />}
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
+      <header className="flex h-11 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] px-2.5">
         <FileText
           size={14}
           className="shrink-0 text-[var(--muted-foreground)]"
@@ -468,8 +580,23 @@ export function ReaderPane({
               icon={focusMode ? Minimize2 : Maximize2}
               label={focusMode ? t("Exit focus mode") : t("Focus mode")}
               active={focusMode}
-              onClick={() => setFocusMode((value) => !value)}
+              onClick={() => {
+                setFocusMode((value) => !value);
+                if (focusMode) setAssistantPanelOpen(false);
+              }}
             />
+            {focusMode && (
+              <HeaderButton
+                icon={MessageSquareText}
+                label={
+                  assistantPanelOpen
+                    ? t("Hide assistant")
+                    : t("Show assistant")
+                }
+                active={assistantPanelOpen}
+                onClick={() => setAssistantPanelOpen((value) => !value)}
+              />
+            )}
             <HeaderButton
               icon={exporting ? Loader2 : Download}
               label={t("Export annotated file")}
@@ -522,6 +649,27 @@ export function ReaderPane({
               <ExternalLink size={10} />
               {t("View original")}
             </a>
+          )}
+          {material.source_type === "url_snapshot" &&
+            material.tutorial_available && (
+              <button
+                type="button"
+                onClick={() => void openWholeTutorial()}
+                disabled={openingTutorial}
+                className="inline-flex h-6 items-center gap-1 rounded border border-[var(--border)] px-1.5 font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-50"
+              >
+                {openingTutorial ? (
+                  <Loader2 size={10} className="animate-spin" />
+                ) : (
+                  <BookOpenText size={10} />
+                )}
+                {t("Read whole tutorial")}
+              </button>
+            )}
+          {material.navigation_kind === "inferred" && (
+            <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">
+              {t("Auto-generated structure")}
+            </span>
           )}
           {revisions.length > 1 && (
             <label className="ml-auto inline-flex items-center gap-1">
@@ -590,7 +738,7 @@ export function ReaderPane({
         </div>
       )}
 
-      {learningActionsEnabled && material ? (
+      {material ? (
         <ReadingExtensionBar
           materialId={material.material_id}
           locator={currentLocator}
@@ -728,6 +876,17 @@ export function ReaderPane({
           onAsk={askAboutSelection}
           onDismiss={() => setSelection(null)}
         />
+      )}
+      {focusMode && assistantPanelOpen && (
+        <button
+          type="button"
+          onClick={() => setAssistantPanelOpen(false)}
+          aria-label={t("Hide assistant")}
+          title={t("Hide assistant")}
+          className="fixed left-1 top-1 z-[102] inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--card)] text-[var(--foreground)] shadow md:hidden"
+        >
+          <PanelRightClose size={15} />
+        </button>
       )}
     </div>
   );

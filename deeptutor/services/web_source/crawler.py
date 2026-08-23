@@ -193,6 +193,7 @@ def _to_filename(url: str, base_path_prefix: str) -> str:
 # Status codes worth retrying (transient server/infrastructure issues).
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 _MAX_RETRIES = 2
+_MAX_REDIRECTS = 5
 
 
 async def _fetch_page(
@@ -205,48 +206,71 @@ async def _fetch_page(
     Retries up to ``_MAX_RETRIES`` times on transient status codes (429,
     5xx) and network errors, with exponential backoff.
     """
-    last_error = None
     for attempt in range(_MAX_RETRIES + 1):
+        current_url = url
+        redirects = 0
         try:
-            async with client.stream(
-                "GET",
-                url,
-                headers={
-                    "User-Agent": DEFAULT_USER_AGENT,
-                    "Accept": "text/html,application/xhtml+xml,*/*;q=0.5",
-                },
-                follow_redirects=True,
-            ) as response:
-                final_url = str(response.url)
-                final_host = (urlparse(final_url).hostname or "").strip()
-                if final_host and _is_crawler_disallowed_host(final_host):
-                    logger.warning("Crawl: redirect to disallowed host %s blocked", final_host)
+            while True:
+                current_host = (urlparse(current_url).hostname or "").strip()
+                if not current_host or _is_crawler_disallowed_host(current_host):
+                    logger.warning("Crawl: request to disallowed host %s blocked", current_host)
                     return None
+                async with client.stream(
+                    "GET",
+                    current_url,
+                    headers={
+                        "User-Agent": DEFAULT_USER_AGENT,
+                        "Accept": "text/html,application/xhtml+xml,*/*;q=0.5",
+                    },
+                    # Validate every Location before issuing the next request.
+                    # Checking only response.url with automatic redirects is
+                    # too late: the private-network request already happened.
+                    follow_redirects=False,
+                ) as response:
+                    final_url = str(response.url)
+                    if response.is_redirect:
+                        location = response.headers.get("location", "").strip()
+                        if not location:
+                            return FetchOutcome(
+                                html="", final_url=final_url, status_code=response.status_code
+                            )
+                        redirects += 1
+                        if redirects > _MAX_REDIRECTS:
+                            logger.warning("Crawl: too many redirects from %s", url)
+                            return None
+                        next_url = urljoin(final_url, location)
+                        next_host = (urlparse(next_url).hostname or "").strip()
+                        if not next_host or _is_crawler_disallowed_host(next_host):
+                            logger.warning(
+                                "Crawl: redirect to disallowed host %s blocked", next_host
+                            )
+                            return None
+                        current_url = next_url
+                        continue
 
-                if response.status_code in _RETRY_STATUS and attempt < _MAX_RETRIES:
-                    backoff = 0.5 * (2**attempt)
-                    logger.debug(
-                        "Crawl: HTTP %d for %s, retrying in %.1fs",
-                        response.status_code,
-                        url,
-                        backoff,
-                    )
-                    await asyncio.sleep(backoff)
-                    continue
+                    if response.status_code in _RETRY_STATUS and attempt < _MAX_RETRIES:
+                        backoff = 0.5 * (2**attempt)
+                        logger.debug(
+                            "Crawl: HTTP %d for %s, retrying in %.1fs",
+                            response.status_code,
+                            url,
+                            backoff,
+                        )
+                        await asyncio.sleep(backoff)
+                        break
 
-                if response.status_code >= 400:
-                    logger.debug("Crawl: HTTP %d for %s", response.status_code, url)
+                    if response.status_code >= 400:
+                        logger.debug("Crawl: HTTP %d for %s", response.status_code, current_url)
+                        return FetchOutcome(
+                            html="", final_url=final_url, status_code=response.status_code
+                        )
+
+                    html = await _bounded_read(response, MAX_RESPONSE_BYTES)
                     return FetchOutcome(
-                        html="", final_url=final_url, status_code=response.status_code
+                        html=html, final_url=final_url, status_code=response.status_code
                     )
-
-                html = await _bounded_read(response, MAX_RESPONSE_BYTES)
-                return FetchOutcome(
-                    html=html, final_url=final_url, status_code=response.status_code
-                )
 
         except httpx.HTTPError as exc:
-            last_error = exc
             if attempt < _MAX_RETRIES:
                 backoff = 0.5 * (2**attempt)
                 logger.debug(
@@ -359,6 +383,17 @@ async def _process_page(
             link = _normalise_link(url, href)
             if link and _is_internal(link, base_host, base_path_prefix):
                 links.append(link)
+        # A user often opens one concrete docs page (for example
+        # /docs/intro.html), making that full page path too narrow a prefix for
+        # its sibling chapters. Sidebar extraction is deliberately specific to
+        # documentation navigation, so follow its same-host links even when
+        # they sit beside the entry page. Arbitrary body links still obey the
+        # configured path prefix above.
+        for nav_row in nav:
+            nav_link = _normalise_link(final_url, str(nav_row.get("url") or ""))
+            if nav_link and urlparse(nav_link).hostname == base_host:
+                links.append(nav_link)
+        links = list(dict.fromkeys(links))
 
     return {"page": page, "links": links, "nav": nav, "depth": depth, "final_url": final_url}
 
@@ -451,12 +486,16 @@ async def crawl_docs_site(
     sem = asyncio.Semaphore(concurrency)
 
     async with factory() as client:
-        discovered_urls = await _sitemap_urls(
-            base_url,
-            client=client,
-            base_host=base_host,
-            base_path_prefix=base_path_prefix,
-        )
+        # A URL snapshot promises to fetch only the requested page. Site-wide
+        # sitemap discovery is reserved for tutorial crawls (depth > 0).
+        discovered_urls = [base_url]
+        if max_depth > 0:
+            discovered_urls = await _sitemap_urls(
+                base_url,
+                client=client,
+                base_host=base_host,
+                base_path_prefix=base_path_prefix,
+            )
         if len(discovered_urls) > 1:
             result.discovery_sources.append("sitemap")
             for url in discovered_urls:

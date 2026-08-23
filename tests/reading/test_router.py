@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from types import SimpleNamespace
 import zipfile
 
 from fastapi import FastAPI
@@ -188,6 +189,297 @@ def test_epub_contract_exposes_source_refs_original_and_position(client: TestCli
     assert saved.status_code == 200
     assert client.get(base).json()["source_anchor"] == "epubcfi(/6/2)"
     assert client.put(base, json={"locator": 2, "percentage": 0}).status_code == 400
+
+
+def test_url_snapshot_keeps_identity_and_creates_revisions(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from deeptutor.services.web_source import crawler
+
+    markdown = "# First\n\nOriginal body"
+
+    async def fake_crawl(url: str, **_kwargs):
+        page = crawler.CrawledPage(
+            url=url,
+            canonical_url="https://docs.example.com/guide",
+            title="Guide",
+            markdown=markdown,
+            content_hash="unused",
+        )
+        return crawler.CrawlResult(pages=[page])
+
+    monkeypatch.setattr(crawler, "crawl_docs_site", fake_crawl)
+    first = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={"url": "HTTPS://DOCS.EXAMPLE.COM:443/guide#intro"},
+    )
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert first_body["source_type"] == "url_snapshot"
+    assert first_body["source_url"] == "https://docs.example.com/guide"
+
+    markdown = "# First\n\nUpdated body"
+    changed = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={"url": "https://docs.example.com/guide"},
+    )
+    assert changed.status_code == 200, changed.text
+    changed_body = changed.json()
+    assert changed_body["material_id"] == first_body["material_id"]
+    assert changed_body["revision_id"] != first_body["revision_id"]
+
+    revisions = client.get(
+        f"/api/v1/reading/materials/{first_body['material_id']}/revisions"
+    )
+    assert revisions.status_code == 200
+    assert {row["revision_id"] for row in revisions.json()} == {
+        first_body["revision_id"],
+        changed_body["revision_id"],
+    }
+
+
+def test_url_snapshot_detects_and_opens_whole_tutorial(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from deeptutor.services.web_source import crawler
+
+    async def fake_crawl(url: str, **kwargs):
+        assert kwargs["max_depth"] == (3 if kwargs["max_pages"] == 200 else 0)
+        return crawler.CrawlResult(
+            pages=[
+                crawler.CrawledPage(
+                    url=url,
+                    canonical_url=url,
+                    title="Tutorial",
+                    markdown="# Intro\n\nStart here",
+                    content_hash="intro",
+                ),
+                crawler.CrawledPage(
+                    url=f"{url.rstrip('/')}/next",
+                    canonical_url=f"{url.rstrip('/')}/next",
+                    title="Next",
+                    markdown="# Next\n\nContinue here",
+                    content_hash="next",
+                ),
+            ],
+            navigation_links=[
+                {"title": "Intro", "url": url, "depth": 0},
+                {"title": "Next", "url": f"{url.rstrip('/')}/next", "depth": 1},
+                {"title": "Missing", "url": f"{url.rstrip('/')}/missing", "depth": 1},
+            ],
+            navigation_kind="original",
+        )
+
+    monkeypatch.setattr(crawler, "crawl_docs_site", fake_crawl)
+    single = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={"url": "https://docs.example.com/tutorial"},
+    )
+    assert single.status_code == 200, single.text
+    assert single.json()["tutorial_available"] is True
+
+    whole = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={
+            "url": "https://docs.example.com/tutorial",
+            "whole_tutorial": True,
+        },
+    )
+    assert whole.status_code == 200, whole.text
+    body = whole.json()
+    assert body["material_id"] == single.json()["material_id"]
+    assert body["unit_count"] == 3
+    assert body["tutorial_available"] is False
+    assert [row["level"] for row in body["outline"]] == [1, 2, 2]
+    assert body["outline"][2]["title"].endswith("unavailable")
+    assert body["outline"][1]["source_url"].endswith("/next")
+
+
+def test_generic_single_page_does_not_claim_a_whole_tutorial(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from deeptutor.services.web_source import crawler
+
+    async def fake_crawl(url: str, **_kwargs):
+        return crawler.CrawlResult(
+            pages=[
+                crawler.CrawledPage(
+                    url=url,
+                    canonical_url=url,
+                    title="Article",
+                    markdown="A standalone article",
+                    content_hash="article",
+                )
+            ],
+            navigation_links=[{"title": "Article", "url": url, "depth": 0}],
+            navigation_kind="inferred",
+        )
+
+    monkeypatch.setattr(crawler, "crawl_docs_site", fake_crawl)
+    response = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={"url": "https://example.com/article"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["tutorial_available"] is False
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["", "file:///etc/passwd", "https://user:secret@example.com", "https://example.com:bad"],
+)
+def test_url_snapshot_rejects_unsafe_or_invalid_url(client: TestClient, url: str) -> None:
+    response = client.post("/api/v1/reading/materials/from-url", json={"url": url})
+    assert response.status_code == 400
+
+
+def test_kb_file_import_is_access_checked_and_sandboxed(
+    client: TestClient,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from deeptutor.multi_user import knowledge_access
+
+    kb_dir = tmp_path / "knowledge_bases" / "docs"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "intro.md").write_text("# Intro\n\nReadable KB content", encoding="utf-8")
+
+    class FakeManager:
+        def get_knowledge_base_path(self, _name: str) -> Path:
+            return kb_dir
+
+    resource = SimpleNamespace(id="user:kb:docs", name="docs")
+    monkeypatch.setattr(knowledge_access, "resolve_kb", lambda *_a, **_kw: resource)
+    monkeypatch.setattr(knowledge_access, "manager_for_resource", lambda _resource: FakeManager())
+
+    opened = client.post(
+        "/api/v1/reading/materials/from-kb",
+        json={"kb_name": "docs", "file_path": "intro.md"},
+    )
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["source_type"] == "kb_file"
+    assert opened.json()["kb_path"] == "intro.md"
+
+    escaped = client.post(
+        "/api/v1/reading/materials/from-kb",
+        json={"kb_name": "docs", "file_path": "../secret.md"},
+    )
+    assert escaped.status_code == 403
+
+
+def test_tutorial_import_keeps_missing_pages_in_outline(
+    client: TestClient,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from deeptutor.multi_user import knowledge_access
+
+    kb_dir = tmp_path / "knowledge_bases" / "docs"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "intro.md").write_text("# Intro\n\nAvailable page", encoding="utf-8")
+
+    source = {
+        "id": "source1",
+        "url": "https://docs.example.com/",
+        "last_synced_at": "2026-08-23T12:00:00Z",
+        "page_manifest": {
+            "intro.md": {"title": "Intro", "status": "active"},
+            "missing.md": {"title": "Missing", "status": "unknown"},
+        },
+        "navigation": {
+            "kind": "original",
+            "nodes": [
+                {
+                    "title": "Intro",
+                    "url": "https://docs.example.com/intro",
+                    "file_path": "intro.md",
+                    "children": [],
+                },
+                {
+                    "title": "Missing",
+                    "url": "https://docs.example.com/missing",
+                    "file_path": "missing.md",
+                    "children": [],
+                },
+            ],
+        },
+    }
+
+    class FakeManager:
+        def get_knowledge_base_path(self, _name: str) -> Path:
+            return kb_dir
+
+        def get_web_sources(self, _name: str):
+            return [source]
+
+    resource = SimpleNamespace(id="user:kb:docs", name="docs")
+    monkeypatch.setattr(knowledge_access, "resolve_kb", lambda *_a, **_kw: resource)
+    monkeypatch.setattr(knowledge_access, "manager_for_resource", lambda _resource: FakeManager())
+
+    opened = client.post(
+        "/api/v1/reading/materials/from-kb",
+        json={"kb_name": "docs", "web_source_id": "source1"},
+    )
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    assert body["source_type"] == "kb_web_tutorial"
+    assert body["unit_count"] == 2
+    assert body["outline"][1]["title"].endswith("unavailable")
+
+
+def test_saving_url_snapshot_to_kb_does_not_rebuild_material(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from deeptutor.multi_user import knowledge_access
+    from deeptutor.services.web_source import crawler
+
+    async def fake_crawl(url: str, **_kwargs):
+        return crawler.CrawlResult(
+            pages=[
+                crawler.CrawledPage(
+                    url=url,
+                    canonical_url=url,
+                    title="Guide",
+                    markdown="Readable guide",
+                    content_hash="unused",
+                )
+            ]
+        )
+
+    class FakeManager:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def add_web_source(self, _name: str, url: str):
+            self.urls.append(url)
+            return {"id": "source1"}
+
+    manager = FakeManager()
+    resource = SimpleNamespace(id="user:kb:docs", name="docs")
+    monkeypatch.setattr(crawler, "crawl_docs_site", fake_crawl)
+    monkeypatch.setattr(knowledge_access, "resolve_kb", lambda *_a, **_kw: resource)
+    monkeypatch.setattr(knowledge_access, "manager_for_resource", lambda _resource: manager)
+
+    material = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={"url": "https://docs.example.com/guide"},
+    ).json()
+    linked = client.post(
+        f"/api/v1/reading/materials/{material['material_id']}/save-to-kb",
+        json={"kb_name": "docs"},
+    )
+    assert linked.status_code == 200, linked.text
+    assert linked.json()["material_id"] == material["material_id"]
+    assert linked.json()["revision_id"] == material["revision_id"]
+    assert linked.json()["kb_name"] == "user:kb:docs"
+    assert manager.urls == ["https://docs.example.com/guide"]
 
 
 # ---------------------------------------------------------------------------

@@ -3341,5 +3341,14 @@
   "Open in Immersive Reading": "Open in Immersive Reading",
   "This reading material could not be opened.": "This reading material could not be opened.",
   "Read whole tutorial": "Read whole tutorial",
-  "Read tutorial": "Read tutorial"
+  "Read tutorial": "Read tutorial",
+  "This tutorial could not be opened.": "This tutorial could not be opened.",
+  "Smaller text": "Smaller text",
+  "Larger text": "Larger text",
+  "Use sans-serif font": "Use sans-serif font",
+  "Use serif font": "Use serif font",
+  "Change line width": "Change line width",
+  "Change reading theme": "Change reading theme",
+  "Show assistant": "Show assistant",
+  "Hide assistant": "Hide assistant"
 }

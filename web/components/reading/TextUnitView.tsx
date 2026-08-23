@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import {
+  ALargeSmall,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Minus,
+  Plus,
+  Rows3,
+  SunMoon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AnnotationItem, UnitKind } from "@/lib/reading-api";
 import { getUnitText } from "@/lib/reading-api";
@@ -16,6 +25,9 @@ const COLOR_INK: Record<string, string> = {
   pink: "250 161 199",
   purple: "199 174 250",
 };
+
+const READER_PREFS_KEY = "dt.reader.textPreferences";
+type ReaderTheme = "auto" | "sepia" | "night";
 
 export interface TextUnitViewProps {
   materialId: string;
@@ -55,6 +67,49 @@ export function TextUnitView({
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fontSize, setFontSize] = useState(15);
+  const [lineWidth, setLineWidth] = useState(68);
+  const [serif, setSerif] = useState(true);
+  const [readerTheme, setReaderTheme] = useState<ReaderTheme>("auto");
+
+  useEffect(() => {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(READER_PREFS_KEY) || "{}");
+      if (typeof value.fontSize === "number") {
+        setFontSize(Math.min(22, Math.max(12, value.fontSize)));
+      }
+      if (typeof value.lineWidth === "number") {
+        setLineWidth(Math.min(88, Math.max(48, value.lineWidth)));
+      }
+      if (typeof value.serif === "boolean") setSerif(value.serif);
+      if (["auto", "sepia", "night"].includes(value.readerTheme)) {
+        setReaderTheme(value.readerTheme);
+      }
+    } catch {
+      // Invalid or unavailable local storage falls back to readable defaults.
+    }
+  }, []);
+
+  const updatePreferences = useCallback(
+    (next: Partial<{
+      fontSize: number;
+      lineWidth: number;
+      serif: boolean;
+      readerTheme: ReaderTheme;
+    }>) => {
+      const merged = { fontSize, lineWidth, serif, readerTheme, ...next };
+      setFontSize(merged.fontSize);
+      setLineWidth(merged.lineWidth);
+      setSerif(merged.serif);
+      setReaderTheme(merged.readerTheme);
+      try {
+        window.localStorage.setItem(READER_PREFS_KEY, JSON.stringify(merged));
+      } catch {
+        // Preferences still apply for the current session.
+      }
+    },
+    [fontSize, lineWidth, readerTheme, serif],
+  );
 
   useEffect(() => {
     setLocator(1);
@@ -145,42 +200,98 @@ export function TextUnitView({
   const canNext = locator < unitCount;
 
   return (
-    <div className="flex h-full flex-col bg-[var(--background)]">
-      <div className="flex items-center justify-center gap-2 border-b border-[var(--border)] px-4 py-2">
-        <button
-          type="button"
-          disabled={!canPrev}
-          onClick={() => setLocator((current) => Math.max(1, current - 1))}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
-          aria-label={t("Previous")}
-        >
-          <ChevronLeft size={15} />
-        </button>
-        <span className="min-w-[120px] text-center font-mono text-[11px] tabular-nums text-[var(--muted-foreground)]">
-          {t("{{unit}} {{n}} of {{total}}", {
-            unit: t(unitLabel(unit)),
-            n: locator,
-            total: unitCount,
-          })}
-        </span>
-        <button
-          type="button"
-          disabled={!canNext}
-          onClick={() =>
-            setLocator((current) => Math.min(unitCount, current + 1))
-          }
-          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
-          aria-label={t("Next")}
-        >
-          <ChevronRight size={15} />
-        </button>
+    <div
+      className="flex h-full flex-col"
+      style={
+        readerTheme === "sepia"
+          ? { background: "#f4ecd8", color: "#473c2c" }
+          : readerTheme === "night"
+            ? { background: "#16181d", color: "#e8e5df" }
+            : undefined
+      }
+    >
+      <div className="flex items-center justify-between gap-2 overflow-x-auto border-b border-[var(--border)] px-2 py-2 sm:px-3">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <PreferenceButton
+            label={t("Smaller text")}
+            icon={Minus}
+            disabled={fontSize <= 12}
+            onClick={() => updatePreferences({ fontSize: Math.max(12, fontSize - 1) })}
+          />
+          <PreferenceButton
+            label={t("Larger text")}
+            icon={Plus}
+            disabled={fontSize >= 22}
+            onClick={() => updatePreferences({ fontSize: Math.min(22, fontSize + 1) })}
+          />
+          <PreferenceButton
+            label={serif ? t("Use sans-serif font") : t("Use serif font")}
+            icon={ALargeSmall}
+            active={!serif}
+            onClick={() => updatePreferences({ serif: !serif })}
+          />
+          <PreferenceButton
+            label={t("Change line width")}
+            icon={Rows3}
+            onClick={() =>
+              updatePreferences({ lineWidth: lineWidth >= 88 ? 48 : lineWidth + 20 })
+            }
+          />
+          <PreferenceButton
+            label={t("Change reading theme")}
+            icon={SunMoon}
+            active={readerTheme !== "auto"}
+            onClick={() =>
+              updatePreferences({
+                readerTheme:
+                  readerTheme === "auto"
+                    ? "sepia"
+                    : readerTheme === "sepia"
+                      ? "night"
+                      : "auto",
+              })
+            }
+          />
+        </div>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <button
+            type="button"
+            disabled={!canPrev}
+            onClick={() => setLocator((current) => Math.max(1, current - 1))}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label={t("Previous")}
+          >
+            <ChevronLeft size={15} />
+          </button>
+          <span className="min-w-[44px] text-center font-mono text-[11px] tabular-nums text-[var(--muted-foreground)] sm:hidden">
+            {locator}/{unitCount}
+          </span>
+          <span className="hidden min-w-[120px] text-center font-mono text-[11px] tabular-nums text-[var(--muted-foreground)] sm:inline">
+            {t("{{unit}} {{n}} of {{total}}", {
+              unit: t(unitLabel(unit)),
+              n: locator,
+              total: unitCount,
+            })}
+          </span>
+          <button
+            type="button"
+            disabled={!canNext}
+            onClick={() =>
+              setLocator((current) => Math.min(unitCount, current + 1))
+            }
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
+            aria-label={t("Next")}
+          >
+            <ChevronRight size={15} />
+          </button>
+        </div>
       </div>
 
       <div
         ref={containerRef}
         data-reader-unit={locator}
         onMouseUp={handlePointerUp}
-        className="dt-reader-scroll flex-1 overflow-y-auto overscroll-contain px-8 py-7"
+        className="dt-reader-scroll flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8 sm:py-7"
       >
         {loading ? (
           <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -190,7 +301,14 @@ export function TextUnitView({
         ) : error ? (
           <p className="text-[12px] text-[var(--muted-foreground)]">{error}</p>
         ) : (
-          <article className="mx-auto max-w-[68ch] whitespace-pre-wrap font-serif text-[15px] leading-[1.75] text-[var(--foreground)] selection:bg-[var(--primary)]/20">
+          <article
+            className={`mx-auto whitespace-pre-wrap leading-[1.75] selection:bg-[var(--primary)]/20 ${serif ? "font-serif" : "font-sans"}`}
+            style={{
+              maxWidth: `${lineWidth}ch`,
+              fontSize: `${fontSize}px`,
+              color: readerTheme === "auto" ? "var(--foreground)" : "inherit",
+            }}
+          >
             {runs.length === 0 ? (
               <span className="text-[var(--muted-foreground)]">
                 {t("This section has no extractable text.")}
@@ -231,6 +349,38 @@ export function TextUnitView({
         )}
       </div>
     </div>
+  );
+}
+
+function PreferenceButton({
+  label,
+  icon: Icon,
+  onClick,
+  active = false,
+  disabled = false,
+}: {
+  label: string;
+  icon: typeof Minus;
+  onClick: () => void;
+  active?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition disabled:opacity-35 ${
+        active
+          ? "bg-[var(--primary)]/12 text-[var(--primary)]"
+          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+      }`}
+    >
+      <Icon size={13} />
+    </button>
   );
 }
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from deeptutor.services.web_source import crawler
@@ -82,6 +83,116 @@ async def test_external_seed_url_is_not_crawled(monkeypatch) -> None:
 
     assert [call[0][0] for call in processed] == ["https://example.com/docs/"]
     assert result.pages == []
+
+
+@pytest.mark.asyncio
+async def test_single_page_snapshot_skips_sitemap_discovery(monkeypatch) -> None:
+    async def fail_sitemap(*_args, **_kwargs):
+        raise AssertionError("single-page capture must not probe site-wide sitemaps")
+
+    async def fake_process(url, *_args, **_kwargs):
+        return {
+            "page": crawler.CrawledPage(
+                url=url,
+                canonical_url=url,
+                title="Article",
+                markdown="One page",
+                content_hash="one-page",
+            ),
+            "links": [],
+            "nav": [],
+            "depth": 0,
+            "final_url": url,
+        }
+
+    monkeypatch.setattr(crawler, "_sitemap_urls", fail_sitemap)
+    monkeypatch.setattr(crawler, "_process_page", fake_process)
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+
+    result = await crawler.crawl_docs_site(
+        "https://example.test/article",
+        max_depth=0,
+        max_pages=1,
+    )
+
+    assert [page.url for page in result.pages] == ["https://example.test/article"]
+
+
+@pytest.mark.asyncio
+async def test_sidebar_navigation_follows_sibling_docs_pages(monkeypatch) -> None:
+    index_html = """
+    <html><head><title>Guide</title></head><body>
+      <aside class="theme-doc-sidebar-container"><nav>
+        <a href="/docs/index.html">Introduction</a>
+        <a href="/docs/install.html">Installation</a>
+      </nav></aside>
+      <main><article><h1>Guide</h1><p>Welcome.</p></article></main>
+    </body></html>
+    """
+    install_html = """
+    <html><head><title>Installation</title></head><body>
+      <main><article><h1>Installation</h1><p>Install it.</p></article></main>
+    </body></html>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/docs/index.html":
+            return httpx.Response(200, text=index_html, request=request)
+        if request.url.path == "/docs/install.html":
+            return httpx.Response(200, text=install_html, request=request)
+        return httpx.Response(404, request=request)
+
+    class ClientContext:
+        async def __aenter__(self):
+            self.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            return self.client
+
+        async def __aexit__(self, *_args):
+            await self.client.aclose()
+
+    async def base_only(*_args, **_kwargs):
+        return ["https://example.test/docs/index.html"]
+
+    monkeypatch.setattr(crawler, "_sitemap_urls", base_only)
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+
+    result = await crawler.crawl_docs_site(
+        "https://example.test/docs/index.html",
+        max_depth=2,
+        client_factory=ClientContext,
+    )
+
+    assert {page.url for page in result.pages} == {
+        "https://example.test/docs/index.html",
+        "https://example.test/docs/install.html",
+    }
+    assert result.navigation_kind == "original"
+
+
+@pytest.mark.asyncio
+async def test_redirect_to_private_host_is_blocked_before_request(monkeypatch) -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if request.url.host == "public.example":
+            return httpx.Response(
+                302,
+                headers={"Location": "http://127.0.0.1/admin"},
+                request=request,
+            )
+        raise AssertionError("the private redirect target must never be requested")
+
+    monkeypatch.setattr(
+        crawler,
+        "_is_crawler_disallowed_host",
+        lambda host: host == "127.0.0.1",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        outcome = await crawler._fetch_page("https://public.example/docs", client=client)
+
+    assert outcome is None
+    assert requested == ["https://public.example/docs"]
 
 
 @pytest.mark.asyncio

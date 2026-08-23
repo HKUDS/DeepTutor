@@ -215,6 +215,8 @@ class MaterialManifest:
     revision_id: str = ""
     captured_at: float = 0.0
     previous_revision_id: str = ""
+    tutorial_available: bool = False
+    navigation_kind: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -239,6 +241,8 @@ class MaterialManifest:
             "revision_id": self.revision_id,
             "captured_at": self.captured_at,
             "previous_revision_id": self.previous_revision_id,
+            "tutorial_available": self.tutorial_available,
+            "navigation_kind": self.navigation_kind,
         }
 
     @classmethod
@@ -274,6 +278,8 @@ class MaterialManifest:
             revision_id=str(data.get("revision_id") or ""),
             captured_at=float(data.get("captured_at") or 0.0),
             previous_revision_id=str(data.get("previous_revision_id") or ""),
+            tutorial_available=bool(data.get("tutorial_available")),
+            navigation_kind=str(data.get("navigation_kind") or ""),
         )
 
 

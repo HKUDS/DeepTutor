@@ -45,6 +45,8 @@ export interface MaterialInfo {
   revision_id?: string;
   captured_at?: number;
   previous_revision_id?: string;
+  tutorial_available?: boolean;
+  navigation_kind?: string;
 }
 
 export interface OutlineRow {
@@ -181,12 +183,15 @@ export async function uploadMaterial(file: File): Promise<MaterialDetail> {
   );
 }
 
-export async function createMaterialFromUrl(url: string): Promise<MaterialDetail> {
+export async function createMaterialFromUrl(
+  url: string,
+  options?: { whole_tutorial?: boolean; max_depth?: number; max_pages?: number },
+): Promise<MaterialDetail> {
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials/from-url`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, ...options }),
     }),
   );
 }

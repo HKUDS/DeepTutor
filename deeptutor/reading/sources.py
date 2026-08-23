@@ -43,13 +43,37 @@ class ReadingSourcePayload:
     has_raw_view: bool = False
     render_mode: RenderMode = "text"
     captured_at: float = field(default_factory=time.time)
+    tutorial_available: bool = False
+    navigation_kind: str = ""
 
     @property
     def content_hash(self) -> str:
         digest = hashlib.sha256()
+        digest.update(
+            (
+                f"unit={self.unit}\0mime={self.mime}\0extractor={self.extractor}\0"
+                f"render_mode={self.render_mode}\0has_raw_view={int(self.has_raw_view)}\0"
+                f"source_url={self.source_url}\0"
+                f"tutorial_available={int(self.tutorial_available)}\0"
+                f"navigation_kind={self.navigation_kind}\0"
+            ).encode("utf-8")
+        )
         for unit in self.units:
             digest.update(unit.encode("utf-8"))
             digest.update(b"\0")
+        for row in self.outline:
+            digest.update(
+                (
+                    f"{row.locator}\0{row.level}\0{row.title}\0{row.source_url}\0"
+                    f"{int(row.synthesised)}\0"
+                ).encode("utf-8")
+            )
+        for row in self.unit_refs:
+            digest.update(
+                f"{row.locator}\0{row.source_href}\0{row.title}\0".encode("utf-8")
+            )
+        if self.raw_bytes:
+            digest.update(hashlib.sha256(self.raw_bytes).digest())
         return digest.hexdigest()[:16]
 
 
