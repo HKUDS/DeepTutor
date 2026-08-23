@@ -14,9 +14,30 @@ const material = {
   annotation_count: 0,
   outline: [],
   outline_text: "",
+  render_mode: "text",
+  content_format: "markdown",
 };
 
-test.beforeEach(async ({ page }) => {
+const annotation = {
+  annotation_id: "annotation-1",
+  locator: 1,
+  kind: "highlight",
+  color: "yellow",
+  quote: "behave like a wave",
+  note: "Wave behavior",
+  rects: [],
+  source_anchor: "",
+  selectors: [
+    { type: "TextPositionSelector", start: 10, end: 28 },
+    { type: "TextQuoteSelector", exact: "behave like a wave" },
+  ],
+  author: "user",
+  created_at: 1,
+  updated_at: 1,
+};
+
+test.beforeEach(async ({ page }, testInfo) => {
+  const includeAnnotation = testInfo.title.includes("rich text annotation");
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -68,7 +89,7 @@ test.beforeEach(async ({ page }) => {
       return json(material);
     }
     if (path === "/api/v1/reading/materials/learning-material/annotations") {
-      return json([]);
+      return json(includeAnnotation ? [annotation] : []);
     }
     if (path === "/api/v1/reading/materials/learning-material/units/1") {
       return json({ locator: 1, unit: "page", text: "Light can behave like a wave." });
@@ -130,4 +151,24 @@ test("learning account uses schema-driven reading actions", async ({ page, conte
     await page.getByRole("button", { name: "Test" }).click();
     await expect(page.getByText("Three-question check")).toBeVisible();
     await expect(page.getByText("Which statement appears?").first()).toBeVisible();
+});
+
+test("clicking a rich text annotation activates its sidebar entry", async ({ page, context }, testInfo) => {
+  await context.addCookies([{
+    name: "dt_token",
+    value: "e30.eyJleHAiOjQxMDI0NDQ4MDB9.fixture",
+    url: String(testInfo.project.use.baseURL || "http://localhost:3782"),
+  }]);
+  await page.goto("/home");
+
+  await page.getByRole("button", { name: "Immersive Reading", exact: true }).click();
+  await page.getByRole("button", { name: "Open a document to read" }).click();
+  await page.getByText("Learning Sample.epub").click();
+
+  const highlight = page.locator(".r6o-annotation").first();
+  await expect(highlight).toBeVisible();
+  const activeEntry = page.getByRole("button").filter({ hasText: "Wave behavior" });
+  await expect(activeEntry).not.toHaveClass(/border-\[var\(--ring\)\]/);
+  await highlight.click();
+  await expect(activeEntry).toHaveClass(/border-\[var\(--ring\)\]/);
 });
