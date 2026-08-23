@@ -54,13 +54,15 @@ test("faithfully renders EPUB resources, navigates, and restores its CFI", async
   ).toBeVisible();
   await expect(readerFrame.getByAltText("source illustration")).toBeVisible();
 
-  const turnForward =
-    testInfo.project.name === "epub-reader-webkit"
-      ? () => page.getByRole("button", { name: "Next", exact: true }).click()
-      : async () => {
-          await readerFrame.getByText("This layout comes from the EPUB.").click();
-          await page.keyboard.press("ArrowRight");
-        };
+  const useTouchControls = testInfo.project.name === "epub-reader-webkit";
+  if (!useTouchControls) {
+    // Focus the rendition once. Re-clicking the first page during retries is
+    // invalid after epub.js has already advanced to the next spine item.
+    await readerFrame.getByText("This layout comes from the EPUB.").click();
+  }
+  const turnForward = useTouchControls
+    ? () => page.getByRole("button", { name: "Next", exact: true }).click()
+    : () => page.keyboard.press("ArrowRight");
   for (let attempt = 0; attempt < 4; attempt += 1) {
     await turnForward();
     if (
