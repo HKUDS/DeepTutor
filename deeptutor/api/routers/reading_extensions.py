@@ -84,6 +84,12 @@ def _public_result(result: ReadingExtensionResult) -> dict[str, Any]:
     return row
 
 
+def _validate_result(extension: Any, result: ReadingExtensionResult) -> ReadingExtensionResult:
+    if result.type not in extension.manifest.result_types:
+        raise ValueError(f"Extension returned undeclared result type {result.type!r}.")
+    return result
+
+
 @router.get("/extensions")
 async def list_extensions() -> list[dict[str, Any]]:
     allowed = allowed_reading_extensions()
@@ -132,15 +138,21 @@ async def run_extension_action(
         value = extension.run_action(action, context)
         if inspect.isawaitable(value):
             value = await value
-        result = (
-            value
-            if isinstance(value, ReadingExtensionResult)
-            else ReadingExtensionResult.model_validate(value)
+        result = _validate_result(
+            extension,
+            (
+                value
+                if isinstance(value, ReadingExtensionResult)
+                else ReadingExtensionResult.model_validate(value)
+            ),
         )
     except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail={"message": "This reading action is temporarily unavailable.", "recoverable": True},
+            detail={
+                "message": "This reading action is temporarily unavailable.",
+                "recoverable": True,
+            },
         ) from exc
 
     if result.interaction_id:
@@ -185,10 +197,13 @@ async def submit_extension_interaction(
         value = extension.submit(interaction, payload.values)
         if inspect.isawaitable(value):
             value = await value
-        result = (
-            value
-            if isinstance(value, ReadingExtensionResult)
-            else ReadingExtensionResult.model_validate(value)
+        result = _validate_result(
+            extension,
+            (
+                value
+                if isinstance(value, ReadingExtensionResult)
+                else ReadingExtensionResult.model_validate(value)
+            ),
         )
     except Exception as exc:
         raise HTTPException(

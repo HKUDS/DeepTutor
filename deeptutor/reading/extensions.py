@@ -8,10 +8,8 @@ action is contained by the API adapter.
 
 from __future__ import annotations
 
-from hashlib import sha256
 import logging
-import re
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +18,7 @@ from deeptutor.core.entry_points import load_entry_point_group
 logger = logging.getLogger(__name__)
 ENTRY_POINT_GROUP = "deeptutor.reading_extensions"
 PROTOCOL_VERSION = "1"
+RESULT_TYPES = frozenset({"card", "quiz", "feedback", "browser_speech"})
 
 
 class ReadingAction(BaseModel):
@@ -52,7 +51,7 @@ class ReadingContext(BaseModel):
 
 
 class ReadingExtensionResult(BaseModel):
-    type: str
+    type: Literal["card", "quiz", "feedback", "browser_speech"]
     interaction_id: str = ""
     title: str = ""
     message: str = ""
@@ -71,122 +70,6 @@ class ReadingExtension(Protocol):
     ) -> ReadingExtensionResult | dict[str, Any]: ...
 
 
-def _sentences(text: str, limit: int = 3) -> list[str]:
-    clean = re.sub(r"\s+", " ", text).strip()
-    rows = [row.strip() for row in re.split(r"(?<=[.!?。！？])\s*", clean) if row.strip()]
-    return rows[:limit] or ([clean[:240]] if clean else [])
-
-
-class _DeclarativeExtension:
-    def __init__(self, manifest: ReadingExtensionManifest) -> None:
-        self.manifest = manifest
-
-    def run_action(self, action: str, context: ReadingContext) -> ReadingExtensionResult:
-        if action not in {item.id for item in self.manifest.actions}:
-            raise ValueError(f"Unknown action {action!r}")
-        source = context.selection or context.visible_text or context.unit_text
-        rows = _sentences(source)
-        if self.manifest.id == "read_aloud":
-            return ReadingExtensionResult(
-                type="browser_speech",
-                title="Read aloud",
-                payload={"text": source, "locale": context.locale},
-            )
-        if self.manifest.id == "guided_learn":
-            return ReadingExtensionResult(
-                type="card",
-                title="Guided learning",
-                payload={
-                    "overview": rows[0] if rows else "",
-                    "concepts": rows[:3],
-                    "example": rows[1] if len(rows) > 1 else (rows[0] if rows else ""),
-                    "reflection": "What detail in this passage best supports its main idea?",
-                },
-            )
-        if self.manifest.id == "vocabulary":
-            word = (context.selection.strip().split() or [""])[0][:80]
-            return ReadingExtensionResult(
-                type="card",
-                title=word or "Vocabulary",
-                message=(
-                    "Select one word in the page to get a contextual clue."
-                    if not word
-                    else "Use the surrounding sentence as a clue before revealing a definition."
-                ),
-                payload={"word": word, "context": rows[0] if rows else ""},
-            )
-        if self.manifest.id == "translation":
-            return ReadingExtensionResult(
-                type="card",
-                title="Translation",
-                message="A translation provider is not configured for this extension.",
-                payload={"source_text": source[:2000]},
-            )
-        if self.manifest.id == "quiz":
-            questions = []
-            choices = rows[:3]
-            while len(choices) < 3:
-                choices.append("Not stated in this passage")
-            for index in range(3):
-                rotated = choices[index:] + choices[:index]
-                questions.append(
-                    {
-                        "id": f"q{index + 1}",
-                        "prompt": "Which statement appears in the current passage?",
-                        "choices": rotated,
-                    }
-                )
-            interaction_id = sha256(
-                f"{context.material_id}|{context.locator}|{source}".encode()
-            ).hexdigest()[:24]
-            return ReadingExtensionResult(
-                type="quiz",
-                interaction_id=interaction_id,
-                title="Three-question check",
-                payload={
-                    "questions": questions,
-                    "_answers": {f"q{index + 1}": 0 for index in range(3)},
-                },
-            )
-        return ReadingExtensionResult(type="card", title=self.manifest.name)
-
-    def submit(
-        self, interaction: dict[str, Any], submission: dict[str, Any]
-    ) -> ReadingExtensionResult:
-        expected = interaction.get("private", {}).get("answers", {})
-        answers = submission.get("answers") if isinstance(submission.get("answers"), dict) else {}
-        score = sum(1 for key, value in expected.items() if answers.get(key) == value)
-        return ReadingExtensionResult(
-            type="feedback",
-            interaction_id=str(interaction.get("interaction_id") or ""),
-            title="Quiz result",
-            message=f"{score}/{len(expected)}",
-            payload={"score": score, "total": len(expected), "completed": True},
-        )
-
-
-def _builtin_extensions() -> list[ReadingExtension]:
-    specs = [
-        ("read_aloud", "Read aloud", "read", ["visible_text"], ["browser_speech"]),
-        ("guided_learn", "Learn", "explain", ["visible_text"], ["card"]),
-        ("vocabulary", "Vocabulary", "hint", ["selection"], ["card"]),
-        ("translation", "Translate", "translate", ["visible_text"], ["card"]),
-        ("quiz", "Test", "start", ["visible_text"], ["quiz", "feedback"]),
-    ]
-    return [
-        _DeclarativeExtension(
-            ReadingExtensionManifest(
-                id=identifier,
-                version="1.0.0",
-                name=name,
-                actions=[ReadingAction(id=action, label=name, requires=requires)],
-                result_types=result_types,
-            )
-        )
-        for identifier, name, action, requires, result_types in specs
-    ]
-
-
 def _coerce(name: str, loaded: Any) -> ReadingExtension | None:
     candidate = loaded() if isinstance(loaded, type) else loaded
     manifest = getattr(candidate, "manifest", None)
@@ -202,6 +85,9 @@ def _coerce(name: str, loaded: Any) -> ReadingExtension | None:
     if parsed.id != name or parsed.protocol_version != PROTOCOL_VERSION:
         logger.warning("Reading extension %r has an incompatible id or protocol.", name)
         return None
+    if not parsed.result_types or not set(parsed.result_types).issubset(RESULT_TYPES):
+        logger.warning("Reading extension %r declares unsupported result types.", name)
+        return None
     if not callable(getattr(candidate, "run_action", None)):
         logger.warning("Reading extension %r has no run_action method.", name)
         return None
@@ -211,9 +97,10 @@ def _coerce(name: str, loaded: Any) -> ReadingExtension | None:
 
 class ReadingExtensionRegistry:
     def __init__(self, extensions: list[ReadingExtension] | None = None) -> None:
-        rows = extensions if extensions is not None else (
-            _builtin_extensions()
-            + load_entry_point_group(ENTRY_POINT_GROUP, _coerce, log=logger)
+        rows = (
+            extensions
+            if extensions is not None
+            else load_entry_point_group(ENTRY_POINT_GROUP, _coerce, log=logger)
         )
         self._extensions: dict[str, ReadingExtension] = {}
         for row in rows:
@@ -260,6 +147,7 @@ def dispatch_learning_event(event: dict[str, Any], *, allowed: set[str] | None =
 __all__ = [
     "ENTRY_POINT_GROUP",
     "PROTOCOL_VERSION",
+    "RESULT_TYPES",
     "ReadingAction",
     "ReadingContext",
     "ReadingExtensionManifest",

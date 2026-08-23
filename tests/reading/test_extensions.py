@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from deeptutor.reading.extensions import (
+    ReadingAction,
     ReadingContext,
+    ReadingExtensionManifest,
     ReadingExtensionRegistry,
     ReadingExtensionResult,
 )
@@ -21,19 +23,12 @@ def _context() -> ReadingContext:
     )
 
 
-def test_builtins_are_schema_driven_and_hide_quiz_answers():
+def test_core_has_no_builtin_extensions(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.reading.extensions.load_entry_point_group", lambda *_args, **_kwargs: []
+    )
     registry = ReadingExtensionRegistry()
-    assert {row.manifest.id for row in registry.all()} >= {
-        "read_aloud",
-        "guided_learn",
-        "vocabulary",
-        "translation",
-        "quiz",
-    }
-    result = registry.get("quiz").run_action("start", _context())  # type: ignore[union-attr]
-    assert isinstance(result, ReadingExtensionResult)
-    assert result.type == "quiz"
-    assert len(result.payload["questions"]) == 3
+    assert registry.all() == []
 
 
 def test_learning_ledger_is_idempotent(tmp_path, monkeypatch):
@@ -59,10 +54,26 @@ def test_learning_ledger_is_idempotent(tmp_path, monkeypatch):
     assert len(ledger.records()) == 1
 
 
-def test_broken_extension_does_not_replace_builtin():
+def test_duplicate_extension_does_not_replace_first():
+    first = SimpleNamespace(
+        manifest=ReadingExtensionManifest(
+            id="quiz",
+            version="1",
+            name="First",
+            actions=[ReadingAction(id="start", label="Test")],
+            result_types=["quiz"],
+        ),
+        run_action=lambda *_: ReadingExtensionResult(type="quiz"),
+    )
     duplicate = SimpleNamespace(
-        manifest=SimpleNamespace(id="quiz"),
+        manifest=ReadingExtensionManifest(
+            id="quiz",
+            version="1",
+            name="Duplicate",
+            actions=[ReadingAction(id="start", label="Test")],
+            result_types=["quiz"],
+        ),
         run_action=lambda *_: pytest.fail("duplicate should not win"),
     )
-    registry = ReadingExtensionRegistry([*ReadingExtensionRegistry().all(), duplicate])
-    assert registry.get("quiz") is not duplicate
+    registry = ReadingExtensionRegistry([first, duplicate])
+    assert registry.get("quiz") is first

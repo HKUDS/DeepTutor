@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deeptutor-reading-essentials"
+version = "0.1.0"
+description = "Optional Learn, Test, Read aloud, Translate and Vocabulary extensions for DeepTutor"
+requires-python = ">=3.11,<3.14"
+dependencies = ["deeptutor"]
+
+[project.entry-points."deeptutor.reading_extensions"]
+guided_learn = "deeptutor_reading_essentials:GuidedLearnExtension"
+quiz = "deeptutor_reading_essentials:QuizExtension"
+read_aloud = "deeptutor_reading_essentials:ReadAloudExtension"
+translation = "deeptutor_reading_essentials:TranslationExtension"
+vocabulary = "deeptutor_reading_essentials:VocabularyExtension"
+
+[tool.setuptools]
+packages = ["deeptutor_reading_essentials"]
