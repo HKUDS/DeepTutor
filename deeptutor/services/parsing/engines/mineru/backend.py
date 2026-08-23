@@ -124,7 +124,7 @@ def _parse_local(
     """Local-CLI branch: delegate to the existing subprocess parser and return
     the deterministic output directory it writes to (``<base>/<stem>``)."""
     from .local import parse_pdf_with_mineru
-    from .models import model_env_overrides
+    from .models import model_env_overrides, render_env_overrides
 
     cli_command = None
     if (config.local_cli_path or "").strip():
@@ -139,6 +139,9 @@ def _parse_local(
     # A lazy first-parse model download must honor the configured source and
     # custom address, not just the explicit Download button.
     download_env = model_env_overrides(config.model_download_source, config.model_download_endpoint)
+    # Only the local CLI renders pages in this process tree; cloud mode never
+    # does, so the Windows render-thread guard belongs on this branch alone.
+    subprocess_env = {**download_env, **render_env_overrides()}
 
     logger.info("Parsing %s via local MinerU CLI (%s)", pdf_path.name, cli_command or "PATH")
     ok = parse_pdf_with_mineru(
@@ -146,7 +149,7 @@ def _parse_local(
         str(output_base),
         on_output=on_output,
         cli_command=cli_command,
-        extra_env=download_env,
+        extra_env=subprocess_env,
     )
     if not ok:
         raise MinerUError(
