@@ -93,6 +93,41 @@ async def test_stall_guard_returns_when_progress_keeps_flowing(
 
 
 @pytest.mark.asyncio
+async def test_stall_guard_survives_a_concurrent_job_taking_the_callback_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second indexing job must not make this one look stalled.
+
+    ``set_progress_callback`` writes to the process-global LlamaIndex
+    ``Settings`` embed model, which holds exactly one callback. A concurrent
+    job overwrites ours, so without re-arming on each poll tick we would stop
+    observing progress we are still making and kill a perfectly healthy job
+    with a false ``IndexingStallError``.
+    """
+    pipeline_module, _, _ = _llamaindex_modules()
+    monkeypatch.setattr(pipeline_module, "_INDEX_STALL_POLL_SECONDS", 0.05)
+    slot: dict = {}
+    monkeypatch.setattr(pipeline_module, "set_progress_callback", lambda cb: slot.update(cb=cb))
+
+    def displaced_then_moving():
+        # A concurrent indexing job claims the single shared slot.
+        slot["cb"] = lambda *args, **kwargs: None
+        end = time.monotonic() + 0.6
+        while time.monotonic() < end:
+            # Batches notify whoever currently owns the slot.
+            slot["cb"](1, 1)
+            time.sleep(0.05)
+        return "done"
+
+    assert (
+        await pipeline_module._run_with_stall_guard(
+            displaced_then_moving, progress_callback=None, stall_timeout=0.3
+        )
+        == "done"
+    )
+
+
+@pytest.mark.asyncio
 async def test_stall_guard_forwards_user_progress_callback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

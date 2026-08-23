@@ -66,6 +66,15 @@ async def _run_with_stall_guard(
     The sync function keeps running in its thread after a stall is raised —
     Python cannot interrupt arbitrary synchronous code — but the API call
     fails fast with an actionable message instead of waiting forever.
+
+    ``set_progress_callback`` writes to the process-global LlamaIndex
+    ``Settings`` embed model, which holds exactly one callback. A second
+    indexing job started while this one runs therefore displaces our
+    heartbeat, so we re-arm it on every poll tick: missing a few
+    notifications for one tick is harmless, whereas never seeing our own
+    progress again would kill a perfectly healthy job. The guard is
+    consciously biased this way — it can be slow to notice a genuine stall
+    while another job indexes, and never fails a job that is making progress.
     """
     if stall_timeout is None:
         stall_timeout = _INDEX_STALL_TIMEOUT_SECONDS
@@ -90,6 +99,8 @@ async def _run_with_stall_guard(
         done, _ = await asyncio.wait({future}, timeout=_INDEX_STALL_POLL_SECONDS)
         if done:
             return future.result()
+        # Reclaim the shared callback slot in case a concurrent job took it.
+        set_progress_callback(_heartbeat)
         stalled_for = time.monotonic() - last_progress["at"]
         if stalled_for > stall_timeout:
             future.add_done_callback(_consume_terminal_exception)
