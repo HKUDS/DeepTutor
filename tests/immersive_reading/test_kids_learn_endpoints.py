@@ -82,6 +82,10 @@ def test_kids_learn_requires_session_and_anchored_page(tmp_path, monkeypatch):
     client, headers = learn_client(tmp_path, monkeypatch)
     endpoint = "/api/v1/kids/books/readingdoc001/learn"
 
+    # Profile selection now mirrors the device token into an HttpOnly cookie
+    # for storage-restricted browsers. Remove it to exercise the anonymous
+    # request while retaining the explicit bearer token for later assertions.
+    client.cookies.clear()
     unauthenticated = client.post(
         endpoint, json={"section_id": "section-1", "visible_text": SECTION_TEXT}
     )
