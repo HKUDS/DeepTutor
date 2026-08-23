@@ -219,6 +219,7 @@ test("an ordinary knowledge base has no devices section", () => {
     "files",
     "add",
     "github",
+    "web",
     "versions",
     "settings",
   ]);

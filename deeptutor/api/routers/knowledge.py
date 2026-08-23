@@ -164,6 +164,16 @@ def _writable_kb(kb_name: str) -> tuple[KnowledgeBaseManager, str, Path]:
     return manager_for_resource(resource), resource.name, resource.base_dir
 
 
+def _readable_kb(kb_name: str) -> tuple[KnowledgeBaseManager, str, Path]:
+    """Resolve a visible KB, including assigned read-only admin resources."""
+    manager = _overridden_kb_manager()
+    if manager is not None:
+        resolved_name = _resolve_registered_kb_name(manager, kb_name)
+        return manager, resolved_name, Path(manager.base_dir)
+    resource = resolve_kb(kb_name, require_write=False)
+    return manager_for_resource(resource), resource.name, resource.base_dir
+
+
 class KnowledgeBaseInfo(BaseModel):
     id: str | None = None
     name: str
@@ -3564,7 +3574,7 @@ async def add_web_source(kb_name: str, request: AddWebSourceRequest):
 @router.get("/{kb_name}/web-sources", response_model=list[WebSourceInfo])
 async def get_web_sources(kb_name: str):
     try:
-        manager, resolved_name, _ = _writable_kb(kb_name)
+        manager, resolved_name, _ = _readable_kb(kb_name)
         return [WebSourceInfo(**s) for s in manager.get_web_sources(resolved_name)]
     except HTTPException:
         raise
@@ -3666,7 +3676,7 @@ async def get_web_navigation(kb_name: str):
     sidecar index.  Otherwise falls back to per-source navigation.
     """
     try:
-        manager, resolved_name, _ = _writable_kb(kb_name)
+        manager, resolved_name, _ = _readable_kb(kb_name)
         # Try merged bilingual navigation first.
         try:
             from pathlib import Path

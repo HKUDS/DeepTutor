@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BookmarkPlus,
   Crosshair,
   Download,
+  ExternalLink,
   FileText,
   List,
   Loader2,
+  Maximize2,
+  Minimize2,
   PanelRightClose,
   PanelRightOpen,
   X,
@@ -20,10 +24,15 @@ import {
 } from "@/lib/reading-reader-action";
 import { locatorFromHref } from "@/lib/reading-citations";
 import {
+  activateMaterialRevision,
   fetchExport,
+  listMaterialRevisions,
+  saveMaterialToKb,
   type AnnotationColor,
   type AnnotationItem,
+  type MaterialInfo,
 } from "@/lib/reading-api";
+import { listKnowledgeBases } from "@/lib/knowledge-api";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
 import { EpubDocumentView } from "./EpubDocumentView";
@@ -100,6 +109,11 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  const [focusMode, setFocusMode] = useState(false);
+  const [revisions, setRevisions] = useState<MaterialInfo[]>([]);
+  const [switchingRevision, setSwitchingRevision] = useState(false);
+  const [kbChoices, setKbChoices] = useState<string[]>([]);
+  const [savingToKb, setSavingToKb] = useState(false);
   const nonceRef = useRef(0);
 
   // -- persisted auto-jump preference --------------------------------------
@@ -112,6 +126,44 @@ export function ReaderPane({
       // Private mode / storage disabled — keep the default.
     }
   }, []);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFocusMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusMode]);
+
+  useEffect(() => {
+    if (!material || material.source_type === "upload") {
+      setRevisions([]);
+      return;
+    }
+    let cancelled = false;
+    void listMaterialRevisions(material.material_id)
+      .then((rows) => {
+        if (!cancelled) setRevisions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setRevisions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [material]);
+
+  useEffect(() => {
+    if (material?.source_type !== "url_snapshot" || material.kb_name) return;
+    void listKnowledgeBases()
+      .then((rows) =>
+        setKbChoices(
+          rows.filter((row) => !row.read_only).map((row) => row.name),
+        ),
+      )
+      .catch(() => setKbChoices([]));
+  }, [material]);
 
   const toggleAutoJump = useCallback(() => {
     setAutoJump((current) => {
@@ -314,6 +366,47 @@ export function ReaderPane({
     }
   }, [material, exporting, t, dismissError, setError]);
 
+  const switchRevision = useCallback(
+    async (revisionId: string) => {
+      if (!material || !revisionId || switchingRevision) return;
+      setSwitchingRevision(true);
+      dismissError();
+      try {
+        const next = await activateMaterialRevision(
+          material.material_id,
+          revisionId,
+        );
+        await openMaterial(next);
+      } catch (error) {
+        setError(
+          error instanceof Error ? error.message : t("Version could not be opened."),
+        );
+      } finally {
+        setSwitchingRevision(false);
+      }
+    },
+    [dismissError, material, openMaterial, setError, switchingRevision, t],
+  );
+
+  const saveToKb = useCallback(
+    async (kbName: string) => {
+      if (!material || !kbName || savingToKb) return;
+      setSavingToKb(true);
+      dismissError();
+      try {
+        const next = await saveMaterialToKb(material.material_id, kbName);
+        await openMaterial(next);
+      } catch (error) {
+        setError(
+          error instanceof Error ? error.message : t("This page could not be saved."),
+        );
+      } finally {
+        setSavingToKb(false);
+      }
+    },
+    [dismissError, material, openMaterial, savingToKb, setError, t],
+  );
+
   // -- render --------------------------------------------------------------
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
@@ -325,8 +418,15 @@ export function ReaderPane({
   );
 
   return (
-    <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
-      <ReaderResizeHandle />
+    <div
+      data-focus-mode={focusMode ? "true" : "false"}
+      className={
+        focusMode
+          ? "fixed inset-0 z-50 flex min-w-0 flex-col bg-[var(--background)]"
+          : "relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]"
+      }
+    >
+      {!focusMode && <ReaderResizeHandle />}
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
         <FileText
           size={14}
@@ -365,6 +465,12 @@ export function ReaderPane({
               onClick={toggleAutoJump}
             />
             <HeaderButton
+              icon={focusMode ? Minimize2 : Maximize2}
+              label={focusMode ? t("Exit focus mode") : t("Focus mode")}
+              active={focusMode}
+              onClick={() => setFocusMode((value) => !value)}
+            />
+            <HeaderButton
               icon={exporting ? Loader2 : Download}
               label={t("Export annotated file")}
               spinning={exporting}
@@ -378,7 +484,7 @@ export function ReaderPane({
               // The panel itself only exists at `lg` and up — there is no room
               // for it beside the document on a narrow screen. Hiding the
               // trigger too keeps it from being a button that does nothing.
-              className="hidden lg:inline-flex"
+              className={focusMode ? "inline-flex" : "hidden lg:inline-flex"}
             />
             <HeaderButton
               icon={X}
@@ -391,6 +497,79 @@ export function ReaderPane({
           <HeaderButton icon={X} label={t("Close reader")} onClick={onClose} />
         )}
       </header>
+
+      {material && material.source_type !== "upload" && (
+        <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--border)] bg-[var(--card)]/45 px-3 py-1.5 text-[10.5px] text-[var(--muted-foreground)]">
+          <span className="font-medium text-[var(--foreground)]">
+            {material.source_type === "url_snapshot"
+              ? t("Web snapshot")
+              : material.source_type === "kb_web_tutorial"
+                ? t("Website tutorial")
+                : t("Knowledge base file")}
+          </span>
+          {material.captured_at ? (
+            <span>
+              {t("Captured")} {new Date(material.captured_at * 1000).toLocaleString()}
+            </span>
+          ) : null}
+          {material.source_url && (
+            <a
+              href={material.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[var(--primary)] hover:underline"
+            >
+              <ExternalLink size={10} />
+              {t("View original")}
+            </a>
+          )}
+          {revisions.length > 1 && (
+            <label className="ml-auto inline-flex items-center gap-1">
+              <span>{t("Version")}</span>
+              <select
+                value={material.revision_id ?? ""}
+                disabled={switchingRevision}
+                onChange={(event) => void switchRevision(event.target.value)}
+                className="h-6 max-w-[180px] rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-[10.5px]"
+              >
+                {revisions.map((revision) => (
+                  <option key={revision.revision_id} value={revision.revision_id}>
+                    {revision.captured_at
+                      ? new Date(revision.captured_at * 1000).toLocaleString()
+                      : revision.revision_id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {material.source_type === "url_snapshot" && !material.kb_name &&
+            kbChoices.length > 0 && (
+              <label className={revisions.length > 1 ? "" : "ml-auto"}>
+                <span className="sr-only">{t("Save to knowledge base")}</span>
+                <select
+                  value=""
+                  disabled={savingToKb}
+                  onChange={(event) => void saveToKb(event.target.value)}
+                  className="h-6 max-w-[190px] rounded border border-[var(--border)] bg-[var(--background)] px-1.5 text-[10.5px] text-[var(--foreground)]"
+                >
+                  <option value="">
+                    {savingToKb ? t("Saving…") : t("Save to knowledge base…")}
+                  </option>
+                  {kbChoices.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          {material.kb_name && (
+            <span className="inline-flex items-center gap-1">
+              <BookmarkPlus size={10} /> {t("Saved to KB")}
+            </span>
+          )}
+        </div>
+      )}
 
       {notice && (
         <div
@@ -427,7 +606,7 @@ export function ReaderPane({
         <nav className="dt-reader-scroll max-h-[34%] shrink-0 overflow-y-auto border-b border-[var(--border)] bg-[var(--muted)]/25 px-2 py-1.5">
           <ul>
             {outlineRows.map((row, index) => (
-              <li key={`${row.locator}-${index}`}>
+              <li key={`${row.locator}-${index}`} className="relative">
                 <button
                   type="button"
                   onClick={() => {
@@ -444,6 +623,17 @@ export function ReaderPane({
                     {row.locator}
                   </span>
                 </button>
+                {row.source_url && (
+                  <a
+                    href={row.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={t("Open original page")}
+                    className="absolute right-7 -mt-6 rounded p-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  >
+                    <ExternalLink size={10} />
+                  </a>
+                )}
               </li>
             ))}
           </ul>
@@ -507,7 +697,13 @@ export function ReaderPane({
         </div>
 
         {material && showAnnotations && (
-          <aside className="hidden w-[248px] shrink-0 border-l border-[var(--border)] bg-[var(--background)] lg:block">
+          <aside
+            className={
+              focusMode
+                ? "absolute inset-y-0 right-0 z-30 w-[min(320px,86vw)] border-l border-[var(--border)] bg-[var(--background)] shadow-xl lg:static lg:w-[280px] lg:shrink-0 lg:shadow-none"
+                : "hidden w-[248px] shrink-0 border-l border-[var(--border)] bg-[var(--background)] lg:block"
+            }
+          >
             <AnnotationList
               annotations={annotations}
               unit={material.unit}

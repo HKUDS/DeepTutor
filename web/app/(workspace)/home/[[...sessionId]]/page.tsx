@@ -72,6 +72,8 @@ import { useAppShell } from "@/context/AppShellContext";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 
 import { READER_ASK_EVENT, ReaderPane } from "@/components/reading/ReaderPane";
+import { useReading } from "@/context/ReadingContext";
+import { getMaterial as getReadingMaterial } from "@/lib/reading-api";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
 import {
@@ -383,6 +385,8 @@ export default function ChatPage() {
   const { setActiveSessionId, language: appLanguage } = useAppShell();
   const authStatus = useAuthStatus();
   const learningPolicy = authStatus.learningPolicy;
+  const { openMaterial: openReadingMaterial, setError: setReadingError } =
+    useReading();
 
   const {
     state,
@@ -436,6 +440,14 @@ export default function ChatPage() {
         : new URLSearchParams(window.location.search).get("agent");
   }
   const agentPreselectDoneRef = useRef(false);
+  const pendingReadingMaterialRef = useRef<string | null | undefined>(undefined);
+  if (pendingReadingMaterialRef.current === undefined) {
+    pendingReadingMaterialRef.current =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("reading_material");
+  }
+  const readingLaunchDoneRef = useRef(false);
   const {
     options: llmOptions,
     activeDefault: activeLLMDefault,
@@ -709,6 +721,22 @@ export default function ChatPage() {
   const isResearchMode = activeCap.value === "deep_research";
   const isReadingMode = activeCap.value === "immersive_reading";
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
+
+  useEffect(() => {
+    const materialId = pendingReadingMaterialRef.current;
+    if (!materialId || readingLaunchDoneRef.current) return;
+    readingLaunchDoneRef.current = true;
+    setCapability("immersive_reading");
+    void getReadingMaterial(materialId)
+      .then((material) => openReadingMaterial(material))
+      .catch((error) =>
+        setReadingError(
+          error instanceof Error
+            ? error.message
+            : t("This reading material could not be opened."),
+        ),
+      );
+  }, [openReadingMaterial, setCapability, setReadingError, t]);
 
   useEffect(() => {
     if (authStatus.loading || !learningPolicy) return;

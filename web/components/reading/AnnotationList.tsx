@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Bot, Sparkles, Trash2 } from "lucide-react";
+import { Bot, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AnnotationItem, UnitKind } from "@/lib/reading-api";
 import { unitLabel } from "./TextUnitView";
@@ -115,6 +115,12 @@ export function AnnotationList({
                     {annotation.kind === "underline" && (
                       <span className="text-[10px] text-[var(--muted-foreground)]">
                         {t("Underline")}
+                      </span>
+                    )}
+                    {annotation.migration_status === "needs_review" && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-1.5 py-[1px] text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                        <TriangleAlert size={9} />
+                        {t("Check migrated annotation")}
                       </span>
                     )}
                   </div>

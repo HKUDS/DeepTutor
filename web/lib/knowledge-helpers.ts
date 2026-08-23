@@ -229,6 +229,7 @@ export const KB_DETAIL_SECTIONS = [
   "files",
   "add",
   "github",
+  "web",
   "versions",
   "devices",
   "settings",

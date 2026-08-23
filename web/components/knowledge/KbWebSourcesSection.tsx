@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { Globe, Loader2, Plus, RefreshCw, Square, Trash2 } from "lucide-react";
+import { BookOpenText, Globe, Loader2, Plus, RefreshCw, Square, Trash2 } from "lucide-react";
 import {
   addWebSource,
   cancelWebSync,
@@ -14,15 +15,19 @@ import {
   type WebSyncJob,
 } from "@/lib/knowledge-api";
 import { formatKnowledgeTimestamp } from "@/lib/knowledge-helpers";
+import { createMaterialFromKb } from "@/lib/reading-api";
 
 interface KbWebSourcesSectionProps {
   kbName: string;
+  readOnly?: boolean;
 }
 
 export default function KbWebSourcesSection({
   kbName,
+  readOnly = false,
 }: KbWebSourcesSectionProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [sources, setSources] = useState<WebSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -155,6 +160,21 @@ export default function KbWebSourcesSection({
     }
   };
 
+  const handleRead = async (sourceId: string) => {
+    setError(null);
+    try {
+      const material = await createMaterialFromKb({
+        kb_name: kbName,
+        web_source_id: sourceId,
+      });
+      router.push(
+        `/home?reading_material=${encodeURIComponent(material.material_id)}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-10">
@@ -195,7 +215,7 @@ export default function KbWebSourcesSection({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          {!readOnly && <button
             type="button"
             onClick={() => void handleSync()}
             disabled={syncing || sources.length === 0}
@@ -207,7 +227,7 @@ export default function KbWebSourcesSection({
               <RefreshCw className="h-3 w-3" />
             )}
             {syncing ? t("Syncing…") : t("Sync now")}
-          </button>
+          </button>}
           {syncing && syncJob && (
             <button
               type="button"
@@ -218,14 +238,14 @@ export default function KbWebSourcesSection({
               <Square className="h-3 w-3" />
             </button>
           )}
-          <button
+          {!readOnly && <button
             type="button"
             onClick={() => setShowForm((v) => !v)}
             className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[12px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
           >
             <Plus className="h-3 w-3" />
             {t("Add source")}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -376,7 +396,13 @@ export default function KbWebSourcesSection({
       ) : (
         <div className="space-y-2">
           {sources.map((src) => (
-            <WebSourceCard key={src.id} source={src} onRemove={() => void handleRemove(src.id)} />
+            <WebSourceCard
+              key={src.id}
+              source={src}
+              readOnly={readOnly}
+              onRead={() => void handleRead(src.id)}
+              onRemove={() => void handleRemove(src.id)}
+            />
           ))}
         </div>
       )}
@@ -386,9 +412,13 @@ export default function KbWebSourcesSection({
 
 function WebSourceCard({
   source,
+  readOnly,
+  onRead,
   onRemove,
 }: {
   source: WebSource;
+  readOnly: boolean;
+  onRead: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -457,14 +487,28 @@ function WebSourceCard({
           </div>
         ) : null}
       </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        title={t("Remove source")}
-        className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onRead}
+          disabled={source.page_count <= 0}
+          title={t("Read whole tutorial")}
+          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2 py-1.5 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-45"
+        >
+          <BookOpenText className="h-3.5 w-3.5" />
+          {t("Read tutorial")}
+        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onRemove}
+            title={t("Remove source")}
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

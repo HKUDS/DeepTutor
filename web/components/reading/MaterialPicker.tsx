@@ -13,7 +13,13 @@ import {
   type MaterialDetail,
   type MaterialInfo,
 } from "@/lib/reading-api";
-import { listKnowledgeBases } from "@/lib/knowledge-api";
+import {
+  listKnowledgeBaseFiles,
+  listKnowledgeBases,
+  listWebSources,
+  type KnowledgeBaseFile,
+  type WebSource,
+} from "@/lib/knowledge-api";
 
 export interface MaterialPickerProps {
   onOpen: (material: MaterialDetail | MaterialInfo) => void;
@@ -44,7 +50,9 @@ export function MaterialPicker({
   const [urlInput, setUrlInput] = useState("");
   const [kbNames, setKbNames] = useState<string[]>([]);
   const [kbName, setKbName] = useState("");
-  const [kbPath, setKbPath] = useState("");
+  const [kbSelection, setKbSelection] = useState("");
+  const [kbFiles, setKbFiles] = useState<KnowledgeBaseFile[]>([]);
+  const [webSources, setWebSources] = useState<WebSource[]>([]);
 
   const reload = useCallback(async () => {
     try {
@@ -56,6 +64,28 @@ export function MaterialPicker({
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!kbName) {
+      setKbFiles([]);
+      setWebSources([]);
+      setKbSelection("");
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      listKnowledgeBaseFiles(kbName),
+      listWebSources(kbName).catch(() => []),
+    ]).then(([files, sources]) => {
+      if (cancelled) return;
+      setKbFiles(files.filter((row) => row.type !== "folder"));
+      setWebSources(sources.filter((row) => row.page_count > 0));
+      setKbSelection("");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [kbName]);
 
   useEffect(() => {
     void reload();
@@ -107,16 +137,18 @@ export function MaterialPicker({
   }, [busy, onOpen, reload, t, urlInput]);
 
   const openKbFile = useCallback(async () => {
-    const filePath = kbPath.trim();
-    if (!kbName || !filePath || busy) return;
+    if (!kbName || !kbSelection || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const material = await createMaterialFromKb({
-        kb_name: kbName,
-        file_path: filePath,
-      });
-      setKbPath("");
+      const isWebSource = kbSelection.startsWith("web:");
+      const value = kbSelection.slice(isWebSource ? 4 : 5);
+      const material = await createMaterialFromKb(
+        isWebSource
+          ? { kb_name: kbName, web_source_id: value }
+          : { kb_name: kbName, file_path: value },
+      );
+      setKbSelection("");
       await reload();
       onOpen(material);
     } catch (caught) {
@@ -124,7 +156,7 @@ export function MaterialPicker({
     } finally {
       setBusy(false);
     }
-  }, [busy, kbName, kbPath, onOpen, reload, t]);
+  }, [busy, kbName, kbSelection, onOpen, reload, t]);
 
   const ingest = useCallback(
     async (file: File | undefined | null) => {
@@ -207,19 +239,35 @@ export function MaterialPicker({
               >
                 {kbNames.map((name) => <option key={name}>{name}</option>)}
               </select>
-              <input
-                value={kbPath}
-                onChange={(event) => setKbPath(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void openKbFile();
-                }}
-                placeholder={t("File path in KB")}
+              <select
+                value={kbSelection}
+                onChange={(event) => setKbSelection(event.target.value)}
                 className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12px]"
-              />
+              >
+                <option value="">{t("Choose a file or tutorial")}</option>
+                {webSources.length > 0 && (
+                  <optgroup label={t("Website tutorials")}>
+                    {webSources.map((source) => (
+                      <option key={source.id} value={`web:${source.id}`}>
+                        {source.url}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {kbFiles.length > 0 && (
+                  <optgroup label={t("Files")}>
+                    {kbFiles.map((file) => (
+                      <option key={file.name} value={`file:${file.name}`}>
+                        {file.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
               <button
                 type="button"
                 onClick={() => void openKbFile()}
-                disabled={busy || !kbName || !kbPath.trim()}
+                disabled={busy || !kbName || !kbSelection}
                 className="rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-medium disabled:opacity-45"
               >
                 {t("Open")}

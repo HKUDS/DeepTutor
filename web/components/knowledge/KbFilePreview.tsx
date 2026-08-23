@@ -1,10 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Check,
+  BookOpenText,
   Copy,
   Download,
   FileText,
@@ -21,6 +23,7 @@ import {
   resolveSourceUrl,
   type FilePreviewSource,
 } from "@/components/chat/preview/previewerFor";
+import { createMaterialFromKb } from "@/lib/reading-api";
 
 // Full-size loading placeholder. Crucially, giving each dynamic() its own
 // `loading` keeps chunk-load suspension *inside* the preview pane. Without it,
@@ -76,6 +79,8 @@ const FallbackPreview = dynamic(
 
 interface KbFilePreviewProps {
   source: FilePreviewSource | null;
+  kbName: string;
+  kbPath: string | null;
   /**
    * Optional slot rendered to the right of the breadcrumb / title — used
    * to surface metadata (e.g. file count, modified date) inline in the
@@ -102,15 +107,19 @@ interface KbFilePreviewProps {
  */
 export default function KbFilePreview({
   source,
+  kbName,
+  kbPath,
   metaSuffix,
   fileListCollapsed,
   onToggleFileList,
 }: KbFilePreviewProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   // Master-detail caps the inline pane height; fullscreen lets a tall PDF use
   // the whole window so you're not stuck reading half a page at a time.
   const [fullscreen, setFullscreen] = useState(false);
+  const [openingReader, setOpeningReader] = useState(false);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -194,6 +203,22 @@ export default function KbFilePreview({
     }
   };
 
+  const handleOpenReader = async () => {
+    if (!kbPath || openingReader) return;
+    setOpeningReader(true);
+    try {
+      const material = await createMaterialFromKb({
+        kb_name: kbName,
+        file_path: kbPath,
+      });
+      router.push(
+        `/home?reading_material=${encodeURIComponent(material.material_id)}`,
+      );
+    } finally {
+      setOpeningReader(false);
+    }
+  };
+
   return (
     <div
       className={
@@ -240,6 +265,21 @@ export default function KbFilePreview({
             {metaSuffix}
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={() => void handleOpenReader()}
+          disabled={openingReader || !kbPath}
+          title={t("Open in Immersive Reading")}
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--border)] px-2 text-[11px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+        >
+          {openingReader ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <BookOpenText size={12} />
+          )}
+          <span className="hidden sm:inline">{t("Immersive Reading")}</span>
+        </button>
 
         <button
           type="button"

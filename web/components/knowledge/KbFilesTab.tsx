@@ -69,6 +69,8 @@ export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <KbFilePreview
           source={previewSource}
+          kbName={kb.name}
+          kbPath={selectedFile?.name ?? null}
           fileListCollapsed={fileListPanel.collapsed}
           onToggleFileList={fileListPanel.toggle}
         />
