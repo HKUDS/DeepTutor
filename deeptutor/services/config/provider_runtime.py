@@ -724,7 +724,11 @@ def resolve_llm_runtime_config(
     """Resolve active LLM config with TutorBot-style provider matching."""
     catalog_service = service or get_model_catalog_service()
     loaded = _with_personal_llm_profiles(_load_catalog(catalog))
-    loaded = apply_llm_selection_to_catalog(loaded, llm_selection)
+    # Parse the payload once: ``apply_llm_selection_to_catalog`` would otherwise
+    # re-parse it, so a malformed selection would be validated (and rejected)
+    # from two places. ``from_payload`` is idempotent on an already-parsed value.
+    selection = LLMSelection.from_payload(llm_selection)
+    loaded = apply_llm_selection_to_catalog(loaded, selection)
 
     profile, model = _active_profile_and_model(loaded, catalog_service, "llm")
     resolved_model = _as_str((model or {}).get("model"))
@@ -740,9 +744,8 @@ def resolve_llm_runtime_config(
     # caller's LLMSelection takes precedence over the profile/model default
     # resolved above. The model/global config value stays the fallback when
     # no override is present, preserving today's behavior.
-    selection_effort = LLMSelection.from_payload(llm_selection)
-    if selection_effort is not None and selection_effort.reasoning_effort:
-        reasoning_effort = selection_effort.reasoning_effort
+    if selection is not None and selection.reasoning_effort:
+        reasoning_effort = selection.reasoning_effort
     active_extra_headers = _to_headers((profile or {}).get("extra_headers"))
     context_window = _coerce_optional_int((model or {}).get("context_window"))
     if context_window is None:

@@ -8,12 +8,14 @@ from typing import Any
 
 from deeptutor.services.provider_registry import find_by_name
 
-# Reasoning-effort vocabulary already used elsewhere in the codebase (see
-# services/llm/reasoning_params.py and services/subagent/models.py) — kept
-# here as the single source of truth for what a conversation-level override
-# (#641) may request. Not every provider/model supports every value; callers
-# that need a narrower, model-specific list should filter client-side before
-# submitting a selection.
+# What a conversation-level override (#641) is allowed to ask for. This is a
+# request-validation vocabulary, deliberately the union of every level any
+# provider understands — `services/llm/reasoning_params.py` is what maps a
+# level onto a given provider's actual knob, and the per-backend `efforts`
+# lists in `services/subagent/models.py` describe what each subagent CLI
+# accepts. Neither of those is interchangeable with this one. Not every
+# provider/model supports every value, so callers that can offer a narrower,
+# model-specific list should filter before submitting a selection.
 VALID_REASONING_EFFORTS: tuple[str, ...] = (
     "none",
     "minimal",
