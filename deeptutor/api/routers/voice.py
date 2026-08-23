@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 
 from deeptutor.services.voice import (
     VoiceProviderError,
-    normalize_stt_content_type,
     synthesize_speech,
     transcribe_audio,
 )
@@ -120,9 +119,7 @@ async def speech_to_text(
         text = await transcribe_audio(
             audio,
             filename=file.filename or "audio.webm",
-            content_type=normalize_stt_content_type(
-                file.content_type or "application/octet-stream"
-            ),
+            content_type=file.content_type or "application/octet-stream",
             language=language,
         )
     except ValueError as exc:
