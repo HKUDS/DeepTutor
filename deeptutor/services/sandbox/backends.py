@@ -253,8 +253,19 @@ class RestrictedSubprocessBackend(SandboxBackend):
 
     @staticmethod
     def _powershell_executable() -> str:
-        """Return the Windows PowerShell executable available on PATH."""
-        return shutil.which("powershell.exe") or shutil.which("powershell") or "powershell.exe"
+        """Return the PowerShell executable available on PATH.
+
+        Prefer ``pwsh`` (PowerShell 7+) when present: it defaults to UTF-8 and
+        is the version still receiving updates. The commands we generate are
+        written for Windows PowerShell 5.1 syntax, which 7 also accepts, so
+        either host works.
+        """
+        return (
+            shutil.which("pwsh")
+            or shutil.which("powershell.exe")
+            or shutil.which("powershell")
+            or "powershell.exe"
+        )
 
     @staticmethod
     def _powershell_command(command: str) -> str:
@@ -263,8 +274,7 @@ class RestrictedSubprocessBackend(SandboxBackend):
         # byte-oriented asyncio pipe consistently.
         return (
             "$OutputEncoding = [Console]::OutputEncoding = "
-            "[System.Text.UTF8Encoding]::new($false); "
-            + command
+            "[System.Text.UTF8Encoding]::new($false); " + command
         )
 
     async def exec(self, request: ExecRequest) -> ExecResult:
@@ -314,7 +324,11 @@ async def _communicate(process: asyncio.subprocess.Process, timeout_s: int) -> E
             # flag also tears down python/compiler children started by it.
             try:
                 killer = await asyncio.create_subprocess_exec(
-                    "taskkill", "/PID", str(process.pid), "/T", "/F",
+                    "taskkill",
+                    "/PID",
+                    str(process.pid),
+                    "/T",
+                    "/F",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )

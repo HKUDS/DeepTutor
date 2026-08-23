@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from typing import Any
 
 from deeptutor.agents._shared.tool_composition import (
@@ -1587,8 +1588,6 @@ class AgenticChatPipeline:
         return "".join(blocks)
 
     def _workspace_system_note(self, context: UnifiedContext) -> str:
-        import sys
-
         if not getattr(self, "_exec_enabled", False):
             return ""
         try:
@@ -1603,49 +1602,55 @@ class AgenticChatPipeline:
             )
         except Exception:
             return ""
+
+        # Only the "how do I get a script into a file" clause depends on the
+        # host shell; everything else in the note is identical, so vary that
+        # one clause rather than duplicating the whole paragraph per platform.
         is_windows = sys.platform == "win32"
         if self.language == "zh":
-            if is_windows:
-                return (
-                    "[本轮工作区]\n"
-                    f"脚本和临时文件应写入：{exec_dir}\n"
-                    "相对路径会解析到这个目录。需要创建 PDF、图片、表格或其他下载文件时，"
+            how_to_write = (
+                (
                     "通过 exec 使用 PowerShell here-string 将脚本写入文件再运行，例如：\n"
                     "  @'\n...Python 脚本内容...\n'@ | Set-Content -Encoding utf8 gen.py\n"
                     "  python gen.py\n"
                     "不要使用 bash heredoc（<<'PY'）或 POSIX 重定向语法——当前为 Windows 环境。"
-                    "生成的文件会自动以可下载卡片呈现给用户——在回答里描述你做了什么即可，"
-                    "不要粘贴原始 URL。"
                 )
+                if is_windows
+                else (
+                    "直接通过 exec 写入并运行脚本（如 heredoc：python - <<'PY' … PY，"
+                    "或 cat > gen.py <<'EOF' … EOF 后再运行）。"
+                )
+            )
             return (
                 "[本轮工作区]\n"
                 f"脚本和临时文件应写入：{exec_dir}\n"
                 "相对路径会解析到这个目录。需要创建 PDF、图片、表格或其他下载文件时，"
-                "直接通过 exec 写入并运行脚本（如 heredoc：python - <<'PY' … PY，"
-                "或 cat > gen.py <<'EOF' … EOF 后再运行）。生成的文件会自动以可下载"
-                "卡片呈现给用户——在回答里描述你做了什么即可，不要粘贴原始 URL。"
+                f"{how_to_write}"
+                "生成的文件会自动以可下载卡片呈现给用户——在回答里描述你做了什么即可，"
+                "不要粘贴原始 URL。"
             )
-        if is_windows:
-            return (
-                "[Turn workspace]\n"
-                f"Scripts and temporary files should be written under: {exec_dir}\n"
-                "Relative paths resolve to this directory. When creating PDFs, images, "
-                "spreadsheets, or other downloadable files, write the script to a file "
-                "through exec with a PowerShell here-string, then run it, for example:\n"
+        how_to_write = (
+            (
+                "write the script to a file through exec with a PowerShell "
+                "here-string, then run it, for example:\n"
                 "  @'\n...Python script contents...\n'@ | Set-Content -Encoding utf8 gen.py\n"
                 "  python gen.py\n"
-                "Do not use Bash heredoc (<<'PY') or POSIX redirection syntax; this is a Windows environment. "
-                "Generated files are shown to the user automatically as downloadable cards "
-                "-- describe what you made, and do not paste raw URLs."
+                "Do not use Bash heredoc (<<'PY') or POSIX redirection syntax; "
+                "this is a Windows environment. "
             )
+            if is_windows
+            else (
+                "write and run scripts directly through exec (e.g. a heredoc: "
+                "python - <<'PY' … PY, or cat > gen.py <<'EOF' … EOF then run it). "
+            )
+        )
         return (
             "[Turn workspace]\n"
             f"Scripts and temporary files should be written under: {exec_dir}\n"
             "Relative paths resolve to this directory. When creating PDFs, images, "
-            "spreadsheets, or other downloadable files, write and run scripts directly "
-            "through exec (e.g. a heredoc: python - <<'PY' … PY, or cat > gen.py <<'EOF' "
-            "… EOF then run it). Generated files are shown to the user automatically as "
-            "downloadable cards — describe what you made, do not paste raw URLs."
+            f"spreadsheets, or other downloadable files, {how_to_write}"
+            "Generated files are shown to the user automatically as downloadable "
+            "cards — describe what you made, do not paste raw URLs."
         )
 
     def _t(self, key: str, default: str = "", **kwargs: Any) -> str:
