@@ -225,6 +225,19 @@ export async function activateMaterialRevision(
   );
 }
 
+export async function saveMaterialToKb(
+  materialId: string,
+  kbName: string,
+): Promise<MaterialDetail> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/save-to-kb`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kb_name: kbName }),
+    }),
+  );
+}
+
 export async function getMaterial(materialId: string): Promise<MaterialDetail> {
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials/${materialId}`), {

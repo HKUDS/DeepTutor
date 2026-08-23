@@ -688,6 +688,36 @@ class ReadingStore:
             )
             return manifest
 
+    def link_source_to_kb(self, material_id: str, *, kb_name: str) -> MaterialManifest:
+        """Associate an online snapshot with a KB without changing its identity.
+
+        Saving a page after reading it must not recreate the material (which
+        would strand its position and annotations). The KB owns subsequent
+        sync; the reader only records the relationship on every stored copy of
+        the active revision.
+        """
+        current = self.manifest(material_id)
+        if current.source_type != "url_snapshot":
+            raise ReadingError("Only web-page snapshots can be saved to a knowledge base.")
+        linked = dataclass_replace(current, kb_name=str(kb_name or "").strip())
+        with self._locked(material_id):
+            _atomic_write(
+                self._dir(material_id) / MANIFEST_NAME,
+                json.dumps(linked.to_dict(), ensure_ascii=False, indent=2),
+            )
+            revision_manifest = (
+                self._dir(material_id)
+                / REVISIONS_DIR
+                / linked.revision_id
+                / MANIFEST_NAME
+            )
+            if revision_manifest.parent.is_dir():
+                _atomic_write(
+                    revision_manifest,
+                    json.dumps(linked.to_dict(), ensure_ascii=False, indent=2),
+                )
+        return linked
+
     # -- annotations ------------------------------------------------------
 
     def annotations(self, material_id: str) -> list[Annotation]:

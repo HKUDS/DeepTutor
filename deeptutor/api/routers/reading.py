@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace as dataclass_replace
+from datetime import datetime
 import logging
 from pathlib import Path
 import shutil
@@ -204,6 +205,10 @@ class KbMaterialRequest(BaseModel):
     web_source_id: str = ""
 
 
+class SaveToKbRequest(BaseModel):
+    kb_name: str
+
+
 # === Routes ===================================================================
 
 
@@ -306,8 +311,9 @@ async def material_from_url(payload: UrlMaterialRequest) -> MaterialDetail:
             filename=_web_filename(page.title, url),
             source_url=page.canonical_url or page.url or url,
         )
-        manifest = _store().ingest_source(source)
-        return _detail(_store(), manifest)
+        store = _store()
+        manifest = store.ingest_source(source)
+        return _detail(store, manifest)
     except HTTPException:
         raise
     except Exception as exc:
@@ -364,6 +370,31 @@ async def get_material(material_id: str) -> MaterialDetail:
     try:
         assert_learning_material(material_id)
         return _detail(store, store.manifest(material_id))
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/save-to-kb", response_model=MaterialDetail)
+async def save_material_to_kb(
+    material_id: str,
+    payload: SaveToKbRequest,
+) -> MaterialDetail:
+    """Bookmark a URL snapshot in a writable KB without rebuilding it."""
+    try:
+        assert_learning_material(material_id)
+        from deeptutor.multi_user.knowledge_access import manager_for_resource, resolve_kb
+
+        resource = resolve_kb(payload.kb_name, require_write=True)
+        store = _store()
+        manifest = store.manifest(material_id)
+        if manifest.source_type != "url_snapshot" or not manifest.source_url:
+            raise ReadingError("Only web-page snapshots can be saved to a knowledge base.")
+        manager = manager_for_resource(resource)
+        manager.add_web_source(resource.name, manifest.source_url)
+        linked = store.link_source_to_kb(material_id, kb_name=resource.id)
+        return _detail(store, linked)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise _http_error(exc) from exc
 
@@ -582,8 +613,15 @@ def _normalise_public_url(value: str) -> str:
     parsed = urlparse(clean)
     host = (parsed.hostname or "").lower()
     netloc = host
-    if parsed.port:
-        netloc += f":{parsed.port}"
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="The URL contains an invalid port.") from exc
+    if port and not (
+        parsed.scheme.lower() == "http" and port == 80
+        or parsed.scheme.lower() == "https" and port == 443
+    ):
+        netloc += f":{port}"
     return urlunparse(
         (parsed.scheme.lower(), netloc, parsed.path or "/", parsed.params, parsed.query, "")
     )
@@ -639,13 +677,33 @@ def _kb_tutorial_payload(
         (row for row in manager.get_web_sources(kb_name) if row.get("id") == source_id),
         None,
     )
-    if source is None:
-        raise HTTPException(status_code=404, detail="Web source not found")
-    page_manifest = source.get("page_manifest") or {}
-    if not page_manifest:
+    page_manifest: dict[str, Any] = {}
+    navigation: dict[str, Any] = {}
+    if source is not None:
+        page_manifest = source.get("page_manifest") or {}
+        navigation = source.get("navigation") or {}
+    else:
+        # The navigation API may expose a merged bilingual pair id rather than
+        # either concrete source id. Its sidecar still points at the canonical
+        # Markdown snapshots under raw/, so it is directly readable.
+        try:
+            from deeptutor.services.web_source import bilingual_store
+
+            pair_index = bilingual_store.load_pair_index(raw_dir.parent, source_id)
+        except Exception:
+            pair_index = None
+        if pair_index:
+            navigation = pair_index.get("navigation") or {}
+            source = {
+                "id": source_id,
+                "url": pair_index.get("origin") or "",
+                "last_synced_at": pair_index.get("updated_at") or "",
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Web source not found")
+    if not page_manifest and not navigation.get("nodes"):
         raise ReadingError("Sync this web source before opening the tutorial.")
 
-    navigation = source.get("navigation") or {}
     rows = _navigation_rows(navigation.get("nodes") or [])
     known = {row["file_path"] for row in rows}
     for file_path, metadata in sorted(page_manifest.items()):
@@ -665,7 +723,28 @@ def _kb_tutorial_payload(
     outline: list[OutlineEntry] = []
     included_paths: list[str] = []
     for row in rows:
-        target = _safe_kb_file(raw_dir, row["file_path"])
+        try:
+            target = _safe_kb_file(raw_dir, row["file_path"])
+        except HTTPException:
+            # Keep the failed page in the source outline. This makes partial
+            # sync visible and actionable instead of making the whole tutorial
+            # disappear because one page failed or was removed.
+            units.append(
+                "# Page unavailable\n\n"
+                f"The synced snapshot for `{row['file_path']}` is missing. "
+                "Retry this web source from the Knowledge Base and reopen the tutorial."
+            )
+            included_paths.append(row["file_path"])
+            outline.append(
+                OutlineEntry(
+                    locator=len(units),
+                    title=f"{row['title']} — unavailable",
+                    level=max(1, int(row["level"])),
+                    synthesised=navigation.get("kind") != "original",
+                    source_url=str(row["url"]),
+                )
+            )
+            continue
         try:
             markdown = target.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
@@ -689,6 +768,7 @@ def _kb_tutorial_payload(
     if not units:
         raise ReadingError("The synced tutorial has no readable pages.")
     url = str(source.get("url") or "")
+    captured_at = _timestamp(source.get("last_synced_at"))
     return ReadingSourcePayload(
         source_type="kb_web_tutorial",
         source_ref=f"{resource_id}:web:{source_id}",
@@ -702,7 +782,18 @@ def _kb_tutorial_payload(
         kb_path="\n".join(included_paths),
         raw_bytes=b"",
         has_raw_view=False,
+        captured_at=captured_at,
     )
+
+
+def _timestamp(value: Any) -> float:
+    raw = str(value or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _attachment_header(filename: str) -> str:
