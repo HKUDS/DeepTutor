@@ -975,8 +975,8 @@ def resolve_embedding_runtime_config(
         dimension=dimension,
         send_dimensions=send_dimensions,
         request_timeout=60,
-        # YuEdu fork: 火山 plan 的 embedding RPM 极低，必须允许 profile 里限速
-        # （model_catalog embedding profile 的 batch_size/batch_delay 字段，默认与上游一致）
+        # Some providers (e.g. Volcengine Ark plan tier) enforce very low RPM limits;
+        # allow per-profile batch_size/batch_delay in the embedding profile, defaults unchanged
         batch_size=_clamp_batch_size(profile),
         batch_delay=_clamp_batch_delay(profile),
     )
