@@ -12,6 +12,7 @@ export type UnitKind = "page" | "chapter" | "slide" | "section";
 export type AnnotationKind = "highlight" | "underline" | "note";
 export type ExportFormat = "auto" | "pdf" | "markdown";
 export type RenderMode = "text" | "pdf" | "epub";
+export type ContentFormat = "plain_text" | "markdown" | "pdf" | "epub";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -37,7 +38,12 @@ export interface MaterialInfo {
   has_raw_view: boolean;
   render_mode: RenderMode;
   annotation_count: number;
-  source_type?: "upload" | "url_snapshot" | "kb_file" | "kb_web_tutorial";
+  source_type?:
+    | "upload"
+    | "url_snapshot"
+    | "kb_file"
+    | "kb_web_tutorial"
+    | "derived_epub";
   source_ref?: string;
   source_url?: string;
   kb_name?: string;
@@ -47,6 +53,10 @@ export interface MaterialInfo {
   previous_revision_id?: string;
   tutorial_available?: boolean;
   navigation_kind?: string;
+  content_format?: ContentFormat;
+  bilingual_available?: boolean;
+  bilingual_languages?: string[];
+  bilingual_pairing_ids?: string[];
 }
 
 export interface OutlineRow {
@@ -112,6 +122,27 @@ export interface ReadingPosition {
   source_anchor: string;
   percentage: number;
   updated_at: number;
+}
+
+export interface BilingualGroup {
+  group_id: string;
+  locator: number;
+  source_markdown: string;
+  translation_markdown: string;
+  source_language: string;
+  target_language: string;
+  confidence: number;
+  low_confidence: boolean;
+}
+
+export interface EpubPairingCandidate {
+  material_id: string;
+  title: string;
+  filename: string;
+  language: string;
+  author: string;
+  score: number;
+  reasons: Record<string, number | boolean>;
 }
 
 export interface SupportedFormats {
@@ -266,6 +297,55 @@ export async function getUnitText(
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials/${materialId}/units/${locator}`), {
       cache: "no-store",
+    }),
+  );
+}
+
+export async function getBilingualUnit(
+  materialId: string,
+  locator: number,
+): Promise<{ locator: number; groups: BilingualGroup[] }> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/units/${locator}/bilingual`),
+      { cache: "no-store" },
+    ),
+  );
+}
+
+export async function repairLegacyEpub(materialId: string): Promise<MaterialDetail> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/repair-epub`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }),
+  );
+}
+
+export async function listEpubPairingCandidates(
+  materialId: string,
+): Promise<EpubPairingCandidate[]> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/epub-pairing-candidates`),
+      { cache: "no-store" },
+    ),
+  );
+}
+
+export async function createEpubPairing(
+  englishMaterialId: string,
+  chineseMaterialId: string,
+): Promise<{ pairing: Record<string, unknown>; material: MaterialDetail }> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/epub-pairings`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        english_material_id: englishMaterialId,
+        chinese_material_id: chineseMaterialId,
+      }),
     }),
   );
 }

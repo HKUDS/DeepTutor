@@ -12,8 +12,14 @@ import {
   SunMoon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AnnotationItem, UnitKind } from "@/lib/reading-api";
-import { getUnitText } from "@/lib/reading-api";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
+import type {
+  AnnotationItem,
+  BilingualGroup,
+  ContentFormat,
+  UnitKind,
+} from "@/lib/reading-api";
+import { getBilingualUnit, getUnitText } from "@/lib/reading-api";
 import { segmentTextByQuotes } from "@/lib/reading-quote-locator";
 import { cleanQuote } from "@/lib/reading-selection";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
@@ -33,6 +39,8 @@ export interface TextUnitViewProps {
   materialId: string;
   unit: UnitKind;
   unitCount: number;
+  contentFormat?: ContentFormat;
+  bilingualAvailable?: boolean;
   annotations: AnnotationItem[];
   jump: JumpRequest | null;
   highlightedAnnotationId?: string | null;
@@ -54,6 +62,8 @@ export function TextUnitView({
   materialId,
   unit,
   unitCount,
+  contentFormat = "plain_text",
+  bilingualAvailable = false,
   annotations,
   jump,
   highlightedAnnotationId,
@@ -65,6 +75,8 @@ export function TextUnitView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [locator, setLocator] = useState(1);
   const [text, setText] = useState("");
+  const [bilingualGroups, setBilingualGroups] = useState<BilingualGroup[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fontSize, setFontSize] = useState(15);
@@ -121,8 +133,19 @@ export function TextUnitView({
     setError(null);
     (async () => {
       try {
-        const unitText = await getUnitText(materialId, locator);
-        if (!cancelled) setText(unitText.text);
+        const [unitText, bilingual] = await Promise.all([
+          getUnitText(materialId, locator),
+          bilingualAvailable
+            ? getBilingualUnit(materialId, locator)
+            : Promise.resolve({ locator, groups: [] as BilingualGroup[] }),
+        ]);
+        if (!cancelled) {
+          setText(unitText.text);
+          setBilingualGroups(bilingual.groups);
+          // Translation disclosure is intentionally session-local and resets
+          // closed whenever a unit or material is opened.
+          setExpandedGroups(new Set());
+        }
       } catch (loadError) {
         if (!cancelled) {
           setError(
@@ -138,7 +161,7 @@ export function TextUnitView({
     return () => {
       cancelled = true;
     };
-  }, [materialId, locator, t]);
+  }, [bilingualAvailable, materialId, locator, t]);
 
   useEffect(() => {
     onVisibleLocatorChange?.(locator);
@@ -254,6 +277,25 @@ export function TextUnitView({
           />
         </div>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {bilingualGroups.some((group) => group.translation_markdown.trim()) ? (
+            <button
+              type="button"
+              onClick={() =>
+                setExpandedGroups((current) =>
+                  current.size
+                    ? new Set()
+                    : new Set(
+                        bilingualGroups
+                          .filter((group) => group.translation_markdown.trim())
+                          .map((group) => group.group_id),
+                      ),
+                )
+              }
+              className="mr-1 rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            >
+              {expandedGroups.size ? t("Collapse all Chinese") : t("Expand all Chinese")}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={!canPrev}
@@ -302,19 +344,67 @@ export function TextUnitView({
           <p className="text-[12px] text-[var(--muted-foreground)]">{error}</p>
         ) : (
           <article
-            className={`mx-auto whitespace-pre-wrap leading-[1.75] selection:bg-[var(--primary)]/20 ${serif ? "font-serif" : "font-sans"}`}
+            className={`mx-auto leading-[1.75] selection:bg-[var(--primary)]/20 ${serif ? "font-serif" : "font-sans"}`}
             style={{
               maxWidth: `${lineWidth}ch`,
               fontSize: `${fontSize}px`,
               color: readerTheme === "auto" ? "var(--foreground)" : "inherit",
             }}
           >
-            {runs.length === 0 ? (
+            {bilingualGroups.length ? (
+              <div className="space-y-5">
+                {bilingualGroups.map((group) => (
+                  <section key={group.group_id} data-bilingual-group={group.group_id}>
+                    <MarkdownRenderer
+                      content={group.source_markdown}
+                      variant="prose"
+                      allowHtml={false}
+                    />
+                    {group.translation_markdown.trim() ? (
+                      <details
+                        className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/25 px-3 py-2"
+                        open={expandedGroups.has(group.group_id)}
+                        onToggle={(event) => {
+                          const open = event.currentTarget.open;
+                          setExpandedGroups((current) => {
+                            const next = new Set(current);
+                            if (open) next.add(group.group_id);
+                            else next.delete(group.group_id);
+                            return next;
+                          });
+                        }}
+                      >
+                        <summary className="cursor-pointer text-xs font-medium text-[var(--primary)]">
+                          {t("Show Chinese")}
+                          {group.low_confidence ? (
+                            <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
+                              {t("Check alignment")}
+                            </span>
+                          ) : null}
+                        </summary>
+                        <MarkdownRenderer
+                          content={group.translation_markdown}
+                          className="mt-2"
+                          variant="prose"
+                          allowHtml={false}
+                        />
+                      </details>
+                    ) : null}
+                  </section>
+                ))}
+              </div>
+            ) : contentFormat === "markdown" ? (
+              <MarkdownRenderer
+                content={text}
+                variant="prose"
+                allowHtml={false}
+              />
+            ) : runs.length === 0 ? (
               <span className="text-[var(--muted-foreground)]">
                 {t("This section has no extractable text.")}
               </span>
             ) : (
-              runs.map((run, index) =>
+              <div className="whitespace-pre-wrap">{runs.map((run, index) =>
                 run.mark ? (
                   <mark
                     key={index}
@@ -343,7 +433,7 @@ export function TextUnitView({
                 ) : (
                   <span key={index}>{run.text}</span>
                 ),
-              )
+              )}</div>
             )}
           </article>
         )}

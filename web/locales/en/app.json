@@ -3350,5 +3350,15 @@
   "Change line width": "Change line width",
   "Change reading theme": "Change reading theme",
   "Show assistant": "Show assistant",
-  "Hide assistant": "Hide assistant"
+  "Hide assistant": "Hide assistant",
+  "Show Chinese": "Show Chinese",
+  "Expand all Chinese": "Expand all Chinese",
+  "Collapse all Chinese": "Collapse all Chinese",
+  "Check alignment": "Check alignment",
+  "Pair Chinese EPUB": "Pair Chinese EPUB",
+  "Choose Chinese EPUB": "Choose Chinese EPUB",
+  "Confirm a recommended edition before creating a bilingual revision.": "Confirm a recommended edition before creating a bilingual revision.",
+  "Unknown language": "Unknown language",
+  "Upload the matching Chinese EPUB, then try again.": "Upload the matching Chinese EPUB, then try again.",
+  "Bilingual EPUB": "Bilingual EPUB"
 }

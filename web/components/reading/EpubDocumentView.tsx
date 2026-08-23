@@ -1,15 +1,19 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Languages, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { apiFetch } from "@/lib/api";
 import {
   getReadingPosition,
+  createEpubPairing,
+  listEpubPairingCandidates,
   rawMaterialUrl,
   saveReadingPosition,
   type AnnotationItem,
+  type EpubPairingCandidate,
+  type MaterialDetail,
   type UnitReference,
 } from "@/lib/reading-api";
 import {
@@ -103,6 +107,8 @@ export interface EpubDocumentViewProps {
   onAnnotationClick?: (annotation: AnnotationItem) => void;
   onVisibleLocatorChange?: (locator: number) => void;
   onError?: (message: string) => void;
+  bilingualAvailable?: boolean;
+  onOpenMaterial?: (material: MaterialDetail) => void;
 }
 
 /** Source-faithful, paginated EPUB renderer aligned to server locators. */
@@ -117,6 +123,8 @@ export function EpubDocumentView({
   onAnnotationClick,
   onVisibleLocatorChange,
   onError,
+  bilingualAvailable = false,
+  onOpenMaterial,
 }: EpubDocumentViewProps) {
   const { t } = useTranslation();
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -130,8 +138,19 @@ export function EpubDocumentView({
   const visibleChangeRef = useRef(onVisibleLocatorChange);
   const errorRef = useRef(onError);
   const locatorRef = useRef(1);
+  const contentDocumentsRef = useRef<Set<Document>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [pairingOpen, setPairingOpen] = useState(false);
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const [candidates, setCandidates] = useState<EpubPairingCandidate[]>([]);
+  const [translationsExpanded, setTranslationsExpanded] = useState(false);
+  const translationsExpandedRef = useRef(false);
+
+  useEffect(() => {
+    translationsExpandedRef.current = false;
+    setTranslationsExpanded(false);
+  }, [materialId]);
 
   useEffect(() => {
     refsRef.current = unitRefs;
@@ -156,6 +175,7 @@ export function EpubDocumentView({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    const contentDocuments = contentDocumentsRef.current;
     let cancelled = false;
     let rendition: EpubRendition | null = null;
     let book: EpubBook | null = null;
@@ -227,6 +247,10 @@ export function EpubDocumentView({
       const doc = contents.document;
       if (!doc?.body || doc.body.dataset.dtReaderReady === "true") return;
       doc.body.dataset.dtReaderReady = "true";
+      contentDocuments.add(doc);
+      for (const details of doc.querySelectorAll<HTMLDetailsElement>("details.dt-zh")) {
+        details.open = translationsExpandedRef.current;
+      }
       let gesture: { x: number; y: number } | null = null;
       doc.addEventListener(
         "touchstart",
@@ -352,6 +376,7 @@ export function EpubDocumentView({
       book?.destroy();
       renditionRef.current = null;
       bookRef.current = null;
+      contentDocuments.clear();
       host.replaceChildren();
     };
   }, [materialId, unitCount, onSelection, t, turnPage]);
@@ -442,6 +467,44 @@ export function EpubDocumentView({
     });
   }, [jump, unitRefs]);
 
+  const toggleTranslations = useCallback(() => {
+    setTranslationsExpanded((current) => {
+      const next = !current;
+      translationsExpandedRef.current = next;
+      for (const doc of contentDocumentsRef.current) {
+        for (const details of doc.querySelectorAll<HTMLDetailsElement>("details.dt-zh")) {
+          details.open = next;
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const openPairing = useCallback(async () => {
+    setPairingOpen(true);
+    setPairingBusy(true);
+    try {
+      setCandidates(await listEpubPairingCandidates(materialId));
+    } catch (error) {
+      errorRef.current?.(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPairingBusy(false);
+    }
+  }, [materialId]);
+
+  const confirmPairing = useCallback(async (candidateId: string) => {
+    setPairingBusy(true);
+    try {
+      const result = await createEpubPairing(materialId, candidateId);
+      setPairingOpen(false);
+      onOpenMaterial?.(result.material);
+    } catch (error) {
+      errorRef.current?.(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPairingBusy(false);
+    }
+  }, [materialId, onOpenMaterial]);
+
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-[var(--background)] pb-[env(safe-area-inset-bottom)]">
       <div
@@ -465,6 +528,25 @@ export function EpubDocumentView({
       )}
       {!loadError && (
         <>
+          <div className="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)]/90 p-1 shadow-sm backdrop-blur">
+            {bilingualAvailable ? (
+              <button
+                type="button"
+                onClick={toggleTranslations}
+                className="rounded-md px-2 py-1 text-[11px] text-[var(--foreground)] hover:bg-[var(--muted)]"
+              >
+                {translationsExpanded ? t("Collapse all Chinese") : t("Expand all Chinese")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void openPairing()}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--foreground)] hover:bg-[var(--muted)]"
+              >
+                <Languages size={13} /> {t("Pair Chinese EPUB")}
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => turnPage("previous")}
@@ -483,6 +565,49 @@ export function EpubDocumentView({
           </button>
         </>
       )}
+      {pairingOpen ? (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 p-4">
+          <section className="max-h-[80%] w-full max-w-md overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-4 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">{t("Choose Chinese EPUB")}</h3>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {t("Confirm a recommended edition before creating a bilingual revision.")}
+                </p>
+              </div>
+              <button type="button" onClick={() => setPairingOpen(false)} aria-label={t("Close")}>
+                <X size={16} />
+              </button>
+            </div>
+            {pairingBusy ? (
+              <div className="mt-5 flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                <Loader2 size={14} className="animate-spin" /> {t("Loading…")}
+              </div>
+            ) : candidates.length ? (
+              <ul className="mt-4 space-y-2">
+                {candidates.map((candidate) => (
+                  <li key={candidate.material_id}>
+                    <button
+                      type="button"
+                      onClick={() => void confirmPairing(candidate.material_id)}
+                      className="w-full rounded-lg border border-[var(--border)] p-3 text-left hover:bg-[var(--muted)]"
+                    >
+                      <span className="block text-sm font-medium">{candidate.title}</span>
+                      <span className="mt-1 block text-[11px] text-[var(--muted-foreground)]">
+                        {candidate.language || t("Unknown language")} · {Math.round(candidate.score * 100)}%
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-xs text-[var(--muted-foreground)]">
+                {t("Upload the matching Chinese EPUB, then try again.")}
+              </p>
+            )}
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

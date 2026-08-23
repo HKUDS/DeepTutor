@@ -3350,5 +3350,15 @@
   "Change line width": "切换行宽",
   "Change reading theme": "切换阅读主题",
   "Show assistant": "显示 AI 助手",
-  "Hide assistant": "收起 AI 助手"
+  "Hide assistant": "收起 AI 助手",
+  "Show Chinese": "显示中文",
+  "Expand all Chinese": "全部展开中文",
+  "Collapse all Chinese": "全部收起中文",
+  "Check alignment": "请检查对齐",
+  "Pair Chinese EPUB": "配对中文 EPUB",
+  "Choose Chinese EPUB": "选择中文 EPUB",
+  "Confirm a recommended edition before creating a bilingual revision.": "确认推荐版本后再创建双语版本。",
+  "Unknown language": "未知语言",
+  "Upload the matching Chinese EPUB, then try again.": "请先上传匹配的中文 EPUB，然后重试。",
+  "Bilingual EPUB": "双语 EPUB"
 }

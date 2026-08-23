@@ -632,7 +632,9 @@ export function ReaderPane({
               ? t("Web snapshot")
               : material.source_type === "kb_web_tutorial"
                 ? t("Website tutorial")
-                : t("Knowledge base file")}
+                : material.source_type === "derived_epub"
+                  ? t("Bilingual EPUB")
+                  : t("Knowledge base file")}
           </span>
           {material.captured_at ? (
             <span>
@@ -813,6 +815,8 @@ export function ReaderPane({
               }
               onVisibleLocatorChange={handleVisibleLocator}
               onError={setError}
+              bilingualAvailable={material.bilingual_available}
+              onOpenMaterial={(candidate) => void openMaterial(candidate)}
             />
           ) : material.has_raw_view ? (
             <PdfDocumentView
@@ -832,6 +836,8 @@ export function ReaderPane({
               materialId={material.material_id}
               unit={material.unit}
               unitCount={material.unit_count}
+              contentFormat={material.content_format}
+              bilingualAvailable={material.bilingual_available}
               annotations={annotations}
               jump={jump}
               highlightedAnnotationId={activeAnnotationId}
