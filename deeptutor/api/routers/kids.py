@@ -18,7 +18,7 @@ from typing import Any
 import unicodedata
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
@@ -84,10 +84,12 @@ def _extract_profile_id(
 ) -> str | None:
     """Extract profile_id from header or cookie."""
     token = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization[7:]
-    elif dt_kids:
+    # The cookie is HttpOnly and overwritten by the server on profile selection,
+    # so it is more reliable than a stale localStorage-backed bearer token.
+    if dt_kids:
         token = dt_kids
+    elif authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
     if not token:
         return None
     return _verify_device_token(token)
@@ -105,6 +107,20 @@ def _require_profile(
     if manager.get_profile(profile_id) is None:
         raise HTTPException(status_code=401, detail="Profile not found")
     return profile_id
+
+
+def _kids_auth_response(payload: dict, token: str) -> JSONResponse:
+    """Mirror the device token so storage-restricted browsers stay signed in."""
+    response = JSONResponse(payload)
+    response.set_cookie(
+        "dt_kids",
+        token,
+        httponly=True,
+        samesite="lax",
+        max_age=12 * 60 * 60,
+        path="/",
+    )
+    return response
 
 
 def _normalize_learning_anchor(value: str) -> str:
@@ -186,7 +202,7 @@ class SelectProfileRequest(BaseModel):
 
 
 @router.post("/select-profile")
-async def select_profile(request: SelectProfileRequest) -> dict:
+async def select_profile(request: SelectProfileRequest) -> JSONResponse:
     """Return a device token for the selected profile.
 
     If the profile has a PIN, the parent PIN must be provided; otherwise the
@@ -210,7 +226,7 @@ async def select_profile(request: SelectProfileRequest) -> dict:
         "narration_rate": profile.narration_rate,
         "daily_limit_minutes": profile.daily_limit_minutes,
     }
-    return {"token": token, "profile": profile_data}
+    return _kids_auth_response({"token": token, "profile": profile_data}, token)
 
 
 class ParentUnlockRequest(BaseModel):
@@ -219,27 +235,25 @@ class ParentUnlockRequest(BaseModel):
 
 
 @router.post("/parent-unlock")
-async def parent_unlock(request: ParentUnlockRequest) -> dict:
+async def parent_unlock(request: ParentUnlockRequest) -> JSONResponse:
     """Verify parent PIN and return a device token (for PIN-protected profiles)."""
     manager = get_kids_manager()
     if not manager.verify_parent_pin(request.profile_id, request.pin):
         raise HTTPException(status_code=403, detail="Invalid PIN or too many attempts")
     token = _sign_device_token(request.profile_id)
     profile = manager.get_profile(request.profile_id)
-    return {
-        "token": token,
-        "profile": {
-            "id": profile.id,
-            "name": profile.name,
-            "avatar": profile.avatar,
-            "birth_date": profile.birth_date,
-            "age": profile.age,
-            "age_band": profile.age_band,
-            "help_language": profile.help_language,
-            "narration_rate": profile.narration_rate,
-            "daily_limit_minutes": profile.daily_limit_minutes,
-        },
+    profile_data = {
+        "id": profile.id,
+        "name": profile.name,
+        "avatar": profile.avatar,
+        "birth_date": profile.birth_date,
+        "age": profile.age,
+        "age_band": profile.age_band,
+        "help_language": profile.help_language,
+        "narration_rate": profile.narration_rate,
+        "daily_limit_minutes": profile.daily_limit_minutes,
     }
+    return _kids_auth_response({"token": token, "profile": profile_data}, token)
 
 
 # ── Child library ───────────────────────────────────────────────────────────

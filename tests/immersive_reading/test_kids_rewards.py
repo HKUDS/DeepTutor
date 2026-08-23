@@ -12,6 +12,7 @@ import pytest
 import deeptutor.api.routers.kids as kids_router_module
 import deeptutor.api.routers.kids_admin as kids_admin_router_module
 import deeptutor.core.entry_points as entry_point_module
+from deeptutor.immersive_reading import service as immersive_reading_service
 from deeptutor.immersive_reading.models import (
     KidsBookAssignment,
     KidsInteractiveBookProgress,
@@ -50,6 +51,7 @@ class FakeStarsProvider:
 
     def __init__(self) -> None:
         self.events: dict[str, KidsRewardEvent] = {}
+        self.content_totals_by_profile: dict[str, dict[str, int]] = {}
 
     def record(self, event: KidsRewardEvent) -> RewardSnapshot:
         assert set(event.model_dump()) == EVENT_FIELDS
@@ -63,6 +65,9 @@ class FakeStarsProvider:
             message="Nice work!",
             items=[{"provider_label": "Stars", "value": str(len(self.events))}],
         )
+
+    def content_totals(self, profile_id: str) -> dict[str, int]:
+        return dict(self.content_totals_by_profile.get(profile_id, {}))
 
 
 class FailingProvider(FakeStarsProvider):
@@ -113,12 +118,17 @@ class FakeQuizReadingService:
 
     def load_document(self, document_id: str):
         return SimpleNamespace(
+            id=document_id,
+            title="Reading Doc",
             sections=[
                 SimpleNamespace(
                     id="section-1", title="Chapter 1", index=0, checkpoint_kind="chapter"
                 )
             ]
         )
+
+    def _summary(self, document) -> dict:
+        return {"id": document.id, "title": document.title}
 
     def get_section(self, document_id: str, section_id: str):
         return {"content": "The little plum is on the mat."}
@@ -316,6 +326,34 @@ def test_reading_quiz_emits_neutral_events_and_provider_snapshot(monkeypatch, tm
     rewards = client.get("/api/v1/kids/rewards", headers=headers)
     assert rewards.status_code == 200
     assert rewards.json()["reward"]["provider"] == "fake_stars"
+
+
+def test_library_adds_provider_totals_without_persisting_legacy_fields(monkeypatch, tmp_path):
+    provider = FakeStarsProvider()
+    _install_provider(monkeypatch, provider)
+    client, headers, profile_id = _reading_client(monkeypatch, tmp_path, provider)
+    provider.content_totals_by_profile[profile_id] = {"reading:readingdoc001": 6}
+    monkeypatch.setattr(
+        immersive_reading_service,
+        "get_immersive_reading_service",
+        lambda: FakeQuizReadingService(),
+    )
+    legacy_progress = KidsLearningProgress(
+        profile_id=profile_id,
+        document_id="readingdoc001",
+    ).model_dump(mode="json")
+    legacy_progress["total_stars"] = 99
+    _write_json(
+        get_kids_manager()._progress_path(profile_id, "readingdoc001"), legacy_progress
+    )
+
+    response = client.get("/api/v1/kids/library", headers=headers)
+
+    assert response.status_code == 200
+    progress = response.json()["library"][0]["progress"]
+    assert progress["total_stars"] == 6
+    stored = get_kids_manager().load_kids_progress(profile_id, "readingdoc001")
+    assert "total_stars" not in stored.model_dump(mode="json")
 
 
 def test_child_rewards_endpoint_requires_device_session(monkeypatch, tmp_path):

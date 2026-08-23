@@ -62,6 +62,10 @@ class KidsRewardProvider(Protocol):
         """Return the child-safe display snapshot for a profile."""
         ...
 
+    def content_totals(self, profile_id: str) -> dict[str, int] | None:
+        """Optionally return provider-owned totals keyed by ``type:id``."""
+        ...
+
 
 def build_kids_reward_event(
     *,
@@ -175,6 +179,39 @@ def kids_reward_snapshot(profile_id: str) -> RewardSnapshot | None:
             "Kids reward provider %r failed to load a snapshot.", provider.name, exc_info=True
         )
         return None
+
+
+def kids_reward_content_totals(profile_id: str) -> dict[str, int]:
+    """Return per-content reward totals for legacy library clients."""
+    provider = active_kids_reward_provider()
+    if provider is None:
+        return {}
+    content_totals = getattr(provider, "content_totals", None)
+    if not callable(content_totals):
+        return {}
+    try:
+        value = content_totals(profile_id)
+    except Exception:
+        logger.warning(
+            "Kids reward provider %r failed to load content totals.",
+            provider.name,
+            exc_info=True,
+        )
+        return {}
+    if not isinstance(value, dict):
+        return {}
+
+    totals: dict[str, int] = {}
+    for content_key, stars in value.items():
+        if not isinstance(content_key, str) or not content_key:
+            continue
+        try:
+            normalized = int(stars)
+        except (TypeError, ValueError):
+            continue
+        if normalized >= 0:
+            totals[content_key] = normalized
+    return totals
 
 
 def reset_kids_reward_provider_cache_for_tests() -> None:

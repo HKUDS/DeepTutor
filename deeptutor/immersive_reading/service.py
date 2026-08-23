@@ -42,6 +42,7 @@ from deeptutor.immersive_reading.models import (
     SearchHit,
     SelectionQueryResult,
 )
+from deeptutor.kids_rewards import kids_reward_content_totals
 from deeptutor.services.file_io import atomic_write_text
 from deeptutor.services.llm import clean_thinking_tags, complete, get_llm_config
 from deeptutor.services.llm.context_window import resolve_effective_context_window
@@ -2963,6 +2964,7 @@ class KidsManager:
         from deeptutor.book.storage import get_book_storage
 
         book_storage = get_book_storage()
+        reward_totals = kids_reward_content_totals(profile_id)
 
         library: list[dict[str, Any]] = []
         for a in assignments:
@@ -2971,6 +2973,11 @@ class KidsManager:
                 if book is None:
                     continue
                 progress = self.load_kids_interactive_progress(profile_id, a.book_id)
+                progress_payload = progress.model_dump(mode="json")
+                if reward_totals:
+                    progress_payload["total_stars"] = reward_totals.get(
+                        f"interactive_book:{a.book_id}", 0
+                    )
                 library.append(
                     {
                         "assignment": a.model_dump(mode="json"),
@@ -2986,7 +2993,7 @@ class KidsManager:
                             "chapter_count": book.chapter_count,
                             "cover_url": f"/api/v1/kids/interactive-books/{book.id}/cover",
                         },
-                        "progress": progress.model_dump(mode="json"),
+                        "progress": progress_payload,
                     }
                 )
             else:
@@ -2994,12 +3001,17 @@ class KidsManager:
                 if doc is None:
                     continue
                 progress = self.load_kids_progress(profile_id, a.document_id)
+                progress_payload = progress.model_dump(mode="json")
+                if reward_totals:
+                    progress_payload["total_stars"] = reward_totals.get(
+                        f"reading:{a.document_id}", 0
+                    )
                 library.append(
                     {
                         "assignment": a.model_dump(mode="json"),
                         "content_type": "reading",
                         "document": ir_service._summary(doc),
-                        "progress": progress.model_dump(mode="json"),
+                        "progress": progress_payload,
                     }
                 )
         return library
