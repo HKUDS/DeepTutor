@@ -33,6 +33,7 @@ SourceType = Literal[
 ]
 
 AnnotationKind = Literal["highlight", "underline", "note"]
+TextSelectorType = Literal["TextQuoteSelector", "TextPositionSelector"]
 
 # Palette offered by the reader toolbar. Kept server-side too so an annotation
 # arriving from an older client (or a tool call) can be validated rather than
@@ -358,6 +359,70 @@ class MaterialManifest:
 
 
 @dataclass(frozen=True, slots=True)
+class TextQuoteSelector:
+    """W3C TextQuoteSelector used to re-anchor a mark after content moves."""
+
+    exact: str
+    prefix: str = ""
+    suffix: str = ""
+    type: Literal["TextQuoteSelector"] = "TextQuoteSelector"
+
+    def to_dict(self) -> dict[str, Any]:
+        row: dict[str, Any] = {"type": self.type, "exact": self.exact}
+        if self.prefix:
+            row["prefix"] = self.prefix
+        if self.suffix:
+            row["suffix"] = self.suffix
+        return row
+
+
+@dataclass(frozen=True, slots=True)
+class TextPositionSelector:
+    """W3C TextPositionSelector in the rendered unit's text-content space."""
+
+    start: int
+    end: int
+    type: Literal["TextPositionSelector"] = "TextPositionSelector"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"type": self.type, "start": self.start, "end": self.end}
+
+
+TextSelector = TextQuoteSelector | TextPositionSelector
+
+
+def parse_text_selectors(value: Any) -> tuple[TextSelector, ...]:
+    """Parse only the two bounded selector shapes supported by the reader."""
+
+    if not isinstance(value, (list, tuple)):
+        return ()
+    parsed: list[TextSelector] = []
+    for raw in value[:2]:
+        if not isinstance(raw, dict):
+            continue
+        selector_type = str(raw.get("type") or "")
+        if selector_type == "TextQuoteSelector":
+            exact = str(raw.get("exact") or "")[:2000]
+            if exact:
+                parsed.append(
+                    TextQuoteSelector(
+                        exact=exact,
+                        prefix=str(raw.get("prefix") or "")[-128:],
+                        suffix=str(raw.get("suffix") or "")[:128],
+                    )
+                )
+        elif selector_type == "TextPositionSelector":
+            try:
+                start = max(0, int(raw.get("start") or 0))
+                end = max(start, int(raw.get("end") or 0))
+            except (TypeError, ValueError):
+                continue
+            if end > start:
+                parsed.append(TextPositionSelector(start=start, end=end))
+    return tuple(parsed)
+
+
+@dataclass(frozen=True, slots=True)
 class Annotation:
     """One user (or model) mark on a material.
 
@@ -376,6 +441,9 @@ class Annotation:
     rects: tuple[Rect, ...] = ()
     # Opaque renderer-native position. EPUB clients store a CFI here.
     source_anchor: str = ""
+    # Portable W3C selectors for reflowing HTML/Markdown. Old annotations omit
+    # them and continue to resolve through ``quote``.
+    selectors: tuple[TextSelector, ...] = ()
     author: str = "user"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -395,6 +463,7 @@ class Annotation:
             "note": self.note,
             "rects": [r.to_list() for r in self.rects],
             "source_anchor": self.source_anchor,
+            "selectors": [selector.to_dict() for selector in self.selectors],
             "author": self.author,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -421,6 +490,7 @@ class Annotation:
             note=str(data.get("note") or ""),
             rects=rects,
             source_anchor=str(data.get("source_anchor") or ""),
+            selectors=parse_text_selectors(data.get("selectors")),
             author=str(data.get("author") or "user"),
             created_at=float(data.get("created_at") or 0.0),
             updated_at=float(data.get("updated_at") or 0.0),

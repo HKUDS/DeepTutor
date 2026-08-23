@@ -29,7 +29,7 @@ from urllib.parse import urldefrag, urlparse, urlunparse
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.params import File
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from deeptutor.multi_user.learning_access import (
     assert_learning_material,
@@ -144,6 +144,25 @@ class BilingualUnit(BaseModel):
     groups: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class TextQuoteSelectorPayload(BaseModel):
+    type: Literal["TextQuoteSelector"]
+    exact: str = Field(min_length=1, max_length=2000)
+    prefix: str = Field(default="", max_length=128)
+    suffix: str = Field(default="", max_length=128)
+
+
+class TextPositionSelectorPayload(BaseModel):
+    type: Literal["TextPositionSelector"]
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def ordered(self) -> "TextPositionSelectorPayload":
+        if self.end <= self.start:
+            raise ValueError("selector end must be greater than start")
+        return self
+
+
 class AnnotationPayload(BaseModel):
     """An annotation as the reader sends it.
 
@@ -157,10 +176,14 @@ class AnnotationPayload(BaseModel):
     locator: int = Field(ge=1)
     kind: Literal["highlight", "underline", "note"] = "highlight"
     color: str = "yellow"
-    quote: str = ""
+    quote: str = Field(default="", max_length=2000)
     note: str = ""
     rects: list[list[float]] = Field(default_factory=list)
     source_anchor: str = Field(default="", max_length=4096)
+    selectors: list[TextQuoteSelectorPayload | TextPositionSelectorPayload] = Field(
+        default_factory=list,
+        max_length=2,
+    )
 
     def to_annotation(self) -> Annotation:
         return Annotation.from_dict(
@@ -173,6 +196,7 @@ class AnnotationPayload(BaseModel):
                 "note": self.note,
                 "rects": self.rects,
                 "source_anchor": self.source_anchor,
+                "selectors": [selector.model_dump() for selector in self.selectors],
                 "author": "user",
             }
         )
@@ -187,6 +211,7 @@ class AnnotationInfo(BaseModel):
     note: str
     rects: list[list[float]]
     source_anchor: str = ""
+    selectors: list[dict[str, Any]] = Field(default_factory=list)
     author: str
     created_at: float
     updated_at: float

@@ -13,6 +13,8 @@ from deeptutor.reading import (
     ReadingSourcePayload,
     ReadingStore,
     Rect,
+    TextPositionSelector,
+    TextQuoteSelector,
     localize_snapshot_images,
     markdown_payload,
     sanitize_snapshot_markdown,
@@ -319,6 +321,38 @@ def test_unreliable_annotation_migration_requires_review(
     migrated = store.annotations(changed.material_id)[0]
     assert migrated.migration_status == "needs_review"
     assert migrated.revision_id == changed.revision_id
+
+
+def test_w3c_quote_context_disambiguates_revision_migration(
+    store: ReadingStore,
+) -> None:
+    first = store.ingest_source(payload("alpha same quote omega"))
+    store.save_annotation(
+        first.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="same quote",
+            selectors=(
+                TextQuoteSelector(
+                    exact="same quote",
+                    prefix="alpha ",
+                    suffix=" omega",
+                ),
+                TextPositionSelector(start=6, end=16),
+            ),
+        ),
+    )
+
+    changed = store.ingest_source(
+        payload("beta same quote delta", "alpha same quote omega revised")
+    )
+
+    migrated = store.annotations(changed.material_id)[0]
+    assert migrated.locator == 2
+    assert migrated.migration_status == "migrated"
+    assert [selector.type for selector in migrated.selectors] == ["TextQuoteSelector"]
+    assert migrated.selectors[0].exact == "same quote"
 
 
 def test_revision_switch_restores_revision_state(store: ReadingStore) -> None:

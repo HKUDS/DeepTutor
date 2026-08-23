@@ -22,6 +22,7 @@
     "build:brand-icons": "tsx ./scripts/build-brand-icons.mts"
   },
   "dependencies": {
+    "@recogito/text-annotator": "4.2.5",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
@@ -40,8 +41,8 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.0.0",
     "react-i18next": "^16.5.3",
-    "react-reader": "^2.0.15",
     "react-markdown": "^10.1.0",
+    "react-reader": "^2.0.15",
     "react-syntax-highlighter": "^16.1.1",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",

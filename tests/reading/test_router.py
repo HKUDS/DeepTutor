@@ -660,6 +660,75 @@ def test_annotation_create_update_list_delete_round_trip(client: TestClient) -> 
     assert client.delete(f"{base}/{created['annotation_id']}").status_code == 404
 
 
+def test_annotation_round_trips_w3c_text_selectors(client: TestClient) -> None:
+    material = _upload(client)
+    base = f"/api/v1/reading/materials/{material['material_id']}/annotations"
+
+    created = client.put(
+        base,
+        json={
+            "locator": 1,
+            "quote": "Sequence models",
+            "selectors": [
+                {
+                    "type": "TextQuoteSelector",
+                    "exact": "Sequence models",
+                    "prefix": "",
+                    "suffix": " are",
+                },
+                {"type": "TextPositionSelector", "start": 0, "end": 15},
+            ],
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["selectors"] == [
+        {
+            "type": "TextQuoteSelector",
+            "exact": "Sequence models",
+            "suffix": " are",
+        },
+        {"type": "TextPositionSelector", "start": 0, "end": 15},
+    ]
+
+
+def test_annotation_rejects_mismatched_quote_selector(client: TestClient) -> None:
+    material = _upload(client)
+    response = client.put(
+        f"/api/v1/reading/materials/{material['material_id']}/annotations",
+        json={
+            "locator": 1,
+            "quote": "Sequence models",
+            "selectors": [
+                {"type": "TextQuoteSelector", "exact": "different text"},
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert "does not match" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        {"type": "TextPositionSelector", "start": 5, "end": 5},
+        {"type": "TextPositionSelector", "start": 6, "end": 5},
+    ],
+)
+def test_annotation_rejects_invalid_text_positions(
+    client: TestClient,
+    selector: dict,
+) -> None:
+    material = _upload(client)
+    response = client.put(
+        f"/api/v1/reading/materials/{material['material_id']}/annotations",
+        json={"locator": 1, "quote": "x", "selectors": [selector]},
+    )
+
+    assert response.status_code == 422
+
+
 def test_annotation_on_an_out_of_range_locator_is_a_400(client: TestClient) -> None:
     material = _upload(client)
 

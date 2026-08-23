@@ -396,6 +396,7 @@ export function ReaderPane({
           note,
           rects: selection.rects,
           source_anchor: selection.sourceAnchor ?? "",
+          selectors: selection.selectors ?? [],
         },
         {
           annotation_id: temporaryId,
@@ -406,6 +407,7 @@ export function ReaderPane({
           note,
           rects: selection.rects,
           source_anchor: selection.sourceAnchor ?? "",
+          selectors: selection.selectors ?? [],
           author: "user",
           created_at: now,
           updated_at: now,

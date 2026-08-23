@@ -22,6 +22,7 @@ import type {
 import { getBilingualUnit, getUnitText } from "@/lib/reading-api";
 import { segmentTextByQuotes } from "@/lib/reading-quote-locator";
 import { cleanQuote } from "@/lib/reading-selection";
+import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 
 const COLOR_INK: Record<string, string> = {
@@ -73,6 +74,17 @@ export function TextUnitView({
 }: TextUnitViewProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const articleRef = useRef<HTMLElement | null>(null);
+  const textSelectorToolsRef = useRef<{
+    rangeToSelector: (
+      range: Range,
+      container: HTMLElement,
+    ) => { quote: string; start: number; end: number };
+    getQuoteContext: (
+      range: Range,
+      container: HTMLElement,
+    ) => { prefix: string; suffix: string };
+  } | null>(null);
   const [locator, setLocator] = useState(1);
   const [text, setText] = useState("");
   const [bilingualGroups, setBilingualGroups] = useState<BilingualGroup[]>([]);
@@ -190,6 +202,81 @@ export function TextUnitView({
     [text, annotations, locator],
   );
 
+  const richAnnotations = contentFormat === "markdown" || bilingualGroups.length > 0;
+
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article || !richAnnotations || loading || error) return;
+    let cancelled = false;
+    let annotator: { destroy: () => void } | null = null;
+
+    void import("@recogito/text-annotator").then((module) => {
+      if (cancelled) return;
+      textSelectorToolsRef.current = {
+        rangeToSelector: module.rangeToSelector,
+        getQuoteContext: module.getQuoteContext,
+      };
+      const instance = module.createTextAnnotator(article, {
+        annotatingEnabled: false,
+        renderer: "SPANS",
+        style: (annotation) => {
+          const properties = annotation.properties as
+            | { annotationId?: string; color?: string; kind?: string }
+            | undefined;
+          const color = COLOR_INK[properties?.color ?? ""] ?? COLOR_INK.yellow;
+          if (properties?.kind === "underline") {
+            return {
+              fill: "transparent",
+              underlineColor: `rgb(${color})`,
+              underlineThickness: 2,
+            };
+          }
+          return {
+            fill: `rgb(${color})`,
+            fillOpacity:
+              properties?.annotationId === highlightedAnnotationId ? 0.8 : 0.55,
+          };
+        },
+      });
+      annotator = instance;
+      const rows = annotations
+        .filter((annotation) => annotation.locator === locator)
+        .map((annotation) =>
+          toRecogitoTextAnnotation(
+            annotation,
+            article.textContent ?? "",
+          ),
+        )
+        .filter((annotation) => annotation !== null);
+      instance.setAnnotations(rows);
+      instance.on("selectionChanged", (selected) => {
+        const id = selected[0]?.id;
+        const annotation = annotations.find((row) => row.annotation_id === id);
+        if (annotation) onAnnotationClick?.(annotation);
+      });
+      if (highlightedAnnotationId) {
+        instance.scrollIntoView(highlightedAnnotationId, containerRef.current ?? article);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      annotator?.destroy();
+      textSelectorToolsRef.current = null;
+    };
+  }, [
+    annotations,
+    bilingualGroups,
+    contentFormat,
+    error,
+    highlightedAnnotationId,
+    loading,
+    locator,
+    onAnnotationClick,
+    richAnnotations,
+    text,
+  ]);
+
   const handlePointerUp = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) {
@@ -201,7 +288,12 @@ export function TextUnitView({
       onSelection(null);
       return;
     }
-    const quote = cleanQuote(selection.toString());
+    const tools = textSelectorToolsRef.current;
+    const selector =
+      richAnnotations && tools && articleRef.current
+        ? tools.rangeToSelector(range, articleRef.current)
+        : null;
+    const quote = selector?.quote || cleanQuote(selection.toString());
     if (!quote) {
       onSelection(null);
       return;
@@ -213,11 +305,26 @@ export function TextUnitView({
       quote,
       // No geometry: a reflowing text view has none worth storing.
       rects: [],
+      selectors:
+        selector && selector.quote.length <= 2000 && articleRef.current
+          ? [
+              {
+                type: "TextQuoteSelector",
+                exact: selector.quote,
+                ...tools?.getQuoteContext(range, articleRef.current),
+              },
+              {
+                type: "TextPositionSelector",
+                start: selector.start,
+                end: selector.end,
+              },
+            ]
+          : [],
       anchor: last
         ? { x: last.left + last.width / 2, y: last.top }
         : { x: 0, y: 0 },
     });
-  }, [locator, onSelection]);
+  }, [locator, onSelection, richAnnotations]);
 
   const canPrev = locator > 1;
   const canNext = locator < unitCount;
@@ -344,6 +451,7 @@ export function TextUnitView({
           <p className="text-[12px] text-[var(--muted-foreground)]">{error}</p>
         ) : (
           <article
+            ref={articleRef}
             className={`mx-auto leading-[1.75] selection:bg-[var(--primary)]/20 ${serif ? "font-serif" : "font-sans"}`}
             style={{
               maxWidth: `${lineWidth}ch`,

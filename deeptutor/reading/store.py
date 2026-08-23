@@ -49,6 +49,7 @@ from deeptutor.reading.models import (
     ReadingError,
     ReadingPosition,
     ReadingUpgradeConflict,
+    TextQuoteSelector,
     UnitReference,
 )
 from deeptutor.reading.sources import ReadingSourcePayload
@@ -458,29 +459,47 @@ class ReadingStore:
     ) -> list[Annotation]:
         migrated: list[Annotation] = []
         for row in annotations:
-            quote = row.quote.strip()
+            quote_selector = next(
+                (selector for selector in row.selectors if isinstance(selector, TextQuoteSelector)),
+                None,
+            )
+            quote = (quote_selector.exact if quote_selector else row.quote).strip()
             preferred = ReadingStore._matching_outline_range(
                 row.locator,
                 old_outline,
                 new_outline,
                 len(units),
             )
-            matches = [
-                index
-                for index, unit in enumerate(units, start=1)
-                if quote and quote in unit and (preferred is None or index in preferred)
-            ]
+            matches = ReadingStore._annotation_quote_matches(
+                units,
+                quote,
+                quote_selector,
+                preferred,
+            )
             if len(matches) != 1 and preferred is not None:
-                matches = [
-                    index for index, unit in enumerate(units, start=1) if quote and quote in unit
-                ]
+                matches = ReadingStore._annotation_quote_matches(
+                    units,
+                    quote,
+                    quote_selector,
+                    None,
+                )
             if len(matches) == 1:
+                locator, start = matches[0]
+                unit = units[locator - 1]
+                end = start + len(quote)
                 migrated.append(
                     dataclass_replace(
                         row,
-                        locator=matches[0],
+                        locator=locator,
                         rects=(),
                         source_anchor="",
+                        selectors=(
+                            TextQuoteSelector(
+                                exact=quote,
+                                prefix=unit[max(0, start - 32) : start],
+                                suffix=unit[end : end + 32],
+                            ),
+                        ),
                         revision_id=revision_id,
                         migration_status="migrated",
                         updated_at=time.time(),
@@ -493,12 +512,49 @@ class ReadingStore:
                         locator=min(max(1, row.locator), len(units)),
                         rects=(),
                         source_anchor="",
+                        selectors=(quote_selector,) if quote_selector else (),
                         revision_id=revision_id,
                         migration_status="needs_review",
                         updated_at=time.time(),
                     )
                 )
         return migrated
+
+    @staticmethod
+    def _annotation_quote_matches(
+        units: Sequence[str],
+        quote: str,
+        selector: TextQuoteSelector | None,
+        allowed: range | None,
+    ) -> list[tuple[int, int]]:
+        """Find exact quote occurrences, using W3C context to disambiguate."""
+
+        if not quote:
+            return []
+        exact: list[tuple[int, int]] = []
+        contextual: list[tuple[int, int]] = []
+        for locator, unit in enumerate(units, start=1):
+            if allowed is not None and locator not in allowed:
+                continue
+            start = 0
+            while True:
+                start = unit.find(quote, start)
+                if start < 0:
+                    break
+                exact.append((locator, start))
+                end = start + len(quote)
+                prefix_matches = not selector or not selector.prefix or unit[:start].endswith(
+                    selector.prefix
+                )
+                suffix_matches = not selector or not selector.suffix or unit[end:].startswith(
+                    selector.suffix
+                )
+                if prefix_matches and suffix_matches:
+                    contextual.append((locator, start))
+                start = end or start + 1
+        # Context is a refinement, not a reason to lose an otherwise unique
+        # exact match when Markdown punctuation changed around the quote.
+        return contextual or exact
 
     def _migrate_progress(
         self,
@@ -984,6 +1040,18 @@ class ReadingStore:
             )
         if len(annotation.source_anchor) > 4096:
             raise ReadingError("source anchor is too long")
+        quote_selector = next(
+            (
+                selector
+                for selector in annotation.selectors
+                if isinstance(selector, TextQuoteSelector)
+            ),
+            None,
+        )
+        if quote_selector and annotation.quote and quote_selector.exact != annotation.quote:
+            raise ReadingError("annotation quote does not match its TextQuoteSelector")
+        if quote_selector and not annotation.quote:
+            annotation = dataclass_replace(annotation, quote=quote_selector.exact)
         with self._locked(material_id):
             existing = self.annotations(material_id)
             stored = annotation

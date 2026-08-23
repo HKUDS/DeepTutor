@@ -1032,6 +1032,47 @@ a[href^="#dt-locator-"]:hover {
   background: transparent;
 }
 
+/* Recogito Text Annotator's required overlay styles, scoped to the Reader.
+   The package's global stylesheet also changes html/body overscroll and every
+   selection in the app, so importing it would leak reader behaviour into chat.
+   Source: @recogito/text-annotator 4.2.5 (BSD-3-Clause). */
+.dt-reader-scroll .r6o-annotatable {
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dt-reader-scroll .r6o-annotatable.no-focus-outline {
+  outline: none;
+}
+
+.dt-reader-scroll .r6o-annotatable .r6o-span-highlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  mix-blend-mode: multiply;
+}
+
+.dt-reader-scroll .r6o-annotatable .r6o-span-highlight-layer.hidden {
+  display: none;
+}
+
+.dt-reader-scroll .r6o-annotatable .r6o-span-highlight-layer .r6o-annotation {
+  position: absolute;
+  display: block;
+  box-sizing: content-box;
+  border-style: solid;
+  border-width: 0;
+}
+
+.dt-reader-scroll .r6o-annotatable .hovered * {
+  cursor: pointer;
+}
+
 /* Sidebar tooltip */
 .dt-tooltip-wrapper {
   @apply relative inline-flex;

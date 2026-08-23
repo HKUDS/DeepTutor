@@ -89,6 +89,19 @@ export interface UnitReference {
  */
 export type NormalisedRect = [number, number, number, number];
 
+export type ReadingTextSelector =
+  | {
+      type: "TextQuoteSelector";
+      exact: string;
+      prefix?: string;
+      suffix?: string;
+    }
+  | {
+      type: "TextPositionSelector";
+      start: number;
+      end: number;
+    };
+
 export interface AnnotationItem {
   annotation_id: string;
   locator: number;
@@ -98,6 +111,7 @@ export interface AnnotationItem {
   note: string;
   rects: NormalisedRect[];
   source_anchor: string;
+  selectors?: ReadingTextSelector[];
   /** "user" or "assistant" — the model can annotate too. */
   author: string;
   created_at: number;
@@ -115,6 +129,7 @@ export interface AnnotationDraft {
   note?: string;
   rects?: NormalisedRect[];
   source_anchor?: string;
+  selectors?: ReadingTextSelector[];
 }
 
 export interface ReadingPosition {

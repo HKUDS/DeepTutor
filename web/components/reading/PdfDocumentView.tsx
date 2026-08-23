@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { loadPdfjs, type PdfDocument } from "@/lib/pdfjs-loader";
-import type { AnnotationItem, NormalisedRect } from "@/lib/reading-api";
+import type {
+  AnnotationItem,
+  NormalisedRect,
+  ReadingTextSelector,
+} from "@/lib/reading-api";
 import { rawMaterialUrl } from "@/lib/reading-api";
 import { domRangeForQuote } from "@/lib/reading-quote-locator";
 import {
@@ -24,6 +28,7 @@ export interface SelectionPayload {
   quote: string;
   rects: NormalisedRect[];
   sourceAnchor?: string;
+  selectors?: ReadingTextSelector[];
   /** Viewport coordinates of the selection, for popover placement. */
   anchor: { x: number; y: number };
 }
