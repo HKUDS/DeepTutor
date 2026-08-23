@@ -23,6 +23,7 @@ export interface SelectionPayload {
   locator: number;
   quote: string;
   rects: NormalisedRect[];
+  sourceAnchor?: string;
   /** Viewport coordinates of the selection, for popover placement. */
   anchor: { x: number; y: number };
 }

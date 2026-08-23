@@ -11,6 +11,7 @@ import { apiFetch, apiUrl } from "@/lib/api";
 export type UnitKind = "page" | "chapter" | "slide" | "section";
 export type AnnotationKind = "highlight" | "underline" | "note";
 export type ExportFormat = "auto" | "pdf" | "markdown";
+export type RenderMode = "text" | "pdf" | "epub";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -34,6 +35,7 @@ export interface MaterialInfo {
   created_at: number;
   /** True when the original bytes can be rendered faithfully (PDF today). */
   has_raw_view: boolean;
+  render_mode: RenderMode;
   annotation_count: number;
 }
 
@@ -47,6 +49,13 @@ export interface OutlineRow {
 export interface MaterialDetail extends MaterialInfo {
   outline: OutlineRow[];
   outline_text: string;
+  unit_refs: UnitReference[];
+}
+
+export interface UnitReference {
+  locator: number;
+  source_href: string;
+  title: string;
 }
 
 /**
@@ -67,6 +76,7 @@ export interface AnnotationItem {
   quote: string;
   note: string;
   rects: NormalisedRect[];
+  source_anchor: string;
   /** "user" or "assistant" — the model can annotate too. */
   author: string;
   created_at: number;
@@ -81,6 +91,14 @@ export interface AnnotationDraft {
   quote?: string;
   note?: string;
   rects?: NormalisedRect[];
+  source_anchor?: string;
+}
+
+export interface ReadingPosition {
+  locator: number;
+  source_anchor: string;
+  percentage: number;
+  updated_at: number;
 }
 
 export interface SupportedFormats {
@@ -152,6 +170,29 @@ export async function getUnitText(
 /** URL of the original bytes. Served with Range support so pdf.js can stream. */
 export function rawMaterialUrl(materialId: string): string {
   return apiUrl(`${BASE}/materials/${materialId}/raw`);
+}
+
+export async function getReadingPosition(
+  materialId: string,
+): Promise<ReadingPosition> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
+      cache: "no-store",
+    }),
+  );
+}
+
+export async function saveReadingPosition(
+  materialId: string,
+  position: Pick<ReadingPosition, "locator" | "source_anchor" | "percentage">,
+): Promise<ReadingPosition> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(position),
+    }),
+  );
 }
 
 export async function listAnnotations(

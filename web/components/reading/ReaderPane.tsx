@@ -35,6 +35,7 @@ import {
 import { speakBrowserText, stopKidsSpeech } from "@/lib/kids-learning/pronunciation";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
+import { EpubDocumentView } from "./EpubDocumentView";
 import { MaterialPicker } from "./MaterialPicker";
 import {
   PdfDocumentView,
@@ -267,6 +268,7 @@ export function ReaderPane({
           quote: selection.quote,
           note,
           rects: selection.rects,
+          source_anchor: selection.sourceAnchor ?? "",
         },
         {
           annotation_id: temporaryId,
@@ -276,6 +278,7 @@ export function ReaderPane({
           quote: selection.quote,
           note,
           rects: selection.rects,
+          source_anchor: selection.sourceAnchor ?? "",
           author: "user",
           created_at: now,
           updated_at: now,
@@ -570,6 +573,21 @@ export function ReaderPane({
           ) : !material ? (
             <MaterialPicker
               onOpen={(candidate) => void openMaterial(candidate)}
+            />
+          ) : material.render_mode === "epub" ? (
+            <EpubDocumentView
+              materialId={material.material_id}
+              unitCount={material.unit_count}
+              unitRefs={material.unit_refs}
+              annotations={annotations}
+              jump={jump}
+              highlightedAnnotationId={activeAnnotationId}
+              onSelection={setSelection}
+              onAnnotationClick={(annotation) =>
+                setActiveAnnotationId(annotation.annotation_id)
+              }
+              onVisibleLocatorChange={handleVisibleLocator}
+              onError={setError}
             />
           ) : material.has_raw_view ? (
             <PdfDocumentView

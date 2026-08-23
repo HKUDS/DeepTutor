@@ -27,7 +27,18 @@ export default defineConfig({
     {
       name: "ui-audit",
       testMatch: "**/*.audit.ts",
+      testIgnore: "**/epub-reader.audit.ts",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "epub-reader-chromium",
+      testMatch: "**/epub-reader.audit.ts",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "epub-reader-webkit",
+      testMatch: "**/epub-reader.audit.ts",
+      use: { ...devices["iPhone 13"] },
     },
   ],
   webServer: process.env.WEB_BASE_URL
