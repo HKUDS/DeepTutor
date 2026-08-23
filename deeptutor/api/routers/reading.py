@@ -32,7 +32,9 @@ from deeptutor.reading import (
     Annotation,
     MaterialNotFound,
     ReadingError,
+    ReadingPosition,
     ReadingStore,
+    ReadingUpgradeConflict,
     export_material,
     render_outline,
 )
@@ -61,6 +63,8 @@ def _http_error(exc: Exception) -> HTTPException:
     """
     if isinstance(exc, MaterialNotFound):
         return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, ReadingUpgradeConflict):
+        return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ReadingError):
         return HTTPException(status_code=400, detail=str(exc))
     logger.warning("unexpected reading error", exc_info=True)
@@ -81,12 +85,14 @@ class MaterialInfo(BaseModel):
     char_count: int = 0
     created_at: float = 0.0
     has_raw_view: bool = False
+    render_mode: Literal["text", "pdf", "epub"] = "text"
     annotation_count: int = 0
 
 
 class MaterialDetail(MaterialInfo):
     outline: list[dict[str, Any]] = Field(default_factory=list)
     outline_text: str = ""
+    unit_refs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class UnitText(BaseModel):
@@ -111,6 +117,7 @@ class AnnotationPayload(BaseModel):
     quote: str = ""
     note: str = ""
     rects: list[list[float]] = Field(default_factory=list)
+    source_anchor: str = Field(default="", max_length=4096)
 
     def to_annotation(self) -> Annotation:
         return Annotation.from_dict(
@@ -122,6 +129,7 @@ class AnnotationPayload(BaseModel):
                 "quote": self.quote,
                 "note": self.note,
                 "rects": self.rects,
+                "source_anchor": self.source_anchor,
                 "author": "user",
             }
         )
@@ -135,9 +143,20 @@ class AnnotationInfo(BaseModel):
     quote: str
     note: str
     rects: list[list[float]]
+    source_anchor: str = ""
     author: str
     created_at: float
     updated_at: float
+
+
+class PositionPayload(BaseModel):
+    locator: int = Field(ge=1)
+    source_anchor: str = Field(default="", max_length=4096)
+    percentage: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class PositionInfo(PositionPayload):
+    updated_at: float = 0.0
 
 
 class SupportedFormats(BaseModel):
@@ -279,6 +298,34 @@ async def list_annotations(material_id: str) -> list[AnnotationInfo]:
         raise _http_error(exc) from exc
 
 
+@router.get("/materials/{material_id}/position", response_model=PositionInfo)
+async def get_position(material_id: str) -> PositionInfo:
+    """Return the user's last durable viewport for this material."""
+    store = _store()
+    try:
+        return PositionInfo(**store.position(material_id).to_dict())
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.put("/materials/{material_id}/position", response_model=PositionInfo)
+async def save_position(material_id: str, payload: PositionPayload) -> PositionInfo:
+    """Persist a validated numeric locator plus an optional renderer anchor."""
+    store = _store()
+    try:
+        saved = store.save_position(
+            material_id,
+            ReadingPosition(
+                locator=payload.locator,
+                source_anchor=payload.source_anchor,
+                percentage=payload.percentage,
+            ),
+        )
+        return PositionInfo(**saved.to_dict())
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.put("/materials/{material_id}/annotations", response_model=AnnotationInfo)
 async def save_annotation(material_id: str, payload: AnnotationPayload) -> AnnotationInfo:
     """Create or update one annotation (id absent = create)."""
@@ -345,6 +392,7 @@ def _detail(store: ReadingStore, manifest: Any) -> MaterialDetail:
             "annotation_count": len(store.annotations(manifest.material_id)),
             "outline": [entry.to_dict() for entry in outline],
             "outline_text": render_outline(store, manifest.material_id),
+            "unit_refs": [entry.to_dict() for entry in store.unit_references(manifest.material_id)],
         }
     )
 

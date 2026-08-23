@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Iterable
+from dataclasses import dataclass
 from html.parser import HTMLParser
 import io
 import logging
@@ -150,6 +151,29 @@ class EmptyDocumentError(DocumentExtractionError):
 
 class DocumentTooLargeError(DocumentExtractionError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EpubSpineUnit:
+    """One EPUB spine document in package reading order.
+
+    ``href`` is the normalised archive-member path. Keeping the source address
+    next to its extracted text lets a faithful browser rendition and the
+    server's numeric locator space refer to the same chapter.
+    """
+
+    href: str
+    text: str
+    title: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class EpubOutlineItem:
+    """One EPUB navigation entry resolved to a spine locator."""
+
+    locator: int
+    title: str
+    level: int = 1
 
 
 def is_document_extension(filename: str) -> bool:
@@ -498,7 +522,7 @@ def _epub_render_text(element: Any, parts: list[str]) -> None:
     paragraph break; ``script``/``style`` subtrees are dropped entirely.
     """
     tag = _local_name(element.tag) if isinstance(element.tag, str) else ""
-    if tag in {"script", "style"}:
+    if tag in {"head", "script", "style"}:
         return
     if element.text:
         parts.append(element.text)
@@ -609,16 +633,174 @@ def _epub_content_files(zf: zipfile.ZipFile, filename: str) -> list[str]:
     return ordered or _epub_html_members(names)
 
 
-def _extract_epub(data: bytes, filename: str) -> str:
-    """Extract the reading text of an EPUB with only the standard library."""
+def _epub_element_text(node: Any) -> str:
+    return re.sub(r"\s+", " ", "".join(node.itertext())).strip()
+
+
+def _epub_package_navigation(
+    zf: zipfile.ZipFile,
+    filename: str,
+    spine_members: list[str],
+) -> list[EpubOutlineItem]:
+    """Read EPUB3 nav or EPUB2 NCX entries and map them to spine locators."""
+    container_root = _epub_parse_member(zf, "META-INF/container.xml", filename)
+    if container_root is None:
+        return []
+    opf_path = next(
+        (
+            str(node.get("full-path") or "")
+            for node in container_root.iter()
+            if _local_name(node.tag) == "rootfile"
+        ),
+        "",
+    )
+    if not opf_path:
+        return []
+    opf_root = _epub_parse_member(zf, opf_path, filename)
+    if opf_root is None:
+        return []
+
+    opf_dir = posixpath.dirname(opf_path)
+    nav_member = ""
+    ncx_member = ""
+    spine_toc = ""
+    manifest: dict[str, tuple[str, str]] = {}
+    for node in opf_root.iter():
+        name = _local_name(node.tag)
+        if name == "item":
+            item_id = str(node.get("id") or "")
+            href = str(node.get("href") or "")
+            properties = str(node.get("properties") or "")
+            media_type = str(node.get("media-type") or "")
+            if item_id and href:
+                manifest[item_id] = (href, media_type)
+                if "nav" in properties.split():
+                    nav_member = posixpath.normpath(
+                        posixpath.join(opf_dir, unquote(href.split("#", 1)[0]))
+                    )
+        elif name == "spine":
+            spine_toc = str(node.get("toc") or "")
+
+    if spine_toc in manifest:
+        href, media_type = manifest[spine_toc]
+        if media_type == "application/x-dtbncx+xml" or href.lower().endswith(".ncx"):
+            ncx_member = posixpath.normpath(posixpath.join(opf_dir, unquote(href.split("#", 1)[0])))
+
+    locator_by_member = {member: index for index, member in enumerate(spine_members, start=1)}
+
+    def resolve_locator(href: str, base_member: str) -> int:
+        path = unquote(href.split("#", 1)[0])
+        member = posixpath.normpath(posixpath.join(posixpath.dirname(base_member), path))
+        return locator_by_member.get(member, 0)
+
+    rows: list[EpubOutlineItem] = []
+    if nav_member:
+        nav_root = _epub_parse_member(zf, nav_member, filename)
+        if nav_root is not None:
+            nav_nodes = [node for node in nav_root.iter() if _local_name(node.tag) == "nav"]
+            toc_nav = next(
+                (
+                    node
+                    for node in nav_nodes
+                    if "toc"
+                    in str(
+                        node.get("{http://www.idpf.org/2007/ops}type")
+                        or node.get("epub:type")
+                        or ""
+                    ).split()
+                ),
+                nav_nodes[0] if nav_nodes else None,
+            )
+
+            def walk_nav(node: Any, level: int) -> None:
+                for child in node:
+                    name = _local_name(child.tag)
+                    if name == "li":
+                        link = next(
+                            (item for item in child if _local_name(item.tag) in {"a", "span"}),
+                            None,
+                        )
+                        href = str(link.get("href") or "") if link is not None else ""
+                        title = _epub_element_text(link) if link is not None else ""
+                        locator = resolve_locator(href, nav_member) if href else 0
+                        if locator and title:
+                            rows.append(EpubOutlineItem(locator, title, max(1, level)))
+                        for item in child:
+                            if _local_name(item.tag) == "ol":
+                                walk_nav(item, level + 1)
+                    elif name == "ol":
+                        walk_nav(child, level)
+
+            if toc_nav is not None:
+                walk_nav(toc_nav, 1)
+
+    if not rows and ncx_member:
+        ncx_root = _epub_parse_member(zf, ncx_member, filename)
+        if ncx_root is not None:
+
+            def walk_ncx(node: Any, level: int) -> None:
+                for point in node:
+                    if _local_name(point.tag) != "navPoint":
+                        continue
+                    label = next(
+                        (item for item in point.iter() if _local_name(item.tag) == "navLabel"),
+                        None,
+                    )
+                    content = next(
+                        (item for item in point if _local_name(item.tag) == "content"),
+                        None,
+                    )
+                    title = _epub_element_text(label) if label is not None else ""
+                    href = str(content.get("src") or "") if content is not None else ""
+                    locator = resolve_locator(href, ncx_member) if href else 0
+                    if locator and title:
+                        rows.append(EpubOutlineItem(locator, title, max(1, level)))
+                    walk_ncx(point, level + 1)
+
+            nav_map = next(
+                (node for node in ncx_root.iter() if _local_name(node.tag) == "navMap"),
+                None,
+            )
+            if nav_map is not None:
+                walk_ncx(nav_map, 1)
+    return rows
+
+
+def extract_epub_spine(
+    data: bytes,
+    filename: str,
+) -> tuple[tuple[EpubSpineUnit, ...], tuple[EpubOutlineItem, ...]]:
+    """Return safe, source-addressed EPUB spine units and its nested outline."""
+    _check_magic(".epub", data, filename)
     with _open_ooxml(data, filename) as zf:
         _validate_epub_archive(zf, filename)
-        chapters: list[str] = []
-        for member in _epub_content_files(zf, filename):
+        members = _epub_content_files(zf, filename)
+        units: list[EpubSpineUnit] = []
+        for member in members:
             text = _epub_chapter_text(zf, member, filename)
-            if text:
-                chapters.append(text)
-    return "\n\n".join(chapters)
+            heading = ""
+            root = _epub_parse_member(zf, member, filename)
+            if root is not None:
+                heading_node = next(
+                    (
+                        node
+                        for node in root.iter()
+                        if _local_name(node.tag) in {"h1", "h2", "title"}
+                        and _epub_element_text(node)
+                    ),
+                    None,
+                )
+                if heading_node is not None:
+                    heading = _epub_element_text(heading_node)
+            units.append(EpubSpineUnit(href=member, text=text, title=heading))
+        outline = _epub_package_navigation(zf, filename, members)
+    return tuple(units), tuple(outline)
+
+
+def _extract_epub(data: bytes, filename: str) -> str:
+    """Extract the reading text of an EPUB with only the standard library."""
+    units, _ = extract_epub_spine(data, filename)
+    return "\n\n".join(unit.text for unit in units if unit.text)
 
 
 def _validate_epub_archive(zf: zipfile.ZipFile, filename: str) -> None:

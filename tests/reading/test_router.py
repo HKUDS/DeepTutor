@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+import zipfile
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -56,6 +57,24 @@ def _upload(client: TestClient, name: str = "attention.pdf", data: bytes | None 
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _epub_bytes() -> bytes:
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip")
+        archive.writestr(
+            "META-INF/container.xml",
+            "<container><rootfiles><rootfile full-path='OPS/book.opf'/></rootfiles></container>",
+        )
+        archive.writestr(
+            "OPS/book.opf",
+            "<package><manifest><item id='one' href='one.xhtml'/></manifest><spine><itemref idref='one'/></spine></package>",
+        )
+        archive.writestr(
+            "OPS/one.xhtml", "<html><body><h1>Opening</h1><p>Readable EPUB text.</p></body></html>"
+        )
+    return stream.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +168,28 @@ def test_supported_formats_names_pdf_as_the_faithful_view(client: TestClient) ->
     assert body["max_bytes"] > 0
 
 
+def test_epub_contract_exposes_source_refs_original_and_position(client: TestClient) -> None:
+    material = _upload(client, name="book.epub", data=_epub_bytes())
+
+    assert material["render_mode"] == "epub"
+    assert material["has_raw_view"] is False
+    assert material["unit_refs"] == [
+        {"locator": 1, "source_href": "OPS/one.xhtml", "title": "Opening"}
+    ]
+    raw = client.get(f"/api/v1/reading/materials/{material['material_id']}/raw")
+    assert raw.status_code == 200
+    assert raw.headers["content-type"] == "application/epub+zip"
+
+    base = f"/api/v1/reading/materials/{material['material_id']}/position"
+    saved = client.put(
+        base,
+        json={"locator": 1, "source_anchor": "epubcfi(/6/2)", "percentage": 0.4},
+    )
+    assert saved.status_code == 200
+    assert client.get(base).json()["source_anchor"] == "epubcfi(/6/2)"
+    assert client.put(base, json={"locator": 2, "percentage": 0}).status_code == 400
+
+
 # ---------------------------------------------------------------------------
 # unit text and raw bytes
 # ---------------------------------------------------------------------------
@@ -218,11 +259,13 @@ def test_annotation_create_update_list_delete_round_trip(client: TestClient) -> 
             "quote": "scaled dot-product",
             "note": "core",
             "rects": [[0.1, 0.2, 0.6, 0.24]],
+            "source_anchor": "epubcfi(/6/4)",
         },
     ).json()
     assert created["annotation_id"]
     assert created["author"] == "user"
     assert created["rects"] == [[0.1, 0.2, 0.6, 0.24]]
+    assert created["source_anchor"] == "epubcfi(/6/4)"
 
     updated = client.put(
         base,

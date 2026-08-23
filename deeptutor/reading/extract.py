@@ -33,7 +33,7 @@ import logging
 from pathlib import Path
 import re
 
-from deeptutor.reading.models import OutlineEntry, ReadingError, UnitKind
+from deeptutor.reading.models import OutlineEntry, ReadingError, RenderMode, UnitKind, UnitReference
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,8 @@ class Extraction:
     # Otherwise the outline is synthesised later from unit first lines, so that
     # a material without bookmarks is still navigable by meaning.
     outline: tuple[OutlineEntry, ...] = field(default_factory=tuple)
+    render_mode: RenderMode = "text"
+    unit_refs: tuple[UnitReference, ...] = field(default_factory=tuple)
 
     @property
     def char_count(self) -> int:
@@ -88,6 +90,8 @@ def extract_material(path: str | Path) -> Extraction:
     suffix = source.suffix.lower()
     if suffix == ".pdf":
         extraction = _extract_pdf(source)
+    elif suffix == ".epub":
+        extraction = _extract_epub(source)
     elif suffix == ".pptx":
         extraction = _extract_slides(source)
     else:
@@ -131,6 +135,42 @@ def _extract_pdf(source: Path) -> Extraction:
         has_raw_view=True,
         title=title,
         outline=outline,
+        render_mode="pdf",
+    )
+
+
+def _extract_epub(source: Path) -> Extraction:
+    """Preserve EPUB spine order so browser and assistant locators agree."""
+    from deeptutor.utils.document_extractor import DocumentExtractionError, extract_epub_spine
+
+    try:
+        units, navigation = extract_epub_spine(source.read_bytes(), source.name)
+    except (OSError, DocumentExtractionError) as exc:
+        raise ReadingError(f"{source.name}: failed to read EPUB ({exc})") from exc
+
+    refs = tuple(
+        UnitReference(locator=index, source_href=unit.href, title=unit.title)
+        for index, unit in enumerate(units, start=1)
+    )
+    outline = tuple(
+        OutlineEntry(locator=row.locator, title=row.title, level=row.level) for row in navigation
+    )
+    if not outline:
+        outline = tuple(
+            OutlineEntry(
+                locator=ref.locator,
+                title=ref.title or Path(ref.source_href).stem,
+                synthesised=not bool(ref.title),
+            )
+            for ref in refs
+        )
+    return Extraction(
+        units=tuple(unit.text for unit in units),
+        unit="chapter",
+        extractor="epub-spine",
+        outline=outline,
+        render_mode="epub",
+        unit_refs=refs,
     )
 
 

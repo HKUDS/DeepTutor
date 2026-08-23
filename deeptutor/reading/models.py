@@ -22,6 +22,7 @@ from typing import Any, Literal
 # What one locator addresses, per source format. Purely presentational for the
 # model and the UI ("page 12" vs "chapter 3"); the addressing is identical.
 UnitKind = Literal["page", "chapter", "slide", "section"]
+RenderMode = Literal["text", "pdf", "epub"]
 
 AnnotationKind = Literal["highlight", "underline", "note"]
 
@@ -50,6 +51,10 @@ class ReadingError(RuntimeError):
 
 class MaterialNotFound(ReadingError):
     """The requested material id does not exist in this user's store."""
+
+
+class ReadingUpgradeConflict(ReadingError):
+    """A source-faithful upgrade would invalidate existing annotations."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +141,30 @@ class OutlineEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class UnitReference:
+    """Source address for one numeric locator in a faithful renderer."""
+
+    locator: int
+    source_href: str = ""
+    title: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "locator": self.locator,
+            "source_href": self.source_href,
+            "title": self.title,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "UnitReference":
+        return cls(
+            locator=max(1, int(data.get("locator") or 1)),
+            source_href=str(data.get("source_href") or ""),
+            title=str(data.get("title") or ""),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SearchHit:
     """One search match, addressed by locator with surrounding context."""
 
@@ -172,6 +201,9 @@ class MaterialManifest:
     # (today: PDF). Other formats read from extracted text, so the reader shows
     # its text view and the export falls back to a Markdown excerpt.
     has_raw_view: bool = False
+    # Selects the faithful renderer without overloading ``has_raw_view``.
+    # The legacy boolean remains PDF-only until every client understands EPUB.
+    render_mode: RenderMode = "text"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -187,11 +219,15 @@ class MaterialManifest:
             "char_count": self.char_count,
             "created_at": self.created_at,
             "has_raw_view": self.has_raw_view,
+            "render_mode": self.render_mode,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MaterialManifest":
         unit = str(data.get("unit") or "page")
+        render_mode = str(data.get("render_mode") or "")
+        if render_mode not in ("text", "pdf", "epub"):
+            render_mode = "pdf" if data.get("has_raw_view") else "text"
         return cls(
             material_id=str(data.get("material_id") or ""),
             filename=str(data.get("filename") or ""),
@@ -205,6 +241,7 @@ class MaterialManifest:
             char_count=int(data.get("char_count") or 0),
             created_at=float(data.get("created_at") or 0.0),
             has_raw_view=bool(data.get("has_raw_view")),
+            render_mode=render_mode,  # type: ignore[arg-type]
         )
 
 
@@ -225,6 +262,8 @@ class Annotation:
     quote: str = ""
     note: str = ""
     rects: tuple[Rect, ...] = ()
+    # Opaque renderer-native position. EPUB clients store a CFI here.
+    source_anchor: str = ""
     author: str = "user"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -241,6 +280,7 @@ class Annotation:
             "quote": self.quote,
             "note": self.note,
             "rects": [r.to_list() for r in self.rects],
+            "source_anchor": self.source_anchor,
             "author": self.author,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -263,8 +303,36 @@ class Annotation:
             quote=str(data.get("quote") or ""),
             note=str(data.get("note") or ""),
             rects=rects,
+            source_anchor=str(data.get("source_anchor") or ""),
             author=str(data.get("author") or "user"),
             created_at=float(data.get("created_at") or 0.0),
+            updated_at=float(data.get("updated_at") or 0.0),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReadingPosition:
+    """Last durable viewport for a material."""
+
+    locator: int = 1
+    source_anchor: str = ""
+    percentage: float = 0.0
+    updated_at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "locator": self.locator,
+            "source_anchor": self.source_anchor,
+            "percentage": self.percentage,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ReadingPosition":
+        return cls(
+            locator=max(1, int(data.get("locator") or 1)),
+            source_anchor=str(data.get("source_anchor") or ""),
+            percentage=min(1.0, max(0.0, float(data.get("percentage") or 0.0))),
             updated_at=float(data.get("updated_at") or 0.0),
         )
 
@@ -278,7 +346,11 @@ __all__ = [
     "MaterialNotFound",
     "OutlineEntry",
     "ReadingError",
+    "ReadingPosition",
+    "ReadingUpgradeConflict",
+    "RenderMode",
     "Rect",
     "SearchHit",
     "UnitKind",
+    "UnitReference",
 ]

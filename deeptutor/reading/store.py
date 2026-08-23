@@ -46,6 +46,9 @@ from deeptutor.reading.models import (
     MaterialNotFound,
     OutlineEntry,
     ReadingError,
+    ReadingPosition,
+    ReadingUpgradeConflict,
+    UnitReference,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +56,8 @@ logger = logging.getLogger(__name__)
 MANIFEST_NAME = "manifest.json"
 OUTLINE_NAME = "outline.json"
 ANNOTATIONS_NAME = "annotations.json"
+POSITION_NAME = "position.json"
+UNIT_REFS_NAME = "unit_refs.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
 
@@ -162,31 +167,41 @@ class ReadingStore:
         with self._locked(material_id):
             existing = self._load_manifest(material_id)
             if existing is not None and self._is_complete(material_id, existing):
-                return existing
+                wants_epub_upgrade = (
+                    path.suffix.lower() == ".epub" and existing.render_mode != "epub"
+                )
+                if not wants_epub_upgrade:
+                    return existing
+                if self.annotations(material_id):
+                    raise ReadingUpgradeConflict(
+                        "This EPUB was imported by the legacy text reader and has annotations. "
+                        "Export those annotations before replacing it with the source-faithful version."
+                    )
 
             extraction = extract_material(path)
             material_dir = self._dir(material_id)
-            units_dir = material_dir / UNITS_DIR
-            # A previous partial ingest (crash between unit writes) must not
-            # leave stale units behind that would read as real content.
-            if units_dir.exists():
-                shutil.rmtree(units_dir, ignore_errors=True)
+            stage_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.staging"
+            backup_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.backup"
+            units_dir = stage_dir / UNITS_DIR
             units_dir.mkdir(parents=True, exist_ok=True)
 
             for index, unit in enumerate(extraction.units, start=1):
-                self._unit_file(material_dir, index).write_text(unit, encoding="utf-8")
+                self._unit_file(stage_dir, index).write_text(unit, encoding="utf-8")
 
-            raw_path: Path | None = None
-            if extraction.has_raw_view:
-                raw_dir = material_dir / RAW_DIR
+            if extraction.render_mode != "text":
+                raw_dir = stage_dir / RAW_DIR
                 raw_dir.mkdir(parents=True, exist_ok=True)
                 raw_path = raw_dir / _safe_filename(display_name, fallback=path.name)
                 raw_path.write_bytes(data)
 
             outline = extraction.outline or synthesise_outline(extraction.units)
             _atomic_write(
-                material_dir / OUTLINE_NAME,
+                stage_dir / OUTLINE_NAME,
                 json.dumps([entry.to_dict() for entry in outline], ensure_ascii=False),
+            )
+            _atomic_write(
+                stage_dir / UNIT_REFS_NAME,
+                json.dumps([entry.to_dict() for entry in extraction.unit_refs], ensure_ascii=False),
             )
 
             manifest = MaterialManifest(
@@ -201,14 +216,41 @@ class ReadingStore:
                 byte_size=len(data),
                 char_count=extraction.char_count,
                 created_at=time.time(),
-                has_raw_view=raw_path is not None,
+                # Compatibility: old clients route this boolean directly to
+                # pdf.js. EPUB dispatch is carried by ``render_mode`` instead.
+                has_raw_view=extraction.render_mode == "pdf",
+                render_mode=extraction.render_mode,
             )
             # Manifest last: its presence is the "this material is usable"
             # signal, so it must not appear before the units it describes.
             _atomic_write(
-                material_dir / MANIFEST_NAME,
+                stage_dir / MANIFEST_NAME,
                 json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
             )
+
+            # A repair or compatible re-ingest keeps user-owned state. EPUB
+            # legacy upgrades with annotations were rejected above because
+            # their old locators cannot be mapped safely to the spine.
+            for state_name in (ANNOTATIONS_NAME, POSITION_NAME):
+                source_state = material_dir / state_name
+                if source_state.is_file():
+                    shutil.copy2(source_state, stage_dir / state_name)
+
+            # Install the fully written directory in one swap. If the second
+            # rename fails, put the previous material back before surfacing the
+            # error; readers never observe a half-written unit set.
+            try:
+                if material_dir.exists():
+                    os.replace(material_dir, backup_dir)
+                try:
+                    os.replace(stage_dir, material_dir)
+                except Exception:
+                    if backup_dir.exists() and not material_dir.exists():
+                        os.replace(backup_dir, material_dir)
+                    raise
+            finally:
+                shutil.rmtree(stage_dir, ignore_errors=True)
+                shutil.rmtree(backup_dir, ignore_errors=True)
             return manifest
 
     def _is_complete(self, material_id: str, manifest: MaterialManifest) -> bool:
@@ -218,7 +260,7 @@ class ReadingStore:
             return False
         if not self._unit_file(material_dir, manifest.unit_count).exists():
             return False
-        if manifest.has_raw_view and self._find_raw(material_dir) is None:
+        if manifest.render_mode != "text" and self._find_raw(material_dir) is None:
             return False
         return True
 
@@ -341,9 +383,44 @@ class ReadingStore:
     def raw_path(self, material_id: str) -> Path | None:
         """The stored original file, or None for text-only materials."""
         manifest = self.manifest(material_id)
-        if not manifest.has_raw_view:
+        if manifest.render_mode == "text":
             return None
         return self._find_raw(self._dir(material_id))
+
+    def unit_references(self, material_id: str) -> list[UnitReference]:
+        """Source-native addresses aligned with the numeric locator space."""
+        manifest = self.manifest(material_id)
+        rows = _read_json(self._dir(material_id) / UNIT_REFS_NAME)
+        if not isinstance(rows, list):
+            return [UnitReference(locator=index) for index in range(1, manifest.unit_count + 1)]
+        refs = [UnitReference.from_dict(row) for row in rows if isinstance(row, dict)]
+        return [row for row in refs if 1 <= row.locator <= manifest.unit_count]
+
+    def position(self, material_id: str) -> ReadingPosition:
+        """Return the last viewport, defaulting to the first locator."""
+        self.manifest(material_id)
+        row = _read_json(self._dir(material_id) / POSITION_NAME)
+        return ReadingPosition.from_dict(row) if isinstance(row, dict) else ReadingPosition()
+
+    def save_position(self, material_id: str, position: ReadingPosition) -> ReadingPosition:
+        """Validate and atomically persist a material viewport."""
+        manifest = self.manifest(material_id)
+        if not 1 <= position.locator <= manifest.unit_count:
+            raise ReadingError(
+                f"{manifest.unit} {position.locator} is out of range — "
+                f"this material has {manifest.unit_count}."
+            )
+        if len(position.source_anchor) > 4096:
+            raise ReadingError("source anchor is too long")
+        if not 0.0 <= position.percentage <= 1.0:
+            raise ReadingError("position percentage must be between 0 and 1")
+        stored = dataclass_replace(position, updated_at=time.time())
+        with self._locked(material_id):
+            _atomic_write(
+                self._dir(material_id) / POSITION_NAME,
+                json.dumps(stored.to_dict(), ensure_ascii=False, indent=2),
+            )
+        return stored
 
     @staticmethod
     def _find_raw(material_dir: Path) -> Path | None:
@@ -396,6 +473,8 @@ class ReadingStore:
                 f"{manifest.unit} {annotation.locator} is out of range — "
                 f"this material has {manifest.unit_count}."
             )
+        if len(annotation.source_anchor) > 4096:
+            raise ReadingError("source anchor is too long")
         with self._locked(material_id):
             existing = self.annotations(material_id)
             stored = annotation

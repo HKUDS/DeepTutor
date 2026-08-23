@@ -6,7 +6,9 @@ path service, a user workspace, or an LLM.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import zipfile
 
 import pytest
 
@@ -48,6 +50,32 @@ def _write_pdf(path: Path, pages: list[str], *, toc: list | None = None) -> Path
         doc.set_toc(toc)
     doc.save(path)
     doc.close()
+    return path
+
+
+def _write_epub(path: Path) -> Path:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip")
+        archive.writestr(
+            "META-INF/container.xml",
+            """<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""",
+        )
+        archive.writestr(
+            "OEBPS/content.opf",
+            """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="one" href="chapters/one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="chapters/two.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="one"/><itemref idref="two"/></spine></package>""",
+        )
+        archive.writestr(
+            "OEBPS/nav.xhtml",
+            """<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="chapters/one.xhtml">Part One</a><ol><li><a href="chapters/two.xhtml">Second Chapter</a></li></ol></li></ol></nav></body></html>""",
+        )
+        archive.writestr(
+            "OEBPS/chapters/one.xhtml",
+            "<html xmlns='http://www.w3.org/1999/xhtml'><head><title>One</title></head><body><h1>First Chapter</h1><p>Alpha source text.</p><script>ignore me</script></body></html>",
+        )
+        archive.writestr(
+            "OEBPS/chapters/two.xhtml",
+            "<html xmlns='http://www.w3.org/1999/xhtml'><body><h1>Second Chapter</h1><p>Beta source text.</p></body></html>",
+        )
     return path
 
 
@@ -117,6 +145,26 @@ def test_text_file_is_cut_into_sections_on_paragraph_boundaries(tmp_path: Path) 
     assert all(unit.startswith("Dense prose") for unit in extraction.units)
 
 
+def test_epub_preserves_spine_units_source_hrefs_and_nested_outline(tmp_path: Path) -> None:
+    extraction = extract_material(_write_epub(tmp_path / "book.epub"))
+
+    assert extraction.render_mode == "epub"
+    assert extraction.has_raw_view is False
+    assert extraction.unit == "chapter"
+    assert extraction.units == (
+        "First Chapter\nAlpha source text.",
+        "Second Chapter\nBeta source text.",
+    )
+    assert [ref.source_href for ref in extraction.unit_refs] == [
+        "OEBPS/chapters/one.xhtml",
+        "OEBPS/chapters/two.xhtml",
+    ]
+    assert [(row.locator, row.title, row.level) for row in extraction.outline] == [
+        (1, "Part One", 1),
+        (2, "Second Chapter", 2),
+    ]
+
+
 def test_pptx_slides_become_units_when_the_extractor_marks_them(tmp_path: Path) -> None:
     pytest.importorskip("pptx")
     from pptx import Presentation
@@ -179,6 +227,78 @@ def test_ingest_writes_units_raw_and_manifest(store: ReadingStore, pdf_path: Pat
     assert store.unit_text(manifest.material_id, 2).find("scaled dot-product") >= 0
     raw = store.raw_path(manifest.material_id)
     assert raw is not None and raw.read_bytes()[:5] == b"%PDF-"
+
+
+def test_epub_store_keeps_original_but_legacy_pdf_flag_stays_false(
+    store: ReadingStore, tmp_path: Path
+) -> None:
+    path = _write_epub(tmp_path / "book.epub")
+    manifest = store.ingest(path)
+
+    assert manifest.render_mode == "epub"
+    assert manifest.has_raw_view is False
+    assert store.raw_path(manifest.material_id) is not None
+    assert store.unit_references(manifest.material_id)[1].source_href.endswith("two.xhtml")
+
+
+def test_position_round_trip_validates_locator_and_anchor(
+    store: ReadingStore, tmp_path: Path
+) -> None:
+    from deeptutor.reading import ReadingPosition
+
+    manifest = store.ingest(_write_epub(tmp_path / "book.epub"))
+    saved = store.save_position(
+        manifest.material_id,
+        ReadingPosition(locator=2, source_anchor="epubcfi(/6/4)", percentage=0.6),
+    )
+
+    assert saved.updated_at > 0
+    assert store.position(manifest.material_id).source_anchor == "epubcfi(/6/4)"
+    with pytest.raises(ReadingError):
+        store.save_position(manifest.material_id, ReadingPosition(locator=99))
+
+
+def _downgrade_epub_manifest_to_legacy_text(store: ReadingStore, material_id: str) -> None:
+    material_dir = store.root / material_id
+    manifest_path = material_dir / "manifest.json"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    data.pop("render_mode", None)
+    data["has_raw_view"] = False
+    manifest_path.write_text(json.dumps(data), encoding="utf-8")
+    raw_dir = material_dir / "raw"
+    if raw_dir.exists():
+        for child in raw_dir.iterdir():
+            child.unlink()
+        raw_dir.rmdir()
+
+
+def test_reupload_upgrades_legacy_epub_when_it_has_no_annotations(
+    store: ReadingStore, tmp_path: Path
+) -> None:
+    path = _write_epub(tmp_path / "book.epub")
+    first = store.ingest(path)
+    _downgrade_epub_manifest_to_legacy_text(store, first.material_id)
+
+    upgraded = store.ingest(path)
+
+    assert upgraded.render_mode == "epub"
+    assert store.raw_path(upgraded.material_id) is not None
+
+
+def test_reupload_rejects_legacy_epub_upgrade_with_annotations(
+    store: ReadingStore, tmp_path: Path
+) -> None:
+    from deeptutor.reading import ReadingUpgradeConflict
+
+    path = _write_epub(tmp_path / "book.epub")
+    first = store.ingest(path)
+    store.save_annotation(first.material_id, Annotation(annotation_id="", locator=1, quote="Alpha"))
+    _downgrade_epub_manifest_to_legacy_text(store, first.material_id)
+
+    with pytest.raises(ReadingUpgradeConflict):
+        store.ingest(path)
+
+    assert [row.quote for row in store.annotations(first.material_id)] == ["Alpha"]
 
 
 def test_reingesting_the_same_bytes_reuses_the_material_and_its_annotations(
