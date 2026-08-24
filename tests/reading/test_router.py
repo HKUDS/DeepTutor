@@ -515,6 +515,104 @@ def test_bilingual_tutorial_exposes_collapsible_alignment_groups(
     assert unit.json()["groups"][1]["low_confidence"] is True
 
 
+def test_bilingual_tutorial_resolves_pair_index_when_navigation_omits_pair_key(
+    client: TestClient,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from deeptutor.multi_user import knowledge_access
+    from deeptutor.services.web_source import bilingual_store
+
+    kb_dir = tmp_path / "knowledge_bases" / "docs"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "index.md").write_text("# Documentation\n\nBody", encoding="utf-8")
+    bilingual_store.save_alignment(
+        kb_dir,
+        "docs-example-com",
+        "index.md",
+        {
+            "groups": [
+                {
+                    "group_id": "body",
+                    "en_content": "Body",
+                    "zh_content": "正文",
+                    "confidence": 1.0,
+                }
+            ]
+        },
+    )
+    bilingual_store.save_pair_index(
+        kb_dir,
+        "docs-example-com",
+        {
+            "pair_key": "docs-example-com",
+            "origin": "docs.example.com/",
+            "status": "bilingual",
+            "en_source_id": "source1",
+            "en_url": "https://docs.example.com/",
+        },
+    )
+    # A same-named page under another origin must not be selected by filename.
+    bilingual_store.save_alignment(
+        kb_dir,
+        "other-example-com",
+        "index.md",
+        {"groups": []},
+    )
+    bilingual_store.save_pair_index(
+        kb_dir,
+        "other-example-com",
+        {
+            "pair_key": "other-example-com",
+            "origin": "other.example.com/",
+            "status": "bilingual",
+            "en_source_id": "source2",
+            "en_url": "https://other.example.com/",
+        },
+    )
+    source = {
+        "id": "source1",
+        "url": "https://docs.example.com/",
+        "page_manifest": {"index.md": {"status": "active"}},
+        "navigation": {
+            "kind": "original",
+            "nodes": [
+                {
+                    "title": "Documentation",
+                    "url": "https://docs.example.com/",
+                    "file_path": "index.md",
+                    "children": [],
+                }
+            ],
+        },
+    }
+
+    class FakeManager:
+        def get_knowledge_base_path(self, _name: str) -> Path:
+            return kb_dir
+
+        def get_web_sources(self, _name: str):
+            return [source]
+
+    resource = SimpleNamespace(id="user:kb:docs", name="docs")
+    monkeypatch.setattr(knowledge_access, "resolve_kb", lambda *_a, **_kw: resource)
+    monkeypatch.setattr(knowledge_access, "manager_for_resource", lambda _resource: FakeManager())
+
+    opened = client.post(
+        "/api/v1/reading/materials/from-kb",
+        json={"kb_name": "docs", "web_source_id": "source1"},
+    )
+    assert opened.status_code == 200, opened.text
+    material = opened.json()
+    assert material["bilingual_available"] is True
+    assert material["bilingual_pairing_ids"] == ["docs-example-com"]
+
+    unit = client.get(f"/api/v1/reading/materials/{material['material_id']}/units/1/bilingual")
+    assert unit.status_code == 200, unit.text
+    assert unit.json()["groups"][0]["translation_markdown"] == "正文"
+
+
 def test_saving_url_snapshot_to_kb_does_not_rebuild_material(
     client: TestClient,
     monkeypatch,

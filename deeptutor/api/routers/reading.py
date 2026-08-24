@@ -923,6 +923,46 @@ def _navigation_rows(nodes: list[dict[str, Any]], level: int = 1) -> list[dict[s
     return rows
 
 
+def _resolve_kb_pair_key(kb_dir: Path, source: dict[str, Any] | None, source_id: str) -> str:
+    """Resolve the alignment pair for a source without guessing by filename."""
+    from deeptutor.services.web_source.bilingual_store import (
+        list_pair_keys,
+        load_pair_index,
+    )
+    from deeptutor.services.web_source.pairing import normalize_origin, pair_key_for
+
+    explicit = str((source or {}).get("pairing_key") or "").strip()
+    if explicit:
+        return explicit
+
+    origin = normalize_origin(str((source or {}).get("url") or ""))
+    keys = set(list_pair_keys(kb_dir))
+    indexes: list[tuple[str, dict[str, Any]]] = []
+    for key in sorted(keys):
+        index = load_pair_index(kb_dir, key)
+        if index is not None:
+            indexes.append((key, index))
+
+    for key, index in indexes:
+        if str(index.get("en_source_id") or "") == source_id:
+            return str(index.get("pair_key") or key)
+
+    origin_matches = [
+        (key, index)
+        for key, index in indexes
+        if origin
+        and normalize_origin(str(index.get("en_url") or index.get("origin") or "")) == origin
+    ]
+    if len(origin_matches) == 1:
+        key, index = origin_matches[0]
+        return str(index.get("pair_key") or key)
+
+    # Older syncs can have alignment directories without a pair index. Fall
+    # back only when that key unambiguously names the source's normalized origin.
+    legacy_key = pair_key_for(origin) if origin else ""
+    return legacy_key if legacy_key in keys else ""
+
+
 def _kb_tutorial_payload(
     manager: Any,
     resource_id: str,
@@ -984,6 +1024,7 @@ def _kb_tutorial_payload(
     included_paths: list[str] = []
     bilingual_groups: list[BilingualGroup] = []
     pairing_ids: set[str] = set()
+    default_pair_key = _resolve_kb_pair_key(raw_dir.parent, source, source_id)
     for row in rows:
         try:
             target = _safe_kb_file(raw_dir, row["file_path"])
@@ -1014,7 +1055,7 @@ def _kb_tutorial_payload(
             )
         except UnicodeDecodeError as exc:
             raise ReadingError(f"{target.name} is not readable Markdown") from exc
-        pair_key = str(row.get("pair_key") or source_id if source is not None else "")
+        pair_key = str(row.get("pair_key") or default_pair_key)
         alignment = (
             bilingual_store.load_alignment(raw_dir.parent, pair_key, row["file_path"])
             if pair_key
