@@ -29,6 +29,10 @@ from deeptutor.services.partners import (
     slugify_partner_id,
     slugify_soul_id,
 )
+from deeptutor.services.partners.channel_onboarding import (
+    ChannelOnboardingError,
+    get_channel_onboarding_manager,
+)
 from deeptutor.services.partners.manager import (
     LEGACY_GLOBAL_DELIVERY_KEYS,
     PartnerConfig,
@@ -195,6 +199,10 @@ class SoulCreateRequest(BaseModel):
 class SoulTemplateUpdateRequest(BaseModel):
     name: str | None = None
     content: str | None = None
+
+
+class ChannelOnboardingStartRequest(BaseModel):
+    channel: Literal["feishu", "wecom"]
 
 
 # ── Validation helpers ─────────────────────────────────────────
@@ -683,6 +691,70 @@ async def reload_partner_channels(partner_id: str):
             detail=f"Failed to reload channels: {type(exc).__name__}",
         ) from None
     return {"partner_id": partner_id, "reloaded": True}
+
+
+def _onboarding_manager_and_partner(partner_id: str):
+    mgr = get_partner_manager()
+    if not mgr.partner_exists(partner_id):
+        raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+    return get_channel_onboarding_manager(), mgr
+
+
+@router.post("/{partner_id}/channel-onboarding/start")
+async def start_partner_channel_onboarding(partner_id: str, payload: ChannelOnboardingStartRequest):
+    onboarding, _ = _onboarding_manager_and_partner(partner_id)
+    try:
+        return await onboarding.start(partner_id, payload.channel)
+    except ChannelOnboardingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    except Exception as exc:
+        logger.exception("Failed to start channel onboarding for '%s'", partner_id)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Channel onboarding provider request failed ({type(exc).__name__})",
+        ) from exc
+
+
+@router.get("/{partner_id}/channel-onboarding/{session_id}")
+async def get_partner_channel_onboarding(partner_id: str, session_id: str):
+    onboarding, _ = _onboarding_manager_and_partner(partner_id)
+    try:
+        return await onboarding.status(partner_id, session_id)
+    except ChannelOnboardingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    except Exception as exc:
+        logger.exception("Failed to poll channel onboarding for '%s'", partner_id)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Channel onboarding provider request failed ({type(exc).__name__})",
+        ) from exc
+
+
+@router.delete("/{partner_id}/channel-onboarding/{session_id}")
+async def cancel_partner_channel_onboarding(partner_id: str, session_id: str):
+    onboarding, _ = _onboarding_manager_and_partner(partner_id)
+    try:
+        return await onboarding.cancel(partner_id, session_id)
+    except ChannelOnboardingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+
+
+@router.post("/{partner_id}/channel-onboarding/{session_id}/apply")
+async def apply_partner_channel_onboarding(partner_id: str, session_id: str):
+    onboarding, mgr = _onboarding_manager_and_partner(partner_id)
+    try:
+        return await onboarding.apply(partner_id, session_id, mgr)
+    except ChannelOnboardingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    except Exception as exc:
+        logger.exception("Failed to apply channel onboarding for '%s'", partner_id)
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Channel config saved but failed to restart listeners "
+                f"({type(exc).__name__}); try stopping and starting the partner."
+            ),
+        ) from exc
 
 
 # ── Soul (the partner's own SOUL.md) ───────────────────────────

@@ -241,6 +241,7 @@ class FeishuConfig(DeliveryOverrides, StreamingSupport):
     enabled: bool = False
     app_id: str = ""
     app_secret: str = ""
+    domain: Literal["feishu", "lark"] = "feishu"
     encrypt_key: str = ""
     verification_token: str = ""
     allow_from: list[str] = Field(default_factory=list)
@@ -318,15 +319,18 @@ class FeishuChannel(BaseChannel):
             return
 
         import lark_oapi as lark
+        from lark_oapi.core.const import FEISHU_DOMAIN, LARK_DOMAIN
 
         self._running = True
         self._loop = asyncio.get_running_loop()
+        sdk_domain = LARK_DOMAIN if self.config.domain == "lark" else FEISHU_DOMAIN
 
         # Create Lark client for sending messages
         self._client = (
             lark.Client.builder()
             .app_id(self.config.app_id)
             .app_secret(self.config.app_secret)
+            .domain(sdk_domain)
             .log_level(lark.LogLevel.INFO)
             .build()
         )
@@ -353,6 +357,10 @@ class FeishuChannel(BaseChannel):
             self.config.app_secret,
             event_handler=event_handler,
             log_level=lark.LogLevel.INFO,
+            domain=sdk_domain,
+            # Without this tag Feishu uses the personal-client protocol and may
+            # omit group @mention events over WebSocket.
+            extra_ua_tags=["channel"],
         )
 
         # Start WebSocket client in a separate thread with reconnect loop.

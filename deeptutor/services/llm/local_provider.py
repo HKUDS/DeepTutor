@@ -203,6 +203,8 @@ async def complete(
     # Add optional parameters
     if kwargs.get("max_tokens"):
         data["max_tokens"] = kwargs["max_tokens"]
+    if isinstance(kwargs.get("response_format"), dict):
+        data["response_format"] = kwargs["response_format"]
 
     timeout_value = kwargs.get("timeout", DEFAULT_TIMEOUT)
     timeout_seconds = (
