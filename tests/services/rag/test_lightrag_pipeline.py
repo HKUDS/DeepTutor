@@ -1150,7 +1150,13 @@ def test_initialize_filters_only_mineru_layout_blocks(tmp_path, monkeypatch) -> 
     assert accepted_attempt["decision"]["attempt_id"] == ledger["decision"]["attempt_id"]
 
 
-def test_initialize_fails_closed_for_unknown_mineru_type(tmp_path, monkeypatch) -> None:
+def test_initialize_indexes_unknown_mineru_types_and_records_them(tmp_path, monkeypatch) -> None:
+    """A new MinerU block type must not take the whole ingest down.
+
+    The type is unrecognized, not unwanted: index it, record the count so the
+    policy can be extended, and keep the block's own text out of the audit
+    file.
+    """
     _force_available(monkeypatch, True)
     inserts = _stub_engine(monkeypatch)
     _stub_parse(
@@ -1162,21 +1168,20 @@ def test_initialize_fails_closed_for_unknown_mineru_type(tmp_path, monkeypatch) 
     pdf = tmp_path / "exam.pdf"
     pdf.write_bytes(b"%PDF")
 
-    with pytest.raises(block_policy.MinerUBlockPolicyError, match="future_widget=1"):
-        asyncio.run(pipe.initialize("kb", [str(pdf)]))
+    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
 
-    assert inserts == []
-    assert resolve_storage_dir_for_read(tmp_path / "kb", None) is None
+    assert len(inserts) == 1
+    assert resolve_storage_dir_for_read(tmp_path / "kb", None) is not None
     attempts = list((tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json"))
     assert len(attempts) == 1
-    rejected = json.loads(attempts[0].read_text(encoding="utf-8"))
-    assert rejected["counts"]["unknown_by_type"] == {"future_widget": 1}
-    assert rejected["decision"]["ledger_role"] == "attempt"
-    assert rejected["decision"]["policy_outcome"] == "rejected"
+    recorded = json.loads(attempts[0].read_text(encoding="utf-8"))
+    assert recorded["counts"]["unknown_by_type"] == {"future_widget": 1}
+    assert recorded["decision"]["ledger_role"] == "attempt"
+    assert recorded["decision"]["policy_outcome"] == "unknown_types"
     assert "raw-block-secret" not in attempts[0].read_text(encoding="utf-8")
 
 
-def test_add_documents_rejection_keeps_current_accepted_ledger(tmp_path, monkeypatch) -> None:
+def test_add_documents_records_unknown_types_without_blocking_ingest(tmp_path, monkeypatch) -> None:
     _force_available(monkeypatch, True)
     inserts = _stub_engine(monkeypatch)
     _stub_parse(
@@ -1197,25 +1202,23 @@ def test_add_documents_rejection_keeps_current_accepted_ledger(tmp_path, monkeyp
 
     _stub_parse(
         monkeypatch,
-        blocks=[{"type": "future_widget", "text": "rejected", "page_idx": 0}],
+        blocks=[{"type": "future_widget", "text": "later", "page_idx": 0}],
         engine_name="mineru",
-        parser_signature="rejected-signature",
+        parser_signature="unknown-type-signature",
     )
-    with pytest.raises(block_policy.MinerUBlockPolicyError, match="future_widget=1"):
-        asyncio.run(pipe.add_documents("kb", [str(pdf)]))
+    assert asyncio.run(pipe.add_documents("kb", [str(pdf)])) is True
 
-    assert len(inserts) == 1
-    assert current_path.read_text(encoding="utf-8") == accepted_payload
+    assert len(inserts) == 2
     attempts = [
         json.loads(path.read_text(encoding="utf-8"))
         for path in (tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json")
     ]
     assert len(attempts) == 2
-    rejected_attempt = next(
-        item for item in attempts if item["decision"]["policy_outcome"] == "rejected"
+    recorded = next(
+        item for item in attempts if item["decision"]["policy_outcome"] == "unknown_types"
     )
-    assert rejected_attempt["parser"]["parser_signature"] == "rejected-signature"
-    assert rejected_attempt["counts"]["unknown_total"] == 1
+    assert recorded["parser"]["parser_signature"] == "unknown-type-signature"
+    assert recorded["counts"]["unknown_total"] == 1
 
 
 def test_add_documents_insert_failure_keeps_current_accepted_ledger(

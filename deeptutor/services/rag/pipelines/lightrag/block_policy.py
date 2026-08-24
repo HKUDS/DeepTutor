@@ -31,6 +31,11 @@ PRESERVED_SEMANTIC_TYPES = frozenset(
 PRESERVED_TYPES = PRESERVED_AUXILIARY_TYPES | PRESERVED_SEMANTIC_TYPES
 MULTIMODAL_TYPES = PRESERVED_TYPES - {"text"}
 
+# MinerU renamed its auxiliary block types between output schemas: what the
+# legacy ``content_list.json`` calls ``header`` a newer parser emits as
+# ``page_header``. Map the newer names back onto the vocabulary the policy is
+# written in, so upgrading MinerU keeps classifying blocks instead of
+# presenting every layout block as an unrecognized type.
 V2_AUXILIARY_EQUIVALENTS = {
     "aside_text": "page_aside_text",
     "footer": "page_footer",
@@ -38,13 +43,14 @@ V2_AUXILIARY_EQUIVALENTS = {
     "page_footnote": "page_footnote",
     "page_number": "page_number",
 }
+_V2_TO_LEGACY_TYPE = {
+    v2_name: legacy_name
+    for legacy_name, v2_name in V2_AUXILIARY_EQUIVALENTS.items()
+    if v2_name != legacy_name
+}
 
 _SAFE_TYPE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _INVALID_TYPE = "<invalid>"
-
-
-class MinerUBlockPolicyError(RuntimeError):
-    """Raised before indexing when MinerU emits an unclassified block type."""
 
 
 @dataclass(frozen=True)
@@ -55,15 +61,10 @@ class BlockPolicyDecision:
     ledger: dict[str, Any] | None
     unknown_type_counts: tuple[tuple[str, int], ...] = ()
 
-    def require_accepted(self) -> None:
-        """Fail closed when an observed MinerU type has no explicit policy."""
-        if not self.unknown_type_counts:
-            return
-        summary = ", ".join(
+    def unknown_summary(self) -> str:
+        """``type=count`` rundown of block types the policy does not know."""
+        return ", ".join(
             f"{content_type}={count}" for content_type, count in self.unknown_type_counts
-        )
-        raise MinerUBlockPolicyError(
-            f"MinerU content_list contains unsupported block types: {summary}"
         )
 
 
@@ -115,13 +116,18 @@ def prepare_content_list(
             continue
         block = raw_block
         content_type = _sanitized_type(block)
+        content_type = _V2_TO_LEGACY_TYPE.get(content_type, content_type)
         raw_counts[content_type] += 1
         if content_type in FILTERED_LAYOUT_TYPES:
             filtered_counts[content_type] += 1
             continue
         if content_type not in PRESERVED_TYPES:
+            # Filter only what we positively recognize as page chrome; index
+            # anything else. A MinerU release that adds a block type must not
+            # silently drop its content, nor abort the whole ingest — before
+            # this policy existed every block was indexed, and an unrecognized
+            # type is far more likely to be new content than new chrome.
             unknown_counts[content_type] += 1
-            continue
 
         eligible_counts[content_type] += 1
         if content_type in MULTIMODAL_TYPES:
@@ -139,7 +145,7 @@ def prepare_content_list(
             "preserved_auxiliary_types": sorted(PRESERVED_AUXILIARY_TYPES),
             "preserved_semantic_types": sorted(PRESERVED_SEMANTIC_TYPES),
             "v2_auxiliary_equivalents": dict(sorted(V2_AUXILIARY_EQUIVALENTS.items())),
-            "v2_runtime_ingestion_enabled": False,
+            "v2_auxiliary_normalized": True,
         },
         "parser": {
             "engine": engine,
@@ -165,7 +171,7 @@ def prepare_content_list(
         "invariants": {
             "input_blocks_mutated": False,
             "eligible_order_preserved": True,
-            "unknown_types_fail_closed": True,
+            "unknown_types_indexed": True,
             "raw_parser_artifacts_mutated": False,
         },
     }
@@ -210,8 +216,13 @@ def write_attempt_ledger(
     *,
     outcome: str,
 ) -> tuple[Path, str]:
-    """Persist one immutable policy attempt outside a candidate version."""
-    if outcome not in {"accepted", "rejected"}:
+    """Persist one immutable policy attempt outside a candidate version.
+
+    ``unknown_types`` means the document indexed, but carried block types the
+    policy has no entry for — the signal to extend ``PRESERVED_TYPES`` or
+    ``FILTERED_LAYOUT_TYPES``, not an ingest failure.
+    """
+    if outcome not in {"accepted", "unknown_types"}:
         raise ValueError(f"Unsupported policy outcome: {outcome}")
 
     document_id_sha256 = hashlib.sha256(document_id.encode()).hexdigest()
@@ -245,7 +256,6 @@ __all__ = [
     "FILTERED_LAYOUT_TYPES",
     "LEDGER_DIRNAME",
     "MULTIMODAL_TYPES",
-    "MinerUBlockPolicyError",
     "POLICY_ID",
     "PRESERVED_AUXILIARY_TYPES",
     "PRESERVED_SEMANTIC_TYPES",

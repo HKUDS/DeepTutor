@@ -113,7 +113,7 @@ class LightRagPipeline:
                     parser_signature=doc.parser_signature,
                 )
                 if decision.ledger is not None:
-                    outcome = "rejected" if decision.unknown_type_counts else "accepted"
+                    outcome = "unknown_types" if decision.unknown_type_counts else "accepted"
                     _, attempt_id = block_policy.write_attempt_ledger(
                         Path(rag.working_dir).parent,
                         document_id,
@@ -129,7 +129,15 @@ class LightRagPipeline:
                         counts["eligible_total"],
                         counts["unknown_total"],
                     )
-                decision.require_accepted()
+                    if decision.unknown_type_counts:
+                        # Indexed, not dropped and not fatal — say so, because
+                        # this is the signal that the policy needs a new entry.
+                        self.logger.warning(
+                            "LightRAG: %s has MinerU block types with no policy "
+                            "entry (%s); indexing them unclassified",
+                            path.name,
+                            decision.unknown_summary(),
+                        )
                 accepted_ledger = decision.ledger
                 content_list = decision.content_list
             else:
