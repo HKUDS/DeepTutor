@@ -21,7 +21,7 @@ from deeptutor.services.rag.index_versioning import (
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
 from . import storage
-from .config import default_top_k
+from .config import default_top_k, should_show_progress
 from .document_loader import LlamaIndexDocumentLoader
 from .embedding_adapter import (
     configure_llamaindex_settings,
@@ -105,7 +105,9 @@ class LlamaIndexPipeline:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
-                lambda: storage.create_index(documents, storage_dir, show_progress=True),
+                lambda: storage.create_index(
+                    documents, storage_dir, show_progress=should_show_progress()
+                ),
             )
 
             self.logger.info(f"Index persisted to {storage_dir}")
@@ -266,7 +268,9 @@ class LlamaIndexPipeline:
                 plan.storage_dir.mkdir(parents=True, exist_ok=True)
                 num_added = await loop.run_in_executor(
                     None,
-                    lambda: storage.create_index(documents, plan.storage_dir, show_progress=True),
+                    lambda: storage.create_index(
+                        documents, plan.storage_dir, show_progress=should_show_progress()
+                    ),
                 )
                 self.logger.info(f"Created new index with {num_added} documents")
                 if signature is not None:

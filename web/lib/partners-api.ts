@@ -321,6 +321,97 @@ export interface ChannelsSchemaResponse {
   channels: Record<string, ChannelSchemaEntry>;
 }
 
+export type PartnerChannelOnboardingChannel = "feishu" | "wecom";
+
+export type PartnerChannelOnboardingStatus =
+  | "pending_scan"
+  | "ready"
+  | "applied"
+  | "cancelled"
+  | "expired"
+  | "denied"
+  | "failed";
+
+export interface PartnerChannelOnboardingSession {
+  session_id: string;
+  partner_id: string;
+  channel: PartnerChannelOnboardingChannel;
+  status: PartnerChannelOnboardingStatus;
+  qr_payload: string;
+  qr_data_url: string | null;
+  fallback_url: string;
+  poll_interval_seconds: number;
+  expires_at: string;
+  error_code?: string;
+}
+
+export function supportsChannelOnboarding(
+  channel: string,
+  available: boolean | undefined,
+): boolean {
+  return available !== false && (channel === "feishu" || channel === "wecom");
+}
+
+export async function startChannelOnboarding(
+  partnerId: string,
+  channel: PartnerChannelOnboardingChannel,
+): Promise<PartnerChannelOnboardingSession> {
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/channel-onboarding/start`,
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel }),
+      },
+    ),
+  );
+}
+
+export async function getChannelOnboarding(
+  partnerId: string,
+  sessionId: string,
+): Promise<PartnerChannelOnboardingSession> {
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/channel-onboarding/${encodeURIComponent(sessionId)}`,
+      ),
+      { cache: "no-store" },
+    ),
+  );
+}
+
+export async function cancelChannelOnboarding(
+  partnerId: string,
+  sessionId: string,
+): Promise<PartnerChannelOnboardingSession> {
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/channel-onboarding/${encodeURIComponent(sessionId)}`,
+      ),
+      { method: "DELETE" },
+    ),
+  );
+}
+
+export async function applyChannelOnboarding(
+  partnerId: string,
+  sessionId: string,
+): Promise<{ session: PartnerChannelOnboardingSession }> {
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/channel-onboarding/${encodeURIComponent(sessionId)}/apply`,
+      ),
+      { method: "POST" },
+    ),
+  );
+}
+
 export async function getChannelSchemas(): Promise<ChannelsSchemaResponse> {
   // no-store: availability reflects live server imports (e.g. a dependency
   // installed minutes ago) — a cached copy here shows phantom-missing channels.

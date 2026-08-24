@@ -38,8 +38,14 @@ from deeptutor.services.rag.factory import (
     normalize_provider_name,
 )
 from deeptutor.services.rag.index_versioning import resolve_storage_dir_for_read
-from deeptutor.services.rag.pipelines.lightrag import config as lr_config
-from deeptutor.services.rag.pipelines.lightrag import engine, storage
+from deeptutor.services.rag.pipelines.lightrag import (
+    block_policy,
+    engine,
+    storage,
+)
+from deeptutor.services.rag.pipelines.lightrag import (
+    config as lr_config,
+)
 from deeptutor.services.rag.pipelines.lightrag.pipeline import LightRagPipeline
 from deeptutor.services.rag.pipelines.lightrag.worker import run_in_worker_loop
 
@@ -867,7 +873,14 @@ def _stub_engine(monkeypatch, answer: str = "ANSWER") -> list[dict]:
     return inserts
 
 
-def _stub_parse(monkeypatch, *, blocks=None, markdown: str = "# md") -> None:
+def _stub_parse(
+    monkeypatch,
+    *,
+    blocks=None,
+    markdown: str = "# md",
+    engine_name: str = "fake",
+    parser_signature: str = "",
+) -> None:
     from deeptutor.services.parsing.types import ParsedDocument
 
     class _Service:
@@ -876,7 +889,8 @@ def _stub_parse(monkeypatch, *, blocks=None, markdown: str = "# md") -> None:
                 markdown=markdown,
                 blocks=blocks,
                 source_hash="h_" + Path(path).stem,
-                engine="fake",
+                parser_signature=parser_signature,
+                engine=engine_name,
             )
 
     monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: _Service())
@@ -1193,6 +1207,169 @@ def test_initialize_orchestrates_index_and_uses_blocks(tmp_path, monkeypatch) ->
     # version dir is marked ready.
     root = resolve_storage_dir_for_read(tmp_path / "kb", None)
     assert storage.has_output(root) is True
+
+
+def test_initialize_filters_only_mineru_layout_blocks(tmp_path, monkeypatch) -> None:
+    _force_available(monkeypatch, True)
+    inserts = _stub_engine(monkeypatch)
+    raw_blocks = [
+        {"type": "header", "text": "chapter", "page_idx": 0},
+        {"type": "text", "text": "body", "page_idx": 0},
+        {"type": "image", "img_path": "/tmp/image.png", "page_idx": 0},  # noqa: S108
+        {"type": "footer", "text": "publisher", "page_idx": 0},
+        {"type": "page_number", "text": "1", "page_idx": 0},
+    ]
+    original = json.loads(json.dumps(raw_blocks))
+    _stub_parse(
+        monkeypatch,
+        blocks=raw_blocks,
+        engine_name="mineru",
+        parser_signature="mineru-signature",
+    )
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pdf = tmp_path / "exam.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
+
+    assert [item["type"] for item in inserts[0]["blocks"]] == ["text", "image"]
+    assert raw_blocks == original
+    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
+    assert root is not None
+    ledgers = list((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
+    assert len(ledgers) == 1
+    ledger = json.loads(ledgers[0].read_text(encoding="utf-8"))
+    assert ledger["counts"]["raw_total"] == 5
+    assert ledger["counts"]["filtered_total"] == 3
+    assert ledger["counts"]["eligible_multimodal_total"] == 1
+    assert ledger["counts"]["unknown_total"] == 0
+    assert ledger["decision"]["ledger_role"] == "current-index"
+    assert ledger["decision"]["policy_outcome"] == "accepted"
+    attempts = list((tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json"))
+    assert len(attempts) == 1
+    accepted_attempt = json.loads(attempts[0].read_text(encoding="utf-8"))
+    assert accepted_attempt["decision"]["policy_outcome"] == "accepted"
+    assert accepted_attempt["decision"]["attempt_id"] == ledger["decision"]["attempt_id"]
+
+
+def test_initialize_indexes_unknown_mineru_types_and_records_them(tmp_path, monkeypatch) -> None:
+    """A new MinerU block type must not take the whole ingest down.
+
+    The type is unrecognized, not unwanted: index it, record the count so the
+    policy can be extended, and keep the block's own text out of the audit
+    file.
+    """
+    _force_available(monkeypatch, True)
+    inserts = _stub_engine(monkeypatch)
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "future_widget", "text": "raw-block-secret", "page_idx": 0}],
+        engine_name="mineru",
+    )
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pdf = tmp_path / "exam.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
+
+    assert len(inserts) == 1
+    assert resolve_storage_dir_for_read(tmp_path / "kb", None) is not None
+    attempts = list((tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json"))
+    assert len(attempts) == 1
+    recorded = json.loads(attempts[0].read_text(encoding="utf-8"))
+    assert recorded["counts"]["unknown_by_type"] == {"future_widget": 1}
+    assert recorded["decision"]["ledger_role"] == "attempt"
+    assert recorded["decision"]["policy_outcome"] == "unknown_types"
+    assert "raw-block-secret" not in attempts[0].read_text(encoding="utf-8")
+
+
+def test_add_documents_records_unknown_types_without_blocking_ingest(tmp_path, monkeypatch) -> None:
+    _force_available(monkeypatch, True)
+    inserts = _stub_engine(monkeypatch)
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "text", "text": "accepted", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="accepted-signature",
+    )
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pdf = tmp_path / "exam.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
+    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
+    assert root is not None
+    current_path = next((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
+    accepted_payload = current_path.read_text(encoding="utf-8")
+
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "future_widget", "text": "later", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="unknown-type-signature",
+    )
+    assert asyncio.run(pipe.add_documents("kb", [str(pdf)])) is True
+
+    assert len(inserts) == 2
+    attempts = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json")
+    ]
+    assert len(attempts) == 2
+    recorded = next(
+        item for item in attempts if item["decision"]["policy_outcome"] == "unknown_types"
+    )
+    assert recorded["parser"]["parser_signature"] == "unknown-type-signature"
+    assert recorded["counts"]["unknown_total"] == 1
+
+
+def test_add_documents_insert_failure_keeps_current_accepted_ledger(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _force_available(monkeypatch, True)
+    _stub_engine(monkeypatch)
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "text", "text": "accepted", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="accepted-signature",
+    )
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pdf = tmp_path / "exam.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
+    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
+    assert root is not None
+    current_path = next((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
+    accepted_payload = current_path.read_text(encoding="utf-8")
+
+    _stub_parse(
+        monkeypatch,
+        blocks=[{"type": "text", "text": "new attempt", "page_idx": 0}],
+        engine_name="mineru",
+        parser_signature="new-signature",
+    )
+
+    async def fail_insert(*_args, **_kwargs) -> None:
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr(engine, "insert", fail_insert)
+    with pytest.raises(RuntimeError, match="insert failed"):
+        asyncio.run(pipe.add_documents("kb", [str(pdf)]))
+
+    assert current_path.read_text(encoding="utf-8") == accepted_payload
+    attempts = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json")
+    ]
+    assert len(attempts) == 2
+    latest_attempt = next(
+        item for item in attempts if item["parser"]["parser_signature"] == "new-signature"
+    )
+    assert latest_attempt["decision"]["policy_outcome"] == "accepted"
+    assert latest_attempt["counts"]["unknown_total"] == 0
 
 
 def test_ingest_falls_back_to_markdown_when_no_blocks(tmp_path, monkeypatch) -> None:

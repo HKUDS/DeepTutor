@@ -1896,6 +1896,7 @@ class TurnRuntimeManager:
                     "llm_selection": payload.get("llm_selection") or {},
                     "llm_model": str(getattr(llm_config, "model", "") or ""),
                     "llm_provider": str(getattr(llm_config, "provider_name", "") or ""),
+                    "llm_reasoning_effort": str(getattr(llm_config, "reasoning_effort", "") or ""),
                     # Per-turn full-text payload for read_source. Empty when
                     # the manifest is empty (non-chat capabilities, or chat
                     # turns with no attached sources). Consumed by the chat
