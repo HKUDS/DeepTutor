@@ -582,14 +582,14 @@ async def _openai_complete(
 
     active, bridge_key = _responses_bridge_active(binding, effective_base, model)
     if active:
-        from deeptutor.core.agentic.responses_bridge import record_bridge_failure
+        from deeptutor.core.agentic.responses_bridge import note_bridge_failure
 
         try:
             bridge_content = await _responses_complete_content(
                 effective_base, headers, data, binding, model
             )
         except Exception as exc:
-            record_bridge_failure(bridge_key)
+            note_bridge_failure(bridge_key, exc)
             logger.warning(
                 "Responses bridge failed for %s (%s); falling back to chat completions",
                 model,
@@ -773,7 +773,7 @@ async def _openai_stream(
 
     active, bridge_key = _responses_bridge_active(binding, effective_base, model)
     if active:
-        from deeptutor.core.agentic.responses_bridge import record_bridge_failure
+        from deeptutor.core.agentic.responses_bridge import note_bridge_failure
 
         try:
             async for piece in _iter_chat_stream_content(
@@ -786,7 +786,7 @@ async def _openai_stream(
                 yield piece
             return
         except Exception as exc:
-            record_bridge_failure(bridge_key)
+            note_bridge_failure(bridge_key, exc)
             logger.warning(
                 "Responses bridge failed for %s (%s); falling back to chat completions",
                 model,

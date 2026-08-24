@@ -12,11 +12,20 @@ import deeptutor.core.agentic.responses_bridge as bridge_module
 from deeptutor.core.agentic.responses_bridge import (
     ENV_USE_RESPONSES_API,
     build_responses_body,
+    failure_counts_toward_breaker,
     reset_bridge_breaker,
     response_to_chat_shape,
     responses_events_to_chat_chunks,
     wrap_responses_bridge,
 )
+
+
+class _StatusError(Exception):
+    """Exception carrying an HTTP status, like openai.APIStatusError."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status
 
 
 def _evt(event_type: str, **attrs: Any) -> SimpleNamespace:
@@ -351,7 +360,7 @@ async def test_stream_success_produces_chunks_via_responses() -> None:
 
 @pytest.mark.asyncio
 async def test_failure_falls_back_then_breaker_skips_responses() -> None:
-    factory = _FakeInnerFactory(responses_error=RuntimeError("404 no /responses"))
+    factory = _FakeInnerFactory(responses_error=_StatusError(404, "no /responses"))
     completions = _bridge_over(factory)
     kwargs = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
 
@@ -379,3 +388,28 @@ async def test_success_resets_breaker_failures() -> None:
         **{"model": "m", "messages": [{"role": "user", "content": "hi"}]}
     )
     assert bridge_module._bridge_failures.get(key) is None
+
+@pytest.mark.asyncio
+async def test_transient_503_never_trips_breaker() -> None:
+    """Relay channel exhaustion (new-api 503) must not lock out /responses."""
+    factory = _FakeInnerFactory(responses_error=_StatusError(503, "no channel"))
+    completions = _bridge_over(factory)
+    kwargs = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
+
+    for _ in range(5):
+        result = await completions.create(**kwargs)
+        assert result.choices[0].message.content == "fallback"
+
+    # Every request still probes /responses — no 5-minute all-chat window.
+    assert factory.responses_create_calls == 5
+    assert factory.chat_create_calls == 5
+
+
+def test_failure_classification_by_status() -> None:
+    assert not failure_counts_toward_breaker(_StatusError(503, "no channel"))
+    assert not failure_counts_toward_breaker(_StatusError(429, "rate limited"))
+    assert not failure_counts_toward_breaker(_StatusError(500, "upstream"))
+    assert not failure_counts_toward_breaker(RuntimeError("connection reset"))
+    assert failure_counts_toward_breaker(_StatusError(404, "no endpoint"))
+    assert failure_counts_toward_breaker(_StatusError(400, "bad request"))
+    assert failure_counts_toward_breaker(_StatusError(401, "bad key"))

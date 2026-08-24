@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from deeptutor.services.llm import reset_llm_client
 from deeptutor.services.llm import cloud_provider
+from deeptutor.services.llm import reset_llm_client
 import deeptutor.core.agentic.responses_bridge as bridge_module
 
 
@@ -62,9 +62,13 @@ class _FakeResponse:
 
 
 class _RoutingSession:
-    """Returns distinct fake responses per endpoint and counts posts."""
+    """Returns fake responses per endpoint suffix and counts posts.
 
-    def __init__(self, responses: dict[str, _FakeResponse]) -> None:
+    Values may be response instances (single use) or zero-arg factories
+    producing a fresh response per post (multi-turn tests).
+    """
+
+    def __init__(self, responses: dict[str, Any]) -> None:
         self._responses = responses
         self.posts: list[str] = []
 
@@ -83,7 +87,7 @@ class _RoutingSession:
         self.posts.append(url)
         for suffix, response in self._responses.items():
             if url.endswith(suffix):
-                return response
+                return response() if callable(response) else response
         raise AssertionError(f"unexpected post url: {url}")
 
 
@@ -104,9 +108,7 @@ def _chat_sse(text: str) -> list[bytes]:
     ]
 
 
-def _install(
-    monkeypatch: pytest.MonkeyPatch, session: _RoutingSession
-) -> None:
+def _install(monkeypatch: pytest.MonkeyPatch, session: _RoutingSession) -> None:
     monkeypatch.setattr(
         cloud_provider.aiohttp,
         "ClientSession",
@@ -126,7 +128,9 @@ def _isolated(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[None, None]:
 
 @pytest.mark.asyncio
 async def test_stream_via_responses(monkeypatch: pytest.MonkeyPatch) -> None:
-    session = _RoutingSession({"/responses": _FakeStreamResponseLike(200, _responses_sse())})
+    session = _RoutingSession(
+        {"/responses": _FakeResponse(200, lines=_responses_sse())}
+    )
     _install(monkeypatch, session)
 
     chunks = [
@@ -141,8 +145,8 @@ async def test_stream_via_responses(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
 
     assert "".join(chunks) == "Hello via responses"
-    assert [url for url in session.posts if url.endswith("/responses")]
-    assert not [url for url in session.posts if url.endswith("/chat/completions")]
+    assert any(url.endswith("/responses") for url in session.posts)
+    assert not any(url.endswith("/chat/completions") for url in session.posts)
 
 
 @pytest.mark.asyncio
@@ -151,8 +155,8 @@ async def test_stream_falls_back_on_responses_error(
 ) -> None:
     session = _RoutingSession(
         {
-            "/responses": _FakeStreamResponseLike(404, [], text="no /responses here"),
-            "/chat/completions": _FakeStreamResponseLike(200, _chat_sse("fallback")),
+            "/responses": _FakeResponse(404, text="no /responses here"),
+            "/chat/completions": _FakeResponse(200, lines=_chat_sse("fallback")),
         }
     )
     _install(monkeypatch, session)
@@ -179,8 +183,8 @@ async def test_breaker_blocks_probes_after_two_failures(
 ) -> None:
     session = _RoutingSession(
         {
-            "/responses": _FakeStreamResponseLike(404, [], text="nope"),
-            "/chat/completions": _FakeStreamResponseLike(200, _chat_sse("ok")),
+            "/responses": lambda: _FakeResponse(404, text="nope"),
+            "/chat/completions": lambda: _FakeResponse(200, lines=_chat_sse("ok")),
         }
     )
     _install(monkeypatch, session)
@@ -197,16 +201,42 @@ async def test_breaker_blocks_probes_after_two_failures(
 
     await _one_turn()
     await _one_turn()
-    responses_posts = sum(
-        1 for url in session.posts if url.endswith("/responses")
-    )
+    responses_posts = sum(1 for url in session.posts if url.endswith("/responses"))
     assert responses_posts == 2
 
     await _one_turn()
-    responses_posts = sum(
-        1 for url in session.posts if url.endswith("/responses")
-    )
+    responses_posts = sum(1 for url in session.posts if url.endswith("/responses"))
     assert responses_posts == 2  # breaker: no further probing
+
+
+@pytest.mark.asyncio
+async def test_legacy_transient_503_keeps_probing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """new-api 503 channel exhaustion falls back per request without tripping."""
+    session = _RoutingSession(
+        {
+            "/responses": lambda: _FakeResponse(503, text="no channel"),
+            "/chat/completions": lambda: _FakeResponse(200, lines=_chat_sse("ok")),
+        }
+    )
+    _install(monkeypatch, session)
+
+    for _ in range(3):
+        chunks = [
+            chunk
+            async for chunk in cloud_provider.stream(
+                prompt="hello",
+                model="gpt-test",
+                api_key="k",
+                base_url="https://relay.example/v1",
+                binding="custom",
+            )
+        ]
+        assert "".join(chunks) == "ok"
+
+    responses_posts = sum(1 for url in session.posts if url.endswith("/responses"))
+    assert responses_posts == 3
 
 
 @pytest.mark.asyncio
@@ -241,10 +271,3 @@ async def test_complete_via_responses(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result == "complete ok"
     assert any(url.endswith("/responses") for url in session.posts)
-
-
-class _FakeStreamResponseLike(_FakeResponse):
-    """Stream-flavoured response (kept name short for the tables above)."""
-
-    def __init__(self, status: int, lines: list[bytes], text: str = "") -> None:
-        super().__init__(status, lines=lines, text=text)

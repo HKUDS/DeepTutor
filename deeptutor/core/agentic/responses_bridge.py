@@ -115,6 +115,54 @@ def _record_bridge_success(key: str) -> None:
         _bridge_tripped_at.pop(key, None)
 
 
+#: Statuses that mean "this attempt failed, but the endpoint itself is
+#: fine" — relay channel exhaustion (new-api 503), rate limits, upstream
+#: hiccups. Falling back for the request is right; tripping the breaker
+#: would only convert a one-request blip into a five-minute all-chat
+#: window (zero prompt-cache hits), so these never count toward it.
+_TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+
+def _failure_status_code(exc: BaseException) -> int | None:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def failure_counts_toward_breaker(exc: BaseException) -> bool:
+    """Whether *exc* indicates the ``/responses`` route is truly unusable.
+
+    Connection-level errors (no status, status 0) and transient statuses do
+    not count; definitive rejections (404 no endpoint, 400/401/422 protocol
+    or auth problems) do.
+    """
+    status = _failure_status_code(exc)
+    if status is None or status == 0:
+        return False
+    return status not in _TRANSIENT_STATUS_CODES and status != 408
+
+
+def note_bridge_failure(key: str, exc: BaseException, *, definitive: bool | None = None) -> None:
+    """Record a bridge failure unless it is classified as transient.
+
+    ``definitive=True`` forces counting (e.g. request-conversion bugs that
+    will replay identically); ``definitive=False`` forces skipping; the
+    default classifies by the exception's HTTP status.
+    """
+    counts = failure_counts_toward_breaker(exc) if definitive is None else definitive
+    if counts:
+        _record_bridge_failure(key)
+    else:
+        logger.info(
+            "Responses bridge transient failure (%s); next request retries /responses",
+            exc,
+        )
+
+
 #: Public aliases for callers outside this module (e.g. the aiohttp-based
 #: cloud provider) that share the same breaker state.
 bridge_breaker_tripped = _breaker_tripped
@@ -476,11 +524,9 @@ class _StreamProxy:
         return self
 
     async def __anext__(self) -> Any:
-        try:
-            return await self._agen.__anext__()
-        except Exception:
-            _record_bridge_failure(self._key)
-            raise
+        # Mid-stream failures cannot fall back (deltas already emitted) and
+        # are almost always transient disconnects — never trip the breaker.
+        return await self._agen.__anext__()
 
     async def close(self) -> None:
         close = getattr(self._events_stream, "close", None)
@@ -502,7 +548,7 @@ class _BridgedCompletions:
         try:
             body = build_responses_body(kwargs)
         except Exception as exc:
-            _record_bridge_failure(key)
+            note_bridge_failure(key, exc, definitive=True)
             logger.warning(
                 "Responses bridge request conversion failed (%s); "
                 "using chat completions",
@@ -518,7 +564,7 @@ class _BridgedCompletions:
             _record_bridge_success(key)
             return response_to_chat_shape(response)
         except Exception as exc:
-            _record_bridge_failure(key)
+            note_bridge_failure(key, exc)
             logger.warning(
                 "Responses bridge failed (%s); retrying via chat completions", exc
             )
