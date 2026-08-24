@@ -3301,5 +3301,12 @@
   "main": "main",
   "docs/": "docs/",
   "*.md": "*.md",
-  "Session {{id}}": "Session {{id}}"
+  "Session {{id}}": "Session {{id}}",
+  "Checking Whisper plugin…": "Checking Whisper plugin…",
+  "Whisper plugin required": "Whisper plugin required",
+  "Unable to check Whisper plugin": "Unable to check Whisper plugin",
+  "Waiting for the backend capability registry…": "Waiting for the backend capability registry…",
+  "Install or enable a plugin that provides whisper_visitor and whisper_trainee, then retry.": "Install or enable a plugin that provides whisper_visitor and whisper_trainee, then retry.",
+  "The capability registry could not be reached. Check the backend connection and retry.": "The capability registry could not be reached. Check the backend connection and retry.",
+  "Retry plugin check": "Retry plugin check"
 }

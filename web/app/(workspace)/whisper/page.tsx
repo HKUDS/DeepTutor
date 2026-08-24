@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Ear, Loader2 } from "lucide-react";
+import { apiFetch, apiUrl } from "@/lib/api";
 import WhisperComposer from "@/components/whisper/WhisperComposer";
 import WhisperMessageList from "@/components/whisper/WhisperMessageList";
 import WhisperRoomChip from "@/components/whisper/WhisperRoomChip";
@@ -19,6 +20,11 @@ import {
   type WhisperMessage,
   type WhisperSeat,
 } from "@/lib/whisper-transcript";
+import {
+  WHISPER_CAPABILITY_BY_SEAT,
+  hasWhisperCapabilities,
+  type WhisperPluginStatus,
+} from "@/lib/whisper-availability";
 
 function newMessageId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -48,6 +54,8 @@ export default function WhisperPage() {
   const [dtSessionId, setDtSessionId] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [everConnected, setEverConnected] = useState(false);
+  const [pluginStatus, setPluginStatus] =
+    useState<WhisperPluginStatus>("checking");
 
   const clientRef = useRef<UnifiedWSClient | null>(null);
   const seatRef = useRef<WhisperSeat>(seat);
@@ -135,7 +143,25 @@ export default function WhisperPage() {
     }
   }, []);
 
+  const checkPluginAvailability = useCallback(async () => {
+    setPluginStatus("checking");
+    try {
+      const response = await apiFetch(apiUrl("/api/v1/plugins/list"));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = (await response.json()) as unknown;
+      setPluginStatus(hasWhisperCapabilities(payload) ? "available" : "missing");
+    } catch {
+      setPluginStatus("error");
+    }
+  }, []);
+
   useEffect(() => {
+    void checkPluginAvailability();
+  }, [checkPluginAvailability]);
+
+  useEffect(() => {
+    if (pluginStatus !== "available") return;
+
     const client = new UnifiedWSClient(handleEvent, () => {
       setBusy(false);
       setConnected(false);
@@ -165,7 +191,7 @@ export default function WhisperPage() {
       client.disconnect();
       clientRef.current = null;
     };
-  }, [handleEvent]);
+  }, [handleEvent, pluginStatus]);
 
   useEffect(() => {
     if (scrollerRef.current) {
@@ -180,9 +206,10 @@ export default function WhisperPage() {
 
   const traineeNeedsRoom = seat === "trainee" && !roomId;
   const roomLocked = crisisHit || roomClosed;
+  const pluginReady = pluginStatus === "available";
   // Typing stays available during busy / trainee-without-room; only Send locks.
-  const inputDisabled = roomLocked;
-  const sendBlocked = busy || roomLocked || traineeNeedsRoom;
+  const inputDisabled = !pluginReady || roomLocked;
+  const sendBlocked = !pluginReady || busy || roomLocked || traineeNeedsRoom;
 
   function sendWithRetry(payload: StartTurnMessage, attempt = 0) {
     const client = clientRef.current;
@@ -238,8 +265,7 @@ export default function WhisperPage() {
     }, 120_000);
     retryTimersRef.current.add(busyWatchdog);
 
-    const capability =
-      seat === "visitor" ? "whisper_visitor" : "whisper_trainee";
+    const capability = WHISPER_CAPABILITY_BY_SEAT[seat];
     const payload: StartTurnMessage = {
       type: "start_turn",
       content: text,
@@ -323,6 +349,7 @@ export default function WhisperPage() {
                   role="tab"
                   aria-selected={active}
                   onClick={() => switchSeat(value)}
+                  disabled={!pluginReady}
                   className={`rounded-[10px] px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
                     active
                       ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
@@ -334,7 +361,7 @@ export default function WhisperPage() {
               );
             })}
           </div>
-          {!connected && (
+          {pluginReady && !connected && (
             <span className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
               <Loader2 className="h-3 w-3 animate-spin" />
               {everConnected ? t("Reconnecting…") : t("Connecting…")}
@@ -355,6 +382,45 @@ export default function WhisperPage() {
         </div>
       )}
 
+      {pluginStatus !== "available" && (
+        <div
+          role="status"
+          className="border-b border-[var(--border)] bg-[var(--background)] px-4 py-3 text-xs text-[var(--muted-foreground)]"
+        >
+          <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-medium text-[var(--foreground)]">
+                {pluginStatus === "checking"
+                  ? t("Checking Whisper plugin…")
+                  : pluginStatus === "missing"
+                    ? t("Whisper plugin required")
+                    : t("Unable to check Whisper plugin")}
+              </p>
+              <p className="mt-1 leading-5">
+                {pluginStatus === "checking"
+                  ? t("Waiting for the backend capability registry…")
+                  : pluginStatus === "missing"
+                    ? t(
+                        "Install or enable a plugin that provides whisper_visitor and whisper_trainee, then retry.",
+                      )
+                    : t(
+                        "The capability registry could not be reached. Check the backend connection and retry.",
+                      )}
+              </p>
+            </div>
+            {pluginStatus !== "checking" && (
+              <button
+                type="button"
+                onClick={() => void checkPluginAvailability()}
+                className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[11px] font-medium transition-colors hover:border-[var(--ring)] hover:text-[var(--foreground)]"
+              >
+                {t("Retry plugin check")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {seat === "trainee" && !roomId && (
         <div
           role="status"
@@ -369,7 +435,9 @@ export default function WhisperPage() {
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
         <div className="mx-auto w-full max-w-3xl">
-          <WhisperMessageList messages={visibleMessages} seat={seat} />
+          {pluginStatus === "available" ? (
+            <WhisperMessageList messages={visibleMessages} seat={seat} />
+          ) : null}
         </div>
       </div>
 

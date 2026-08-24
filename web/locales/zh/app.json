@@ -3301,5 +3301,12 @@
   "main": "main",
   "docs/": "docs/",
   "*.md": "*.md",
-  "Session {{id}}": "会话 {{id}}"
+  "Session {{id}}": "会话 {{id}}",
+  "Checking Whisper plugin…": "正在检查密语插件…",
+  "Whisper plugin required": "需要密语插件",
+  "Unable to check Whisper plugin": "无法检查密语插件",
+  "Waiting for the backend capability registry…": "正在等待后端能力注册表…",
+  "Install or enable a plugin that provides whisper_visitor and whisper_trainee, then retry.": "请安装或启用同时提供 whisper_visitor 和 whisper_trainee 的插件，然后重试。",
+  "The capability registry could not be reached. Check the backend connection and retry.": "无法访问能力注册表。请检查后端连接后重试。",
+  "Retry plugin check": "重试插件检查"
 }
