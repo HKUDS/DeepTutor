@@ -13,6 +13,7 @@ from loguru import logger
 from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.codex_auth.constants import CODEX_DEFAULT_MODEL_ID, CODEX_RESPONSES_URL
 from deeptutor.services.codex_auth.contracts import CodexToken
+from deeptutor.services.llm.exceptions import LLMProviderTransportError
 from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
@@ -20,6 +21,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_messages,
     convert_tools,
 )
+from deeptutor.services.llm.request_compat import is_transient_transport_error
 
 DEFAULT_ORIGINATOR = "DeepTutor"
 
@@ -50,10 +52,11 @@ class OpenAICodexProvider(LLMProvider):
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:
         model_name = model or self.default_model
+        model_slug = _strip_model_prefix(model_name)
         system_prompt, input_items = convert_messages(messages)
 
         body: dict[str, Any] = {
-            "model": _strip_model_prefix(model_name),
+            "model": model_slug,
             "store": False,
             "stream": True,
             "instructions": system_prompt,
@@ -73,6 +76,7 @@ class OpenAICodexProvider(LLMProvider):
         async with service.inference_guard():
             try:
                 token = await self._load_token()
+                service.validate_runtime_profile(token, model_slug, reasoning_effort)
                 headers = _build_headers(token.account_id, token.access_token)
                 try:
                     content, tool_calls, finish_reason = await _request_codex(
@@ -123,7 +127,12 @@ class OpenAICodexProvider(LLMProvider):
                     content=f"Error calling Codex: {exc.public_message}",
                     finish_reason="error",
                 )
-            except Exception:
+            except Exception as exc:
+                if is_transient_transport_error(exc):
+                    # Preserve a structured retry signal without exposing the
+                    # URL, proxy, response body, or token-bearing request.
+                    logger.warning("Codex transport request failed: {}", type(exc).__name__)
+                    raise LLMProviderTransportError("Codex transport request failed.") from exc
                 # The user-facing text stays generic so upstream payloads never
                 # leak, but an operator still needs the real cause in the log.
                 logger.exception("Codex request failed")

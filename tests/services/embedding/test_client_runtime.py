@@ -17,6 +17,7 @@ from deeptutor.services.embedding.config import EmbeddingConfig
 
 class _FakeAdapter:
     instances: list["_FakeAdapter"] = []
+    SUPPORTS_INPUT_TYPE = False
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
@@ -72,6 +73,44 @@ async def test_embedding_client_batches_requests(monkeypatch) -> None:
     assert len(adapter.calls[0].texts) == 2
     assert len(adapter.calls[1].texts) == 1
     assert adapter.config["dimensions"] == 8
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_forwards_input_type_to_every_batch(monkeypatch) -> None:
+    class _RoleAwareAdapter(_FakeAdapter):
+        SUPPORTS_INPUT_TYPE = True
+
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _b: _RoleAwareAdapter
+    )
+    client = EmbeddingClient(_build_config("openai"))
+
+    await client.embed(["a", "b", "c"], input_type="search_query")
+
+    adapter = _FakeAdapter.instances[0]
+    assert [request.input_type for request in adapter.calls] == [
+        "search_query",
+        "search_query",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_withholds_input_type_from_opted_out_adapters(
+    monkeypatch,
+) -> None:
+    """Sending a role to a backend that never received one changes the vectors
+    it returns, which would invalidate every index already built with it."""
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _b: _FakeAdapter
+    )
+    client = EmbeddingClient(_build_config("jina"))
+
+    await client.embed(["a"], input_type="search_document")
+
+    adapter = _FakeAdapter.instances[0]
+    assert [request.input_type for request in adapter.calls] == [None]
 
 
 @pytest.mark.asyncio
@@ -134,6 +173,7 @@ def test_resolve_adapter_class_supports_canonical_providers() -> None:
     assert _resolve_adapter_class("ollama").__name__ == "OllamaEmbeddingAdapter"
     assert _resolve_adapter_class("vllm").__name__ == "OpenAICompatibleEmbeddingAdapter"
     assert _resolve_adapter_class("openrouter").__name__ == "OpenAICompatibleEmbeddingAdapter"
+    assert _resolve_adapter_class("gemini").__name__ == "GeminiEmbeddingAdapter"
 
 
 def test_resolve_adapter_class_rejects_unknown_provider() -> None:
@@ -169,6 +209,21 @@ def test_embedding_client_rejects_openrouter_base_endpoint() -> None:
 
     with pytest.raises(ValueError, match="/embeddings"):
         EmbeddingClient(cfg)
+
+
+def test_embedding_client_redacts_endpoint_query_credentials_in_validation_error() -> None:
+    cfg = _build_config(
+        "gemini",
+        model="gemini-embedding-2",
+        base_url="https://proxy.example.com/not-embedding?key=secret",
+    )
+
+    with pytest.raises(ValueError) as caught:
+        EmbeddingClient(cfg)
+
+    rendered = str(caught.value)
+    assert "secret" not in rendered
+    assert "%5BREDACTED%5D" in rendered
 
 
 def test_get_embedding_client_refreshes_when_config_changes(monkeypatch) -> None:

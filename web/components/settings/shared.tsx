@@ -14,22 +14,6 @@ export const selectClass = `${nativeSelectClass} appearance-none`;
 export const selectOptionClass =
   "bg-[var(--background)] text-[var(--foreground)]";
 
-export const supportedSearchProviders = [
-  "brave",
-  "tavily",
-  "jina",
-  "searxng",
-  "duckduckgo",
-  "perplexity",
-] as const;
-
-export const deprecatedSearchProviders = new Set([
-  "exa",
-  "serper",
-  "baidu",
-  "openrouter",
-]);
-
 export function stringifyExtraHeaders(
   value: CatalogProfile["extra_headers"],
 ): string {
@@ -46,6 +30,21 @@ export function statusDotClass(configured: boolean, hasError: boolean): string {
   if (hasError) return "bg-red-400";
   if (configured) return "bg-emerald-500";
   return "bg-[var(--border)]";
+}
+
+/**
+ * Hairline between two items of the settings status strip. Lives here rather
+ * than inside the strip because items that can render nothing (MemoryUsageItem)
+ * have to draw their own leading rule — otherwise hiding the item leaves a
+ * dangling separator behind.
+ */
+export function StatusStripDivider() {
+  return (
+    <span
+      aria-hidden
+      className="hidden h-7 w-px shrink-0 bg-[var(--border)]/70 sm:block"
+    />
+  );
 }
 
 export function formatContextWindowSource(

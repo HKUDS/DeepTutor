@@ -21,7 +21,13 @@ from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 from deeptutor.runtime.banner import labels_for, print_banner, resolve_language
-from deeptutor.runtime.home import DEEPTUTOR_HOME_ENV, PACKAGE_ROOT, get_runtime_home
+from deeptutor.runtime.home import (
+    DEEPTUTOR_HOME_ENV,
+    PACKAGE_ROOT,
+    get_runtime_home,
+    validate_runtime_home,
+)
+from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
 
 BACKEND_READY_TIMEOUT = 60
 FRONTEND_READY_TIMEOUT = 120
@@ -929,6 +935,10 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
 def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     _relax_console_encoding()
     runtime_home = get_runtime_home(home)
+    try:
+        validate_runtime_home(runtime_home)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     runtime_home.mkdir(parents=True, exist_ok=True)
     os.environ[DEEPTUTOR_HOME_ENV] = str(runtime_home)
     _reset_runtime_singletons()
@@ -955,7 +965,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
 
     backend_port = settings.backend_port
     frontend_port = settings.frontend_port
-    backend_url = f"http://localhost:{backend_port}"
+    backend_url = f"http://127.0.0.1:{backend_port}"
     api_base = (
         runtime_env.get("NEXT_PUBLIC_API_BASE_EXTERNAL")
         or runtime_env.get("NEXT_PUBLIC_API_BASE")
@@ -991,7 +1001,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     if (resolved_backend, resolved_frontend) != (backend_port, frontend_port):
         backend_port, frontend_port = resolved_backend, resolved_frontend
         runtime_env = export_runtime_settings_to_env(overwrite=True)
-        backend_url = f"http://localhost:{backend_port}"
+        backend_url = f"http://127.0.0.1:{backend_port}"
         api_base = (
             runtime_env.get("NEXT_PUBLIC_API_BASE_EXTERNAL")
             or runtime_env.get("NEXT_PUBLIC_API_BASE")
@@ -1032,12 +1042,17 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     # The Next.js middleware (web/proxy.ts) runs in the frontend's Node runtime
     # and reads these at request time to forward /api/* and /ws/* to the backend
     # and to gate the login redirect. The browser uses relative paths, so the
-    # frontend server reaches the backend on localhost at the resolved port —
+    # frontend server reaches the backend on the IPv4 loopback at the resolved port —
     # use backend_url (not api_base, which may be an external browser URL).
     common_env["DEEPTUTOR_API_BASE_URL"] = backend_url
     common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"
     common_env["PYTHONUNBUFFERED"] = "1"
     common_env["PYTHONIOENCODING"] = "utf-8:replace"
+    # Anchor for deeptutor.runtime.memory_probe: the backend and the frontend
+    # are siblings under this process, so only the supervisor's pid identifies
+    # the tree that is "DeepTutor". Without it the probe can only measure the
+    # backend itself.
+    common_env[SUPERVISOR_PID_ENV] = str(os.getpid())
     _apply_single_user_allocator_env(common_env)
     if frontend.kind == "source-production":
         common_env["DEEPTUTOR_NEXT_DIST_DIR"] = SOURCE_PRODUCTION_DIST_DIR

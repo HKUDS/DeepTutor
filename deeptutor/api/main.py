@@ -2,9 +2,9 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
@@ -39,19 +39,6 @@ CONFIG_DRIFT_ERROR_TEMPLATE = (
     "registered in the runtime tool registry. Register the missing tools or "
     "remove the stale tool names from the capability manifests."
 )
-
-
-class SafeOutputStaticFiles(StaticFiles):
-    """Static file mount that only exposes explicitly whitelisted artifacts."""
-
-    def __init__(self, *args, path_service, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._path_service = path_service
-
-    async def get_response(self, path: str, scope):
-        if not self._path_service.is_public_output_path(path):
-            raise HTTPException(status_code=404, detail="Output not found")
-        return await super().get_response(path, scope)
 
 
 def validate_tool_consistency():
@@ -256,6 +243,38 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
+
+@app.middleware("http")
+async def json_error_boundary(request: Request, call_next):
+    """Catch-all so 500s always return JSON, never Starlette's plain-text body.
+
+    Registered as a middleware rather than an ``@app.exception_handler``: a
+    handler for ``Exception`` is installed on Starlette's outermost
+    ``ServerErrorMiddleware``, so its response skips every middleware added
+    here — the 500 would carry no CORS headers (a cross-origin caller sees an
+    opaque CORS failure instead of this body) and would never reach the access
+    log below. Registered *before* ``CORSMiddleware``, this boundary sits
+    inside it, so the response travels back out through the normal stack.
+    """
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.error(
+            "Unhandled exception on %s %s: %s",
+            request.method,
+            request.url.path,
+            exc,
+            exc_info=True,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"{type(exc).__name__}: {exc}",
+                "type": type(exc).__name__,
+            },
+        )
+
+
 # Access logging is funneled through this one middleware. uvicorn's own
 # per-request access log is disabled on every launch path (run_server.py via
 # access_log=False; the launcher and Docker via `--no-access-log`), so routine
@@ -310,11 +329,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount a filtered view over user outputs.
-# Only whitelisted artifact paths are readable through the static handler.
-path_service = get_path_service()
-user_dir = path_service.get_public_outputs_root()
-
 # Initialize user directories on startup
 try:
     from deeptutor.services.setup import init_user_directories
@@ -322,14 +336,9 @@ try:
     init_user_directories()
 except Exception:
     # Fallback: just create the main directory if it doesn't exist
+    user_dir = get_path_service().get_public_outputs_root()
     if not user_dir.exists():
         user_dir.mkdir(parents=True)
-
-app.mount(
-    "/api/outputs",
-    SafeOutputStaticFiles(directory=str(user_dir), path_service=path_service),
-    name="outputs",
-)
 
 # Import routers only after runtime settings are initialized.
 # Some router modules load YAML settings at import time.
@@ -344,16 +353,19 @@ from deeptutor.api.routers import (
     dashboard,
     imports,
     knowledge,
+    marginnote4,
     mastery_path,
     mcp_settings,
     memory,
     notebook,
+    outputs,
     partners,
     personas,
     plugins_api,
     question,
     question_notebook,
     quiz_judge,
+    reading,
     sessions,
     settings,
     skills,
@@ -371,6 +383,7 @@ from deeptutor.multi_user.router import router as multi_user_router  # noqa: E40
 
 # Auth router is public — login/logout/register/status require no token
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(outputs.router, prefix="/api/outputs", tags=["outputs"])
 
 # All other routers require a valid session when AUTH_ENABLED=true.
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
@@ -413,6 +426,7 @@ app.include_router(
     notebook.router, prefix="/api/v1/notebook", tags=["notebook"], dependencies=_auth
 )
 app.include_router(book.router, prefix="/api/v1/book", tags=["book"], dependencies=_auth)
+app.include_router(reading.router, prefix="/api/v1/reading", tags=["reading"], dependencies=_auth)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
     capabilities_settings.router,
@@ -428,6 +442,15 @@ app.include_router(
     prefix="/api/v1/question-notebook",
     tags=["question-notebook"],
     dependencies=_auth,
+)
+# Public UI-settings read (auth pages bootstrap the interface language
+# before a session exists, so GET /api/v1/settings/ui must not be gated
+# by _auth). Mounted first so the path resolves here, not on the gated
+# settings router below.
+app.include_router(
+    settings.public_router,
+    prefix="/api/v1/settings",
+    tags=["settings"],
 )
 app.include_router(
     settings.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth
@@ -482,6 +505,14 @@ app.include_router(
     prefix="/api/attachments",
     tags=["attachments"],
     dependencies=_auth,
+)
+
+# MarginNote 4 device bridge — pairing/management routes carry _auth in-router;
+# sync/heartbeat use device-token auth (the Add-on has no session).
+app.include_router(
+    marginnote4.router,
+    prefix="/api/v1/marginnote4",
+    tags=["marginnote4"],
 )
 
 # Unified WebSocket endpoint — auth is checked inside the handler (WebSockets

@@ -15,6 +15,7 @@ import {
   formatKnowledgeTimestamp,
   kbCanReindex,
   kbNeedsReindex,
+  providerUsesEmbeddingMetadata,
   resolveKbStatus,
   resolveProgressPercent,
   type IndexVersion,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import ProcessLogs from "@/components/common/ProcessLogs";
+import KbIndexFailureBanner from "./KbIndexFailureBanner";
 
 interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
@@ -36,8 +38,12 @@ export default function KbIndexVersionsSection({
 }: KbIndexVersionsSectionProps) {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
+  const provider = kb.statistics?.rag_provider || "llamaindex";
+  const pageIndexProvider = !providerUsesEmbeddingMetadata(provider);
   const versions = kb.statistics?.index_versions ?? [];
-  const activeSig = kb.statistics?.active_signature ?? null;
+  const activeSig = pageIndexProvider
+    ? null
+    : (kb.statistics?.active_signature ?? null);
   const needsReindex = kbNeedsReindex(kb);
   const isError = resolveKbStatus(kb) === "error";
   const mismatch = Boolean(kb.metadata?.embedding_mismatch);
@@ -72,7 +78,9 @@ export default function KbIndexVersionsSection({
             </div>
             <p className="text-[11px] text-[var(--muted-foreground)]">
               {t(
-                "Each embedding configuration gets its own stored vector index.",
+                pageIndexProvider
+                  ? "PageIndex versions are model-insensitive and preserve rebuild history."
+                  : "Each embedding configuration gets its own stored vector index.",
               )}
             </p>
           </div>
@@ -89,7 +97,9 @@ export default function KbIndexVersionsSection({
                     "Retry indexing from the documents already stored in this knowledge base.",
                   )
                 : t(
-                    "Click Re-index to rebuild this knowledge base with the active embedding model. Existing index versions are preserved.",
+                    pageIndexProvider
+                      ? "Rebuild this PageIndex knowledge base. Existing index versions are preserved."
+                      : "Click Re-index to rebuild this knowledge base with the active embedding model. Existing index versions are preserved.",
                   )
             }
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50 ${
@@ -114,24 +124,13 @@ export default function KbIndexVersionsSection({
         )}
       </div>
 
-      {(isError || needsReindex || mismatch) && (
-        <div
-          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[12px] ${
-            isError
-              ? "border-red-200 bg-red-50/80 text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300"
-              : "border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300"
-          }`}
-        >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            {isError
-              ? t(
-                  "Previous indexing failed. Retry will rebuild the index from the existing source documents.",
-                )
-              : t(
-                  "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
-                )}
-          </span>
+      {isError && <KbIndexFailureBanner kb={kb} />}
+
+      {!pageIndexProvider && !isError && (needsReindex || mismatch) && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+          {t(
+            "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
+          )}
         </div>
       )}
 

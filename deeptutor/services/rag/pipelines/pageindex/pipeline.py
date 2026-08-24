@@ -1,17 +1,13 @@
-"""PageIndex cloud-backed RAG pipeline orchestration.
+"""PageIndex Cloud and OSS knowledge-base lifecycle orchestration.
 
 Implements the same contract as :class:`LlamaIndexPipeline` (see
-``..base.RAGPipeline``) but delegates indexing to the hosted PageIndex
-service (tree building, no embeddings). PageIndex's REST retrieval endpoint
-is deprecated: deep retrieval is agentic — the chat agent reads documents
-through the PageIndex MCP server — while ``search()`` serves programmatic
-callers with each document's real tree outline (titles / pages / summaries)
-fetched over REST.
+``..base.RAGPipeline``) but delegates document lifecycle to the PageIndex SDK.
+Answering is intentionally unavailable through ``search()``: PageIndex
+knowledge bases are read inside an agent loop with their provider tools.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 import traceback
@@ -26,7 +22,7 @@ from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
 from . import storage
 from .client import PageIndexClient
-from .config import PageIndexNotConfiguredError, get_pageindex_config
+from .config import get_pageindex_config
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +44,18 @@ SUPPORTED_EXTENSIONS = {
     ".xls",
     ".csv",
 }
+OSS_SUPPORTED_EXTENSIONS = {".pdf"}
 
 
-def is_supported_file(path: str | Path) -> bool:
-    return Path(path).suffix.lower() in SUPPORTED_EXTENSIONS
+def is_supported_file(path: str | Path, provider: str = storage.CLOUD_PROVIDER) -> bool:
+    extensions = (
+        OSS_SUPPORTED_EXTENSIONS if provider == storage.OSS_PROVIDER else SUPPORTED_EXTENSIONS
+    )
+    return Path(path).suffix.lower() in extensions
 
 
 class PageIndexPipeline:
-    """Index/retrieve KB content via the hosted PageIndex service."""
+    """Manage one PageIndex provider while preserving DeepTutor's RAG contract."""
 
     def __init__(
         self,
@@ -63,16 +63,46 @@ class PageIndexPipeline:
         *,
         client: Optional[PageIndexClient] = None,
         config_provider=None,
+        provider: str = storage.CLOUD_PROVIDER,
     ) -> None:
         self.logger = logging.getLogger(__name__)
         self.kb_base_dir = kb_base_dir or DEFAULT_KB_BASE_DIR
         self._client = client
         self._config_provider = config_provider or get_pageindex_config
+        self.provider = (
+            storage.OSS_PROVIDER if provider == storage.OSS_PROVIDER else storage.CLOUD_PROVIDER
+        )
 
-    def _get_client(self) -> PageIndexClient:
+    def _get_client(self, storage_dir: Path | None = None) -> PageIndexClient:
         if self._client is not None:
             return self._client
-        return PageIndexClient(self._config_provider())
+        if self.provider == storage.OSS_PROVIDER:
+            if storage_dir is None:
+                raise RuntimeError("PageIndex OSS requires a resolved Local Library path")
+            return PageIndexClient.local(storage.sdk_storage_path(storage_dir))
+        return PageIndexClient.cloud(self._config_provider())
+
+    def _processing_mode(self, kb_name: str) -> str | None:
+        if self.provider != storage.OSS_PROVIDER:
+            return None
+        try:
+            from deeptutor.services.config.knowledge_base_config import KnowledgeBaseConfigService
+
+            mode = (
+                str(
+                    KnowledgeBaseConfigService.get_instance(
+                        Path(self.kb_base_dir) / "kb_config.json"
+                    )
+                    .get_kb_config(kb_name)
+                    .get("pageindex_mode")
+                    or ""
+                )
+                .strip()
+                .lower()
+            )
+        except Exception:
+            mode = ""
+        return mode if mode in {"flash", "standard"} else None
 
     # ----- indexing -------------------------------------------------------
 
@@ -84,14 +114,20 @@ class PageIndexPipeline:
             "Initializing KB '%s' with %d file(s) using PageIndex", kb_name, len(file_paths)
         )
         try:
-            manifest = storage._empty_manifest()
-            count = await self._ingest(file_paths, manifest, progress_callback)
+            manifest = storage._empty_manifest(self.provider)
+            count = await self._ingest(
+                file_paths,
+                manifest,
+                progress_callback,
+                storage_dir=storage_dir,
+                mode=self._processing_mode(kb_name),
+            )
             if count == 0:
                 self.logger.error("PageIndex: no supported documents to index for '%s'", kb_name)
                 self._cleanup_failed_version_dir(storage_dir)
                 return False
             storage.write_manifest(storage_dir, manifest)
-            storage.write_meta(storage_dir)
+            storage.write_meta(storage_dir, provider=self.provider)
             self.logger.info("KB '%s' initialized with PageIndex (%d docs)", kb_name, count)
             return True
         except Exception as exc:
@@ -106,20 +142,26 @@ class PageIndexPipeline:
         existing = resolve_storage_dir_for_read(kb_dir, None)
         if existing is not None:
             storage_dir = existing
-            manifest = storage.read_manifest(existing)
+            manifest = storage.read_manifest(existing, provider=self.provider)
         else:
             storage_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
-            manifest = storage._empty_manifest()
+            manifest = storage._empty_manifest(self.provider)
 
         self.logger.info("Adding %d document(s) to PageIndex KB '%s'", len(file_paths), kb_name)
         try:
-            count = await self._ingest(file_paths, manifest, progress_callback)
+            count = await self._ingest(
+                file_paths,
+                manifest,
+                progress_callback,
+                storage_dir=storage_dir,
+                mode=self._processing_mode(kb_name),
+            )
             if count == 0:
                 self.logger.warning("PageIndex: no supported documents to add for '%s'", kb_name)
                 return False
             storage_dir.mkdir(parents=True, exist_ok=True)
             storage.write_manifest(storage_dir, manifest)
-            storage.write_meta(storage_dir)
+            storage.write_meta(storage_dir, provider=self.provider)
             self.logger.info("Added %d doc(s) to PageIndex KB '%s'", count, kb_name)
             return True
         except Exception as exc:
@@ -132,21 +174,23 @@ class PageIndexPipeline:
         file_paths: List[str],
         manifest: dict[str, Any],
         progress_callback,
+        *,
+        storage_dir: Path,
+        mode: str | None,
     ) -> int:
-        supported = [fp for fp in file_paths if is_supported_file(fp)]
-        skipped = [fp for fp in file_paths if not is_supported_file(fp)]
+        supported = [fp for fp in file_paths if is_supported_file(fp, self.provider)]
+        skipped = [fp for fp in file_paths if not is_supported_file(fp, self.provider)]
         for fp in skipped:
             self.logger.warning("PageIndex skips unsupported file type: %s", Path(fp).name)
         if not supported:
             return 0
 
-        client = self._get_client()
+        client = self._get_client(storage_dir)
         total = len(supported)
         for idx, fp in enumerate(supported, 1):
             path = Path(fp)
             self.logger.info("PageIndex: submitting %s (%d/%d)", path.name, idx, total)
-            doc_id = await client.submit_document(path)
-            await client.wait_until_ready(doc_id)
+            doc_id = await client.submit_document(path, mode=mode)
             size = path.stat().st_size if path.exists() else None
             storage.upsert_doc(manifest, path.name, doc_id, size=size)
             if progress_callback:
@@ -155,124 +199,20 @@ class PageIndexPipeline:
 
     # ----- retrieval ------------------------------------------------------
 
-    # ponytail: flat per-doc cap on the formatted outline; per-consumer
-    # budgets if a real need shows up.
-    TREE_CHARS_PER_DOC = 6000
-
     async def search(self, query: str, kb_name: str, **_kwargs) -> Dict[str, Any]:
-        """Return each document's tree outline (titles / pages / summaries).
-
-        The deprecated REST retrieval endpoint is gone; deep, query-driven
-        retrieval is agentic via the PageIndex MCP tools in chat. For
-        programmatic callers this returns the documents' real structure as
-        context — shallow but honest grounding.
-        """
-        docs = self.document_map(kb_name)
-
-        if not docs:
-            return {
-                "query": query,
-                "answer": (
-                    "This PageIndex knowledge base has no indexed documents yet. "
-                    "Add documents before querying."
-                ),
-                "content": "",
-                "sources": [],
-                "provider": storage.PROVIDER,
-                "needs_reindex": True,
-            }
-
-        try:
-            client = self._get_client()
-            results = await asyncio.gather(
-                *(client.get_document(doc_id, summary=True) for doc_id in docs.values()),
-                return_exceptions=True,
-            )
-        except PageIndexNotConfiguredError as exc:
-            return {
-                "query": query,
-                "answer": str(exc),
-                "content": "",
-                "sources": [],
-                "provider": storage.PROVIDER,
-                "error_type": "not_configured",
-            }
-
-        parts: list[str] = []
-        sources: list[dict[str, Any]] = []
-        errors: list[str] = []
-        for (file_name, doc_id), result in zip(docs.items(), results):
-            if isinstance(result, BaseException):
-                errors.append(str(result))
-                self.logger.warning("PageIndex tree fetch failed for %s: %s", doc_id, result)
-                continue
-            outline, doc_sources = self._format_tree(file_name, doc_id, result.get("result"))
-            if outline:
-                parts.append(f"## {file_name}\n{outline}")
-            sources.extend(doc_sources)
-
-        if not parts and errors:
-            return {
-                "query": query,
-                "answer": "; ".join(errors[:3]),
-                "content": "",
-                "sources": [],
-                "provider": storage.PROVIDER,
-                "error_type": "retrieval_error",
-            }
-
-        content = "\n\n".join(parts)
+        """Fail closed: PageIndex answering must happen inside an agent loop."""
+        message = (
+            "PageIndex uses Reasoning as Retrieval. Read this knowledge base with "
+            "its PageIndex tools inside an agent loop instead of calling rag search."
+        )
         return {
             "query": query,
-            "answer": content,
-            "content": content,
-            "sources": sources,
-            "provider": storage.PROVIDER,
+            "answer": message,
+            "content": "",
+            "sources": [],
+            "provider": self.provider,
+            "error_type": "reasoning_as_retrieval_required",
         }
-
-    @classmethod
-    def _format_tree(
-        cls, file_name: str, doc_id: str, tree: Any
-    ) -> tuple[str, list[dict[str, Any]]]:
-        """Render a PageIndex tree as an indented outline + per-section sources."""
-        lines: list[str] = []
-        sources: list[dict[str, Any]] = []
-
-        def walk(node: Any, depth: int) -> None:
-            if isinstance(node, list):
-                for item in node:
-                    walk(item, depth)
-                return
-            if not isinstance(node, dict):
-                return
-            title = str(node.get("title") or "").strip()
-            page = node.get("page_index")
-            summary = str(node.get("summary") or node.get("prefix_summary") or "").strip()
-            if title:
-                line = f"{'  ' * depth}- {title}"
-                if page not in (None, ""):
-                    line += f" (p.{page})"
-                if summary:
-                    line += f": {summary}"
-                lines.append(line)
-                if depth == 0:
-                    sources.append(
-                        {
-                            "title": title,
-                            "content": summary[:200],
-                            "source": file_name,
-                            "page": page if page is not None else "",
-                            "chunk_id": node.get("node_id") or doc_id,
-                            "score": "",
-                        }
-                    )
-            walk(node.get("nodes") or [], depth + 1)
-
-        walk(tree, 0)
-        text = "\n".join(lines)
-        if len(text) > cls.TREE_CHARS_PER_DOC:
-            text = text[: cls.TREE_CHARS_PER_DOC] + "\n… (outline truncated)"
-        return text, sources
 
     def document_map(self, kb_name: str) -> dict[str, str]:
         """file name -> cloud doc_id for the KB's current manifest.
@@ -280,7 +220,9 @@ class PageIndexPipeline:
         Used by the chat layer to inject the doc list into the system prompt.
         """
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        manifest = storage.read_manifest(resolve_storage_dir_for_read(kb_dir, None))
+        manifest = storage.read_manifest(
+            resolve_storage_dir_for_read(kb_dir, None), provider=self.provider
+        )
         return {
             name: str(entry["doc_id"])
             for name, entry in storage.doc_entries(manifest).items()
@@ -293,18 +235,17 @@ class PageIndexPipeline:
         import shutil
 
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        # Best-effort: drop hosted documents so they don't linger on the account.
-        try:
-            storage_dir = resolve_storage_dir_for_read(kb_dir, None)
-            ids = storage.doc_ids(storage.read_manifest(storage_dir))
-            if ids:
-                client = self._get_client()
-                await asyncio.gather(
-                    *(client.delete_document(doc_id) for doc_id in ids),
-                    return_exceptions=True,
-                )
-        except Exception as exc:  # pragma: no cover - best-effort
-            self.logger.warning("PageIndex cloud cleanup skipped for '%s': %s", kb_name, exc)
+        # Preserve the existing Cloud behavior. OSS data is already inside kb_dir.
+        if self.provider == storage.CLOUD_PROVIDER:
+            try:
+                storage_dir = resolve_storage_dir_for_read(kb_dir, None)
+                ids = storage.doc_ids(storage.read_manifest(storage_dir, provider=self.provider))
+                if ids:
+                    client = self._get_client(storage_dir)
+                    for doc_id in ids:
+                        await client.delete_document(doc_id)
+            except Exception as exc:  # pragma: no cover - best-effort
+                self.logger.warning("PageIndex cloud cleanup skipped for '%s': %s", kb_name, exc)
 
         if kb_dir.exists():
             shutil.rmtree(kb_dir)
@@ -312,11 +253,42 @@ class PageIndexPipeline:
             return True
         return False
 
+    async def remove_document(self, kb_name: str, file_name: str) -> bool:
+        """Delete one indexed document and update the active manifest."""
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        storage_dir = resolve_storage_dir_for_read(kb_dir, None)
+        if storage_dir is None:
+            return False
+        manifest = storage.read_manifest(storage_dir, provider=self.provider)
+        docs = storage.doc_entries(manifest)
+        key = file_name if file_name in docs else Path(file_name).name
+        entry = docs.get(key)
+        if not isinstance(entry, dict) or not entry.get("doc_id"):
+            return False
+        client = (
+            PageIndexClient.local_read(storage.sdk_storage_path(storage_dir))
+            if self.provider == storage.OSS_PROVIDER and self._client is None
+            else self._get_client(storage_dir)
+        )
+        await client.delete_document(str(entry["doc_id"]))
+        storage.remove_doc(manifest, key)
+        storage.write_manifest(storage_dir, manifest)
+        storage.write_meta(storage_dir, provider=self.provider)
+        return True
+
+    def sdk_client_for_read(self, kb_name: str) -> Any:
+        """Return the SDK client bound to this KB's active Local Library."""
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        storage_dir = resolve_storage_dir_for_read(kb_dir, None)
+        if storage_dir is None:
+            raise RuntimeError(f"PageIndex knowledge base '{kb_name}' has no ready index")
+        if self.provider == storage.OSS_PROVIDER and self._client is None:
+            return PageIndexClient.local_read(storage.sdk_storage_path(storage_dir)).sdk_client
+        return self._get_client(storage_dir).sdk_client
+
     def _cleanup_failed_version_dir(self, storage_dir: Path) -> None:
         try:
-            if storage_dir.is_dir() and not any(
-                child.name != storage.META_FILENAME for child in storage_dir.iterdir()
-            ):
+            if storage_dir.is_dir() and not (storage_dir / storage.META_FILENAME).exists():
                 import shutil
 
                 shutil.rmtree(storage_dir)
@@ -324,4 +296,9 @@ class PageIndexPipeline:
             self.logger.warning("Could not clean up failed version dir %s: %s", storage_dir, exc)
 
 
-__all__ = ["PageIndexPipeline", "is_supported_file", "SUPPORTED_EXTENSIONS"]
+__all__ = [
+    "OSS_SUPPORTED_EXTENSIONS",
+    "PageIndexPipeline",
+    "SUPPORTED_EXTENSIONS",
+    "is_supported_file",
+]

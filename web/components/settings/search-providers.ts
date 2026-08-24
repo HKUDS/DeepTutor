@@ -1,15 +1,17 @@
 // Which connection fields a web-search provider actually uses.
 //
-// This mirrors the backend resolver in
-// `deeptutor/services/config/provider_runtime.py`
-// (`resolve_search_runtime_config`): brave/tavily/jina/perplexity/serper
-// authenticate with an API key, searxng is configured by its instance Base
-// URL, and duckduckgo/none need no connection details at all. Every search
-// provider ships an empty `base_url` from the settings API
-// (`_provider_choices` in `deeptutor/api/routers/settings.py`), so the Base
-// URL only ever carries a value for searxng.
+// The answer comes from the backend spec table
+// (`SEARCH_PROVIDERS` in `deeptutor/services/config/provider_runtime.py`),
+// served per provider by `_provider_choices` in
+// `deeptutor/api/routers/settings.py`. There is deliberately no provider table
+// here — a second copy is how the web app ended up flagging Serper as
+// deprecated while the backend supported it.
 //
-// Keep this table in sync with SUPPORTED_SEARCH_PROVIDERS on the backend.
+// Until the choices load (and for a custom or retired provider name that has no
+// entry), every field is shown: better an extra control than a hidden one the
+// provider actually needs.
+
+import type { ProviderOption } from "./SettingsContext";
 
 export type SearchProviderFieldSpec = {
   /** Provider authenticates with an API key. */
@@ -20,52 +22,29 @@ export type SearchProviderFieldSpec = {
   baseUrlRequired: boolean;
 };
 
-const KEY_ONLY: SearchProviderFieldSpec = {
-  apiKey: true,
-  baseUrl: false,
-  baseUrlRequired: false,
-};
-
-const NO_CREDENTIALS: SearchProviderFieldSpec = {
-  apiKey: false,
-  baseUrl: false,
-  baseUrlRequired: false,
-};
-
-const BASE_URL_ONLY: SearchProviderFieldSpec = {
-  apiKey: false,
-  baseUrl: true,
-  baseUrlRequired: true,
-};
-
-// Providers we don't model (a custom/unknown value, the deprecated
-// exa/baidu/openrouter set, or an empty selection): show every field so we
-// never hide a control the provider might actually need.
-const UNKNOWN: SearchProviderFieldSpec = {
+const ALL_FIELDS: SearchProviderFieldSpec = {
   apiKey: true,
   baseUrl: true,
   baseUrlRequired: false,
-};
-
-const SEARCH_PROVIDER_FIELDS: Record<string, SearchProviderFieldSpec> = {
-  none: NO_CREDENTIALS,
-  duckduckgo: NO_CREDENTIALS,
-  searxng: BASE_URL_ONLY,
-  brave: KEY_ONLY,
-  tavily: KEY_ONLY,
-  jina: KEY_ONLY,
-  perplexity: KEY_ONLY,
-  serper: KEY_ONLY,
 };
 
 /**
- * Resolve which connection fields to show for a search provider. Unknown,
- * custom, or empty provider names fall back to showing every field.
+ * Resolve which connection fields to show for a search provider, given the
+ * backend option describing it. Unknown, custom, retired, or not-yet-loaded
+ * providers fall back to showing every field.
  */
 export function searchProviderFields(
   provider: string | null | undefined,
+  option?: ProviderOption | null,
 ): SearchProviderFieldSpec {
   const key = (provider ?? "").trim().toLowerCase();
-  if (!key) return UNKNOWN;
-  return SEARCH_PROVIDER_FIELDS[key] ?? UNKNOWN;
+  if (!key) return ALL_FIELDS;
+  if (!option || option.status === "deprecated") return ALL_FIELDS;
+  if (option.requires_api_key === undefined) return ALL_FIELDS;
+  const baseUrl = Boolean(option.requires_base_url);
+  return {
+    apiKey: Boolean(option.requires_api_key),
+    baseUrl,
+    baseUrlRequired: baseUrl,
+  };
 }

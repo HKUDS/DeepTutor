@@ -5,14 +5,17 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   Check,
+  ExternalLink,
   FolderOpen,
   FolderSearch,
   Link2,
   Loader2,
   Plus,
   Server,
+  Smartphone,
 } from "lucide-react";
 import Modal from "@/components/common/Modal";
+import { useImaConnection } from "@/hooks/useImaConnection";
 import {
   probeLightRagServer,
   probeLinkedFolder,
@@ -21,24 +24,20 @@ import {
   type LinkedFolderProbe,
   type RagProviderSummary,
 } from "@/lib/knowledge-api";
-import { validateFiles } from "@/lib/knowledge-helpers";
+import {
+  createProviders,
+  IMA_PROVIDER,
+  linkSourceEnabled,
+} from "@/lib/ima-connection";
+import {
+  uploadPolicyForProvider,
+  validateFiles,
+} from "@/lib/knowledge-helpers";
 import FileDropZone from "./FileDropZone";
+import ImaConnectionFields from "./ImaConnectionFields";
 
-// Mirrors SUPPORTED_EXTENSIONS in the backend pageindex pipeline (PageIndex POST /doc/).
-const PAGEINDEX_FORMATS = [
-  ".pdf",
-  ".md",
-  ".markdown",
-  ".txt",
-  ".docx",
-  ".doc",
-  ".pptx",
-  ".ppt",
-  ".xlsx",
-  ".xls",
-  ".csv",
-];
 const OBSIDIAN_SOURCE = "obsidian";
+const MARGINNOTE4_SOURCE = "marginnote4";
 const LIGHTRAG_SERVER_PROVIDER = "lightrag-server";
 const EXAMPLE_INDEX_PATH = "/Users/you/knowledge_bases/my-kb";
 const EXAMPLE_VAULT_PATH = "/Users/you/Documents/MyVault";
@@ -55,6 +54,7 @@ interface CreateKbModalProps {
     name: string;
     provider: string;
     files: File[];
+    pageindexMode?: "flash" | "standard";
   }) => Promise<void>;
   /** Link a pre-built engine index folder in place (no copy, no re-index). */
   onConnectLinkedFolder: (params: {
@@ -74,6 +74,15 @@ interface CreateKbModalProps {
     apiKey?: string;
     mode?: string;
   }) => Promise<void>;
+  /** Connect a MarginNote 4 library (its Add-on pushes objects in; no index). */
+  onConnectMarginNote4: (params: { name: string }) => Promise<void>;
+  /** Connect a Tencent IMA knowledge base (retrieval only, no local index). */
+  onConnectIma: (params: {
+    name: string;
+    clientId: string;
+    apiKey: string;
+    knowledgeBaseId: string;
+  }) => Promise<void>;
   /** Open the RAG pipeline settings (to add a missing API key). */
   onConfigureProvider?: () => void;
   /** Open straight into a given mode (e.g. "link" from the Obsidian card). */
@@ -91,6 +100,8 @@ export default function CreateKbModal({
   onConnectLinkedFolder,
   onConnectObsidian,
   onConnectLightRagServer,
+  onConnectMarginNote4,
+  onConnectIma,
   onConfigureProvider,
   initialMode = "new",
   initialSource,
@@ -100,6 +111,9 @@ export default function CreateKbModal({
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("llamaindex");
   const [files, setFiles] = useState<File[]>([]);
+  const [pageIndexMode, setPageIndexMode] = useState<"" | "flash" | "standard">(
+    "",
+  );
   // Link mode: the source is either an engine id or the Obsidian sentinel.
   const [linkSource, setLinkSource] = useState(OBSIDIAN_SOURCE);
   const [folderPath, setFolderPath] = useState("");
@@ -115,8 +129,32 @@ export default function CreateKbModal({
   const [serverProbing, setServerProbing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
+  const linkIsMarginNote = linkSource === MARGINNOTE4_SOURCE;
+  const linkIsIma = linkSource === IMA_PROVIDER;
+  const imaConnection = useImaConnection({
+    name,
+    onNameChange: setName,
+    onError: setError,
+    active: linkIsIma,
+  });
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
+
+  const handleClose = () => {
+    imaConnection.reset();
+    onClose();
+  };
+
+  const handleModeChange = (nextMode: Mode) => {
+    if (nextMode !== "link") imaConnection.reset();
+    setMode(nextMode);
+  };
+
+  const handleLinkSourceChange = (source: string) => {
+    if (source !== IMA_PROVIDER) imaConnection.reset();
+    setLinkSource(source);
+  };
 
   // Reset the form only on the closed → open transition. While the modal is
   // open, background indexing polls replace `providers` (and friends) every
@@ -129,8 +167,14 @@ export default function CreateKbModal({
     setMode(initialMode);
     setName("");
     setFiles([]);
+    setPageIndexMode("");
     setError(null);
-    setProvider(initialSource || providers[0]?.id || "llamaindex");
+    const initialProvider = createProviders(providers).find(
+      (item) => item.id === initialSource,
+    )?.id;
+    setProvider(
+      initialProvider || createProviders(providers)[0]?.id || "llamaindex",
+    );
     setLinkSource(initialSource || firstLinkable || OBSIDIAN_SOURCE);
     setFolderPath("");
     setProbe(null);
@@ -157,24 +201,18 @@ export default function CreateKbModal({
   const providerNeedsKey =
     !!activeProvider?.requires_api_key && activeProvider?.configured === false;
   const providerUnavailable = activeProvider?.configured === false;
-  const isPageIndex = provider === "pageindex";
+  const isPageIndexCloud = provider === "pageindex";
+  const isPageIndexOSS = provider === "pageindex-oss";
   const isLightRagServer = provider === LIGHTRAG_SERVER_PROVIDER;
   const serverModeOptions = activeProvider?.modes ?? [];
   const effectiveServerMode =
     serverMode || activeProvider?.default_mode || serverModeOptions[0] || "";
 
-  const policyForProvider: KnowledgeUploadPolicy = isPageIndex
-    ? {
-        ...uploadPolicy,
-        extensions: PAGEINDEX_FORMATS,
-        accept: PAGEINDEX_FORMATS.join(","),
-      }
-    : uploadPolicy;
+  const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
 
   const selection = validateFiles(files, policyForProvider, t);
 
   // ---- Link mode (mount an existing folder) ----------------------------
-  const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
   const trimmed = name.trim();
   const trimmedPath = folderPath.trim();
 
@@ -190,6 +228,8 @@ export default function CreateKbModal({
       }
       return !providerUnavailable && selection.validFiles.length > 0;
     }
+    if (linkIsIma) return imaConnection.canSubmit;
+    if (linkIsMarginNote) return true;
     if (!trimmedPath) return false;
     if (linkIsObsidian) return true;
     // An engine index must pass the probe before it can be linked.
@@ -248,8 +288,21 @@ export default function CreateKbModal({
             name: trimmed,
             provider,
             files: selection.validFiles,
+            pageindexMode:
+              isPageIndexOSS && pageIndexMode ? pageIndexMode : undefined,
           });
         }
+      } else if (linkIsIma) {
+        await onConnectIma({
+          name: trimmed,
+          // Empty when the engine's account credentials are used — the server
+          // resolves them and the KB stores no copy.
+          clientId: imaConnection.submittedClientId,
+          apiKey: imaConnection.submittedApiKey,
+          knowledgeBaseId: imaConnection.knowledgeBaseId,
+        });
+      } else if (linkIsMarginNote) {
+        await onConnectMarginNote4({ name: trimmed });
       } else if (linkIsObsidian) {
         await onConnectObsidian({ name: trimmed, vaultPath: trimmedPath });
       } else {
@@ -259,7 +312,7 @@ export default function CreateKbModal({
           provider: linkSource,
         });
       }
-      onClose();
+      handleClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -272,14 +325,14 @@ export default function CreateKbModal({
       ? isLightRagServer
         ? t("Connect")
         : t("Create")
-      : linkIsObsidian
+      : linkIsObsidian || linkIsIma || linkIsMarginNote
         ? t("Connect")
         : t("Link");
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={submitting ? () => {} : onClose}
+      onClose={submitting ? () => {} : handleClose}
       title={t("Create knowledge base")}
       titleIcon={<Plus size={16} />}
       width="lg"
@@ -289,7 +342,7 @@ export default function CreateKbModal({
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={submitting}
             className="rounded-md px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
           >
@@ -317,7 +370,7 @@ export default function CreateKbModal({
         {/* New vs. link existing */}
         <ModeToggle
           mode={mode}
-          onChange={setMode}
+          onChange={handleModeChange}
           disabled={submitting}
           t={t}
         />
@@ -338,14 +391,17 @@ export default function CreateKbModal({
 
         {mode === "new" ? (
           <NewModeFields
-            providers={providers}
+            providers={createProviders(providers)}
             provider={provider}
             setProvider={setProvider}
             submitting={submitting}
             providerUnavailable={providerUnavailable}
             providerNeedsKey={providerNeedsKey}
             onConfigureProvider={onConfigureProvider}
-            isPageIndex={isPageIndex}
+            isPageIndexCloud={isPageIndexCloud}
+            isPageIndexOSS={isPageIndexOSS}
+            pageIndexMode={pageIndexMode}
+            setPageIndexMode={setPageIndexMode}
             files={files}
             setFiles={setFiles}
             policyForProvider={policyForProvider}
@@ -373,14 +429,24 @@ export default function CreateKbModal({
           <LinkModeFields
             providers={providers}
             linkSource={linkSource}
-            setLinkSource={setLinkSource}
+            setLinkSource={handleLinkSourceChange}
             linkIsObsidian={linkIsObsidian}
+            linkIsIma={linkIsIma}
+            linkIsMarginNote={linkIsMarginNote}
             folderPath={folderPath}
             setFolderPath={setFolderPath}
             submitting={submitting}
             probing={probing}
             probe={probe}
             onProbe={handleProbe}
+            connectionForm={
+              linkIsIma ? (
+                <ImaConnectionFields
+                  connection={imaConnection}
+                  submitting={submitting}
+                />
+              ) : null
+            }
             t={t}
           />
         )}
@@ -470,7 +536,10 @@ function NewModeFields({
   providerUnavailable,
   providerNeedsKey,
   onConfigureProvider,
-  isPageIndex,
+  isPageIndexCloud,
+  isPageIndexOSS,
+  pageIndexMode,
+  setPageIndexMode,
   files,
   setFiles,
   policyForProvider,
@@ -484,7 +553,10 @@ function NewModeFields({
   providerUnavailable: boolean;
   providerNeedsKey: boolean;
   onConfigureProvider?: () => void;
-  isPageIndex: boolean;
+  isPageIndexCloud: boolean;
+  isPageIndexOSS: boolean;
+  pageIndexMode: "" | "flash" | "standard";
+  setPageIndexMode: (mode: "" | "flash" | "standard") => void;
   files: File[];
   setFiles: (files: File[]) => void;
   policyForProvider: KnowledgeUploadPolicy;
@@ -492,6 +564,9 @@ function NewModeFields({
   connectionForm?: ReactNode;
   t: TFn;
 }) {
+  const readinessReason = providers.find(
+    (item) => item.id === provider,
+  )?.readiness_reason;
   return (
     <>
       <div>
@@ -504,37 +579,49 @@ function NewModeFields({
             const needsKey = !!p.requires_api_key && p.configured === false;
             const unavailable = p.configured === false && !p.requires_api_key;
             return (
-              <button
-                key={p.id}
-                type="button"
-                disabled={submitting}
-                onClick={() => setProvider(p.id)}
-                className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
-                  selected
-                    ? "border-[var(--primary)] bg-[var(--primary)]/5"
-                    : "border-[var(--border)] hover:border-[var(--ring)]"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-medium text-[var(--foreground)]">
-                    {p.name}
+              <div key={p.id} className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setProvider(p.id)}
+                  className={`group flex w-full flex-1 flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+                    selected
+                      ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                      : "border-[var(--border)] hover:border-[var(--ring)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] font-medium text-[var(--foreground)]">
+                      {p.name}
+                    </span>
+                    {needsKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                        {t("Needs key")}
+                      </span>
+                    ) : unavailable ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                        {t("Not installed")}
+                      </span>
+                    ) : selected ? (
+                      <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                    ) : null}
+                  </div>
+                  <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
+                    {p.description}
                   </span>
-                  {needsKey ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-                      {t("Needs key")}
-                    </span>
-                  ) : unavailable ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-                      {t("Not installed")}
-                    </span>
-                  ) : selected ? (
-                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
-                  ) : null}
-                </div>
-                <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
-                  {p.description}
-                </span>
-              </button>
+                </button>
+                {p.id === "pageindex" && (
+                  <a
+                    href="https://dash.pageindex.ai/api-keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-1 text-[10.5px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  >
+                    {t("PageIndex API plans")}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
             );
           })}
         </div>
@@ -547,7 +634,8 @@ function NewModeFields({
                     "This engine needs an API key. Configure it before creating.",
                   )
                 : t(
-                    "This engine isn't installed on the server. Install it before creating.",
+                    readinessReason ||
+                      "This engine isn't ready on the server. Check its requirements before creating.",
                   )}
             </span>
             {providerNeedsKey && onConfigureProvider && (
@@ -563,13 +651,48 @@ function NewModeFields({
         )}
       </div>
 
+      {isPageIndexOSS && (
+        <div>
+          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+            {t("Index mode")}
+            <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
+              · {t("optional")}
+            </span>
+          </label>
+          <select
+            value={pageIndexMode}
+            onChange={(event) =>
+              setPageIndexMode(event.target.value as "" | "flash" | "standard")
+            }
+            disabled={submitting}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+          >
+            <option value="">
+              {t("Default — Flash, summaries and full optimization")}
+            </option>
+            <option value="flash">{t("Flash")}</option>
+            <option value="standard">{t("Standard")}</option>
+          </select>
+          <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+            {t(
+              "Uses the globally active LLM credential. Leaving this unset delegates to the PageIndex SDK default.",
+            )}
+          </p>
+        </div>
+      )}
+
       {connectionForm ?? (
         <div>
           <label className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             {t("Initial documents")}
-            {isPageIndex && (
+            {(isPageIndexCloud || isPageIndexOSS) && (
               <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
-                · {t("PDF, Office, text and Markdown")}
+                ·{" "}
+                {isPageIndexOSS
+                  ? t(
+                      "PDF only — use PageIndex Cloud for Office, Markdown or CSV",
+                    )
+                  : t("PDF, Office, text and Markdown")}
               </span>
             )}
           </label>
@@ -731,24 +854,30 @@ function LinkModeFields({
   linkSource,
   setLinkSource,
   linkIsObsidian,
+  linkIsIma,
+  linkIsMarginNote,
   folderPath,
   setFolderPath,
   submitting,
   probing,
   probe,
   onProbe,
+  connectionForm,
   t,
 }: {
   providers: RagProviderSummary[];
   linkSource: string;
   setLinkSource: (id: string) => void;
   linkIsObsidian: boolean;
+  linkIsIma: boolean;
+  linkIsMarginNote: boolean;
   folderPath: string;
   setFolderPath: (value: string) => void;
   submitting: boolean;
   probing: boolean;
   probe: LinkedFolderProbe | null;
   onProbe: () => void;
+  connectionForm?: ReactNode;
   t: TFn;
 }) {
   return (
@@ -759,8 +888,10 @@ function LinkModeFields({
         </label>
         <div className="grid gap-2 sm:grid-cols-2">
           {providers.map((p) => {
-            const selected = !linkIsObsidian && linkSource === p.id;
-            const disabled = submitting || !p.linkable;
+            const selected =
+              !linkIsObsidian && !linkIsMarginNote && linkSource === p.id;
+            const enabled = linkSourceEnabled(p);
+            const disabled = submitting || !enabled;
             return (
               <button
                 key={p.id}
@@ -768,7 +899,7 @@ function LinkModeFields({
                 disabled={disabled}
                 onClick={() => setLinkSource(p.id)}
                 title={
-                  !p.linkable
+                  !enabled
                     ? t(
                         "This engine's index lives in the cloud and can't be linked.",
                       )
@@ -784,12 +915,16 @@ function LinkModeFields({
                   <span className="text-[13px] font-medium text-[var(--foreground)]">
                     {p.name}
                   </span>
-                  {!p.linkable ? (
+                  {selected ? (
+                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                  ) : !enabled ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
                       {t("Cloud index")}
                     </span>
-                  ) : selected ? (
-                    <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
+                  ) : p.id === IMA_PROVIDER ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+                      {t("Read only")}
+                    </span>
                   ) : null}
                 </div>
                 <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
@@ -825,49 +960,90 @@ function LinkModeFields({
               )}
             </span>
           </button>
-        </div>
-      </div>
 
-      <div>
-        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {linkIsObsidian ? t("Vault path") : t("Folder path")}
-        </label>
-        <div className="flex gap-2">
-          <input
-            value={folderPath}
-            onChange={(event) => setFolderPath(event.target.value)}
+          {/* MarginNote 4 — filled by its Add-on, not by a path on this disk. */}
+          <button
+            type="button"
             disabled={submitting}
-            placeholder={
-              linkIsObsidian ? EXAMPLE_VAULT_PATH : EXAMPLE_INDEX_PATH
-            }
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-          />
-          {!linkIsObsidian && (
-            <button
-              type="button"
-              onClick={onProbe}
-              disabled={submitting || probing || folderPath.trim().length === 0}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {probing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <FolderSearch className="h-3.5 w-3.5" />
+            onClick={() => setLinkSource(MARGINNOTE4_SOURCE)}
+            className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+              linkIsMarginNote
+                ? "border-[var(--primary)] bg-[var(--primary)]/5"
+                : "border-[var(--border)] hover:border-[var(--ring)]"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--foreground)]">
+                <Smartphone className="h-3.5 w-3.5" />
+                {t("MarginNote 4")}
+              </span>
+              {linkIsMarginNote && (
+                <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
               )}
-              {t("Check folder")}
-            </button>
-          )}
+            </div>
+            <span className="text-[11.5px] leading-snug text-[var(--muted-foreground)]">
+              {t(
+                "Notes, excerpts and cards pushed in by the MarginNote 4 add-on.",
+              )}
+            </span>
+          </button>
         </div>
-        <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-          {linkIsObsidian
-            ? t("The absolute path to the vault folder on this machine.")
-            : t(
-                "The absolute path to a knowledge base folder on this machine — nothing is copied.",
-              )}
-        </p>
       </div>
 
-      {!linkIsObsidian && probe && <ProbeVerdict probe={probe} t={t} />}
+      {linkIsIma ? (
+        connectionForm
+      ) : linkIsMarginNote ? (
+        <p className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-2 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
+          {t(
+            "The library starts empty. Pair a device from its Devices tab, then enter the token in the MarginNote 4 add-on to start syncing.",
+          )}
+        </p>
+      ) : (
+        <>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+              {linkIsObsidian ? t("Vault path") : t("Folder path")}
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={folderPath}
+                onChange={(event) => setFolderPath(event.target.value)}
+                disabled={submitting}
+                placeholder={
+                  linkIsObsidian ? EXAMPLE_VAULT_PATH : EXAMPLE_INDEX_PATH
+                }
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+              />
+              {!linkIsObsidian && (
+                <button
+                  type="button"
+                  onClick={onProbe}
+                  disabled={
+                    submitting || probing || folderPath.trim().length === 0
+                  }
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {probing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FolderSearch className="h-3.5 w-3.5" />
+                  )}
+                  {t("Check folder")}
+                </button>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+              {linkIsObsidian
+                ? t("The absolute path to the vault folder on this machine.")
+                : t(
+                    "The absolute path to a knowledge base folder on this machine — nothing is copied.",
+                  )}
+            </p>
+          </div>
+
+          {!linkIsObsidian && probe && <ProbeVerdict probe={probe} t={t} />}
+        </>
+      )}
     </>
   );
 }

@@ -179,7 +179,74 @@ class PendingQuestion(BaseModel):
     question_type: str = "short"
     expected_answer: str = ""
     options: list[str] = Field(default_factory=list)
+    # Reference explanation and difficulty, captured when the question is
+    # posed. Server-side like ``expected_answer`` — ``public_pending_question``
+    # never projects them, so an explanation cannot leak the answer into the
+    # card the learner is about to answer. They travel with the attempt into
+    # the question bank, which is what makes a mastery mistake reviewable
+    # later instead of a bare right/wrong.
+    explanation: str = ""
+    difficulty: str = ""
     created_at: float = Field(default_factory=time.time)
+
+
+class InteractionStatus(str, Enum):
+    """Durable lifecycle for one learner-facing mastery interaction.
+
+    The chat runtime may disappear at any point; this state is the source of
+    truth for whether a question still needs an answer or has already been
+    graded.  Terminal interactions are retained for idempotent retries and
+    audit history.
+    """
+
+    REGISTERED = "registered"
+    AWAITING_INPUT = "awaiting_input"
+    ANSWERED = "answered"
+    GRADED = "graded"
+    ABANDONED = "abandoned"
+
+
+class MasteryInteraction(BaseModel):
+    """A persisted question/answer transaction for a mastery path."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    interaction_id: str
+    path_id: str
+    question: PendingQuestion
+    status: InteractionStatus = InteractionStatus.REGISTERED
+    session_id: str = ""
+    turn_id: str = ""
+    user_answer: str = ""
+    result: dict[str, Any] = Field(default_factory=dict)
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class MasteryEvent(BaseModel):
+    """Committed path event consumed by recovery and future live UIs."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int = 0
+    path_id: str
+    revision: int
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    session_id: str = ""
+    turn_id: str = ""
+    created_at: float = Field(default_factory=time.time)
+
+
+class MasteryPathLease(BaseModel):
+    """The one active mutating turn allowed for a mastery path."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    path_id: str
+    session_id: str
+    turn_id: str
+    acquired_at: float = Field(default_factory=time.time)
 
 
 class LearningProgress(BaseModel):
@@ -226,5 +293,9 @@ __all__ = [
     "RepetitionState",
     "ReviewTask",
     "PendingQuestion",
+    "InteractionStatus",
+    "MasteryInteraction",
+    "MasteryEvent",
+    "MasteryPathLease",
     "LearningProgress",
 ]

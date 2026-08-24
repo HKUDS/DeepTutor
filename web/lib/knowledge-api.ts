@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import type { ImaKnowledgeBaseOption } from "@/lib/ima-connection";
 
 const KNOWLEDGE_CACHE_PREFIX = "knowledge:";
 
@@ -25,6 +26,8 @@ export interface RagProviderSummary {
   description: string;
   /** Whether the engine is ready to use (e.g. its API key is set). */
   configured?: boolean;
+  /** Actionable reason when configured is false. */
+  readiness_reason?: string;
   /** Whether the engine needs an API key configured before use. */
   requires_api_key?: boolean;
   /** Retrieval modes this engine supports (empty for mode-less engines). */
@@ -36,7 +39,13 @@ export interface RagProviderSummary {
 }
 
 export interface PageIndexConfig {
-  api_base_url: string;
+  api_key_set: boolean;
+  configured: boolean;
+}
+
+/** Account-level Tencent IMA credentials, shared by every `ima` KB. */
+export interface ImaAccountConfig {
+  client_id: string;
   api_key_set: boolean;
   configured: boolean;
 }
@@ -52,6 +61,9 @@ export interface LlamaIndexConfig {
   /** Chunk geometry — applies to documents indexed after the change. */
   chunk_size: number;
   chunk_overlap: number;
+  /** Bounded multimodal LLM work during image-heavy indexing. */
+  image_description_concurrency: number;
+  image_description_timeout_seconds: number;
 }
 
 export interface GraphRagConfig {
@@ -65,6 +77,12 @@ export interface LightRagConfig {
   version: number;
   top_k: number;
   response_type: string;
+  /** Files RAG-Anything processes in parallel while indexing. */
+  max_concurrent_files: number;
+  /** Concurrent LLM calls LightRAG's internal queue issues. */
+  llm_model_max_async: number;
+  /** Extra extraction passes per chunk, to recover missed entities. */
+  entity_extract_max_gleaning: number;
 }
 
 export interface PreflightCheck {
@@ -93,6 +111,16 @@ export interface ModelOption {
 export interface ModelKindOptions {
   active: { profile_id: string | null; model_id: string | null };
   options: ModelOption[];
+}
+
+export interface GraphRagModelCompatibility {
+  status: "compatible" | "incompatible" | "unverifiable";
+  compatible: boolean | null;
+  code: string;
+  message: string;
+  model: string;
+  binding: string;
+  retryable: boolean;
 }
 
 /** Map of service kind ("llm" | "embedding") → its options + active selection. */
@@ -251,7 +279,6 @@ export async function getPageIndexConfig(options?: {
 export async function updatePageIndexConfig(payload: {
   /** Omit to keep the stored key, "" to clear it, any value to replace it. */
   api_key?: string;
-  api_base_url?: string;
 }): Promise<PageIndexConfig> {
   const res = await apiFetch(apiUrl(PAGEINDEX_CONFIG_PATH), {
     method: "PUT",
@@ -266,6 +293,48 @@ export async function updatePageIndexConfig(payload: {
   // The provider list's `configured` flag depends on this; refresh it.
   invalidateKnowledgeCaches();
   return (await res.json()) as PageIndexConfig;
+}
+
+const IMA_CONFIG_PATH = "/api/v1/knowledge/rag-pipelines/ima/config";
+
+export async function getImaConfig(options?: {
+  force?: boolean;
+}): Promise<ImaAccountConfig> {
+  return withClientCache<ImaAccountConfig>(
+    `${KNOWLEDGE_CACHE_PREFIX}ima-config`,
+    async () => {
+      const response = await apiFetch(apiUrl(IMA_CONFIG_PATH), {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(
+          await readErrorDetail(response, "Failed to read Tencent IMA config"),
+        );
+      }
+      return (await response.json()) as ImaAccountConfig;
+    },
+    { force: options?.force, ttlMs: 15_000 },
+  );
+}
+
+export async function updateImaConfig(payload: {
+  client_id?: string;
+  /** Omit to keep the stored key, "" to clear it, any value to replace it. */
+  api_key?: string;
+}): Promise<ImaAccountConfig> {
+  const res = await apiFetch(apiUrl(IMA_CONFIG_PATH), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to update Tencent IMA config"),
+    );
+  }
+  // The provider list's `configured` flag depends on this; refresh it.
+  invalidateKnowledgeCaches();
+  return (await res.json()) as ImaAccountConfig;
 }
 
 const LLAMAINDEX_CONFIG_PATH =
@@ -394,6 +463,26 @@ export async function getEngineModelOptions(
   return (await res.json()) as ModelOptionsByKind;
 }
 
+export async function testGraphRagModelCompatibility(
+  profileId: string,
+  modelId: string,
+): Promise<GraphRagModelCompatibility> {
+  const res = await apiFetch(
+    apiUrl("/api/v1/knowledge/rag-pipelines/graphrag/model-compatibility"),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile_id: profileId, model_id: modelId }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to test GraphRAG compatibility"),
+    );
+  }
+  return (await res.json()) as GraphRagModelCompatibility;
+}
+
 export async function setEngineActiveModel(
   kind: string,
   profileId: string,
@@ -508,7 +597,7 @@ export interface KnowledgeTaskResponse {
   noop?: boolean;
 }
 
-async function readErrorDetail(
+export async function readErrorDetail(
   res: Response,
   fallback: string,
 ): Promise<string> {
@@ -535,10 +624,14 @@ export async function createKnowledgeBase(payload: {
   name: string;
   provider: string;
   files: File[];
+  pageindexMode?: "flash" | "standard";
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   form.append("name", payload.name);
   form.append("rag_provider", payload.provider);
+  if (payload.pageindexMode) {
+    form.append("pageindex_mode", payload.pageindexMode);
+  }
   appendFilesWithPaths(form, payload.files);
 
   const res = await apiFetch(apiUrl("/api/v1/knowledge/create"), {
@@ -573,6 +666,34 @@ export async function connectObsidianVault(payload: {
     status: string;
     name: string;
     vault_path: string;
+  };
+}
+
+export async function connectMarginNote4Library(payload: {
+  name: string;
+  description?: string;
+}): Promise<{ status: string; name: string; db_path?: string }> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/connect-marginnote4"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // `db_path` is deliberately not sent: leaving it blank keeps one rule for
+    // where the store lives (derived from the name), which is what lets the
+    // pairing endpoints, the Add-on's syncs and the capability binding agree.
+    body: JSON.stringify({
+      name: payload.name,
+      description: payload.description ?? "",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to connect MarginNote 4 library"),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as {
+    status: string;
+    name: string;
+    db_path?: string;
   };
 }
 
@@ -658,6 +779,110 @@ export interface LightRagServerProbe {
   error: string | null;
 }
 
+export interface ImaKnowledgeBasePage {
+  knowledge_bases: ImaKnowledgeBaseOption[];
+  next_cursor: string;
+  is_end: boolean;
+}
+
+export interface ImaProbe {
+  knowledge_base_id: string;
+  ok: boolean;
+  credentials_ok: boolean;
+  knowledge_base_name: string | null;
+  description: string | null;
+  error: string | null;
+}
+
+export async function listImaKnowledgeBases(payload: {
+  /** Empty falls back to the account credentials stored on the engine page. */
+  clientId?: string;
+  apiKey?: string;
+  cursor?: string;
+  limit?: number;
+}): Promise<ImaKnowledgeBasePage> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/list-ima"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: payload.clientId ?? "",
+      api_key: payload.apiKey ?? "",
+      cursor: payload.cursor ?? "",
+      limit: payload.limit ?? 20,
+    }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to read Tencent IMA knowledge bases"),
+    );
+  }
+  return (await res.json()) as ImaKnowledgeBasePage;
+}
+
+export async function probeImaKnowledgeBase(payload: {
+  clientId?: string;
+  apiKey?: string;
+  knowledgeBaseId: string;
+}): Promise<ImaProbe> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/probe-ima"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: payload.clientId ?? "",
+      api_key: payload.apiKey ?? "",
+      knowledge_base_id: payload.knowledgeBaseId,
+    }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to verify Tencent IMA knowledge base"),
+    );
+  }
+  return (await res.json()) as ImaProbe;
+}
+
+export async function connectImaKnowledgeBase(payload: {
+  name: string;
+  /** Empty binds the KB to the account credentials instead of pinning a copy. */
+  clientId?: string;
+  apiKey?: string;
+  knowledgeBaseId: string;
+}): Promise<{
+  status: string;
+  name: string;
+  knowledge_base_id: string;
+  rag_provider: string;
+}> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/connect-ima"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: payload.name,
+      client_id: payload.clientId ?? "",
+      api_key: payload.apiKey ?? "",
+      knowledge_base_id: payload.knowledgeBaseId,
+    }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(
+        res,
+        "Failed to connect Tencent IMA knowledge base",
+      ),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as {
+    status: string;
+    name: string;
+    knowledge_base_id: string;
+    rag_provider: string;
+  };
+}
+
 export async function probeLightRagServer(payload: {
   serverUrl: string;
   apiKey?: string;
@@ -722,11 +947,15 @@ export async function connectLightRagServer(payload: {
 export async function uploadKnowledgeBaseFiles(
   name: string,
   files: File[],
-  options?: { provider?: string },
+  options?: { provider?: string; destSubdir?: string },
 ): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   appendFilesWithPaths(form, files);
   if (options?.provider) form.append("rag_provider", options.provider);
+  // Places the batch under an existing KB folder. A folder pick reports paths
+  // relative to the chosen directory, so its ancestors are not in the payload
+  // — this is how the caller says where the subtree belongs (#866).
+  if (options?.destSubdir) form.append("dest_subdir", options.destSubdir);
 
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/upload`),

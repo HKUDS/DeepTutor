@@ -14,6 +14,20 @@ export function isManagedCodexProfile(
   return profile?.managed_by === CODEX_MANAGED_BY;
 }
 
+/** A managed profile may accept reasoning overrides only after an account-bound refresh. */
+export function isBoundManagedCodexProfile(
+  profile:
+    | Pick<CatalogProfile, "managed_by" | "codex_account_binding">
+    | null
+    | undefined,
+): boolean {
+  return (
+    isManagedCodexProfile(profile) &&
+    typeof profile?.codex_account_binding === "string" &&
+    Boolean(profile.codex_account_binding.trim())
+  );
+}
+
 /**
  * Whether a profile authenticates through Codex OAuth instead of typed credentials.
  *

@@ -5,6 +5,8 @@ import { ExternalLink, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import Button from "@/components/ui/Button";
+import { invalidateLLMOptionsCache } from "@/lib/llm-options";
+import { reasoningEffortOptionsFromSupportedLevels } from "@/lib/reasoning-effort";
 import {
   buildSshForwardCommand,
   cancelCodexLogin,
@@ -18,15 +20,18 @@ import {
   refreshCodexModels,
   shouldPollCodexStatus,
   startCodexLogin,
+  setCodexReasoningEffort,
   type CodexLoginStart,
   type CodexOAuthStatus,
+  type CodexReasoningModel,
 } from "@/lib/codex-oauth";
 
 import { useSettings } from "./SettingsContext";
 
 export function CodexOAuthCard() {
   const { t } = useTranslation();
-  const { reloadSettings, hasUnsavedChanges, setToast } = useSettings();
+  const { catalogEditable, reloadSettings, hasUnsavedChanges, setToast } =
+    useSettings();
   const [status, setStatus] = useState<CodexOAuthStatus | null>(null);
   const [pending, setPending] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -120,6 +125,12 @@ export function CodexOAuthCard() {
   // Reloading replaces the whole catalog draft, so this must never run behind
   // the operator's back while they have unsaved edits open on another provider.
   const syncCatalog = useCallback(async () => {
+    // Every model picker reads a cached option list — derived from the catalog
+    // for an administrator, from /settings/llm-options for an ordinary user —
+    // and a sign-in, logout, or model refresh changes what belongs in it. Drop
+    // the cache first, and unconditionally: the server has already changed
+    // even when the catalog reload below is deferred.
+    invalidateLLMOptionsCache();
     if (hasUnsavedChanges) {
       setToast(t("codex.oauth.reloadDeferred"));
       return;
@@ -270,6 +281,32 @@ export function CodexOAuthCard() {
     }
   };
 
+  const updateReasoningEffort = async (
+    model: CodexReasoningModel,
+    value: string,
+  ) => {
+    invalidateStatusRequests();
+    setPending(true);
+    try {
+      const nextStatus = await setCodexReasoningEffort(
+        model.model,
+        value || null,
+      );
+      invalidateStatusRequests();
+      recordStatus(nextStatus);
+      setErrorKey(null);
+      setToast(t("codex.oauth.reasoningSaved"));
+    } catch (error) {
+      setErrorKey(
+        codexErrorMessageKey(
+          error instanceof CodexOAuthApiError ? error.code : null,
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
   const polling = Boolean(status && shouldPollCodexStatus(status));
   const connected = status?.connection === "connected";
   const messageKey =
@@ -312,6 +349,53 @@ export function CodexOAuthCard() {
               {t("codex.oauth.modelCount", { count: status.model_count })}
             </p>
           )}
+          {connected &&
+            catalogEditable === false &&
+            status.models.length > 0 && (
+              <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                <p className="text-sm font-medium">
+                  {t("codex.oauth.reasoningTitle")}
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  {t("codex.oauth.reasoningDescription")}
+                </p>
+                <div className="mt-3 space-y-3">
+                  {status.models.map((model) => {
+                    const options = reasoningEffortOptionsFromSupportedLevels(
+                      model.supported_reasoning_levels,
+                    );
+                    if (options.length === 0) return null;
+                    return (
+                      <label key={model.model} className="block">
+                        <span className="mb-1 block truncate text-xs font-medium">
+                          {model.name}
+                        </span>
+                        <select
+                          className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                          value={model.reasoning_effort || ""}
+                          disabled={pending}
+                          onChange={(event) =>
+                            void updateReasoningEffort(
+                              model,
+                              event.target.value,
+                            )
+                          }
+                        >
+                          {options.map((option) => (
+                            <option
+                              key={option.value || "auto"}
+                              value={option.value}
+                            >
+                              {t(option.label)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           {remoteAccess && remoteGuidance && (
             <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
               <p className="text-sm font-medium">

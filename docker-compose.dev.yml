@@ -24,9 +24,12 @@ services:
       - ./deeptutor_cli:/app/deeptutor_cli:ro
       - ./scripts:/app/scripts:ro
 
-      # Mount frontend source for hot-reload
+      # Mount frontend source for hot-reload. Anything not listed here still
+      # ships inside the image (see the development stage in Dockerfile) — it
+      # just will not hot-reload.
       - ./web/app:/app/web/app:ro
       - ./web/components:/app/web/components:ro
+      - ./web/features:/app/web/features:ro
       - ./web/lib:/app/web/lib:ro
       - ./web/hooks:/app/web/hooks:ro
       - ./web/context:/app/web/context:ro

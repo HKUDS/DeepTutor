@@ -97,8 +97,18 @@ SOURCE = "deep_research"
 # (``compose_enabled_tools``), then narrows the result to tools that can
 # produce evidence for a block-level research summary.
 RESEARCH_OPTIONAL_TOOLS: list[str] = default_optional_tools()
+
+# Read-only Obsidian tools a research block may use when the selected KB is a
+# connected Obsidian vault. Write tools stay out of research blocks — the
+# block loop only retrieves evidence, never mutates the vault. The vault root
+# is injected server-side as ``_vault_path`` (see ``_augment_tool_kwargs``).
+RESEARCH_OBSIDIAN_READ_TOOLS: tuple[str, ...] = (
+    "obsidian_search",
+    "obsidian_read",
+    "obsidian_list",
+)
 RESEARCH_BLOCK_TOOL_ALLOWLIST: frozenset[str] = frozenset(
-    {"rag", "web_search", "paper_search", "code_execution"}
+    {"rag", "web_search", "paper_search", "code_execution", *RESEARCH_OBSIDIAN_READ_TOOLS}
 )
 
 # ---------------------------------------------------------------------------
@@ -195,7 +205,20 @@ _PROTOCOL_NOTE = LabelProtocol(
 # Tools whose results get summarised + recorded in the citation manager.
 # Any tool whose results carry source documents / external evidence
 # should be added here.
-CITABLE_TOOLS: frozenset[str] = frozenset({"rag", "web_search", "paper_search", "code_execution"})
+CITABLE_TOOLS: frozenset[str] = frozenset(
+    {
+        "rag",
+        "web_search",
+        "paper_search",
+        "code_execution",
+        *RESEARCH_OBSIDIAN_READ_TOOLS,
+    }
+)
+
+
+def _is_citable_tool(name: str) -> bool:
+    return name in CITABLE_TOOLS or name.startswith(("pageindex_cloud_", "pageindex_oss_"))
+
 
 # Token budget for the note summarization sidecar.
 DEFAULT_NOTE_MAX_TOKENS = 1500
@@ -285,6 +308,29 @@ class ResearchPipeline:
         self.kb_name = (kb_name or "").strip() or None
         self.enabled_tools = list(enabled_tools or [])
         self.runtime_config: dict[str, Any] = dict(runtime_config or {})
+
+        # Resolve whether the attached KB is a connected Obsidian vault. The
+        # metadata comes from the access-controlled resolver (never the model),
+        # and the resolution is a pure read with no RAG usage audit. Unresolvable
+        # references / ordinary KBs behave exactly as before (``rag``-style KB).
+        self._is_obsidian_kb = False
+        self._vault_path: str | None = None
+        if self.kb_name:
+            try:
+                from deeptutor.knowledge.kb_types import OBSIDIAN_KB_TYPE
+                from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
+
+                meta = resolve_kb_metadata(self.kb_name)
+                if meta and meta.get("type") == OBSIDIAN_KB_TYPE:
+                    self._is_obsidian_kb = True
+                    vault_path = str(meta.get("vault_path") or "").strip()
+                    if vault_path:
+                        self._vault_path = vault_path
+            except Exception:
+                logger.warning(
+                    "Failed to resolve KB metadata for %r; treating as non-Obsidian.",
+                    self.kb_name,
+                )
 
         # Read structured policy sub-dicts produced by
         # :func:`build_research_runtime_config`. All keys are best-effort —
@@ -422,6 +468,7 @@ class ResearchPipeline:
         client = self._build_client()
 
         try:
+            await self._prepare_pageindex_tools()
             return await self._run_inner(
                 context=context,
                 topic=topic,
@@ -952,6 +999,33 @@ class ResearchPipeline:
     def _kb_system_note(self) -> str:
         if not self.kb_name:
             return ""
+        if self._is_obsidian_kb:
+            return self._t(
+                "system.obsidian_kb_system_note",
+                default=(
+                    f"Attached knowledge base {self.kb_name!r} is a read-only "
+                    f"Obsidian vault. Gather evidence with obsidian_search, "
+                    f"obsidian_list and obsidian_read. Do not call rag."
+                ),
+                kb_name=self.kb_name,
+            )
+        tool_context = getattr(self, "_pageindex_tool_context", None)
+        if tool_context is not None:
+            tools = ", ".join(tool.name for tool in tool_context.tools)
+            docs = (
+                "; ".join(
+                    f"{name} (doc_id: {doc_id})"
+                    for name, doc_id in sorted(tool_context.documents.items())
+                )
+                or "(no indexed documents)"
+            )
+            instructions = tool_context.instructions.strip()
+            return (
+                f"Attached PageIndex knowledge base: {self.kb_name!r}. Read it with "
+                f"these tools inside the research loop; do not call rag: {tools}. "
+                f"Documents: {docs}."
+                + (f"\nPageIndex SDK reading instructions:\n{instructions}" if instructions else "")
+            )
         return self._t(
             "system.kb_system_note",
             default=(
@@ -1733,6 +1807,22 @@ class ResearchPipeline:
     # ------------------------------------------------------------------
     # Tool composition for the block loop
     # ------------------------------------------------------------------
+    async def _prepare_pageindex_tools(self) -> None:
+        from deeptutor.services.rag.pipelines.pageindex.tools import (
+            build_pageindex_tool_context,
+        )
+
+        self._pageindex_tool_context = await build_pageindex_tool_context(
+            self.kb_name,
+            base_registry=self.registry,
+        )
+        if self._pageindex_tool_context is not None:
+            self.registry = self._pageindex_tool_context.registry
+
+    def _pageindex_tool_names(self) -> list[str]:
+        tool_context = getattr(self, "_pageindex_tool_context", None)
+        return [tool.name for tool in tool_context.tools] if tool_context is not None else []
+
     def _block_tool_names(self) -> list[str]:
         """Tools available inside the per-block research loop.
 
@@ -1755,18 +1845,30 @@ class ResearchPipeline:
             requested_tools=self.enabled_tools,
             optional_whitelist=RESEARCH_OPTIONAL_TOOLS,
             mount_flags=ToolMountFlags(
-                has_kb=bool(self.kb_name),
+                has_kb=bool(
+                    self.kb_name
+                    and not self._is_obsidian_kb
+                    and not getattr(self, "_pageindex_tool_context", None)
+                ),
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
                 has_code=exec_capability_available(),
             ),
         )
-        return [
+        names = [
             name
             for name in composed
             if name in RESEARCH_BLOCK_TOOL_ALLOWLIST and self._tool_in_registry(name)
         ]
+        if self._vault_path:
+            names.extend(
+                name
+                for name in RESEARCH_OBSIDIAN_READ_TOOLS
+                if name in RESEARCH_BLOCK_TOOL_ALLOWLIST and self._tool_in_registry(name)
+            )
+        names.extend(self._pageindex_tool_names())
+        return list(dict.fromkeys(names))
 
     def _build_block_tool_schemas(
         self,
@@ -1807,6 +1909,11 @@ class ResearchPipeline:
             kwargs.setdefault("mode", "hybrid")
             if self.kb_name:
                 kwargs.setdefault("kb_name", self.kb_name)
+        elif tool_name in RESEARCH_OBSIDIAN_READ_TOOLS:
+            if self._vault_path:
+                # Server-owned: overwrite any model-supplied value so the path
+                # can't be forged to read outside the connected vault.
+                kwargs["_vault_path"] = self._vault_path
         elif tool_name == "code_execution":
             from deeptutor.services.sandbox import Mount
 
@@ -2329,6 +2436,11 @@ class _BlockLoopHost:
             ),
             trace_id_prefix=f"research-{self._block.block_id}-iter",
         )
+        pageindex_sources = [
+            source for source in outcome.sources if source.get("type") == "pageindex"
+        ]
+        if pageindex_sources:
+            await self._stream.sources(pageindex_sources, source=SOURCE, stage="researching")
         if tool_calls:
             self._tool_rounds_used += 1
         await self._summarise_and_record(tool_calls, outcome)
@@ -2377,13 +2489,19 @@ class _BlockLoopHost:
         for tm in outcome.tool_messages:
             tool_call_id = str(tm.get("tool_call_id") or "")
             tool_name, tool_args = call_meta_by_id.get(tool_call_id, ("", {}))
-            if tool_name not in CITABLE_TOOLS:
+            if not _is_citable_tool(tool_name):
                 continue
             raw_answer = str(tm.get("content") or "")
             if not raw_answer.strip():
                 continue
             try:
-                query = str(tool_args.get("query") or "")
+                query_key = {
+                    "obsidian_read": "note",
+                    "obsidian_list": "folder",
+                }.get(tool_name, "query")
+                query = str(tool_args.get(query_key) or "")
+                if tool_name == "obsidian_list" and not query:
+                    query = "/"
                 summary = await self._pipeline._summarise_tool_result(
                     tool_name=tool_name,
                     query=query,
@@ -2791,6 +2909,8 @@ __all__ = [
     "LABEL_SECTION",
     "LABEL_THINK",
     "LABEL_TOOL",
+    "RESEARCH_BLOCK_TOOL_ALLOWLIST",
+    "RESEARCH_OBSIDIAN_READ_TOOLS",
     "ResearchPipeline",
     "ResearchedBlock",
     "ReportOutline",

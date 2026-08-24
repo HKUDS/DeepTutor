@@ -3,10 +3,13 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
+import httpcore
+import httpx
 import pytest
 
 from deeptutor.services.codex_auth.constants import CODEX_RESPONSES_URL
 from deeptutor.services.codex_auth.contracts import CodexAuthError, CodexToken
+from deeptutor.services.llm.exceptions import LLMProviderTransportError
 from deeptutor.services.llm.provider_core import openai_codex_provider as module
 from deeptutor.services.llm.provider_core.openai_codex_provider import (
     CodexHTTPError,
@@ -25,6 +28,7 @@ class FakeCodexService:
         self.token_calls = 0
         self.guard_entries = 0
         self.recovered_generation: int | None = None
+        self.runtime_validations: list[tuple[CodexToken, str, str | None]] = []
 
     async def get_token(self) -> CodexToken:
         self.token_calls += 1
@@ -32,6 +36,14 @@ class FakeCodexService:
 
     async def recover_after_unauthorized(self, generation: int) -> None:
         self.recovered_generation = generation
+
+    def validate_runtime_profile(
+        self,
+        token: CodexToken,
+        model_slug: str,
+        reasoning_effort: str | None,
+    ) -> None:
+        self.runtime_validations.append((token, model_slug, reasoning_effort))
 
     @asynccontextmanager
     async def inference_guard(self) -> AsyncIterator[None]:
@@ -58,8 +70,17 @@ async def test_provider_uses_deeptutor_token_service_and_raw_sol_id(
     monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
     monkeypatch.setattr(module, "_request_codex", request)
 
+    image_url = "data:image/png;base64,QUJD"
     result = await OpenAICodexProvider().chat(
-        [{"role": "user", "content": "hello"}],
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "describe"},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            }
+        ],
         model="openai-codex/gpt-5.6-sol",
         reasoning_effort="medium",
         tools=[
@@ -78,12 +99,22 @@ async def test_provider_uses_deeptutor_token_service_and_raw_sol_id(
     assert result.finish_reason == "stop"
     assert service.token_calls == 1
     assert service.guard_entries == 1
+    assert service.runtime_validations == [(service.token, "gpt-5.6-sol", "medium")]
     assert url == CODEX_RESPONSES_URL
     assert headers["Authorization"] == "Bearer test-access-token"
     assert headers["chatgpt-account-id"] == "account-123"
     assert body["model"] == "gpt-5.6-sol"
     assert body["reasoning"] == {"effort": "medium"}
     assert body["tools"][0]["name"] == "lookup"
+    assert body["input"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "describe"},
+                {"type": "input_image", "image_url": image_url, "detail": "auto"},
+            ],
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -194,6 +225,40 @@ async def test_provider_does_not_expose_network_error_details(
     assert result.finish_reason == "error"
     assert "private proxy" not in result.content
     assert "token" not in result.content.lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transport_error",
+    [
+        httpx.RemoteProtocolError("private proxy host and token"),
+        httpcore.RemoteProtocolError("private proxy host and token"),
+    ],
+)
+async def test_transport_failure_raises_sanitized_retryable_error(
+    monkeypatch: pytest.MonkeyPatch,
+    transport_error: Exception,
+) -> None:
+    service = FakeCodexService()
+    sensitive_message = "private proxy host and token"
+
+    async def transport_failure(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> tuple[str, list[Any], str]:
+        raise transport_error
+
+    monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
+    monkeypatch.setattr(module, "_request_codex", transport_failure)
+
+    with pytest.raises(LLMProviderTransportError) as exc_info:
+        await OpenAICodexProvider().chat(
+            [{"role": "user", "content": "hello"}],
+        )
+
+    assert str(exc_info.value) == "Codex transport request failed."
+    assert sensitive_message not in str(exc_info.value)
+    assert exc_info.value.__cause__ is transport_error
 
 
 def test_provider_source_no_longer_imports_oauth_cli_kit() -> None:

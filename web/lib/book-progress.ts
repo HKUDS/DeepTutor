@@ -174,7 +174,23 @@ function startStage(state: BookProgress, id: StageId): BookProgress {
 }
 
 function completeStage(state: BookProgress, id: StageId): BookProgress {
+  // A stage that already reported a failure stays failed: the pipeline still
+  // emits stage_end on its way out of the `async with`, and letting that
+  // overwrite the error would show a green tick for a sweep that found nothing.
+  if (state.stages[id]?.state === "error") return state;
   return patchStage(state, id, { state: "completed", endedAt: Date.now() });
+}
+
+function errorStage(
+  state: BookProgress,
+  id: StageId,
+  detail?: string,
+): BookProgress {
+  return patchStage(state, id, {
+    state: "error",
+    detail: detail || undefined,
+    endedAt: Date.now(),
+  });
 }
 
 function asNumber(value: unknown): number {
@@ -189,6 +205,8 @@ function asString(value: unknown): string {
 }
 
 /** Reducer: ingest a single WS event and return the next snapshot. */
+export const RESET_BOOK_PROGRESS = { type: "__reset" } as const;
+
 export function reduceBookEvent(
   state: BookProgress,
   event: BookWsEvent,
@@ -200,6 +218,21 @@ export function reduceBookEvent(
   );
   const eventType = String(event.type || "");
 
+  // Explicit reset — the timeline belongs to one book's run. Selecting another
+  // book (or starting a new one) must not inherit the previous book's stages.
+  if (eventType === "__reset") {
+    return emptyBookProgress();
+  }
+
+  // A book id that contradicts the one we're tracking means the stream moved
+  // on; start clean rather than blending two runs into one timeline.
+  const incomingBookId = asString(
+    (event.metadata as Record<string, unknown> | undefined)?.book_id,
+  );
+  if (incomingBookId && state.bookId && incomingBookId !== state.bookId) {
+    state = emptyBookProgress();
+  }
+
   // Track book id once.
   let next: BookProgress = { ...state, updatedAt: Date.now() };
   const bookIdFromMeta = asString(meta.book_id);
@@ -208,7 +241,7 @@ export function reduceBookEvent(
   }
 
   // Pick up STAGE_BEGIN / STAGE_END from generic stream events.
-  if (eventType === "stage_begin" && stage) {
+  if (eventType === "stage_start" && stage) {
     if ((STAGE_ORDER as string[]).includes(stage)) {
       next = startStage(next, stage as StageId);
     }
@@ -256,6 +289,13 @@ export function reduceBookEvent(
       next = patchStage(next, "exploration", {
         detail: `${queries} queries · ${chunkCount} chunks`,
       });
+      break;
+    }
+    case "exploration_failed": {
+      // The stage still emits stage_end afterwards; errorStage wins so the
+      // timeline does not claim the sweep succeeded.
+      next = errorStage(next, "exploration", asString(meta.reason));
+      next = { ...next, message: "Source sweep failed" };
       break;
     }
     case "spine_round": {
@@ -395,6 +435,7 @@ export function reduceBookEvent(
       next = completeStage(next, "overview");
       break;
     }
+    case "book_ready":
     case "compilation_complete": {
       next = completeStage(next, "compilation");
       next = { ...next, message: "Book compilation complete" };

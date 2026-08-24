@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers.mastery_path import router
+from deeptutor.learning.models import PendingQuestion
+from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
 
 
@@ -24,6 +26,7 @@ def app(tmp_path, monkeypatch):
         _make_store_with_tmp,
     )
     app = FastAPI()
+    app.state.learning_root = tmp_path
     app.include_router(router, prefix="/api/v1/learning")
     return app
 
@@ -177,6 +180,24 @@ class TestInitModules:
         assert prog["current_module_id"] == "m1"
         assert prog["current_kp_index"] == 0
 
+    def test_concurrent_administrative_mutation_returns_conflict(self, client, app):
+        store = LearningStore(root=app.state.learning_root)
+        store.acquire_path_lease(
+            "busy-admin",
+            "__path_api__",
+            "api-existing",
+            bind_session=False,
+        )
+        try:
+            response = client.post(
+                "/api/v1/learning/progress/busy-admin/init-modules",
+                json={"modules": [_module_payload()]},
+            )
+        finally:
+            store.release_path_lease("busy-admin", turn_id="api-existing")
+
+        assert response.status_code == 409
+
 
 # -- GET /progress/{book_id} ----------------------------------------------
 
@@ -195,6 +216,58 @@ class TestGetProgress:
     def test_get_progress_invalid_id_returns_400(self, client):
         resp = client.get("/api/v1/learning/progress/a\\b")
         assert resp.status_code == 400
+
+    def test_get_progress_redacts_pending_answer_key(self, client, app):
+        client.post(
+            "/api/v1/learning/progress/redacted/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+        store = LearningStore(root=app.state.learning_root)
+        progress = store.load("redacted")
+        assert progress is not None
+        progress.pending_question = PendingQuestion(
+            question_id="question-1",
+            knowledge_point_id="kp1",
+            module_id="m1",
+            prompt="Secret answer?",
+            expected_answer="do-not-expose",
+        )
+        store.save(progress)
+
+        response = client.get("/api/v1/learning/progress/redacted")
+
+        assert response.status_code == 200
+        assert response.json()["pending_question"]["question_id"] == "question-1"
+        assert "expected_answer" not in response.text
+
+    def test_events_support_incremental_revision_replay(self, client):
+        created = client.post(
+            "/api/v1/learning/progress/eventbook/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+        revision = created.json()["path_revision"]
+
+        all_events = client.get("/api/v1/learning/progress/eventbook/events")
+        assert all_events.status_code == 200
+        assert [event["event_type"] for event in all_events.json()["events"]] == [
+            "path.created",
+            "path.modules_replaced",
+        ]
+        assert (
+            client.get(
+                f"/api/v1/learning/progress/eventbook/events?after_revision={revision}"
+            ).json()["events"]
+            == []
+        )
+
+    def test_map_exposes_authoritative_revision(self, client):
+        client.post(
+            "/api/v1/learning/progress/maprevision/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+        progress = client.get("/api/v1/learning/progress/maprevision").json()
+        path_map = client.get("/api/v1/learning/progress/maprevision/map").json()
+        assert path_map["path_revision"] == progress["version"]
 
 
 # -- DELETE /progress/{book_id} -------------------------------------------
@@ -224,6 +297,116 @@ class TestDeleteProgress:
     def test_delete_invalid_book_id_returns_400(self, client):
         resp = client.delete("/api/v1/learning/progress/a\\b")
         assert resp.status_code == 400
+
+
+# -- GET /progress/{book_id}/objectives/{kp_id} ---------------------------
+
+
+class TestObjectiveReport:
+    def test_report_joins_prompts_without_leaking_the_answer_key(self, client, app):
+        client.post(
+            "/api/v1/learning/progress/report1/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+        store = LearningStore(root=app.state.learning_root)
+        service = LearningService(store)
+        service.register_question(
+            "report1",
+            PendingQuestion(
+                question_id="q1",
+                knowledge_point_id="kp1",
+                module_id="m1",
+                prompt="What is 2+2?",
+                expected_answer="do-not-expose",
+            ),
+        )
+        service.grade_interaction("report1", answer="4", question_id="q1")
+
+        resp = client.get("/api/v1/learning/progress/report1/objectives/kp1")
+
+        assert resp.status_code == 200
+        objective = resp.json()["objective"]
+        assert objective["name"] == "KP1"
+        assert objective["gate"] == "qualitative"  # concept type
+        assert [a["prompt"] for a in objective["attempts"]] == ["What is 2+2?"]
+        assert objective["attempts"][0]["answer"] == "4"
+        assert "do-not-expose" not in resp.text
+
+    def test_report_for_unknown_objective_returns_404(self, client):
+        client.post(
+            "/api/v1/learning/progress/report2/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+        resp = client.get("/api/v1/learning/progress/report2/objectives/nope")
+        assert resp.status_code == 404
+
+    def test_report_for_unknown_path_returns_404(self, client):
+        assert client.get("/api/v1/learning/progress/nosuch/objectives/kp1").status_code == 404
+
+    def test_report_invalid_book_id_returns_400(self, client):
+        assert client.get("/api/v1/learning/progress/a\\b/objectives/kp1").status_code == 400
+
+
+# -- POST /progress/{book_id}/skip-question -------------------------------
+
+
+class TestSkipPendingQuestion:
+    def _path_with_pending_question(self, client, app, book_id: str) -> LearningStore:
+        client.post(
+            f"/api/v1/learning/progress/{book_id}/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+        store = LearningStore(root=app.state.learning_root)
+        progress = store.load(book_id)
+        assert progress is not None
+        progress.pending_question = PendingQuestion(
+            question_id="question-1",
+            knowledge_point_id="kp1",
+            module_id="m1",
+            prompt="Unanswerable?",
+            expected_answer="lost",
+        )
+        store.save(progress)
+        return store
+
+    def test_skip_unblocks_the_next_objective(self, client, app):
+        store = self._path_with_pending_question(client, app, "stuck")
+        blocked = client.get("/api/v1/learning/progress/stuck/map").json()
+        assert blocked["next"]["action"] == "answer_pending"
+
+        resp = client.post("/api/v1/learning/progress/stuck/skip-question")
+
+        assert resp.status_code == 200
+        assert resp.json()["skipped"] is True
+        assert store.load("stuck").pending_question is None
+        assert client.get("/api/v1/learning/progress/stuck/map").json()["next"]["action"] != (
+            "answer_pending"
+        )
+
+    def test_skip_keeps_earned_mastery(self, client, app):
+        store = self._path_with_pending_question(client, app, "keepmastery")
+        progress = store.load("keepmastery")
+        progress.mastery_levels["kp1"] = 1.0
+        store.save(progress)
+
+        client.post("/api/v1/learning/progress/keepmastery/skip-question")
+
+        assert store.load("keepmastery").mastery_levels["kp1"] == 1.0
+
+    def test_skip_with_nothing_pending_is_a_no_op(self, client):
+        client.post(
+            "/api/v1/learning/progress/nothingpending/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+        resp = client.post("/api/v1/learning/progress/nothingpending/skip-question")
+        assert resp.status_code == 200
+        assert resp.json()["skipped"] is False
+
+    def test_skip_unknown_path_returns_404(self, client):
+        assert client.post("/api/v1/learning/progress/nosuchpath/skip-question").status_code == 404
+
+    def test_skip_invalid_book_id_returns_400(self, client):
+        assert client.post("/api/v1/learning/progress/a\\b/skip-question").status_code == 400
 
 
 # -- POST /progress/{book_id}/redo ----------------------------------------
@@ -381,7 +564,7 @@ class TestGenerateFromNotebook:
         )
         assert resp.status_code == 502
 
-    @patch("deeptutor.api.routers.mastery_path.get_ui_language", return_value="en")
+    @patch("deeptutor.api.routers.mastery_path.get_response_language", return_value="en")
     @patch("deeptutor.services.llm.complete", new_callable=AsyncMock)
     def test_generate_injection_ignored(self, mock_complete, _mock_language, client):
         """Injection payload in title/output must not alter generation behavior."""
@@ -421,9 +604,9 @@ class TestGenerateFromNotebook:
         sys_prompt = call_args.kwargs.get("system_prompt") or call_args[1].get("system_prompt", "")
         assert "Ignore" in sys_prompt
 
-    @patch("deeptutor.api.routers.mastery_path.get_ui_language", return_value="zh")
+    @patch("deeptutor.api.routers.mastery_path.get_response_language", return_value="zh")
     @patch("deeptutor.services.llm.complete", new_callable=AsyncMock)
-    def test_generate_uses_zh_prompt_when_ui_language_is_zh(
+    def test_generate_uses_zh_prompt_when_response_language_is_zh(
         self,
         mock_complete,
         _mock_language,

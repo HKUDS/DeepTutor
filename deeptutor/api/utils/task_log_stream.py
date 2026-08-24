@@ -10,6 +10,7 @@ import time
 from typing import Any
 
 from deeptutor.logging import (
+    PROCESS_LOG_PRIVATE_ATTR,
     ProcessLogEvent,
     bind_log_context,
     capture_process_logs,
@@ -22,6 +23,7 @@ def _format_sse(event: str, payload: dict[str, Any]) -> str:
 
 
 class KnowledgeTaskStreamManager:
+    _HEARTBEAT_SECONDS = 15.0
     _MAX_EVENTS_PER_TASK = 500
     _MAX_BYTES_PER_TASK = 2 * 1024 * 1024
     _MAX_RETAINED_TASKS = 32
@@ -98,10 +100,22 @@ class KnowledgeTaskStreamManager:
     def emit_complete(self, task_id: str, detail: str = "Task completed"):
         self.emit(task_id, "complete", {"detail": detail, "task_id": task_id})
 
-    def emit_failed(self, task_id: str, detail: str, *, details: str | None = None):
+    def emit_failed(
+        self,
+        task_id: str,
+        detail: str,
+        *,
+        details: str | None = None,
+        error_code: str | None = None,
+        retryable: bool | None = None,
+    ):
         payload: dict[str, Any] = {"detail": detail, "task_id": task_id}
         if details:
             payload["details"] = details
+        if error_code:
+            payload["error_code"] = error_code
+        if retryable is not None:
+            payload["retryable"] = retryable
         self.emit(task_id, "failed", payload)
 
     def subscribe(
@@ -244,7 +258,14 @@ class KnowledgeTaskStreamManager:
                 return
 
             while True:
-                item = await queue.get()
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=self._HEARTBEAT_SECONDS)
+                except TimeoutError:
+                    # SSE comments are ignored by EventSource but keep every
+                    # intermediary proxy from treating an idle indexing phase
+                    # as a dead connection.
+                    yield ": keep-alive\n\n"
+                    continue
                 yield _format_sse(item["event"], item["payload"])
                 if item["event"] in {"complete", "failed"}:
                     break
@@ -269,6 +290,8 @@ class _TaskScopedLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            if getattr(record, PROCESS_LOG_PRIVATE_ATTR, False):
+                return
             context = current_log_context()
             record_task_id = context.get("task_id")
             if record_task_id and record_task_id != self._task_id:
@@ -323,6 +346,10 @@ def capture_task_logs(task_id: str):
     manager.ensure_task(task_id)
 
     def emit(event: ProcessLogEvent) -> None:
+        if event.logger in {"root", "asyncio"}:
+            return
+        if event.logger == "deeptutor.knowledge.progress_tracker":
+            return
         manager.emit_process_log(task_id, event)
 
     with bind_log_context(task_id=task_id, capability="knowledge", sink="ui"):

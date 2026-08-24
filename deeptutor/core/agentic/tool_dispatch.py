@@ -26,6 +26,10 @@ import json
 import logging
 from typing import Any
 
+from deeptutor.core.agentic.tool_arg_guard import (
+    missing_args_message,
+    missing_required_args,
+)
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import ToolLookup, provider_identity
@@ -41,6 +45,13 @@ from deeptutor.utils.json_parser import parse_json_response
 logger = logging.getLogger(__name__)
 
 MAX_PARALLEL_TOOL_CALLS = 8
+
+# Tools that pause the turn to show the user something. They run *after* the
+# rest of their round and re-bind their arguments against whatever those calls
+# committed: a model that poses a question and shows it in one round would
+# otherwise have its card bound before the question existed, so the card could
+# not carry the persisted version of it.
+PAUSE_LAST_TOOLS = frozenset({"ask_user"})
 
 
 KwargAugmenter = Callable[[str, dict[str, Any], UnifiedContext], dict[str, Any]]
@@ -103,7 +114,7 @@ async def dispatch_tool_calls(
             )
         tool_calls = tool_calls[:MAX_PARALLEL_TOOL_CALLS]
 
-    prepared = _prepare_tool_args(tool_calls, context, kwarg_augmenter)
+    prepared, raw_args = _prepare_tool_args(tool_calls, context, kwarg_augmenter)
     # Collapse duplicates within this parallel batch. Models occasionally
     # emit repeated tool_calls in one assistant message. For most tools,
     # "duplicate" means same tool + same JSON-normalised args. For
@@ -156,6 +167,17 @@ async def dispatch_tool_calls(
                 tool_name=prepared[tool_index][1],
             )
         _tcid, tool_name, exec_args = prepared[tool_index]
+        rejection = await _reject_if_args_missing(
+            registry=registry,
+            tool_name=tool_name,
+            exec_args=exec_args,
+            stream=stream,
+            source=source,
+            stage=stage,
+            trace_meta=per_tool_trace_meta[tool_index],
+        )
+        if rejection is not None:
+            return rejection
         return await execute_tool_call(
             registry=registry,
             tool_name=tool_name,
@@ -179,7 +201,27 @@ async def dispatch_tool_calls(
             retrieve_label=retrieve_label,
         )
 
-    results = await asyncio.gather(*[_run_one(i) for i in range(len(prepared))])
+    # Pausing tools go last, and re-bind first: their whole job is to show the
+    # user the state of the round, which does not exist until the round has
+    # run. Everything else still runs concurrently, and a pause costs no
+    # parallelism worth keeping — the turn is about to stop and wait anyway.
+    deferred = [index for index, (_, name, _) in enumerate(prepared) if name in PAUSE_LAST_TOOLS]
+    if deferred:
+        immediate = [index for index in range(len(prepared)) if index not in set(deferred)]
+        by_index = dict(
+            zip(immediate, await asyncio.gather(*[_run_one(i) for i in immediate]), strict=True)
+        )
+        for index in deferred:
+            if kwarg_augmenter is None or duplicate_of.get(index) is not None:
+                continue
+            call_id, name, _stale = prepared[index]
+            prepared[index] = (call_id, name, kwarg_augmenter(name, raw_args[index], context))
+        by_index.update(
+            zip(deferred, await asyncio.gather(*[_run_one(i) for i in deferred]), strict=True)
+        )
+        results = [by_index[index] for index in range(len(prepared))]
+    else:
+        results = await asyncio.gather(*[_run_one(i) for i in range(len(prepared))])
 
     return await _collect_outcome(
         prepared=prepared,
@@ -261,12 +303,85 @@ def _duplicate_stub_result(
     }
 
 
+async def _reject_if_args_missing(
+    *,
+    registry: ToolLookup,
+    tool_name: str,
+    exec_args: dict[str, Any],
+    stream: StreamBus,
+    source: str,
+    stage: str,
+    trace_meta: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Short-circuit a call whose required arguments never arrived.
+
+    Returns ``None`` when the call is well-formed (dispatch proceeds), or a
+    synthetic failed result whose text tells the model which arguments to
+    fill in. See :mod:`deeptutor.core.agentic.tool_arg_guard` for why the
+    tool itself is the wrong place to catch this.
+
+    Unknown tool names and definitions that fail to build are passed
+    through untouched: the registry owns those errors and reports them with
+    the context this layer lacks.
+    """
+    try:
+        tool = registry.get(tool_name)
+        definition = tool.get_definition() if tool is not None else None
+    except Exception:  # pragma: no cover - defensive: never block dispatch
+        logger.debug("Arg guard skipped for %s (definition unavailable)", tool_name, exc_info=True)
+        return None
+    if definition is None:
+        return None
+
+    missing = missing_required_args(definition, exec_args)
+    if not missing:
+        return None
+
+    message = missing_args_message(tool_name, missing)
+    logger.warning(
+        "Rejected %s before dispatch: missing required args %s",
+        tool_name,
+        [arg.name for arg in missing],
+    )
+    if trace_meta is not None:
+        # Close the sub-trace with a terminal state, as the raising path in
+        # ``execute_tool_call`` does — a rejected call must not leave a row
+        # that reads as still running. ``progress`` (not ``error``): this is
+        # a recoverable per-call correction, and a stream ERROR makes a
+        # partner turn re-run the whole turn on its backup model.
+        await stream.progress(
+            f"{tool_name} not dispatched: missing {', '.join(arg.name for arg in missing)}",
+            source=source,
+            stage=stage,
+            metadata=derive_trace_metadata(
+                trace_meta,
+                trace_kind="call_status",
+                call_state="error",
+                error=message,
+            ),
+        )
+    return {
+        "result_text": message,
+        "success": False,
+        "sources": [],
+        "metadata": {"error": "missing_required_arguments"},
+        "terminate_turn": False,
+        "pause_for_user": None,
+    }
+
+
 def _prepare_tool_args(
     tool_calls: list[dict[str, Any]],
     context: UnifiedContext,
     kwarg_augmenter: KwargAugmenter | None,
-) -> list[tuple[str, str, dict[str, Any]]]:
+) -> tuple[list[tuple[str, str, dict[str, Any]]], list[dict[str, Any]]]:
+    """Bind each call's execution args, keeping the model's originals.
+
+    The originals are what a deferred re-bind starts from, so re-binding is
+    exactly as idempotent as the first bind (see :data:`PAUSE_LAST_TOOLS`).
+    """
     prepared: list[tuple[str, str, dict[str, Any]]] = []
+    raw_args: list[dict[str, Any]] = []
     for tc in tool_calls:
         tool_name = str(tc.get("name") or "").strip()
         tool_call_id = str(tc.get("id") or "").strip()
@@ -283,7 +398,8 @@ def _prepare_tool_args(
             else dict(tool_args)
         )
         prepared.append((tool_call_id, tool_name, exec_args))
-    return prepared
+        raw_args.append(dict(tool_args))
+    return prepared, raw_args
 
 
 def _build_per_tool_trace_meta(

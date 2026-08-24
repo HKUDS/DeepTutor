@@ -20,7 +20,7 @@ import logging
 import sqlite3
 
 from deeptutor.services.memory.paths import Surface
-from deeptutor.services.memory.snapshot.entity import Entity
+from deeptutor.services.memory.snapshot.entity import Entity, EntityStamp
 from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
@@ -303,27 +303,40 @@ def read_partner_entities() -> list[Entity]:
     bridges that store into the memory pipeline so partner conversations
     consolidate into L2/L3 like every other surface.
 
-    Partners are anchored to the admin workspace, so we only surface them
-    when the active scope IS the admin's own memory; a regular user's memory
-    view must not see the admin's partner conversations.
+    Admins see the legacy process-wide Partner sessions. Regular users see only
+    their own per-user sessions for Partners that are still assigned to them;
+    neither side scans another user's relationship-state directory.
     """
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.partner_access import assigned_partner_ids
     from deeptutor.multi_user.paths import get_admin_path_service
 
+    user = get_current_user()
     admin_root = get_admin_path_service().workspace_root.resolve()
-    if get_path_service().workspace_root.resolve() != admin_root:
+    # Read-only adapters are also called directly in maintenance/tests where no
+    # CurrentUser ContextVar is installed. Preserve the older path-scope guard
+    # instead of treating a non-admin workspace as the implicit local admin.
+    if user.is_admin and get_path_service().workspace_root.resolve() != admin_root:
         return []
     partners_root = admin_root / "partners"
     if not partners_root.exists():
         return []
 
+    allowed = None if user.is_admin else assigned_partner_ids(user.id)
     out: list[Entity] = []
     for partner_dir in sorted(partners_root.iterdir()):
         if not partner_dir.is_dir():
             continue
-        sessions_dir = partner_dir / "sessions"
+        partner_id = partner_dir.name
+        if allowed is not None and partner_id not in allowed:
+            continue
+        sessions_dir = (
+            partner_dir / "sessions"
+            if user.is_admin
+            else partner_dir / "users" / user.id / "sessions"
+        )
         if not sessions_dir.is_dir():
             continue
-        partner_id = partner_dir.name
         partner_name = _partner_display_name(partner_dir, partner_id)
         for sess_file in sorted(sessions_dir.glob("*.jsonl")):
             entity = _partner_session_entity(sess_file, partner_id, partner_name)
@@ -499,6 +512,59 @@ def read_quiz_entities() -> list[Entity]:
     return out
 
 
+# ── Probes (identity + stamp, without content) ───────────────────────
+
+
+def probe_chat_entities() -> list[EntityStamp]:
+    """Chat stamps without reading a single message body.
+
+    Deliberately mirrors :func:`read_chat_entities`'s ``id`` / ``label`` /
+    ``fingerprint`` expression by expression. In particular the fingerprint is
+    ``_sha1(last_msg_id, updated_at)`` where ``last_msg_id`` is the id of the
+    last message under ``ORDER BY created_at ASC, id ASC`` — NOT ``MAX(id)``,
+    which would diverge whenever ids and timestamps disagree (clock skew, a
+    backfilled row). Selecting the first row of the reversed ordering picks the
+    same message. Sessions with no messages stamp ``0``, as the full read does.
+
+    Skipping ``content`` is the whole point: the full read concatenates every
+    message of every session, which is the wrong price to pay for a caller that
+    only wants to know what the sessions are called.
+    """
+    db_path = get_path_service().get_chat_history_db()
+    if not db_path.exists():
+        return []
+    out: list[EntityStamp] = []
+    try:
+        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
+            conn.row_factory = sqlite3.Row
+            last_msg_id: dict[str, int] = {
+                row["session_id"]: row["id"]
+                for row in conn.execute(
+                    "SELECT session_id, id FROM ("
+                    "  SELECT session_id, id, ROW_NUMBER() OVER ("
+                    "    PARTITION BY session_id ORDER BY created_at DESC, id DESC"
+                    "  ) AS rn FROM messages"
+                    ") WHERE rn = 1"
+                )
+            }
+            for sess in conn.execute(
+                "SELECT id, title, updated_at FROM sessions ORDER BY updated_at DESC"
+            ):
+                sid = sess["id"]
+                out.append(
+                    EntityStamp(
+                        id=sid,
+                        label=sess["title"] or sid,
+                        fingerprint=_sha1(last_msg_id.get(sid, 0), sess["updated_at"]),
+                        ts=_iso(sess["updated_at"]),
+                    )
+                )
+    except sqlite3.Error as exc:
+        logger.warning("chat snapshot probe failed: %s", exc)
+        return []
+    return out
+
+
 # ── Dispatch ─────────────────────────────────────────────────────────
 
 
@@ -512,6 +578,14 @@ _READERS = {
     "quiz": read_quiz_entities,
 }
 
+# Surfaces with a cheap stamps-only path. A surface belongs here only when
+# skipping content actually saves something: every other adapter reads a
+# bounded amount, so a second code path would be duplication without a payoff
+# — and a second chance to drift from its full reader.
+_PROBES = {
+    "chat": probe_chat_entities,
+}
+
 
 def read_entities(surface: Surface) -> list[Entity]:
     reader = _READERS.get(surface)
@@ -522,6 +596,27 @@ def read_entities(surface: Surface) -> list[Entity]:
     except Exception as exc:
         logger.warning("snapshot adapter failed surface=%s: %s", surface, exc)
         return []
+
+
+def read_stamps(surface: Surface) -> list[EntityStamp]:
+    """Identity + label + fingerprint + timestamp for every entity on *surface*.
+
+    Uses the surface's probe when it has one and falls back to projecting the
+    full read otherwise, so a surface without a probe is simply slower — never
+    unsupported. A probe that raises also falls back rather than reporting an
+    empty surface, which the diff would otherwise read as "everything was
+    deleted".
+    """
+    probe = _PROBES.get(surface)
+    if probe is not None:
+        try:
+            return probe()
+        except Exception as exc:
+            logger.warning("snapshot probe failed surface=%s; full read: %s", surface, exc)
+    return [
+        EntityStamp(id=e.id, label=e.label, fingerprint=e.fingerprint, ts=e.ts)
+        for e in read_entities(surface)
+    ]
 
 
 SUPPORTED_SURFACES: tuple[Surface, ...] = tuple(_READERS.keys())  # type: ignore[arg-type,assignment]

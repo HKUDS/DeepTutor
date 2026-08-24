@@ -34,6 +34,8 @@ import logging
 from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.core.context import UnifiedContext
+from deeptutor.core.stream_bus import StreamBus
 from deeptutor.utils.json_parser import parse_json_response
 
 from ..models import (
@@ -44,6 +46,54 @@ from ..models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The sweep runs one retrieval per (knowledge base x query) pair, and each is a
+# vector search plus — on most backends — an LLM synthesis call. Left ungated,
+# eight KBs against a dozen queries fired ~100 concurrent provider calls.
+RETRIEVAL_CONCURRENCY = 6
+MAX_RETRIEVAL_CALLS = 48
+
+
+def _balanced_slice(chunks: list[SourceChunk], *, limit: int) -> list[SourceChunk]:
+    """Pick ``limit`` chunks with every source represented.
+
+    Ranking is only meaningful *within* one engine, so we rank inside each
+    source and then take round-robin across them. A global sort by ``score``
+    handed the whole slice to whichever backend happened to emit the largest
+    numbers, which silently dropped notebooks, chat excerpts and any KB on a
+    different scoring scale out of the synthesis input entirely.
+    """
+    if len(chunks) <= limit:
+        return list(chunks)
+
+    by_source: dict[str, list[SourceChunk]] = {}
+    for chunk in chunks:
+        by_source.setdefault(f"{chunk.source}/{chunk.kb_name or ''}", []).append(chunk)
+    for group in by_source.values():
+        group.sort(key=lambda c: -c.score)
+
+    picked: list[SourceChunk] = []
+    groups = list(by_source.values())
+    depth = 0
+    while len(picked) < limit and any(depth < len(g) for g in groups):
+        for group in groups:
+            if depth < len(group):
+                picked.append(group[depth])
+                if len(picked) == limit:
+                    break
+        depth += 1
+    return picked
+
+
+# Retrieval queries should follow the *sources*, not the book. Say so explicitly
+# rather than leaving the model to guess from the prompt's own language.
+_QUERY_LANGUAGE_HINT = (
+    "\n\n[Query language] Write each query in the language the source material is "
+    "most likely written in — usually the language of the user's intent or the "
+    "knowledge base itself. Where a concept has a widely used English term "
+    "(model names, algorithms, APIs), include it verbatim. These queries are "
+    "matched against documents, never shown to the reader."
+)
 
 
 def _clip(text: str, limit: int) -> str:
@@ -103,7 +153,11 @@ class SourceExplorer(BaseAgent):
         base_url: str | None = None,
         api_version: str | None = None,
         language: str = "en",
-        binding: str = "openai",
+        # None, not "openai": BaseAgent falls back to the configured
+        # provider only when this is falsy. Hard-coding it forced every
+        # user onto the OpenAI wire format. Matches the pattern in
+        # deeptutor/agents/research/pipeline.py:403.
+        binding: str | None = None,
         *,
         max_queries: int = 8,
         chunks_per_query: int = 4,
@@ -118,6 +172,7 @@ class SourceExplorer(BaseAgent):
             binding=binding,
         )
         self.max_queries = max_queries
+        self.skipped_knowledge_bases: list[str] = []
         self.chunks_per_query = chunks_per_query
 
     # ------------------------------------------------------------------ #
@@ -134,11 +189,17 @@ class SourceExplorer(BaseAgent):
         book_id: str,
         proposal: BookProposal,
         inputs: BookInputs,
+        stream: StreamBus | None = None,
     ) -> ExplorationReport:
         """Run the full design → retrieve → summarise pipeline."""
 
         intent = (inputs.user_intent or proposal.description or "").strip()
         kb_list = list(inputs.knowledge_bases or [])
+        from deeptutor.services.rag.pipelines.pageindex import (
+            validate_pageindex_oss_selection,
+        )
+
+        validate_pageindex_oss_selection(kb_list)
 
         queries = await self._design_queries(proposal=proposal, inputs=inputs)
         if not queries:
@@ -147,7 +208,7 @@ class SourceExplorer(BaseAgent):
 
         chunks: list[SourceChunk] = []
         if kb_list:
-            chunks.extend(await self._retrieve_kb_chunks(queries, kb_list))
+            chunks.extend(await self._retrieve_kb_chunks(queries, kb_list, stream=stream))
 
         chunks.extend(self._collect_non_kb_chunks(inputs))
 
@@ -163,6 +224,16 @@ class SourceExplorer(BaseAgent):
             chunks=chunks,
             coverage=coverage,
         )
+
+        # Connected KBs contributed nothing because nothing could read them.
+        # Say so in the report rather than letting an empty contribution look
+        # like a source with no relevant content.
+        if self.skipped_knowledge_bases:
+            notes = [
+                *notes,
+                "Not swept (no local index — these need their own capability): "
+                + ", ".join(self.skipped_knowledge_bases),
+            ]
 
         return ExplorationReport(
             book_id=book_id,
@@ -184,10 +255,12 @@ class SourceExplorer(BaseAgent):
         proposal: BookProposal,
         inputs: BookInputs,
     ) -> list[str]:
-        from ..blocks._language import language_directive
-
         system_prompt = self.get_prompt("queries_system") or _FALLBACK_QUERIES_SYSTEM
-        system_prompt = system_prompt.rstrip() + language_directive(self.language)
+        # Deliberately no language directive here. These strings are matched
+        # against document text, not shown to anyone: pinning them to the book's
+        # language starves retrieval whenever the sources are written in a
+        # different one. The summary below *is* reader-facing and does get it.
+        system_prompt = system_prompt.rstrip() + _QUERY_LANGUAGE_HINT
         user_template = self.get_prompt("queries_user") or _FALLBACK_QUERIES_USER
 
         intent = (inputs.user_intent or proposal.description or "").strip() or "(empty)"
@@ -264,16 +337,88 @@ class SourceExplorer(BaseAgent):
     # Step 2 — parallel RAG retrieval
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def partition_knowledge_bases(kb_list: list[str]) -> tuple[list[str], list[str]]:
+        """Split *kb_list* into (retrievable, unreachable).
+
+        Only the KBs ``rag_search`` genuinely cannot reach are set aside: an
+        Obsidian vault (no index — its capability navigates live files), a
+        MarginNote 4 library (same shape: synced objects in their own store,
+        reachable only through the MN4 tools) and a connected subagent (not a
+        document collection). Sweeping those returned nothing and looked
+        identical to a source that simply had no relevant content, so the
+        reader never learned their vault contributed zero; reaching them
+        properly means driving each capability, which is separate work, and
+        naming them is the honest interim.
+
+        Every other pointer KB *is* retrievable and is swept normally — a
+        ``linked`` folder mounts an index built elsewhere, and ``lightrag_server``
+        / ``ima`` offload retrieval over HTTP. Treating "connected" as
+        "unsearchable" silently dropped those sources from every book.
+        """
+        retrievable: list[str] = []
+        unreachable: list[str] = []
+        for kb in kb_list:
+            try:
+                from deeptutor.knowledge.kb_types import supports_rag_retrieval
+                from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
+
+                meta = resolve_kb_metadata(kb)
+            except Exception:  # noqa: BLE001 - unresolvable → treat as ordinary
+                meta = None
+            (retrievable if supports_rag_retrieval(meta) else unreachable).append(kb)
+        return retrievable, unreachable
+
     async def _retrieve_kb_chunks(
         self,
         queries: list[str],
         kb_list: list[str],
+        *,
+        stream: StreamBus | None = None,
     ) -> list[SourceChunk]:
+        kb_list, connected = self.partition_knowledge_bases(kb_list)
+        if connected:
+            self.skipped_knowledge_bases = list(connected)
+            logger.info(
+                "source exploration skipped %d connected KB(s) with no local index: %s",
+                len(connected),
+                ", ".join(connected),
+            )
+
+        pageindex_kbs: list[str] = []
+        traditional_kbs: list[str] = []
+        for kb in kb_list:
+            try:
+                from deeptutor.multi_user.knowledge_access import resolve_kb
+                from deeptutor.services.rag.factory import (
+                    PAGEINDEX_OSS_PROVIDER,
+                    PAGEINDEX_PROVIDER,
+                )
+                from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+                resource = resolve_kb(kb, require_write=False)
+                provider = resolve_bound_provider(str(resource.base_dir), resource.name)
+            except Exception:
+                provider = ""
+            (
+                pageindex_kbs
+                if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}
+                else traditional_kbs
+            ).append(kb)
+
+        pageindex_chunks = await self._retrieve_pageindex_chunks(
+            queries,
+            pageindex_kbs,
+            stream=stream,
+        )
+        if not traditional_kbs:
+            return pageindex_chunks
+
         try:
             from deeptutor.tools.rag_tool import rag_search
         except Exception as exc:  # pragma: no cover - import guard
             logger.warning(f"rag_tool unavailable: {exc}")
-            return []
+            return pageindex_chunks
 
         async def _one_query(kb: str, query: str) -> list[SourceChunk]:
             try:
@@ -333,14 +478,91 @@ class SourceExplorer(BaseAgent):
                 )
             return out
 
-        coros = [_one_query(kb, q) for kb in kb_list for q in queries]
-        if not coros:
+        # Query-major, not KB-major: the pair list gets trimmed below, and
+        # trimming a KB-major list would starve the last knowledge bases of
+        # every query. Interleaving keeps coverage even when the budget bites.
+        pairs = [(kb, q) for q in queries for kb in traditional_kbs]
+        if not pairs:
             return []
-        gathered = await asyncio.gather(*coros, return_exceptions=False)
+
+        dropped = 0
+        if len(pairs) > MAX_RETRIEVAL_CALLS:
+            dropped = len(pairs) - MAX_RETRIEVAL_CALLS
+            pairs = pairs[:MAX_RETRIEVAL_CALLS]
+            logger.info(
+                f"source exploration capped at {MAX_RETRIEVAL_CALLS} retrievals "
+                f"({len(traditional_kbs)} KBs x {len(queries)} queries); {dropped} skipped"
+            )
+
+        # Every pair is a retrieval plus, on most backends, an LLM synthesis
+        # call. Firing all of them at once trips provider rate limits and
+        # spikes memory; a gate keeps the sweep fast without the stampede.
+        gate = asyncio.Semaphore(RETRIEVAL_CONCURRENCY)
+
+        async def _guarded(kb: str, query: str) -> list[SourceChunk]:
+            async with gate:
+                return await _one_query(kb, query)
+
+        gathered = await asyncio.gather(
+            *(_guarded(kb, q) for kb, q in pairs), return_exceptions=False
+        )
         chunks: list[SourceChunk] = []
         for batch in gathered:
             chunks.extend(batch)
-        return chunks
+        return [*pageindex_chunks, *chunks]
+
+    async def _retrieve_pageindex_chunks(
+        self,
+        queries: list[str],
+        kb_list: list[str],
+        *,
+        stream: StreamBus | None,
+    ) -> list[SourceChunk]:
+        if not kb_list:
+            return []
+        from deeptutor.services.rag.pipelines.pageindex.reasoning import (
+            read_pageindex_with_agent,
+        )
+
+        query_block = "\n".join(f"- {query}" for query in queries)
+
+        async def read_one(kb: str) -> SourceChunk | None:
+            try:
+                result = await read_pageindex_with_agent(
+                    kb_name=kb,
+                    system_prompt=(
+                        "You are the SourceExplorer for a book workflow. Build a dense evidence "
+                        "brief that later planning and block-generation stages can reuse. Cover "
+                        "the supplied research questions, preserve concrete facts and page "
+                        "references, and do not draft the book itself."
+                    ),
+                    user_prompt=f"Collect source evidence for these questions:\n{query_block}",
+                    context=UnifiedContext(
+                        user_message=query_block,
+                        knowledge_bases=[kb],
+                    ),
+                    stream=stream,
+                    source="book_source_explorer",
+                    stage="exploration",
+                )
+            except Exception as exc:
+                logger.warning("PageIndex SourceExplorer failed for %s: %s", kb, exc)
+                return None
+            if not result.text:
+                return None
+            return SourceChunk(
+                chunk_id=f"pageindex::{kb}",
+                kb_name=kb,
+                source="kb",
+                ref=f"pageindex::{kb}",
+                text=_clip(result.text, 8000),
+                score=1.0,
+                query="; ".join(queries),
+                metadata={"provider": result.tool_context.provider, "sources": result.sources},
+            )
+
+        rows = await asyncio.gather(*(read_one(kb) for kb in kb_list))
+        return [row for row in rows if row is not None]
 
     # ------------------------------------------------------------------ #
     # Step 3 — non-KB sources (notebooks, chat, questions)
@@ -440,8 +662,11 @@ class SourceExplorer(BaseAgent):
         system_prompt = system_prompt.rstrip() + language_directive(self.language)
         user_template = self.get_prompt("summary_user") or _FALLBACK_SUMMARY_USER
 
-        # Send only the most informative slice to the synthesiser.
-        slice_chunks = sorted(chunks, key=lambda c: -c.score)[:24]
+        # Send only the most informative slice to the synthesiser — but pick it
+        # per source, not by a global sort. Scores come from different engines
+        # (cosine, BM25, a remote service's own scale) and are not comparable,
+        # so ranking them together let one KB's numbers crowd out every other.
+        slice_chunks = _balanced_slice(chunks, limit=24)
         chunks_block = "\n".join(
             f"- [{c.source}/{c.kb_name or 'n/a'}] (q={c.query!r}) {_clip(c.text, 320)}"
             for c in slice_chunks

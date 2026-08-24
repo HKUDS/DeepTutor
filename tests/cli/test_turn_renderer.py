@@ -146,6 +146,32 @@ def test_narration_renders_before_tools_and_finish_is_answer(monkeypatch) -> Non
     assert "▶ responding" not in result.output
 
 
+def test_dsml_clean_content_uses_answer_rendering(monkeypatch) -> None:
+    events = [
+        {"type": "stage_start", "stage": "responding", "source": "chat"},
+        _running("r1"),
+        _chunk("r1", "Tutor says **well done**."),
+        {
+            **_marker("r1", "narration"),
+            "metadata": {
+                **_marker("r1", "narration")["metadata"],
+                "answer_visible": True,
+            },
+        },
+        {"type": "stage_end", "stage": "responding", "source": "chat"},
+        {"type": "done"},
+    ]
+    _install_fake_runtime(monkeypatch, events)
+
+    result = runner.invoke(app, ["run", "chat", "hello"])
+
+    assert result.exit_code == 0, result.output
+    assert "Tutor says well done." in result.output
+    # Plain narration uses Text and would retain the Markdown markers; the
+    # DSML-visible marker settles this round through the answer renderer.
+    assert "**well done**" not in result.output
+
+
 def test_done_summary_line_includes_rounds_tools_tokens_cost(monkeypatch) -> None:
     _install_fake_runtime(monkeypatch, _agent_loop_turn_events())
 

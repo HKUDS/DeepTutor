@@ -39,6 +39,20 @@ def test_edenai_provider_aliases_and_base_detection() -> None:
     assert find_gateway(api_base="https://api.edenai.run/v3") == spec
 
 
+def test_novita_provider_aliases_and_base_detection() -> None:
+    spec = find_by_name("novita")
+
+    assert spec is not None
+    assert spec.display_name == "Novita AI"
+    assert spec.env_key == "NOVITA_API_KEY"
+    assert spec.backend == "openai_compat"
+    assert spec.mode == "gateway"
+    assert spec.default_api_base == "https://api.novita.ai/openai"
+    assert find_by_name("novita-ai") == spec
+    assert find_by_name("novita_ai") == spec
+    assert find_gateway(api_base="https://api.novita.ai/openai") == spec
+
+
 def test_openai_codex_is_not_detected_from_api_base() -> None:
     assert find_gateway(api_base="https://codex.example.com/v1") is None
 
@@ -57,3 +71,22 @@ def test_github_copilot_is_oauth_backed() -> None:
     assert spec is not None
     assert spec.auth_mode == "oauth"
     assert spec.env_key == ""
+
+
+def test_orcarouter_provider_aliases_and_detection() -> None:
+    spec = find_by_name("orcarouter")
+
+    assert spec is not None
+    assert spec.display_name == "OrcaRouter"
+    assert spec.env_key == "ORCAROUTER_API_KEY"
+    assert spec.backend == "openai_compat"
+    assert spec.mode == "gateway"
+    assert spec.default_api_base == "https://api.orcarouter.ai/v1"
+    assert find_by_name("orca_router") == spec
+    assert find_by_name("orca-router") == spec
+    # sk-orca- keys must resolve to OrcaRouter, not OpenRouter (sk-or-).
+    assert find_gateway(api_key="sk-orca-test-key") == spec
+    assert find_gateway(api_base="https://api.orcarouter.ai/v1") == spec
+    # An OpenRouter key/base must not be claimed by OrcaRouter.
+    assert find_gateway(api_key="sk-or-v1-abcdef") is not None
+    assert find_gateway(api_key="sk-or-v1-abcdef").name != "orcarouter"

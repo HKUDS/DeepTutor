@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Bookmark,
+  BookmarkCheck,
   Loader2,
+  Pencil,
   RefreshCcw,
   Plus,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { Block, BlockType, Page } from "@/lib/book-types";
+import type { Block, BlockType, Page, QuizAttempt } from "@/lib/book-types";
 import BlockRenderer from "./blocks/BlockRenderer";
+import type { QuizAttemptArgs } from "./blocks/QuizBlock";
 import PageOutlineNav from "./PageOutlineNav";
 
 const INSERTABLE_TYPES: BlockType[] = [
@@ -35,15 +41,34 @@ export interface PageReaderProps {
   onChangeBlockType?: (block: Block, newType: BlockType) => void;
   onInsertBlock?: (block_type: BlockType) => Promise<void> | void;
   onDeepDive?: (topic: string, blockId: string) => Promise<void> | void;
-  onQuizAttempt?: (
-    block: Block,
-    args: { questionId?: string; userAnswer?: string; isCorrect: boolean },
-  ) => void;
+  onOpenPage?: (pageId: string) => void;
+  onQuizAttempt?: (block: Block, args: QuizAttemptArgs) => void;
+  /** Reader asked for extra practice on a quiz they got wrong. */
+  onRequestSupplement?: (block: Block) => void;
+  supplementingBlockId?: string | null;
+  onUpdateBody?: (block: Block, body: string) => Promise<void> | void;
+  /** Previous quiz answers, so they survive leaving and returning. */
+  attempts?: QuizAttempt[];
   onRecompile?: () => void;
   pendingDeepDiveTopic?: string | null;
   loading?: boolean;
   bookId?: string;
   bookLanguage?: string;
+  // ── Chapter navigation ──
+  previousPage?: Page | null;
+  nextPage?: Page | null;
+  onNavigate?: (pageId: string) => void;
+  bookmarked?: boolean;
+  onToggleBookmark?: () => void;
+
+  onCaptureSelection?: (payload: {
+    page_id: string;
+    block_id: string;
+    source_text: string;
+    context_before?: string;
+    context_after?: string;
+    source_locator?: string;
+  }) => Promise<void> | void;
 }
 
 export default function PageReader({
@@ -54,12 +79,23 @@ export default function PageReader({
   onChangeBlockType,
   onInsertBlock,
   onDeepDive,
+  onOpenPage,
   onQuizAttempt,
+  onRequestSupplement,
+  supplementingBlockId,
+  onUpdateBody,
+  attempts,
   onRecompile,
   pendingDeepDiveTopic,
   loading = false,
   bookId,
   bookLanguage,
+  previousPage,
+  nextPage,
+  onNavigate,
+  bookmarked = false,
+  onToggleBookmark,
+  onCaptureSelection,
 }: PageReaderProps) {
   const { t } = useTranslation();
   const [showInsertMenu, setShowInsertMenu] = useState(false);
@@ -105,6 +141,87 @@ export default function PageReader({
     return () => scrollContainer.removeEventListener("scroll", handler);
   }, [scrollContainer, userToggled]);
 
+  const normalizeText = useCallback((value: string): string => {
+    return (value || "").replace(/\s+/g, " ").trim();
+  }, []);
+
+  const captureSelection = useCallback(() => {
+    if (!onCaptureSelection || !page) {
+      return;
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      window.alert(t("Please select some text before saving."));
+      return;
+    }
+
+    const sourceText = normalizeText(selection.toString());
+    if (!sourceText) {
+      window.alert(t("Selected text is empty."));
+      return;
+    }
+
+    const anchor = selection.anchorNode;
+    const anchorEl =
+      anchor && anchor.nodeType === Node.TEXT_NODE
+        ? anchor.parentElement
+        : (anchor as HTMLElement | null);
+    const blockEl = anchorEl?.closest?.(
+      "[data-block-id]",
+    ) as HTMLElement | null;
+    const blockId = blockEl?.getAttribute("data-block-id") || "";
+
+    const rawContext = blockEl?.textContent || selection.toString();
+    const contextText = rawContext || "";
+    const normalizedContext = normalizeText(contextText);
+    const sourceStart = normalizedContext.indexOf(sourceText);
+    const sourceEnd = sourceStart >= 0 ? sourceStart + sourceText.length : -1;
+    const beforeStart = sourceStart >= 0 ? Math.max(0, sourceStart - 120) : 0;
+    const afterEnd =
+      sourceEnd >= 0 ? Math.min(normalizedContext.length, sourceEnd + 120) : 0;
+    const contextBefore =
+      sourceStart >= 0 ? normalizedContext.slice(beforeStart, sourceStart) : "";
+    const contextAfter =
+      sourceEnd >= 0 ? normalizedContext.slice(sourceEnd, afterEnd) : "";
+
+    const sourceLocator = blockId
+      ? `/book/${page.book_id}/pages/${page.id}/blocks/${blockId}`
+      : `/book/${page.book_id}/pages/${page.id}`;
+
+    void onCaptureSelection({
+      page_id: page.id,
+      block_id: blockId,
+      source_text: sourceText,
+      context_before: contextBefore,
+      context_after: contextAfter,
+      source_locator: sourceLocator,
+    });
+    selection.removeAllRanges();
+  }, [onCaptureSelection, normalizeText, page, t]);
+
+  useEffect(() => {
+    if (!onNavigate) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      // Never steal arrow keys from a field the reader is typing in.
+      if (
+        target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+      if (event.key === "ArrowLeft" && previousPage) {
+        onNavigate(previousPage.id);
+      } else if (event.key === "ArrowRight" && nextPage) {
+        onNavigate(nextPage.id);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onNavigate, previousPage, nextPage]);
+
   if (!page) {
     return (
       <div className="flex h-full items-center justify-center text-[var(--muted-foreground)]">
@@ -117,6 +234,8 @@ export default function PageReader({
   const collapseTip = t("Collapse header");
   const failedBlocks = page.blocks.filter((block) => block.status === "error");
   const hasFailedBlocks = failedBlocks.length > 0;
+  const canCaptureSelection =
+    !!onCaptureSelection && !loading && page.blocks.length > 0;
 
   return (
     // The outer container is `relative` so the floating outline nav can
@@ -153,6 +272,27 @@ export default function PageReader({
               <span className="rounded-full bg-[var(--muted)] px-2.5 py-0.5 text-[11px] uppercase tracking-wider text-[var(--muted-foreground)]">
                 {t(page.status)}
               </span>
+            )}
+            {onToggleBookmark && (
+              <button
+                type="button"
+                onClick={onToggleBookmark}
+                title={
+                  bookmarked ? t("Remove bookmark") : t("Bookmark this chapter")
+                }
+                aria-pressed={bookmarked}
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+                  bookmarked
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {bookmarked ? (
+                  <BookmarkCheck className="h-3.5 w-3.5" />
+                ) : (
+                  <Bookmark className="h-3.5 w-3.5" />
+                )}
+              </button>
             )}
             {!headerCollapsed && onRecompile && (
               <button
@@ -272,7 +412,12 @@ export default function PageReader({
                   onMove={onMoveBlock}
                   onChangeType={onChangeBlockType}
                   onDeepDive={onDeepDive}
+                  onOpenPage={onOpenPage}
                   onQuizAttempt={onQuizAttempt}
+                  onRequestSupplement={onRequestSupplement}
+                  supplementing={supplementingBlockId === block.id}
+                  onUpdateBody={onUpdateBody}
+                  attempts={attempts}
                   pendingDeepDiveTopic={pendingDeepDiveTopic}
                   bookId={bookId}
                   currentPageId={page.id}
@@ -321,11 +466,43 @@ export default function PageReader({
                     ))}
                   </div>
                 )}
+                {canCaptureSelection && (
+                  <button
+                    type="button"
+                    onClick={captureSelection}
+                    className="inline-flex items-center justify-center rounded-full border border-dashed border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/50 hover:text-[var(--primary)]"
+                  >
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                    {t("Save selection")}
+                  </button>
+                )}
               </div>
             )}
           </article>
         )}
       </div>
+
+      {(previousPage || nextPage) && onNavigate && (
+        <footer className="border-t border-[var(--border)] bg-[var(--card)]/60 px-8 py-2.5">
+          <div className="mx-auto flex w-full max-w-[78ch] items-center justify-between gap-3">
+            <NavButton
+              page={previousPage}
+              direction="previous"
+              label={t("Previous chapter")}
+              onNavigate={onNavigate}
+            />
+            <span className="shrink-0 text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/70">
+              {t("← / → to turn pages")}
+            </span>
+            <NavButton
+              page={nextPage}
+              direction="next"
+              label={t("Next chapter")}
+              onNavigate={onNavigate}
+            />
+          </div>
+        </footer>
+      )}
 
       {/* Floating outline lives outside the scroll container so it stays
           pinned to the viewport regardless of page scrolling. */}
@@ -336,5 +513,39 @@ export default function PageReader({
         language={bookLanguage}
       />
     </div>
+  );
+}
+
+function NavButton({
+  page,
+  direction,
+  label,
+  onNavigate,
+}: {
+  page: Page | null | undefined;
+  direction: "previous" | "next";
+  label: string;
+  onNavigate: (pageId: string) => void;
+}) {
+  if (!page) return <span className="min-w-0 flex-1" />;
+  const isNext = direction === "next";
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(page.id)}
+      className={`group inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] ${
+        isNext ? "justify-end text-right" : "justify-start text-left"
+      }`}
+      title={page.title}
+    >
+      {!isNext && <ChevronLeft className="h-3.5 w-3.5 shrink-0" />}
+      <span className="min-w-0">
+        <span className="block text-[10px] uppercase tracking-wider opacity-70">
+          {label}
+        </span>
+        <span className="block truncate">{page.title}</span>
+      </span>
+      {isNext && <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+    </button>
   );
 }

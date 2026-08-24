@@ -1,11 +1,13 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
-// ── Real notebook system (file-backed under data/user/workspace/notebook) ──
+// ── Notebooks (file-backed under data/user/workspace/notebook) ──
 //
-// Notebooks created in the Knowledge → Notebooks tab and consumed everywhere
-// chat output is saved (SaveToNotebookModal) or referenced
-// (NotebookRecordPicker) live in this system. They are distinct from the
-// "Question Notebook" categories below which only track quiz entries.
+// Notebooks live at /notebook and collect saved output from chat, research
+// and Co-Writer (written by SaveToNotebookModal, read back by
+// NotebookRecordPicker). They are a different feature from the Question
+// Bank at /space/questions further down this file, which only tracks quiz
+// entries — the two share the "notebook" word in their API paths for
+// historical reasons, nothing else.
 
 export type NotebookRecordType =
   | "solve"
@@ -24,6 +26,8 @@ export interface NotebookSummary {
   record_count?: number;
   created_at?: number;
   updated_at?: number;
+  /** Set when the file is on disk but could not be parsed. */
+  unreadable?: boolean;
 }
 
 export interface NotebookRecordItem {
@@ -117,6 +121,70 @@ export async function deleteNotebookRecord(
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
 }
 
+/**
+ * Edit one record in place.
+ *
+ * Send only the fields being changed: the backend distinguishes an omitted
+ * field from an explicit `null`, so spreading a whole record in here would
+ * rewrite values the user never touched.
+ */
+export async function updateNotebookRecord(
+  notebookId: string,
+  recordId: string,
+  changes: {
+    title?: string;
+    summary?: string;
+    user_query?: string;
+    output?: string;
+    metadata?: Record<string, unknown>;
+    kb_name?: string | null;
+  },
+): Promise<NotebookRecordItem> {
+  const response = await apiFetch(
+    apiUrl(`/api/v1/notebook/${notebookId}/records/${recordId}`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(changes),
+    },
+  );
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  const data = (await response.json()) as { record: NotebookRecordItem };
+  return data.record;
+}
+
+/** Move a record to another notebook, or copy it there under a new id. */
+export async function relocateNotebookRecord(
+  notebookId: string,
+  recordId: string,
+  targetNotebookId: string,
+  mode: "move" | "copy",
+): Promise<NotebookRecordItem> {
+  const response = await apiFetch(
+    apiUrl(`/api/v1/notebook/${notebookId}/records/${recordId}/${mode}`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_notebook_id: targetNotebookId }),
+    },
+  );
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  const data = (await response.json()) as { record: NotebookRecordItem };
+  return data.record;
+}
+
+/** Fetch a whole notebook rendered as one Markdown document. */
+export async function exportNotebookMarkdown(
+  notebookId: string,
+): Promise<string> {
+  const response = await apiFetch(
+    apiUrl(`/api/v1/notebook/${notebookId}/export`),
+    { cache: "no-store" },
+  );
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  return await response.text();
+}
+
 // ── Question notebook (quiz entries + categories) ─────────────────
 
 export interface NotebookAnswerImage {
@@ -164,29 +232,47 @@ export interface NotebookEntryListResponse {
 
 async function expectJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    // Surface FastAPI's `detail` when there is one: "A category named 'Math'
+    // already exists" is actionable, "Request failed: 409" is not.
+    let detail = "";
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      /* non-JSON error body — fall back to the status line */
+    }
+    throw new Error(detail || `Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
 
 // ── Entries ──────────────────────────────────────────────────────
 
+export interface NotebookEntryFilter {
+  category_id?: number;
+  /** Only entries in no category at all — the triage inbox. */
+  uncategorized?: boolean;
+  bookmarked?: boolean;
+  is_correct?: boolean;
+  search?: string;
+  sort?: "recent" | "oldest";
+  limit?: number;
+  offset?: number;
+}
+
 export async function listNotebookEntries(
-  filter: {
-    category_id?: number;
-    bookmarked?: boolean;
-    is_correct?: boolean;
-    limit?: number;
-    offset?: number;
-  } = {},
+  filter: NotebookEntryFilter = {},
 ): Promise<NotebookEntryListResponse> {
   const params = new URLSearchParams();
   if (filter.category_id !== undefined)
     params.set("category_id", String(filter.category_id));
+  if (filter.uncategorized) params.set("uncategorized", "true");
   if (filter.bookmarked !== undefined)
     params.set("bookmarked", String(filter.bookmarked));
   if (filter.is_correct !== undefined)
     params.set("is_correct", String(filter.is_correct));
+  if (filter.search) params.set("search", filter.search);
+  if (filter.sort) params.set("sort", filter.sort);
   if (filter.limit !== undefined) params.set("limit", String(filter.limit));
   if (filter.offset !== undefined) params.set("offset", String(filter.offset));
   const query = params.toString();
@@ -318,6 +404,53 @@ export async function addEntryToCategory(
     },
   );
   await expectJson<{ added: boolean }>(response);
+}
+
+export interface BulkCategoryResult {
+  changed: number;
+  requested: number;
+  category_id: number;
+  link: boolean;
+}
+
+/**
+ * File (or unfile) many entries in one request.
+ *
+ * One round-trip instead of N: the list refreshes once against a settled
+ * server state rather than racing a burst of per-entry writes.
+ */
+export async function bulkLinkEntriesToCategory(
+  entryIds: number[],
+  categoryId: number,
+  link = true,
+): Promise<BulkCategoryResult> {
+  const response = await apiFetch(
+    apiUrl("/api/v1/question-notebook/entries/categories/bulk"),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry_ids: entryIds,
+        category_id: categoryId,
+        link,
+      }),
+    },
+  );
+  return expectJson<BulkCategoryResult>(response);
+}
+
+export interface QuestionBankStats {
+  total: number;
+  wrong: number;
+  bookmarked: number;
+  uncategorized: number;
+}
+
+export async function getQuestionBankStats(): Promise<QuestionBankStats> {
+  const response = await apiFetch(apiUrl("/api/v1/question-notebook/stats"), {
+    cache: "no-store",
+  });
+  return expectJson<QuestionBankStats>(response);
 }
 
 export async function removeEntryFromCategory(

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -66,6 +67,46 @@ def test_loader_routes_parser_files_through_active_parse_engine(
     assert by_name["notes.docx"] == "Docx body text"
     assert "Block one" in by_name["paper.pdf"]
     assert "Block two" in by_name["paper.pdf"]
+
+
+def test_loader_keeps_event_loop_responsive_while_parser_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    import deeptutor.services.parsing as parsing
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    pdf_path = tmp_path / "slow.pdf"
+    pdf_path.write_bytes(b"stub")
+    parse_started = threading.Event()
+    allow_parse_to_finish = threading.Event()
+
+    class _BlockingService:
+        def parse(self, _source_path, **_kwargs):
+            parse_started.set()
+            assert allow_parse_to_finish.wait(timeout=2)
+            return ParsedDocument(markdown="Parsed without blocking the loop")
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: _BlockingService())
+
+    async def _exercise() -> list[object]:
+        load_task = asyncio.create_task(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+        deadline = asyncio.get_running_loop().time() + 1
+        while not parse_started.is_set():
+            assert asyncio.get_running_loop().time() < deadline
+            await asyncio.sleep(0.001)
+
+        # Reaching this line while parse() is still waiting proves that the
+        # parser is not occupying the event-loop thread.
+        assert not load_task.done()
+        allow_parse_to_finish.set()
+        return await asyncio.wait_for(load_task, timeout=1)
+
+    documents = asyncio.run(_exercise())
+    assert [document.text for document in documents] == ["Parsed without blocking the loop"]
 
 
 def test_loader_skips_document_when_active_engine_cannot_parse(
@@ -170,17 +211,24 @@ def test_loader_skips_images_when_embedding_provider_is_text_only(
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyClient())
 
+    def _unexpected_llm_client():
+        pytest.fail("text-only embedding must not initialize the LLM client")
+
+    monkeypatch.setattr(loader_module, "get_llm_client", _unexpected_llm_client)
+
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
     assert documents == []
 
 
-def test_loader_embeds_images_when_embedding_provider_is_multimodal(
+def test_loader_embeds_images_with_qwen38_max_vision_capability(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("llama_index.core")
     from llama_index.core.schema import ImageNode
 
+    from deeptutor.services.llm.client import LLMClient
+    from deeptutor.services.llm.config import LLMConfig
     from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
 
     image_path = tmp_path / "photo.png"
@@ -197,19 +245,24 @@ def test_loader_embeds_images_when_embedding_provider_is_multimodal(
             captured["contents"] = contents
             return [[0.1, 0.2, 0.3]]
 
-    class _VisionClient:
-        config = type("Config", (), {"binding": "openai", "model": "gpt-4o"})()
+    vision_client = LLMClient(
+        LLMConfig(
+            binding="dashscope",
+            model="qwen3.8-max",
+            api_key="test-key",
+            base_url="https://example.invalid/v1",
+        )
+    )
 
-        def supports_multimodal_images(self) -> bool:
-            return True
+    async def _complete(prompt: str, **kwargs: object) -> str:
+        captured["llm_prompt"] = prompt
+        captured["llm_kwargs"] = kwargs
+        return "A logo image with visible HKU text."
 
-        async def complete(self, prompt, **kwargs):
-            captured["llm_prompt"] = prompt
-            captured["llm_kwargs"] = kwargs
-            return "A logo image with visible HKU text."
+    monkeypatch.setattr(vision_client, "complete", _complete)
 
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _VisionClient())
+    monkeypatch.setattr(loader_module, "get_llm_client", lambda: vision_client)
 
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
@@ -252,7 +305,7 @@ def test_loader_skips_images_when_llm_is_text_only(
     assert documents == []
 
 
-def test_loader_logs_all_missing_multimodal_image_requirements(
+def test_loader_skips_images_when_llm_client_is_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     pytest.importorskip("llama_index.core")
@@ -261,27 +314,22 @@ def test_loader_logs_all_missing_multimodal_image_requirements(
     image_path = tmp_path / "photo.png"
     image_path.write_bytes(b"\x89PNG\r\n")
 
-    class _TextOnlyEmbeddingClient:
-        config = type("Config", (), {"binding": "openai", "model": "text-embedding-3-small"})()
+    class _MultimodalEmbeddingClient:
+        config = type("Config", (), {"binding": "siliconflow", "model": "qwen3-vl"})()
 
         def supports_multimodal_contents(self) -> bool:
-            return False
+            return True
 
-    class _TextOnlyLLMClient:
-        config = type("Config", (), {"binding": "openai", "model": "gpt-3.5-turbo"})()
+    def _unavailable_llm_client():
+        raise RuntimeError("no LLM configured")
 
-        def supports_multimodal_images(self) -> bool:
-            return False
-
-    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyEmbeddingClient())
-    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _TextOnlyLLMClient())
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
+    monkeypatch.setattr(loader_module, "get_llm_client", _unavailable_llm_client)
 
     with caplog.at_level("WARNING"):
         documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(image_path)]))
 
     assert documents == []
     assert "requires both multimodal embedding and multimodal LLM support" in caplog.text
-    assert "embedding provider/model does not support multimodal contents" in caplog.text
-    assert "LLM provider/model does not support multimodal image input" in caplog.text
-    assert "text-embedding-3-small" in caplog.text
-    assert "gpt-3.5-turbo" in caplog.text
+    assert "LLM client is unavailable" in caplog.text
+    assert "no LLM configured" in caplog.text

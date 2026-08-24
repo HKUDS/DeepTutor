@@ -27,6 +27,7 @@ from deeptutor.learning.models import (
     LearningProgress,
     ReviewTask,
 )
+from deeptutor.learning.pending import PublicPendingQuestion, public_pending_question
 
 # Quantitative gate for objective knowledge types: the learner must reach this
 # mastery (recency-weighted accuracy; see ``mastery.compute_mastery``) before
@@ -122,6 +123,7 @@ class NextStep:
     threshold: float = 0.0
     reason: str = ""
     pending_prompt: str = ""
+    pending_question: PublicPendingQuestion | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -137,6 +139,9 @@ class NextStep:
             "threshold": round(self.threshold, 3),
             "reason": self.reason,
             "pending_prompt": self.pending_prompt,
+            "pending_question": (
+                self.pending_question.to_dict() if self.pending_question is not None else None
+            ),
         }
 
 
@@ -180,6 +185,7 @@ def next_objective(progress: LearningProgress, *, now: float | None = None) -> N
             threshold=gate_threshold(kp.type) if kp else 0.0,
             reason="A posed question is awaiting the learner's answer; grade it with mastery_grade.",
             pending_prompt=pending.prompt,
+            pending_question=public_pending_question(pending),
         )
 
     due = due_reviews(progress, now=now)
@@ -274,6 +280,74 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
     }
 
 
+def objective_report(progress: LearningProgress, kp_id: str) -> dict | None:
+    """Everything the engine knows about one objective, for review.
+
+    ``map_summary`` stays deliberately thin because the tutor reads it on every
+    turn; this is the opposite trade — the whole evidence trail behind a single
+    objective, read only when someone opens it. ``None`` when *kp_id* is not on
+    the path.
+    """
+    kp, module_id, module_name = find_knowledge_point(progress, kp_id)
+    if kp is None:
+        return None
+
+    attempts = [
+        {
+            "question_id": attempt.question_id,
+            "is_correct": attempt.is_correct,
+            "answer": str(attempt.user_answer or ""),
+            "error_type": attempt.error_type.value if attempt.error_type else "",
+            "at": attempt.timestamp,
+        }
+        for attempt in progress.quiz_attempts
+        if attempt.knowledge_point_id == kp_id
+    ]
+    state = progress.repetition_states.get(kp_id)
+    due_at = next(
+        (task.due_at for task in progress.review_queue if task.knowledge_point_id == kp_id),
+        None,
+    )
+    return {
+        "id": kp.id,
+        "name": kp.name,
+        "type": kp.type.value,
+        "module_id": module_id,
+        "module_name": module_name,
+        "status": objective_status(progress, kp),
+        "gate": _gate_kind(kp),
+        "mastered": is_mastered(progress, kp),
+        "mastery": round(display_mastery(progress, kp), 3),
+        "threshold": round(gate_threshold(kp.type), 3),
+        "attempts": attempts,
+        "correct_count": sum(1 for attempt in attempts if attempt["is_correct"]),
+        # The learner's own words, kept as the evidence behind a qualitative pass.
+        "explanation": progress.feynman_explanations.get(kp_id, ""),
+        "review": (
+            {
+                "due_at": due_at,
+                "interval_index": state.interval_index,
+                "consecutive_correct": state.consecutive_correct,
+                "consecutive_wrong": state.consecutive_wrong,
+            }
+            if state is not None
+            else None
+        ),
+        "errors": [
+            {
+                "id": record.id,
+                "error_type": record.error_type.value,
+                "status": record.status,
+                "self_attribution": record.self_attribution,
+                "retries": len(record.retry_history),
+                "created_at": record.created_at,
+            }
+            for record in progress.error_records
+            if record.knowledge_point_id == kp_id
+        ],
+    }
+
+
 __all__ = [
     "QUANTITATIVE_GATE",
     "QUALITATIVE_TYPES",
@@ -282,6 +356,7 @@ __all__ = [
     "is_mastered",
     "display_mastery",
     "objective_status",
+    "objective_report",
     "due_reviews",
     "find_knowledge_point",
     "next_objective",

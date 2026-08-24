@@ -19,6 +19,94 @@ from .embedding_endpoint import normalize_embedding_endpoint_for_display
 # current user's PathService on every call.
 CATALOG_PATH = get_path_service().get_settings_file("model_catalog")
 
+# A fixed placeholder is returned to settings clients instead of provider
+# credentials. It is also accepted on write as "keep the stored value", so a
+# load/edit/save round trip never sends a real secret to the browser.
+CATALOG_SECRET_MASK = "***"
+_SECRET_FIELD_HINTS = ("api_key", "apikey", "token", "secret", "password")
+
+
+def _is_secret_field(name: str) -> bool:
+    normalized = name.lower()
+    return any(hint in normalized for hint in _SECRET_FIELD_HINTS)
+
+
+def _redact_secret_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return CATALOG_SECRET_MASK if value else value
+    if isinstance(value, dict):
+        return {key: _redact_secret_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_secret_value(item) for item in value]
+    return value
+
+
+def _redact_profile(profile: dict[str, Any]) -> None:
+    for key, value in list(profile.items()):
+        # Header values are credentials often enough that none of them should
+        # cross the API boundary. This also covers JSON-string header maps.
+        if key == "extra_headers" or _is_secret_field(key):
+            profile[key] = _redact_secret_value(value)
+
+
+def redact_catalog_secrets(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Return an API-safe catalog without mutating stored configuration."""
+
+    redacted = deepcopy(catalog)
+    for service in redacted.get("services", {}).values():
+        if not isinstance(service, dict):
+            continue
+        for profile in service.get("profiles", []):
+            if isinstance(profile, dict):
+                _redact_profile(profile)
+    return redacted
+
+
+def _restore_secret_value(proposed: Any, current: Any) -> Any:
+    if proposed == CATALOG_SECRET_MASK:
+        return deepcopy(current)
+    if isinstance(proposed, dict) and isinstance(current, dict):
+        return {
+            key: _restore_secret_value(value, current.get(key)) for key, value in proposed.items()
+        }
+    if isinstance(proposed, list) and isinstance(current, list):
+        return [
+            _restore_secret_value(value, current[index] if index < len(current) else None)
+            for index, value in enumerate(proposed)
+        ]
+    return proposed
+
+
+def _restore_profile_secrets(proposed: dict[str, Any], current: dict[str, Any]) -> None:
+    for key, value in list(proposed.items()):
+        if key == "extra_headers" or _is_secret_field(key):
+            proposed[key] = _restore_secret_value(value, current.get(key))
+
+
+def restore_catalog_secrets(
+    proposed_catalog: dict[str, Any], current_catalog: dict[str, Any]
+) -> dict[str, Any]:
+    """Replace secret placeholders with stored values from the same profile."""
+
+    restored = deepcopy(proposed_catalog)
+    current_services = current_catalog.get("services", {})
+    for service_name, proposed_service in restored.get("services", {}).items():
+        if not isinstance(proposed_service, dict):
+            continue
+        current_service = current_services.get(service_name, {})
+        current_profiles = {
+            profile.get("id"): profile
+            for profile in current_service.get("profiles", [])
+            if isinstance(profile, dict) and profile.get("id")
+        }
+        for profile in proposed_service.get("profiles", []):
+            if not isinstance(profile, dict):
+                continue
+            current_profile = current_profiles.get(profile.get("id"))
+            if current_profile is not None:
+                _restore_profile_secrets(profile, current_profile)
+    return restored
+
 
 def _service_shell() -> dict[str, Any]:
     return {
@@ -151,15 +239,23 @@ class ModelCatalogService:
                     profile.setdefault("binding", "openai")
                     profile.setdefault("extra_headers", {})
                     if service_name == "embedding":
+                        models = profile.setdefault("models", [])
+                        active_model_id = service.get("active_model_id")
+                        active_model = next(
+                            (item for item in models if item.get("id") == active_model_id),
+                            models[0] if models else {},
+                        )
                         before = str(profile.get("base_url") or "")
                         after = normalize_embedding_endpoint_for_display(
                             profile.get("binding"),
                             before,
+                            model=active_model.get("model"),
                         )
                         if after != before:
                             profile["base_url"] = after
                             changed = True
-                    models = profile.setdefault("models", [])
+                    else:
+                        models = profile.setdefault("models", [])
                     for model in models:
                         model.setdefault("id", f"{service_name}-model-{uuid4().hex[:8]}")
                         model.setdefault("name", model.get("model") or "Untitled Model")
@@ -241,4 +337,11 @@ def get_model_catalog_service() -> ModelCatalogService:
     return ModelCatalogService.get_instance(get_path_service().get_settings_file("model_catalog"))
 
 
-__all__ = ["CATALOG_PATH", "ModelCatalogService", "get_model_catalog_service"]
+__all__ = [
+    "CATALOG_PATH",
+    "CATALOG_SECRET_MASK",
+    "ModelCatalogService",
+    "get_model_catalog_service",
+    "redact_catalog_secrets",
+    "restore_catalog_secrets",
+]

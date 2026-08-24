@@ -1,0 +1,10 @@
+# Reader-facing brief handed to the shared visualize / animation pipeline.
+# Lives here rather than in Python so it follows the book's language like
+# every other block's prompt does.
+brief: "为章节\"{chapter_title}\"构建一个{interaction}式 HTML 页面{focus_clause}。页面应当让学习者能够操作状态、拖拽或点击控件，或跟随引导式演示逐步理解该概念。"
+
+# Quoted on purpose — the English clause needs its leading space.
+focus_clause: "，聚焦于{focus}"
+
+context_summary: "章节摘要：{chapter_summary}"
+context_objectives: "学习目标："

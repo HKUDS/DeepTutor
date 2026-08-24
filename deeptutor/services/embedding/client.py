@@ -5,6 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from deeptutor.services.config.embedding_endpoint import (
+    redact_embedding_endpoint_for_display,
+)
 from deeptutor.services.config.provider_runtime import (
     EMBEDDING_PROVIDERS,
     embedding_endpoint_validation_error,
@@ -40,8 +43,9 @@ class EmbeddingClient:
         endpoint = self.config.effective_url or self.config.base_url
         problem = embedding_endpoint_validation_error(self.config.binding, endpoint)
         if problem:
+            displayed_endpoint = redact_embedding_endpoint_for_display(endpoint)
             raise ValueError(
-                f"{problem} Current Settings endpoint is {endpoint!r}. "
+                f"{problem} Current Settings endpoint is {displayed_endpoint!r}. "
                 "DeepTutor sends embedding requests to the Settings URL exactly; "
                 "update the visible Endpoint URL instead of relying on hidden path appending."
             )
@@ -63,9 +67,21 @@ class EmbeddingClient:
             f"(model: {self.config.model}, dimensions: {self.config.dim})"
         )
 
-    async def embed(self, texts: List[str], progress_callback=None) -> List[List[float]]:
+    async def embed(
+        self,
+        texts: List[str],
+        progress_callback=None,
+        *,
+        input_type: str | None = None,
+    ) -> List[List[float]]:
+        """Embed text batches, optionally identifying their retrieval role."""
         if not texts:
             return []
+
+        # Only adapters that opted in receive the role. Forwarding it to every
+        # backend would change the request Jina has always sent (no `task`) and
+        # silently invalidate the indexes built from it.
+        role = input_type if getattr(self.adapter, "SUPPORTS_INPUT_TYPE", False) else None
 
         import asyncio
 
@@ -92,6 +108,7 @@ class EmbeddingClient:
                 texts=batch,
                 model=self.config.model,
                 dimensions=self.config.dim or None,
+                input_type=role,
             )
             try:
                 response = await self.adapter.embed(request)
@@ -234,12 +251,6 @@ class EmbeddingClient:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(asyncio.run, self.embed(texts))
             return future.result()
-
-    def get_embedding_func(self):
-        async def embedding_wrapper(texts: List[str]) -> List[List[float]]:
-            return await self.embed(texts)
-
-        return embedding_wrapper
 
 
 _client: Optional[EmbeddingClient] = None

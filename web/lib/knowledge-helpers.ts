@@ -12,10 +12,41 @@ export const DEFAULT_UPLOAD_POLICY: KnowledgeUploadPolicy = {
   max_file_size_bytes: 200 * 1024 * 1024,
 };
 
+const PAGEINDEX_UPLOAD_EXTENSIONS: Record<string, string[]> = {
+  pageindex: [
+    ".pdf",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".docx",
+    ".doc",
+    ".pptx",
+    ".ppt",
+    ".xlsx",
+    ".xls",
+    ".csv",
+  ],
+  "pageindex-oss": [".pdf"],
+};
+
+export function uploadPolicyForProvider(
+  policy: KnowledgeUploadPolicy,
+  provider?: string,
+): KnowledgeUploadPolicy {
+  const extensions = PAGEINDEX_UPLOAD_EXTENSIONS[provider || ""];
+  return extensions
+    ? { ...policy, extensions, accept: extensions.join(",") }
+    : policy;
+}
+
 export interface ProgressInfo {
   task_id?: string;
   stage?: string;
+  /** Rendered English. Prefer `progressMessage()`, which translates. */
   message?: string;
+  /** English `{{name}}` template the backend formatted `message` from. */
+  message_key?: string;
+  message_params?: Record<string, string | number>;
   current?: number;
   total?: number;
   percent?: number;
@@ -23,6 +54,33 @@ export interface ProgressInfo {
   indexed_count?: number;
   index_changed?: boolean;
   index_action?: string;
+  error?: string;
+  error_code?: string;
+  retryable?: boolean;
+}
+
+/**
+ * The progress line to show, translated when the backend named its template.
+ *
+ * Indexing runs detached from any request, so the backend has no viewer
+ * language and sends the English template plus its values; `t()` is where the
+ * language is actually known. Falls back to the rendered English for progress
+ * emitted before a producer was converted.
+ */
+export function progressMessage(
+  progress: Pick<ProgressInfo, "message" | "message_key" | "message_params">,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string | undefined {
+  if (!progress.message_key) return progress.message;
+  return t(progress.message_key, progress.message_params ?? {});
+}
+
+export interface KnowledgeIndexFailure {
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  requiresModelChange: boolean;
+  settingsHref?: string;
 }
 
 export interface IndexVersion {
@@ -56,6 +114,8 @@ export interface KnowledgeBase {
     type?: string;
     /** Absolute path of a connected Obsidian vault (when type === "obsidian"). */
     vault_path?: string;
+    /** SQLite store of a connected MarginNote 4 library (when type === "marginnote4"). */
+    db_path?: string;
     /** Backend of a connected subagent (when type === "subagent"): "claude_code" | "codex" | "gemini" | "kimi" | "opencode" | "mimo" | "partner". */
     agent_kind?: string;
     /** Bound partner id when agent_kind === "partner". */
@@ -81,6 +141,22 @@ export interface KnowledgeBase {
   provenance_label?: string;
   available?: boolean;
 }
+
+export type ProviderConnectionStatus = "ready" | "needs_key" | "unavailable";
+
+export const providerUsesEmbeddingMetadata = (provider?: string): boolean =>
+  provider !== "pageindex" && provider !== "pageindex-oss";
+
+export const providerConnectionStatus = (provider: {
+  id: string;
+  configured?: boolean;
+  requires_api_key?: boolean;
+}): ProviderConnectionStatus => {
+  if (provider.requires_api_key && provider.configured === false)
+    return "needs_key";
+  if (provider.configured === false) return "unavailable";
+  return "ready";
+};
 
 export interface ValidatedSelectionFile {
   id: string;
@@ -137,9 +213,44 @@ export const formatKnowledgeTimestamp = (value?: string): string | null => {
   return parsed ? parsed.toLocaleString() : value || null;
 };
 
+export const MARGINNOTE4_KB_TYPE = "marginnote4";
+
+/**
+ * A connected MarginNote 4 library.
+ *
+ * It owns no documents and no index: the Add-on pushes objects into its own
+ * store and the MarginNote tools read them, so the file, add-documents and
+ * index-version surfaces have nothing to act on.
+ */
+export const isMarginNoteKb = (kb: KnowledgeBase): boolean =>
+  kb.metadata?.type === MARGINNOTE4_KB_TYPE;
+
+export const KB_DETAIL_SECTIONS = [
+  "files",
+  "add",
+  "versions",
+  "devices",
+  "settings",
+] as const;
+
+export type KbDetailSection = (typeof KB_DETAIL_SECTIONS)[number];
+
+/**
+ * The detail sections a KB has something to show in.
+ *
+ * A MarginNote library owns no raw files and builds no index, so files /
+ * add-documents / index-versions would all render empty against it; what it
+ * does have is the devices that feed it. Every other KB has the reverse.
+ */
+export const kbDetailSections = (kb: KnowledgeBase): KbDetailSection[] =>
+  isMarginNoteKb(kb)
+    ? ["devices", "settings"]
+    : KB_DETAIL_SECTIONS.filter((section) => section !== "devices");
+
 /** The retrieval engine a KB is bound to. Connected vaults badge by source. */
 export const kbProvider = (kb: KnowledgeBase): string => {
   if (kb.metadata?.type === "obsidian") return "obsidian";
+  if (isMarginNoteKb(kb)) return MARGINNOTE4_KB_TYPE;
   return (
     (kb.statistics?.rag_provider as string | undefined) ||
     (kb.metadata?.rag_provider as string | undefined) ||
@@ -157,6 +268,58 @@ export const kbDocCount = (kb: KnowledgeBase): number | null => {
 
 export const resolveKbStatus = (kb: KnowledgeBase): string =>
   kb.status ?? kb.statistics?.status ?? "unknown";
+
+export const resolveKnowledgeIndexFailure = (
+  kb: KnowledgeBase,
+): KnowledgeIndexFailure | null => {
+  if (resolveKbStatus(kb) !== "error") return null;
+
+  const progress = kb.progress;
+  const storedProgress = kb.statistics?.progress;
+  const code =
+    progress?.error_code?.trim() ||
+    storedProgress?.error_code?.trim() ||
+    undefined;
+  const message =
+    progress?.error?.trim() ||
+    storedProgress?.error?.trim() ||
+    progress?.message?.trim() ||
+    storedProgress?.message?.trim() ||
+    undefined;
+
+  const embeddingConfigurationCodes = new Set([
+    "graphrag_embedding_authentication_failed",
+    "graphrag_embedding_dimension_mismatch",
+    "graphrag_embedding_endpoint_failed",
+    "graphrag_embedding_incompatible",
+    "graphrag_embedding_provider_unsupported",
+  ]);
+  const completionConfigurationCodes = new Set([
+    "graphrag_model_incompatible",
+    "graphrag_provider_unsupported",
+    "graphrag_model_authentication_failed",
+    "graphrag_model_endpoint_failed",
+  ]);
+  const requiresEmbeddingChange = embeddingConfigurationCodes.has(code ?? "");
+  const requiresCompletionChange = completionConfigurationCodes.has(code ?? "");
+
+  return {
+    code,
+    message,
+    retryable: progress?.retryable ?? storedProgress?.retryable,
+    requiresModelChange: requiresEmbeddingChange || requiresCompletionChange,
+    settingsHref: requiresEmbeddingChange
+      ? "/settings/embedding"
+      : requiresCompletionChange
+        ? "/settings/models"
+        : undefined,
+  };
+};
+
+export const taskFailureMessage = (payload: {
+  detail?: string;
+  details?: string;
+}): string => payload.detail?.trim() || "Task failed";
 
 export const kbNeedsReindex = (kb: KnowledgeBase): boolean =>
   Boolean(kb.statistics?.needs_reindex) ||

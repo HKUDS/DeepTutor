@@ -22,9 +22,7 @@ from . import register_provider
 class PerplexityProvider(BaseSearchProvider):
     """Perplexity AI search provider"""
 
-    display_name = "Perplexity"
     description = "AI-powered search with answers"
-    supports_answer = True
     BASE_URL = "https://api.perplexity.ai"  # Used by the perplexity package internally
 
     def __init__(self, api_key: str | None = None, **kwargs: Any) -> None:

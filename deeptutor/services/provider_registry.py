@@ -30,7 +30,7 @@ class ProviderSpec:
     display_name: str = ""
 
     # Which provider implementation to use:
-    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot"
+    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot" | "codebuddy"
     backend: str = "openai_compat"
 
     env_extras: tuple[tuple[str, str], ...] = ()
@@ -91,11 +91,17 @@ PROVIDER_ALIASES = {
     "byteplusCodingPlan": "byteplus_coding_plan",
     "github-copilot": "github_copilot",
     "openai-codex": "openai_codex",
+    "codebuddy-code": "codebuddy",
+    "codebuddy_code": "codebuddy",
+    "workbuddy": "codebuddy",
     "lm-studio": "lm_studio",
     "atlas": "atlascloud",
     "atlas_cloud": "atlascloud",
     "atlas-cloud": "atlascloud",
     "eden_ai": "edenai",
+    "novita_ai": "novita",
+    "orca_router": "orcarouter",
+    "orca-router": "orcarouter",
 }
 
 
@@ -154,6 +160,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         supports_prompt_caching=True,
     ),
     ProviderSpec(
+        name="orcarouter",
+        keywords=("orcarouter", "orca_router", "orca router"),
+        env_key="ORCAROUTER_API_KEY",
+        display_name="OrcaRouter",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_key_prefix="sk-orca-",
+        detect_by_base_keyword="orcarouter",
+        default_api_base="https://api.orcarouter.ai/v1",
+    ),
+    ProviderSpec(
         name="edenai",
         keywords=("edenai",),
         env_key="EDENAI_API_KEY",
@@ -183,6 +200,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="siliconflow",
         default_api_base="https://api.siliconflow.cn/v1",
+    ),
+    ProviderSpec(
+        name="novita",
+        keywords=("novita", "novita-ai", "novita ai"),
+        env_key="NOVITA_API_KEY",
+        display_name="Novita AI",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="novita",
+        default_api_base="https://api.novita.ai/openai",
     ),
     ProviderSpec(
         name="atlascloud",
@@ -279,6 +306,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         supports_max_completion_tokens=True,
     ),
     ProviderSpec(
+        name="codebuddy",
+        keywords=("codebuddy", "workbuddy"),
+        env_key="CODEBUDDY_API_KEY",
+        display_name="CodeBuddy/WorkBuddy",
+        backend="codebuddy",
+        is_oauth=True,
+        strip_model_prefix=True,
+        supports_stream_options=False,
+    ),
+    ProviderSpec(
         name="deepseek",
         keywords=("deepseek",),
         env_key="DEEPSEEK_API_KEY",
@@ -330,13 +367,19 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         # not contain "kimi" and keeps the caller's temperature.
         model_overrides=(("kimi", {"temperature": None}),),
     ),
+    # MiniMax runs two separate platforms: global (platform.minimax.io /
+    # api.minimax.io) and mainland China (platform.minimaxi.com /
+    # api.minimaxi.com). Keys are issued per platform and are NOT
+    # interchangeable. The global endpoint is the default here; China-platform
+    # users must override base_url to https://api.minimaxi.com/v1 (or
+    # https://api.minimaxi.com/anthropic) *and* use a China-platform key.
     ProviderSpec(
         name="minimax",
         keywords=("minimax",),
         env_key="MINIMAX_API_KEY",
         display_name="MiniMax",
         backend="openai_compat",
-        default_api_base="https://api.minimaxi.com/v1",
+        default_api_base="https://api.minimax.io/v1",
         thinking_style="reasoning_split",
     ),
     ProviderSpec(
@@ -345,7 +388,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         env_key="MINIMAX_API_KEY",
         display_name="MiniMax (Anthropic)",
         backend="anthropic",
-        default_api_base="https://api.minimaxi.com/anthropic",
+        default_api_base="https://api.minimax.io/anthropic",
     ),
     ProviderSpec(
         name="mistral",
@@ -493,6 +536,48 @@ def find_by_model(model: str | None) -> ProviderSpec | None:
         ):
             return spec
     return None
+
+
+def _matching_overrides(spec: ProviderSpec, model_lower: str) -> dict[str, Any]:
+    for pattern, overrides in spec.model_overrides:
+        if pattern in model_lower:
+            return dict(overrides)
+    return {}
+
+
+def model_overrides_for(model: str | None, spec: ProviderSpec | None) -> dict[str, Any]:
+    """Request-parameter overrides *model* needs, whatever route serves it.
+
+    ``model_overrides`` are intrinsic to the model rather than to the route: a
+    Kimi model rejects an explicit ``temperature`` whether the caller reached
+    it through the ``moonshot`` binding, through an OpenAI-compatible router,
+    or through a gateway. Resolving them from the configured binding alone
+    loses them for everyone who picked a generic binding — which is the common
+    case — so #938 still got HTTP 400 ``invalid temperature: only 1 is allowed
+    for this model`` from ``kimi-k3`` under ``binding="openai"``, two months
+    after the override itself landed.
+
+    The configured spec is consulted first so an explicit binding always wins.
+    When it says nothing about this model, the model's own vendor spec does;
+    ``find_by_model`` skips gateway and local entries, so that lookup lands on
+    the vendor whose API is the thing actually enforcing the limit.
+
+    A value of ``None`` means "send this parameter as absent" — see the
+    ``moonshot`` spec for why that differs from sending a fixed value.
+    """
+    model_lower = (model or "").strip().lower()
+    if not model_lower:
+        return {}
+
+    if spec is not None:
+        configured = _matching_overrides(spec, model_lower)
+        if configured:
+            return configured
+
+    vendor = find_by_model(model_lower)
+    if vendor is None or vendor is spec:
+        return {}
+    return _matching_overrides(vendor, model_lower)
 
 
 def find_gateway(

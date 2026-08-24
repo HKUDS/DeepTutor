@@ -87,7 +87,7 @@ user_template_fixed: |
   Return JSON:
   {{
     "render_type": "{render_type}",
-    "visual_genre": "the genre that best fits this {render_type} and the user's intent, or empty string",
+    "visual_genre": "the genre that best fits this {render_type} and the user's intent. Must be one of: flowchart | structural | illustrative | chart | stepper | interactive | mockup | art, or empty string if none fit",
     "description": "High-level description of what the visualization should show",
     "data_description": "Description of the data or elements to be visualized",
     "chart_type": "Chart.js chart type if chartjs; Mermaid diagram type if mermaid; an interaction tag (interactive / animation / walkthrough / quiz) if html; otherwise empty string",

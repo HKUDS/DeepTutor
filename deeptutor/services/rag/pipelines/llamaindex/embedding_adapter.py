@@ -89,7 +89,7 @@ class CustomEmbedding(BaseEmbedding):
 
     async def _aget_query_embedding(self, query: str) -> List[float]:
         client = self.refresh_client()
-        embeddings = await client.embed([query])
+        embeddings = await client.embed([query], input_type="search_query")
         return validate_embedding_batch(
             embeddings,
             expected_count=1,
@@ -99,7 +99,7 @@ class CustomEmbedding(BaseEmbedding):
 
     async def _aget_text_embedding(self, text: str) -> List[float]:
         client = self.refresh_client()
-        embeddings = await client.embed([text])
+        embeddings = await client.embed([text], input_type="search_document")
         return validate_embedding_batch(
             embeddings,
             expected_count=1,
@@ -109,7 +109,11 @@ class CustomEmbedding(BaseEmbedding):
 
     async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         client = self.refresh_client()
-        embeddings = await client.embed(texts, progress_callback=self._progress_callback)
+        embeddings = await client.embed(
+            texts,
+            progress_callback=self._progress_callback,
+            input_type="search_document",
+        )
         return validate_embedding_batch(
             embeddings,
             expected_count=len(texts),

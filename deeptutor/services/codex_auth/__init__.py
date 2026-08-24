@@ -9,7 +9,11 @@ from .contracts import (
     TokenClaims,
     decode_codex_jwt,
 )
-from .service import CodexOAuthService, get_codex_oauth_service
+from .service import (
+    CodexOAuthService,
+    get_codex_oauth_service,
+    reconcile_codex_catalog_update,
+)
 
 __all__ = [
     "CatalogSnapshot",
@@ -21,4 +25,5 @@ __all__ = [
     "TokenClaims",
     "decode_codex_jwt",
     "get_codex_oauth_service",
+    "reconcile_codex_catalog_update",
 ]

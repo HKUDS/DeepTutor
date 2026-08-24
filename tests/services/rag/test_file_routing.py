@@ -27,6 +27,8 @@ class TestExtensionClassification:
             ("paper.docx", DocumentType.DOCX),
             ("sheet.xlsx", DocumentType.SPREADSHEET),
             ("deck.pptx", DocumentType.PRESENTATION),
+            ("book.epub", DocumentType.EPUB),
+            ("BOOK.EPUB", DocumentType.EPUB),
             ("photo.png", DocumentType.IMAGE),
         ],
     )
@@ -56,15 +58,17 @@ class TestClassifyFiles:
         xlsx.write_bytes(b"PK\x03\x04")
         pptx = tmp_path / "a.pptx"
         pptx.write_bytes(b"PK\x03\x04")
+        epub = tmp_path / "a.epub"
+        epub.write_bytes(b"PK\x03\x04")
         txt = tmp_path / "a.txt"
         txt.write_text("hi")
         png = tmp_path / "a.png"
         png.write_bytes(b"\x89PNG\r\n")
 
         cls = FileTypeRouter.classify_files(
-            [str(pdf), str(docx), str(xlsx), str(pptx), str(txt), str(png)]
+            [str(pdf), str(docx), str(xlsx), str(pptx), str(epub), str(txt), str(png)]
         )
-        assert cls.parser_files == [str(pdf), str(docx), str(xlsx), str(pptx)]
+        assert cls.parser_files == [str(pdf), str(docx), str(xlsx), str(pptx), str(epub)]
         assert cls.text_files == [str(txt)]
         assert cls.image_files == [str(png)]
         assert cls.unsupported == []
@@ -86,6 +90,7 @@ class TestSupportedExtensionsAndGlobs:
         assert ".pptx" in exts
         assert ".md" in exts
         assert ".txt" in exts
+        assert ".epub" in exts
         assert ".png" in exts
 
     def test_glob_patterns_match_supported_extensions(self) -> None:
@@ -128,6 +133,10 @@ class TestQuickHelpers:
         assert FileTypeRouter.needs_parser("paper.docx") is True
         assert FileTypeRouter.needs_parser("sheet.xlsx") is True
         assert FileTypeRouter.needs_parser("deck.pptx") is True
+
+    def test_needs_parser_for_epub(self) -> None:
+        assert FileTypeRouter.needs_parser("book.epub") is True
+        assert FileTypeRouter.needs_parser("BOOK.EPUB") is True
 
     def test_needs_parser_false_for_text(self) -> None:
         assert FileTypeRouter.needs_parser("notes.md") is False
