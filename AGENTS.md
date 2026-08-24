@@ -32,6 +32,20 @@ events out to consumers. Runtime settings live in
 `data/user/settings/*.json` — project-root `.env` files are intentionally
 ignored.
 
+## Local Roadmap Snapshot
+
+Keep the local analysis snapshot at
+`data/user/research/deleted/2026-08-24-deeptutor-1-5-route.md` synchronized
+with the official roadmap and current repository state before using it as
+roadmap context. Treat [issue #498](https://github.com/HKUDS/DeepTutor/issues/498)
+as the authoritative public roadmap and local source/docs as implementation
+evidence. Refresh the snapshot whenever issue #498 or runtime, capability,
+Knowledge Center, Memory, Reading, Book, or Mastery architecture changes, and
+at least revalidate it before citing it after seven days. Preserve the deleted
+article verbatim under *Original text as received*; update only the assessment,
+official-roadmap alignment, evidence paths, confirmed/partially
+confirmed/not-confirmed classifications, and the recorded baseline commit.
+
 ### Level 1 — Tools
 
 Single-function tools the LLM picks on demand. Four user-toggleable tools

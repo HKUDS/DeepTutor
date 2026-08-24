@@ -31,6 +31,12 @@ export function ReadingExtensionBar({
   const [result, setResult] = useState<ReadingExtensionResult | null>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [speaking, setSpeaking] = useState(false);
+  const actionLabelKeys: Record<string, string> = {
+    "read_aloud:read": "kidsReading.readAloud",
+    "guided_learn:explain": "kidsReading.learn",
+    "vocabulary:hint": "kidsReading.vocabulary",
+    "quiz:start": "kidsReading.test",
+  };
 
   useEffect(() => {
     let alive = true;
@@ -125,7 +131,11 @@ export function ReadingExtensionBar({
               className="inline-flex h-8 min-w-[88px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-55"
             >
               {busy === key ? <Loader2 size={14} className="animate-spin" /> : <Icon size={14} />}
-              <span className="truncate">{extension.id === "read_aloud" && speaking ? i18n.t("Stop") : action.label}</span>
+              <span className="truncate">
+                {extension.id === "read_aloud" && speaking
+                  ? i18n.t("Stop")
+                  : i18n.t(actionLabelKeys[`${extension.id}:${action.id}`] || action.label)}
+              </span>
             </button>
           );
         })}

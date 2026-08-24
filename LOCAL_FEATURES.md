@@ -74,6 +74,39 @@ The active Kids feature set is a coherent product, not a demo:
 - Interactive book pages, markdown/callout/media/code blocks, safe asset
   delivery, interactive widgets, and page quizzes.
 
+## Kids Reading roadmap
+
+The fork-local direction is to productize the child-facing experience as
+**Kids Reading** while retaining DeepTutor's ordinary-account architecture.
+The internal protocol and grant field remain `reading_extensions`; the product
+name does not introduce a second child identity system.
+
+1. **Now: keep Kids Reading inside DeepTutor.** Learners remain ordinary
+   `role="user"` accounts with a server-enforced learning policy, assigned
+   materials, and per-account Reading extension allowlists. The public child
+   surface is named Kids Reading, but storage, identity, authorization, and
+   progress continue to use the shared DeepTutor contracts.
+2. **Short term: isolate Kids Reading Essentials.** Keep the schema-only
+   read-aloud, guided-learning, vocabulary, translation, and quiz actions in
+   `packages/deeptutor-reading-essentials`, and keep that package independent
+   of legacy `/kids` profile routes, Kids admin routes, local migration code,
+   reward providers, and private deployment configuration.
+3. **After Reading extension protocol stabilization:** publish the essentials
+   package separately, likely as `deeptutor-reading-essentials` or
+   `kids-reading-essentials`. This split is appropriate only once protocol
+   versioning, entry-point compatibility, security boundaries, tests, release
+   automation, and a compatibility matrix are documented. Track upstream
+   reading-extension protocol PR #970 before finalizing the public contract.
+4. **Later: consider a full Kids Reading application repository only if it
+   becomes a standalone product.** A separate app must not fork the account,
+   bookshelf, progress, guardian authorization, or reading-security model until
+   there is an explicit product decision to operate and support it as a
+   separate child-facing deployment.
+
+Do not move the fork-local legacy Kids routes, Kids-to-Learning migration,
+parent PIN/device flows, dual-track sync details, local reward providers, or
+child data/deployment assumptions into the public essentials package.
+
 ## Regression gates
 
 Follow `DEVELOPMENT_WORKFLOW.md` for branching, isolated worktrees, ports,

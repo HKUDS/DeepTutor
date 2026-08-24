@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, GraduationCap, Loader2, Save } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import McpToolGroups from "@/components/common/McpToolGroups";
 import { toggleToolName as toggleName } from "@/lib/mcp-tool-groups";
 import { fetchAdminResources, fetchUserGrant, saveUserGrant } from "../api";
@@ -196,6 +197,7 @@ function ModeSwitch({
 }
 
 export function GrantEditor({ userId }: { userId: string }) {
+  const { t } = useTranslation();
   const [resources, setResources] = useState<MultiUserResources | null>(null);
   const [grant, setGrant] = useState<GrantPayload>(() => emptyGrant(userId));
   const [loading, setLoading] = useState(true);
@@ -587,7 +589,7 @@ export function GrantEditor({ userId }: { userId: string }) {
                         </label>
                       </div>
                       <div>
-                        <div className="mb-1 text-[11px] text-[var(--muted-foreground)]">Reading extensions</div>
+                        <div className="mb-1 text-[11px] text-[var(--muted-foreground)]">{t("Kids Reading")}</div>
                         <div className="grid gap-1 sm:grid-cols-2">
                           {(resources?.reading_extensions ?? []).map((extension) => (
                             <CheckRow
