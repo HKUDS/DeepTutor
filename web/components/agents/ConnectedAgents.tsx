@@ -36,6 +36,7 @@ function backendLabel(kind: string, tr: (l: Lang) => string): string {
   if (kind === "claude_code") return "Claude Code";
   if (kind === "codex") return "Codex";
   if (kind === "gemini") return "Gemini CLI";
+  if (kind === "antigravity") return "Antigravity CLI";
   if (kind === "kimi") return "Kimi CLI";
   if (kind === "opencode") return "opencode";
   if (kind === "mimo") return "MiMo Code";
@@ -114,8 +115,8 @@ export default function ConnectedAgents() {
         icon={Plug}
         title={tr({ zh: "连接的智能体", en: "Connected agents" })}
         description={tr({
-          zh: "把本机的 Claude Code、Codex、Gemini CLI、Kimi CLI、opencode、MiMo Code 或你的伙伴接进来，在对话中选中后直接向它提问 —— 它的完整运行过程会实时展示。",
-          en: "Bring in the Claude Code, Codex, Gemini CLI, Kimi CLI, opencode, or MiMo Code on this machine, or one of your partners — select one in chat to consult it directly, with its full run shown live.",
+          zh: "把本机的 Claude Code、Codex、Gemini CLI、Antigravity CLI、Kimi CLI、opencode、MiMo Code 或你的伙伴接进来，在对话中选中后直接向它提问 —— 它的完整运行过程会实时展示。",
+          en: "Bring in the Claude Code, Codex, Gemini CLI, Antigravity CLI, Kimi CLI, opencode, or MiMo Code on this machine, or one of your partners — select one in chat to consult it directly, with its full run shown live.",
         })}
         action={
           canConnect ? (
@@ -139,8 +140,8 @@ export default function ConnectedAgents() {
       ) : !canConnect ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)]/40 px-4 py-5 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
           {tr({
-            zh: "未在本机检测到可用的智能体 CLI（Claude Code、Codex、Gemini CLI、Kimi CLI、opencode、MiMo Code），也还没有任何伙伴。安装并登录其中任一 CLI，或在「伙伴」里新建一个，即可连接。",
-            en: "No agent CLI detected on this machine (Claude Code, Codex, Gemini CLI, Kimi CLI, opencode, MiMo Code), and no partners yet. Install and log in to any of them, or create a partner, to connect one.",
+            zh: "未在本机检测到可用的智能体 CLI（Claude Code、Codex、Gemini CLI、Antigravity CLI、Kimi CLI、opencode、MiMo Code），也还没有任何伙伴。安装并登录其中任一 CLI，或在「伙伴」里新建一个，即可连接。",
+            en: "No agent CLI detected on this machine (Claude Code, Codex, Gemini CLI, Antigravity CLI, Kimi CLI, opencode, MiMo Code), and no partners yet. Install and log in to any of them, or create a partner, to connect one.",
           })}
         </div>
       ) : connections.length === 0 ? (

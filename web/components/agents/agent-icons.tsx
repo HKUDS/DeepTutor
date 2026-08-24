@@ -105,6 +105,29 @@ export function GeminiGlyph({ size = 16, ...props }: GlyphProps) {
   );
 }
 
+// Antigravity CLI — dark tile with an upward arc (successor to Gemini CLI).
+export function AntigravityGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      {...props}
+    >
+      <rect width="24" height="24" rx="5.4" fill="#0B1220" />
+      <path
+        d="M5 16.5c2.8-4.2 5.6-6.3 7-6.3s4.2 2.1 7 6.3"
+        stroke="#7DD3FC"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="8.2" r="1.6" fill="#F8FAFC" />
+    </svg>
+  );
+}
+
 // Kimi (Moonshot AI): dark tile with a white K.
 export function KimiGlyph({ size = 16, ...props }: GlyphProps) {
   return (
@@ -197,6 +220,7 @@ export function agentGlyph(kind: string | undefined): AgentGlyph | null {
   if (kind === "claude_code") return ClaudeGlyph;
   if (kind === "codex") return CodexGlyph;
   if (kind === "gemini") return GeminiGlyph;
+  if (kind === "antigravity") return AntigravityGlyph;
   if (kind === "kimi") return KimiGlyph;
   if (kind === "opencode") return OpencodeGlyph;
   if (kind === "mimo") return MimoGlyph;

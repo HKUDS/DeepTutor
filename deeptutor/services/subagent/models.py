@@ -13,6 +13,8 @@ page's "sync" button just re-reads it:
   we offer those as suggestions and the UI also allows a free-text model.
 * **Gemini CLI** models are stable aliases (auto / pro / flash / flash-lite)
   plus any concrete name — curated suggestions, free text allowed.
+* **Antigravity CLI** enumerates slugs via ``agy models``; reasoning effort is
+  ``--effort`` (low / medium / high). Sync re-runs the catalog command.
 * **Kimi CLI** has no model-list surface — free text only.
 * **opencode / MiMo Code** enumerate ``provider/model`` slugs via their own
   ``<cli> models`` command (models.dev catalog); syncing re-runs it with
@@ -58,6 +60,9 @@ _GEMINI_MODELS = (
     ("flash", "Gemini Flash"),
     ("flash-lite", "Gemini Flash-Lite"),
 )
+
+# Antigravity CLI: ``--effort`` — low / medium / high.
+_ANTIGRAVITY_EFFORTS = ("low", "medium", "high")
 
 # opencode family: ``--variant`` — provider-relative reasoning effort.
 _OPENCODE_EFFORTS = ("minimal", "high", "max")
@@ -222,6 +227,60 @@ async def _gemini_options() -> BackendOptions:
     )
 
 
+async def _list_agy_models() -> list[ModelOption]:
+    """Parse ``agy models`` — ``<slug><spaces><display name>`` per line."""
+    cmd = resolve_cli_command(["agy", "models"])
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(process.communicate(), timeout=20.0)
+    except FileNotFoundError:
+        return []
+    except (TimeoutError, asyncio.TimeoutError):
+        return []
+    except Exception:  # pragma: no cover - defensive
+        logger.warning("failed to enumerate agy models", exc_info=True)
+        return []
+    models: list[ModelOption] = []
+    for raw in (out or b"").decode("utf-8", "replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        slug = parts[0]
+        # Skip decorative headers / column labels.
+        if slug.lower() in {"model", "slug", "name", "models"}:
+            continue
+        display = parts[1].strip() if len(parts) > 1 else slug
+        models.append(
+            ModelOption(
+                slug=slug,
+                display_name=display,
+                efforts=list(_ANTIGRAVITY_EFFORTS),
+            )
+        )
+    return models
+
+
+async def _antigravity_options() -> BackendOptions:
+    ok, version = await _probe("antigravity")
+    models = await _list_agy_models() if ok else []
+    return BackendOptions(
+        kind="antigravity",
+        display_name="Antigravity CLI",
+        available=ok,
+        version=version if ok else "",
+        models=models,
+        efforts=list(_ANTIGRAVITY_EFFORTS),
+        allow_custom_model=True,
+        detail="" if ok else (version or "agy CLI not found on PATH"),
+    )
+
+
 async def _kimi_options() -> BackendOptions:
     ok, version = await _probe("kimi")
     return BackendOptions(
@@ -299,6 +358,7 @@ _PROVIDERS: dict[str, Callable[..., Awaitable[BackendOptions]]] = {
     "claude_code": _claude_options,
     "codex": _codex_options,
     "gemini": _gemini_options,
+    "antigravity": _antigravity_options,
     "kimi": _kimi_options,
     "opencode": _opencode_options,
     "mimo": _mimo_options,
@@ -326,6 +386,8 @@ async def sync_backend_options(kind: str) -> BackendOptions:
         return await _claude_options()
     if kind in ("opencode", "mimo"):
         return await _PROVIDERS[kind](refresh=True)
+    if kind == "antigravity":
+        return await _antigravity_options()
     provider = _PROVIDERS.get(kind, _codex_options)
     return await provider()
 

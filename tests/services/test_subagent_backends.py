@@ -683,7 +683,7 @@ async def test_detect_all_excludes_partner_backend() -> None:
 
     kinds = {d.kind for d in await detect_all()}
     assert "partner" not in kinds
-    assert kinds <= {"claude_code", "codex", "gemini", "kimi", "opencode", "mimo"}
+    assert kinds <= {"claude_code", "codex", "gemini", "antigravity", "kimi", "opencode", "mimo"}
 
 
 # ---- partner backend: drive a partner as a subagent --------------------------
@@ -1080,6 +1080,152 @@ async def test_gemini_warning_is_log_and_error_result_fails() -> None:
     assert kinds == ["log", "error"]
     assert result.success is False
     assert "quota" in result.error
+
+
+# ---- Antigravity CLI: command building + event parsing -----------------------
+
+
+def test_antigravity_command_build_fresh_resume_approve_and_effort() -> None:
+    from deeptutor.services.subagent.antigravity import AntigravityBackend
+
+    backend = AntigravityBackend()
+    fresh = backend._build_command(
+        "hi", session_id=None, config=BackendConfig(system_prompt="be brief")
+    )
+    assert fresh[:3] == ["agy", "-p", "be brief\n\nhi"]
+    assert "--output-format" in fresh and "stream-json" in fresh
+    assert "--dangerously-skip-permissions" in fresh
+    assert "--conversation" not in fresh
+
+    resumed = backend._build_command(
+        "again",
+        session_id="c1",
+        config=BackendConfig(
+            system_prompt="be brief",
+            auto_approve=False,
+            model="gemini-3.5-flash-medium",
+            effort="high",
+        ),
+    )
+    assert resumed[1:3] == ["-p", "again"]  # no instruction prefix on resume
+    assert "--dangerously-skip-permissions" not in resumed
+    assert "--conversation" in resumed and "c1" in resumed
+    assert resumed[resumed.index("--model") + 1] == "gemini-3.5-flash-medium"
+    assert resumed[resumed.index("--effort") + 1] == "high"
+
+
+async def _drive_antigravity(events):
+    from deeptutor.services.subagent.antigravity import AntigravityBackend
+
+    backend = AntigravityBackend()
+    result = ConsultResult()
+    stream: dict = {"blocks": [], "open": False}
+    emitted: list[tuple[str, str, dict]] = []
+
+    async def emit(kind, text, raw, meta=None):
+        emitted.append((kind, text, meta or {}))
+
+    for ev in events:
+        await backend._handle_event(ev, result, stream, emit)
+    if not result.final_text:
+        result.final_text = "\n\n".join(b for b in stream["blocks"] if b.strip()).strip()
+    return result, emitted
+
+
+@pytest.mark.asyncio
+async def test_antigravity_text_deltas_and_tools_split_blocks() -> None:
+    events = [
+        {
+            "event": "init",
+            "conversation_id": "a1",
+            "init": {"cwd": "/tmp", "tools": ["run_command"], "model": "flash"},
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": "a1",
+                "step_index": 2,
+                "state": "ACTIVE",
+                "step_type": "agent_response",
+                "text_delta": "Let me ",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": "a1",
+                "step_index": 2,
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": "check.",
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": "a1",
+                "step_index": 3,
+                "state": "DONE",
+                "step_type": "tool",
+                "tool_name": "run_command",
+                "tool_info": {
+                    "name": "run_command",
+                    "parameters": {"CommandLine": "echo hi"},
+                    "output": "hi\n",
+                },
+            },
+        },
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": "a1",
+                "step_index": 4,
+                "state": "DONE",
+                "step_type": "agent_response",
+                "text_delta": "Done.",
+            },
+        },
+        {
+            "event": "result",
+            "result": {
+                "conversation_id": "a1",
+                "status": "SUCCESS",
+                "response": "Let me check.\n\nDone.",
+            },
+        },
+    ]
+    result, emitted = await _drive_antigravity(events)
+
+    assert result.session_id == "a1"
+    texts = [(t, m.get("merge_id")) for k, t, m in emitted if k == "text"]
+    assert texts == [
+        ("Let me", "txt:0"),
+        ("Let me check.", "txt:0"),
+        ("Done.", "txt:1"),
+    ]
+    assert ("tool", "run_command(echo hi)") in [(k, t) for k, t, _ in emitted]
+    assert ("tool_result", "hi") in [(k, t) for k, t, _ in emitted]
+    assert result.final_text == "Let me check.\n\nDone."
+    assert result.success is True
+
+
+@pytest.mark.asyncio
+async def test_antigravity_error_result_fails() -> None:
+    events = [
+        {
+            "event": "result",
+            "result": {
+                "conversation_id": "a2",
+                "status": "ERROR",
+                "response": "",
+                "error": "authentication required",
+            },
+        },
+    ]
+    result, emitted = await _drive_antigravity(events)
+    assert result.success is False
+    assert "authentication" in result.error
+    assert ("error", "authentication required") in [(k, t) for k, t, _ in emitted]
 
 
 # ---- Kimi CLI: command building + line parsing --------------------------------

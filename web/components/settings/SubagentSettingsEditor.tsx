@@ -64,7 +64,7 @@ const DEFAULTS: Required<
  * Which knobs each backend kind actually honors — the editor renders from this
  * table instead of per-kind branches. Mirrors what the Python backend reads:
  * e.g. only Claude Code / Gemini use `permission_mode`, only Codex has its
- * sandbox family, kimi/opencode/mimo take the `auto_approve` reply switch.
+ * sandbox family, kimi/antigravity/opencode/mimo take the `auto_approve` reply switch.
  */
 type KindFeatures = {
   effort: boolean;
@@ -104,6 +104,15 @@ const KIND_FEATURES: Record<string, KindFeatures> = {
     thinking: false,
     forwardImages: true, // @path syntax
   },
+  antigravity: {
+    effort: true, // --effort low|medium|high
+    systemPrompt: true,
+    permissionMode: false,
+    codexSandbox: false,
+    autoApprove: true, // --dangerously-skip-permissions
+    thinking: false,
+    forwardImages: false, // no documented headless image attach
+  },
   kimi: {
     effort: false,
     systemPrompt: true,
@@ -139,6 +148,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   claude_code: "Claude Code",
   codex: "Codex",
   gemini: "Gemini CLI",
+  antigravity: "Antigravity CLI",
   kimi: "Kimi CLI",
   opencode: "opencode",
   mimo: "MiMo Code",
@@ -154,6 +164,10 @@ const SYSTEM_PROMPT_HINT: Record<string, Lang> = {
   gemini: {
     zh: "Gemini CLI 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",
     en: "Gemini CLI has no system-prompt flag — the instruction is prefixed to each new session's first message.",
+  },
+  antigravity: {
+    zh: "Antigravity CLI 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",
+    en: "Antigravity CLI has no system-prompt flag — the instruction is prefixed to each new session's first message.",
   },
   kimi: {
     zh: "Kimi CLI 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",

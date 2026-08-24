@@ -152,7 +152,7 @@ export interface SubagentBackendConfig {
   approval?: string;
   network_access?: boolean;
   ephemeral?: boolean;
-  /** Kimi / opencode / MiMo: answer permission asks affirmatively. */
+  /** Kimi / Antigravity / opencode / MiMo: answer permission asks affirmatively. */
   auto_approve?: boolean;
   /** Kimi: stream the model's thinking (--thinking / --no-thinking). */
   thinking?: boolean;

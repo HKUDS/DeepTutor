@@ -59,9 +59,10 @@ class BackendConfig:
     network_access: bool = False
     # Codex: --ephemeral — don't persist the session under ~/.codex/sessions.
     ephemeral: bool = False
-    # Kimi / opencode / MiMo: answer the CLI's permission asks affirmatively so
-    # a headless run never stalls (kimi --yolo; the opencode family's
-    # permission.asked replies). Same trust model as CC's bypassPermissions.
+    # Kimi / Antigravity / opencode / MiMo: answer the CLI's permission asks
+    # affirmatively so a headless run never stalls (kimi --yolo; agy
+    # --dangerously-skip-permissions; the opencode family's permission.asked
+    # replies). Same trust model as CC's bypassPermissions.
     auto_approve: bool = True
     # Kimi: stream the model's thinking (--thinking / --no-thinking). The
     # opencode family always streams reasoning over its event bus.

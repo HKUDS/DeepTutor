@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import {
+  AntigravityGlyph,
   ClaudeGlyph,
   CodexGlyph,
   GeminiGlyph,
@@ -246,6 +247,18 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
     adminOnly: true,
   },
   {
+    key: "agent-antigravity",
+    href: "/settings/agents/antigravity",
+    label: { zh: "Antigravity CLI", en: "Antigravity CLI" },
+    blurb: {
+      zh: "DeepTutor 调用本机 Antigravity CLI（agy）时的模型、推理强度与运行参数。",
+      en: "Model, reasoning effort, and run params for the local Antigravity CLI (agy).",
+    },
+    icon: AntigravityGlyph as unknown as LucideIcon,
+    tile: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+    adminOnly: true,
+  },
+  {
     key: "agent-kimi",
     href: "/settings/agents/kimi",
     label: { zh: "Kimi CLI", en: "Kimi CLI" },
@@ -387,6 +400,7 @@ const STORAGE_PATHS: Record<string, string> = {
   "/settings/agents/claude-code": "data/user/settings/subagent.json",
   "/settings/agents/codex": "data/user/settings/subagent.json",
   "/settings/agents/gemini": "data/user/settings/subagent.json",
+  "/settings/agents/antigravity": "data/user/settings/subagent.json",
   "/settings/agents/kimi": "data/user/settings/subagent.json",
   "/settings/agents/opencode": "data/user/settings/subagent.json",
   "/settings/agents/mimo": "data/user/settings/subagent.json",
