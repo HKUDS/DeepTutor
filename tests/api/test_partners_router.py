@@ -204,23 +204,53 @@ class TestChannelOnboarding:
         )
         assert cancelled.json()["status"] == "cancelled"
 
-    def test_onboarding_routes_inherit_the_full_partners_admin_gate(self):
-        from deeptutor.api.main import app
-        from deeptutor.api.routers.auth import require_admin
+    def test_onboarding_routes_inherit_the_full_partners_admin_gate(self, monkeypatch):
+        """The real app must gate the onboarding routes on *admin*, not just auth.
 
-        included = next(
-            route
-            for route in app.routes
-            if getattr(getattr(route, "include_context", None), "prefix", None)
-            == "/api/v1/partners"
-        )
+        The ``client`` fixture above mounts the partners router *without* the
+        admin dependency so the endpoint tests can drive it directly, so
+        nothing else in this file would notice if ``main.py`` stopped applying
+        the gate.
+
+        Asserted by sending a valid **non-admin** token and requiring 403,
+        rather than by inspecting ``app.routes``: FastAPI 0.141 stopped
+        flattening ``include_router`` into the parent app (it keeps the
+        sub-router nested behind ``include_context``), so every structural
+        assertion available here holds on only one side of this project's own
+        ``fastapi>=0.100.0`` range. A response code does not care how the
+        router is represented. An unauthenticated request would not do:
+        ``require_auth`` alone answers that with 401, so downgrading the
+        router from ``_admin`` to ``_auth`` would still look gated.
+        """
+        from deeptutor.api import main as api_main
+        from deeptutor.api.routers import auth as auth_module
+        from deeptutor.api.routers import partners as partners_module
+        from deeptutor.services import auth as auth_service
+
         assert any(
             route.path == "/{partner_id}/channel-onboarding/start"
-            for route in included.original_router.routes
+            for route in partners_module.router.routes
         )
-        assert any(
-            getattr(dependency, "dependency", None) is require_admin
-            for dependency in included.include_context.dependencies
+
+        # ``require_admin`` waves everything through when auth is disabled,
+        # which is the default in tests — turn it on so the gate is observable.
+        monkeypatch.setattr(auth_module, "AUTH_ENABLED", True)
+        # ``decode_token`` refuses every token when no secret is configured,
+        # which is the state of a bare test environment — without this the
+        # request would 401 and the assertion below could not tell an
+        # admin-only route from a merely authenticated one.
+        monkeypatch.setattr(auth_service, "AUTH_SECRET", "test-secret")
+        monkeypatch.setattr(auth_service, "POCKETBASE_ENABLED", False)
+        token = auth_service.create_token("not-an-admin", role="user", user_id="u-1")
+        # No context manager: this must not run the app's lifespan.
+        client = TestClient(api_main.app)
+        response = client.post(
+            "/api/v1/partners/ada/channel-onboarding/start",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403, (
+            f"onboarding start is not admin-gated (a role=user token got {response.status_code})"
         )
 
     def test_duplicate_id_conflicts(self, client):
