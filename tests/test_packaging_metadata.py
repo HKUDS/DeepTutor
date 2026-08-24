@@ -96,9 +96,7 @@ def test_cli_runtime_dependencies_match_every_install_surface(expected: str) -> 
     """CLI-only installs must include everything used by terminal workflows."""
     with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:
         root = tomllib.load(file)["project"]
-    with (REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml").open(
-        "rb"
-    ) as file:
+    with (REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml").open("rb") as file:
         cli_package = tomllib.load(file)["project"]
 
     assert root["dependencies"].count(expected) == 1
