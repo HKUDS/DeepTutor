@@ -898,6 +898,54 @@ body[data-picker-open] .dt-mark-pulse {
   }
 }
 
+/* Reading text is scaled as one document, like a dedicated reader rather than
+   a chat message. The global `.prose` base uses fixed pixel utilities, which
+   otherwise override the parent reader size and make the zoom controls appear
+   dead for Markdown tutorials. Keep heading/code optical ratios, but express
+   them in `em` so they scale with the body. */
+.dt-reader-article :where(.md-renderer.prose) {
+  font-size: inherit !important;
+}
+.dt-reader-article .md-renderer.prose h1,
+.dt-reader-article .md-renderer.prose h2,
+.dt-reader-article .md-renderer.prose h3,
+.dt-reader-article .md-renderer.prose h4,
+.dt-reader-article .md-renderer.prose h5,
+.dt-reader-article .md-renderer.prose h6 {
+  line-height: 1.25;
+}
+.dt-reader-article .md-renderer.prose h1 {
+  font-size: 1.65em;
+}
+.dt-reader-article .md-renderer.prose h2 {
+  font-size: 1.4em;
+}
+.dt-reader-article .md-renderer.prose h3 {
+  font-size: 1.2em;
+}
+.dt-reader-article .md-renderer.prose h4 {
+  font-size: 1.05em;
+}
+.dt-reader-article .md-renderer.prose h5,
+.dt-reader-article .md-renderer.prose h6 {
+  font-size: 0.95em;
+}
+.dt-reader-article :where(.md-renderer.prose code:not(.md-code-block__code)) {
+  font-size: 0.92em;
+}
+.dt-reader-article :where(.md-renderer.prose pre) {
+  font-size: inherit;
+}
+.dt-reader-article :where(.md-renderer.prose .md-code-block__code) {
+  font-size: 0.92em !important;
+}
+.dt-reader-article .md-renderer.prose table {
+  font-size: 1em;
+}
+.dt-reader-article :where(.md-renderer.prose blockquote) {
+  font-size: 1em;
+}
+
 /* pdf.js text layer. Flattened from pdfjs-dist's own stylesheet (which uses
    nested CSS this build's PostCSS pipeline does not compile) and scoped to the
    class pdf.js itself sets. The spans are transparent and sit exactly over the

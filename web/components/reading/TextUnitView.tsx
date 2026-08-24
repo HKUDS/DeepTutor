@@ -8,6 +8,7 @@ import {
   Loader2,
   Minus,
   Plus,
+  RotateCcw,
   Rows3,
   SunMoon,
 } from "lucide-react";
@@ -20,6 +21,11 @@ import type {
   UnitKind,
 } from "@/lib/reading-api";
 import { getBilingualUnit, getUnitText } from "@/lib/reading-api";
+import {
+  activeReaderHeading,
+  extractReaderHeadings,
+  type ReaderHeading,
+} from "@/lib/reading-outline";
 import { segmentTextByQuotes } from "@/lib/reading-quote-locator";
 import { cleanQuote } from "@/lib/reading-selection";
 import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
@@ -34,6 +40,14 @@ const COLOR_INK: Record<string, string> = {
 };
 
 const READER_PREFS_KEY = "dt.reader.textPreferences";
+const READER_PREFS_VERSION = 2;
+const DEFAULT_FONT_SIZE = 17;
+const MIN_FONT_SIZE = 12;
+const MAX_FONT_SIZE = 28;
+const DEFAULT_LINE_WIDTH = 84;
+const MIN_LINE_WIDTH = 48;
+const MAX_LINE_WIDTH = 104;
+const LINE_WIDTH_STEPS = [48, 64, 84, 104];
 type ReaderTheme = "auto" | "sepia" | "night";
 
 export interface TextUnitViewProps {
@@ -48,6 +62,9 @@ export interface TextUnitViewProps {
   onSelection: (payload: SelectionPayload | null) => void;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
   onVisibleLocatorChange?: (locator: number) => void;
+  onHeadingsChange?: (headings: ReaderHeading[]) => void;
+  onActiveHeadingChange?: (headingId: string | null) => void;
+  headingJump?: { id: string; nonce: number } | null;
 }
 
 /**
@@ -71,10 +88,14 @@ export function TextUnitView({
   onSelection,
   onAnnotationClick,
   onVisibleLocatorChange,
+  onHeadingsChange,
+  onActiveHeadingChange,
+  headingJump,
 }: TextUnitViewProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
+  const headingsChangeRef = useRef(onHeadingsChange);
   const textSelectorToolsRef = useRef<{
     rangeToSelector: (
       range: Range,
@@ -91,19 +112,26 @@ export function TextUnitView({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [fontSize, setFontSize] = useState(15);
-  const [lineWidth, setLineWidth] = useState(68);
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  const [lineWidth, setLineWidth] = useState(DEFAULT_LINE_WIDTH);
   const [serif, setSerif] = useState(true);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>("auto");
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+  const activeHeadingChangeRef = useRef(onActiveHeadingChange);
 
   useEffect(() => {
     try {
       const value = JSON.parse(window.localStorage.getItem(READER_PREFS_KEY) || "{}");
+      // Version 2 migrated the old 15px/68ch defaults and made Markdown obey
+      // the reader scale. Preserve a deliberate-looking legacy choice, but do
+      // not carry forward the old default that users experienced as too small.
       if (typeof value.fontSize === "number") {
-        setFontSize(Math.min(22, Math.max(12, value.fontSize)));
+        const legacySize = value.fontSize === 15 ? DEFAULT_FONT_SIZE : value.fontSize;
+        setFontSize(Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, legacySize)));
       }
       if (typeof value.lineWidth === "number") {
-        setLineWidth(Math.min(88, Math.max(48, value.lineWidth)));
+        const legacyWidth = value.lineWidth === 68 ? DEFAULT_LINE_WIDTH : value.lineWidth;
+        setLineWidth(Math.min(MAX_LINE_WIDTH, Math.max(MIN_LINE_WIDTH, legacyWidth)));
       }
       if (typeof value.serif === "boolean") setSerif(value.serif);
       if (["auto", "sepia", "night"].includes(value.readerTheme)) {
@@ -121,7 +149,14 @@ export function TextUnitView({
       serif: boolean;
       readerTheme: ReaderTheme;
     }>) => {
-      const merged = { fontSize, lineWidth, serif, readerTheme, ...next };
+      const merged = {
+        version: READER_PREFS_VERSION,
+        fontSize,
+        lineWidth,
+        serif,
+        readerTheme,
+        ...next,
+      };
       setFontSize(merged.fontSize);
       setLineWidth(merged.lineWidth);
       setSerif(merged.serif);
@@ -134,6 +169,41 @@ export function TextUnitView({
     },
     [fontSize, lineWidth, readerTheme, serif],
   );
+
+  const changeFontSize = useCallback((next: number) => {
+    updatePreferences({
+      fontSize: Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, next)),
+    });
+  }, [updatePreferences]);
+
+  const resetPreferences = useCallback(() => {
+    updatePreferences({
+      fontSize: DEFAULT_FONT_SIZE,
+      lineWidth: DEFAULT_LINE_WIDTH,
+    });
+  }, [updatePreferences]);
+
+  const cycleLineWidth = useCallback(() => {
+    const nextWidth =
+      LINE_WIDTH_STEPS.find((width) => width > lineWidth) ?? MIN_LINE_WIDTH;
+    updatePreferences({ lineWidth: nextWidth });
+  }, [lineWidth, updatePreferences]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey && !event.ctrlKey) return;
+      const plus = event.key === "+" || event.key === "=";
+      const minus = event.key === "-";
+      const reset = event.key === "0";
+      if (!plus && !minus && !reset) return;
+      event.preventDefault();
+      if (plus) changeFontSize(fontSize + 1);
+      if (minus) changeFontSize(fontSize - 1);
+      if (reset) resetPreferences();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [changeFontSize, fontSize, resetPreferences]);
 
   useEffect(() => {
     setLocator(1);
@@ -201,6 +271,100 @@ export function TextUnitView({
       ),
     [text, annotations, locator],
   );
+
+  const pageHeadings = useMemo(
+    () =>
+      bilingualGroups.length || contentFormat === "markdown"
+        ? extractReaderHeadings(
+            bilingualGroups.length
+              ? bilingualGroups.map((group) => group.source_markdown)
+              : [text],
+            locator,
+          )
+        : [],
+    [bilingualGroups, contentFormat, locator, text],
+  );
+
+  useEffect(() => {
+    headingsChangeRef.current = onHeadingsChange;
+    activeHeadingChangeRef.current = onActiveHeadingChange;
+  }, [onActiveHeadingChange, onHeadingsChange]);
+
+  useEffect(() => {
+    if (loading || error || pageHeadings.length === 0) {
+      setActiveHeadingId(null);
+      activeHeadingChangeRef.current?.(null);
+      return;
+    }
+    const article = articleRef.current;
+    if (!article) return;
+    const elements = Array.from(
+      article.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"),
+    ).filter((element) => !element.closest("details"));
+    pageHeadings.forEach((heading, index) => {
+      const element = elements[index];
+      if (!element) return;
+      element.id = heading.id;
+      element.dataset.readerHeadingId = heading.id;
+    });
+  }, [error, loading, pageHeadings]);
+
+  useEffect(() => {
+    headingsChangeRef.current?.(pageHeadings);
+    return () => headingsChangeRef.current?.([]);
+  }, [pageHeadings]);
+
+  useEffect(() => {
+    if (!headingJump) return;
+    let cancelled = false;
+    const startedAt = performance.now();
+    const attempt = () => {
+      if (cancelled) return;
+      const container = containerRef.current;
+      const element = articleRef.current?.querySelector<HTMLElement>(
+        `[data-reader-heading-id="${CSS.escape(headingJump.id)}"]`,
+      );
+      if (!container || !element) {
+        if (performance.now() - startedAt < 1500) {
+          window.requestAnimationFrame(attempt);
+        }
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      container.scrollTo({
+        top: Math.max(
+          0,
+          container.scrollTop +
+            elementRect.top -
+            containerRect.top -
+            24,
+        ),
+      });
+      setActiveHeadingId(headingJump.id);
+      activeHeadingChangeRef.current?.(headingJump.id);
+    };
+    window.requestAnimationFrame(attempt);
+    return () => {
+      cancelled = true;
+    };
+  }, [headingJump]);
+
+  const handleContainerScroll = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || pageHeadings.length === 0) return;
+    const containerRect = container.getBoundingClientRect();
+    const article = articleRef.current;
+    const next = activeReaderHeading(pageHeadings, (heading) => {
+      const element = article?.querySelector<HTMLElement>(
+        `[data-reader-heading-id="${CSS.escape(heading.id)}"]`,
+      );
+      if (!element) return null;
+      return element.getBoundingClientRect().top - containerRect.top;
+    });
+    setActiveHeadingId((current) => (current === next ? current : next));
+    activeHeadingChangeRef.current?.(next);
+  }, [pageHeadings]);
 
   const richAnnotations = contentFormat === "markdown" || bilingualGroups.length > 0;
 
@@ -345,14 +509,25 @@ export function TextUnitView({
           <PreferenceButton
             label={t("Smaller text")}
             icon={Minus}
-            disabled={fontSize <= 12}
-            onClick={() => updatePreferences({ fontSize: Math.max(12, fontSize - 1) })}
+            disabled={fontSize <= MIN_FONT_SIZE}
+            onClick={() => changeFontSize(fontSize - 1)}
           />
+          <span
+            aria-live="polite"
+            className="min-w-[42px] text-center font-mono text-[11px] tabular-nums text-[var(--muted-foreground)]"
+          >
+            {Math.round((fontSize / 16) * 100)}%
+          </span>
           <PreferenceButton
             label={t("Larger text")}
             icon={Plus}
-            disabled={fontSize >= 22}
-            onClick={() => updatePreferences({ fontSize: Math.min(22, fontSize + 1) })}
+            disabled={fontSize >= MAX_FONT_SIZE}
+            onClick={() => changeFontSize(fontSize + 1)}
+          />
+          <PreferenceButton
+            label={t("Reset reading display")}
+            icon={RotateCcw}
+            onClick={resetPreferences}
           />
           <PreferenceButton
             label={serif ? t("Use sans-serif font") : t("Use serif font")}
@@ -363,10 +538,11 @@ export function TextUnitView({
           <PreferenceButton
             label={t("Change line width")}
             icon={Rows3}
-            onClick={() =>
-              updatePreferences({ lineWidth: lineWidth >= 88 ? 48 : lineWidth + 20 })
-            }
+            onClick={cycleLineWidth}
           />
+          <span className="hidden min-w-[44px] font-mono text-[11px] tabular-nums text-[var(--muted-foreground)] sm:inline">
+            {`${lineWidth}ch`}
+          </span>
           <PreferenceButton
             label={t("Change reading theme")}
             icon={SunMoon}
@@ -440,6 +616,7 @@ export function TextUnitView({
         ref={containerRef}
         data-reader-unit={locator}
         onMouseUp={handlePointerUp}
+        onScroll={handleContainerScroll}
         className="dt-reader-scroll flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8 sm:py-7"
       >
         {loading ? (
@@ -452,7 +629,7 @@ export function TextUnitView({
         ) : (
           <article
             ref={articleRef}
-            className={`mx-auto leading-[1.75] selection:bg-[var(--primary)]/20 ${serif ? "font-serif" : "font-sans"}`}
+            className={`dt-reader-article mx-auto leading-[1.75] selection:bg-[var(--primary)]/20 ${serif ? "font-serif" : "font-sans"}`}
             style={{
               maxWidth: `${lineWidth}ch`,
               fontSize: `${fontSize}px`,

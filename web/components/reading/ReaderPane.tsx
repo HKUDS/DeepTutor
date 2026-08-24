@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
   BookmarkPlus,
   BookOpenText,
   Crosshair,
@@ -18,6 +20,13 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  goBackReadingHistory,
+  goForwardReadingHistory,
+  pushReadingHistory,
+  type ReadingHistoryEntry,
+  type ReadingHistoryState,
+} from "@/lib/reading-history";
 import { useReading } from "@/context/ReadingContext";
 import {
   READER_ACTION_EVENT,
@@ -49,6 +58,8 @@ import {
 } from "./PdfDocumentView";
 import { ReaderResizeHandle } from "./ReaderResizeHandle";
 import { ReadingExtensionBar } from "./ReadingExtensionBar";
+import { ReaderOutline } from "./ReaderOutline";
+import type { ReaderHeading } from "@/lib/reading-outline";
 import { TextUnitView, unitLabel } from "./TextUnitView";
 
 /** Event the reader dispatches to prefill the composer from a selection. */
@@ -110,6 +121,16 @@ export function ReaderPane({
   // user decided, and that wins from then on.
   const [annotationPanel, setAnnotationPanel] = useState<boolean | null>(null);
   const [showOutline, setShowOutline] = useState(false);
+  const [outlineUserChoice, setOutlineUserChoice] = useState<boolean | null>(null);
+  const [pageHeadings, setPageHeadings] = useState<ReaderHeading[]>([]);
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+  const [headingJump, setHeadingJump] = useState<{ id: string; nonce: number } | null>(null);
+  const [historyState, setHistoryState] = useState<ReadingHistoryState>({
+    back: [],
+    current: null,
+    forward: [],
+  });
+  const [readingPercentage, setReadingPercentage] = useState(0);
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
@@ -122,6 +143,12 @@ export function ReaderPane({
   const [openingTutorial, setOpeningTutorial] = useState(false);
   const readerRef = useRef<HTMLDivElement | null>(null);
   const nonceRef = useRef(0);
+  const historyRef = useRef<ReadingHistoryState>({
+    back: [],
+    current: null,
+    forward: [],
+  });
+  const lastJumpLocatorRef = useRef<number | null>(null);
   const restoringPositionRef = useRef("");
   const positionMaterialKeyRef = useRef("");
   const positionSaveTimerRef = useRef<number | null>(null);
@@ -197,6 +224,14 @@ export function ReaderPane({
       .catch(() => setKbChoices([]));
   }, [material]);
 
+  useEffect(() => {
+    // Website tutorials are navigated by the source sidebar, so show that
+    // structure automatically while preserving the user's ability to close it.
+    if (material?.source_type === "kb_web_tutorial") {
+      setShowOutline(true);
+    }
+  }, [material?.material_id, material?.source_type]);
+
   const toggleAutoJump = useCallback(() => {
     setAutoJump((current) => {
       const next = !current;
@@ -213,8 +248,53 @@ export function ReaderPane({
 
   const requestJump = useCallback((locator: number, quote?: string) => {
     nonceRef.current += 1;
+    lastJumpLocatorRef.current = locator;
     setJump({ locator, quote, nonce: nonceRef.current });
   }, []);
+
+  const commitHistoryState = useCallback((next: ReadingHistoryState) => {
+    historyRef.current = next;
+    setHistoryState(next);
+  }, []);
+
+  const applyHistoryEntry = useCallback(
+    (entry: ReadingHistoryEntry) => {
+      requestJump(entry.locator, entry.quote);
+      if (entry.headingId) {
+        nonceRef.current += 1;
+        setHeadingJump({ id: entry.headingId, nonce: nonceRef.current });
+      }
+    },
+    [requestJump],
+  );
+
+  const navigateWithHistory = useCallback(
+    (entry: ReadingHistoryEntry) => {
+      const state = historyRef.current;
+      const current =
+        state.current ?? {
+          locator: currentLocator,
+          headingId: activeHeadingId ?? undefined,
+        };
+      commitHistoryState(pushReadingHistory({ ...state, current }, entry));
+      applyHistoryEntry(entry);
+    },
+    [activeHeadingId, applyHistoryEntry, commitHistoryState, currentLocator],
+  );
+
+  const goReadingHistory = useCallback(
+    (direction: "back" | "forward") => {
+      const state = historyRef.current;
+      const next =
+        direction === "back"
+          ? goBackReadingHistory(state)
+          : goForwardReadingHistory(state);
+      if (next === state || !next.current) return;
+      commitHistoryState(next);
+      applyHistoryEntry(next.current);
+    },
+    [applyHistoryEntry, commitHistoryState],
+  );
 
   useEffect(() => {
     if (!material || material.render_mode === "epub") return;
@@ -228,6 +308,10 @@ export function ReaderPane({
           Math.max(1, position.locator || 1),
         );
         setCurrentLocator(locator);
+        commitHistoryState({
+          ...historyRef.current,
+          current: { locator },
+        });
         reportViewport({ locator });
         if (locator > 1 || position.source_anchor) {
           requestJump(locator, position.source_anchor || undefined);
@@ -242,12 +326,25 @@ export function ReaderPane({
     return () => {
       cancelled = true;
     };
-  }, [material, reportViewport, requestJump]);
+  }, [commitHistoryState, material, reportViewport, requestJump]);
 
   const handleVisibleLocator = useCallback(
     (locator: number) => {
       setCurrentLocator(locator);
+      if (locator !== lastJumpLocatorRef.current) {
+        commitHistoryState({
+          ...historyRef.current,
+          current: { locator },
+        });
+      }
       reportViewport({ locator });
+      if (material) {
+        setReadingPercentage(
+          material.unit_count > 1
+            ? (locator - 1) / (material.unit_count - 1)
+            : 0,
+        );
+      }
       if (
         !material ||
         material.render_mode === "epub" ||
@@ -271,7 +368,7 @@ export function ReaderPane({
         });
       }, 250);
     },
-    [material, reportViewport],
+    [commitHistoryState, material, reportViewport],
   );
 
   useEffect(
@@ -370,11 +467,11 @@ export function ReaderPane({
       if (!locator) return;
       event.preventDefault();
       event.stopPropagation();
-      requestJump(locator);
+      navigateWithHistory({ locator });
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
-  }, [requestJump]);
+  }, [navigateWithHistory]);
 
   // -- annotations ---------------------------------------------------------
 
@@ -520,6 +617,88 @@ export function ReaderPane({
     }
   }, [dismissError, material, openMaterial, openingTutorial, setError, t]);
 
+  useEffect(() => {
+    if (!material) return;
+    historyRef.current = { back: [], current: null, forward: [] };
+    setHistoryState(historyRef.current);
+    lastJumpLocatorRef.current = null;
+    setPageHeadings([]);
+    setActiveHeadingId(null);
+    setHeadingJump(null);
+    setReadingPercentage(material.reading_progress?.reading_percentage ?? 0);
+    let stored: boolean | null = null;
+    try {
+      const raw = window.localStorage.getItem(`dt.reader.outline.${material.material_id}`);
+      if (raw === "1" || raw === "0") stored = raw === "1";
+    } catch {
+      // Storage is optional; fall back to the material-type default.
+    }
+    setOutlineUserChoice(stored);
+    const desktop = window.matchMedia("(min-width: 768px)").matches;
+    setShowOutline(
+      stored ??
+        (desktop &&
+          (material.source_type === "kb_web_tutorial" || material.render_mode === "epub")),
+    );
+  }, [material]);
+
+  useEffect(() => {
+    if (
+      outlineUserChoice !== null ||
+      !material ||
+      !pageHeadings.length ||
+      !window.matchMedia("(min-width: 768px)").matches
+    ) {
+      return;
+    }
+    if (pageHeadings.length >= 3) setShowOutline(true);
+  }, [material, outlineUserChoice, pageHeadings.length]);
+
+  const toggleOutline = useCallback(() => {
+    setShowOutline((open) => {
+      const next = !open;
+      setOutlineUserChoice(next);
+      if (material) {
+        try {
+          window.localStorage.setItem(
+            `dt.reader.outline.${material.material_id}`,
+            next ? "1" : "0",
+          );
+        } catch {
+          // The current-session choice still works without persistence.
+        }
+      }
+      return next;
+    });
+  }, [material]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "b") return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
+      event.preventDefault();
+      toggleOutline();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleOutline]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
+      event.preventDefault();
+      goReadingHistory(event.key === "ArrowLeft" ? "back" : "forward");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goReadingHistory]);
+
   // -- render --------------------------------------------------------------
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
@@ -527,6 +706,16 @@ export function ReaderPane({
   const outlineRows = useMemo(
     () =>
       (material?.outline ?? []).filter((row) => row.title.trim().length > 0),
+    [material],
+  );
+  const outlinePaths = useMemo(
+    () =>
+      material?.kb_path
+        ? material.kb_path
+            .split("\n")
+            .map((path) => path.trim())
+            .filter(Boolean)
+        : undefined,
     [material],
   );
 
@@ -541,7 +730,44 @@ export function ReaderPane({
       }
     >
       {!focusMode && <ReaderResizeHandle />}
-      <header className="flex h-11 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] px-2.5">
+      <header
+        className={`flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] ${
+          focusMode ? "overflow-visible px-2" : "overflow-x-auto px-2.5"
+        }`}
+      >
+        {material && (outlineRows.length > 0 || pageHeadings.length > 0) && (
+          <button
+            type="button"
+            onClick={toggleOutline}
+            title={t("Contents")}
+            aria-label={t("Contents")}
+            aria-pressed={showOutline}
+            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[12px] font-medium transition ${
+              showOutline
+                ? "border-[var(--primary)]/30 bg-[var(--primary)]/12 text-[var(--primary)]"
+                : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            <List size={15} />
+            <span className="hidden sm:inline">{t("Contents")}</span>
+          </button>
+        )}
+        {material && (
+          <>
+            <HeaderButton
+              icon={ArrowLeft}
+              label={t("Go back")}
+              disabled={!historyState.back.length}
+              onClick={() => goReadingHistory("back")}
+            />
+            <HeaderButton
+              icon={ArrowRight}
+              label={t("Go forward")}
+              disabled={!historyState.forward.length}
+              onClick={() => goReadingHistory("forward")}
+            />
+          </>
+        )}
         <FileText
           size={14}
           className="shrink-0 text-[var(--muted-foreground)]"
@@ -558,14 +784,6 @@ export function ReaderPane({
             <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-[var(--muted-foreground)]">
               {unitWord} {currentLocator}/{material.unit_count}
             </span>
-            {outlineRows.length > 0 && (
-              <HeaderButton
-                icon={List}
-                label={t("Outline")}
-                active={showOutline}
-                onClick={() => setShowOutline((open) => !open)}
-              />
-            )}
             <HeaderButton
               icon={Crosshair}
               label={
@@ -626,6 +844,14 @@ export function ReaderPane({
           <HeaderButton icon={X} label={t("Close reader")} onClick={onClose} />
         )}
       </header>
+      {material && (
+        <div className="h-0.5 shrink-0 bg-[var(--muted)]">
+          <div
+            className="h-full bg-[var(--primary)] transition-[width]"
+            style={{ width: `${Math.round(Math.min(1, Math.max(0, readingPercentage)) * 100)}%` }}
+          />
+        </div>
+      )}
 
       {material && material.source_type !== "upload" && (
         <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--border)] bg-[var(--card)]/45 px-3 py-1.5 text-[10.5px] text-[var(--muted-foreground)]">
@@ -754,45 +980,30 @@ export function ReaderPane({
         />
       ) : null}
 
-      {showOutline && material && outlineRows.length > 0 && (
-        <nav className="dt-reader-scroll max-h-[34%] shrink-0 overflow-y-auto border-b border-[var(--border)] bg-[var(--muted)]/25 px-2 py-1.5">
-          <ul>
-            {outlineRows.map((row, index) => (
-              <li key={`${row.locator}-${index}`} className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    requestJump(row.locator);
-                    setShowOutline(false);
-                  }}
-                  style={{ paddingLeft: `${6 + (row.level - 1) * 12}px` }}
-                  className="flex w-full items-baseline gap-2 rounded-md py-[3px] pr-2 text-left transition hover:bg-[var(--muted)]"
-                >
-                  <span className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--foreground)]">
-                    {row.title}
-                  </span>
-                  <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--muted-foreground)]">
-                    {row.locator}
-                  </span>
-                </button>
-                {row.source_url && (
-                  <a
-                    href={row.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={t("Open original page")}
-                    className="absolute right-7 -mt-6 rounded p-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  >
-                    <ExternalLink size={10} />
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
-
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
+        {showOutline && material && (outlineRows.length > 0 || pageHeadings.length > 0) && (
+          <ReaderOutline
+            rows={outlineRows}
+            sourcePaths={outlinePaths}
+            pageHeadings={pageHeadings}
+            activeHeadingId={activeHeadingId}
+            currentLocator={currentLocator}
+            onNavigate={(locator) => {
+              navigateWithHistory({ locator });
+              if (!window.matchMedia("(min-width: 768px)").matches) {
+                setShowOutline(false);
+              }
+            }}
+            onNavigateHeading={(heading) => {
+              navigateWithHistory({
+                locator: currentLocator,
+                headingId: heading.id,
+              });
+            }}
+            onClose={() => setShowOutline(false)}
+            sourceType={material.source_type}
+          />
+        )}
         <div className="min-w-0 flex-1">
           {loadingMaterial ? (
             <div className="flex h-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -816,6 +1027,9 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
+              onHeadingsChange={setPageHeadings}
+              headingJump={headingJump}
+              onReadingProgressChange={setReadingPercentage}
               onError={setError}
               bilingualAvailable={material.bilingual_available}
               onOpenMaterial={(candidate) => void openMaterial(candidate)}
@@ -848,6 +1062,9 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
+              onHeadingsChange={setPageHeadings}
+              onActiveHeadingChange={setActiveHeadingId}
+              headingJump={headingJump}
             />
           )}
         </div>
@@ -866,7 +1083,10 @@ export function ReaderPane({
               activeId={activeAnnotationId}
               onSelect={(annotation) => {
                 setActiveAnnotationId(annotation.annotation_id);
-                requestJump(annotation.locator, annotation.quote || undefined);
+                navigateWithHistory({
+                  locator: annotation.locator,
+                  quote: annotation.quote || undefined,
+                });
               }}
               onDelete={(annotation) => void removeMark(annotation)}
             />
@@ -896,6 +1116,37 @@ export function ReaderPane({
           <PanelRightClose size={15} />
         </button>
       )}
+      {focusMode && material && (
+        <button
+          type="button"
+          onClick={() => {
+            setFocusMode(false);
+            setAssistantPanelOpen(false);
+          }}
+          aria-label={t("Exit focus mode")}
+          title={t("Exit focus mode")}
+          className="fixed right-2 top-2 z-[110] inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] shadow-lg"
+          style={
+            assistantPanelOpen
+              ? { right: "calc(var(--reader-assistant-width, 380px) + 8px)" }
+              : undefined
+          }
+        >
+          <Minimize2 size={16} />
+        </button>
+      )}
+      {focusMode && material && assistantPanelOpen && (
+        <button
+          type="button"
+          onClick={() => setAssistantPanelOpen(false)}
+          aria-label={t("Hide assistant")}
+          title={t("Hide assistant")}
+          className="fixed bottom-5 z-[110] inline-flex h-10 w-8 items-center justify-center rounded-l-xl border border-r-0 border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] shadow-lg"
+          style={{ right: "var(--reader-assistant-width, 380px)" }}
+        >
+          <PanelRightClose size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -906,6 +1157,7 @@ function HeaderButton({
   onClick,
   active,
   spinning,
+  disabled = false,
   className = "",
 }: {
   icon: typeof FileText;
@@ -913,6 +1165,7 @@ function HeaderButton({
   onClick: () => void;
   active?: boolean;
   spinning?: boolean;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -921,9 +1174,9 @@ function HeaderButton({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      disabled={spinning}
+      disabled={disabled || spinning}
       onClick={onClick}
-      className={`h-7 w-7 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default ${
+      className={`h-7 w-7 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent ${
         className || "inline-flex"
       } ${
         active

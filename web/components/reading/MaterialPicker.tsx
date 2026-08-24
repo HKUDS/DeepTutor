@@ -366,14 +366,33 @@ export function MaterialPicker({
                           {material.filename}
                         </span>
                         <span className="block truncate font-mono text-[10.5px] text-[var(--muted-foreground)]">
-                          {material.unit_count} {material.unit}
-                          {material.unit_count === 1 ? "" : "s"}
+                          {material.reading_progress
+                            ? t("Continue reading · {{percent}}%", {
+                                percent: Math.round(
+                                  material.reading_progress.reading_percentage * 100,
+                                ),
+                              })
+                            : `${material.unit_count} ${material.unit}${
+                                material.unit_count === 1 ? "" : "s"
+                              }`}
                           {material.annotation_count > 0
                             ? ` · ${t("{{count}} annotations", {
                                 count: material.annotation_count,
                               })}`
                             : ""}
                         </span>
+                        {material.reading_progress && (
+                          <span className="mt-1 block h-1 overflow-hidden rounded-full bg-[var(--muted)]">
+                            <span
+                              className="block h-full rounded-full bg-[var(--primary)]"
+                              style={{
+                                width: `${Math.round(
+                                  material.reading_progress.reading_percentage * 100,
+                                )}%`,
+                              }}
+                            />
+                          </span>
+                        )}
                       </span>
                     </button>
                     <button

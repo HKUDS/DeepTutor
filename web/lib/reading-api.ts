@@ -57,6 +57,11 @@ export interface MaterialInfo {
   bilingual_available?: boolean;
   bilingual_languages?: string[];
   bilingual_pairing_ids?: string[];
+  reading_progress?: {
+    last_read_at: number;
+    last_locator: number;
+    reading_percentage: number;
+  };
 }
 
 export interface OutlineRow {

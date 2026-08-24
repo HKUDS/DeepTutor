@@ -23,6 +23,7 @@ import {
   resolveEpubPageTurnSwipe,
   type EpubPageTurnDirection,
 } from "@/lib/epub-page-turn";
+import { headingAnchor, type ReaderHeading } from "@/lib/reading-outline";
 import { cleanQuote } from "@/lib/reading-selection";
 import type {
   JumpRequest,
@@ -65,6 +66,7 @@ type EpubRendition = {
   themes: {
     register: (name: string, rules: Record<string, Record<string, string>>) => void;
     select: (name: string) => void;
+    fontSize?: (size: string) => void;
   };
 };
 
@@ -106,6 +108,9 @@ export interface EpubDocumentViewProps {
   onSelection: (payload: SelectionPayload | null) => void;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
   onVisibleLocatorChange?: (locator: number) => void;
+  onHeadingsChange?: (headings: ReaderHeading[]) => void;
+  headingJump?: { id: string; nonce: number } | null;
+  onReadingProgressChange?: (percentage: number) => void;
   onError?: (message: string) => void;
   bilingualAvailable?: boolean;
   onOpenMaterial?: (material: MaterialDetail) => void;
@@ -122,6 +127,9 @@ export function EpubDocumentView({
   onSelection,
   onAnnotationClick,
   onVisibleLocatorChange,
+  onHeadingsChange,
+  headingJump,
+  onReadingProgressChange,
   onError,
   bilingualAvailable = false,
   onOpenMaterial,
@@ -136,6 +144,8 @@ export function EpubDocumentView({
   const refsRef = useRef(unitRefs);
   const annotationClickRef = useRef(onAnnotationClick);
   const visibleChangeRef = useRef(onVisibleLocatorChange);
+  const headingsChangeRef = useRef(onHeadingsChange);
+  const progressChangeRef = useRef(onReadingProgressChange);
   const errorRef = useRef(onError);
   const locatorRef = useRef(1);
   const contentDocumentsRef = useRef<Set<Document>>(new Set());
@@ -153,6 +163,10 @@ export function EpubDocumentView({
   }, [materialId]);
 
   useEffect(() => {
+    headingsChangeRef.current?.([]);
+  }, [materialId]);
+
+  useEffect(() => {
     refsRef.current = unitRefs;
   }, [unitRefs]);
   useEffect(() => {
@@ -161,6 +175,12 @@ export function EpubDocumentView({
   useEffect(() => {
     visibleChangeRef.current = onVisibleLocatorChange;
   }, [onVisibleLocatorChange]);
+  useEffect(() => {
+    headingsChangeRef.current = onHeadingsChange;
+  }, [onHeadingsChange]);
+  useEffect(() => {
+    progressChangeRef.current = onReadingProgressChange;
+  }, [onReadingProgressChange]);
   useEffect(() => {
     errorRef.current = onError;
   }, [onError]);
@@ -198,6 +218,7 @@ export function EpubDocumentView({
       );
       locatorRef.current = nextLocator;
       visibleChangeRef.current?.(nextLocator);
+      progressChangeRef.current?.(percentage);
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         void saveReadingPosition(materialId, {
@@ -248,6 +269,17 @@ export function EpubDocumentView({
       if (!doc?.body || doc.body.dataset.dtReaderReady === "true") return;
       doc.body.dataset.dtReaderReady = "true";
       contentDocuments.add(doc);
+      const href = (doc.location?.pathname ?? "").replace(/^\//, "");
+      const locator = locatorForEpubHref(href, refsRef.current) || locatorRef.current;
+      const headings: ReaderHeading[] = [];
+      doc.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6").forEach((element) => {
+        const title = (element.textContent ?? "").replace(/\s+/g, " ").trim();
+        if (!title) return;
+        const id = element.id || headingAnchor(locator, headings.length);
+        element.id = id;
+        headings.push({ id, title, level: Number(element.tagName.slice(1)) });
+      });
+      headingsChangeRef.current?.(headings);
       for (const details of doc.querySelectorAll<HTMLDetailsElement>("details.dt-zh")) {
         details.open = translationsExpandedRef.current;
       }
@@ -333,6 +365,7 @@ export function EpubDocumentView({
           img: { "max-width": "100%", height: "auto" },
         });
         rendition.themes.select("deeptutor");
+        rendition.themes.fontSize?.("120%");
         rendition.on("relocated", onRelocated);
         rendition.on("selected", onSelected);
         rendition.on("keydown", onRenditionKey);
@@ -380,6 +413,13 @@ export function EpubDocumentView({
       host.replaceChildren();
     };
   }, [materialId, unitCount, onSelection, t, turnPage]);
+
+  useEffect(() => {
+    if (!headingJump || !renditionRef.current || !bookRef.current) return;
+    const section = bookRef.current.spine.get(locatorRef.current - 1);
+    if (!section?.href) return;
+    void renditionRef.current.display(`${section.href}#${headingJump.id}`);
+  }, [headingJump]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -550,18 +590,18 @@ export function EpubDocumentView({
           <button
             type="button"
             onClick={() => turnPage("previous")}
-            className="absolute left-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)]/90 text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
+            className="group absolute inset-y-0 left-0 flex w-16 items-center justify-center rounded-none text-[var(--foreground)]/45 opacity-0 transition hover:text-[var(--foreground)] focus-visible:opacity-100 md:hover:opacity-100"
             aria-label={t("Previous")}
           >
-            <ChevronLeft size={19} />
+            <ChevronLeft size={20} className="drop-shadow-sm" />
           </button>
           <button
             type="button"
             onClick={() => turnPage("next")}
-            className="absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)]/90 text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
+            className="group absolute inset-y-0 right-0 flex w-16 items-center justify-center rounded-none text-[var(--foreground)]/45 opacity-0 transition hover:text-[var(--foreground)] focus-visible:opacity-100 md:hover:opacity-100"
             aria-label={t("Next")}
           >
-            <ChevronRight size={19} />
+            <ChevronRight size={20} className="drop-shadow-sm" />
           </button>
         </>
       )}
