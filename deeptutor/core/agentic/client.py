@@ -27,6 +27,7 @@ from deeptutor.services.llm import get_token_limit_kwargs, supports_tools
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
+from deeptutor.core.agentic.responses_bridge import wrap_responses_bridge
 from deeptutor.services.provider_registry import find_by_name
 
 # Providers that don't reliably support OpenAI function-calling. The loop
@@ -99,12 +100,13 @@ def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -
             http_client=http_client,
             default_headers=default_headers,
         )
-    return AsyncOpenAI(
+    client = AsyncOpenAI(
         api_key=config.api_key or "sk-no-key-required",
         base_url=config.base_url or None,
         http_client=http_client,
         default_headers=default_headers,
     )
+    return wrap_responses_bridge(client, config)
 
 
 async def _close_client(client: Any) -> None:
