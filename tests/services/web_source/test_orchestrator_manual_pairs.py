@@ -51,7 +51,7 @@ async def test_manual_pair_refreshes_stale_unilingual_sidecars(tmp_path: Path) -
             page_files=[filename],
             page_urls={filename: source["url"]},
             pages_unchanged=[filename],
-            navigation={"kind": "inferred", "nodes": []},
+            navigation={"kind": "original", "nodes": []},
         )
 
     with (
@@ -71,6 +71,13 @@ async def test_manual_pair_refreshes_stale_unilingual_sidecars(tmp_path: Path) -
         )
 
     assert result.ok is True
+    # Navigation is not just written to the bilingual pair index; each source
+    # entry must stay fresh so KB navigation views do not fall back to stale
+    # inferred trees after a sync.
+    assert [source["navigation"]["kind"] for source in manager.get_web_sources("kb")] == [
+        "original",
+        "original",
+    ]
     pair_result = result.pair_results[0]
     assert pair_result.paired_pages == 1
     assert pair_result.en_only_pages == 0

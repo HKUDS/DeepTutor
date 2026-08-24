@@ -104,7 +104,10 @@ def merge_navigation(
     if zh_nav.get("kind") == "original":
         merged_kind = "original"
 
-    merged_nodes = [_merge_node(n, zh_by_base, pair_key) for n in en_nodes]
+    merged_nodes = [
+        _merge_node(n, zh_by_base, pair_key, index=index)
+        for index, n in enumerate(en_nodes)
+    ]
     return {"kind": merged_kind, "nodes": merged_nodes}
 
 
@@ -112,24 +115,43 @@ def _index_zh_nodes(
     nodes: list[dict],
     zh_lang_prefix: str,
     out: dict[str, dict],
+    group_path: tuple[int, ...] = (),
 ) -> None:
     """Index ZH navigation nodes by their base (stripped) file path."""
-    for node in nodes:
+    for index, node in enumerate(nodes):
         fp = node.get("file_path", "")
         if fp:
             base = strip_lang_prefix_from_path(fp, zh_lang_prefix)
             out[base] = node
-        _index_zh_nodes(node.get("children", []), zh_lang_prefix, out)
+        else:
+            out[_group_key(index, group_path)] = node
+        _index_zh_nodes(
+            node.get("children", []),
+            zh_lang_prefix,
+            out,
+            group_path + (index,) if not fp else group_path,
+        )
+
+
+def _group_key(index: int, group_path: tuple[int, ...] = ()) -> str:
+    """Return a stable structural key for URL-less navigation groups."""
+    return "group:" + "/".join(str(part) for part in (*group_path, index))
 
 
 def _merge_node(
     en_node: dict,
     zh_by_base: dict[str, dict],
     pair_key: str,
+    *,
+    index: int = 0,
+    group_path: tuple[int, ...] = (),
 ) -> dict:
     """Merge one EN node with its ZH counterpart."""
     en_fp = en_node.get("file_path", "")
-    zh_node = zh_by_base.get(en_fp)
+    if en_fp:
+        zh_node = zh_by_base.get(en_fp)
+    else:
+        zh_node = zh_by_base.get(_group_key(index, group_path))
 
     page_class = "bilingual"
     if en_fp and not zh_node:
@@ -148,5 +170,14 @@ def _merge_node(
         "file_path_zh": zh_node.get("file_path", "") if zh_node else "",
         "page_class": page_class,
         "pair_key": pair_key,
-        "children": [_merge_node(c, zh_by_base, pair_key) for c in en_node.get("children", [])],
+        "children": [
+            _merge_node(
+                child,
+                zh_by_base,
+                pair_key,
+                index=child_index,
+                group_path=group_path + ((index,) if not en_fp else ()),
+            )
+            for child_index, child in enumerate(en_node.get("children", []))
+        ],
     }

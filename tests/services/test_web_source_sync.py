@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,14 +13,18 @@ from deeptutor.services.web_source.crawler import (
     ALLOWED_HOSTS_ENV,
     CrawledPage,
     CrawlResult,
+    RobotsPolicy,
     _configured_allowed_hosts,
+    _HostRateLimiter,
     _is_crawler_disallowed_host,
     _is_internal,
     _normalise_link,
+    _parse_robots_txt,
     _to_filename,
     crawl_and_diff,
     crawl_docs_site,
 )
+from deeptutor.services.web_source.html_extractor import assess_extraction_quality
 from deeptutor.services.web_source.sync import WebSyncResult, sync_source
 from deeptutor.services.web_source.sync_service import _is_stale
 
@@ -71,6 +76,73 @@ def test_crawler_host_allowlist_parses_normalized_hosts(monkeypatch):
     assert _configured_allowed_hosts() == frozenset({"local.host", "127.0.0.1", "::1"})
 
 
+def test_extraction_quality_rewards_rich_documentation() -> None:
+    paragraph = "This guide explains DeepTutor in enough detail to pass the minimum body threshold. "
+    markdown = (
+        "# Installation\n\n"
+        f"{paragraph * 4}\n\n"
+        "- Install the package\n- Run the server\n\n"
+        "| Feature | Status |\n| --- | --- |\n| Reader | Ready |\n\n"
+        "```python\nprint('hello')\n```\n"
+    )
+
+    quality = assess_extraction_quality(markdown, title="Installation")
+
+    assert quality.score == 100
+    assert quality.warnings == ()
+
+
+def test_extraction_quality_flags_empty_and_truncated_bodies() -> None:
+    empty = assess_extraction_quality("", title="")
+    truncated = assess_extraction_quality(
+        "# Guide\n\n…[truncated]",
+        title="Guide",
+    )
+
+    assert empty.score == 0
+    assert empty.warnings == (
+        "empty body",
+        "missing title",
+        "no headings",
+    )
+    assert truncated.score == 55
+    assert truncated.warnings == ("very short body", "body truncated")
+
+
+def test_robots_parser_merges_consecutive_agents_and_respects_allow_override() -> None:
+    policy = _parse_robots_txt(
+        "\n".join(
+            [
+                "User-agent: DeepTutor",
+                "User-agent: DeepTutorDocs",
+                "Crawl-delay: 2",
+                "Disallow: /private/",
+                "Allow: /private/public/",
+                "",
+                "User-agent: OtherBot",
+                "Disallow: /",
+            ]
+        )
+    )
+
+    assert policy.crawl_delay_s == 2.0
+    assert policy.permits("https://example.com/docs/")
+    assert not policy.permits("https://example.com/private/secret")
+    assert policy.permits("https://example.com/private/public/guide")
+
+
+@pytest.mark.asyncio
+async def test_host_rate_limiter_spaces_requests_to_same_host() -> None:
+    limiter = _HostRateLimiter(interval_s=0.02)
+
+    await limiter.wait("https://example.com/a")
+    started = time.monotonic()
+    await limiter.wait("https://example.com/b")
+    elapsed = time.monotonic() - started
+
+    assert elapsed >= 0.018
+
+
 def test_crawler_host_allowlist_only_bypasses_named_hosts(monkeypatch):
     monkeypatch.setenv(ALLOWED_HOSTS_ENV, "127.0.0.1")
     monkeypatch.setattr(
@@ -93,7 +165,9 @@ async def test_crawler_host_allowlist_accepts_local_base_url(monkeypatch):
 
     result = await crawl_docs_site("http://127.0.0.1:18784/en.html")
 
-    assert result.errors == []
+    # The base URL passes the explicit local-host exception; the mocked fetch
+    # then fails only at the conservative robots.txt availability check.
+    assert result.errors == ["robots.txt unavailable; crawl blocked"]
 
 
 def _make_kb(tmp_path: Path, kb_name: str = "kb") -> tuple[str, Path]:
@@ -205,6 +279,9 @@ async def test_crawl_and_diff_persists_page_manifest(tmp_path: Path) -> None:
         requested_url="https://example.com/docs/intro",
         canonical_url="https://example.com/docs/intro/",
         document_version="v2",
+        extraction_method="builtin_lxml",
+        extraction_quality=92,
+        extraction_warnings=("very short body",),
     )
     result = CrawlResult(
         pages=[page],
@@ -235,6 +312,9 @@ async def test_crawl_and_diff_persists_page_manifest(tmp_path: Path) -> None:
     assert entry["fetched_at"]
     assert entry["document_version"] == "v2"
     assert entry["status"] == "active"
+    assert entry["extraction_method"] == "builtin_lxml"
+    assert entry["extraction_quality"] == 92
+    assert entry["extraction_warnings"] == ["very short body"]
 
 
 @pytest.mark.asyncio
@@ -340,6 +420,103 @@ def test_extract_navigation_docusaurus():
     assert links[0]["title"] == "Get Started"
     assert links[0]["url"] == "https://docs.example.com/get-started/"
     assert links[1]["url"] == "https://docs.example.com/get-started/install/"
+
+
+def test_extract_navigation_preserves_starlight_groups_and_ignores_external_chrome():
+    """Starlight groups are URL-less sidebar parents, not flattened pages."""
+    from deeptutor.services.web_source.html_extractor import extract_navigation
+
+    html = """<html><body>
+<nav class="sidebar" aria-label="Main">
+  <ul class="top-level">
+    <li><details open>
+      <summary><span class="group-label"><span class="large">Get Started</span></span></summary>
+      <ul>
+        <li><a href="/get-started/">Overview</a></li>
+        <li><a href="/get-started/install/">Install</a></li>
+      </ul>
+    </details></li>
+    <li><details open>
+      <summary><span class="group-label"><span class="large">Explore</span></span></summary>
+      <ul><li><a href="/explore/">Overview</a></li></ul>
+    </details></li>
+  </ul>
+  <div class="mobile-preferences"><a href="https://github.com/example/report">Report issue</a></div>
+</nav>
+</body></html>"""
+
+    links = extract_navigation(html, "https://docs.example.com/")
+    assert [(row["title"], row["depth"], row["url"]) for row in links] == [
+        ("Get Started", 0, ""),
+        ("Overview", 1, "https://docs.example.com/get-started/"),
+        ("Install", 1, "https://docs.example.com/get-started/install/"),
+        ("Explore", 0, ""),
+        ("Overview", 1, "https://docs.example.com/explore/"),
+    ]
+
+    from deeptutor.services.web_source.navigation import build_navigation_manifest
+
+    manifest = build_navigation_manifest(
+        links,
+        "original",
+        {
+            "https://docs.example.com/get-started/": "get-started.md",
+            "https://docs.example.com/get-started/install/": "get-started/install.md",
+            "https://docs.example.com/explore/": "explore.md",
+        },
+    )
+    assert [(node["title"], len(node["children"])) for node in manifest["nodes"]] == [
+        ("Get Started", 2),
+        ("Explore", 1),
+    ]
+
+
+def test_bilingual_navigation_preserves_starlight_group_titles():
+    """URL-less groups merge by sidebar structure so both languages survive."""
+    from deeptutor.services.web_source.navigation import merge_navigation
+
+    en = {
+        "kind": "original",
+        "nodes": [
+            {
+                "title": "Get Started",
+                "url": "",
+                "file_path": "",
+                "children": [
+                    {
+                        "title": "Overview",
+                        "url": "https://docs.example.com/get-started/",
+                        "file_path": "get-started.md",
+                        "children": [],
+                    }
+                ],
+            }
+        ],
+    }
+    zh = {
+        "kind": "original",
+        "nodes": [
+            {
+                "title": "快速上手",
+                "url": "",
+                "file_path": "",
+                "children": [
+                    {
+                        "title": "概览",
+                        "url": "https://docs.example.com/zh-cn/get-started/",
+                        "file_path": "zh-cn/get-started.md",
+                        "children": [],
+                    }
+                ],
+            }
+        ],
+    }
+
+    merged = merge_navigation(en, zh, "zh-cn", "docs.example.com")
+    assert merged["kind"] == "original"
+    assert merged["nodes"][0]["title_zh"] == "快速上手"
+    assert merged["nodes"][0]["children"][0]["title_zh"] == "概览"
+    assert merged["nodes"][0]["children"][0]["file_path_zh"] == "zh-cn/get-started.md"
 
 
 def test_extract_navigation_no_sidebar():

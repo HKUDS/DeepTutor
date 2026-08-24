@@ -501,6 +501,7 @@ def _persist_sync_state(
                 source_id=sid,
                 page_hashes=sr.get("page_hashes", {}),
                 page_manifest=sr.get("page_manifest", {}),
+                navigation=sr.get("navigation", {}),
                 pages_unresolved=sr.get("pages_unresolved", 0),
                 page_count=sr.get("page_count", 0),
                 last_synced_at=now,

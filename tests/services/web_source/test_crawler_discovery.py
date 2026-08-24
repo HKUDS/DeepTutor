@@ -12,6 +12,131 @@ def _xml(body: str) -> crawler.FetchOutcome:
     )
 
 
+async def _permit_all(*_args: object, **_kwargs: object) -> tuple[crawler.RobotsPolicy, None]:
+    return crawler.RobotsPolicy(available=True), None
+
+
+@pytest.mark.asyncio
+async def test_crawl_records_builtin_extraction_quality(monkeypatch) -> None:
+    body = "<p>" + ("DeepTutor makes documentation easy to study. " * 20) + "</p>"
+    body += "<ul><li>Install</li><li>Read</li></ul><table><tr><th>Feature</th></tr></table>"
+    html = f"<html><head><title>Guide</title></head><body><article><h1>Guide</h1>{body}</article></body></html>"
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /", request=request)
+        return httpx.Response(200, text=html, request=request)
+
+    class ClientContext:
+        async def __aenter__(self):
+            self.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            return self.client
+
+        async def __aexit__(self, *_args):
+            await self.client.aclose()
+
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+    result = await crawler.crawl_docs_site(
+        "https://example.test/docs/guide",
+        max_depth=0,
+        max_pages=1,
+        client_factory=ClientContext,
+    )
+
+    assert requested == ["https://example.test/robots.txt", "https://example.test/docs/guide"]
+    assert len(result.pages) == 1
+    assert result.pages[0].extraction_method == "builtin_lxml"
+    assert result.pages[0].extraction_quality == 100
+    assert result.pages[0].extraction_warnings == ()
+
+
+@pytest.mark.asyncio
+async def test_robots_disallow_blocks_configured_url_before_page_fetch(monkeypatch) -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /docs/", request=request)
+        raise AssertionError("the disallowed page must never be requested")
+
+    class ClientContext:
+        async def __aenter__(self):
+            self.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            return self.client
+
+        async def __aexit__(self, *_args):
+            await self.client.aclose()
+
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+    result = await crawler.crawl_docs_site(
+        "https://example.test/docs/guide",
+        max_depth=0,
+        max_pages=1,
+        client_factory=ClientContext,
+    )
+
+    assert requested == ["https://example.test/robots.txt"]
+    assert result.pages == []
+    assert result.errors == ["robots.txt disallows the configured URL"]
+
+
+@pytest.mark.asyncio
+async def test_unavailable_robots_blocks_crawl_conservatively(monkeypatch) -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(503, request=request)
+
+    class ClientContext:
+        async def __aenter__(self):
+            self.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+            return self.client
+
+        async def __aexit__(self, *_args):
+            await self.client.aclose()
+
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+    monkeypatch.setattr(crawler, "_MAX_RETRIES", 0)
+    result = await crawler.crawl_docs_site(
+        "https://example.test/docs/guide",
+        max_depth=0,
+        max_pages=1,
+        client_factory=ClientContext,
+    )
+
+    assert requested == ["https://example.test/robots.txt"]
+    assert result.pages == []
+    assert result.errors == ["robots.txt unavailable; crawl blocked"]
+
+
+@pytest.mark.asyncio
+async def test_allowed_host_redirect_boundary_blocks_cross_host(monkeypatch) -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(
+            302,
+            headers={"Location": "https://other.example/docs"},
+            request=request,
+        )
+
+    monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        outcome = await crawler._fetch_page(
+            "https://example.test/docs",
+            client=client,
+            allowed_host="example.test",
+        )
+
+    assert outcome is None
+    assert requested == ["https://example.test/docs"]
+
+
 @pytest.mark.asyncio
 async def test_sitemap_discovery_follows_index_and_filters_prefix(monkeypatch) -> None:
     payloads = {
@@ -37,6 +162,8 @@ async def test_sitemap_discovery_follows_index_and_filters_prefix(monkeypatch) -
         client=object(),
         base_host="example.com",
         base_path_prefix="/docs",
+        robots_policy=crawler.RobotsPolicy(available=True),
+        rate_limiter=crawler._HostRateLimiter(interval_s=0),
     )
 
     assert urls[0] == "https://example.com/docs/"
@@ -58,6 +185,8 @@ async def test_malformed_sitemap_falls_back_to_configured_url(monkeypatch) -> No
         client=object(),
         base_host="example.test",
         base_path_prefix="/docs",
+        robots_policy=crawler.RobotsPolicy(available=True),
+        rate_limiter=crawler._HostRateLimiter(interval_s=0),
     ) == ["https://example.test/docs/"]
 
 
@@ -75,6 +204,11 @@ async def test_external_seed_url_is_not_crawled(monkeypatch) -> None:
     monkeypatch.setattr(crawler, "_sitemap_urls", fake_sitemap)
     monkeypatch.setattr(crawler, "_process_page", fake_process)
     monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda host: False)
+    monkeypatch.setattr(
+        crawler,
+        "_load_robots_policy",
+        _permit_all,
+    )
 
     result = await crawler.crawl_docs_site(
         "https://example.com/docs/",
@@ -108,6 +242,11 @@ async def test_single_page_snapshot_skips_sitemap_discovery(monkeypatch) -> None
     monkeypatch.setattr(crawler, "_sitemap_urls", fail_sitemap)
     monkeypatch.setattr(crawler, "_process_page", fake_process)
     monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda _host: False)
+    monkeypatch.setattr(
+        crawler,
+        "_load_robots_policy",
+        _permit_all,
+    )
 
     result = await crawler.crawl_docs_site(
         "https://example.test/article",
@@ -210,6 +349,7 @@ async def test_explicit_404_is_a_deletion_signal(monkeypatch) -> None:
     monkeypatch.setattr(crawler, "_sitemap_urls", fake_sitemap)
     monkeypatch.setattr(crawler, "_process_page", fake_process)
     monkeypatch.setattr(crawler, "_is_crawler_disallowed_host", lambda host: False)
+    monkeypatch.setattr(crawler, "_load_robots_policy", _permit_all)
 
     result = await crawler.crawl_docs_site("https://example.test/docs/")
 

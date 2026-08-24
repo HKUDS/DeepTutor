@@ -23,6 +23,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import time
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_DEPTH = 3
 DEFAULT_MAX_PAGES = 200
 DEFAULT_CONCURRENCY = 8
+DEFAULT_REQUEST_INTERVAL_S = 0.125
 
 # Operators can explicitly name hosts that resolve to loopback/private
 # addresses (for example, a local documentation server). This is a narrow
@@ -86,6 +88,9 @@ class CrawledPage:
     status: str = "active"
     redirect_url: str = ""
     document_version: str = ""
+    extraction_method: str = "builtin_lxml"
+    extraction_quality: int = 100
+    extraction_warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -196,10 +201,164 @@ _MAX_RETRIES = 2
 _MAX_REDIRECTS = 5
 
 
+@dataclass(frozen=True)
+class RobotsPolicy:
+    """The small robots.txt subset used by the documentation crawler."""
+
+    available: bool
+    allowed: frozenset[str] = frozenset()
+    disallowed: frozenset[str] = frozenset()
+    crawl_delay_s: float | None = None
+
+    def permits(self, url: str) -> bool:
+        if not self.available:
+            return True
+        path = urlparse(url).path or "/"
+        for prefix in sorted(self.disallowed, key=len, reverse=True):
+            if path.startswith(prefix):
+                return any(
+                    path.startswith(candidate) and len(candidate) > len(prefix)
+                    for candidate in self.allowed
+                )
+        return True
+
+
+@dataclass
+class _HostRateLimiter:
+    interval_s: float
+    _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
+    _last_request: dict[str, float] = field(default_factory=dict)
+
+    async def wait(self, url: str) -> None:
+        host = (urlparse(url).hostname or "").lower()
+        lock = self._locks.setdefault(host, asyncio.Lock())
+        async with lock:
+            now = time.monotonic()
+            wait_s = self.interval_s - (now - self._last_request.get(host, now))
+            if wait_s > 0:
+                await asyncio.sleep(wait_s)
+            self._last_request[host] = time.monotonic()
+
+
+def _parse_robots_txt(raw: str, user_agent: str = DEFAULT_USER_AGENT) -> RobotsPolicy:
+    """Parse agent-applicable Allow/Disallow and Crawl-delay rules."""
+    normalized_agent = user_agent.lower()
+    groups: list[dict[str, list[str] | set[str]]] = []
+    agents: set[str] = set()
+    allow: list[str] = []
+    disallow: list[str] = []
+    delays: list[str] = []
+
+    def finalize_group() -> None:
+        if agents:
+            groups.append(
+                {
+                    "agents": set(agents),
+                    "allow": list(allow),
+                    "disallow": list(disallow),
+                    "delay": list(delays),
+                }
+            )
+
+    for raw_line in raw.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        field, separator, value = line.partition(":")
+        field = field.strip().lower()
+        value = value.strip() if separator else ""
+        if field == "user-agent":
+            if allow or disallow or delays:
+                finalize_group()
+                agents.clear()
+                allow.clear()
+                disallow.clear()
+                delays.clear()
+            token = value.lower()
+            if token:
+                agents.add(token)
+            continue
+        if not agents:
+            continue
+        if field in ("allow", "disallow"):
+            values = allow if field == "allow" else disallow
+            assert isinstance(values, list)
+            values.append(value.rstrip())
+        elif field == "crawl-delay":
+            values = delays
+            assert isinstance(values, list)
+            values.append(value)
+
+    finalize_group()
+
+    def agent_applies(group: dict[str, list[str] | set[str]]) -> bool:
+        group_agents = group.get("agents")
+        assert isinstance(group_agents, set)
+        return any(
+            token == "*" or normalized_agent.startswith(token)
+            for token in group_agents
+            if token
+        )
+
+    applicable = [group for group in groups if agent_applies(group)]
+
+    if not applicable:
+        return RobotsPolicy(available=True)
+
+    delay_s: float | None = None
+    for group in applicable:
+        values = group["delay"]
+        assert isinstance(values, list)
+        for value in values:
+            try:
+                delay_s = max(delay_s or 0.0, float(value))
+            except ValueError:
+                continue
+
+    def rules(name: str) -> frozenset[str]:
+        rows: list[str] = []
+        for group in applicable:
+            values = group[name]
+            assert isinstance(values, list)
+            rows.extend(str(value) for value in values if value)
+        return frozenset(rows)
+
+    return RobotsPolicy(
+        available=True,
+        allowed=rules("allow"),
+        disallowed=rules("disallow"),
+        crawl_delay_s=delay_s,
+    )
+
+
+async def _load_robots_policy(
+    base_url: str,
+    *,
+    client: httpx.AsyncClient,
+) -> tuple[RobotsPolicy, float | None]:
+    base_host = urlparse(base_url).hostname or ""
+    fetched = await _fetch_page(
+        urljoin(base_url, "/robots.txt"),
+        client=client,
+        allowed_host=base_host,
+        skip_robots=True,
+    )
+    if fetched is None or fetched.status_code >= 500:
+        return RobotsPolicy(available=False, disallowed=frozenset({"/"})), None
+    if fetched.status_code >= 400 or not fetched.html.strip():
+        return RobotsPolicy(available=True), None
+    policy = _parse_robots_txt(fetched.html)
+    return policy, policy.crawl_delay_s
+
+
 async def _fetch_page(
     url: str,
     *,
     client: httpx.AsyncClient,
+    allowed_host: str = "",
+    rate_limiter: _HostRateLimiter | None = None,
+    robots_policy: RobotsPolicy | None = None,
+    skip_robots: bool = False,
 ) -> FetchOutcome | None:
     """Fetch *url*, including its final redirect URL and HTTP status.
 
@@ -212,9 +371,23 @@ async def _fetch_page(
         try:
             while True:
                 current_host = (urlparse(current_url).hostname or "").strip()
+                if allowed_host and current_host != allowed_host:
+                    logger.warning(
+                        "Crawl: cross-host redirect from %s to %s blocked", url, current_host
+                    )
+                    return None
                 if not current_host or _is_crawler_disallowed_host(current_host):
                     logger.warning("Crawl: request to disallowed host %s blocked", current_host)
                     return None
+                if (
+                    robots_policy is not None
+                    and not skip_robots
+                    and not robots_policy.permits(current_url)
+                ):
+                    logger.warning("Crawl: robots.txt disallows %s", current_url)
+                    return None
+                if rate_limiter is not None:
+                    await rate_limiter.wait(current_url)
                 async with client.stream(
                     "GET",
                     current_url,
@@ -324,6 +497,8 @@ async def _process_page(
     base_host: str,
     base_path_prefix: str,
     max_depth: int,
+    robots_policy: RobotsPolicy,
+    rate_limiter: _HostRateLimiter,
 ) -> dict:
     """Fetch and process a single page for concurrent crawling.
 
@@ -331,7 +506,13 @@ async def _process_page(
     or ``None`` on fetch failure.
     """
     async with sem:
-        fetched = await _fetch_page(url, client=client)
+        fetched = await _fetch_page(
+            url,
+            client=client,
+            allowed_host=base_host,
+            robots_policy=robots_policy,
+            rate_limiter=rate_limiter,
+        )
     if fetched is None:
         return {"requested_url": url, "error": "fetch failed", "status_code": 0}
     if fetched.status_code >= 400:
@@ -343,6 +524,7 @@ async def _process_page(
     html, final_url = fetched.html, fetched.final_url
 
     from deeptutor.services.web_source.html_extractor import (
+        assess_extraction_quality,
         extract_article_markdown,
         extract_headings,
         extract_navigation,
@@ -354,6 +536,7 @@ async def _process_page(
         title, body = _extract_readable(html)
     canonical_url, document_version = _extract_html_metadata(html, final_url)
     content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    quality = assess_extraction_quality(body, title=title)
 
     # Extract sidebar navigation from shallow pages (cheap, most complete there).
     nav = extract_navigation(html, final_url) if depth <= 1 else []
@@ -362,6 +545,7 @@ async def _process_page(
 
     if len(body) > DEFAULT_MAX_CHARS:
         body = body[:DEFAULT_MAX_CHARS].rstrip() + "\n…[truncated]"
+        quality = assess_extraction_quality(body, title=title)
 
     page = CrawledPage(
         url=final_url,
@@ -375,6 +559,9 @@ async def _process_page(
         status="redirect" if url != final_url else "active",
         redirect_url=final_url if url != final_url else "",
         document_version=document_version,
+        extraction_method="builtin_lxml",
+        extraction_quality=quality.score,
+        extraction_warnings=quality.warnings,
     )
 
     links: list[str] = []
@@ -404,6 +591,8 @@ async def _sitemap_urls(
     client: httpx.AsyncClient,
     base_host: str,
     base_path_prefix: str,
+    robots_policy: RobotsPolicy,
+    rate_limiter: _HostRateLimiter,
 ) -> list[str]:
     """Discover internal page URLs from ``sitemap.xml`` and sitemap indexes."""
     parsed = urlparse(base_url)
@@ -415,7 +604,13 @@ async def _sitemap_urls(
         if candidate in seen_sitemaps:
             continue
         seen_sitemaps.add(candidate)
-        fetched = await _fetch_page(candidate, client=client)
+        fetched = await _fetch_page(
+            candidate,
+            client=client,
+            allowed_host=base_host,
+            robots_policy=robots_policy,
+            rate_limiter=rate_limiter,
+        )
         if fetched is None or fetched.status_code >= 400 or not fetched.html:
             continue
         try:
@@ -486,6 +681,18 @@ async def crawl_docs_site(
     sem = asyncio.Semaphore(concurrency)
 
     async with factory() as client:
+        robots_policy, crawl_delay_s = await _load_robots_policy(base_url, client=client)
+        if not robots_policy.available:
+            result.errors.append("robots.txt unavailable; crawl blocked")
+            return result
+        if not robots_policy.permits(base_url):
+            result.errors.append("robots.txt disallows the configured URL")
+            return result
+        request_interval_s = max(
+            DEFAULT_REQUEST_INTERVAL_S,
+            crawl_delay_s or 0.0,
+        )
+        rate_limiter = _HostRateLimiter(interval_s=request_interval_s)
         # A URL snapshot promises to fetch only the requested page. Site-wide
         # sitemap discovery is reserved for tutorial crawls (depth > 0).
         discovered_urls = [base_url]
@@ -495,6 +702,8 @@ async def crawl_docs_site(
                 client=client,
                 base_host=base_host,
                 base_path_prefix=base_path_prefix,
+                robots_policy=robots_policy,
+                rate_limiter=rate_limiter,
             )
         if len(discovered_urls) > 1:
             result.discovery_sources.append("sitemap")
@@ -535,6 +744,8 @@ async def crawl_docs_site(
                     base_host=base_host,
                     base_path_prefix=base_path_prefix,
                     max_depth=max_depth,
+                    robots_policy=robots_policy,
+                    rate_limiter=rate_limiter,
                 )
                 for url, depth in batch
             ]
@@ -631,6 +842,9 @@ def _build_page_manifest(
             "status": page.status,
             "http_status": page.http_status,
             "redirect_url": page.redirect_url,
+            "extraction_method": page.extraction_method,
+            "extraction_quality": page.extraction_quality,
+            "extraction_warnings": list(page.extraction_warnings),
         }
     return manifest
 

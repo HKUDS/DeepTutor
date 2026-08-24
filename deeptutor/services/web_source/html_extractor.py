@@ -6,6 +6,7 @@ main article content to clean markdown preserving structure.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import html as _html
 import logging
 import re
@@ -121,6 +122,23 @@ def extract_navigation(raw_html: str, base_url: str) -> list[dict]:
             tag = (child.tag or "").lower()
 
             # Anchor: emit a navigation entry.
+            if tag == "summary":
+                # Starlight renders non-link section groups as <summary>. Keep
+                # them as URL-less parents so the original sidebar hierarchy is
+                # not flattened into a list of pages.
+                title = child.text_content().strip()
+                if title:
+                    links.append(
+                        {
+                            "title": title,
+                            "url": "",
+                            "path": "",
+                            "depth": depth,
+                            "is_group": True,
+                        }
+                    )
+                continue
+
             if tag == "a":
                 href = (child.get("href") or "").strip()
                 title = child.text_content().strip()
@@ -134,9 +152,13 @@ def extract_navigation(raw_html: str, base_url: str) -> list[dict]:
                 parsed = urlparse(absolute)
                 if parsed.scheme.lower() not in ("http", "https"):
                     continue
-                if absolute in seen:
+                base_host = urlparse(base_url).hostname
+                if not base_host or parsed.hostname != base_host:
                     continue
-                seen.add(absolute)
+                identity = f"link:{absolute}"
+                if identity in seen:
+                    continue
+                seen.add(identity)
                 links.append(
                     {
                         "title": title,
@@ -207,6 +229,72 @@ def extract_headings(markdown: str) -> list[dict]:
             headings.append({"level": level, "text": clean, "slug": slug})
 
     return headings
+
+
+@dataclass(frozen=True)
+class ExtractionQuality:
+    """Small, auditable quality signal for a crawled learning page."""
+
+    score: int
+    warnings: tuple[str, ...] = ()
+
+
+def assess_extraction_quality(markdown: str, *, title: str = "") -> ExtractionQuality:
+    """Score extraction output without using it to replace content silently."""
+    body = (markdown or "").strip()
+    plain = re.sub(r"\x60\x60\x60.*?\x60\x60\x60", " ", body, flags=re.S)
+    plain = re.sub(r"[#*`>|\-]+", " ", plain)
+    plain = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", plain)
+    plain = re.sub(r"\s+", " ", plain).strip()
+
+    warnings: list[str] = []
+    score = 100
+    if not plain:
+        warnings.append("empty body")
+        if not title.strip():
+            warnings.append("missing title")
+        if not re.search(r"(?m)^#{1,6}\s+\S", body):
+            warnings.append("no headings")
+        return ExtractionQuality(score=0, warnings=tuple(dict.fromkeys(warnings)))
+    elif len(plain) < 160:
+        score -= 35
+        warnings.append("very short body")
+    if not (title or "").strip():
+        score -= 10
+        warnings.append("missing title")
+    if not re.search(r"(?m)^#{1,6}\s+\S", body):
+        score -= 15
+        warnings.append("no headings")
+
+    chrome_markers = (
+        "skip to main content",
+        "table of contents",
+        "previous article",
+        "next article",
+        "back to top",
+    )
+    lower = plain.lower()
+    found_chrome = [marker for marker in chrome_markers if marker in lower]
+    if found_chrome:
+        score -= min(25, 10 * len(found_chrome))
+        warnings.append("navigation residue: " + ", ".join(found_chrome))
+    if "…[truncated]" in body:
+        score -= 10
+        warnings.append("body truncated")
+
+    if len(plain) >= 500:
+        score += 5
+    if re.search(r"(?m)^\x60\x60\x60", body):
+        score += 5
+    if re.search(r"(?m)^\|.*\|", body):
+        score += 3
+    if re.search(r"(?m)^(?:[-*+]\s|\d+\.\s)\S", body):
+        score += 3
+
+    return ExtractionQuality(
+        score=max(0, min(100, score)),
+        warnings=tuple(dict.fromkeys(warnings)),
+    )
 
 
 def extract_article_markdown(raw_html: str) -> tuple[str, str]:
