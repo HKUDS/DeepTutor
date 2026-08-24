@@ -115,6 +115,14 @@ def _record_bridge_success(key: str) -> None:
         _bridge_tripped_at.pop(key, None)
 
 
+#: Public aliases for callers outside this module (e.g. the aiohttp-based
+#: cloud provider) that share the same breaker state.
+bridge_breaker_tripped = _breaker_tripped
+record_bridge_failure = _record_bridge_failure
+record_bridge_success = _record_bridge_success
+bridge_breaker_key = _breaker_key
+
+
 def reset_bridge_breaker() -> None:
     """Clear breaker state (test helper)."""
     with _breaker_lock:
@@ -127,8 +135,8 @@ def reset_bridge_breaker() -> None:
 # ---------------------------------------------------------------------------
 
 
-def responses_bridge_enabled(config: Any) -> bool:
-    """Whether *config*'s client should be wrapped with the bridge."""
+def responses_bridge_enabled_for_binding(binding: str | None) -> bool:
+    """Binding-level activation check for callers without a config object."""
     raw = os.environ.get(ENV_USE_RESPONSES_API, "").strip().lower()
     if raw in _TRUTHY_MODES:
         return True
@@ -136,10 +144,28 @@ def responses_bridge_enabled(config: Any) -> bool:
         return False
     # Auto: local servers rarely expose /responses; cloud gateways get probed
     # and fall back through the breaker when they do not.
-    spec = find_by_name(config.binding)
+    spec = find_by_name(binding)
     if spec is not None and getattr(spec, "is_local", False):
         return False
     return True
+
+
+def responses_bridge_enabled(config: Any) -> bool:
+    """Whether *config*'s client should be wrapped with the bridge."""
+    return responses_bridge_enabled_for_binding(getattr(config, "binding", None))
+
+
+def dict_to_ns(value: Any) -> Any:
+    """Recursively convert JSON-style dicts into attribute objects.
+
+    Lets raw aiohttp/SSE payloads flow through the same event converters the
+    SDK object paths use.
+    """
+    if isinstance(value, dict):
+        return SimpleNamespace(**{key: dict_to_ns(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return [dict_to_ns(item) for item in value]
+    return value
 
 
 # ---------------------------------------------------------------------------

@@ -113,6 +113,7 @@ async def test_cloud_complete_fallback(monkeypatch: MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_cloud_stream_yields_chunks(monkeypatch: MonkeyPatch) -> None:
     """Streaming should yield delta content from SSE lines."""
+    monkeypatch.setenv("DEEPTUTOR_USE_RESPONSES_API", "off")
     lines = [
         b'data: {"choices": [{"delta": {"content": "hi"}}]}\n\n',
         b"data: [DONE]\n\n",

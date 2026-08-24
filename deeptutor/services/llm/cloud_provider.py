@@ -278,6 +278,229 @@ async def stream(
             yield chunk
 
 
+def _responses_bridge_active(binding: str, effective_base: str, model: str) -> tuple[bool, str]:
+    """Gate + breaker check shared by the complete/stream bridge branches."""
+    from deeptutor.core.agentic.responses_bridge import (
+        bridge_breaker_key,
+        bridge_breaker_tripped,
+        responses_bridge_enabled_for_binding,
+    )
+
+    if not responses_bridge_enabled_for_binding(binding):
+        return False, ""
+    key = bridge_breaker_key(effective_base, model)
+    if bridge_breaker_tripped(key):
+        return False, key
+    return True, key
+
+
+def _responses_url(effective_base: str) -> str:
+    return f"{effective_base.rstrip('/')}/responses"
+
+
+def _responses_message_content(response_json: Mapping[str, object]) -> str | None:
+    """Extract assistant text from a non-streaming Responses JSON body."""
+    output = response_json.get("output")
+    if not isinstance(output, list):
+        return None
+    parts: list[str] = []
+    for item in output:
+        if not isinstance(item, Mapping) or item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if (
+                isinstance(block, Mapping)
+                and block.get("type") in ("output_text", "text")
+                and isinstance(block.get("text"), str)
+            ):
+                parts.append(block["text"])
+    return "".join(parts) or None
+
+
+async def _responses_complete_content(
+    effective_base: str,
+    headers: dict[str, str],
+    chat_data: Mapping[str, object],
+    binding: str,
+    model: str,
+) -> str | None:
+    """Serve one Chat-Completions-shaped request via ``{base}/responses``.
+
+    Returns the assistant text, or ``None`` when the model produced none.
+    Raises on any transport/HTTP error so the caller can fall back to Chat
+    Completions and feed the breaker.
+    """
+    import json
+
+    from deeptutor.core.agentic.responses_bridge import build_responses_body
+
+    body = build_responses_body(dict(chat_data))
+    body["stream"] = False
+    timeout = aiohttp.ClientTimeout(total=120)
+    connector = _get_aiohttp_connector()
+    async with aiohttp.ClientSession(
+        timeout=timeout, connector=connector, trust_env=True
+    ) as session:
+        async with session.post(
+            _responses_url(effective_base), headers=headers, json=body
+        ) as resp:
+            if resp.status != 200:
+                error_text = await resp.text()
+                raise LLMAPIError(
+                    f"Responses API error: {error_text}",
+                    status_code=resp.status,
+                    provider=binding or "openai",
+                )
+            result = cast(dict[str, object], await resp.json())
+    return _responses_message_content(result)
+
+
+async def _iter_sse_chunk_dicts(
+    resp: aiohttp.ClientResponse,
+) -> AsyncGenerator[dict[str, object], None]:
+    """Parse one Chat-Completions SSE body into decoded chunk dicts."""
+    import json
+
+    async for line in resp.content:
+        line_str = line.decode("utf-8").strip()
+        if not line_str or not line_str.startswith("data:"):
+            continue
+        data_str = line_str[5:].strip()
+        if data_str == "[DONE]":
+            break
+        try:
+            yield cast(dict[str, object], json.loads(data_str))
+        except json.JSONDecodeError:
+            continue
+
+
+async def _iter_chat_stream_content(
+    chunks: AsyncGenerator[dict[str, object], None],
+    binding: str,
+    model: str,
+) -> AsyncGenerator[str, None]:
+    """Yield assistant content strings from chat-completion chunk dicts.
+
+    Handles inline ``<think>``-style markers exactly like the legacy
+    ``_openai_stream`` loop, split across chunk boundaries.
+    """
+    in_thinking_block = False
+    thinking_buffer = ""
+    async for chunk_data in chunks:
+        choices = chunk_data.get("choices")
+        if not isinstance(choices, list) or not choices:
+            continue
+        first_choice = choices[0]
+        delta = first_choice.get("delta") if isinstance(first_choice, Mapping) else None
+        if not isinstance(delta, Mapping):
+            continue
+        content = delta.get("content")
+        if not (isinstance(content, str) and content):
+            continue
+        open_markers = ("<think>", "◣", "꽁")
+        close_markers = ("</think>", "◢", "꽁")
+        if any(open_m in content for open_m in open_markers):
+            in_thinking_block = True
+            for open_m in open_markers:
+                if open_m in content:
+                    parts = content.split(open_m, 1)
+                    if parts[0]:
+                        yield parts[0]
+                    thinking_buffer = open_m + parts[1]
+                    if any(close_m in thinking_buffer for close_m in close_markers):
+                        cleaned = clean_thinking_tags(thinking_buffer, binding, model)
+                        if cleaned:
+                            yield cleaned
+                        thinking_buffer = ""
+                        in_thinking_block = False
+                    break
+            continue
+        if in_thinking_block:
+            thinking_buffer += content
+            if any(close_m in thinking_buffer for close_m in close_markers):
+                cleaned = clean_thinking_tags(thinking_buffer, binding, model)
+                if cleaned:
+                    yield cleaned
+                in_thinking_block = False
+                thinking_buffer = ""
+            continue
+        yield content
+
+
+async def _responses_stream_chunks(
+    effective_base: str,
+    headers: dict[str, str],
+    chat_data: Mapping[str, object],
+    binding: str,
+    model: str,
+    breaker_key: str,
+) -> AsyncGenerator[dict[str, object], None]:
+    """Stream ``{base}/responses`` events re-shaped as chat chunk dicts."""
+    import json
+
+    from deeptutor.core.agentic.responses_bridge import (
+        build_responses_body,
+        dict_to_ns,
+        record_bridge_success,
+        responses_events_to_chat_chunks,
+    )
+
+    body = build_responses_body(dict(chat_data))
+    body["stream"] = True
+    timeout = aiohttp.ClientTimeout(total=300)
+    connector = _get_aiohttp_connector()
+    async with aiohttp.ClientSession(
+        timeout=timeout, connector=connector, trust_env=True
+    ) as session:
+        async with session.post(
+            _responses_url(effective_base), headers=headers, json=body
+        ) as resp:
+            if resp.status != 200:
+                error_text = await resp.text()
+                raise LLMAPIError(
+                    f"Responses API error: {error_text}",
+                    status_code=resp.status,
+                    provider=binding or "openai",
+                )
+
+            async def _events() -> AsyncGenerator[object, None]:
+                async for line in resp.content:
+                    line_str = line.decode("utf-8").strip()
+                    if not line_str.startswith("data:"):
+                        continue
+                    data_str = line_str[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        yield dict_to_ns(json.loads(data_str))
+                    except json.JSONDecodeError:
+                        continue
+
+            async for chunk in responses_events_to_chat_chunks(_events()):
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                choice = choices[0]
+                delta = choice.delta
+                yield {
+                    "choices": [
+                        {
+                            "delta": {
+                                "content": getattr(delta, "content", None),
+                                "reasoning_content": getattr(
+                                    delta, "reasoning_content", None
+                                ),
+                            },
+                            "finish_reason": choice.finish_reason,
+                        }
+                    ]
+                }
+    record_bridge_success(breaker_key)
+
+
 async def _openai_complete(
     model: str,
     prompt: str,
@@ -356,6 +579,25 @@ async def _openai_complete(
         implicit_effort = default_reasoning_effort_for(binding, model)
         if implicit_effort:
             data["reasoning_effort"] = implicit_effort
+
+    active, bridge_key = _responses_bridge_active(binding, effective_base, model)
+    if active:
+        from deeptutor.core.agentic.responses_bridge import record_bridge_failure
+
+        try:
+            bridge_content = await _responses_complete_content(
+                effective_base, headers, data, binding, model
+            )
+        except Exception as exc:
+            record_bridge_failure(bridge_key)
+            logger.warning(
+                "Responses bridge failed for %s (%s); falling back to chat completions",
+                model,
+                exc,
+            )
+        else:
+            if bridge_content is not None:
+                return clean_thinking_tags(bridge_content, binding, model)
 
     timeout = aiohttp.ClientTimeout(total=120)
     connector = _get_aiohttp_connector()
@@ -464,9 +706,8 @@ async def _openai_stream(
     **kwargs: object,
 ) -> AsyncGenerator[str, None]:
     """OpenAI-compatible streaming."""
-    import json
-
     # Sanitize URL
+
     if base_url:
         base_url = sanitize_url(base_url, model)
 
@@ -530,6 +771,28 @@ async def _openai_stream(
         if implicit_effort:
             data["reasoning_effort"] = implicit_effort
 
+    active, bridge_key = _responses_bridge_active(binding, effective_base, model)
+    if active:
+        from deeptutor.core.agentic.responses_bridge import record_bridge_failure
+
+        try:
+            async for piece in _iter_chat_stream_content(
+                _responses_stream_chunks(
+                    effective_base, headers, data, binding, model, bridge_key
+                ),
+                binding,
+                model,
+            ):
+                yield piece
+            return
+        except Exception as exc:
+            record_bridge_failure(bridge_key)
+            logger.warning(
+                "Responses bridge failed for %s (%s); falling back to chat completions",
+                model,
+                exc,
+            )
+
     timeout = aiohttp.ClientTimeout(total=300)
     connector = _get_aiohttp_connector()
     async with aiohttp.ClientSession(
@@ -575,76 +838,10 @@ async def _openai_stream(
                 raise
 
         try:
-            # Track thinking block state for streaming
-            in_thinking_block = False
-            thinking_buffer = ""
-
-            async for line in resp.content:
-                line_str = line.decode("utf-8").strip()
-                if not line_str or not line_str.startswith("data:"):
-                    continue
-
-                data_str = line_str[5:].strip()
-                if data_str == "[DONE]":
-                    break
-
-                try:
-                    chunk_data = cast(dict[str, object], json.loads(data_str))
-                    choices = chunk_data.get("choices")
-                    if isinstance(choices, list) and choices:
-                        choices_list = cast(list[object], choices)
-                        first_choice = choices_list[0]
-                        if isinstance(first_choice, Mapping):
-                            delta = cast(Mapping[str, object], first_choice).get("delta")
-                        else:
-                            delta = None
-                        if isinstance(delta, Mapping):
-                            content = cast(Mapping[str, object], delta).get("content")
-                        else:
-                            content = None
-                        if isinstance(content, str) and content:
-                            # Handle thinking tags in streaming for different marker styles
-                            open_markers = ("<think>", "◣", "꽁")
-                            close_markers = ("</think>", "◢", "꽁")
-
-                            # Check for start tag (handle split tags)
-                            if any(open_m in content for open_m in open_markers):
-                                in_thinking_block = True
-                                # Handle case where content has text BEFORE <think>
-                                for open_m in open_markers:
-                                    if open_m in content:
-                                        parts = content.split(open_m, 1)
-                                        if parts[0]:
-                                            yield parts[0]
-                                        thinking_buffer = open_m + parts[1]
-
-                                        # Check if closed immediately in same chunk
-                                        if any(
-                                            close_m in thinking_buffer for close_m in close_markers
-                                        ):
-                                            cleaned = clean_thinking_tags(
-                                                thinking_buffer, binding, model
-                                            )
-                                            if cleaned:
-                                                yield cleaned
-                                            thinking_buffer = ""
-                                            in_thinking_block = False
-                                        break
-                                continue
-                            elif in_thinking_block:
-                                thinking_buffer += content
-                                if any(close_m in thinking_buffer for close_m in close_markers):
-                                    # Block finished
-                                    cleaned = clean_thinking_tags(thinking_buffer, binding, model)
-                                    if cleaned:
-                                        yield cleaned
-                                    in_thinking_block = False
-                                    thinking_buffer = ""
-                                continue
-                            else:
-                                yield content
-                except json.JSONDecodeError:
-                    continue
+            async for piece in _iter_chat_stream_content(
+                _iter_sse_chunk_dicts(resp), binding, model
+            ):
+                yield piece
         finally:
             await resp_cm.__aexit__(None, None, None)
 
