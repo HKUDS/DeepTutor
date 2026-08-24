@@ -11,6 +11,7 @@ import { Loader2, Save } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
+  supportsChannelOnboarding,
   getChannelSchemas,
   type ChannelsSchemaResponse,
 } from "@/lib/partners-api";
@@ -20,6 +21,7 @@ import {
   type JsonSchema,
 } from "@/components/partners/schema-form";
 import ChannelIcon from "@/components/partners/ChannelIcon";
+import ChannelOnboardingPanel from "@/components/partners/ChannelOnboardingPanel";
 
 const LEGACY_GLOBAL_DELIVERY_KEYS = new Set([
   "send_progress",
@@ -271,6 +273,17 @@ export default function PartnerChannels({
                 </div>
               ) : (
                 <>
+                  {supportsChannelOnboarding(
+                    activeChannel ?? "",
+                    activeEntry.available,
+                  ) && (
+                    <ChannelOnboardingPanel
+                      partnerId={partnerId}
+                      channel={activeChannel === "wecom" ? "wecom" : "feishu"}
+                      onApplied={loadDetail}
+                      onToast={onToast}
+                    />
+                  )}
                   {(activeEntry.json_schema as JsonSchema).description && (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
                       {(activeEntry.json_schema as JsonSchema).description}
