@@ -37,6 +37,18 @@ def _context() -> ReadingContext:
     )
 
 
+def _chinese_context() -> ReadingContext:
+    text = "月亮反射太阳光。月亮绕着地球转动。"
+    return ReadingContext(
+        material_id="abc12345",
+        locator=1,
+        unit_text=text,
+        visible_text=text,
+        locale="zh-CN",
+        selection="月亮",
+    )
+
+
 def test_package_contract_declares_all_five_entry_points() -> None:
     with (PACKAGE_ROOT / "pyproject.toml").open("rb") as handle:
         project = tomllib.load(handle)
@@ -56,6 +68,10 @@ def test_package_contract_declares_all_five_entry_points() -> None:
 async def test_five_extensions_are_independently_constructible(monkeypatch):
     monkeypatch.delenv("DEEPTUTOR_READING_TRANSLATION_MODEL", raising=False)
     monkeypatch.delenv("DEEPTUTOR_READING_TRANSLATION_PROVIDER", raising=False)
+    monkeypatch.delenv("DEEPTUTOR_READING_LEARN_MODEL", raising=False)
+    monkeypatch.delenv("DEEPTUTOR_READING_LEARN_PROVIDER", raising=False)
+    monkeypatch.delenv("DEEPTUTOR_READING_QUIZ_MODEL", raising=False)
+    monkeypatch.delenv("DEEPTUTOR_READING_QUIZ_PROVIDER", raising=False)
     module = _module()
     rows = [
         module.GuidedLearnExtension(),
@@ -76,6 +92,76 @@ async def test_five_extensions_are_independently_constructible(monkeypatch):
     assert "DEEPTUTOR_READING_TRANSLATION_MODEL" in result.message
 
 
+@pytest.mark.asyncio
+async def test_guided_learn_fallback_extracts_page_concepts(monkeypatch):
+    monkeypatch.delenv("DEEPTUTOR_READING_LEARN_MODEL", raising=False)
+    result = await _module().GuidedLearnExtension().run_action("explain", _context())
+
+    assert result.payload["overview"] == ("The moon reflects sunlight. It travels around Earth.")
+    assert "moon" in {row["term"].lower() for row in result.payload["concept_details"]}
+    assert any(row.startswith("moon:") for row in result.payload["concepts"])
+    assert result.payload["reflection"].startswith("Why is ")
+    assert result.payload["reflection_hint"]
+    assert result.payload["source"] == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_guided_learn_and_quiz_fallbacks_support_chinese_pages(monkeypatch):
+    monkeypatch.delenv("DEEPTUTOR_READING_LEARN_MODEL", raising=False)
+    monkeypatch.delenv("DEEPTUTOR_READING_QUIZ_MODEL", raising=False)
+    module = _module()
+    context = _chinese_context()
+
+    learn = await module.GuidedLearnExtension().run_action("explain", context)
+    assert learn.payload["overview"] == "月亮反射太阳光。月亮绕着地球转动。"
+    assert learn.payload["reflection"].startswith("想一想：")
+
+    quiz = await module.QuizExtension().run_action("start", context)
+    assert len(quiz.payload["questions"]) == 3
+    assert all(row["prompt"] for row in quiz.payload["questions"])
+
+
+@pytest.mark.asyncio
+async def test_guided_learn_uses_explicit_model_and_falls_back_safely(monkeypatch):
+    calls = {}
+    generated = {
+        "overview": "The moon lights the night by reflecting sunlight.",
+        "concepts": [
+            {
+                "term": "reflects",
+                "explanation": "Light bounces from the sun off the moon.",
+                "analogy": "Like a mirror bouncing a flashlight beam.",
+            }
+        ],
+        "reflection": {
+            "prompt": "Why does the moon shine?",
+            "hint": "Follow the sunlight.",
+            "answer": "It reflects sunlight.",
+        },
+    }
+
+    async def fake_complete(_prompt, **kwargs):
+        calls.update(kwargs)
+        if calls.get("fail"):
+            raise RuntimeError("model unavailable")
+        return json.dumps(generated)
+
+    monkeypatch.setattr("deeptutor.services.llm.complete", fake_complete)
+    monkeypatch.setenv("DEEPTUTOR_READING_LEARN_MODEL", "learn-model")
+    monkeypatch.setenv("DEEPTUTOR_READING_LEARN_PROVIDER", "local-provider")
+    extension = _module().GuidedLearnExtension()
+
+    result = await extension.run_action("explain", _context())
+    assert result.payload["source"] == "generated"
+    assert result.payload["concept_details"][0]["analogy"].startswith("Like a mirror")
+    assert calls["model"] == "learn-model"
+    assert calls["binding"] == "local-provider"
+
+    calls["fail"] = True
+    fallback = await extension.run_action("explain", _context())
+    assert fallback.payload["source"] == "fallback"
+
+
 def test_vocabulary_reads_configured_local_dictionary(monkeypatch, tmp_path):
     dictionary = tmp_path / "dictionary.json"
     dictionary.write_text(json.dumps({"moon": "Earth's natural satellite"}), encoding="utf-8")
@@ -83,6 +169,33 @@ def test_vocabulary_reads_configured_local_dictionary(monkeypatch, tmp_path):
     result = _module().VocabularyExtension().run_action("hint", _context())
     assert result.payload["definition"] == "Earth's natural satellite"
     assert result.message == "Local dictionary"
+
+
+def test_vocabulary_uses_builtin_kids_word_hints_as_a_private_quiz(monkeypatch):
+    monkeypatch.delenv("DEEPTUTOR_READING_DICTIONARY", raising=False)
+    result = _module().VocabularyExtension().run_action("hint", _context())
+
+    assert result.type == "quiz"
+    question = result.payload["questions"][0]
+    assert question["prompt"] == "Which meaning fits this word?"
+    assert len(question["choices"]) == 3
+    assert "the bright thing in the night sky" in question["choices"]
+    assert "_metadata" in result.payload["_answers"]
+    assert result.payload["_answers"]["_metadata"]["chinese"] == "月亮"
+    assert "月亮" not in json.dumps(result.payload["questions"])
+
+    correct = result.payload["_answers"]["meaning"]
+    feedback = (
+        _module()
+        .VocabularyExtension()
+        .submit(
+            {"private": {"answers": result.payload["_answers"]}},
+            {"answers": {"meaning": correct}},
+        )
+    )
+    assert feedback.payload["correct"] is True
+    assert feedback.payload["chinese"] == "月亮"
+    assert feedback.message == "Correct! moon: 月亮"
 
 
 @pytest.mark.asyncio
@@ -116,13 +229,69 @@ async def test_translation_reports_configuration_errors_as_actionable_cards(monk
     assert result.payload["source_text"] == _context().selection
 
 
-def test_quiz_keeps_answers_private_until_submit():
+@pytest.mark.asyncio
+async def test_quiz_uses_story_comprehension_and_keeps_answers_private_until_submit(monkeypatch):
+    monkeypatch.delenv("DEEPTUTOR_READING_QUIZ_MODEL", raising=False)
     module = _module()
     quiz = module.QuizExtension()
-    result = quiz.run_action("start", _context())
+    result = await quiz.run_action("start", _context())
     assert result.type == "quiz"
-    assert result.payload["_answers"]
+    questions = result.payload["questions"]
+    assert len(questions) == 3
+    assert len({row["prompt"] for row in questions}) == 3
+    assert all(2 <= len(row["choices"]) <= 4 for row in questions)
+    assert all("answer_index" not in row for row in questions)
+    assert set(result.payload["_answers"]) == {"q1", "q2", "q3", "_metadata"}
 
     from deeptutor.api.routers.reading_extensions import _public_result
 
     assert "_answers" not in _public_result(result)["payload"]
+
+    expected = result.payload["_answers"]
+    feedback = quiz.submit(
+        {"private": {"answers": expected}},
+        {"answers": {key: value for key, value in expected.items() if key != "_metadata"}},
+    )
+    assert feedback.message == "3/3"
+    assert feedback.payload["score"] == 3
+    assert feedback.payload["total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_quiz_uses_explicit_model_and_falls_back_safely(monkeypatch):
+    calls = {"count": 0, "fail": False}
+
+    async def fake_complete(_prompt, **kwargs):
+        calls.update(kwargs)
+        calls["count"] += 1
+        if calls["fail"]:
+            raise RuntimeError("model unavailable")
+        return json.dumps(
+            {
+                "questions": [
+                    {
+                        "id": "model-q1",
+                        "question": "What does the moon reflect?",
+                        "choices": ["sunlight", "starlight", "firelight"],
+                        "answer_index": 0,
+                        "explanation": "The text says the moon reflects sunlight.",
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr("deeptutor.services.llm.complete", fake_complete)
+    monkeypatch.setenv("DEEPTUTOR_READING_QUIZ_MODEL", "quiz-model")
+    monkeypatch.setenv("DEEPTUTOR_READING_QUIZ_PROVIDER", "local-provider")
+    extension = _module().QuizExtension()
+    result = await extension.run_action("start", _context())
+
+    assert result.payload["questions"][0]["prompt"] == "What does the moon reflect?"
+    assert len(result.payload["questions"]) == 3
+    assert calls["model"] == "quiz-model"
+    assert calls["binding"] == "local-provider"
+
+    calls["fail"] = True
+    fallback = await extension.run_action("start", _context())
+    assert len(fallback.payload["questions"]) == 3
+    assert fallback.payload["questions"][0]["prompt"] != "What does the moon reflect?"

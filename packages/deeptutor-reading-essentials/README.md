@@ -49,9 +49,36 @@ The provider variable may be omitted when the model resolves through the
 default binding. Missing or invalid provider configuration returns an
 actionable card and never takes down the reader.
 
+## Guided learning and quizzes
+
+Learn and Test always have deterministic fallbacks. Without model configuration,
+Learn extracts a page overview, concepts, and a reflection prompt; Test generates
+three story-comprehension questions from the visible page. Vocabulary uses the
+same built-in child dictionary and progressive thinking clues as the former Kids
+reader, including stable three-choice prompts and Chinese meaning feedback.
+
+To enable model-enhanced page guides:
+
+```bash
+export DEEPTUTOR_READING_LEARN_MODEL=<installed-model-id>
+export DEEPTUTOR_READING_LEARN_PROVIDER=<provider-binding>
+```
+
+To enable model-enhanced comprehension quizzes:
+
+```bash
+export DEEPTUTOR_READING_QUIZ_MODEL=<installed-model-id>
+export DEEPTUTOR_READING_QUIZ_PROVIDER=<provider-binding>
+```
+
+Provider variables may be omitted. Invalid or unavailable model responses fall
+back to the local experience. Correct answers, explanations, and vocabulary
+meanings remain server-side until a child submits an answer.
+
 ## Vocabulary
 
-Set `DEEPTUTOR_READING_DICTIONARY` to a local JSON object:
+Set `DEEPTUTOR_READING_DICTIONARY` to override the built-in child dictionary
+with a local JSON object:
 
 ```json
 {
@@ -60,6 +87,5 @@ Set `DEEPTUTOR_READING_DICTIONARY` to a local JSON object:
 ```
 
 Values may be strings or arrays of strings. Definitions are truncated at 4,000
-characters and the dictionary file is limited to 2 MB. Without a configured
-dictionary, Vocabulary still shows the selected word and its surrounding
-context.
+characters and the dictionary file is limited to 2 MB. Words not found in the
+override fall back to the built-in child vocabulary.
