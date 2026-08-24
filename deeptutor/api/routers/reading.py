@@ -98,6 +98,12 @@ def _http_error(exc: Exception) -> HTTPException:
 # === Models ===================================================================
 
 
+class ReadingProgressSummary(BaseModel):
+    last_read_at: float
+    last_locator: int
+    reading_percentage: float
+
+
 class MaterialInfo(BaseModel):
     material_id: str
     filename: str
@@ -125,6 +131,7 @@ class MaterialInfo(BaseModel):
     bilingual_available: bool = False
     bilingual_languages: list[str] = Field(default_factory=list)
     bilingual_pairing_ids: list[str] = Field(default_factory=list)
+    reading_progress: ReadingProgressSummary | None = None
 
 
 class MaterialDetail(MaterialInfo):
@@ -291,7 +298,15 @@ async def list_materials() -> list[MaterialInfo]:
             assigned = set(reading.get("material_ids") or (["*"] if not has_reading else []))
             if "*" not in assigned:
                 manifests = [row for row in manifests if row.material_id in assigned]
-        return [_info(store, manifest) for manifest in manifests]
+        rows = [_info(store, manifest) for manifest in manifests]
+        rows.sort(
+            key=lambda row: (
+                row.reading_progress.last_read_at if row.reading_progress else 0.0,
+                row.created_at,
+            ),
+            reverse=True,
+        )
+        return rows
     except Exception as exc:
         raise _http_error(exc) from exc
 
@@ -721,12 +736,22 @@ def _info(
     *,
     annotation_count: bool = True,
 ) -> MaterialInfo:
+    progress = store.stored_position(manifest.material_id)
     return MaterialInfo(
         **manifest.to_dict()
         | {
             "annotation_count": (
                 len(store.annotations(manifest.material_id)) if annotation_count else 0
-            )
+            ),
+            "reading_progress": (
+                ReadingProgressSummary(
+                    last_read_at=progress.updated_at,
+                    last_locator=progress.locator,
+                    reading_percentage=progress.percentage,
+                )
+                if progress
+                else None
+            ),
         }
     )
 

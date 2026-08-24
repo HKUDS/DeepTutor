@@ -142,6 +142,39 @@ def test_list_materials_reports_annotation_counts(client: TestClient) -> None:
     assert rows[0]["annotation_count"] == 1
 
 
+def test_list_materials_reports_progress_and_orders_recent_reads_first(
+    client: TestClient,
+) -> None:
+    older = _upload(client, name="older.pdf", data=_pdf_bytes(["Older chapter."]))
+    newer = _upload(client, name="newer.pdf", data=_pdf_bytes(["Newer chapter."]))
+    latest = _upload(client, name="latest.pdf", data=_pdf_bytes(["Latest chapter."]))
+
+    def save(material_id: str, locator: int, percentage: float) -> None:
+        response = client.put(
+            f"/api/v1/reading/materials/{material_id}/position",
+            json={"locator": locator, "percentage": percentage},
+        )
+        assert response.status_code == 200
+
+    save(older["material_id"], 1, 0.1)
+    save(latest["material_id"], 1, 0.75)
+
+    rows = client.get("/api/v1/reading/materials").json()
+
+    assert [row["material_id"] for row in rows] == [
+        latest["material_id"],
+        older["material_id"],
+        newer["material_id"],
+    ]
+    assert rows[0]["reading_progress"] == {
+        "last_read_at": rows[0]["reading_progress"]["last_read_at"],
+        "last_locator": 1,
+        "reading_percentage": 0.75,
+    }
+    assert rows[1]["reading_progress"]["reading_percentage"] == 0.1
+    assert rows[2]["reading_progress"] is None
+
+
 def test_get_material_404s_for_an_unknown_id(client: TestClient) -> None:
     response = client.get("/api/v1/reading/materials/0123456789abcdef")
     assert response.status_code == 404
