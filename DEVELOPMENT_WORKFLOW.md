@@ -11,9 +11,15 @@ does not disturb the running local service.
    candidate pointing at the same commit:
 
    ```bash
+   python3 scripts/check_primary_checkout.py
    git status --short --branch
    git rev-parse main
    ```
+
+   The primary checkout is the launchd-owned control and deployment checkout,
+   not a scratch workspace. If the governance check fails, first move the WIP
+   to an isolated task worktree (or otherwise preserve it explicitly); do not
+   start another feature on top of it.
 
 2. Create an isolated worktree and branch from `main`:
 
@@ -32,6 +38,8 @@ does not disturb the running local service.
 Do not combine a feature, an unrelated bug fix, and broad cleanup in one branch.
 Do not commit `.worktrees/`, build output, logs, local launchd configuration,
 tokens, or cached credentials.
+Keep rollback snapshots and deployment-recovery trees in ignored local paths
+such as `backups/` or `web/.next-*/`; do not turn them into repository content.
 
 ## Merging
 
@@ -41,6 +49,9 @@ Before merging a branch into `main`:
 2. Keep the worktree clean.
 3. Run the checks required for the touched subsystem.
 4. Bind every new product behavior to at least one regression test.
+5. Run `python3 scripts/check_primary_checkout.py` immediately before the
+   fast-forward merge. It must pass; a dirty primary checkout means the WIP has
+   not been protected or converged yet.
 
 Merge only as a fast-forward from the primary checkout:
 

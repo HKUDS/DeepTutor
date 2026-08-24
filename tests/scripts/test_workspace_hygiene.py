@@ -60,6 +60,21 @@ def test_rejects_dirty_checkout_before_running_tracked_hygiene(monkeypatch, caps
     assert "?? scratch.py" in captured.err
 
 
+def test_summarizes_large_dirty_checkouts(monkeypatch, capsys) -> None:
+    module = _load_workspace_hygiene_module()
+    entries = [f"?? generated-{index}.txt" for index in range(45)]
+
+    monkeypatch.setattr(module, "dirty_entries", lambda: entries)
+
+    assert module.main() == 1
+
+    captured = capsys.readouterr()
+    assert "Dirty checkout found (45 entries)" in captured.err
+    assert "generated-39.txt" in captured.err
+    assert "generated-40.txt" not in captured.err
+    assert "... 5 additional entries omitted" in captured.err
+
+
 def test_propagates_tracked_hygiene_failure(monkeypatch) -> None:
     module = _load_workspace_hygiene_module()
 

@@ -6,6 +6,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
+MAX_DIRTY_DETAILS = 40
+
 
 def run_git(arguments: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -35,10 +37,14 @@ def main() -> int:
     entries = dirty_entries()
     if entries:
         print(
-            "Dirty checkout found; move work to a task worktree before proceeding:",
+            f"Dirty checkout found ({len(entries)} entries); move work to a task "
+            "worktree before proceeding:",
             file=sys.stderr,
         )
-        print("\n".join(entries), file=sys.stderr)
+        print("\n".join(entries[:MAX_DIRTY_DETAILS]), file=sys.stderr)
+        omitted = len(entries) - MAX_DIRTY_DETAILS
+        if omitted > 0:
+            print(f"... {omitted} additional entries omitted", file=sys.stderr)
         return 1
     return tracked_hygiene()
 

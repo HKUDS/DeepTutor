@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -eu
+
+python3 scripts/check_workspace_hygiene.py
+python3 scripts/check_primary_checkout.py

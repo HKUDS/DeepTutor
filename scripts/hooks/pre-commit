@@ -6,3 +6,4 @@ set -eu
 # files before contributors install the full pre-commit environment.
 python3 scripts/check_repo_hygiene.py
 python3 scripts/check_branch_policy.py
+python3 scripts/check_primary_checkout.py

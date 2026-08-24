@@ -82,6 +82,7 @@ node_modules/
 .next/
 web/.next/
 web/.next-deeptutor/
+web/.next-*/
 out/
 web/out/
 .vercel/
@@ -229,6 +230,10 @@ $RECYCLE.BIN/
 *.temp
 *.bak
 *.backup
+
+# Local rollback and deployment-recovery artifacts. Keep these out of Git; if
+# one becomes product source, move it to a task worktree first.
+/backups/
 *.swp
 *.swo
 
