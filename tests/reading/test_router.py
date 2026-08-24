@@ -465,6 +465,66 @@ def test_tutorial_import_keeps_missing_pages_in_outline(
     assert body["outline"][1]["title"].endswith("unavailable")
 
 
+def test_tutorial_import_preserves_original_navigation_groups(
+    client: TestClient,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from deeptutor.multi_user import knowledge_access
+
+    kb_dir = tmp_path / "knowledge_bases" / "docs"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "intro.md").write_text("# Intro\n\nAvailable page", encoding="utf-8")
+    source = {
+        "id": "source1",
+        "url": "https://docs.example.com/",
+        "last_synced_at": "2026-08-23T12:00:00Z",
+        "page_manifest": {"intro.md": {"title": "Intro", "status": "active"}},
+        "navigation": {
+            "kind": "original",
+            "nodes": [
+                {
+                    "title": "Get Started",
+                    "url": "",
+                    "file_path": "",
+                    "children": [
+                        {
+                            "title": "Intro",
+                            "url": "https://docs.example.com/intro",
+                            "file_path": "intro.md",
+                            "children": [],
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+
+    class FakeManager:
+        def get_knowledge_base_path(self, _name: str) -> Path:
+            return kb_dir
+
+        def get_web_sources(self, _name: str):
+            return [source]
+
+    resource = SimpleNamespace(id="user:kb:docs", name="docs")
+    monkeypatch.setattr(knowledge_access, "resolve_kb", lambda *_a, **_kw: resource)
+    monkeypatch.setattr(knowledge_access, "manager_for_resource", lambda _resource: FakeManager())
+
+    opened = client.post(
+        "/api/v1/reading/materials/from-kb",
+        json={"kb_name": "docs", "web_source_id": "source1"},
+    )
+
+    assert opened.status_code == 200, opened.text
+    outline = opened.json()["outline"]
+    assert [(row["title"], row["level"], row["locator"]) for row in outline] == [
+        ("Get Started", 1, 1),
+        ("Intro", 2, 1),
+    ]
+
+
 def test_bilingual_tutorial_exposes_collapsible_alignment_groups(
     client: TestClient,
     monkeypatch,

@@ -933,17 +933,28 @@ def _navigation_rows(nodes: list[dict[str, Any]], level: int = 1) -> list[dict[s
     rows: list[dict[str, Any]] = []
     for node in nodes:
         file_path = str(node.get("file_path") or "")
-        if file_path:
+        if not file_path:
             rows.append(
                 {
-                    "file_path": file_path,
-                    "title": str(node.get("title") or Path(file_path).stem),
+                    "file_path": "",
+                    "title": str(node.get("title") or "Untitled section"),
                     "level": level,
                     "url": str(node.get("url") or ""),
-                    "file_path_zh": str(node.get("file_path_zh") or ""),
-                    "pair_key": str(node.get("pair_key") or ""),
+                    "is_group": True,
                 }
             )
+            rows.extend(_navigation_rows(node.get("children") or [], level + 1))
+            continue
+        rows.append(
+            {
+                "file_path": file_path,
+                "title": str(node.get("title") or Path(file_path).stem),
+                "level": level,
+                "url": str(node.get("url") or ""),
+                "file_path_zh": str(node.get("file_path_zh") or ""),
+                "pair_key": str(node.get("pair_key") or ""),
+            }
+        )
         rows.extend(_navigation_rows(node.get("children") or [], level + 1))
     return rows
 
@@ -1051,6 +1062,17 @@ def _kb_tutorial_payload(
     pairing_ids: set[str] = set()
     default_pair_key = _resolve_kb_pair_key(raw_dir.parent, source, source_id)
     for row in rows:
+        if row.get("is_group"):
+            outline.append(
+                OutlineEntry(
+                    locator=len(units) + 1,
+                    title=str(row["title"]),
+                    level=max(1, int(row["level"])),
+                    synthesised=navigation.get("kind") != "original",
+                    source_url=str(row["url"]),
+                )
+            )
+            continue
         try:
             target = _safe_kb_file(raw_dir, row["file_path"])
         except HTTPException:
@@ -1156,6 +1178,7 @@ def _kb_tutorial_payload(
         has_raw_view=False,
         captured_at=captured_at,
         content_format="markdown",
+        navigation_kind=str(navigation.get("kind") or ""),
         bilingual_groups=tuple(bilingual_groups),
         bilingual_languages=("en", "zh") if bilingual_groups else (),
         bilingual_pairing_ids=tuple(sorted(pairing_ids)),
