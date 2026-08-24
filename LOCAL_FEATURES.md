@@ -81,6 +81,45 @@ The fork-local direction is to productize the child-facing experience as
 The internal protocol and grant field remain `reading_extensions`; the product
 name does not introduce a second child identity system.
 
+### Architectural alignment: #992-#995 Learner Account
+
+An audit of upstream `main` and `dev` confirms that issues #992-#995
+("Learner Account") do not invent a new identity or parallel storage system,
+but rather formalize DeepTutor's existing multi-user and runtime foundations:
+
+```text
+Old Kids Subsystem Approach:
+  DeepTutor -> KidsProfile -> Kids Library / Kids Progress / Kids Session
+
+Converged Learner Architecture (#992-#995):
+  User (role="user") -> Learner Configuration (LearnerProfile, LearningPolicy, Guardian Auth)
+                     -> Existing Shared Runtime (Workspace, Grants v2, ReadingStore, LearningStore, Audit)
+```
+
+#### Upstream infrastructure status vs #992-#995 requirements
+
+| Component / Requirement | Upstream `main`/`dev` Status | Implementation & Local Contract |
+| ----------------------- | ---------------------------- | ------------------------------- |
+| Identity model (`admin/user` only) | Complete | `Role = Literal["admin", "user"]`; no special child role |
+| Independent user workspaces | Complete | Filesystem isolation under `data/users/<user_id>/` |
+| Tool grant allowlists | Complete | Grants v2 `enabled_tools` filter |
+| MCP / CLI / exec restrictions | Complete | Deny-by-default for non-admin (`mcp_tools`, `cli_apps`, `exec_enabled`) |
+| Resource & material assignment | Complete | Admin API grants for models, KBs, skills; assigned KBs are read-only (403) |
+| Server-side turn enforcement | Complete | `tool_access.py` and `turn_runtime` filter every turn payload |
+| Usage & administration audit | Complete | `audit/usage.jsonl` logs actor, target, action, timestamp |
+| Isolated Reading Store | Complete | Workspace-scoped `ReadingStore` (`deeptutor/reading/store.py`) |
+| Reading Agent safety context | Complete | Server binds `reading_material_id` / viewport; deterministic locator pre-pass |
+| Grounding on turn regenerate | Complete | Turn snapshot stores `readingMaterialId` to prevent silent ungrounding |
+| Learning & Mastery persistence | Complete | Workspace-scoped SQLite database (`<workspace>/learning/mastery.sqlite3`) |
+| `learner preset` | Pending | Preset expansion into grant / policy rules |
+| `learning_policy` schema | Pending | Server-enforced account policy structure |
+| Guardian -> Learner delegation | Pending | Parent-child authorization abstraction over existing grant APIs |
+| Age / grade `LearnerProfile` | Pending | Metadata for age-banded prompt adaptation |
+| Capability whitelist | Incomplete | Account-level capability allowlisting |
+| Reading Extensions policy | Blocked on #970 | Upstream PR #970 (Safe Reading Extension Protocol) is open/unmerged |
+
+### Delivery phases
+
 1. **Now: keep Kids Reading inside DeepTutor.** Learners remain ordinary
    `role="user"` accounts with a server-enforced learning policy, assigned
    materials, and per-account Reading extension allowlists. The public child
@@ -97,7 +136,11 @@ name does not introduce a second child identity system.
    versioning, entry-point compatibility, security boundaries, tests, release
    automation, and a compatibility matrix are documented. Track upstream
    reading-extension protocol PR #970 before finalizing the public contract.
-4. **Later: consider a full Kids Reading application repository only if it
+4. **Upstream #992-#995 landing & legacy retirement:** As upstream #992-#995
+   merges into `main`/`dev`, replace fork-local `kids-to-learning` migration
+   shims, standalone profile/PIN tables, and `/api/v1/kids` routes with official
+   `LearnerProfile`, `LearningPolicy`, and `Guardian` delegation APIs.
+5. **Later: consider a full Kids Reading application repository only if it
    becomes a standalone product.** A separate app must not fork the account,
    bookshelf, progress, guardian authorization, or reading-security model until
    there is an explicit product decision to operate and support it as a
@@ -106,7 +149,6 @@ name does not introduce a second child identity system.
 Do not move the fork-local legacy Kids routes, Kids-to-Learning migration,
 parent PIN/device flows, dual-track sync details, local reward providers, or
 child data/deployment assumptions into the public essentials package.
-
 ## Regression gates
 
 Follow `DEVELOPMENT_WORKFLOW.md` for branching, isolated worktrees, ports,
