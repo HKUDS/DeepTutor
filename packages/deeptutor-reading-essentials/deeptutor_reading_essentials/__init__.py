@@ -15,6 +15,7 @@ from deeptutor.reading.extensions import (
     ReadingExtensionManifest,
     ReadingExtensionResult,
 )
+from deeptutor.services.llm.exceptions import LLMConfigError
 
 
 def _sentences(text: str, limit: int = 3) -> list[str]:
@@ -127,9 +128,7 @@ class TranslationExtension(_BaseExtension):
         result_types=["card"],
     )
 
-    async def run_action(
-        self, action: str, context: ReadingContext
-    ) -> ReadingExtensionResult:
+    async def run_action(self, action: str, context: ReadingContext) -> ReadingExtensionResult:
         self._check(action)
         model = os.environ.get("DEEPTUTOR_READING_TRANSLATION_MODEL", "").strip()
         provider = os.environ.get("DEEPTUTOR_READING_TRANSLATION_PROVIDER", "").strip()
@@ -147,16 +146,25 @@ class TranslationExtension(_BaseExtension):
         from deeptutor.services.llm import complete
 
         source = self._source(context)[:12_000]
-        translated = await complete(
-            source,
-            system_prompt=(
-                "Translate the supplied reading passage into Chinese. Preserve Markdown "
-                "structure and technical terms. Return only the translation."
-            ),
-            model=model,
-            binding=provider or None,
-            max_tokens=4096,
-        )
+        try:
+            translated = await complete(
+                source,
+                system_prompt=(
+                    "Translate the supplied reading passage into Chinese. Preserve Markdown "
+                    "structure and technical terms. Return only the translation."
+                ),
+                model=model,
+                binding=provider or None,
+                max_tokens=4096,
+            )
+        except LLMConfigError as exc:
+            detail = str(exc)[:3900]
+            return ReadingExtensionResult(
+                type="card",
+                title="Translation",
+                message=f"Translation is not configured correctly: {detail}",
+                payload={"source_text": source},
+            )
         return ReadingExtensionResult(
             type="card",
             title="Translation",

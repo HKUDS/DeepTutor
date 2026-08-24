@@ -112,6 +112,9 @@ async def run_extension_action(
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     extension = _extension(extension_id)
+    declared_action = next((row for row in extension.manifest.actions if row.id == action), None)
+    if declared_action is None:
+        raise HTTPException(status_code=404, detail="Reading extension action not found.")
     store = _store()
     try:
         manifest = store.manifest(material_id)
@@ -122,6 +125,9 @@ async def run_extension_action(
         (row for row in store.unit_references(material_id) if row.locator == payload.locator),
         None,
     )
+    selection = _verified(payload.selection, unit_text)
+    if "selection" in declared_action.requires and not selection:
+        raise HTTPException(status_code=400, detail="Select text from the visible unit first.")
     policy = current_learning_policy() or {}
     context = ReadingContext(
         material_id=material_id,
@@ -130,7 +136,7 @@ async def run_extension_action(
         source_anchor=payload.source_anchor,
         locale=payload.locale,
         age_band=str(policy.get("age_band") or ""),
-        selection=_verified(payload.selection, unit_text),
+        selection=selection,
         visible_text=_verified(payload.visible_text, unit_text) or unit_text,
         unit_text=unit_text,
     )

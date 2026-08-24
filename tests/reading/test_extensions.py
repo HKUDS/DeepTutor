@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from pydantic import ValidationError
 import pytest
 
 from deeptutor.reading.extensions import (
@@ -77,3 +78,20 @@ def test_duplicate_extension_does_not_replace_first():
     )
     registry = ReadingExtensionRegistry([first, duplicate])
     assert registry.get("quiz") is first
+
+
+def test_result_schema_rejects_unsafe_or_unbounded_shapes():
+    with pytest.raises(ValidationError):
+        ReadingExtensionResult(type="browser_speech", payload={"text": ""})
+    with pytest.raises(ValidationError):
+        ReadingExtensionResult(
+            type="quiz",
+            payload={"questions": [{"prompt": "Question", "choices": ["one"]}]},
+        )
+    with pytest.raises(ValidationError):
+        ReadingExtensionResult(type="card", payload={"body": "x" * 70_000})
+
+
+def test_manifest_rejects_non_toolbar_triggers():
+    with pytest.raises(ValidationError):
+        ReadingAction(id="open", label="Open", trigger="javascript")  # type: ignore[arg-type]

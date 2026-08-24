@@ -4,10 +4,12 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import tomllib
 
 import pytest
 
 from deeptutor.reading.extensions import ReadingContext
+from deeptutor.services.llm.exceptions import LLMConfigError
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "packages" / "deeptutor-reading-essentials"
 
@@ -33,6 +35,21 @@ def _context() -> ReadingContext:
         visible_text="The moon reflects sunlight. It travels around Earth.",
         selection="moon",
     )
+
+
+def test_package_contract_declares_all_five_entry_points() -> None:
+    with (PACKAGE_ROOT / "pyproject.toml").open("rb") as handle:
+        project = tomllib.load(handle)
+
+    entry_points = project["project"]["entry-points"]["deeptutor.reading_extensions"]
+    assert entry_points == {
+        "guided_learn": "deeptutor_reading_essentials:GuidedLearnExtension",
+        "quiz": "deeptutor_reading_essentials:QuizExtension",
+        "read_aloud": "deeptutor_reading_essentials:ReadAloudExtension",
+        "translation": "deeptutor_reading_essentials:TranslationExtension",
+        "vocabulary": "deeptutor_reading_essentials:VocabularyExtension",
+    }
+    assert project["tool"]["setuptools"]["packages"] == ["deeptutor_reading_essentials"]
 
 
 @pytest.mark.asyncio
@@ -85,9 +102,27 @@ async def test_translation_uses_explicit_model(monkeypatch):
     assert calls["binding"] == "local-provider"
 
 
+@pytest.mark.asyncio
+async def test_translation_reports_configuration_errors_as_actionable_cards(monkeypatch):
+    async def fake_complete(_prompt, **_kwargs):
+        raise LLMConfigError("No API key is configured for this provider")
+
+    monkeypatch.setattr("deeptutor.services.llm.complete", fake_complete)
+    monkeypatch.setenv("DEEPTUTOR_READING_TRANSLATION_MODEL", "translation-model")
+    result = await _module().TranslationExtension().run_action("translate", _context())
+
+    assert result.type == "card"
+    assert "No API key is configured" in result.message
+    assert result.payload["source_text"] == _context().selection
+
+
 def test_quiz_keeps_answers_private_until_submit():
     module = _module()
     quiz = module.QuizExtension()
     result = quiz.run_action("start", _context())
     assert result.type == "quiz"
     assert result.payload["_answers"]
+
+    from deeptutor.api.routers.reading_extensions import _public_result
+
+    assert "_answers" not in _public_result(result)["payload"]
