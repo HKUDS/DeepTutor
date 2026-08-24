@@ -21,6 +21,8 @@ test("Markdown reading is explicitly safe and no longer rendered as pre-wrapped 
 test("web bilingual blocks start collapsed and expose per-block and global controls", () => {
   assert.match(textView, /new Set\(\)/);
   assert.match(textView, /<details/);
+  assert.match(textView, /<summary[\s\S]*onClick=\{\(event\) =>/);
+  assert.match(textView, /event\.preventDefault\(\);/);
   assert.match(textView, /Show Chinese/);
   assert.match(textView, /Expand all Chinese/);
   assert.match(textView, /low_confidence/);

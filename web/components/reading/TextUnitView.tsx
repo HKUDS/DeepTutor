@@ -482,7 +482,24 @@ export function TextUnitView({
                           });
                         }}
                       >
-                        <summary className="cursor-pointer text-xs font-medium text-[var(--primary)]">
+                        <summary
+                          className="cursor-pointer text-xs font-medium text-[var(--primary)]"
+                          onClick={(event) => {
+                            // Keep the disclosure controlled by React. Native
+                            // toggling can be suppressed inside the annotator's
+                            // rich-text surface in embedded browsers.
+                            event.preventDefault();
+                            setExpandedGroups((current) => {
+                              const next = new Set(current);
+                              if (next.has(group.group_id)) {
+                                next.delete(group.group_id);
+                              } else {
+                                next.add(group.group_id);
+                              }
+                              return next;
+                            });
+                          }}
+                        >
                           {t("Show Chinese")}
                           {group.low_confidence ? (
                             <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
