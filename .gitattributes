@@ -1,10 +1,27 @@
-*.mp4 filter=lfs diff=lfs merge=lfs -text
+# Line endings
+#
+# Every text file is stored in the repository with LF and checked out with LF,
+# regardless of the platform the clone lives on. Before this was a catch-all,
+# only the extensions listed under "build and script files" below were pinned,
+# so a Windows clone left ~635 .ts/.tsx/.svg files permanently dirty with pure
+# CRLF churn and `git status` became unreadable. `.gitattributes` beats
+# core.autocrlf, so this holds no matter how a contributor's git is configured.
+* text=auto eol=lf
 
-# Force critical build and script files to use LF line endings for cross-platform compatibility
-# This prevents CRLF-related security issues in Docker containers and shell scripts
+# .bat is the one exception: cmd.exe wants CRLF, so it is stored LF and checked
+# out CRLF. Declared explicitly, it does not show up as a modification.
+*.bat text eol=crlf
+
+# Build and script files where LF is load-bearing, not just tidy: CRLF in a
+# shebang or a Dockerfile becomes `bad interpreter: /bin/sh^M` inside a Linux
+# container. Redundant under the catch-all above, kept as documentation of why
+# these in particular must never drift.
 Dockerfile text eol=lf
+Dockerfile.* text eol=lf
 docker-compose.yml text eol=lf
 docker-compose.*.yml text eol=lf
+compose.yaml text eol=lf
+compose.*.yaml text eol=lf
 *.sh text eol=lf
 *.py text eol=lf
 *.yaml text eol=lf
@@ -16,3 +33,22 @@ docker-compose.*.yml text eol=lf
 *.toml text eol=lf
 *.cfg text eol=lf
 *.ini text eol=lf
+
+# Binary — never touched by line-ending conversion or diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.zip binary
+*.gz binary
+*.whl binary
+
+*.mp4 filter=lfs diff=lfs merge=lfs -text
