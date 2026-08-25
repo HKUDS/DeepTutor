@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
-import { login, fetchAuthStatus, checkIsFirstUser } from "@/lib/auth";
+import { login, fetchAuthStatus, fetchRegistrationStatus } from "@/lib/auth";
 
 function LoginPageContent() {
   const { t } = useTranslation();
@@ -18,6 +18,7 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(true);
 
   useEffect(() => {
     // If already authenticated, skip login
@@ -27,8 +28,10 @@ function LoginPageContent() {
         return;
       }
       // No users registered yet — send straight to the registration page
-      checkIsFirstUser().then((first) => {
-        if (first) router.replace("/register");
+      fetchRegistrationStatus().then((status) => {
+        if (!status) return;
+        setRegistrationOpen(status.registration_open);
+        if (status.is_first_user) router.replace("/register");
       });
     });
   }, [router, next]);
@@ -140,15 +143,17 @@ function LoginPageContent() {
         </form>
       </div>
 
-      <p className="mt-6 text-center text-sm text-[var(--muted-foreground)]">
-        {t("Don't have an account?")}{" "}
-        <Link
-          href="/register"
-          className="text-[var(--primary)] hover:underline font-medium"
-        >
-          {t("Create one")}
-        </Link>
-      </p>
+      {registrationOpen && (
+        <p className="mt-6 text-center text-sm text-[var(--muted-foreground)]">
+          {t("Don't have an account?")}{" "}
+          <Link
+            href="/register"
+            className="text-[var(--primary)] hover:underline font-medium"
+          >
+            {t("Create one")}
+          </Link>
+        </p>
+      )}
 
       <p className="mt-3 text-center text-xs text-[var(--muted-foreground)]">
         DeepTutor · Agent-Native Learning

@@ -3,12 +3,14 @@
 from contextvars import Token as _CtxToken
 import logging
 import re
+from urllib.parse import urlsplit
 
 from fastapi import (
     APIRouter,
     Cookie,
     Depends,
     File,
+    Form,
     Header,
     HTTPException,
     Request,
@@ -17,7 +19,7 @@ from fastapi import (
     WebSocket,
     status,
 )
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 
 from deeptutor.services.config import load_auth_settings
@@ -53,6 +55,8 @@ from deeptutor.services.auth import (
 )
 from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
+from deeptutor.services.login_rate_limit import LoginRateLimited, login_rate_limiter
+from deeptutor.services.tunnel_handoff import consume_ticket, create_ticket
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +101,6 @@ class RegisterRequest(BaseModel):
 
     username: str
     password: str
-
 
     @field_validator("username")
     @classmethod
@@ -151,6 +154,12 @@ class AuthStatusResponse(BaseModel):
     is_admin: bool = False
     avatar: str = ""
     learning_policy: dict | None = None
+
+
+class TunnelHandoffResponse(BaseModel):
+    tunnel_url: str
+    code: str
+    expires_in: int
 
 
 class UserInfo(BaseModel):
@@ -210,6 +219,28 @@ def _bearer_token_from_header(authorization: str | None) -> str | None:
         token = parts[1].strip()
         return token or None
     return None
+
+
+def _request_client_ip(request: Request) -> str:
+    # The Next proxy sanitizes client-supplied values and copies Cloudflare's
+    # connector header only for HTTPS tunnel requests. The proxy and API run on
+    # the same host, so trust that header only for local proxy peers.
+    peer_host = request.client.host if request.client else ""
+    if peer_host in {"127.0.0.1", "::1", "::ffff:127.0.0.1"}:
+        forwarded = request.headers.get("x-deeptutor-client-ip")
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip() or "unknown"
+    return peer_host or "unknown"
+
+
+def _request_host(request: Request) -> str | None:
+    peer_host = request.client.host if request.client else ""
+    if peer_host in {"127.0.0.1", "::1", "::ffff:127.0.0.1"}:
+        forwarded = request.headers.get("x-deeptutor-frontend-host")
+        if forwarded:
+            forwarded_host = forwarded.split(",", 1)[0].strip()
+            return urlsplit("//" + forwarded_host).hostname
+    return request.url.hostname
 
 
 def _extract_token(authorization: str | None, dt_token: str | None) -> str | None:
@@ -474,16 +505,27 @@ async def auth_status(
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response) -> dict:
+async def login(body: LoginRequest, response: Response, request: Request) -> dict:
     """Validate credentials and set a JWT cookie."""
     if not AUTH_ENABLED:
         return {"ok": True, "message": "Auth is disabled — no login required."}
+
+    client_ip = _request_client_ip(request)
+    try:
+        login_rate_limiter.ensure_allowed(client_ip)
+    except LoginRateLimited as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
 
     if POCKETBASE_ENABLED:
         # PocketBase mode: email = username field for backwards-compat with the
         # existing LoginRequest schema; users can pass their email as "username".
         pb_result = authenticate_pb(body.username, body.password)
         if not pb_result:
+            login_rate_limiter.register_failure(client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
@@ -502,6 +544,7 @@ async def login(body: LoginRequest, response: Response) -> dict:
     # Standard JWT + bcrypt mode
     result = authenticate(body.username, body.password)
     if not result:
+        login_rate_limiter.register_failure(client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -509,6 +552,7 @@ async def login(body: LoginRequest, response: Response) -> dict:
 
     token = create_token(result.username, result.role, result.user_id)
     response.set_cookie(value=token, max_age=_COOKIE_MAX_AGE, **_cookie_attrs())
+    login_rate_limiter.register_success(client_ip)
 
     logger.info(f"User '{result.username}' logged in (role={result.role!r})")
     return {
@@ -524,14 +568,18 @@ async def login(body: LoginRequest, response: Response) -> dict:
 async def activate_learning_account(body: LearningActivationRequest) -> dict[str, bool]:
     """Set a migrated learner's password with a single-use seven-day code."""
     if POCKETBASE_ENABLED:
-        raise HTTPException(status_code=409, detail="Learning activation is unavailable in PocketBase mode.")
+        raise HTTPException(
+            status_code=409, detail="Learning activation is unavailable in PocketBase mode."
+        )
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
     from deeptutor.multi_user.activation import activate
     from deeptutor.services.auth import hash_password
 
     if not activate(body.username, body.code, hash_password(body.password)):
-        raise HTTPException(status_code=400, detail="Activation code is invalid, expired, or already used.")
+        raise HTTPException(
+            status_code=400, detail="Activation code is invalid, expired, or already used."
+        )
     return {"ok": True}
 
 
@@ -623,7 +671,62 @@ async def register(body: RegisterRequest) -> dict:
 @router.get("/is_first_user")
 async def check_is_first_user() -> dict:
     """Return whether the user store is empty (used by the register UI)."""
-    return {"is_first_user": is_first_user() if AUTH_ENABLED else False}
+    first = is_first_user() if AUTH_ENABLED else False
+    return {
+        "is_first_user": first,
+        "registration_open": bool(first or AUTH_ALLOW_REGISTRATION),
+    }
+
+
+@router.post("/handoff", response_model=TunnelHandoffResponse)
+async def create_tunnel_handoff(
+    response: Response,
+    payload: TokenPayload | None = Depends(require_auth),
+) -> TunnelHandoffResponse:
+    """Create a 60-second, single-use cross-origin session handoff."""
+    response.headers["Cache-Control"] = "no-store"
+    if not AUTH_ENABLED or payload is None:
+        raise HTTPException(status_code=400, detail="Authentication is required")
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=501,
+            detail="Tunnel handoff is unavailable in PocketBase mode.",
+        )
+    try:
+        code, state = create_ticket(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return TunnelHandoffResponse(
+        tunnel_url=state.url,
+        code=code,
+        expires_in=60,
+    )
+
+
+@router.post("/handoff/consume")
+async def consume_tunnel_handoff(
+    request: Request,
+    code: str = Form(...),
+) -> RedirectResponse:
+    """Exchange a valid one-time code for a cookie scoped to the tunnel host."""
+    target_host = _request_host(request)
+    payload = consume_ticket(code, target_host)
+    if payload is None:
+        raise HTTPException(status_code=400, detail="Login handoff is invalid or expired")
+
+    token = create_token(payload.username, payload.role, payload.user_id)
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        key=_COOKIE_NAME,
+        value=token,
+        max_age=_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 # ---------------------------------------------------------------------------

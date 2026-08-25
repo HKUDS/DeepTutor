@@ -12,11 +12,13 @@ import { config as proxyConfig } from "../proxy";
 
 import {
   CODEX_CALLBACK_API_PATH,
+  backendForwardingHeaders,
   CODEX_CALLBACK_PATH,
   classifyToken,
   isAuthExempt,
   isBackendPath,
   isCodexCallbackPath,
+  trustedCloudflareClientIp,
 } from "../lib/proxy-policy";
 
 function makeToken(payload: Record<string, unknown>): string {
@@ -31,6 +33,29 @@ test("isBackendPath matches /api and /ws paths only", () => {
   assert.equal(isBackendPath("/home"), false);
   assert.equal(isBackendPath("/apidocs"), false); // no trailing slash → not backend
   assert.equal(isBackendPath("/logo.png"), false);
+});
+
+test("backend proxy forwards the frontend host and Cloudflare client IP only", () => {
+  assert.deepEqual(
+    backendForwardingHeaders("current.trycloudflare.com", "203.0.113.10"),
+    {
+      "x-deeptutor-frontend-host": "current.trycloudflare.com",
+      "x-deeptutor-client-ip": "203.0.113.10",
+    },
+  );
+  assert.deepEqual(backendForwardingHeaders(null, null), {});
+});
+
+test("Cloudflare client IP is trusted only on HTTPS requests", () => {
+  assert.equal(
+    trustedCloudflareClientIp("https", "203.0.113.10"),
+    "203.0.113.10",
+  );
+  assert.equal(
+    trustedCloudflareClientIp("https:", "203.0.113.10"),
+    "203.0.113.10",
+  );
+  assert.equal(trustedCloudflareClientIp("http", "203.0.113.10"), null);
 });
 
 test("large knowledge uploads bypass the buffering proxy", () => {
@@ -79,7 +104,7 @@ test("proxy rewrites the exact callback before backend routing and auth gating",
   assert.ok(callbackBranch < authGate);
   assert.match(
     source,
-    /NextResponse\.rewrite\(\s*new URL\(\s*CODEX_CALLBACK_API_PATH \+ search,\s*API_BASE_URL,?\s*\),?\s*\)/,
+    /NextResponse\.rewrite\(\s*new URL\(\s*CODEX_CALLBACK_API_PATH \+ search,\s*API_BASE_URL,?\s*\),?\s*\{ headers: forwardingHeaders \},?\s*\)/,
   );
 });
 

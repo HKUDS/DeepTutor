@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
-import { register, checkIsFirstUser, fetchAuthStatus } from "@/lib/auth";
+import { register, fetchAuthStatus, fetchRegistrationStatus } from "@/lib/auth";
 
 export default function RegisterPage() {
   const { t } = useTranslation();
@@ -17,6 +17,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [isFirst, setIsFirst] = useState(false);
   const [checkingFirst, setCheckingFirst] = useState(true);
+  const [registrationOpen, setRegistrationOpen] = useState(true);
 
   useEffect(() => {
     // Redirect if already logged in
@@ -25,8 +26,13 @@ export default function RegisterPage() {
     });
 
     // Check if this will be the first (admin) user
-    checkIsFirstUser().then((first) => {
-      setIsFirst(first);
+    fetchRegistrationStatus().then((status) => {
+      if (!status) {
+        setCheckingFirst(false);
+        return;
+      }
+      setIsFirst(status.is_first_user);
+      setRegistrationOpen(status.registration_open);
       setCheckingFirst(false);
     });
   }, [router]);
@@ -75,6 +81,12 @@ export default function RegisterPage() {
 
       {/* Card */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm px-8 py-8">
+        {!checkingFirst && !registrationOpen && (
+          <div className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+            {t("registration.closed")}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Email or username */}
           <div>
@@ -161,12 +173,12 @@ export default function RegisterPage() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !registrationOpen}
             className="w-full py-2.5 px-4 rounded-lg font-medium text-sm
-                       bg-[var(--primary)] text-[var(--primary-foreground)]
-                       hover:opacity-90 active:opacity-80
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-opacity"
+                         bg-[var(--primary)] text-[var(--primary-foreground)]
+                         hover:opacity-90 active:opacity-80
+                         disabled:opacity-50 disabled:cursor-not-allowed
+                         transition-opacity"
           >
             {loading ? t("Creating account…") : t("Create account")}
           </button>

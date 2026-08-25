@@ -156,6 +156,21 @@ export async function checkIsFirstUser(): Promise<boolean> {
   }
 }
 
+export interface RegistrationStatus {
+  is_first_user: boolean;
+  registration_open: boolean;
+}
+
+export async function fetchRegistrationStatus(): Promise<RegistrationStatus | null> {
+  try {
+    const res = await apiFetch(apiUrl("/api/v1/auth/is_first_user"));
+    if (!res.ok) return null;
+    return (await res.json()) as RegistrationStatus;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * POST to the logout endpoint to clear the session cookie.
  */

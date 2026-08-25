@@ -15,6 +15,30 @@ export function isCodexCallbackPath(pathname: string): boolean {
   return pathname === CODEX_CALLBACK_PATH;
 }
 
+export function backendForwardingHeaders(
+  host: string | null,
+  cloudflareClientIp: string | null,
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (host) headers["x-deeptutor-frontend-host"] = host;
+  // Only Cloudflare's connector value is trusted. The generic XFF header is
+  // deliberately ignored because a direct client can forge it.
+  if (cloudflareClientIp) {
+    headers["x-deeptutor-client-ip"] = cloudflareClientIp;
+  }
+  return headers;
+}
+
+export function trustedCloudflareClientIp(
+  protocol: string | null,
+  value: string | null,
+): string | null {
+  // Stable Tailscale access is HTTP and does not pass through Cloudflare.
+  // Do not let a direct HTTP client forge Cloudflare's connector header and
+  // evade or target the login rate limiter.
+  return protocol === "https" || protocol === "https:" ? value : null;
+}
+
 // Paths whose responses come from the backend, not the Next app. The middleware
 // rewrites these to DEEPTUTOR_API_BASE_URL so the browser can use frontend-
 // relative URLs (e.g. `:3782/api/v1/...` or `.../ws`) and let the rewrite
