@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import reading
+from deeptutor.reading.entity_graph import normalise_entity_graph
+from deeptutor.services import reading_entity_graph
 from deeptutor.services.path_service import PathService
 
 pymupdf = pytest.importorskip("pymupdf")
@@ -298,6 +300,134 @@ def test_raw_route_404s_for_a_text_only_material(client: TestClient) -> None:
     response = client.get(f"/api/v1/reading/materials/{material['material_id']}/raw")
 
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# entity relationship graph
+# ---------------------------------------------------------------------------
+
+
+def test_character_graph_current_scope_uses_only_the_selected_unit(
+    client: TestClient, monkeypatch
+) -> None:
+    material = _upload(client)
+    captured: dict[str, object] = {}
+
+    async def fake_extract(context, rows):
+        captured["context"] = context
+        return normalise_entity_graph(
+            {
+                "nodes": [
+                    {"id": "transformer", "name": "Transformer", "confidence": 0.9},
+                    {"id": "attention", "name": "Attention", "confidence": 0.9},
+                ],
+                "edges": [
+                    {
+                        "source": "transformer",
+                        "target": "attention",
+                        "relation": "uses",
+                        "evidence": "Transformers use scaled dot-product attention.",
+                        "confidence": 0.95,
+                    }
+                ],
+            },
+            rows,
+        )
+
+    monkeypatch.setattr(reading_entity_graph, "_extract", fake_extract)
+    reading_entity_graph._CACHE.clear()
+
+    response = client.post(
+        f"/api/v1/reading/materials/{material['material_id']}/character-graph",
+        json={"locator": 2, "scope": "current"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["scope"] == "current"
+    assert body["locator"] == 2
+    assert body["included_locators"] == [2]
+    assert "Chapter one" not in captured["context"]
+    assert [node["name"] for node in body["graph"]["nodes"]] == [
+        "Attention",
+        "Transformer",
+    ]
+    assert body["graph"]["edges"][0]["evidence_locators"] == [2]
+    assert 'entity_2 -- "uses" --> entity_1' in body["mermaid"]
+
+
+def test_character_graph_through_current_includes_prior_units(
+    client: TestClient, monkeypatch
+) -> None:
+    material = _upload(client)
+    captured: dict[str, object] = {}
+
+    async def fake_extract(context, rows):
+        captured["context"] = context
+        return normalise_entity_graph({"nodes": [], "edges": []}, rows)
+
+    monkeypatch.setattr(reading_entity_graph, "_extract", fake_extract)
+    reading_entity_graph._CACHE.clear()
+
+    response = client.post(
+        f"/api/v1/reading/materials/{material['material_id']}/character-graph",
+        json={"locator": 2, "scope": "through_current"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["included_locators"] == [1, 2]
+    assert "Chapter one" in captured["context"]
+    assert "Chapter two" in captured["context"]
+
+
+def test_character_graph_reuses_cache_until_refresh_is_forced(
+    client: TestClient, monkeypatch
+) -> None:
+    material = _upload(client)
+    calls = 0
+
+    async def fake_extract(context, rows):
+        nonlocal calls
+        calls += 1
+        return normalise_entity_graph({"nodes": [], "edges": []}, rows)
+
+    monkeypatch.setattr(reading_entity_graph, "_extract", fake_extract)
+    reading_entity_graph._CACHE.clear()
+    base = f"/api/v1/reading/materials/{material['material_id']}/character-graph"
+
+    assert client.post(base, json={"locator": 2}).status_code == 200
+    assert client.post(base, json={"locator": 2}).status_code == 200
+    assert client.post(base, json={"locator": 2, "force_refresh": True}).status_code == 200
+
+    assert calls == 2
+
+
+def test_character_graph_maps_reader_and_model_errors(client: TestClient, monkeypatch) -> None:
+    material = _upload(client)
+
+    async def failed_extract(context, rows):
+        raise reading_entity_graph.EntityGraphExtractionError("invalid model payload")
+
+    monkeypatch.setattr(reading_entity_graph, "_extract", failed_extract)
+    reading_entity_graph._CACHE.clear()
+
+    unknown = client.post(
+        "/api/v1/reading/materials/0123456789abcdef/character-graph",
+        json={"locator": 1},
+    )
+    invalid = client.post(
+        f"/api/v1/reading/materials/{material['material_id']}/character-graph",
+        json={"locator": 99},
+    )
+    model_failure = client.post(
+        f"/api/v1/reading/materials/{material['material_id']}/character-graph",
+        json={"locator": 1, "force_refresh": True},
+    )
+
+    assert unknown.status_code == 404
+    assert invalid.status_code == 400
+    assert model_failure.status_code == 502
+    assert "Try again" in model_failure.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

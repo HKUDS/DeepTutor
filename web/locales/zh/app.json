@@ -3402,5 +3402,16 @@
   "Tutor threads": "小老师追问",
   "Filter by archive status": "按归档状态筛选",
   "Active and archived": "进行中与已归档",
-  "Loading conversations": "正在加载聊天"
+  "Loading conversations": "正在加载聊天",
+  "Relationship graph": "关系图",
+  "Graph scope": "关系图范围",
+  "Current unit": "当前单元",
+  "Through current unit": "截至当前单元",
+  "Generating relationship graph…": "正在生成关系图…",
+  "Failed to generate relationship graph": "关系图生成失败",
+  "No supported entities were found in this scope.": "此范围内没有可用的实体。",
+  "The source range was too long, so the graph uses the earliest units plus the current unit.": "来源范围过长，关系图使用靠前单元和当前单元生成。",
+  "Entities": "实体",
+  "Relationships": "关系",
+  "Also known as": "又名"
 }

@@ -7,6 +7,7 @@ import {
   FileText,
   List,
   Loader2,
+  Network,
   PanelRightClose,
   PanelRightOpen,
   X,
@@ -27,6 +28,7 @@ import {
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
 import { EpubDocumentView } from "./EpubDocumentView";
+import { EntityGraphPanel } from "./EntityGraphPanel";
 import { MaterialPicker } from "./MaterialPicker";
 import { ReaderOutline } from "./ReaderOutline";
 import {
@@ -106,6 +108,7 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
     id: string;
     nonce: number;
   } | null>(null);
+  const [graphOpen, setGraphOpen] = useState(false);
   const nonceRef = useRef(0);
   const headingNonceRef = useRef(0);
 
@@ -121,6 +124,8 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
   }, []);
 
   useEffect(() => {
+    setCurrentLocator(1);
+    setGraphOpen(false);
     if (!material) {
       setShowOutline(false);
       setOutlineUserChoice(null);
@@ -429,6 +434,12 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               {unitWord} {currentLocator}/{material.unit_count}
             </span>
             <HeaderButton
+              icon={Network}
+              label={t("Relationship graph")}
+              active={graphOpen}
+              onClick={() => setGraphOpen((open) => !open)}
+            />
+            <HeaderButton
               icon={Crosshair}
               label={
                 autoJump
@@ -589,6 +600,15 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               onDelete={(annotation) => void removeMark(annotation)}
             />
           </aside>
+        )}
+
+        {material && graphOpen && (
+          <EntityGraphPanel
+            materialId={material.material_id}
+            materialUnit={material.unit}
+            locator={currentLocator}
+            onClose={() => setGraphOpen(false)}
+          />
         )}
       </div>
 

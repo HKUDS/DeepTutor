@@ -28,6 +28,8 @@ AnnotationKind = Literal["highlight", "underline", "note"]
 TextSelectorType = Literal["TextQuoteSelector", "TextPositionSelector"]
 MAX_TEXT_SELECTOR_CHARS = 2000
 
+EntityGraphScope = Literal["current", "through_current"]
+
 # Palette offered by the reader toolbar. Kept server-side too so an annotation
 # arriving from an older client (or a tool call) can be validated rather than
 # trusted, and so the PDF export can map a name to real ink.
@@ -181,6 +183,84 @@ class SearchHit:
             "snippet": self.snippet,
             "offset": self.offset,
             "match": self.match,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class EntityGraphNode:
+    """One normalized character, organisation, concept, or other named entity."""
+
+    id: str
+    name: str
+    aliases: tuple[str, ...] = ()
+    description: str = ""
+    confidence: float = 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "aliases": list(self.aliases),
+            "description": self.description,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class EntityGraphEdge:
+    """One explicit relationship, anchored to verbatim source evidence."""
+
+    source: str
+    target: str
+    relation: str
+    evidence: str
+    evidence_locators: tuple[int, ...] = ()
+    confidence: float = 1.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "target": self.target,
+            "relation": self.relation,
+            "evidence": self.evidence,
+            "evidence_locators": list(self.evidence_locators),
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class EntityGraph:
+    nodes: tuple[EntityGraphNode, ...] = ()
+    edges: tuple[EntityGraphEdge, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "nodes": [node.to_dict() for node in self.nodes],
+            "edges": [edge.to_dict() for edge in self.edges],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class EntityGraphResult:
+    """A rendered graph plus the locator scope that produced it."""
+
+    graph: EntityGraph
+    mermaid: str
+    generated_at: float
+    scope: EntityGraphScope
+    locator: int
+    included_locators: tuple[int, ...]
+    truncated: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "graph": self.graph.to_dict(),
+            "mermaid": self.mermaid,
+            "generated_at": self.generated_at,
+            "scope": self.scope,
+            "locator": self.locator,
+            "included_locators": list(self.included_locators),
+            "truncated": self.truncated,
         }
 
 
@@ -416,6 +496,11 @@ __all__ = [
     "DEFAULT_ANNOTATION_COLOR",
     "Annotation",
     "AnnotationKind",
+    "EntityGraph",
+    "EntityGraphEdge",
+    "EntityGraphNode",
+    "EntityGraphResult",
+    "EntityGraphScope",
     "MaterialManifest",
     "MaterialNotFound",
     "OutlineEntry",
