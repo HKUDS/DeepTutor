@@ -26,6 +26,7 @@ def alice(partners_root):
     from deeptutor.multi_user import identity
     from deeptutor.services.partners.interaction import actor_for_account
 
+    identity.save_user("admin", "hash", "admin")
     identity.save_user("alice", "hash", "user")
     return actor_for_account(identity.get_user("alice")["id"])
 
@@ -208,7 +209,6 @@ async def test_link_command_binds_the_sender_mid_conversation(partners_root, fak
 
 @pytest.mark.asyncio
 async def test_link_command_refuses_a_group_chat(partners_root, fake_orchestrator):
-
     runner = PartnerRunner("ada", PartnerConfig(name="Ada"), MessageBus())
     code = links.issue_link_code("ada", "u_alice").code
 
