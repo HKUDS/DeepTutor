@@ -14,6 +14,7 @@ import {
   Plus,
   Sparkles,
   Upload,
+  Tv,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -46,6 +47,7 @@ import {
 } from "@/lib/video-learning-marks";
 import { WATCHING_ASK_EVENT } from "@/lib/watching-turn-state";
 import { InvidiousHome } from "./InvidiousHome";
+import { listDevices, sendDeviceCommand } from "@/lib/video-learning-remote-api";
 import { KeyPointsPanel } from "./KeyPointsPanel";
 import { LearningTimeline } from "./LearningTimeline";
 
@@ -86,6 +88,7 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   const [kbBusy, setKbBusy] = useState(false);
   const [bookBusy, setBookBusy] = useState(false);
   const [publishMessage, setPublishMessage] = useState("");
+  const [rendererMessage, setRendererMessage] = useState("");
 
   const cumulativePlayedRef = useRef<number>(0);
   const lastPlaybackTimeRef = useRef<number>(-1);
@@ -373,6 +376,19 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     ? `${invidiousPublicUrl}/watch?v=${material.source.video_id}`
     : "";
 
+  const sendCurrentVideoToIpad = async () => {
+    setRendererMessage("");
+    try {
+      const devices = await listDevices();
+      const ready = (devices as Array<{ device_id: string; online?: boolean; active?: boolean }>).find((device) => device.active && device.online);
+      if (!ready) throw new Error(t("No iPad renderer is online."));
+      await sendDeviceCommand(ready.device_id, material.source.video_id);
+      setRendererMessage(t("Video sent to your iPad."));
+    } catch (error) {
+      setRendererMessage(error instanceof Error ? error.message : t("Could not send video to iPad."));
+    }
+  };
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--background)]">
       <header className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
@@ -431,6 +447,14 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
             <Globe size={16} />
           </a>
         )}
+        <button
+          type="button"
+          onClick={() => void sendCurrentVideoToIpad()}
+          className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          title={t("Send to iPad")}
+        >
+          <Tv size={14} />
+        </button>
         <a
           href={material.playback.official_url}
           target="_blank"
@@ -447,6 +471,7 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
           {markError && <p className="text-red-600">{markError}</p>}
         </div>
       )}
+      {rendererMessage && <div className="border-b border-[var(--border)] px-3 py-1.5 text-xs">{rendererMessage}</div>}
 
       <div className="grid min-h-0 flex-1 grid-rows-[minmax(180px,38%)_auto_1fr]">
         <div className="border-b border-[var(--border)] bg-black p-2">

@@ -73,6 +73,16 @@ export async function listDevices() {
   return response.json();
 }
 
+export async function sendDeviceCommand(deviceId: string, videoId: string): Promise<RemoteCommand> {
+  const response = await apiFetch(`/api/v1/video-learning/devices/${encodeURIComponent(deviceId)}/commands`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "open_video", video_id: videoId }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
 export async function revokeDevice(deviceId: string) {
   const response = await apiFetch(`/api/v1/video-learning/devices/${deviceId}`, {
     method: "DELETE",

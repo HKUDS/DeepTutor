@@ -20,6 +20,13 @@ from .service import (
     YouTubeResolver,
     get_timed_media_store,
 )
+from .store import (
+    VideoLearningConflict,
+    VideoLearningError,
+    VideoLearningNotFound,
+    VideoLearningStore,
+    default_db_path,
+)
 
 __all__ = [
     "AuthStateStore",
@@ -30,6 +37,11 @@ __all__ = [
     "TimedMediaStore",
     "YouTubeProvider",
     "YouTubeResolver",
+    "VideoLearningConflict",
+    "VideoLearningError",
+    "VideoLearningNotFound",
+    "VideoLearningStore",
+    "default_db_path",
     "disconnect_account",
     "get_authorization_url",
     "get_invidious_base_url",

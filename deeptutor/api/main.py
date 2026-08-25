@@ -385,6 +385,7 @@ from deeptutor.api.routers import (
     knowledge,
     marginnote4,
     video_learning,
+    video_remote_control,
     mastery_path,
     mcp_settings,
     memory,
@@ -406,7 +407,6 @@ from deeptutor.api.routers import (
     subagents,
     system,
     unified_ws,
-    video_learning,
     voice,
 )
 from deeptutor.api.routers import (
@@ -483,7 +483,7 @@ app.include_router(reading.router, prefix="/api/v1/reading", tags=["reading"], d
 app.include_router(
     video_learning.router,
     prefix="/api/v1/video-learning",
-    tags=["video-learning"],
+    tags=["immersive-watching"],
     dependencies=_auth,
 )
 app.include_router(
@@ -591,7 +591,7 @@ app.include_router(
 # Pairing creation/status and player sync/ack use device or public pairing auth;
 # phone-side claim/sessions/notes use session auth via in-router dependencies.
 app.include_router(
-    video_learning.router,
+    video_remote_control.router,
     prefix="/api/v1/video-learning",
     tags=["video-learning"],
 )

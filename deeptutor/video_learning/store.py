@@ -18,6 +18,7 @@ from typing import Any
 
 from deeptutor.video_learning.models import (
     Device,
+    DeviceCommand,
     Pairing,
     PlayerCommand,
     PlayerSession,
@@ -55,6 +56,18 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 CREATE INDEX IF NOT EXISTS idx_vl_devices_owner ON devices (owner_id);
+
+CREATE TABLE IF NOT EXISTS renderer_bootstraps (
+    bootstrap_id TEXT PRIMARY KEY, ticket_hash TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL,
+    device_name TEXT NOT NULL DEFAULT 'iPad', device_kind TEXT NOT NULL DEFAULT 'ipad',
+    expires_at TEXT NOT NULL, redeemed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS device_commands (
+    command_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, device_id TEXT NOT NULL,
+    command_type TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL, acked_at TEXT, error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vl_device_commands_status ON device_commands (device_id, status, created_at);
 
 CREATE TABLE IF NOT EXISTS sessions (
     session_id         TEXT PRIMARY KEY,
@@ -237,6 +250,12 @@ class VideoLearningStore:
         )
 
     @staticmethod
+    def _row_to_device_command(row: sqlite3.Row) -> DeviceCommand:
+        return DeviceCommand(command_id=row["command_id"], owner_id=row["owner_id"], device_id=row["device_id"],
+            command_type=row["command_type"], payload=json.loads(row["payload"] or "{}"), status=row["status"],
+            created_at=row["created_at"], acked_at=row["acked_at"], error=row["error"])
+
+    @staticmethod
     def _row_to_note(row: sqlite3.Row) -> VideoNote:
         return VideoNote(
             note_id=row["note_id"],
@@ -404,6 +423,53 @@ class VideoLearningStore:
                 (owner_id,),
             ).fetchall()
         return [self._row_to_device(row) for row in rows]
+
+    def device_is_online(self, device: Device) -> bool:
+        return device.active and (_now() - _parse_iso(device.last_seen)) <= SESSION_OFFLINE_AFTER
+
+    def create_renderer_bootstrap(self, *, owner_id: str, device_name: str = "iPad", device_kind: str = "ipad") -> tuple[str, str, str]:
+        ticket, bootstrap_id = secrets.token_urlsafe(32), secrets.token_urlsafe(12)
+        expires_at = (_now() + PAIRING_TTL).isoformat()
+        with self._connect() as conn:
+            conn.execute("INSERT INTO renderer_bootstraps (bootstrap_id,ticket_hash,owner_id,device_name,device_kind,expires_at) VALUES (?,?,?,?,?,?)",
+                         (bootstrap_id, _hash_token(ticket), owner_id, device_name or "iPad", device_kind or "ipad", expires_at))
+        return bootstrap_id, ticket, expires_at
+
+    def redeem_renderer_bootstrap(self, *, ticket: str) -> tuple[Device, str]:
+        now, device_id, token = _now_iso(), secrets.token_urlsafe(12), secrets.token_urlsafe(32)
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM renderer_bootstraps WHERE ticket_hash=? AND redeemed_at IS NULL", (_hash_token(ticket),)).fetchone()
+            if row is None: raise VideoLearningNotFound("Bootstrap ticket not found.")
+            if _parse_iso(row["expires_at"]) <= _now(): raise VideoLearningConflict("Bootstrap ticket expired.")
+            if conn.execute("UPDATE renderer_bootstraps SET redeemed_at=? WHERE bootstrap_id=? AND redeemed_at IS NULL", (now,row["bootstrap_id"])).rowcount != 1: raise VideoLearningConflict("Bootstrap ticket already redeemed.")
+            conn.execute("INSERT INTO devices (device_id,owner_id,device_name,device_kind,token_hash,paired_at,last_seen,active) VALUES (?,?,?,?,?,?,?,1)",
+                         (device_id,row["owner_id"],row["device_name"],row["device_kind"],_hash_token(token),now,now))
+        return Device(device_id,row["owner_id"],row["device_name"],row["device_kind"],now,now), token
+
+    def enqueue_device_command(self, *, owner_id: str, device_id: str, payload: dict[str, Any]) -> DeviceCommand:
+        device = next((d for d in self.list_devices(owner_id) if d.device_id == device_id and d.active), None)
+        if device is None: raise VideoLearningNotFound("Device not found.")
+        if not self.device_is_online(device): raise VideoLearningConflict("Renderer is offline.")
+        cid, now = secrets.token_urlsafe(12), _now_iso()
+        with self._connect() as conn:
+            conn.execute("INSERT INTO device_commands (command_id,owner_id,device_id,command_type,payload,status,created_at) VALUES (?,?,?,'open_video',?,'pending',?)", (cid,owner_id,device_id,json.dumps(payload),now))
+            row = conn.execute("SELECT * FROM device_commands WHERE command_id=?", (cid,)).fetchone()
+        return self._row_to_device_command(row)
+
+    def pending_device_commands(self, device_id: str) -> list[DeviceCommand]:
+        cutoff = (_now() - COMMAND_TTL).isoformat()
+        with self._connect() as conn:
+            conn.execute("UPDATE device_commands SET status='expired' WHERE device_id=? AND status='pending' AND created_at<?",(device_id,cutoff))
+            rows=conn.execute("SELECT * FROM device_commands WHERE device_id=? AND status='pending' ORDER BY created_at",(device_id,)).fetchall()
+        return [self._row_to_device_command(row) for row in rows]
+
+    def ack_device_command(self, *, device_id: str, command_id: str, ok: bool, error: str | None = None) -> DeviceCommand:
+        with self._connect() as conn:
+            row=conn.execute("SELECT * FROM device_commands WHERE command_id=? AND device_id=?",(command_id,device_id)).fetchone()
+            if row is None: raise VideoLearningNotFound("Device command not found.")
+            conn.execute("UPDATE device_commands SET status=?, acked_at=?, error=? WHERE command_id=?",("acked" if ok else "failed",_now_iso(),error,command_id))
+            row=conn.execute("SELECT * FROM device_commands WHERE command_id=?",(command_id,)).fetchone()
+        return self._row_to_device_command(row)
 
     def revoke_device(self, owner_id: str, device_id: str) -> bool:
         with self._connect() as conn:

@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 
 CommandType = Literal["pause", "play", "seek"]
+DeviceCommandType = Literal["open_video"]
 CommandStatus = Literal["pending", "acked", "failed", "expired"]
 PlaybackState = Literal["playing", "paused", "buffering", "ended", "unknown"]
 
@@ -58,6 +59,19 @@ class PlayerCommand:
     owner_id: str
     device_id: str
     command_type: CommandType
+    payload: dict[str, Any] = field(default_factory=dict)
+    status: CommandStatus = "pending"
+    created_at: str = ""
+    acked_at: str | None = None
+    error: str | None = None
+
+
+@dataclass(slots=True)
+class DeviceCommand:
+    command_id: str
+    owner_id: str
+    device_id: str
+    command_type: DeviceCommandType
     payload: dict[str, Any] = field(default_factory=dict)
     status: CommandStatus = "pending"
     created_at: str = ""

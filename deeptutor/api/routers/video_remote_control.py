@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+import re
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_auth
@@ -19,6 +20,7 @@ from deeptutor.video_learning.store import (
     VideoLearningStore,
     default_db_path,
 )
+from deeptutor.video_learning.qr import generate_pairing_qr_data_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -113,6 +115,20 @@ class CommandAckRequest(BaseModel):
     error: str | None = Field(None, max_length=512)
 
 
+class RendererCreateRequest(BaseModel):
+    device_name: str = Field("iPad", max_length=128)
+    device_kind: str = Field("ipad", max_length=32)
+
+
+class RendererBootstrapRequest(BaseModel):
+    ticket: str = Field(..., min_length=32, max_length=256)
+
+
+class DeviceCommandRequest(BaseModel):
+    type: str = Field(..., max_length=32)
+    video_id: str = Field(..., min_length=11, max_length=11)
+
+
 class NoteCreateRequest(BaseModel):
     body: str = Field(..., min_length=1, max_length=8000)
     position_ms: int | None = Field(None, ge=0)
@@ -132,11 +148,14 @@ async def create_pairing() -> dict[str, Any]:
     """Create a short-lived pairing code for an Invidious player tab."""
     store = VideoLearningStore(_device_db_path())
     pairing = store.create_pairing()
+    qr_payload, qr_data_url = generate_pairing_qr_data_url(pairing.code)
     return {
         "pairing_id": pairing.pairing_id,
         "code": pairing.code,
         "claim_secret": pairing.claim_secret,
         "expires_at": pairing.expires_at,
+        "qr_payload": qr_payload,
+        "qr_data_url": qr_data_url,
     }
 
 
@@ -187,9 +206,60 @@ async def list_devices() -> list[dict[str, Any]]:
             "paired_at": d.paired_at,
             "last_seen": d.last_seen,
             "active": d.active,
+            "online": store.device_is_online(d),
+            "capabilities": ["open_video"],
         }
         for d in store.list_devices(_owner_id())
     ]
+
+
+@router.post("/renderers", dependencies=_auth)
+async def create_renderer(body: RendererCreateRequest, response: Response) -> dict[str, Any]:
+    store = _store_for_session()
+    bootstrap_id, ticket, expires_at = store.create_renderer_bootstrap(owner_id=_owner_id(), device_name=body.device_name, device_kind=body.device_kind)
+    response.headers["Cache-Control"] = "no-store"
+    return {"bootstrap_id": bootstrap_id, "ticket": ticket, "expires_at": expires_at}
+
+
+@router.post("/renderers/bootstrap")
+async def bootstrap_renderer(body: RendererBootstrapRequest, response: Response) -> dict[str, Any]:
+    store = VideoLearningStore(_device_db_path())
+    try:
+        device, token = store.redeem_renderer_bootstrap(ticket=body.ticket)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    response.headers["Cache-Control"] = "no-store"
+    return {"device_id": device.device_id, "token": token, "device_name": device.device_name, "device_kind": device.device_kind}
+
+
+@router.post("/player/presence")
+async def player_presence(auth=Depends(_auth_device)) -> dict[str, Any]:
+    device, store = auth
+    return {"device_id": device.device_id, "online": True, "commands": [
+        {"command_id": c.command_id, "type": c.command_type, "payload": c.payload, "created_at": c.created_at}
+        for c in store.pending_device_commands(device.device_id)
+    ]}
+
+
+@router.post("/devices/{device_id}/commands", dependencies=_auth)
+async def create_device_command(device_id: str, body: DeviceCommandRequest) -> dict[str, Any]:
+    if body.type != "open_video" or not re.fullmatch(r"[A-Za-z0-9_-]{11}", body.video_id):
+        raise HTTPException(400, "Invalid open_video command.")
+    try:
+        command = _store_for_session().enqueue_device_command(owner_id=_owner_id(), device_id=device_id, payload={"video_id": body.video_id})
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return {"command_id": command.command_id, "type": command.command_type, "payload": command.payload, "status": command.status, "created_at": command.created_at}
+
+
+@router.post("/player/device-commands/{command_id}/ack")
+async def ack_device_command(command_id: str, body: CommandAckRequest, auth=Depends(_auth_device)) -> dict[str, Any]:
+    device, store = auth
+    try:
+        command = store.ack_device_command(device_id=device.device_id, command_id=command_id, ok=body.ok, error=body.error)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return {"command_id": command.command_id, "status": command.status, "acked_at": command.acked_at, "error": command.error}
 
 
 @router.delete("/devices/{device_id}", dependencies=_auth)
