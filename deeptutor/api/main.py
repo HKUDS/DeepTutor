@@ -384,6 +384,7 @@ from deeptutor.api.routers import (
     kids_admin,
     knowledge,
     marginnote4,
+    video_learning,
     mastery_path,
     mcp_settings,
     memory,
@@ -584,6 +585,15 @@ app.include_router(
     marginnote4.router,
     prefix="/api/v1/marginnote4",
     tags=["marginnote4"],
+)
+
+# Invidious player remote control + timestamped notes.
+# Pairing creation/status and player sync/ack use device or public pairing auth;
+# phone-side claim/sessions/notes use session auth via in-router dependencies.
+app.include_router(
+    video_learning.router,
+    prefix="/api/v1/video-learning",
+    tags=["video-learning"],
 )
 
 # Unified WebSocket endpoint — auth is checked inside the handler (WebSockets

@@ -21,6 +21,7 @@ import {
   PanelLeftOpen,
   PenLine,
   Settings,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -81,6 +82,12 @@ const PRIMARY_NAV: NavEntry[] = [
     icon: Library,
     tooltipKey: "Book tooltip",
     requires: "llm",
+  },
+  {
+    href: "/video-learning",
+    label: "Video Remote",
+    icon: Smartphone,
+    tooltipKey: "Control a paired Invidious player and take timestamped notes",
   },
   {
     href: "/space",
