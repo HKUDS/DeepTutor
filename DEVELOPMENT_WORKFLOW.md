@@ -24,9 +24,12 @@ does not disturb the running local service.
 2. Create an isolated worktree and branch from `main`:
 
    ```bash
-   git worktree add /tmp/DeepTutor-<slug> -b codex/<slug> main
-   cd /tmp/DeepTutor-<slug>
+   python3 scripts/workspace_governance.py create <type>/<slug>
    ```
+
+   The branch must use `codex/{feat|fix|docs|chore|refactor|test|perf}/<slug>`.
+   Keep it short-lived and push it to `myfork` before running long local
+   verification or leaving significant work unattended.
 
 3. Keep one product theme per branch. Classify work explicitly:
 
@@ -40,6 +43,26 @@ Do not commit `.worktrees/`, build output, logs, local launchd configuration,
 tokens, or cached credentials.
 Keep rollback snapshots and deployment-recovery trees in ignored local paths
 such as `backups/` or `web/.next-*/`; do not turn them into repository content.
+
+## Workspace hygiene
+
+Inspect the local fleet before and after significant work:
+
+```bash
+python3 scripts/workspace_governance.py audit --strict
+```
+
+The primary checkout must be clean, remain on `main`, and have no stash entries.
+Prefer a commit on a topic branch over a stash whenever work must pause. If a
+worktree contains experimental uncommitted work, snapshot it explicitly with
+`workspace_governance.py archive`; do not treat stashes or dirty worktrees as
+long-term storage.
+
+Retire a worktree only after its branch is clean and present on `myfork`:
+
+```bash
+python3 scripts/workspace_governance.py retire /tmp/DeepTutor-<slug>
+```
 
 ## Merging
 
