@@ -15,6 +15,7 @@ import {
   backendForwardingHeaders,
   CODEX_CALLBACK_PATH,
   classifyToken,
+  frontendForwardingHost,
   isAuthExempt,
   isBackendPath,
   isCodexCallbackPath,
@@ -44,6 +45,32 @@ test("backend proxy forwards the frontend host and Cloudflare client IP only", (
     },
   );
   assert.deepEqual(backendForwardingHeaders(null, null), {});
+});
+
+test("frontend forwarding host prefers the original public Host over Next URL host", () => {
+  assert.equal(
+    frontendForwardingHost(
+      "district-groundwater-chain-publisher.trycloudflare.com",
+      "127.0.0.1:3782",
+    ),
+    "district-groundwater-chain-publisher.trycloudflare.com",
+  );
+});
+
+test("frontend forwarding host falls back to the Next URL host", () => {
+  assert.equal(
+    frontendForwardingHost(null, "100.101.207.44:3782"),
+    "100.101.207.44:3782",
+  );
+  assert.equal(
+    frontendForwardingHost("", "100.101.207.44:3782"),
+    "100.101.207.44:3782",
+  );
+  assert.equal(
+    frontendForwardingHost("  ", "100.101.207.44:3782"),
+    "100.101.207.44:3782",
+  );
+  assert.equal(frontendForwardingHost(null, null), null);
 });
 
 test("Cloudflare client IP is trusted only on HTTPS requests", () => {

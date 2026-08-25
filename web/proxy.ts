@@ -6,6 +6,7 @@ import {
   LOGIN_PATH,
   backendForwardingHeaders,
   classifyToken,
+  frontendForwardingHost,
   isAuthExempt,
   isBackendPath,
   isCodexCallbackPath,
@@ -45,7 +46,7 @@ export function proxy(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl;
 
   const extraHeaders = backendForwardingHeaders(
-    req.nextUrl.host || req.headers.get("host"),
+    frontendForwardingHost(req.headers.get("host"), req.nextUrl.host),
     trustedCloudflareClientIp(
       req.headers.get("x-forwarded-proto"),
       req.headers.get("cf-connecting-ip"),

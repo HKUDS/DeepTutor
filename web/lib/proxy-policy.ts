@@ -29,6 +29,15 @@ export function backendForwardingHeaders(
   return headers;
 }
 
+export function frontendForwardingHost(
+  inboundHost: string | null,
+  nextUrlHost: string | null,
+): string | null {
+  // The public Host header is authoritative behind Cloudflare. Next's
+  // rewritten URL can instead describe the internal backend destination.
+  return inboundHost?.trim() || nextUrlHost?.trim() || null;
+}
+
 export function trustedCloudflareClientIp(
   protocol: string | null,
   value: string | null,
