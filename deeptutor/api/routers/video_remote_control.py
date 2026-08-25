@@ -20,7 +20,7 @@ from deeptutor.video_learning.store import (
     VideoLearningStore,
     default_db_path,
 )
-from deeptutor.video_learning.qr import generate_pairing_qr_data_url
+from deeptutor.video_learning.qr import generate_pairing_qr_data_url, generate_qr_data_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -118,6 +118,7 @@ class CommandAckRequest(BaseModel):
 class RendererCreateRequest(BaseModel):
     device_name: str = Field("iPad", max_length=128)
     device_kind: str = Field("ipad", max_length=32)
+    invidious_origin: str = Field("", max_length=256)
 
 
 class RendererBootstrapRequest(BaseModel):
@@ -218,7 +219,9 @@ async def create_renderer(body: RendererCreateRequest, response: Response) -> di
     store = _store_for_session()
     bootstrap_id, ticket, expires_at = store.create_renderer_bootstrap(owner_id=_owner_id(), device_name=body.device_name, device_kind=body.device_kind)
     response.headers["Cache-Control"] = "no-store"
-    return {"bootstrap_id": bootstrap_id, "ticket": ticket, "expires_at": expires_at}
+    origin = _validate_origin(body.invidious_origin)
+    launch_url = f"{origin}/#dt_bootstrap={ticket}"
+    return {"bootstrap_id": bootstrap_id, "ticket": ticket, "expires_at": expires_at, "qr_data_url": generate_qr_data_url(launch_url)}
 
 
 @router.post("/renderers/bootstrap")

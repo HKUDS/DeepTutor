@@ -15,7 +15,7 @@ def test_renderer_bootstrap_presence_and_open_video(tmp_path: Path, monkeypatch)
     app.include_router(video_remote_control.router, prefix="/api/v1/video-learning")
     app.dependency_overrides[require_auth] = lambda: None
     with TestClient(app) as client:
-        created = client.post("/api/v1/video-learning/renderers", json={"device_name": "iPad"})
+        created = client.post("/api/v1/video-learning/renderers", json={"device_name": "iPad", "invidious_origin": "http://127.0.0.1:4302"})
         assert created.status_code == 200
         ticket = created.json()["ticket"]
         redeemed = client.post("/api/v1/video-learning/renderers/bootstrap", json={"ticket": ticket})
