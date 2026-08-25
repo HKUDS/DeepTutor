@@ -330,6 +330,13 @@ extend-exclude = '''
 target-version = "py311"
 line-length = 100
 
+# Ruff formats Python code blocks inside Markdown files. BUILD_PLAN.md carries
+# illustrative snippets -- elided bodies, dict literals aligned for a human
+# reader -- that are documentation rather than code the formatter should own.
+# This has to sit under [tool.ruff] rather than [tool.ruff.lint], whose own
+# `exclude` governs `ruff check` alone and leaves `ruff format --check .` red.
+extend-exclude = ["BUILD_PLAN.md"]
+
 [tool.ruff.lint]
 # Enable only foundational lint rules (intentionally relaxed)
 select = [
@@ -450,6 +457,11 @@ testpaths = ["tests", "deeptutor/learning/tests"]
 pythonpath = ["."]
 markers = [
     "asyncio: mark async tests that require pytest-asyncio",
+    # Rule P2 of BUILD_PLAN: unit and policy tests run on SQLite with no server,
+    # integration tests run against a real PostgreSQL. CI runs `-m "not postgres"`
+    # in the plain matrix and `-m postgres` in the job that has the service
+    # container, so a Postgres-only test never fails the SQLite run.
+    "postgres: integration test requiring a live PostgreSQL at DATABASE_URL_TEST",
 ]
 asyncio_default_fixture_loop_scope = "function"
 addopts = [

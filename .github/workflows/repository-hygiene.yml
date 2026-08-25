@@ -21,3 +21,10 @@ jobs:
 
       - name: Run repository hygiene check
         run: python3 scripts/check_workspace_hygiene.py
+
+      # `.gitattributes` declares `* text=auto eol=lf`, but a declaration only
+      # holds while something enforces it. This reads the index, so it catches a
+      # CRLF blob at the moment it is committed rather than after it has spread
+      # into every Windows clone.
+      - name: Check committed line endings
+        run: python3 scripts/check_line_endings.py
