@@ -37,6 +37,14 @@ def test_run_server_disables_reload_by_default(
     assert uvicorn_kwargs["reload_excludes"] is None
 
 
+def test_run_server_preserves_actual_proxy_peer(
+    uvicorn_kwargs: dict[str, Any],
+) -> None:
+    """Next sanitizes proxy identity; Uvicorn must not rewrite request.client."""
+    run_server.main()
+    assert uvicorn_kwargs["proxy_headers"] is False
+
+
 def test_run_server_reload_remains_available_for_development(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

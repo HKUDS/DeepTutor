@@ -1073,6 +1073,9 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
         # 200 polling (/settings, /tools, /knowledge/list, ...) stays out of the
         # logs — matching run_server.py's access_log=False.
         "--no-access-log",
+        # Next sanitizes Cloudflare proxy values into DeepTutor-specific
+        # headers. Keep Uvicorn from rewriting request.client from generic XFF.
+        "--no-proxy-headers",
         # Chat attachments ride the unified WS as base64 in one JSON message;
         # uvicorn's default 16MB frame cap would sever the socket on uploads
         # allowed by the configured policy. Derived from system.json — raising
