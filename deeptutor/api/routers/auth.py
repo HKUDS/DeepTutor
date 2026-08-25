@@ -56,7 +56,12 @@ from deeptutor.services.auth import (
 from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
 from deeptutor.services.login_rate_limit import LoginRateLimited, login_rate_limiter
-from deeptutor.services.tunnel_handoff import consume_ticket, create_ticket
+from deeptutor.services.tunnel_handoff import (
+    consume_ticket,
+    create_pairing,
+    create_ticket,
+    exchange_pairing,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +164,11 @@ class AuthStatusResponse(BaseModel):
 class TunnelHandoffResponse(BaseModel):
     tunnel_url: str
     code: str
+    expires_in: int
+
+
+class TunnelHandoffPairingResponse(BaseModel):
+    pairing_id: str
     expires_in: int
 
 
@@ -692,6 +702,48 @@ async def create_tunnel_handoff(
             status_code=501,
             detail="Tunnel handoff is unavailable in PocketBase mode.",
         )
+    try:
+        code, state = create_ticket(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return TunnelHandoffResponse(
+        tunnel_url=state.url,
+        code=code,
+        expires_in=60,
+    )
+
+
+@router.post("/handoff/pairing", response_model=TunnelHandoffPairingResponse)
+async def create_tunnel_handoff_pairing(
+    response: Response,
+    payload: TokenPayload | None = Depends(require_auth),
+) -> TunnelHandoffPairingResponse:
+    """Create a QR pairing capability without putting a login code in its URL."""
+    response.headers["Cache-Control"] = "no-store"
+    if not AUTH_ENABLED or payload is None:
+        raise HTTPException(status_code=400, detail="Authentication is required")
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=501,
+            detail="Tunnel handoff is unavailable in PocketBase mode.",
+        )
+    pairing_id, expires_in = create_pairing(payload)
+    return TunnelHandoffPairingResponse(
+        pairing_id=pairing_id,
+        expires_in=expires_in,
+    )
+
+
+@router.get("/handoff/pairing/{pairing_id}", response_model=TunnelHandoffResponse)
+async def exchange_tunnel_handoff_pairing(
+    response: Response,
+    pairing_id: str,
+) -> TunnelHandoffResponse:
+    """Exchange a scanned pairing capability for a fresh one-time handoff."""
+    response.headers["Cache-Control"] = "no-store"
+    payload = exchange_pairing(pairing_id)
+    if payload is None:
+        raise HTTPException(status_code=400, detail="Phone pairing is invalid or expired")
     try:
         code, state = create_ticket(payload)
     except ValueError as exc:

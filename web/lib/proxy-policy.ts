@@ -72,6 +72,7 @@ export function isAuthExempt(pathname: string): boolean {
   return (
     pathname.startsWith(LOGIN_PATH) ||
     pathname.startsWith("/register") ||
+    pathname.startsWith("/access/device") ||
     (pathname.startsWith("/kids") && !pathname.startsWith("/kids/manage")) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||

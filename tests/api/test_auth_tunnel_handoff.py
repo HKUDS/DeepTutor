@@ -88,6 +88,56 @@ def test_handoff_requires_authentication(handoff_client):
     assert response.status_code == 401
 
 
+def test_handoff_pairing_requires_authentication(handoff_client):
+    response = handoff_client.post("/api/v1/auth/handoff/pairing")
+    assert response.status_code == 401
+
+
+def test_handoff_pairing_flow_is_single_use_and_burns_after_exchange(handoff_client):
+    headers = {"Authorization": "Bearer session-token"}
+    created = handoff_client.post("/api/v1/auth/handoff/pairing", headers=headers)
+    assert created.status_code == 200
+    assert created.headers["cache-control"] == "no-store"
+    data = created.json()
+    assert "pairing_id" in data
+    assert data["expires_in"] == 120
+    pairing_id = data["pairing_id"]
+    assert len(pairing_id) >= 40
+
+    # Unauthenticated phone can exchange the pairing ID for a fresh 60s ticket
+    exchanged = handoff_client.get(f"/api/v1/auth/handoff/pairing/{pairing_id}")
+    assert exchanged.status_code == 200
+    assert exchanged.headers["cache-control"] == "no-store"
+    ticket_data = exchanged.json()
+    assert ticket_data["tunnel_url"] == "https://example-deep.trycloudflare.com"
+    assert ticket_data["expires_in"] == 60
+    assert len(ticket_data["code"]) >= 40
+
+    # Replay on pairing ID is rejected (single-use)
+    replay = handoff_client.get(f"/api/v1/auth/handoff/pairing/{pairing_id}")
+    assert replay.status_code == 400
+
+    # Target host can consume the resulting code
+    target_headers = {"x-deeptutor-frontend-host": "example-deep.trycloudflare.com"}
+    consumed = handoff_client.post(
+        "/api/v1/auth/handoff/consume",
+        data={"code": ticket_data["code"]},
+        headers=target_headers,
+        follow_redirects=False,
+    )
+    assert consumed.status_code == 303
+    assert "alice:admin:u_alice" in consumed.headers["set-cookie"]
+
+
+def test_handoff_pairing_expires_after_120_seconds(tunnel_file):
+    from deeptutor.services.auth import TokenPayload
+    from deeptutor.services.tunnel_handoff import create_pairing, exchange_pairing
+
+    pairing_id, ttl = create_pairing(TokenPayload("alice", "admin", "u_alice"), now=100)
+    assert ttl == 120
+    assert exchange_pairing(pairing_id, now=221) is None
+
+
 def test_handoff_is_single_use_and_bound_to_current_tunnel_host(handoff_client):
     headers = {"Authorization": "Bearer session-token"}
     created = handoff_client.post("/api/v1/auth/handoff", headers=headers)

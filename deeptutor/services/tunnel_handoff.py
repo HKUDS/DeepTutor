@@ -15,9 +15,12 @@ from urllib.parse import urlsplit
 from deeptutor.services.auth import TokenPayload
 
 _TICKET_TTL_SECONDS = 60
+_PAIRING_TTL_SECONDS = 120
 _TUNNEL_SUFFIX = ".trycloudflare.com"
 _tickets: dict[str, "_Ticket"] = {}
 _tickets_lock = threading.Lock()
+_pairings: dict[str, "_Pairing"] = {}
+_pairings_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,12 @@ class _Ticket:
     target_host: str
     expires_at: float
     used: bool = False
+
+
+@dataclass
+class _Pairing:
+    payload: TokenPayload
+    expires_at: float
 
 
 def _tunnel_file() -> Path:
@@ -101,6 +110,37 @@ def create_ticket(payload: TokenPayload, now: float | None = None) -> tuple[str,
     return code, state
 
 
+def create_pairing(payload: TokenPayload, now: float | None = None) -> tuple[str, int]:
+    """Create a one-time phone pairing capability without exposing a login code."""
+    current = time.time() if now is None else now
+    pairing_id = secrets.token_urlsafe(32)
+    digest = hashlib.sha256(pairing_id.encode("utf-8")).hexdigest()
+    with _pairings_lock:
+        expired = [key for key, pairing in _pairings.items() if pairing.expires_at <= current]
+        for key in expired:
+            _pairings.pop(key, None)
+        _pairings[digest] = _Pairing(
+            payload=payload,
+            expires_at=current + _PAIRING_TTL_SECONDS,
+        )
+    return pairing_id, _PAIRING_TTL_SECONDS
+
+
+def exchange_pairing(pairing_id: str, now: float | None = None) -> TokenPayload | None:
+    """Atomically exchange a pairing capability for its authenticated payload."""
+    if not pairing_id:
+        return None
+    digest = hashlib.sha256(pairing_id.encode("utf-8")).hexdigest()
+    current = time.time() if now is None else now
+    with _pairings_lock:
+        pairing = _pairings.get(digest)
+        if pairing is None or pairing.expires_at <= current:
+            _pairings.pop(digest, None)
+            return None
+        _pairings.pop(digest, None)
+        return pairing.payload
+
+
 def consume_ticket(
     code: str,
     target_host: str | None,
@@ -132,3 +172,9 @@ def clear_tickets() -> None:
     """Test helper; production state naturally expires in 60 seconds."""
     with _tickets_lock:
         _tickets.clear()
+
+
+def clear_pairings() -> None:
+    """Test helper; production pairings naturally expire."""
+    with _pairings_lock:
+        _pairings.clear()
