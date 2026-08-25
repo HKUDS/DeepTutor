@@ -19,6 +19,9 @@ tests intact.
   - `AUTH_ALLOW_REGISTRATION` and the persisted `auth.allow_registration` setting.
   - Partner Feishu/Lark and WeCom QR-code channel onboarding with short-lived
     credentials, administrator-only routes, masked responses, and explicit apply.
+  - Tailscale-to-Quick-Tunnel session handoff (`deeptutor.services.tunnel_handoff`),
+    ephemeral QR-code pairing (`/access/device`), and launchd-managed daily tunnel
+    rotation (`scripts/rotate_deeptutor_tunnel.sh`).
 - `upstream-v1.5.16`
   - MarginNote 4 connected knowledge base type.
   - Device pairing, one-time device tokens, incremental sync, heartbeat, and revoke.
@@ -210,3 +213,61 @@ MarginNote 4 add-on artifact. To use it:
 
 A real-device check is blocked until an MN4 add-on artifact is available; server
 pairing and simulated device sync are covered by tests.
+
+## Tailscale & Quick Tunnel Auth Handoff (方案 1 维护规范)
+
+本功能为个人/私有部署专属，用于在 Tailscale 稳定地址上登录后，通过 Mac 屏幕动态二维码或一键跳转，免密安全切换至每日轮换的 Cloudflare Quick Tunnel (`*.trycloudflare.com`) 地址，并自动下发 30 天 HttpOnly 会话 Cookie。
+
+### 架构与核心组件
+
+1. **守护与轮换（0% 代码侵入）**：
+   - `scripts/rotate_deeptutor_tunnel.sh`：每日凌晨 05:05 触发，HTTP/2 协议启动 `cloudflared`，捕获最新公网 URL 写入 `data/system/auth/deeptutor_tunnel.json`。
+   - `~/Library/LaunchAgents/com.deeptutor.cloudflared.plist`：常驻隧道守护进程。
+   - `~/Library/LaunchAgents/com.deeptutor.rotate-tunnel.plist`：定时轮换任务。
+2. **后端状态机与路由（独立模块）**：
+   - `deeptutor/services/tunnel_handoff.py`：单文件状态机，管理 120 秒一次性配对码 (`Pairing`)、60 秒一次性凭证 (`Ticket`) 与隧道 Host 绑定校验。
+   - `deeptutor/api/routers/auth.py`：挂载 `/handoff`、`/handoff/pairing`、`/handoff/pairing/{pairing_id}`、`/handoff/consume` 接口。
+3. **前端页面与代理策略（独立路由）**：
+   - `web/app/(auth)/access/page.tsx`：Mac 已登录展示页，生成 120 秒动态二维码（`qrcode.react`）及「在此电脑上打开」直连入口。
+   - `web/app/(auth)/access/device/page.tsx`：手机扫码落地页，免认证（`isAuthExempt`）获取一次性 Ticket 并自动 POST 提交至消费端。
+   - `web/proxy.ts` 与 `web/lib/proxy-policy.ts`：`frontendForwardingHost` 优先转发公网 `Host` 请求头。
+4. **反向代理身份守卫**：
+   - Uvicorn 各启动点（`run_server.py`、`deeptutor_cli/main.py`、`launcher.py`、Dockerfile）统一设置 `--no-proxy-headers` (`proxy_headers=False`)，确保后端仅信任来自本机 Next.js 代理清洗后的 `x-deeptutor-*` 头部。
+
+### 上游（`origin/main`）更新同步与维护手册
+
+当上游官方仓库更新并需要合并至本地时，按以下标准流程操作：
+
+#### 1. 准备工作
+确保当前处于主工作区且工作区干净：
+```bash
+python3 scripts/check_primary_checkout.py
+git status --short --branch
+```
+
+#### 2. 同步与 Rebase
+```bash
+git fetch origin
+git rebase origin/main
+```
+
+#### 3. 冲突处理指引（如遇极少数核心文件冲突）
+* **`web/proxy.ts`**：确认 `backendForwardingHeaders` 使用 `frontendForwardingHost(req.headers.get("host"), req.nextUrl.host)`。
+* **`web/lib/proxy-policy.ts`**：确认 `isAuthExempt` 包含 `pathname.startsWith("/access/device")`。
+* **`deeptutor/api/routers/auth.py`**：确认引入 `tunnel_handoff` 相关路由处理函数并保留 `/handoff` 路由定义。
+* **`run_server.py` / `launcher.py`**：确认 Uvicorn 启动参数包含 `proxy_headers=False` 或 `--no-proxy-headers`。
+
+#### 4. 本地回归验证门禁
+```bash
+.venv/bin/python -m pytest \
+  tests/api/test_auth_tunnel_handoff.py \
+  tests/runtime/test_uvicorn_launch_flags.py \
+  tests/test_local_feature_contract.py
+cd web && npm run test:node && npm run lint && npm run build
+```
+
+#### 5. 重启服务生效
+```bash
+launchctl kickstart -k gui/$(id -u)/com.deeptutor.web
+launchctl kickstart -k gui/$(id -u)/com.deeptutor.api
+```

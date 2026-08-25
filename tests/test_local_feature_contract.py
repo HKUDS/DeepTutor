@@ -15,6 +15,9 @@ def test_required_local_and_upstream_route_families_are_installed():
     assert any(path.startswith("/api/v1/kids-admin/") for path in paths)
     assert "/api/v1/kids/rewards" in paths
     assert "/api/v1/kids-admin/profiles/{profile_id}/rewards" in paths
+    assert "/api/v1/auth/handoff/pairing" in paths
+    assert "/api/v1/auth/handoff/pairing/{pairing_id}" in paths
+    assert "/api/v1/auth/handoff/consume" in paths
     assert any(path.startswith("/api/v1/marginnote4/") for path in paths)
     assert any(
         path.startswith("/api/v1/partners/") and path.endswith("/channel-onboarding/start")
