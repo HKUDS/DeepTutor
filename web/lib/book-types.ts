@@ -76,6 +76,7 @@ export interface ConceptGraph {
 
 export interface SourceAnchor {
   kind: string;
+  kb_name?: string;
   ref: string;
   snippet: string;
 }

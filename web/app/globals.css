@@ -770,7 +770,7 @@ body[data-picker-open] .dt-mark-pulse {
 :root[data-viewer-resizing="true"] .chat-preview-shell {
   transition: none;
 }
-@media (min-width: 1024px) {
+@media (min-width: 1100px) {
   /* The wider composer-side preview drawer (pre-send attachment peek)
      gets the largest squeeze. */
   .chat-preview-shell[data-preview-open="true"] {
@@ -822,7 +822,7 @@ body[data-picker-open] .dt-mark-pulse {
     padding-right 220ms ease-out,
     padding-left 240ms cubic-bezier(0.32, 0.72, 0, 1);
 }
-@media (min-width: 1024px) {
+@media (min-width: 1100px) {
   /* The seam is user-draggable: `ReaderResizeHandle` writes `--reader-width`,
      and BOTH sides read it through the same `min()` so the pane edge and the
      chat's padding can never disagree — a mismatch would show as a gap or an
@@ -848,7 +848,7 @@ body[data-picker-open] .dt-mark-pulse {
 .dt-reader-resize {
   touch-action: none;
 }
-@media (max-width: 1023px) {
+@media (max-width: 1099px) {
   /* Below `lg` the reader takes the full width and there is no seam to drag. */
   .dt-reader-resize {
     display: none;

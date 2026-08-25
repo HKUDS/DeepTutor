@@ -73,6 +73,9 @@ import { useAuthStatus } from "@/hooks/useAuthStatus";
 
 import { READER_ASK_EVENT, ReaderPane } from "@/components/reading/ReaderPane";
 import { useReading } from "@/context/ReadingContext";
+import { TimedMediaReader } from "@/components/watching/TimedMediaReader";
+import { useWatching } from "@/context/WatchingContext";
+import { setWatchingModeActive, WATCHING_ASK_EVENT } from "@/lib/watching-turn-state";
 import { getMaterial as getReadingMaterial } from "@/lib/reading-api";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
@@ -308,6 +311,14 @@ const CAPABILITIES: CapabilityDef[] = [
     allowedTools: ["web_search", "code_execution", "reason"],
     defaultTools: [],
   },
+  {
+    value: "immersive_watching",
+    label: "Immersive Watching",
+    description: "Learn with a video, transcript, and timestamp citations",
+    icon: Clapperboard,
+    allowedTools: ["web_search", "code_execution", "reason"],
+    defaultTools: [],
+  },
 ];
 
 interface KnowledgeBase {
@@ -387,6 +398,7 @@ export default function ChatPage() {
   const learningPolicy = authStatus.learningPolicy;
   const { openMaterial: openReadingMaterial, setError: setReadingError } =
     useReading();
+  const { openMaterial: openWatchingMaterial } = useWatching();
 
   const {
     state,
@@ -441,6 +453,7 @@ export default function ChatPage() {
   }
   const agentPreselectDoneRef = useRef(false);
   const readingLaunchDoneRef = useRef(false);
+  const watchingLaunchDoneRef = useRef(false);
   const {
     options: llmOptions,
     activeDefault: activeLLMDefault,
@@ -705,6 +718,21 @@ export default function ChatPage() {
     return () => window.removeEventListener(READER_ASK_EVENT, onReaderAsk);
   }, [handlePrefillComposer, t]);
 
+  useEffect(() => {
+    const onWatchingAsk = (event: Event) => {
+      const detail = (event as CustomEvent<{ timeSeconds?: number; text?: string; intent?: string }>).detail;
+      const seconds = Math.max(0, Math.floor(Number(detail?.timeSeconds) || 0));
+      const transcript = (detail?.text || "").trim();
+      const timestamp = `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+      const prompt = detail?.intent === "extract"
+        ? t("Extract key points from this part of the video")
+        : t("Explain this part of the video");
+      handlePrefillComposer(`${prompt} [${timestamp}]:${transcript ? `\n\n> ${transcript}` : ""}\n`);
+    };
+    window.addEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
+    return () => window.removeEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
+  }, [handlePrefillComposer, t]);
+
   const activeCap = useMemo(
     () => getCapability(state.activeCapability, capabilities),
     [state.activeCapability, capabilities],
@@ -713,6 +741,13 @@ export default function ChatPage() {
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
   const isReadingMode = activeCap.value === "immersive_reading";
+  const isWatchingMode = activeCap.value === "immersive_watching";
+  useEffect(() => {
+    // The Watching provider persists across session navigation, but only the
+    // selected mode may contribute timestamp citations to assistant messages.
+    // The provider exposes its active state through a small module-safe setter.
+    setWatchingModeActive(isWatchingMode);
+  }, [isWatchingMode]);
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
 
   useEffect(() => {
@@ -741,6 +776,23 @@ export default function ChatPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [openReadingMaterial, setCapability, setReadingError, t]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const materialId = params.get("watching_material");
+    if (!materialId || watchingLaunchDoneRef.current) return;
+    const seekRaw = Number(params.get("t"));
+    const seekSeconds = Number.isFinite(seekRaw) ? Math.max(0, seekRaw) : undefined;
+    const timer = window.setTimeout(() => {
+      watchingLaunchDoneRef.current = true;
+      setCapability("immersive_watching");
+      void openWatchingMaterial(
+        materialId,
+        seekSeconds === undefined ? undefined : { seekSeconds },
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [openWatchingMaterial, setCapability]);
 
   useEffect(() => {
     if (authStatus.loading || !learningPolicy) return;
@@ -2130,7 +2182,7 @@ export default function ChatPage() {
             a remount would refetch every piece of session metadata and stall the
             UI for seconds (the regression behind the slow session-open bug). */}
           <div
-            data-reader-open={isReadingMode ? "true" : "false"}
+            data-reader-open={isReadingMode || isWatchingMode ? "true" : "false"}
             className="dt-reader-shell"
           >
             {isReadingMode && (
@@ -2141,6 +2193,14 @@ export default function ChatPage() {
                 }}
                 learningActionsEnabled={Boolean(learningPolicy)}
                 learningAgeBand={learningPolicy?.age_band}
+              />
+            )}
+            {isWatchingMode && (
+              <TimedMediaReader
+                onClose={() => {
+                  learningDefaultAppliedRef.current = true;
+                  setCapability("");
+                }}
               />
             )}
           </div>
@@ -2154,7 +2214,7 @@ export default function ChatPage() {
             // hand-tune it without fighting Tailwind's arbitrary-value parser.
             data-preview-open={previewSource ? "true" : "false"}
             data-viewer-open={viewerPanelOpen ? "true" : "false"}
-            data-reader-open={isReadingMode ? "true" : "false"}
+            data-reader-open={isReadingMode || isWatchingMode ? "true" : "false"}
             className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
           >
             <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">

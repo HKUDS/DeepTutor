@@ -22,6 +22,11 @@ tests intact.
   - Tailscale-to-Quick-Tunnel session handoff (`deeptutor.services.tunnel_handoff`),
     ephemeral QR-code pairing (`/access/device`), and launchd-managed daily tunnel
     rotation (`scripts/rotate_deeptutor_tunnel.sh`).
+  - YouTube Immersive Watching through a configured Invidious instance, with
+    user-scoped timed-media materials, transcript cues, timestamp context,
+    native Range playback, explicit audio-only ASR preprocessing, and private
+    subtitle-range key-point marks. Optional yt-dlp and youtube-transcript-api
+    adapters remain opt-in.
 - `upstream-v1.5.16`
   - MarginNote 4 connected knowledge base type.
   - Device pairing, one-time device tokens, incremental sync, heartbeat, and revoke.
@@ -46,6 +51,48 @@ tests intact.
   - Moving Kids reward rules, reward persistence, or reward copy back into the
     core Kids product.
   - Routing MarginNote libraries through generic RAG instead of their own tools.
+  - Adding a video downloader, Bilibili scraper, or ASR model as a core runtime
+    dependency instead of an explicitly installed and authorized plugin.
+
+## Video learning ingestion contract
+
+This follows the division of labor proposed in upstream issue #997: an ingest
+boundary emits a timestamped transcript document, while DeepTutor keeps the
+learning, locator, mastery, and note-taking responsibilities.
+
+The current YouTube backend stage is deliberately no-download:
+
+1. Resolve YouTube metadata, captions, muxed MP4 formats, and timestamps through
+   the administrator-configured Invidious instance.
+2. Prefer the exposed transcript and fall back to the optional
+   `youtube-transcript-api` adapter.
+3. Proxy playback with HTTP Range requests without persisting the complete
+   video; only the server-side short-lived stream descriptor is stored.
+4. On an explicit request, fetch only audio, cap it at 32 MB while streaming,
+   transcribe it through the configured STT provider, and persist transcript
+   state—never audio or video.
+5. Store normalized `timed_media` segments with `locator`, `start`, `end`, and
+   `text` for Chat, Notes, Quiz, and Mastery grounding.
+6. Keep private key-point / question / review marks on the timed-media material.
+   Range marks are created from selected subtitles or a current-time bookmark;
+   AI suggestions are generated only on demand and are not saved until the
+   learner confirms. Marks are never written back to Invidious.
+
+Bilibili remains a follow-up TODO. Its BV/AV, multi-part, subtitle, and
+provider-specific player work must land in a separate implementation branch.
+
+Research references recorded in issue #997 are JefferyHcool/BiliNote,
+AliceDel66/BiliNote, and Rimagination/bili-note. The issue does not identify a
+canonical BiliInsight or BibiGPT repository, so those names are product
+research leads rather than dependencies. yt-dlp, bilibili-API-collect,
+bilibili-api, and BBDown remain external tooling references only.
+
+Video downloads stay outside this default path. A deployment may add a
+downloader only as an explicitly installed CLI app/plugin, subject to
+administrator installation, per-user `grant.cli_apps` authorization, sandbox
+execution, and artifact collection in the turn workspace. The vendored CLI
+snapshot must be refreshed through its upstream process; it must not be hand
+edited to inject yt-dlp or BBDown.
 
 ## Kids capability promise
 

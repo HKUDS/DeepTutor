@@ -623,6 +623,52 @@ class SourceExplorer(BaseAgent):
                 )
             )
 
+        # Immersive Watching timed-media marks / transcript anchors
+        try:
+            media_ids = [
+                str(item).strip()
+                for item in (inputs.timed_media_ids or [])
+                if str(item or "").strip()
+            ]
+            if media_ids:
+                from deeptutor.video_learning.kb_publish import source_chunks_for_material
+                from deeptutor.video_learning.service import get_timed_media_store
+
+                store = get_timed_media_store()
+                for material_id in media_ids[:8]:
+                    try:
+                        material = store.get(material_id)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("Timed media %s unavailable for exploration: %s", material_id, exc)
+                        continue
+                    for row in source_chunks_for_material(material)[:24]:
+                        if not isinstance(row, dict):
+                            continue
+                        text = str(row.get("text") or "").strip()
+                        if not text:
+                            continue
+                        meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                        chunks.append(
+                            SourceChunk(
+                                chunk_id=str(row.get("chunk_id") or f"timed::{material_id}")[:200],
+                                source="timed_media",
+                                ref=str(row.get("ref") or material_id)[:200],
+                                text=_clip(text, 1200),
+                                score=float(row.get("score") or 0.0),
+                                query=str(row.get("query") or "")[:200],
+                                metadata={
+                                    "material_id": str(meta.get("material_id") or material_id),
+                                    "kind": str(meta.get("kind") or ""),
+                                    "start_seconds": meta.get("start_seconds"),
+                                    "end_seconds": meta.get("end_seconds"),
+                                    "jump_url": str(meta.get("jump_url") or ""),
+                                    "title": str(meta.get("title") or ""),
+                                },
+                            )
+                        )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"Timed media chunk collection skipped: {exc}")
+
         return chunks
 
     # ------------------------------------------------------------------ #

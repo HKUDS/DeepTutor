@@ -14,10 +14,10 @@ from .paths import SYSTEM_ROOT, ensure_system_dirs
 
 GRANTS_DIR = SYSTEM_ROOT / "grants"
 
-LEARNING_CAPABILITIES = {"chat", "immersive_reading"}
+LEARNING_CAPABILITIES = {"chat", "immersive_reading", "immersive_watching"}
 LEARNING_AGE_BANDS = {"6-8", "9-12", "13-15"}
 LEARNING_PERSONAS = {"teacher"}
-LEARNING_SURFACES = {"chat", "reading"}
+LEARNING_SURFACES = {"chat", "reading", "watching"}
 _EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
 

@@ -230,6 +230,7 @@ class PositionPayload(BaseModel):
     locator: int = Field(ge=1)
     source_anchor: str = Field(default="", max_length=4096)
     percentage: float = Field(default=0.0, ge=0.0, le=1.0)
+    time_seconds: float = Field(default=0.0, ge=0.0, le=24 * 60 * 60)
 
 
 class PositionInfo(PositionPayload):
@@ -668,6 +669,7 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
                 locator=payload.locator,
                 source_anchor=payload.source_anchor,
                 percentage=payload.percentage,
+                time_seconds=payload.time_seconds,
             ),
         )
         return PositionInfo(**saved.to_dict())

@@ -64,11 +64,35 @@ async def transcribe_audio(
     return await adapter.transcribe(audio, config, filename=filename, content_type=content_type)
 
 
+async def transcribe_audio_segments(
+    audio: bytes,
+    *,
+    catalog: dict[str, Any] | None = None,
+    filename: str = "audio.webm",
+    content_type: str = "application/octet-stream",
+    language: str | None = None,
+) -> list[dict[str, Any]]:
+    """Transcribe audio and prefer provider-supplied segment timings."""
+    from deeptutor.services.config.provider_runtime import resolve_stt_runtime_config
+
+    config = resolve_stt_runtime_config(catalog=catalog)
+    if language:
+        config.language = language
+    adapter = get_stt_adapter(config.adapter)
+    return await adapter.transcribe_verbose(
+        audio,
+        config,
+        filename=filename,
+        content_type=content_type,
+    )
+
+
 __all__ = [
     "VoiceProviderError",
     "TTSConfig",
     "STTConfig",
     "synthesize_speech",
     "transcribe_audio",
+    "transcribe_audio_segments",
     "strip_markdown_for_speech",
 ]

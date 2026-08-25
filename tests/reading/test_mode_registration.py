@@ -49,6 +49,11 @@ def test_the_reading_mode_and_its_loop_capability_are_both_registered() -> None:
     assert any(cap.name == "immersive_reading" for cap in LOOP_CAPABILITIES)
 
 
+def test_the_watching_mode_and_its_loop_capability_are_both_registered() -> None:
+    assert get_capability_registry().get("immersive_watching") is not None
+    assert any(cap.name == "immersive_watching" for cap in LOOP_CAPABILITIES)
+
+
 def test_reading_tools_are_attributed_to_the_reading_capability() -> None:
     owners = capability_tool_owners()
 

@@ -16,7 +16,29 @@ from deeptutor.services.session.turn_runtime import (
     _reading_material_id,
     _reading_viewport,
     _request_snapshot_metadata,
+    _timed_media_id,
+    _timed_media_viewport,
 )
+
+
+def test_timed_media_state_is_separate_from_reading_state() -> None:
+    assert _timed_media_id("ABCDEF0123456789") == "abcdef0123456789"
+    assert _timed_media_id("../../etc/passwd") == ""
+    assert _timed_media_viewport({"time_seconds": 1122.5, "locator": 17}) == {
+        "time_seconds": 1122.5,
+        "locator": 17,
+    }
+
+
+def test_timed_media_id_is_persisted_in_turn_snapshot() -> None:
+    snapshot = _snapshot(
+        {
+            "timed_media_id": "0123456789abcdef0123456789abcdef",
+            "timed_media_viewport": {"time_seconds": 1122.5, "locator": 17},
+        }
+    )
+    assert snapshot["timedMediaId"] == "0123456789abcdef0123456789abcdef"
+    assert snapshot["timedMediaViewport"] == {"time_seconds": 1122.5, "locator": 17}
 
 # ---------------------------------------------------------------------------
 # material id normalisation

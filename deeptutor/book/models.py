@@ -186,6 +186,8 @@ class BookInputs(BaseModel):
     knowledge_bases: list[str] = Field(default_factory=list)
     question_categories: list[int] = Field(default_factory=list)
     question_entries: list[int] = Field(default_factory=list)
+    timed_media_ids: list[str] = Field(default_factory=list)
+    video_learning_text: str = ""
     language: str = "en"
     captured_at: float = Field(default_factory=_now)
 
@@ -218,7 +220,7 @@ class SourceAnchor(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    kind: str = ""  # 'kb' | 'notebook' | 'chat' | 'web' | 'manual'
+    kind: str = ""  # 'kb' | 'notebook' | 'chat' | 'web' | 'manual' | 'timed_media'
     kb_name: str = ""  # populated for KB-backed anchors
     ref: str = ""  # KB doc id, notebook record id, message id…
     snippet: str = ""  # short preview (≤300 chars)
@@ -373,7 +375,7 @@ class SourceChunk(BaseModel):
 
     chunk_id: str = ""
     kb_name: str = ""  # empty for non-KB sources (chat / notebook…)
-    source: str = ""  # 'kb' | 'notebook' | 'chat' | 'questions' | 'web'
+    source: str = ""  # 'kb' | 'notebook' | 'chat' | 'questions' | 'web' | 'timed_media'
     ref: str = ""  # doc id / record id / message id …
     text: str = ""
     score: float = 0.0

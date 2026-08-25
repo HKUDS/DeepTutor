@@ -8,11 +8,11 @@ import { apiFetch, apiUrl } from "@/lib/api";
 // unit word is carried on the material so the UI can say "page 12" or
 // "chapter 3" without ever branching on the file type itself.
 
-export type UnitKind = "page" | "chapter" | "slide" | "section";
+export type UnitKind = "page" | "chapter" | "slide" | "section" | "segment";
 export type AnnotationKind = "highlight" | "underline" | "note";
 export type ExportFormat = "auto" | "pdf" | "markdown";
 export type RenderMode = "text" | "pdf" | "epub";
-export type ContentFormat = "plain_text" | "markdown" | "pdf" | "epub";
+export type ContentFormat = "plain_text" | "markdown" | "pdf" | "epub" | "timed_media";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -43,7 +43,8 @@ export interface MaterialInfo {
     | "url_snapshot"
     | "kb_file"
     | "kb_web_tutorial"
-    | "derived_epub";
+    | "derived_epub"
+    | "timed_media";
   source_ref?: string;
   source_url?: string;
   kb_name?: string;
@@ -142,6 +143,7 @@ export interface ReadingPosition {
   source_anchor: string;
   percentage: number;
   updated_at: number;
+  time_seconds?: number;
 }
 
 export interface BilingualGroup {
@@ -439,7 +441,7 @@ export async function getReadingPosition(
 
 export async function saveReadingPosition(
   materialId: string,
-  position: Pick<ReadingPosition, "locator" | "source_anchor" | "percentage">,
+  position: Pick<ReadingPosition, "locator" | "source_anchor" | "percentage" | "time_seconds">,
 ): Promise<ReadingPosition> {
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {

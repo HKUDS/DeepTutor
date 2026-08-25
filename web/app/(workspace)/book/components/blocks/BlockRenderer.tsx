@@ -12,7 +12,12 @@ import {
   Replace,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { Block, BlockType, QuizAttempt } from "@/lib/book-types";
+import type { Block, BlockType, QuizAttempt, SourceAnchor } from "@/lib/book-types";
+import {
+  formatWatchClock,
+  parseTimedMediaRef,
+  watchingJumpHref,
+} from "@/lib/video-learning-kb";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 
 import BlockBodyEditor from "./BlockBodyEditor";
@@ -79,6 +84,23 @@ export interface BlockRendererProps {
   bookId?: string;
   currentPageId?: string;
   bookLanguage?: string;
+}
+
+function timedMediaAnchorHref(anchor: SourceAnchor): string | null {
+  if ((anchor.kind || "").toLowerCase() !== "timed_media") return null;
+  const parsed = parseTimedMediaRef(anchor.ref || "");
+  if (!parsed) return null;
+  return watchingJumpHref(parsed.materialId, parsed.startSeconds);
+}
+
+function anchorLabel(anchor: SourceAnchor, t: (key: string, options?: Record<string, unknown>) => string): string {
+  const parsed = parseTimedMediaRef(anchor.ref || "");
+  if (parsed) {
+    return t("Watch at {{time}}", { time: formatWatchClock(parsed.startSeconds) });
+  }
+  const snippet = String(anchor.snippet || "").trim();
+  if (snippet) return snippet.slice(0, 80);
+  return String(anchor.ref || anchor.kind || t("Source"));
 }
 
 export default function BlockRenderer({
@@ -362,6 +384,35 @@ export default function BlockRenderer({
         </div>
       )}
       {body}
+      {Array.isArray(block.source_anchors) && block.source_anchors.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {block.source_anchors.map((anchor, index) => {
+            const href = timedMediaAnchorHref(anchor);
+            const label = anchorLabel(anchor, t);
+            if (href) {
+              return (
+                <a
+                  key={`${anchor.kind}-${anchor.ref}-${index}`}
+                  href={href}
+                  className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-2.5 py-1 text-[11px] text-[var(--foreground)] hover:bg-[var(--muted)]"
+                  title={String(anchor.snippet || label)}
+                >
+                  {label}
+                </a>
+              );
+            }
+            return (
+              <span
+                key={`${anchor.kind}-${anchor.ref}-${index}`}
+                className="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] text-[var(--muted-foreground)]"
+                title={String(anchor.snippet || anchor.ref || "")}
+              >
+                {label}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ from contextvars import Token
 from dataclasses import dataclass, field
 import json
 import logging
+import math
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -205,6 +206,7 @@ def _mastery_path_id(value: Any) -> str:
 # Reading material ids are content hashes; anything else is a client bug or an
 # injection attempt, so the shape is enforced here rather than deeper in.
 _READING_ID_RE = re.compile(r"^[0-9a-f]{8,64}$")
+_TIMED_MEDIA_ID_RE = re.compile(r"^[0-9a-f]{16,64}$")
 # A selection is quoted back into the prompt, so it is bounded here — the
 # reader has no reason to send more, and a runaway selection must not eat the
 # turn's context budget.
@@ -237,6 +239,31 @@ def _reading_viewport(value: Any) -> dict[str, Any]:
     selection = str(value.get("selection") or "").strip()
     if selection:
         viewport["selection"] = selection[:READING_SELECTION_MAX_CHARS]
+    return viewport
+
+
+def _timed_media_id(value: Any) -> str:
+    candidate = str(value or "").strip().lower()
+    return candidate if _TIMED_MEDIA_ID_RE.match(candidate) else ""
+
+
+def _timed_media_viewport(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    viewport: dict[str, Any] = {}
+    try:
+        time_seconds = float(value.get("time_seconds") or 0)
+    except (TypeError, ValueError):
+        time_seconds = 0
+    if math.isfinite(time_seconds) and time_seconds >= 0:
+        viewport["time_seconds"] = min(time_seconds, 24 * 60 * 60)
+    locator = value.get("locator")
+    try:
+        locator_value = int(locator or 0)
+    except (TypeError, ValueError):
+        locator_value = 0
+    if locator_value > 0:
+        viewport["locator"] = locator_value
     return viewport
 
 
@@ -291,6 +318,12 @@ def _request_snapshot_metadata(
     reading_material_id = _reading_material_id(payload.get("reading_material_id"))
     if reading_material_id:
         snapshot["readingMaterialId"] = reading_material_id
+    timed_media_id = _timed_media_id(payload.get("timed_media_id"))
+    if timed_media_id:
+        snapshot["timedMediaId"] = timed_media_id
+        timed_media_viewport = _timed_media_viewport(payload.get("timed_media_viewport"))
+        if timed_media_viewport:
+            snapshot["timedMediaViewport"] = timed_media_viewport
     if persona:
         snapshot["persona"] = persona
     if memory_references:
@@ -1187,6 +1220,16 @@ class TurnRuntimeManager:
                 if "reading_material_id" in overrides
                 else snapshot.get("readingMaterialId")
             ),
+            "timed_media_id": _timed_media_id(
+                overrides.get("timed_media_id")
+                if "timed_media_id" in overrides
+                else snapshot.get("timedMediaId")
+            ),
+            "timed_media_viewport": _timed_media_viewport(
+                overrides.get("timed_media_viewport")
+                if "timed_media_viewport" in overrides
+                else snapshot.get("timedMediaViewport")
+            ),
             "config": config,
         }
         if llm_selection:
@@ -1893,6 +1936,8 @@ class TurnRuntimeManager:
                     # model where the user is actually looking.
                     "reading_material_id": _reading_material_id(payload.get("reading_material_id")),
                     "reading_viewport": _reading_viewport(payload.get("reading_viewport")),
+                    "timed_media_id": _timed_media_id(payload.get("timed_media_id")),
+                    "timed_media_viewport": _timed_media_viewport(payload.get("timed_media_viewport")),
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,

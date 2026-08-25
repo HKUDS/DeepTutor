@@ -127,6 +127,13 @@ cli = [
 # HTTP without it.
 codebuddy = ["codebuddy-agent-sdk>=0.3,<0.4"]
 
+# Optional YouTube provider adapters. Invidious remains the built-in primary
+# path; these packages are loaded lazily and are never required for normal chat.
+video-learning = [
+    "yt-dlp>=2025.1.0",
+    "youtube-transcript-api>=1.0.0",
+]
+
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
 server = [

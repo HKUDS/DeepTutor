@@ -400,6 +400,8 @@ async def require_admin(
 def _learning_surface_for_path(path: str) -> str:
     if path.startswith("/api/v1/reading") or path == "/api/v1/learning/records":
         return "reading"
+    if path.startswith("/api/v1/video-learning"):
+        return "watching"
     if path.startswith(("/api/v1/chat", "/api/v1/sessions")):
         return "chat"
     return ""

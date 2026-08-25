@@ -308,16 +308,86 @@ class OpenAICompatSTTAdapter(BaseSTTAdapter):
 
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout) as client:
-                if config.request_style == STT_BASE64_JSON:
-                    resp = await self._post_base64(client, url, auth, audio, filename, config)
-                else:
-                    resp = await self._post_multipart(
-                        client, url, auth, audio, filename, content_type, config
-                    )
+                resp = await self._request(
+                    client,
+                    url,
+                    auth,
+                    audio,
+                    filename,
+                    content_type,
+                    config,
+                    response_format="json",
+                )
         except httpx.HTTPError as exc:
             raise VoiceProviderError(f"STT request error: {exc}") from exc
         _raise_for_provider(resp, "Transcription")
         return self._parse_text(resp)
+
+    async def transcribe_verbose(
+        self,
+        audio: bytes,
+        config: STTConfig,
+        *,
+        filename: str = "audio.webm",
+        content_type: str = "application/octet-stream",
+    ) -> list[dict[str, Any]]:
+        if config.request_style == STT_BASE64_JSON:
+            return await super().transcribe_verbose(
+                audio,
+                config,
+                filename=filename,
+                content_type=content_type,
+            )
+
+        if not config.base_url:
+            raise VoiceProviderError("No endpoint URL configured for STT.")
+        if not audio:
+            raise VoiceProviderError("No audio data to transcribe.")
+        url = join_audio_path(config.base_url, "audio/transcriptions")
+        auth = build_auth_headers(config.auth_style, config.api_key)
+        try:
+            async with httpx.AsyncClient(timeout=config.request_timeout) as client:
+                resp = await self._request(
+                    client,
+                    url,
+                    auth,
+                    audio,
+                    filename,
+                    content_type,
+                    config,
+                    response_format="verbose_json",
+                )
+        except httpx.HTTPError as exc:
+            raise VoiceProviderError(f"STT request error: {exc}") from exc
+        _raise_for_provider(resp, "Transcription")
+        return self._parse_segments(resp)
+
+    async def _request(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        auth: dict[str, str],
+        audio: bytes,
+        filename: str,
+        content_type: str,
+        config: STTConfig,
+        *,
+        response_format: str,
+    ) -> httpx.Response:
+        if config.request_style == STT_BASE64_JSON and response_format == "json":
+            return await self._post_base64(client, url, auth, audio, filename, config)
+        if config.request_style == STT_BASE64_JSON:
+            raise VoiceProviderError("This STT provider does not support timestamped output.")
+        return await self._post_multipart(
+            client,
+            url,
+            auth,
+            audio,
+            filename,
+            content_type,
+            config,
+            response_format=response_format,
+        )
 
     async def _post_multipart(
         self,
@@ -328,9 +398,11 @@ class OpenAICompatSTTAdapter(BaseSTTAdapter):
         filename: str,
         content_type: str,
         config: STTConfig,
+        *,
+        response_format: str = "json",
     ) -> httpx.Response:
         files = {"file": (filename, audio, content_type or "application/octet-stream")}
-        data: dict[str, str] = {"model": config.model, "response_format": "json"}
+        data: dict[str, str] = {"model": config.model, "response_format": response_format}
         if config.language:
             data["language"] = config.language
         headers = {**auth, **(config.extra_headers or {})}
@@ -373,6 +445,34 @@ class OpenAICompatSTTAdapter(BaseSTTAdapter):
             raise VoiceProviderError("Transcription response had no `text` field.")
         # response_format=text returns a bare string.
         return (resp.text or "").strip()
+
+    @staticmethod
+    def _parse_segments(resp: httpx.Response) -> list[dict[str, Any]]:
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise VoiceProviderError("Transcription response was not a JSON object.")
+        raw_segments = data.get("segments")
+        segments: list[dict[str, Any]] = []
+        if isinstance(raw_segments, list):
+            for item in raw_segments:
+                if not isinstance(item, dict):
+                    continue
+                text = str(item.get("text") or "").strip()
+                if not text:
+                    continue
+                try:
+                    start = max(0.0, float(item.get("start") or 0))
+                except (TypeError, ValueError):
+                    start = 0.0
+                segments.append({"start": start, "text": text})
+        if segments:
+            return segments
+
+        # Some OpenAI-compatible gateways ignore verbose_json. If they at least
+        # return text, report that honestly as one untimed segment rather than
+        # making a second upload or inventing timestamps.
+        text = str(data.get("text") or "").strip()
+        return [{"start": 0.0, "text": text}] if text else []
 
 
 __all__ = ["OpenAICompatTTSAdapter", "OpenRouterTTSAdapter", "OpenAICompatSTTAdapter"]

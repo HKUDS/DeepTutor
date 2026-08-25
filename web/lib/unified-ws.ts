@@ -86,6 +86,12 @@ export interface StartTurnMessage {
     locator?: number;
     selection?: string;
   };
+  /** Immersive watching: the timed media material and current playback time. */
+  timed_media_id?: string;
+  timed_media_viewport?: {
+    time_seconds: number;
+    locator?: number;
+  };
   persona?: string;
   llm_selection?: LLMSelection | null;
   /** Edit-branching: when present (even as ``null``) the new user message

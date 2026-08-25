@@ -362,6 +362,7 @@ class BookEngine:
         knowledge_bases: list[str] | None = None,
         question_categories: list[int] | None = None,
         question_entries: list[int] | None = None,
+        timed_media_ids: list[str] | None = None,
         language: str = "en",
         depth: str = BookDepth.STANDARD.value,
         stream: StreamBus | None = None,
@@ -380,6 +381,7 @@ class BookEngine:
                 knowledge_bases=knowledge_bases,
                 question_categories=question_categories,
                 question_entries=question_entries,
+                timed_media_ids=timed_media_ids,
                 language=language,
             )
 

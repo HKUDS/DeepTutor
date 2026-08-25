@@ -41,10 +41,12 @@ class IdeationContext:
     chat_history_text: str = ""
     notebook_context: str = ""
     question_notebook_text: str = ""
+    video_learning_text: str = ""
     knowledge_bases: list[str] = field(default_factory=list)
     notebook_record_count: int = 0
     chat_message_count: int = 0
     question_entry_count: int = 0
+    timed_media_count: int = 0
 
     def render(self) -> str:
         """Render as a single multi-section prompt block."""
@@ -65,6 +67,11 @@ class IdeationContext:
             sections.append(f"[Past Conversations]\n{self.chat_history_text.strip()}")
         elif self.chat_message_count == 0:
             sections.append("[Past Conversations]\n(none)")
+
+        if self.video_learning_text.strip():
+            sections.append(f"[Video Learning Notes]\n{self.video_learning_text.strip()}")
+        elif self.timed_media_count == 0:
+            sections.append("[Video Learning Notes]\n(no timed media selected)")
 
         if self.knowledge_bases:
             sections.append(
@@ -305,6 +312,42 @@ def _normalize_chat_selections(
     return sels
 
 
+
+def _normalize_timed_media_ids(raw: list[str] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw or []:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out[:8]
+
+
+def _resolve_timed_media_context(timed_media_ids: list[str]) -> tuple[str, int]:
+    if not timed_media_ids:
+        return "", 0
+    try:
+        from deeptutor.video_learning.kb_publish import ideation_text_for_material
+        from deeptutor.video_learning.service import get_timed_media_store
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Timed media helpers unavailable: {exc}")
+        return "", 0
+
+    store = get_timed_media_store()
+    sections: list[str] = []
+    count = 0
+    for material_id in timed_media_ids:
+        try:
+            material = store.get(material_id)
+            sections.append(ideation_text_for_material(material))
+            count += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Timed media {material_id} unavailable: {exc}")
+    return ("\n\n".join(sections), count)
+
+
 async def build_book_inputs(
     *,
     user_intent: str,
@@ -314,16 +357,18 @@ async def build_book_inputs(
     knowledge_bases: list[str] | None = None,
     question_categories: list[int] | None = None,
     question_entries: list[int] | None = None,
+    timed_media_ids: list[str] | None = None,
     language: str = "en",
     chat_history_limit: int = 60,
 ) -> tuple[BookInputs, IdeationContext]:
-    """Capture the four-source snapshot and produce the IdeationContext."""
+    """Capture the source snapshot and produce the IdeationContext."""
 
     intent = (user_intent or "").strip()
     refs = _normalize_notebook_refs(notebook_refs)
     kb_list = [kb.strip() for kb in (knowledge_bases or []) if isinstance(kb, str) and kb.strip()]
     cat_ids = [int(c) for c in (question_categories or []) if c is not None]
     entry_ids = [int(e) for e in (question_entries or []) if e is not None]
+    media_ids = _normalize_timed_media_ids(timed_media_ids)
     sels = _normalize_chat_selections(chat_selections, chat_session_id)
 
     chat_messages = await _resolve_chat_selections(sels, limit_per_session=chat_history_limit)
@@ -333,6 +378,7 @@ async def build_book_inputs(
         intent, refs, language=language
     )
     question_text, question_count = await _resolve_question_notebook(cat_ids, entry_ids)
+    video_text, media_count = _resolve_timed_media_context(media_ids)
 
     book_inputs = BookInputs(
         user_intent=intent,
@@ -343,6 +389,8 @@ async def build_book_inputs(
         knowledge_bases=kb_list,
         question_categories=cat_ids,
         question_entries=entry_ids,
+        timed_media_ids=media_ids,
+        video_learning_text=video_text,
         language=language,
     )
     ideation_ctx = IdeationContext(
@@ -350,10 +398,12 @@ async def build_book_inputs(
         chat_history_text=chat_history_text,
         notebook_context=notebook_context,
         question_notebook_text=question_text,
+        video_learning_text=video_text,
         knowledge_bases=kb_list,
         notebook_record_count=record_count,
         chat_message_count=len(chat_messages),
         question_entry_count=question_count,
+        timed_media_count=media_count,
     )
 
     return book_inputs, ideation_ctx

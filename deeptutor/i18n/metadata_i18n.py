@@ -35,6 +35,10 @@ _CAPABILITY_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "en": "Read a document with the assistant, cited page by page.",
         "zh": "与助手一起阅读文档，逐页标明出处。",
     },
+    "immersive_watching": {
+        "en": "Learn alongside a timed video with transcript and timestamp citations.",
+        "zh": "边看视频边学习，支持字幕、时间戳引用和随看随问。",
+    },
 }
 
 _TOOL_DESCRIPTIONS: dict[str, dict[str, str]] = {

@@ -56,6 +56,7 @@ export interface CreateBookPayload {
   knowledge_bases?: string[];
   question_categories?: number[];
   question_entries?: number[];
+  timed_media_ids?: string[];
   language?: string;
   depth?: BookDepth;
 }

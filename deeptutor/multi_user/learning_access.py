@@ -32,7 +32,7 @@ def apply_learning_policy(payload: dict[str, Any]) -> dict[str, Any]:
     allowed = set(policy.get("allowed_capabilities") or [])
     if capability not in allowed:
         raise PermissionError(
-            "This learning account cannot use this mode. Please choose Chat or Immersive Reading."
+            "This learning account cannot use this mode. Please choose an allowed learning mode."
         )
     return {
         **payload,

@@ -21,15 +21,16 @@ from typing import Any, Literal
 
 # What one locator addresses, per source format. Purely presentational for the
 # model and the UI ("page 12" vs "chapter 3"); the addressing is identical.
-UnitKind = Literal["page", "chapter", "slide", "section"]
+UnitKind = Literal["page", "chapter", "slide", "section", "segment"]
 RenderMode = Literal["text", "pdf", "epub"]
-ContentFormat = Literal["plain_text", "markdown", "pdf", "epub"]
+ContentFormat = Literal["plain_text", "markdown", "pdf", "epub", "timed_media"]
 SourceType = Literal[
     "upload",
     "url_snapshot",
     "kb_file",
     "kb_web_tutorial",
     "derived_epub",
+    "timed_media",
 ]
 
 AnnotationKind = Literal["highlight", "underline", "note"]
@@ -510,6 +511,7 @@ class ReadingPosition:
     locator: int = 1
     source_anchor: str = ""
     percentage: float = 0.0
+    time_seconds: float = 0.0
     updated_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
@@ -517,6 +519,7 @@ class ReadingPosition:
             "locator": self.locator,
             "source_anchor": self.source_anchor,
             "percentage": self.percentage,
+            "time_seconds": self.time_seconds,
             "updated_at": self.updated_at,
         }
 
@@ -526,6 +529,7 @@ class ReadingPosition:
             locator=max(1, int(data.get("locator") or 1)),
             source_anchor=str(data.get("source_anchor") or ""),
             percentage=min(1.0, max(0.0, float(data.get("percentage") or 0.0))),
+            time_seconds=max(0.0, float(data.get("time_seconds") or 0.0)),
             updated_at=float(data.get("updated_at") or 0.0),
         )
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import logging
 import re
+from typing import Any
 
 from deeptutor.services.voice.config import (
     AUTH_API_KEY_HEADER,
@@ -55,6 +56,28 @@ class BaseSTTAdapter(ABC):
         content_type: str = "application/octet-stream",
     ) -> str:
         """Transcribe ``audio`` bytes to text."""
+
+    async def transcribe_verbose(
+        self,
+        audio: bytes,
+        config: STTConfig,
+        *,
+        filename: str = "audio.webm",
+        content_type: str = "application/octet-stream",
+    ) -> list[dict[str, Any]]:
+        """Return timestamped segments when a provider cannot supply them.
+
+        The default is an honest coarse fallback: the provider's plain text is
+        one segment beginning at zero. Providers that support ``verbose_json``
+        override this with their own timing.
+        """
+        text = await self.transcribe(
+            audio,
+            config,
+            filename=filename,
+            content_type=content_type,
+        )
+        return [{"start": 0.0, "text": text.strip()}] if text.strip() else []
 
 
 def build_auth_headers(auth_style: str, api_key: str) -> dict[str, str]:

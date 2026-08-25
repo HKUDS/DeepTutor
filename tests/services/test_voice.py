@@ -255,6 +255,55 @@ async def test_stt_adapter_openrouter_base64(monkeypatch: pytest.MonkeyPatch) ->
     assert captured["json"]["input_audio"]["data"]  # base64 string present
 
 
+@pytest.mark.asyncio
+async def test_stt_adapter_verbose_prefers_provider_timestamps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resp = httpx.Response(
+        200,
+        json={
+            "text": "hello world",
+            "segments": [
+                {"start": 1.25, "end": 2.5, "text": "hello"},
+                {"start": 2.5, "end": 3.75, "text": "world"},
+            ],
+        },
+    )
+    captured = _capture_post(monkeypatch, resp)
+    config = STTConfig(model="whisper-1", base_url="https://api.openai.com/v1", api_key="sk")
+
+    segments = await OpenAICompatSTTAdapter().transcribe_verbose(
+        b"RIFFxxxx", config, filename="a.wav", content_type="audio/wav"
+    )
+
+    assert segments == [
+        {"start": 1.25, "text": "hello"},
+        {"start": 2.5, "text": "world"},
+    ]
+    assert captured["data"]["response_format"] == "verbose_json"
+
+
+@pytest.mark.asyncio
+async def test_openrouter_verbose_falls_back_to_one_honest_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resp = httpx.Response(200, json={"text": "coarse transcript"})
+    captured = _capture_post(monkeypatch, resp)
+    config = STTConfig(
+        model="openai/whisper-large-v3",
+        base_url="https://openrouter.ai/api/v1",
+        api_key="sk",
+        request_style="base64_json",
+    )
+
+    segments = await OpenAICompatSTTAdapter().transcribe_verbose(
+        b"audio", config, filename="clip.webm", content_type="audio/webm"
+    )
+
+    assert segments == [{"start": 0.0, "text": "coarse transcript"}]
+    assert captured["data"] is None
+
+
 # ── catalog resolution ────────────────────────────────────────────────────
 
 

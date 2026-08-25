@@ -405,6 +405,7 @@ from deeptutor.api.routers import (
     subagents,
     system,
     unified_ws,
+    video_learning,
     voice,
 )
 from deeptutor.api.routers import (
@@ -478,6 +479,12 @@ app.include_router(
     tags=["kids"],
 )
 app.include_router(reading.router, prefix="/api/v1/reading", tags=["reading"], dependencies=_auth)
+app.include_router(
+    video_learning.router,
+    prefix="/api/v1/video-learning",
+    tags=["video-learning"],
+    dependencies=_auth,
+)
 app.include_router(
     reading_extensions.router,
     prefix="/api/v1/reading",

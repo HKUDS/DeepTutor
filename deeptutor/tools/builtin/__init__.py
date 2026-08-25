@@ -880,7 +880,7 @@ class WriteMemoryTool(_PromptHintsMixin, BaseTool):
 
 
 class WebFetchTool(_PromptHintsMixin, BaseTool):
-    """Fetch a specific URL and return readable markdown.
+    """Fetch a specific page or supported video and return learning markdown.
 
     The actual fetch / extract / safety logic lives in
     ``deeptutor.tools.web_fetch`` so this wrapper stays free of network
@@ -892,9 +892,11 @@ class WebFetchTool(_PromptHintsMixin, BaseTool):
         return ToolDefinition(
             name="web_fetch",
             description=(
-                "Fetch a specific URL and extract readable content as "
-                "markdown. Use this when the user shares a specific link; "
-                "use `web_search` for general topic searches."
+                "Fetch a specific URL and extract readable content as markdown. "
+                "Bilibili video links return available subtitles with timestamps; "
+                "YouTube links use the configured Invidious instance first, with "
+                "optional adapters and explicit audio-only preprocessing as fallback. "
+                "Use `web_search` for general topic searches."
             ),
             parameters=[
                 ToolParameter(
@@ -908,10 +910,20 @@ class WebFetchTool(_PromptHintsMixin, BaseTool):
                     description="Cap on the extracted text length; defaults to 50000.",
                     required=False,
                 ),
+                ToolParameter(
+                    name="generate_transcript_if_missing",
+                    type="boolean",
+                    description=(
+                        "For a video with no exposed subtitle, submit background audio-only "
+                        "speech-to-text preprocessing only when the user requests it. Defaults to false."
+                    ),
+                    required=False,
+                ),
             ],
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.tools.video_learning import detect_video_provider, learn_video
         from deeptutor.tools.web_fetch import (
             DEFAULT_MAX_CHARS,
             fetch_url_as_markdown,
@@ -924,6 +936,63 @@ class WebFetchTool(_PromptHintsMixin, BaseTool):
             max_chars = int(kwargs.get("max_chars") or DEFAULT_MAX_CHARS)
         except (TypeError, ValueError):
             max_chars = DEFAULT_MAX_CHARS
+        if detect_video_provider(url):
+            from deeptutor.multi_user.paths import get_current_path_service
+
+            video = await learn_video(
+                url,
+                max_chars=max_chars,
+                generate_transcript_if_missing=bool(
+                    kwargs.get("generate_transcript_if_missing")
+                ),
+                state_dir=get_current_path_service().user_data_dir / "video_learning",
+            )
+            if not video.ok:
+                return ToolResult(
+                    content=video.error or "Video learning failed.",
+                    success=False,
+                    metadata={"url": url, "provider": video.provider},
+                )
+            return ToolResult(
+                content=(
+                    video.markdown
+                    if video.markdown
+                    else (
+                        "Video transcript preprocessing is "
+                        f"{video.preprocessing_status or 'queued'}. Ask the user to check "
+                        f"back later; job_id={video.job_id}."
+                    )
+                ),
+                sources=[
+                    {
+                        "type": "video",
+                        "provider": video.provider,
+                        "url": video.url,
+                        "title": video.title,
+                    }
+                ],
+                metadata={
+                    "url": video.url,
+                    "provider": video.provider,
+                    "title": video.title,
+                    "author": video.author,
+                    "duration_seconds": video.duration_seconds,
+                    "subtitle_language": video.subtitle_language,
+                    "transcript_version": 1 if video.transcript else 0,
+                    "segment_count": len(video.transcript),
+                    "char_count": len(video.markdown),
+                    "truncated": video.truncated,
+                    **(
+                        {
+                            "preprocessing": True,
+                            "preprocessing_status": video.preprocessing_status,
+                            "job_id": video.job_id,
+                        }
+                        if video.preprocessing
+                        else {}
+                    ),
+                },
+            )
         outcome = await fetch_url_as_markdown(url, max_chars=max_chars)
         if not outcome.ok:
             return ToolResult(

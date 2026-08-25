@@ -5,12 +5,14 @@ import { Fragment, memo, useMemo } from "react";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ModelThinkingCard from "@/components/common/ModelThinkingCard";
 import { useReading } from "@/context/ReadingContext";
+import { useWatching } from "@/context/WatchingContext";
 import {
   hasVisibleMarkdownContent,
   repairMalformedStrongEmphasis,
   stripArtifactAnnotations,
 } from "@/lib/markdown-display";
 import { linkifyLocatorCitations } from "@/lib/reading-citations";
+import { linkifyTimestampCitations } from "@/lib/watching-citations";
 import { parseModelThinkingSegments } from "@/lib/think-segments";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 
@@ -39,14 +41,19 @@ function AssistantResponseImpl({
   // provider on most surfaces, and none when no document is open), so this is a
   // no-op and every other chat surface renders byte-identically to before.
   const { material } = useReading();
+  const { material: timedMaterial, active: watchingActive } = useWatching();
   const citedContent = useMemo(
     () =>
-      material
+      watchingActive
+        ? timedMaterial
+          ? linkifyTimestampCitations(displayContent)
+          : displayContent
+        : material
         ? linkifyLocatorCitations(displayContent, {
             maxLocator: material.unit_count,
           })
         : displayContent,
-    [displayContent, material],
+    [displayContent, material, timedMaterial, watchingActive],
   );
   const segments = useMemo(
     () => parseModelThinkingSegments(stripArtifactAnnotations(citedContent)),

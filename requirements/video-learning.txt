@@ -1,0 +1,3 @@
+# Optional YouTube provider adapters. Invidious is the built-in primary path.
+yt-dlp>=2025.1.0
+youtube-transcript-api>=1.0.0

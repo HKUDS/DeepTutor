@@ -60,6 +60,8 @@ DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
 
 DEFAULT_INTEGRATIONS_SETTINGS: dict[str, Any] = {
     "version": 1,
+    "invidious_base_url": "",
+    "invidious_public_base_url": "",
     "pocketbase_url": "",
     "pocketbase_port": 8090,
     "pocketbase_external_url": "",
@@ -736,6 +738,10 @@ class RuntimeSettingsService:
 
     def _apply_integrations_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
         payload = dict(settings)
+        if value := self._process_env_value("INVIDIOUS_BASE_URL"):
+            payload["invidious_base_url"] = value
+        if value := self._process_env_value("INVIDIOUS_PUBLIC_BASE_URL"):
+            payload["invidious_public_base_url"] = value
         if value := self._process_env_value("POCKETBASE_URL"):
             payload["pocketbase_url"] = value
         if value := self._process_env_value("POCKETBASE_PORT"):
@@ -1074,6 +1080,8 @@ class RuntimeSettingsService:
     def _normalize_integrations(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
             "version": 1,
+            "invidious_base_url": _string(settings.get("invidious_base_url")).rstrip("/"),
+            "invidious_public_base_url": _string(settings.get("invidious_public_base_url")).rstrip("/"),
             "pocketbase_url": _string(settings.get("pocketbase_url")).rstrip("/"),
             "pocketbase_port": _coerce_port(settings.get("pocketbase_port"), 8090),
             "pocketbase_external_url": _string(settings.get("pocketbase_external_url")).rstrip("/"),

@@ -48,6 +48,7 @@ class CreateBookRequest(BaseModel):
     knowledge_bases: list[str] = Field(default_factory=list)
     question_categories: list[int] = Field(default_factory=list)
     question_entries: list[int] = Field(default_factory=list)
+    timed_media_ids: list[str] = Field(default_factory=list)
     language: str = Field(default="en")
     depth: str = Field(default="standard")
 
@@ -531,6 +532,7 @@ async def create_book(req: CreateBookRequest) -> dict[str, Any]:
             knowledge_bases=req.knowledge_bases,
             question_categories=req.question_categories,
             question_entries=req.question_entries,
+            timed_media_ids=req.timed_media_ids,
             language=req.language,
             depth=req.depth,
         )
@@ -1021,6 +1023,11 @@ async def book_websocket(ws: WebSocket) -> None:
                             int(c) for c in (data.get("question_categories") or [])
                         ],
                         question_entries=[int(e) for e in (data.get("question_entries") or [])],
+                        timed_media_ids=[
+                            str(item)
+                            for item in (data.get("timed_media_ids") or [])
+                            if str(item or "").strip()
+                        ],
                         language=str(data.get("language") or "en"),
                         depth=str(data.get("depth") or "standard"),
                         stream=creation_bus,

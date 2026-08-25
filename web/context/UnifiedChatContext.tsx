@@ -41,6 +41,7 @@ import { hasPendingAskUserInMessages } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
 import { forwardReaderAction } from "@/lib/reading-reader-action";
 import { readingTurnFields } from "@/lib/reading-turn-state";
+import { watchingTurnFields } from "@/lib/watching-turn-state";
 import i18n from "i18next";
 import {
   normalizeBookReferences,
@@ -1717,6 +1718,7 @@ export function UnifiedChatProvider({
         // Read from a module cell rather than context state so scrolling the
         // reader never re-renders the chat.
         ...readingTurnFields(effectiveCapability),
+        ...watchingTurnFields(effectiveCapability),
         // Always sent (possibly ""): an explicit key is the backend's signal
         // to persist the value into session.preferences — "" clears back to
         // Default. Omitting the key would make the backend fall back to the
