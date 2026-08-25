@@ -8,15 +8,14 @@ LOG="${DEEPTUTOR_TUNNEL_LOG:-/tmp/deeptutor_tunnel.log}"
 STATE_DIR="$ROOT/data/system/auth"
 STATE_FILE="$STATE_DIR/deeptutor_tunnel.json"
 TEMP_FILE="${STATE_FILE}.tmp.$$"
+USER_ID="$(id -u)"
 
 umask 077
 mkdir -p "$STATE_DIR"
 chmod 700 "$STATE_DIR"
 
-launchctl stop com.deeptutor.cloudflared 2>/dev/null || true
-sleep 2
 : > "$LOG"
-launchctl start com.deeptutor.cloudflared 2>/dev/null || true
+launchctl kickstart -k "gui/${USER_ID}/com.deeptutor.cloudflared"
 
 URL=""
 for _ in $(seq 1 60); do
