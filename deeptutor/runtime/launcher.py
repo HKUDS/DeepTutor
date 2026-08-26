@@ -1036,6 +1036,14 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     common_env["BACKEND_PORT"] = str(backend_port)
     common_env["FRONTEND_PORT"] = str(frontend_port)
     common_env["PORT"] = str(frontend_port)
+    # NLTK 3.10+ installs a CWE-427 import hook (nltk.inisec) that blocks
+    # `import regex` when the module resolves inside the process CWD. DeepTutor
+    # keeps its venv inside the project root, so site-packages always sits under
+    # the CWD and the hook misfires, breaking LlamaIndex tokenization during KB
+    # indexing. The venv is the user's own install, not an untrusted directory,
+    # so disable the hook for child processes (deeptutor/__init__.py sets the
+    # same default for in-process imports).
+    common_env.setdefault("NLTK_DISABLE_IMPORT_SECURITY", "1")
     common_env["HOSTNAME"] = "0.0.0.0"
     common_env["NEXT_PUBLIC_API_BASE"] = api_base
     common_env["NEXT_PUBLIC_AUTH_ENABLED"] = "true" if auth_enabled else "false"
