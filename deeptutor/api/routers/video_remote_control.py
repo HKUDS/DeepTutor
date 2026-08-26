@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 import re
@@ -14,6 +14,12 @@ from pydantic import BaseModel, Field
 from deeptutor.api.routers.auth import require_auth
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.services.path_service import PathService, get_path_service
+from deeptutor.video_learning.invidious_auth import (
+    InvidiousTokenStore,
+    create_renderer_session_handoff,
+    get_invidious_public_base_url,
+    revoke_renderer_session,
+)
 from deeptutor.video_learning.store import (
     VideoLearningConflict,
     VideoLearningNotFound,
@@ -217,22 +223,58 @@ async def list_devices() -> list[dict[str, Any]]:
 @router.post("/renderers", dependencies=_auth)
 async def create_renderer(body: RendererCreateRequest, response: Response) -> dict[str, Any]:
     store = _store_for_session()
-    bootstrap_id, ticket, expires_at = store.create_renderer_bootstrap(owner_id=_owner_id(), device_name=body.device_name, device_kind=body.device_kind)
-    response.headers["Cache-Control"] = "no-store"
     origin = _validate_origin(body.invidious_origin)
-    launch_url = f"{origin}/#dt_bootstrap={ticket}"
-    return {"bootstrap_id": bootstrap_id, "ticket": ticket, "expires_at": expires_at, "qr_data_url": generate_qr_data_url(launch_url)}
+    bootstrap_id, ticket, expires_at = store.create_renderer_bootstrap(
+        owner_id=_owner_id(),
+        device_name=body.device_name,
+        device_kind=body.device_kind,
+        invidious_origin=origin,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    # Invidious redirects its root to the configured feed. Starting at that
+    # final page avoids a redirect edge case where the browser can discard the
+    # fragment before the site-wide bootstrap script observes it.
+    launch_url = f"{origin}/feed/popular#dt_bootstrap={quote(ticket, safe='')}"
+    return {
+        "bootstrap_id": bootstrap_id,
+        "ticket": ticket,
+        "expires_at": expires_at,
+        "qr_data_url": generate_qr_data_url(launch_url),
+        "invidious_login_available": origin == get_invidious_public_base_url() and InvidiousTokenStore.has_token(_owner_id()),
+    }
 
 
 @router.post("/renderers/bootstrap")
 async def bootstrap_renderer(body: RendererBootstrapRequest, response: Response) -> dict[str, Any]:
     store = VideoLearningStore(_device_db_path())
     try:
-        device, token = store.redeem_renderer_bootstrap(ticket=body.ticket)
+        device, token, bootstrap_origin = store.redeem_renderer_bootstrap(ticket=body.ticket)
     except Exception as exc:
         raise _http_error(exc) from exc
     response.headers["Cache-Control"] = "no-store"
-    return {"device_id": device.device_id, "token": token, "device_name": device.device_name, "device_kind": device.device_kind}
+    login_payload: dict[str, Any] | None = None
+    public_origin = get_invidious_public_base_url()
+    if bootstrap_origin and bootstrap_origin == public_origin:
+        handoff = await create_renderer_session_handoff(device.owner_id)
+        if handoff:
+            store.save_renderer_invidious_session(
+                device_id=device.device_id,
+                owner_id=device.owner_id,
+                invidious_origin=bootstrap_origin,
+                session_id=str(handoff["session_id"]),
+            )
+            login_payload = {
+                "origin": public_origin,
+                "exchange_code": str(handoff["exchange_code"]),
+                "expires_at": handoff.get("expires_at"),
+            }
+    return {
+        "device_id": device.device_id,
+        "token": token,
+        "device_name": device.device_name,
+        "device_kind": device.device_kind,
+        "invidious_login": login_payload,
+    }
 
 
 @router.post("/player/presence")
@@ -268,8 +310,15 @@ async def ack_device_command(command_id: str, body: CommandAckRequest, auth=Depe
 @router.delete("/devices/{device_id}", dependencies=_auth)
 async def revoke_device(device_id: str) -> dict[str, str]:
     store = _store_for_session()
+    renderer_session = store.get_renderer_invidious_session(owner_id=_owner_id(), device_id=device_id)
+    if renderer_session and not await revoke_renderer_session(
+        _owner_id(), str(renderer_session["session_id"])
+    ):
+        raise HTTPException(502, "Could not revoke the iPad Invidious session. Reconnect Invidious and try again.")
     if not store.revoke_device(_owner_id(), device_id):
         raise HTTPException(404, "Device not found.")
+    if renderer_session:
+        store.delete_renderer_invidious_session(owner_id=_owner_id(), device_id=device_id)
     return {"status": "revoked", "device_id": device_id}
 
 

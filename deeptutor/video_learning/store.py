@@ -60,7 +60,15 @@ CREATE INDEX IF NOT EXISTS idx_vl_devices_owner ON devices (owner_id);
 CREATE TABLE IF NOT EXISTS renderer_bootstraps (
     bootstrap_id TEXT PRIMARY KEY, ticket_hash TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL,
     device_name TEXT NOT NULL DEFAULT 'iPad', device_kind TEXT NOT NULL DEFAULT 'ipad',
+    invidious_origin TEXT NOT NULL DEFAULT '',
     expires_at TEXT NOT NULL, redeemed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS renderer_invidious_sessions (
+    device_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    invidious_origin TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS device_commands (
     command_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, device_id TEXT NOT NULL,
@@ -190,6 +198,9 @@ class VideoLearningStore:
     def _init_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            bootstrap_columns = {row[1] for row in conn.execute("PRAGMA table_info(renderer_bootstraps)")}
+            if "invidious_origin" not in bootstrap_columns:
+                conn.execute("ALTER TABLE renderer_bootstraps ADD COLUMN invidious_origin TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def _row_to_pairing(row: sqlite3.Row) -> Pairing:
@@ -427,15 +438,22 @@ class VideoLearningStore:
     def device_is_online(self, device: Device) -> bool:
         return device.active and (_now() - _parse_iso(device.last_seen)) <= SESSION_OFFLINE_AFTER
 
-    def create_renderer_bootstrap(self, *, owner_id: str, device_name: str = "iPad", device_kind: str = "ipad") -> tuple[str, str, str]:
+    def create_renderer_bootstrap(
+        self,
+        *,
+        owner_id: str,
+        device_name: str = "iPad",
+        device_kind: str = "ipad",
+        invidious_origin: str = "",
+    ) -> tuple[str, str, str]:
         ticket, bootstrap_id = secrets.token_urlsafe(32), secrets.token_urlsafe(12)
         expires_at = (_now() + PAIRING_TTL).isoformat()
         with self._connect() as conn:
-            conn.execute("INSERT INTO renderer_bootstraps (bootstrap_id,ticket_hash,owner_id,device_name,device_kind,expires_at) VALUES (?,?,?,?,?,?)",
-                         (bootstrap_id, _hash_token(ticket), owner_id, device_name or "iPad", device_kind or "ipad", expires_at))
+            conn.execute("INSERT INTO renderer_bootstraps (bootstrap_id,ticket_hash,owner_id,device_name,device_kind,invidious_origin,expires_at) VALUES (?,?,?,?,?,?,?)",
+                         (bootstrap_id, _hash_token(ticket), owner_id, device_name or "iPad", device_kind or "ipad", invidious_origin, expires_at))
         return bootstrap_id, ticket, expires_at
 
-    def redeem_renderer_bootstrap(self, *, ticket: str) -> tuple[Device, str]:
+    def redeem_renderer_bootstrap(self, *, ticket: str) -> tuple[Device, str, str]:
         now, device_id, token = _now_iso(), secrets.token_urlsafe(12), secrets.token_urlsafe(32)
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM renderer_bootstraps WHERE ticket_hash=? AND redeemed_at IS NULL", (_hash_token(ticket),)).fetchone()
@@ -444,7 +462,42 @@ class VideoLearningStore:
             if conn.execute("UPDATE renderer_bootstraps SET redeemed_at=? WHERE bootstrap_id=? AND redeemed_at IS NULL", (now,row["bootstrap_id"])).rowcount != 1: raise VideoLearningConflict("Bootstrap ticket already redeemed.")
             conn.execute("INSERT INTO devices (device_id,owner_id,device_name,device_kind,token_hash,paired_at,last_seen,active) VALUES (?,?,?,?,?,?,?,1)",
                          (device_id,row["owner_id"],row["device_name"],row["device_kind"],_hash_token(token),now,now))
-        return Device(device_id,row["owner_id"],row["device_name"],row["device_kind"],now,now), token
+        return Device(device_id,row["owner_id"],row["device_name"],row["device_kind"],now,now), token, str(row["invidious_origin"] or "")
+
+    def save_renderer_invidious_session(self, *, device_id: str, owner_id: str, invidious_origin: str, session_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO renderer_invidious_sessions
+                   (device_id,owner_id,invidious_origin,session_id,created_at)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(device_id) DO UPDATE SET
+                     owner_id=excluded.owner_id,
+                     invidious_origin=excluded.invidious_origin,
+                     session_id=excluded.session_id,
+                     created_at=excluded.created_at""",
+                (device_id, owner_id, invidious_origin, session_id, _now_iso()),
+            )
+
+    def get_renderer_invidious_session(self, *, owner_id: str, device_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM renderer_invidious_sessions WHERE device_id=? AND owner_id=?",
+                (device_id, owner_id),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def delete_renderer_invidious_session(self, *, owner_id: str, device_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM renderer_invidious_sessions WHERE device_id=? AND owner_id=?",
+                (device_id, owner_id),
+            ).fetchone()
+            if row is not None:
+                conn.execute(
+                    "DELETE FROM renderer_invidious_sessions WHERE device_id=? AND owner_id=?",
+                    (device_id, owner_id),
+                )
+        return dict(row) if row is not None else None
 
     def enqueue_device_command(self, *, owner_id: str, device_id: str, payload: dict[str, Any]) -> DeviceCommand:
         device = next((d for d in self.list_devices(owner_id) if d.device_id == device_id and d.active), None)

@@ -194,6 +194,49 @@ async def disconnect_account(owner_id: str) -> bool:
     return True
 
 
+async def create_renderer_session_handoff(owner_id: str) -> dict[str, Any] | None:
+    """Create a short-lived browser login without exposing the API token."""
+    token = InvidiousTokenStore.get_token(owner_id)
+    base_url = get_invidious_base_url()
+    if not token or not base_url:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{base_url}/deeptutor/renderer-session",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict) and data.get("exchange_code") and data.get("session_id"):
+                    return data
+                return None
+            if resp.status_code in {401, 403}:
+                InvidiousTokenStore.delete_token(owner_id)
+            return None
+    except Exception as exc:
+        logger.warning("Failed to create an Invidious renderer login: %s", exc)
+        return None
+
+
+async def revoke_renderer_session(owner_id: str, session_id: str) -> bool:
+    token = InvidiousTokenStore.get_token(owner_id)
+    base_url = get_invidious_base_url()
+    if not token or not base_url:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{base_url}/deeptutor/renderer-session/revoke",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"session_id": session_id},
+            )
+            return resp.status_code == 204
+    except Exception as exc:
+        logger.warning("Failed to revoke an Invidious renderer login: %s", exc)
+        return False
+
+
 async def get_user_preferences(owner_id: str) -> dict[str, Any] | None:
     token = InvidiousTokenStore.get_token(owner_id)
     base_url = get_invidious_base_url()
@@ -384,6 +427,7 @@ __all__ = [
     "AuthStateStore",
     "InvidiousTokenStore",
     "disconnect_account",
+    "create_renderer_session_handoff",
     "get_authorization_url",
     "get_callback_base_url",
     "get_invidious_base_url",
@@ -392,4 +436,5 @@ __all__ = [
     "get_user_history_ids",
     "get_user_preferences",
     "sync_watch_history",
+    "revoke_renderer_session",
 ]
