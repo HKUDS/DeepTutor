@@ -31,7 +31,8 @@ from deeptutor.video_learning.service import (
 logger = logging.getLogger(__name__)
 
 INVIDIOUS_AUTH_SCOPES = (
-    "GET:preferences,GET:feed,GET:playlists,GET:history,POST:history/*,POST:tokens/unregister"
+    "GET:preferences,GET:feed,GET:playlists,GET:history,POST:history/*,POST:tokens/unregister,"
+    "POST:deeptutor/renderer-session*"
 )
 STATE_EXPIRY_SECONDS = 600  # 10 minutes
 

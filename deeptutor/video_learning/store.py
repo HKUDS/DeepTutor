@@ -10,10 +10,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+from pathlib import Path
 import secrets
 import sqlite3
 import string
-from pathlib import Path
 from typing import Any
 
 from deeptutor.video_learning.models import (
@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     duration_ms        INTEGER NOT NULL DEFAULT 0,
     playback_state     TEXT NOT NULL DEFAULT 'unknown',
     playback_rate      REAL NOT NULL DEFAULT 1.0,
+    controller_token_hash TEXT NOT NULL DEFAULT '',
     updated_at         TEXT NOT NULL,
     last_heartbeat_at  TEXT NOT NULL
 );
@@ -198,6 +199,9 @@ class VideoLearningStore:
     def _init_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            session_columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+            if "controller_token_hash" not in session_columns:
+                conn.execute("ALTER TABLE sessions ADD COLUMN controller_token_hash TEXT NOT NULL DEFAULT ''")
             bootstrap_columns = {row[1] for row in conn.execute("PRAGMA table_info(renderer_bootstraps)")}
             if "invidious_origin" not in bootstrap_columns:
                 conn.execute("ALTER TABLE renderer_bootstraps ADD COLUMN invidious_origin TEXT NOT NULL DEFAULT ''")
@@ -243,6 +247,7 @@ class VideoLearningStore:
             playback_rate=float(row["playback_rate"]),
             updated_at=row["updated_at"],
             last_heartbeat_at=row["last_heartbeat_at"],
+            controller_token_hash=str(row["controller_token_hash"] or ""),
         )
 
     @staticmethod
@@ -457,9 +462,16 @@ class VideoLearningStore:
         now, device_id, token = _now_iso(), secrets.token_urlsafe(12), secrets.token_urlsafe(32)
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM renderer_bootstraps WHERE ticket_hash=? AND redeemed_at IS NULL", (_hash_token(ticket),)).fetchone()
-            if row is None: raise VideoLearningNotFound("Bootstrap ticket not found.")
-            if _parse_iso(row["expires_at"]) <= _now(): raise VideoLearningConflict("Bootstrap ticket expired.")
-            if conn.execute("UPDATE renderer_bootstraps SET redeemed_at=? WHERE bootstrap_id=? AND redeemed_at IS NULL", (now,row["bootstrap_id"])).rowcount != 1: raise VideoLearningConflict("Bootstrap ticket already redeemed.")
+            if row is None:
+                raise VideoLearningNotFound("Bootstrap ticket not found.")
+            if _parse_iso(row["expires_at"]) <= _now():
+                raise VideoLearningConflict("Bootstrap ticket expired.")
+            redeemed = conn.execute(
+                "UPDATE renderer_bootstraps SET redeemed_at=? WHERE bootstrap_id=? AND redeemed_at IS NULL",
+                (now, row["bootstrap_id"]),
+            )
+            if redeemed.rowcount != 1:
+                raise VideoLearningConflict("Bootstrap ticket already redeemed.")
             conn.execute("INSERT INTO devices (device_id,owner_id,device_name,device_kind,token_hash,paired_at,last_seen,active) VALUES (?,?,?,?,?,?,?,1)",
                          (device_id,row["owner_id"],row["device_name"],row["device_kind"],_hash_token(token),now,now))
         return Device(device_id,row["owner_id"],row["device_name"],row["device_kind"],now,now), token, str(row["invidious_origin"] or "")
@@ -501,8 +513,10 @@ class VideoLearningStore:
 
     def enqueue_device_command(self, *, owner_id: str, device_id: str, payload: dict[str, Any]) -> DeviceCommand:
         device = next((d for d in self.list_devices(owner_id) if d.device_id == device_id and d.active), None)
-        if device is None: raise VideoLearningNotFound("Device not found.")
-        if not self.device_is_online(device): raise VideoLearningConflict("Renderer is offline.")
+        if device is None:
+            raise VideoLearningNotFound("Device not found.")
+        if not self.device_is_online(device):
+            raise VideoLearningConflict("Renderer is offline.")
         cid, now = secrets.token_urlsafe(12), _now_iso()
         with self._connect() as conn:
             conn.execute("INSERT INTO device_commands (command_id,owner_id,device_id,command_type,payload,status,created_at) VALUES (?,?,?,'open_video',?,'pending',?)", (cid,owner_id,device_id,json.dumps(payload),now))
@@ -518,8 +532,12 @@ class VideoLearningStore:
 
     def ack_device_command(self, *, device_id: str, command_id: str, ok: bool, error: str | None = None) -> DeviceCommand:
         with self._connect() as conn:
-            row=conn.execute("SELECT * FROM device_commands WHERE command_id=? AND device_id=?",(command_id,device_id)).fetchone()
-            if row is None: raise VideoLearningNotFound("Device command not found.")
+            row = conn.execute(
+                "SELECT * FROM device_commands WHERE command_id=? AND device_id=?",
+                (command_id, device_id),
+            ).fetchone()
+            if row is None:
+                raise VideoLearningNotFound("Device command not found.")
             conn.execute("UPDATE device_commands SET status=?, acked_at=?, error=? WHERE command_id=?",("acked" if ok else "failed",_now_iso(),error,command_id))
             row=conn.execute("SELECT * FROM device_commands WHERE command_id=?",(command_id,)).fetchone()
         return self._row_to_device_command(row)
@@ -679,6 +697,60 @@ class VideoLearningStore:
                 ).fetchone()
         return self._row_to_session(row) if row else None
 
+    def latest_session_for_device(self, device_id: str) -> PlayerSession | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT * FROM sessions
+                   WHERE device_id = ?
+                   ORDER BY last_heartbeat_at DESC LIMIT 1""",
+                (device_id,),
+            ).fetchone()
+        return self._row_to_session(row) if row else None
+
+    def issue_session_controller(
+        self,
+        *,
+        owner_id: str,
+        session_id: str,
+        controller_secret: str,
+    ) -> PlayerSession | None:
+        if not controller_secret:
+            return None
+        with self._connect() as conn:
+            cur = conn.execute(
+                """UPDATE sessions SET controller_token_hash = ?
+                   WHERE session_id = ? AND owner_id = ?""",
+                (_hash_token(controller_secret), session_id, owner_id),
+            )
+            if cur.rowcount != 1:
+                return None
+            row = conn.execute(
+                "SELECT * FROM sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        return self._row_to_session(row) if row else None
+
+    def verify_session_controller(
+        self,
+        *,
+        owner_id: str,
+        session_id: str,
+        controller_cookie: str | None,
+    ) -> bool:
+        if not controller_cookie or ":" not in controller_cookie:
+            return False
+        cookie_session_id, secret = controller_cookie.split(":", 1)
+        if cookie_session_id != session_id or not secret:
+            return False
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT controller_token_hash FROM sessions
+                   WHERE session_id = ? AND owner_id = ?""",
+                (session_id, owner_id),
+            ).fetchone()
+        expected = str(row["controller_token_hash"] or "") if row is not None else ""
+        return bool(expected) and secrets.compare_digest(expected, _hash_token(secret))
+
     def session_is_online(self, session: PlayerSession) -> bool:
         return (_now() - _parse_iso(session.last_heartbeat_at)) <= SESSION_OFFLINE_AFTER
 
@@ -690,7 +762,7 @@ class VideoLearningStore:
         payload: dict[str, Any] | None = None,
         command_id: str | None = None,
     ) -> PlayerCommand:
-        if command_type not in {"pause", "play", "seek"}:
+        if command_type not in {"pause", "play", "seek", "volume", "mute", "playback_rate", "fullscreen"}:
             raise VideoLearningConflict(f"Unsupported command type: {command_type}")
         if not self.session_is_online(session):
             raise VideoLearningConflict("Player session is offline.")

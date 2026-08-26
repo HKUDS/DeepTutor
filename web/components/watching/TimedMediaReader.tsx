@@ -14,7 +14,6 @@ import {
   Plus,
   Sparkles,
   Upload,
-  Tv,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -47,7 +46,9 @@ import {
 } from "@/lib/video-learning-marks";
 import { WATCHING_ASK_EVENT } from "@/lib/watching-turn-state";
 import { InvidiousHome } from "./InvidiousHome";
-import { listDevices, sendDeviceCommand } from "@/lib/video-learning-remote-api";
+import {
+  createRendererLaunch,
+} from "@/lib/video-learning-remote-api";
 import { KeyPointsPanel } from "./KeyPointsPanel";
 import { LearningTimeline } from "./LearningTimeline";
 
@@ -89,6 +90,7 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   const [bookBusy, setBookBusy] = useState(false);
   const [publishMessage, setPublishMessage] = useState("");
   const [rendererMessage, setRendererMessage] = useState("");
+  const [openingInvidious, setOpeningInvidious] = useState(false);
 
   const cumulativePlayedRef = useRef<number>(0);
   const lastPlaybackTimeRef = useRef<number>(-1);
@@ -187,10 +189,29 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     await openUrl(videoUrl);
   };
 
+  const openInvidiousRenderer = async (videoId?: string, positionSeconds?: number) => {
+    setOpeningInvidious(true);
+    setRendererMessage("");
+    // Keep the new-tab gesture synchronous so Safari/iPadOS does not block it.
+    const target = window.open("about:blank", "_blank", "noopener");
+    try {
+      if (!target) throw new Error(t("Allow pop-ups to open Invidious."));
+      const launch = await createRendererLaunch({ videoId, positionSeconds });
+      target.location.assign(launch.launch_url);
+      setRendererMessage(t("Opened Invidious. Use Phone remote & notes there when ready."));
+    } catch (caught) {
+      target?.close();
+      setRendererMessage(caught instanceof Error ? caught.message : t("Could not open Invidious."));
+    } finally {
+      setOpeningInvidious(false);
+    }
+  };
+
   if (!material || showInvidiousHome) {
     return (
       <InvidiousHome
         onSelectVideo={handleVideoSelect}
+        onOpenInvidious={() => void openInvidiousRenderer()}
         onClose={material ? () => setShowInvidiousHome(false) : onClose}
       />
     );
@@ -376,19 +397,6 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     ? `${invidiousPublicUrl}/watch?v=${material.source.video_id}`
     : "";
 
-  const sendCurrentVideoToIpad = async () => {
-    setRendererMessage("");
-    try {
-      const devices = await listDevices();
-      const ready = (devices as Array<{ device_id: string; online?: boolean; active?: boolean }>).find((device) => device.active && device.online);
-      if (!ready) throw new Error(t("No iPad renderer is online."));
-      await sendDeviceCommand(ready.device_id, material.source.video_id);
-      setRendererMessage(t("Video sent to your iPad."));
-    } catch (error) {
-      setRendererMessage(error instanceof Error ? error.message : t("Could not send video to iPad."));
-    }
-  };
-
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--background)]">
       <header className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
@@ -436,24 +444,15 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
           {bookBusy ? <Loader2 size={13} className="animate-spin" /> : <BookOpen size={13} />}
           <span>{t("Create Book")}</span>
         </button>
-        {invidiousVideoUrl && (
-          <a
-            href={invidiousVideoUrl}
-            target="_blank"
-            rel="noreferrer"
-            title={t("Open in Invidious")}
-            className="rounded p-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-          >
-            <Globe size={16} />
-          </a>
-        )}
         <button
           type="button"
-          onClick={() => void sendCurrentVideoToIpad()}
-          className="rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-          title={t("Send to iPad")}
+          onClick={() => void openInvidiousRenderer(material.source.video_id, currentTime)}
+          disabled={openingInvidious}
+          className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+          title={t("Open in Invidious")}
         >
-          <Tv size={14} />
+          {openingInvidious ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+          <span>{t("Invidious")}</span>
         </button>
         <a
           href={material.playback.official_url}
@@ -497,15 +496,15 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
               <p>{t("Playback failed. Open the video in YouTube or Invidious.")}</p>
               <div className="flex gap-2">
                 {invidiousVideoUrl && (
-                  <a
+                  <button
+                    type="button"
                     className="inline-flex items-center gap-1.5 rounded border border-white/40 px-3 py-1.5 text-xs"
-                    href={invidiousVideoUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={() => void openInvidiousRenderer(material.source.video_id, currentTime)}
+                    disabled={openingInvidious}
                   >
                     <Globe size={13} />
                     {t("Invidious")}
-                  </a>
+                  </button>
                 )}
                 <a
                   className="inline-flex items-center gap-1.5 rounded border border-white/40 px-3 py-1.5 text-xs"

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
@@ -98,6 +99,11 @@ async def test_authorization_url_generation(monkeypatch):
     assert "scopes=" in auth_url
     assert "callback_url=" in auth_url
     assert "100.101.207.44%3A8001" in auth_url or "100.101.207.44:8001" in auth_url
+    query = parse_qs(urlsplit(auth_url).query)
+    assert query["scopes"] == [
+        "GET:preferences,GET:feed,GET:playlists,GET:history,POST:history/*,"
+        "POST:tokens/unregister,POST:deeptutor/renderer-session*"
+    ]
 
 
 def test_html_error_detection():

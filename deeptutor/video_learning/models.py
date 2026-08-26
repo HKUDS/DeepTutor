@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-
-CommandType = Literal["pause", "play", "seek"]
+CommandType = Literal["pause", "play", "seek", "volume", "mute", "playback_rate", "fullscreen"]
 DeviceCommandType = Literal["open_video"]
 CommandStatus = Literal["pending", "acked", "failed", "expired"]
 PlaybackState = Literal["playing", "paused", "buffering", "ended", "unknown"]
@@ -50,6 +49,7 @@ class PlayerSession:
     playback_rate: float
     updated_at: str
     last_heartbeat_at: str
+    controller_token_hash: str = ""
 
 
 @dataclass(slots=True)

@@ -11,6 +11,7 @@ from deeptutor.services.config import (
     ensure_runtime_settings_files,
     export_runtime_settings_to_env,
     load_auth_settings,
+    load_integrations_settings,
     load_system_settings,
 )
 from deeptutor.services.config.origins import normalize_origins
@@ -85,6 +86,13 @@ def _build_cors_settings() -> dict[str, object]:
     ]
     for origin in extra_origins:
         if origin not in origins:
+            origins.append(origin)
+    integrations = load_integrations_settings()
+    for origin in [
+        str(integrations.get("invidious_public_base_url") or ""),
+        str(integrations.get("invidious_base_url") or ""),
+    ]:
+        if origin and origin not in origins:
             origins.append(origin)
 
     # Auth is disabled by default. In that local/single-user mode, mirror the
@@ -384,8 +392,6 @@ from deeptutor.api.routers import (
     kids_admin,
     knowledge,
     marginnote4,
-    video_learning,
-    video_remote_control,
     mastery_path,
     mcp_settings,
     memory,
@@ -407,6 +413,8 @@ from deeptutor.api.routers import (
     subagents,
     system,
     unified_ws,
+    video_learning,
+    video_remote_control,
     voice,
 )
 from deeptutor.api.routers import (

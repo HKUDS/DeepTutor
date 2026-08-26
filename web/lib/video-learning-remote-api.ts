@@ -40,6 +40,15 @@ export interface RemoteCommand {
   error?: string | null;
 }
 
+export interface RendererLaunch {
+  bootstrap_id: string;
+  ticket: string;
+  expires_at: string;
+  launch_url: string;
+  qr_data_url: string;
+  invidious_login_available: boolean;
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const data = await response.json();
@@ -55,6 +64,25 @@ export async function claimPairingCode(code: string, deviceName = "iPad") {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, device_name: deviceName, device_kind: "ipad" }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function createRendererLaunch(options?: {
+  deviceName?: string;
+  videoId?: string;
+  positionSeconds?: number;
+}): Promise<RendererLaunch> {
+  const response = await apiFetch("/api/v1/video-learning/renderers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_name: options?.deviceName ?? "This device",
+      device_kind: "current-device",
+      video_id: options?.videoId,
+      position_seconds: options?.positionSeconds ?? 0,
+    }),
   });
   if (!response.ok) throw new Error(await readError(response));
   return response.json();
@@ -93,7 +121,15 @@ export async function revokeDevice(deviceId: string) {
 
 export async function sendSessionCommand(
   sessionId: string,
-  payload: { type: string; position_ms?: number; delta_ms?: number; command_id?: string },
+  payload: {
+    type: string;
+    position_ms?: number;
+    delta_ms?: number;
+    volume?: number;
+    muted?: boolean;
+    playback_rate?: number;
+    command_id?: string;
+  },
 ): Promise<RemoteCommand> {
   const response = await apiFetch(`/api/v1/video-learning/sessions/${sessionId}/commands`, {
     method: "POST",

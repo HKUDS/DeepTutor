@@ -4,29 +4,34 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+import re
+import secrets as secure_secrets
 from typing import Any
 from urllib.parse import quote, urlparse
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-import re
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_auth
 from deeptutor.multi_user.context import get_current_user
+from deeptutor.multi_user.models import LOCAL_ADMIN_ID
+from deeptutor.services.auth import TokenPayload, list_users
 from deeptutor.services.path_service import PathService, get_path_service
+from deeptutor.services.tunnel_handoff import create_pairing as create_phone_pairing
+from deeptutor.services.tunnel_handoff import load_tunnel_state
 from deeptutor.video_learning.invidious_auth import (
     InvidiousTokenStore,
     create_renderer_session_handoff,
     get_invidious_public_base_url,
     revoke_renderer_session,
 )
+from deeptutor.video_learning.qr import generate_pairing_qr_data_url, generate_qr_data_url
 from deeptutor.video_learning.store import (
     VideoLearningConflict,
     VideoLearningNotFound,
     VideoLearningStore,
     default_db_path,
 )
-from deeptutor.video_learning.qr import generate_pairing_qr_data_url, generate_qr_data_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -114,6 +119,9 @@ class CommandRequest(BaseModel):
     type: str = Field(..., max_length=16)
     position_ms: int | None = Field(None, ge=0)
     delta_ms: int | None = None
+    volume: int | None = Field(None, ge=0, le=100)
+    muted: bool | None = None
+    playback_rate: float | None = Field(None, gt=0, le=4)
 
 
 class CommandAckRequest(BaseModel):
@@ -124,7 +132,9 @@ class CommandAckRequest(BaseModel):
 class RendererCreateRequest(BaseModel):
     device_name: str = Field("iPad", max_length=128)
     device_kind: str = Field("ipad", max_length=32)
-    invidious_origin: str = Field("", max_length=256)
+    invidious_origin: str | None = Field(None, max_length=256)
+    video_id: str | None = Field(None, min_length=11, max_length=11)
+    position_seconds: int = Field(0, ge=0)
 
 
 class RendererBootstrapRequest(BaseModel):
@@ -148,6 +158,19 @@ class NoteCreateRequest(BaseModel):
 
 class NoteUpdateRequest(BaseModel):
     body: str = Field(..., min_length=1, max_length=8000)
+
+
+def _token_payload_for_owner(owner_id: str) -> TokenPayload:
+    for user in list_users():
+        if str(user.get("id") or "") == owner_id:
+            return TokenPayload(
+                username=str(user.get("username") or ""),
+                role=str(user.get("role") or "user"),
+                user_id=owner_id,
+            )
+    if owner_id == LOCAL_ADMIN_ID:
+        return TokenPayload(username="local", role="admin", user_id=owner_id)
+    raise HTTPException(503, "DeepTutor account for this player session is unavailable.")
 
 
 @router.post("/pairings")
@@ -223,7 +246,13 @@ async def list_devices() -> list[dict[str, Any]]:
 @router.post("/renderers", dependencies=_auth)
 async def create_renderer(body: RendererCreateRequest, response: Response) -> dict[str, Any]:
     store = _store_for_session()
-    origin = _validate_origin(body.invidious_origin)
+    configured_origin = get_invidious_public_base_url()
+    raw_origin = body.invidious_origin or configured_origin
+    if not raw_origin:
+        raise HTTPException(400, "Invidious public URL is not configured.")
+    origin = _validate_origin(raw_origin)
+    if body.video_id and not re.fullmatch(r"[A-Za-z0-9_-]{11}", body.video_id):
+        raise HTTPException(400, "Invalid Invidious video ID.")
     bootstrap_id, ticket, expires_at = store.create_renderer_bootstrap(
         owner_id=_owner_id(),
         device_name=body.device_name,
@@ -234,13 +263,22 @@ async def create_renderer(body: RendererCreateRequest, response: Response) -> di
     # Invidious redirects its root to the configured feed. Starting at that
     # final page avoids a redirect edge case where the browser can discard the
     # fragment before the site-wide bootstrap script observes it.
-    launch_url = f"{origin}/feed/popular#dt_bootstrap={quote(ticket, safe='')}"
+    path = "/feed/popular"
+    query = ""
+    if body.video_id:
+        path = "/watch"
+        position_seconds = int(body.position_seconds)
+        query = f"?v={quote(body.video_id, safe='')}"
+        if position_seconds > 1:
+            query += f"&t={position_seconds}"
+    launch_url = f"{origin}{path}{query}#dt_bootstrap={quote(ticket, safe='')}"
     return {
         "bootstrap_id": bootstrap_id,
         "ticket": ticket,
         "expires_at": expires_at,
+        "launch_url": launch_url,
         "qr_data_url": generate_qr_data_url(launch_url),
-        "invidious_login_available": origin == get_invidious_public_base_url() and InvidiousTokenStore.has_token(_owner_id()),
+        "invidious_login_available": origin == configured_origin and InvidiousTokenStore.has_token(_owner_id()),
     }
 
 
@@ -365,6 +403,46 @@ async def player_sync(
     }
 
 
+@router.post("/player/phone-handoff")
+async def create_player_phone_handoff(
+    response: Response,
+    auth=Depends(_auth_device),
+) -> dict[str, Any]:
+    device, store = auth
+    session = store.latest_session_for_device(device.device_id)
+    if session is None or not store.session_is_online(session):
+        raise HTTPException(409, "Start playing a video before creating a phone QR code.")
+
+    controller_secret = secure_secrets.token_urlsafe(32)
+    session = store.issue_session_controller(
+        owner_id=device.owner_id,
+        session_id=session.session_id,
+        controller_secret=controller_secret,
+    )
+    if session is None:
+        raise HTTPException(404, "Player session not found.")
+
+    state = load_tunnel_state()
+    if state is None:
+        raise HTTPException(503, "No active DeepTutor tunnel is configured")
+    payload = _token_payload_for_owner(device.owner_id)
+    redirect_path = f"/video-learning?viewer_session={quote(session.session_id, safe='')}"
+    pairing_id, expires_in = create_phone_pairing(
+        payload,
+        redirect_path=redirect_path,
+        viewer_session_id=session.session_id,
+        controller_secret=controller_secret,
+    )
+    qr_url = f"{state.url}/access/device?pairing={quote(pairing_id, safe='')}"
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "session_id": session.session_id,
+        "qr_url": qr_url,
+        "qr_data_url": generate_qr_data_url(qr_url),
+        "expires_in": expires_in,
+    }
+
+
 @router.post("/player/commands/{command_id}/ack")
 async def ack_player_command(
     command_id: str,
@@ -396,21 +474,46 @@ async def list_sessions() -> dict[str, Any]:
 
 
 @router.post("/sessions/{session_id}/commands", dependencies=_auth)
-async def create_session_command(session_id: str, body: CommandRequest) -> dict[str, Any]:
+async def create_session_command(
+    session_id: str,
+    body: CommandRequest,
+    dt_video_controller: str | None = Cookie(default=None, alias="dt_video_controller"),
+) -> dict[str, Any]:
     store = _store_for_session()
     session = store.get_session(session_id, _owner_id())
     if session is None:
         raise HTTPException(404, "Session not found.")
+    if session.controller_token_hash and not store.verify_session_controller(
+        owner_id=_owner_id(),
+        session_id=session_id,
+        controller_cookie=dt_video_controller,
+    ):
+        raise HTTPException(403, "This phone is not bound to the current player session.")
     payload: dict[str, Any] = {}
     command_type = body.type
-    if command_type == "seek":
+    if command_type in {"play", "pause", "fullscreen"}:
+        pass
+    elif command_type == "seek":
         if body.position_ms is not None:
             payload["position_ms"] = body.position_ms
         elif body.delta_ms is not None:
             payload["position_ms"] = max(0, session.position_ms + int(body.delta_ms))
         else:
             raise HTTPException(400, "seek requires position_ms or delta_ms.")
-        command_type = "seek"
+    elif command_type == "volume":
+        if body.volume is None:
+            raise HTTPException(400, "volume requires a value from 0 to 100.")
+        payload["volume"] = body.volume
+    elif command_type == "mute":
+        if body.muted is None:
+            raise HTTPException(400, "mute requires muted.")
+        payload["muted"] = body.muted
+    elif command_type == "playback_rate":
+        if body.playback_rate is None:
+            raise HTTPException(400, "playback_rate requires a value.")
+        payload["playback_rate"] = body.playback_rate
+    else:
+        raise HTTPException(400, f"Unsupported command type: {command_type}")
     try:
         command = store.enqueue_command(
             session=session,

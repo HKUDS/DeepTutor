@@ -57,10 +57,10 @@ from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
 from deeptutor.services.login_rate_limit import LoginRateLimited, login_rate_limiter
 from deeptutor.services.tunnel_handoff import (
-    consume_ticket,
+    consume_ticket_details,
     create_pairing,
     create_ticket,
-    exchange_pairing,
+    exchange_pairing_details,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,8 @@ router = APIRouter()
 
 _COOKIE_NAME = "dt_token"
 _COOKIE_MAX_AGE = TOKEN_EXPIRE_HOURS * 3600
+_VIDEO_CONTROLLER_COOKIE = "dt_video_controller"
+_VIDEO_CONTROLLER_MAX_AGE = 12 * 60 * 60
 
 
 def _cookie_attrs() -> dict:
@@ -743,11 +745,17 @@ async def exchange_tunnel_handoff_pairing(
 ) -> TunnelHandoffResponse:
     """Exchange a scanned pairing capability for a fresh one-time handoff."""
     response.headers["Cache-Control"] = "no-store"
-    payload = exchange_pairing(pairing_id)
-    if payload is None:
+    exchanged = exchange_pairing_details(pairing_id)
+    if exchanged is None:
         raise HTTPException(status_code=400, detail="Phone pairing is invalid or expired")
+    payload, viewer = exchanged
     try:
-        code, state = create_ticket(payload)
+        code, state = create_ticket(
+            payload,
+            redirect_path=viewer.redirect_path,
+            viewer_session_id=viewer.viewer_session_id,
+            controller_secret=viewer.controller_secret,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return TunnelHandoffResponse(
@@ -764,12 +772,13 @@ async def consume_tunnel_handoff(
 ) -> RedirectResponse:
     """Exchange a valid one-time code for a cookie scoped to the tunnel host."""
     target_host = _request_host(request)
-    payload = consume_ticket(code, target_host)
-    if payload is None:
+    consumed = consume_ticket_details(code, target_host)
+    if consumed is None:
         raise HTTPException(status_code=400, detail="Login handoff is invalid or expired")
+    payload, viewer = consumed
 
     token = create_token(payload.username, payload.role, payload.user_id)
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(viewer.redirect_path, status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         key=_COOKIE_NAME,
         value=token,
@@ -780,6 +789,24 @@ async def consume_tunnel_handoff(
     )
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
+    if viewer.viewer_session_id and viewer.controller_secret:
+        response.set_cookie(
+            key=_VIDEO_CONTROLLER_COOKIE,
+            value=f"{viewer.viewer_session_id}:{viewer.controller_secret}",
+            max_age=_VIDEO_CONTROLLER_MAX_AGE,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+    else:
+        response.delete_cookie(
+            key=_VIDEO_CONTROLLER_COOKIE,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
     return response
 
 

@@ -187,6 +187,44 @@ def test_handoff_is_single_use_and_bound_to_current_tunnel_host(handoff_client):
     assert replay.status_code == 400
 
 
+def test_video_handoff_sets_viewer_redirect_and_controller_cookie(handoff_client):
+    from deeptutor.services.auth import TokenPayload
+    from deeptutor.services.tunnel_handoff import create_pairing
+
+    payload = TokenPayload("alice", "admin", "u_alice")
+    pairing_id, _ = create_pairing(
+        payload,
+        redirect_path="/video-learning?viewer_session=session-1",
+        viewer_session_id="session-1",
+        controller_secret="controller-secret",
+    )
+    exchanged = handoff_client.get(f"/api/v1/auth/handoff/pairing/{pairing_id}")
+    assert exchanged.status_code == 200
+    ticket = exchanged.json()
+
+    consumed = handoff_client.post(
+        "/api/v1/auth/handoff/consume",
+        data={"code": ticket["code"]},
+        headers={"x-deeptutor-frontend-host": "example-deep.trycloudflare.com"},
+        follow_redirects=False,
+    )
+    assert consumed.status_code == 303
+    assert consumed.headers["location"] == "/video-learning?viewer_session=session-1"
+    cookies = consumed.headers.get_list("set-cookie")
+    assert any("dt_video_controller=session-1:controller-secret" in cookie for cookie in cookies)
+    controller_cookie = next(
+        cookie for cookie in cookies if "dt_video_controller=session-1" in cookie
+    ).lower()
+    assert "path=/" in controller_cookie
+    assert "httponly" in controller_cookie
+    assert "secure" in controller_cookie
+    assert "samesite=lax" in controller_cookie
+    assert "max-age=43200" in controller_cookie
+
+    replay = handoff_client.get(f"/api/v1/auth/handoff/pairing/{pairing_id}")
+    assert replay.status_code == 400
+
+
 def test_handoff_ticket_expires_after_sixty_seconds(tunnel_file):
     from deeptutor.services.auth import TokenPayload
     from deeptutor.services.tunnel_handoff import consume_ticket, create_ticket
@@ -197,6 +235,28 @@ def test_handoff_ticket_expires_after_sixty_seconds(tunnel_file):
     )
     code, state = create_ticket(TokenPayload("alice", "admin", "u_alice"), now=100)
     assert consume_ticket(code, state.host, now=160) is None
+
+
+def test_video_handoff_rejects_partial_or_untrusted_redirects(tunnel_file):
+    from deeptutor.services.auth import TokenPayload
+    from deeptutor.services.tunnel_handoff import create_pairing
+
+    payload = TokenPayload("alice", "admin", "u_alice")
+    invalid = [
+        ("/", "session-1", ""),
+        ("/", "", "secret"),
+        ("/video-learning", "session-1", "secret"),
+        ("/video-learning?viewer_session=other", "session-1", "secret"),
+        ("/video-learning?viewer_session=../escape", "../escape", "secret"),
+    ]
+    for redirect_path, session_id, secret in invalid:
+        with pytest.raises(ValueError):
+            create_pairing(
+                payload,
+                redirect_path=redirect_path,
+                viewer_session_id=session_id,
+                controller_secret=secret,
+            )
 
 
 def test_proxy_headers_are_trusted_only_from_loopback_peers():

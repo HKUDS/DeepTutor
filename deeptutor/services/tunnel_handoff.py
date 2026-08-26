@@ -35,6 +35,9 @@ class _Ticket:
     payload: TokenPayload
     target_host: str
     expires_at: float
+    redirect_path: str = "/"
+    viewer_session_id: str = ""
+    controller_secret: str = ""
     used: bool = False
 
 
@@ -42,6 +45,16 @@ class _Ticket:
 class _Pairing:
     payload: TokenPayload
     expires_at: float
+    redirect_path: str = "/"
+    viewer_session_id: str = ""
+    controller_secret: str = ""
+
+
+@dataclass(frozen=True)
+class ViewerHandoff:
+    redirect_path: str
+    viewer_session_id: str
+    controller_secret: str
 
 
 def _tunnel_file() -> Path:
@@ -57,6 +70,23 @@ def _valid_tunnel_host(host: str | None) -> bool:
         and len(host) > len(_TUNNEL_SUFFIX)
         and host == host.lower()
         and all(part and part.isalnum() for part in host[: -len(_TUNNEL_SUFFIX)].split("-"))
+    )
+
+
+def _valid_video_handoff(
+    redirect_path: str,
+    viewer_session_id: str,
+    controller_secret: str,
+) -> bool:
+    if not viewer_session_id and not controller_secret:
+        return redirect_path == "/"
+    if not viewer_session_id or not controller_secret:
+        return False
+    expected = f"/video-learning?viewer_session={viewer_session_id}"
+    return (
+        redirect_path == expected
+        and all(character.isalnum() or character in "-_." for character in viewer_session_id)
+        and len(viewer_session_id) <= 128
     )
 
 
@@ -90,8 +120,17 @@ def _prune(now: float) -> None:
         _tickets.pop(key, None)
 
 
-def create_ticket(payload: TokenPayload, now: float | None = None) -> tuple[str, TunnelState]:
+def create_ticket(
+    payload: TokenPayload,
+    now: float | None = None,
+    *,
+    redirect_path: str = "/",
+    viewer_session_id: str = "",
+    controller_secret: str = "",
+) -> tuple[str, TunnelState]:
     """Create a single-use ticket and return (plaintext code, target tunnel)."""
+    if not _valid_video_handoff(redirect_path, viewer_session_id, controller_secret):
+        raise ValueError("Invalid viewer handoff payload")
     state = load_tunnel_state()
     if state is None:
         raise ValueError("No active DeepTutor tunnel is configured")
@@ -106,12 +145,24 @@ def create_ticket(payload: TokenPayload, now: float | None = None) -> tuple[str,
             payload=payload,
             target_host=state.host,
             expires_at=current + _TICKET_TTL_SECONDS,
+            redirect_path=redirect_path,
+            viewer_session_id=viewer_session_id,
+            controller_secret=controller_secret,
         )
     return code, state
 
 
-def create_pairing(payload: TokenPayload, now: float | None = None) -> tuple[str, int]:
+def create_pairing(
+    payload: TokenPayload,
+    now: float | None = None,
+    *,
+    redirect_path: str = "/",
+    viewer_session_id: str = "",
+    controller_secret: str = "",
+) -> tuple[str, int]:
     """Create a one-time phone pairing capability without exposing a login code."""
+    if not _valid_video_handoff(redirect_path, viewer_session_id, controller_secret):
+        raise ValueError("Invalid viewer handoff payload")
     current = time.time() if now is None else now
     pairing_id = secrets.token_urlsafe(32)
     digest = hashlib.sha256(pairing_id.encode("utf-8")).hexdigest()
@@ -122,11 +173,17 @@ def create_pairing(payload: TokenPayload, now: float | None = None) -> tuple[str
         _pairings[digest] = _Pairing(
             payload=payload,
             expires_at=current + _PAIRING_TTL_SECONDS,
+            redirect_path=redirect_path,
+            viewer_session_id=viewer_session_id,
+            controller_secret=controller_secret,
         )
     return pairing_id, _PAIRING_TTL_SECONDS
 
 
-def exchange_pairing(pairing_id: str, now: float | None = None) -> TokenPayload | None:
+def exchange_pairing_details(
+    pairing_id: str,
+    now: float | None = None,
+) -> tuple[TokenPayload, ViewerHandoff] | None:
     """Atomically exchange a pairing capability for its authenticated payload."""
     if not pairing_id:
         return None
@@ -138,7 +195,16 @@ def exchange_pairing(pairing_id: str, now: float | None = None) -> TokenPayload 
             _pairings.pop(digest, None)
             return None
         _pairings.pop(digest, None)
-        return pairing.payload
+        return pairing.payload, ViewerHandoff(
+            redirect_path=pairing.redirect_path,
+            viewer_session_id=pairing.viewer_session_id,
+            controller_secret=pairing.controller_secret,
+        )
+
+
+def exchange_pairing(pairing_id: str, now: float | None = None) -> TokenPayload | None:
+    exchanged = exchange_pairing_details(pairing_id, now)
+    return exchanged[0] if exchanged else None
 
 
 def consume_ticket(
@@ -146,6 +212,15 @@ def consume_ticket(
     target_host: str | None,
     now: float | None = None,
 ) -> TokenPayload | None:
+    consumed = consume_ticket_details(code, target_host, now)
+    return consumed[0] if consumed else None
+
+
+def consume_ticket_details(
+    code: str,
+    target_host: str | None,
+    now: float | None = None,
+) -> tuple[TokenPayload, ViewerHandoff] | None:
     """Atomically consume a ticket for exactly its intended tunnel host."""
     if not code or not target_host:
         return None
@@ -165,7 +240,11 @@ def consume_ticket(
             return None
         ticket.used = True
         _tickets.pop(digest, None)
-        return ticket.payload
+        return ticket.payload, ViewerHandoff(
+            redirect_path=ticket.redirect_path,
+            viewer_session_id=ticket.viewer_session_id,
+            controller_secret=ticket.controller_secret,
+        )
 
 
 def clear_tickets() -> None:

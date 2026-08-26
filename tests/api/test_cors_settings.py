@@ -55,6 +55,23 @@ def test_cors_normalizes_common_origin_input_mistakes(monkeypatch) -> None:
     assert "http://api.example.com" in settings["allow_origins"]
 
 
+def test_cors_includes_configured_invidious_origins(monkeypatch) -> None:
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setattr(
+        api_main,
+        "load_integrations_settings",
+        lambda: {
+            "invidious_public_base_url": "https://invidious.example",
+            "invidious_base_url": "http://127.0.0.1:3000",
+        },
+    )
+
+    settings = api_main._build_cors_settings()
+
+    assert "https://invidious.example" in settings["allow_origins"]
+    assert "http://127.0.0.1:3000" in settings["allow_origins"]
+
+
 def test_cors_preflight_allows_partner_patch_save() -> None:
     client = TestClient(api_main.app)
 

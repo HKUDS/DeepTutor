@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CheckCircle2,
   Clock,
@@ -29,11 +29,12 @@ import {
 
 interface InvidiousHomeProps {
   onSelectVideo: (url: string) => void;
+  onOpenInvidious?: () => void;
   onClose?: () => void;
   initialUrl?: string;
 }
 
-export function InvidiousHome({ onSelectVideo, onClose, initialUrl = "" }: InvidiousHomeProps) {
+export function InvidiousHome({ onSelectVideo, onOpenInvidious, onClose, initialUrl = "" }: InvidiousHomeProps) {
   const { t } = useTranslation();
   const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(true);
@@ -42,7 +43,7 @@ export function InvidiousHome({ onSelectVideo, onClose, initialUrl = "" }: Invid
   const [activeTab, setActiveTab] = useState<string>("");
   const [authorizing, setAuthorizing] = useState(false);
 
-  const fetchFeed = async (tab?: string) => {
+  const fetchFeed = useCallback(async (tab?: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -56,7 +57,7 @@ export function InvidiousHome({ onSelectVideo, onClose, initialUrl = "" }: Invid
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, t]);
 
   useEffect(() => {
     void fetchFeed();
@@ -67,7 +68,7 @@ export function InvidiousHome({ onSelectVideo, onClose, initialUrl = "" }: Invid
     };
     window.addEventListener("message", handleAuthMessage);
     return () => window.removeEventListener("message", handleAuthMessage);
-  }, []);
+  }, [fetchFeed]);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -153,16 +154,15 @@ export function InvidiousHome({ onSelectVideo, onClose, initialUrl = "" }: Invid
             </button>
           )}
 
-          {feed?.invidious_public_base_url && (
-            <a
-              href={feed.invidious_public_base_url}
-              target="_blank"
-              rel="noreferrer"
-              title={t("Open Invidious Web")}
-              className="rounded p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          {onOpenInvidious && (
+            <button
+              type="button"
+              onClick={onOpenInvidious}
+              className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             >
-              <ExternalLink size={15} />
-            </a>
+              <ExternalLink size={13} />
+              {t("Open Invidious")}
+            </button>
           )}
 
           {onClose && (
