@@ -140,6 +140,10 @@ export interface KnowledgeBaseFile {
   size?: number;
   modified?: number;
   mime_type?: string | null;
+  /** IMA cloud media id. Present only for files listed from a connected IMA
+   *  library; lets preview / download fetch the content from IMA instead of
+   *  a local raw/ file. */
+  media_id?: string;
 }
 
 const IMAGE_UPLOAD_EXTENSIONS = [

@@ -12,7 +12,13 @@ from deeptutor.services.config.runtime_settings import RuntimeSettingsService
 from deeptutor.services.rag.pipelines.ima.client import (
     ImaAPIError,
     ImaAuthError,
+    ImaMediaContent,
     ImaRateLimitError,
+)
+from deeptutor.services.rag.pipelines.ima.models import (
+    ImaDocument,
+    ImaFolder,
+    ImaKnowledgePage,
 )
 import deeptutor.services.rag.pipelines.ima.config as ima_config_module
 
@@ -1927,3 +1933,130 @@ def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
     assert again["max_concurrent_files"] == 4
     assert again["entity_extract_max_gleaning"] == 2
     assert again["top_k"] == 42
+
+
+# ---------------------------------------------------------------------------
+# IMA cloud library file listing / preview / download
+# ---------------------------------------------------------------------------
+
+
+class _ImaCloudClientStub:
+    """Fake ImaClient for the Knowledge Center cloud file flows.
+
+    Stands in for the real client's listing and content surfaces only — the
+    router reaches it through ``_ima_client_for_kb``, so credentials and the
+    transport never matter here.
+    """
+
+    def __init__(self, *, page=None, media_by_id=None) -> None:
+        self.knowledge_base_id = "kb-cloud-1"
+        self.page = page or ImaKnowledgePage(is_end=True)
+        self.media_by_id = media_by_id or {}
+        self.listing_calls: list[tuple[str, str, int]] = []
+
+    async def get_knowledge_list(self, *, folder_id: str = "", cursor: str = "", limit: int = 50):
+        self.listing_calls.append((folder_id, cursor, limit))
+        return self.page
+
+    async def get_media_content(self, media_id: str):
+        return self.media_by_id.get(media_id)
+
+
+def _ima_kb_manager(base_dir: Path) -> _FakeKBManager:
+    manager = _FakeKBManager(base_dir)
+    manager.config["knowledge_bases"]["ima-kb"] = {
+        "path": "ima-kb",
+        "type": "ima",
+        "status": "ready",
+        "knowledge_base_id": "kb-cloud-1",
+        "client_id": "cid",
+        "api_key": "key",
+    }
+    return manager
+
+
+def _patch_ima_client(monkeypatch, stub: _ImaCloudClientStub, manager: _FakeKBManager) -> None:
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(
+        knowledge_router_module, "_ima_client_for_kb", lambda kb_name: stub
+    )
+
+
+def test_ima_cloud_listing_carries_media_ids(monkeypatch, tmp_path: Path) -> None:
+    """The file tree the Knowledge Center renders must retain each cloud
+    document's media id, or a later preview/download has nothing to key on."""
+    manager = _ima_kb_manager(tmp_path / "knowledge_bases")
+    stub = _ImaCloudClientStub(
+        page=ImaKnowledgePage(
+            documents=(
+                ImaDocument(media_id="m1", title="report.pdf"),
+                ImaDocument(media_id="m2", title="note-1"),
+            ),
+            folders=(ImaFolder(folder_id="f1", name="Docs"),),
+            is_end=True,
+        )
+    )
+    _patch_ima_client(monkeypatch, stub, manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/ima-kb/files")
+
+    assert response.status_code == 200
+    entries = {e["name"]: e for e in response.json()["files"]}
+    assert entries["report.pdf"]["media_id"] == "m1"
+    assert entries["note-1"]["media_id"] == "m2"
+    assert entries["Docs"]["type"] == "folder"
+    assert "media_id" not in entries["Docs"]
+
+
+def test_ima_cloud_file_content_served_by_media_id(monkeypatch, tmp_path: Path) -> None:
+    """GET /files/<name>?media_id=… streams the cloud bytes (or note text) so
+    inline preview and the download button work without a local raw/ file."""
+    manager = _ima_kb_manager(tmp_path / "knowledge_bases")
+    stub = _ImaCloudClientStub(
+        media_by_id={
+            "m1": ImaMediaContent(data=b"%PDF-1.4 fake pdf", filename="report.pdf"),
+            "m2": ImaMediaContent(text="a plain note body"),
+        }
+    )
+    _patch_ima_client(monkeypatch, stub, manager)
+
+    with TestClient(_build_app()) as client:
+        pdf = client.get("/api/v1/knowledge/ima-kb/files/report.pdf?media_id=m1")
+        note = client.get("/api/v1/knowledge/ima-kb/files/note-1?media_id=m2")
+
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"].startswith("application/pdf")
+    assert pdf.content == b"%PDF-1.4 fake pdf"
+    assert note.status_code == 200
+    assert note.text == "a plain note body"
+
+
+def test_ima_cloud_text_preview_served_by_media_id(monkeypatch, tmp_path: Path) -> None:
+    """The office-text fallback renderer's endpoint also reads cloud content."""
+    manager = _ima_kb_manager(tmp_path / "knowledge_bases")
+    stub = _ImaCloudClientStub(
+        media_by_id={"m1": ImaMediaContent(data=b"hello ima", filename="report.txt")}
+    )
+    _patch_ima_client(monkeypatch, stub, manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get(
+            "/api/v1/knowledge/ima-kb/file-preview-text/report.txt?media_id=m1"
+        )
+
+    assert response.status_code == 200
+    assert response.text == "hello ima"
+
+
+def test_ima_cloud_content_unavailable_is_404(monkeypatch, tmp_path: Path) -> None:
+    """An unknown media id degrades to 404, matching the local-file behavior."""
+    manager = _ima_kb_manager(tmp_path / "knowledge_bases")
+    _patch_ima_client(monkeypatch, _ImaCloudClientStub(), manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get(
+            "/api/v1/knowledge/ima-kb/files/report.pdf?media_id=missing"
+        )
+
+    assert response.status_code == 404
