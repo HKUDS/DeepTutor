@@ -36,7 +36,7 @@ import re
 import shutil
 import threading
 import time
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Literal, Sequence
 import uuid
 
 from deeptutor.reading.extract import extract_material, synthesise_outline
@@ -182,7 +182,15 @@ class ReadingStore:
 
     # -- ingest -----------------------------------------------------------
 
-    def ingest(self, source: Path | str, *, filename: str | None = None) -> MaterialManifest:
+    def ingest(
+        self,
+        source: Path | str,
+        *,
+        filename: str | None = None,
+        content_format: Literal["plain_text", "web_markdown"] = "plain_text",
+        source_type: str = "upload",
+        source_url: str = "",
+    ) -> MaterialManifest:
         """Extract *source* into the store and return its manifest.
 
         Idempotent on content: a file whose hash is already present is not
@@ -196,7 +204,15 @@ class ReadingStore:
         if not data:
             raise ReadingError(f"{path.name} is empty")
 
-        material_id = content_hash(data)
+        identity = data
+        if source_type != "upload":
+            # Web snapshots are addressed by source identity as well as bytes,
+            # so capturing the same text from two pages does not hijack an
+            # uploaded Markdown file's annotations.
+            identity = (
+                f"{source_type}\0{source_url}\0".encode("utf-8") + data
+            )
+        material_id = content_hash(identity)
         display_name = (filename or path.name).strip() or path.name
 
         with self._locked(material_id):
@@ -255,6 +271,9 @@ class ReadingStore:
                 # pdf.js. EPUB dispatch is carried by ``render_mode`` instead.
                 has_raw_view=extraction.render_mode == "pdf",
                 render_mode=extraction.render_mode,
+                content_format=content_format,
+                source_type=source_type,
+                source_url=source_url,
             )
             # Manifest last: its presence is the "this material is usable"
             # signal, so it must not appear before the units it describes.

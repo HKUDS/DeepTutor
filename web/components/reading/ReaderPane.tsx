@@ -561,6 +561,7 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               materialId={material.material_id}
               unit={material.unit}
               unitCount={material.unit_count}
+              contentFormat={material.content_format}
               annotations={annotations}
               jump={jump}
               highlightedAnnotationId={activeAnnotationId}

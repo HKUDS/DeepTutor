@@ -14,6 +14,7 @@ export interface MarkdownRendererProps {
   enableMath?: boolean;
   enableCode?: boolean;
   enableMermaid?: boolean;
+  enableImages?: boolean;
   allowHtml?: boolean;
   /**
    * When true, top-level block elements receive a `data-source-line` attribute
@@ -68,6 +69,7 @@ export default function MarkdownRenderer({
   enableMath,
   enableCode,
   enableMermaid,
+  enableImages,
   allowHtml,
   trackSourceLines,
 }: MarkdownRendererProps) {
@@ -106,6 +108,7 @@ export default function MarkdownRenderer({
       enableMath={resolvedEnableMath}
       enableCode={resolvedEnableCode}
       enableMermaid={resolvedEnableMermaid}
+      enableImages={enableImages}
       allowHtml={resolvedAllowHtml}
       trackSourceLines={trackSourceLines}
     />
