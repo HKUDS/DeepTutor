@@ -15,6 +15,7 @@ from deeptutor.services.config.runtime_settings import (
     DOCUMENT_PARSING_ENGINE_LITEPARSE,
     DOCUMENT_PARSING_ENGINE_MARKITDOWN,
     DOCUMENT_PARSING_ENGINE_MINERU,
+    DOCUMENT_PARSING_ENGINE_PADDLE,
     DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
     DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
     DOCUMENT_PARSING_ENGINE_TIKA,
@@ -66,6 +67,12 @@ def _tika_class():
     return TikaParser
 
 
+def _paddle_class():
+    from .paddle.engine import PaddleParser
+
+    return PaddleParser
+
+
 # name -> zero-arg loader returning the engine class.
 _ENGINE_LOADERS: Dict[str, Callable[[], Any]] = {
     DOCUMENT_PARSING_ENGINE_TEXT_ONLY: _text_only_class,
@@ -75,6 +82,7 @@ _ENGINE_LOADERS: Dict[str, Callable[[], Any]] = {
     DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _pymupdf4llm_class,
     DOCUMENT_PARSING_ENGINE_LITEPARSE: _liteparse_class,
     DOCUMENT_PARSING_ENGINE_TIKA: _tika_class,
+    DOCUMENT_PARSING_ENGINE_PADDLE: _paddle_class,
 }
 
 KNOWN_ENGINES = frozenset(_ENGINE_LOADERS)
@@ -137,6 +145,17 @@ _ENGINE_META: Dict[str, Dict[str, Any]] = {
         "description": (
             "Remote Apache Tika server. Broad format support, no local install "
             "or model downloads. Point at an existing tika-server container."
+        ),
+        "needs_local_models": False,
+    },
+    DOCUMENT_PARSING_ENGINE_PADDLE: {
+        "name": "PaddleOCR (飞桨)",
+        "description": (
+            "Cloud VLM document parsing via the PaddleOCR AI Studio API "
+            "(PaddleOCR-VL-1.6). PDF and images → Markdown with layout/table/"
+            "chart structure. Needs an AI Studio access token "
+            "(aistudio.baidu.com/account/accessToken, free 20000 pages/day). "
+            "No local models or GPU."
         ),
         "needs_local_models": False,
     },
