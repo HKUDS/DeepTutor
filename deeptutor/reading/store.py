@@ -209,9 +209,7 @@ class ReadingStore:
             # Web snapshots are addressed by source identity as well as bytes,
             # so capturing the same text from two pages does not hijack an
             # uploaded Markdown file's annotations.
-            identity = (
-                f"{source_type}\0{source_url}\0".encode("utf-8") + data
-            )
+            identity = f"{source_type}\0{source_url}\0".encode("utf-8") + data
         material_id = content_hash(identity)
         display_name = (filename or path.name).strip() or path.name
 
