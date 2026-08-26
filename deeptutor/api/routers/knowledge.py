@@ -35,7 +35,11 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
 from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
-from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_files
+from deeptutor.knowledge.kb_types import (
+    IMA_KB_TYPE,
+    is_connected_kb,
+    supports_local_raw_files,
+)
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -2348,9 +2352,16 @@ async def list_kb_raw_files(kb_name: str):
     ``type: "folder"`` entries so user-created/uploaded structure shows even
     before it holds any files. Folders are purely organizational and have no
     effect on indexing or retrieval.
+
+    Connected KBs keep no DeepTutor-managed ``raw/`` directory. IMA libraries
+    are served from IMA's cloud ``get_knowledge_list`` instead, so the
+    Knowledge Center shows the library's real documents and folders; other
+    connected types keep the historical empty listing.
     """
     raw_dir = _resolve_kb_raw_dir(kb_name, allow_unsupported=True)
     if raw_dir is None:
+        if _is_ima_kb(kb_name):
+            return {"files": await _list_ima_cloud_files(kb_name)}
         return {"files": []}
     if not raw_dir.exists() or not raw_dir.is_dir():
         return {"files": []}
@@ -2378,6 +2389,96 @@ async def list_kb_raw_files(kb_name: str):
             }
         )
     return {"files": files}
+
+
+def _resolve_kb_entry(kb_name: str) -> dict:
+    """Resolve a KB's config entry through the same manager path as raw dirs."""
+    manager = _overridden_kb_manager()
+    if manager is not None:
+        resolved_name = _resolve_registered_kb_name(manager, kb_name)
+    else:
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        resolved_name = resource.name
+    return _load_kb_entry_or_404(manager, resolved_name)
+
+
+def _is_ima_kb(kb_name: str) -> bool:
+    try:
+        return _resolve_kb_entry(kb_name).get("type") == IMA_KB_TYPE
+    except HTTPException:
+        return False
+
+
+# The IMA cloud listing budget mirrors the inventory reader's (see
+# services/rag/pipelines/ima/inventory.py): a huge library must not stall the
+# listing request.
+_IMA_LIST_MAX_REQUESTS = 8
+_IMA_LIST_MAX_DEPTH = 3
+
+
+async def _list_ima_cloud_files(kb_name: str) -> list[dict]:
+    """One flat listing of an IMA library: documents and folders, cloud-side.
+
+    Walks ``get_knowledge_list`` breadth-first (mirroring the inventory
+    reader), flattening folder names into POSIX paths so the web client's
+    existing file tree renders without changes. IMA folders are recognized by
+    the parser via their ``media_type: 99`` / ``folder_`` marker (see
+    :func:`deeptutor.services.rag.pipelines.ima.models.parse_knowledge_page`).
+
+    Any IMA failure degrades to the historical empty listing rather than
+    failing the request — the UI treats an unreachable library as "nothing
+    to show" instead of an error page.
+    """
+    from collections import deque
+
+    from deeptutor.services.rag.pipelines.ima.client import ImaClient
+    from deeptutor.services.rag.pipelines.ima.config import resolve_kb_config
+
+    try:
+        entry = _resolve_kb_entry(kb_name)
+        client = ImaClient(resolve_kb_config(dict(entry)))
+    except Exception as exc:
+        logger.warning("Could not list IMA cloud files for '%s' (%s)", kb_name, type(exc).__name__)
+        return []
+
+    files: list[dict] = []
+    seen_folders: set[str] = set()
+    queue: deque[tuple[str, str, int]] = deque([("", str(entry.get("knowledge_base_id") or ""), 0)])
+    requests = 0
+    try:
+        while queue:
+            prefix, folder_id, depth = queue.popleft()
+            cursor = ""
+            while True:
+                if requests >= _IMA_LIST_MAX_REQUESTS:
+                    return files
+                page = await client.get_knowledge_list(
+                    folder_id=folder_id, cursor=cursor, limit=50
+                )
+                requests += 1
+                for document in page.documents:
+                    name = f"{prefix}{document.title}" if prefix else document.title
+                    files.append(
+                        {"name": name, "type": "file", "size": 0, "modified": 0, "mime_type": None}
+                    )
+                for folder in page.folders:
+                    name = f"{prefix}{folder.name}" if prefix else folder.name
+                    files.append({"name": name, "type": "folder", "size": 0, "modified": 0})
+                    if (
+                        depth < _IMA_LIST_MAX_DEPTH
+                        and folder.folder_id not in seen_folders
+                        and folder.folder_id != folder_id
+                    ):
+                        seen_folders.add(folder.folder_id)
+                        queue.append((f"{name}/", folder.folder_id, depth + 1))
+                cursor = page.next_cursor
+                if page.is_end or not cursor:
+                    break
+    except Exception as exc:
+        logger.warning("Could not list IMA cloud files for '%s' (%s)", kb_name, type(exc).__name__)
+        return files
+    return files
 
 
 class CreateFolderPayload(BaseModel):
