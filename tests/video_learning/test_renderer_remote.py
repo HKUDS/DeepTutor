@@ -9,6 +9,7 @@ from deeptutor.api.routers.auth import require_auth
 from deeptutor.services.auth import TokenPayload
 from deeptutor.services.path_service import PathService
 from deeptutor.services.tunnel_handoff import TunnelState
+from deeptutor.video_learning.marks import create_mark
 from deeptutor.video_learning.service import get_timed_media_store
 
 
@@ -91,6 +92,81 @@ def test_renderer_bootstrap_presence_and_open_video(tmp_path: Path, monkeypatch)
         assert opened.status_code == 200
         polled = client.post("/api/v1/video-learning/player/presence", headers=auth)
         assert polled.json()["commands"][0]["payload"] == {"video_id": "dQw4w9WgXcQ"}
+    PathService.reset_instance()
+
+
+def test_player_sync_rebinds_material_when_video_changes(tmp_path: Path, monkeypatch) -> None:
+    from uuid import uuid4
+
+    first_video_id = uuid4().hex[:11]
+    second_video_id = uuid4().hex[:11]
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    PathService.reset_instance()
+    monkeypatch.setattr(
+        video_remote_control,
+        "get_invidious_public_base_url",
+        lambda: "https://invidious.example",
+    )
+    app = FastAPI()
+    app.include_router(video_remote_control.router, prefix="/api/v1/video-learning")
+    app.dependency_overrides[require_auth] = lambda: None
+    with TestClient(app) as client:
+        created = client.post("/api/v1/video-learning/renderers", json={})
+        assert created.status_code == 200
+        redeemed = client.post(
+            "/api/v1/video-learning/renderers/bootstrap",
+            json={"ticket": created.json()["ticket"]},
+        ).json()
+        auth = {"Authorization": f"VideoLearning {redeemed['device_id']}:{redeemed['token']}"}
+
+        first = client.post(
+            "/api/v1/video-learning/player/sync",
+            headers=auth,
+            json={
+                "instance_origin": "https://invidious.example",
+                "video_id": first_video_id,
+                "title": "First video",
+                "position_ms": 101_661,
+                "duration_ms": 3_186_000,
+            },
+        )
+        assert first.status_code == 200
+        first_session = first.json()["session"]
+        first_material = get_timed_media_store().get(first_session["material_id"])
+        mark = create_mark(
+            first_material,
+            {
+                "kind": "key_point",
+                "start_seconds": 101.661,
+                "end_seconds": 101.661,
+                "note": "First-video mark",
+                "author": "user",
+                "source": "remote_phone",
+            },
+        )
+        get_timed_media_store().save(first_material)
+
+        second = client.post(
+            "/api/v1/video-learning/player/sync",
+            headers=auth,
+            json={
+                "session_id": first_session["session_id"],
+                "instance_origin": "https://invidious.example",
+                "video_id": second_video_id,
+                "title": "Second video",
+                "position_ms": 0,
+                "duration_ms": 213_000,
+            },
+        )
+        assert second.status_code == 200
+        second_session = second.json()["session"]
+        assert second_session["video_id"] == second_video_id
+        assert second_session["material_id"] != first_session["material_id"]
+
+        second_material = get_timed_media_store().get(second_session["material_id"])
+        assert second_material["source"]["video_id"] == second_video_id
+        assert second_material["learning"]["marks"] == []
+        assert get_timed_media_store().get(first_session["material_id"])["learning"]["marks"] == [mark]
     PathService.reset_instance()
 
 

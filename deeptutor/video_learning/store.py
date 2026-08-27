@@ -667,12 +667,13 @@ class VideoLearningStore:
             else:
                 conn.execute(
                     """UPDATE sessions SET
-                        title = ?, position_ms = ?, duration_ms = ?,
+                        video_id = ?, title = ?, position_ms = ?, duration_ms = ?,
                         playback_state = ?, playback_rate = ?,
                         material_id = ?,
                         updated_at = ?, last_heartbeat_at = ?
                        WHERE session_id = ?""",
                     (
+                        video_id,
                         title,
                         max(0, int(position_ms)),
                         max(0, int(duration_ms)),
