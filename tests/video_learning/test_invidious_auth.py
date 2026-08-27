@@ -13,6 +13,7 @@ from deeptutor.video_learning.invidious_auth import (
     InvidiousTokenStore,
     disconnect_account,
     get_authorization_url,
+    get_invidious_public_base_url,
     get_invidious_home_feed,
     get_user_history_ids,
     get_user_preferences,
@@ -43,6 +44,14 @@ def test_tailnet_host_validation():
     # Public IP requires HTTPS
     with pytest.raises(TimedMediaError, match="HTTPS"):
         _validate_instance_url("http://93.184.216.34:3000")
+
+
+def test_public_invidious_url_skips_ssrf_dns(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.services.config.runtime_settings.load_integrations_settings",
+        lambda: {"invidious_public_base_url": "https://uses-firewall-coupon-wal.trycloudflare.com/"},
+    )
+    assert get_invidious_public_base_url() == "https://uses-firewall-coupon-wal.trycloudflare.com"
 
 
 def test_invidious_token_store(tmp_path: Path, monkeypatch):
@@ -102,8 +111,40 @@ async def test_authorization_url_generation(monkeypatch):
     query = parse_qs(urlsplit(auth_url).query)
     assert query["scopes"] == [
         "GET:preferences,GET:feed,GET:playlists,GET:history,POST:history/*,"
-        "POST:tokens/unregister,POST:deeptutor/renderer-session*"
+        "POST:tokens/unregister,POST:deeptutor/renderer-session*,POST:/deeptutor/renderer-session*"
     ]
+
+
+@pytest.mark.asyncio
+async def test_authorization_url_uses_current_tunnel_when_external_base_is_empty(
+    monkeypatch, tmp_path: Path
+):
+    system_root = tmp_path / "system"
+    state_path = system_root / "auth" / "deeptutor_tunnel.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(
+        json.dumps({"url": "https://current-deeptutor.trycloudflare.com"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("deeptutor.multi_user.paths.SYSTEM_ROOT", system_root)
+    monkeypatch.setattr(
+        "deeptutor.services.config.runtime_settings.load_integrations_settings",
+        lambda: {"invidious_public_base_url": "https://invidious.example"},
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.runtime_settings.load_system_settings",
+        lambda: {"next_public_api_base_external": ""},
+    )
+    monkeypatch.setattr(
+        "deeptutor.video_learning.invidious_auth._validate_instance_url",
+        lambda value: value,
+    )
+    auth_url = await get_authorization_url("admin_user")
+    query = parse_qs(urlsplit(auth_url).query)
+    callback_url = query["callback_url"][0]
+    assert callback_url.startswith(
+        "https://current-deeptutor.trycloudflare.com/api/v1/video-learning/invidious/callback?state="
+    )
 
 
 def test_html_error_detection():

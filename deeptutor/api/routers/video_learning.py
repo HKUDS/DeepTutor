@@ -56,6 +56,7 @@ from deeptutor.video_learning.service import (
 )
 
 router = APIRouter()
+public_router = APIRouter()
 MAX_JOB_DURATION_SECONDS = 4 * 60 * 60
 MAX_ACTIVE_TRANSCRIPT_JOBS_PER_USER = 2
 ASR_JOB_TIMEOUT_SECONDS = 20 * 60
@@ -98,6 +99,8 @@ class MarkCreateRequest(BaseModel):
     quote: str = Field(default="", max_length=4000)
     note: str = Field(default="", max_length=2000)
     author: str = Field(default="user", max_length=32)
+    source: str = Field(default="immersive", max_length=32)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class MarkPatchRequest(BaseModel):
@@ -109,6 +112,7 @@ class MarkPatchRequest(BaseModel):
     quote: str | None = Field(default=None, max_length=4000)
     note: str | None = Field(default=None, max_length=2000)
     reviewed: bool | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class MarkSuggestionRequest(BaseModel):
@@ -222,7 +226,7 @@ async def get_invidious_authorize_url(
         raise _error(exc) from exc
 
 
-@router.get("/invidious/callback", response_class=HTMLResponse)
+@public_router.get("/invidious/callback", response_class=HTMLResponse)
 async def invidious_oauth_callback(
     token: str = Query(default=""),
     state: str = Query(default=""),
@@ -356,9 +360,10 @@ async def save_video_position(material_id: str, payload: PositionRequest) -> dic
     try:
         assert_learning_surface("watching")
         store = get_timed_media_store()
-        material = store.get(material_id)
-        material.setdefault("learning", {})["last_position"] = payload.time_seconds
-        store.save(material)
+        with store.lock(material_id):
+            material = store.get(material_id)
+            material.setdefault("learning", {})["last_position"] = payload.time_seconds
+            store.save(material)
         return {"time_seconds": payload.time_seconds}
     except Exception as exc:
         raise _error(exc) from exc
@@ -370,31 +375,32 @@ async def record_video_watch_progress(material_id: str, payload: WatchProgressRe
     try:
         assert_learning_surface("watching")
         store = get_timed_media_store()
-        material = store.get(material_id)
-        learning = material.setdefault("learning", {})
-        learning["last_position"] = payload.time_seconds
-        prev_cumulative = float(learning.get("cumulative_played_seconds") or 0.0)
-        new_cumulative = max(prev_cumulative, payload.cumulative_played_seconds)
-        learning["cumulative_played_seconds"] = new_cumulative
+        with store.lock(material_id):
+            material = store.get(material_id)
+            learning = material.setdefault("learning", {})
+            learning["last_position"] = payload.time_seconds
+            prev_cumulative = float(learning.get("cumulative_played_seconds") or 0.0)
+            new_cumulative = max(prev_cumulative, payload.cumulative_played_seconds)
+            learning["cumulative_played_seconds"] = new_cumulative
 
-        duration = float(material.get("source", {}).get("duration_seconds") or 0)
-        threshold = min(30.0, max(5.0, 0.10 * duration)) if duration > 0 else 30.0
+            duration = float(material.get("source", {}).get("duration_seconds") or 0)
+            threshold = min(30.0, max(5.0, 0.10 * duration)) if duration > 0 else 30.0
 
-        already_synced = bool(learning.get("invidious_history_synced"))
-        synced_now = False
+            already_synced = bool(learning.get("invidious_history_synced"))
+            synced_now = False
 
-        if new_cumulative >= threshold and not already_synced:
-            owner_id = current_owner_id()
-            video_id = str(material.get("source", {}).get("video_id") or "")
-            if video_id and InvidiousTokenStore.has_token(owner_id):
-                ok, reason = await sync_watch_history(owner_id, video_id)
-                if ok:
-                    learning["invidious_history_synced"] = True
-                    synced_now = True
-                elif reason == "history_disabled":
-                    learning["invidious_history_synced"] = False
+            if new_cumulative >= threshold and not already_synced:
+                owner_id = current_owner_id()
+                video_id = str(material.get("source", {}).get("video_id") or "")
+                if video_id and InvidiousTokenStore.has_token(owner_id):
+                    ok, reason = await sync_watch_history(owner_id, video_id)
+                    if ok:
+                        learning["invidious_history_synced"] = True
+                        synced_now = True
+                    elif reason == "history_disabled":
+                        learning["invidious_history_synced"] = False
 
-        store.save(material)
+            store.save(material)
         return {
             "time_seconds": payload.time_seconds,
             "cumulative_played_seconds": new_cumulative,
@@ -409,24 +415,25 @@ async def add_video_note(material_id: str, payload: NoteRequest) -> dict[str, An
     try:
         assert_learning_surface("watching")
         store = get_timed_media_store()
-        material = store.get(material_id)
-        note = {
-            "note_id": hashlib.sha256(
-                f"{material_id}-{datetime.now(timezone.utc).timestamp()}".encode()
-            ).hexdigest()[:24],
-            "text": payload.text.strip(),
-            "time_seconds": payload.time_seconds,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if not note["text"]:
-            raise TimedMediaError("A video note cannot be empty.")
-        notes = material.setdefault("learning", {}).setdefault("notes", [])
-        if not isinstance(notes, list):
-            notes = []
-            material["learning"]["notes"] = notes
-        notes.append(note)
-        material["learning"]["notes"] = notes[-500:]
-        store.save(material)
+        with store.lock(material_id):
+            material = store.get(material_id)
+            note = {
+                "note_id": hashlib.sha256(
+                    f"{material_id}-{datetime.now(timezone.utc).timestamp()}".encode()
+                ).hexdigest()[:24],
+                "text": payload.text.strip(),
+                "time_seconds": payload.time_seconds,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if not note["text"]:
+                raise TimedMediaError("A video note cannot be empty.")
+            notes = material.setdefault("learning", {}).setdefault("notes", [])
+            if not isinstance(notes, list):
+                notes = []
+                material["learning"]["notes"] = notes
+            notes.append(note)
+            material["learning"]["notes"] = notes[-500:]
+            store.save(material)
         return note
     except Exception as exc:
         raise _error(exc) from exc
@@ -437,9 +444,10 @@ async def add_video_mark(material_id: str, payload: MarkCreateRequest) -> dict[s
     try:
         assert_learning_surface("watching")
         store = get_timed_media_store()
-        material = store.get(material_id)
-        mark = create_mark(material, payload.model_dump())
-        store.save(material)
+        with store.lock(material_id):
+            material = store.get(material_id)
+            mark = create_mark(material, payload.model_dump())
+            store.save(material)
         return mark
     except Exception as exc:
         raise _error(exc) from exc
@@ -450,10 +458,11 @@ async def patch_video_mark(material_id: str, mark_id: str, payload: MarkPatchReq
     try:
         assert_learning_surface("watching")
         store = get_timed_media_store()
-        material = store.get(material_id)
         fields = payload.model_dump(exclude_unset=True)
-        mark = update_mark(material, mark_id, fields)
-        store.save(material)
+        with store.lock(material_id):
+            material = store.get(material_id)
+            mark = update_mark(material, mark_id, fields)
+            store.save(material)
         return mark
     except Exception as exc:
         raise _error(exc) from exc
@@ -464,9 +473,10 @@ async def remove_video_mark(material_id: str, mark_id: str) -> dict[str, bool]:
     try:
         assert_learning_surface("watching")
         store = get_timed_media_store()
-        material = store.get(material_id)
-        delete_mark(material, mark_id)
-        store.save(material)
+        with store.lock(material_id):
+            material = store.get(material_id)
+            delete_mark(material, mark_id)
+            store.save(material)
         return {"ok": True}
     except Exception as exc:
         raise _error(exc) from exc

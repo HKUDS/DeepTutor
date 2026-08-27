@@ -4,11 +4,13 @@ from typing import Any
 import httpx
 import pytest
 
+from deeptutor.video_learning.marks import create_mark
 from deeptutor.video_learning.service import (
     TimedMediaNotFound,
     TimedMediaStore,
     YouTubeResolver,
     build_segments,
+    ensure_remote_material,
     normalize_cues,
     parse_timestamp,
     parse_youtube_url,
@@ -135,6 +137,67 @@ async def test_invidious_is_primary_and_normalizes_public_formats(
     format_ids = list(material["playback"]["formats"])
     assert len(format_ids) == 1
     assert format_ids[0] != "18/unsafe"
+
+
+@pytest.mark.asyncio
+async def test_resolve_reuses_feed_launched_remote_material(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = "http://127.0.0.1:18080"
+    video_url = f"{base}/api/v1/videos/89ThCi5qq-A"
+    transcript_url = f"{base}/api/v1/transcripts/89ThCi5qq-A?lang=en"
+    client = _InvidiousClient(
+        {
+            video_url: (
+                200,
+                {
+                    "title": "Gradient descent",
+                    "author": "Course",
+                    "lengthSeconds": "120",
+                    "captions": [{"languageCode": "en"}],
+                    "formatStreams": [
+                        {"itag": "18", "type": "video/mp4", "url": f"{base}/video.mp4"}
+                    ],
+                },
+                {},
+            ),
+            transcript_url: (
+                200,
+                [{"start": 10, "duration": 5, "text": "Remote key idea context."}],
+                {},
+            ),
+        }
+    )
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: _AsyncClientFactory(client))
+    monkeypatch.setattr(
+        "deeptutor.video_learning.service._optional_ytdlp_metadata",
+        lambda _url: {},
+    )
+    store = TimedMediaStore(tmp_path)
+    skeleton = ensure_remote_material("89ThCi5qq-A", title="Temporary feed title")
+    mark = create_mark(
+        skeleton,
+        {
+            "kind": "key_point",
+            "start_seconds": 12,
+            "end_seconds": 12,
+            "note": "Captured from phone",
+            "source": "remote_phone",
+        },
+    )
+    store.save(skeleton)
+
+    resolved = await YouTubeResolver(base_url=base).resolve(
+        "https://youtu.be/89ThCi5qq-A",
+        language="en",
+        store=store,
+    )
+
+    assert resolved["material_id"] == skeleton["material_id"]
+    assert resolved["metadata"]["title"] == "Gradient descent"
+    assert resolved["transcript"]["cues"]
+    assert resolved["learning"]["marks"] == [mark]
 
 
 @pytest.mark.asyncio

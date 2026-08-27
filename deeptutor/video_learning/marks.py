@@ -16,6 +16,7 @@ from deeptutor.video_learning.service import TimedMediaError, TimedMediaNotFound
 
 MARK_KINDS = frozenset({"key_point", "question", "review"})
 MARK_AUTHORS = frozenset({"user", "assistant"})
+MARK_SOURCES = frozenset({"immersive", "remote_phone"})
 MAX_MARKS_PER_MATERIAL = 500
 MAX_QUOTE_CHARS = 4000
 MAX_NOTE_CHARS = 2000
@@ -170,6 +171,19 @@ def normalize_mark(
     author = str(payload.get("author") or (existing or {}).get("author") or "user")
     if author not in MARK_AUTHORS:
         raise TimedMediaError("Mark author must be user or assistant.")
+    source = str(payload.get("source") or (existing or {}).get("source") or "immersive")
+    if source not in MARK_SOURCES:
+        raise TimedMediaError("Mark source must be immersive or remote_phone.")
+    raw_metadata = payload.get("metadata", (existing or {}).get("metadata") or {})
+    if raw_metadata is None:
+        raw_metadata = {}
+    if not isinstance(raw_metadata, dict):
+        raise TimedMediaError("Mark metadata must be an object.")
+    metadata = dict(raw_metadata)
+    if len(metadata) > 16:
+        raise TimedMediaError("Mark metadata has too many fields.")
+    if len(json.dumps(metadata, ensure_ascii=False, default=str)) > 4000:
+        raise TimedMediaError("Mark metadata is too large.")
     stamp = utcnow()
     mark_id = str((existing or {}).get("mark_id") or payload.get("mark_id") or "")
     if not re.fullmatch(r"[0-9a-f]{16,64}", mark_id or ""):
@@ -185,6 +199,8 @@ def normalize_mark(
         "quote": _clip_text(quote, MAX_QUOTE_CHARS),
         "note": _clip_text(note, MAX_NOTE_CHARS),
         "author": author,
+        "source": source,
+        "metadata": metadata,
         "created_at": str((existing or {}).get("created_at") or stamp),
         "updated_at": stamp,
     }

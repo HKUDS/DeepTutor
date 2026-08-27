@@ -50,6 +50,7 @@ class PlayerSession:
     updated_at: str
     last_heartbeat_at: str
     controller_token_hash: str = ""
+    material_id: str = ""
 
 
 @dataclass(slots=True)

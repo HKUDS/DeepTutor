@@ -60,8 +60,12 @@ CREATE INDEX IF NOT EXISTS idx_vl_devices_owner ON devices (owner_id);
 CREATE TABLE IF NOT EXISTS renderer_bootstraps (
     bootstrap_id TEXT PRIMARY KEY, ticket_hash TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL,
     device_name TEXT NOT NULL DEFAULT 'iPad', device_kind TEXT NOT NULL DEFAULT 'ipad',
-    invidious_origin TEXT NOT NULL DEFAULT '',
+    invidious_origin TEXT NOT NULL DEFAULT '', material_id TEXT NOT NULL DEFAULT '',
     expires_at TEXT NOT NULL, redeemed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS renderer_material_bindings (
+    device_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, material_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS renderer_invidious_sessions (
     device_id TEXT PRIMARY KEY,
@@ -83,6 +87,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     device_id          TEXT NOT NULL,
     instance_origin    TEXT NOT NULL,
     video_id           TEXT NOT NULL,
+    material_id        TEXT NOT NULL DEFAULT '',
     title              TEXT NOT NULL DEFAULT '',
     position_ms        INTEGER NOT NULL DEFAULT 0,
     duration_ms        INTEGER NOT NULL DEFAULT 0,
@@ -202,9 +207,13 @@ class VideoLearningStore:
             session_columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
             if "controller_token_hash" not in session_columns:
                 conn.execute("ALTER TABLE sessions ADD COLUMN controller_token_hash TEXT NOT NULL DEFAULT ''")
+            if "material_id" not in session_columns:
+                conn.execute("ALTER TABLE sessions ADD COLUMN material_id TEXT NOT NULL DEFAULT ''")
             bootstrap_columns = {row[1] for row in conn.execute("PRAGMA table_info(renderer_bootstraps)")}
             if "invidious_origin" not in bootstrap_columns:
                 conn.execute("ALTER TABLE renderer_bootstraps ADD COLUMN invidious_origin TEXT NOT NULL DEFAULT ''")
+            if "material_id" not in bootstrap_columns:
+                conn.execute("ALTER TABLE renderer_bootstraps ADD COLUMN material_id TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def _row_to_pairing(row: sqlite3.Row) -> Pairing:
@@ -240,6 +249,7 @@ class VideoLearningStore:
             device_id=row["device_id"],
             instance_origin=row["instance_origin"],
             video_id=row["video_id"],
+            material_id=str(row["material_id"] or ""),
             title=row["title"],
             position_ms=int(row["position_ms"]),
             duration_ms=int(row["duration_ms"]),
@@ -450,12 +460,13 @@ class VideoLearningStore:
         device_name: str = "iPad",
         device_kind: str = "ipad",
         invidious_origin: str = "",
+        material_id: str = "",
     ) -> tuple[str, str, str]:
         ticket, bootstrap_id = secrets.token_urlsafe(32), secrets.token_urlsafe(12)
         expires_at = (_now() + PAIRING_TTL).isoformat()
         with self._connect() as conn:
-            conn.execute("INSERT INTO renderer_bootstraps (bootstrap_id,ticket_hash,owner_id,device_name,device_kind,invidious_origin,expires_at) VALUES (?,?,?,?,?,?,?)",
-                         (bootstrap_id, _hash_token(ticket), owner_id, device_name or "iPad", device_kind or "ipad", invidious_origin, expires_at))
+            conn.execute("INSERT INTO renderer_bootstraps (bootstrap_id,ticket_hash,owner_id,device_name,device_kind,invidious_origin,material_id,expires_at) VALUES (?,?,?,?,?,?,?,?)",
+                         (bootstrap_id, _hash_token(ticket), owner_id, device_name or "iPad", device_kind or "ipad", invidious_origin, material_id, expires_at))
         return bootstrap_id, ticket, expires_at
 
     def redeem_renderer_bootstrap(self, *, ticket: str) -> tuple[Device, str, str]:
@@ -474,7 +485,26 @@ class VideoLearningStore:
                 raise VideoLearningConflict("Bootstrap ticket already redeemed.")
             conn.execute("INSERT INTO devices (device_id,owner_id,device_name,device_kind,token_hash,paired_at,last_seen,active) VALUES (?,?,?,?,?,?,?,1)",
                          (device_id,row["owner_id"],row["device_name"],row["device_kind"],_hash_token(token),now,now))
+            if row["material_id"]:
+                conn.execute(
+                    """INSERT INTO renderer_material_bindings
+                       (device_id, owner_id, material_id, created_at)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(device_id) DO UPDATE SET
+                         owner_id=excluded.owner_id,
+                         material_id=excluded.material_id,
+                         created_at=excluded.created_at""",
+                    (device_id, row["owner_id"], row["material_id"], now),
+                )
         return Device(device_id,row["owner_id"],row["device_name"],row["device_kind"],now,now), token, str(row["invidious_origin"] or "")
+
+    def get_renderer_material_binding(self, *, owner_id: str, device_id: str) -> str:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT material_id FROM renderer_material_bindings WHERE owner_id=? AND device_id=?",
+                (owner_id, device_id),
+            ).fetchone()
+        return str(row["material_id"] or "") if row is not None else ""
 
     def save_renderer_invidious_session(self, *, device_id: str, owner_id: str, invidious_origin: str, session_id: str) -> None:
         with self._connect() as conn:
@@ -530,6 +560,14 @@ class VideoLearningStore:
             rows=conn.execute("SELECT * FROM device_commands WHERE device_id=? AND status='pending' ORDER BY created_at",(device_id,)).fetchall()
         return [self._row_to_device_command(row) for row in rows]
 
+    def get_device_command(self, owner_id: str, device_id: str, command_id: str) -> DeviceCommand | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM device_commands WHERE command_id=? AND owner_id=? AND device_id=?",
+                (command_id, owner_id, device_id),
+            ).fetchone()
+        return self._row_to_device_command(row) if row else None
+
     def ack_device_command(self, *, device_id: str, command_id: str, ok: bool, error: str | None = None) -> DeviceCommand:
         with self._connect() as conn:
             row = conn.execute(
@@ -582,6 +620,7 @@ class VideoLearningStore:
         playback_state: str,
         playback_rate: float,
         session_id: str | None = None,
+        material_id: str = "",
     ) -> PlayerSession:
         now = _now_iso()
         sid = session_id or secrets.token_urlsafe(12)
@@ -589,12 +628,12 @@ class VideoLearningStore:
             existing = None
             if session_id:
                 existing = conn.execute(
-                    "SELECT session_id FROM sessions WHERE session_id = ? AND device_id = ?",
+                    "SELECT session_id, video_id FROM sessions WHERE session_id = ? AND device_id = ?",
                     (session_id, device.device_id),
                 ).fetchone()
             if existing is None:
                 active = conn.execute(
-                    """SELECT session_id FROM sessions
+                    """SELECT session_id, video_id FROM sessions
                        WHERE device_id = ? AND video_id = ? AND instance_origin = ?
                        ORDER BY last_heartbeat_at DESC LIMIT 1""",
                     (device.device_id, video_id, instance_origin),
@@ -607,8 +646,8 @@ class VideoLearningStore:
                     """INSERT INTO sessions
                        (session_id, owner_id, device_id, instance_origin, video_id,
                         title, position_ms, duration_ms, playback_state, playback_rate,
-                        updated_at, last_heartbeat_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        material_id, updated_at, last_heartbeat_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         sid,
                         device.owner_id,
@@ -620,6 +659,7 @@ class VideoLearningStore:
                         max(0, int(duration_ms)),
                         playback_state or "unknown",
                         float(playback_rate or 1.0),
+                        material_id,
                         now,
                         now,
                     ),
@@ -629,6 +669,7 @@ class VideoLearningStore:
                     """UPDATE sessions SET
                         title = ?, position_ms = ?, duration_ms = ?,
                         playback_state = ?, playback_rate = ?,
+                        material_id = ?,
                         updated_at = ?, last_heartbeat_at = ?
                        WHERE session_id = ?""",
                     (
@@ -637,6 +678,7 @@ class VideoLearningStore:
                         max(0, int(duration_ms)),
                         playback_state or "unknown",
                         float(playback_rate or 1.0),
+                        material_id if str(existing["video_id"] or "") == video_id else "",
                         now,
                         now,
                         sid,
@@ -651,6 +693,19 @@ class VideoLearningStore:
                 (sid,),
             ).fetchone()
         return self._row_to_session(row)
+
+    def bind_session_material(self, *, session_id: str, owner_id: str, material_id: str) -> PlayerSession | None:
+        if not material_id:
+            return None
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE sessions SET material_id=? WHERE session_id=? AND owner_id=?",
+                (material_id, session_id, owner_id),
+            )
+            if cur.rowcount != 1:
+                return None
+            row = conn.execute("SELECT * FROM sessions WHERE session_id=?", (session_id,)).fetchone()
+        return self._row_to_session(row) if row else None
 
     def list_sessions(self, owner_id: str) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -671,6 +726,7 @@ class VideoLearningStore:
                     "device_id": session.device_id,
                     "instance_origin": session.instance_origin,
                     "video_id": session.video_id,
+                    "material_id": session.material_id,
                     "title": session.title,
                     "position_ms": session.position_ms,
                     "duration_ms": session.duration_ms,

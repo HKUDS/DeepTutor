@@ -32,9 +32,20 @@ interface InvidiousHomeProps {
   onOpenInvidious?: () => void;
   onClose?: () => void;
   initialUrl?: string;
+  openingInvidious?: boolean;
+  openMessage?: string;
+  fallbackOpenUrl?: string;
 }
 
-export function InvidiousHome({ onSelectVideo, onOpenInvidious, onClose, initialUrl = "" }: InvidiousHomeProps) {
+export function InvidiousHome({
+  onSelectVideo,
+  onOpenInvidious,
+  onClose,
+  initialUrl = "",
+  openingInvidious = false,
+  openMessage = "",
+  fallbackOpenUrl = "",
+}: InvidiousHomeProps) {
   const { t } = useTranslation();
   const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(true);
@@ -79,13 +90,11 @@ export function InvidiousHome({ onSelectVideo, onOpenInvidious, onClose, initial
     setAuthorizing(true);
     try {
       const authUrl = await getInvidiousAuthorizeUrl();
-      const popup = window.open(authUrl, "_blank", "width=600,height=750");
-      if (!popup) {
-        window.location.href = authUrl;
-      }
+      // iPad/Safari often swallows the popup; stay in this tab so Connect
+      // actually reaches Invidious authorize instead of looking like a no-op.
+      window.location.assign(authUrl);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("Failed to start authorization."));
-    } finally {
       setAuthorizing(false);
     }
   };
@@ -158,10 +167,15 @@ export function InvidiousHome({ onSelectVideo, onOpenInvidious, onClose, initial
             <button
               type="button"
               onClick={onOpenInvidious}
-              className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              disabled={openingInvidious}
+              className={`inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
+                feed?.connected
+                  ? "bg-[var(--foreground)] text-[var(--background)] hover:opacity-90"
+                  : "border border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
             >
-              <ExternalLink size={13} />
-              {t("Open Invidious")}
+              {openingInvidious ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+              {openingInvidious ? t("Opening Invidious...") : t("Open Invidious")}
             </button>
           )}
 
@@ -177,6 +191,23 @@ export function InvidiousHome({ onSelectVideo, onOpenInvidious, onClose, initial
           )}
         </div>
       </header>
+
+      {(openingInvidious || openMessage) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--muted)]/30 px-4 py-2 text-xs">
+          <p className="text-[var(--muted-foreground)]">
+            {openMessage || (openingInvidious ? t("Opening Invidious...") : t("If the page did not jump, tap Continue to Invidious."))}
+          </p>
+          {fallbackOpenUrl && (
+            <a
+              href={fallbackOpenUrl}
+              className="inline-flex items-center gap-1 font-medium text-[var(--foreground)] underline"
+            >
+              <ExternalLink size={12} />
+              {t("Continue to Invidious")}
+            </a>
+          )}
+        </div>
+      )}
 
       {/* URL Input Bar */}
       <div className="border-b border-[var(--border)] bg-[var(--muted)]/20 p-3">

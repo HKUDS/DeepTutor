@@ -23,6 +23,7 @@ import httpx
 
 from deeptutor.multi_user.paths import owner_secrets_dir
 from deeptutor.services.config import runtime_settings
+from deeptutor.services.tunnel_handoff import load_tunnel_state
 from deeptutor.video_learning.service import (
     TimedMediaError,
     _validate_instance_url,
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 INVIDIOUS_AUTH_SCOPES = (
     "GET:preferences,GET:feed,GET:playlists,GET:history,POST:history/*,POST:tokens/unregister,"
-    "POST:deeptutor/renderer-session*"
+    "POST:deeptutor/renderer-session*,POST:/deeptutor/renderer-session*"
 )
 STATE_EXPIRY_SECONDS = 600  # 10 minutes
 
@@ -139,12 +140,32 @@ def get_invidious_base_url() -> str:
     return _validate_instance_url(url) if url else ""
 
 
+def _validate_browser_origin(value: str) -> str:
+    """Validate a browser-facing origin without SSRF DNS checks.
+
+    iPad/iPhone open this URL directly. Quick Tunnel hostnames can fail DNS
+    from the API process even while the public HTTPS page is reachable, and
+    treating that as a private host blocked Open Invidious.
+    """
+    value = str(value or "").strip().rstrip("/")
+    parsed = urlparse(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.path not in {"", "/"}
+    ):
+        raise TimedMediaError("Invidious public URL must be a plain HTTP(S) origin.")
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def get_invidious_public_base_url() -> str:
     """Browser/iPad-reachable Invidious URL for OAuth & external viewing."""
     settings = runtime_settings.load_integrations_settings()
     public_url = str(settings.get("invidious_public_base_url") or "").strip()
     if public_url:
-        return _validate_instance_url(public_url)
+        return _validate_browser_origin(public_url)
     return get_invidious_base_url()
 
 
@@ -155,6 +176,13 @@ def get_callback_base_url(override: str | None = None) -> str:
             return f"{parsed.scheme}://{parsed.netloc}"
     system = runtime_settings.load_system_settings()
     base = str(system.get("next_public_api_base_external") or system.get("public_api_base") or "").strip()
+    # Quick Tunnel deployments rotate their public hostname daily. When an
+    # explicit external API base is not configured, use the operator-written
+    # current tunnel state so Invidious OAuth callbacks keep working without a
+    # manual settings update after each rotation.
+    if not base:
+        state = load_tunnel_state()
+        base = state.url if state is not None else ""
     if not base:
         return ""
     parsed = urlparse(base.rstrip("/"))
@@ -211,8 +239,14 @@ async def create_renderer_session_handoff(owner_id: str) -> dict[str, Any] | Non
                 data = resp.json()
                 if isinstance(data, dict) and data.get("exchange_code") and data.get("session_id"):
                     return data
+                logger.warning("Invidious renderer login returned an incomplete payload")
                 return None
-            if resp.status_code in {401, 403}:
+            logger.warning(
+                "Invidious renderer login failed: %s %s",
+                resp.status_code,
+                (resp.text or "")[:200],
+            )
+            if resp.status_code == 401:
                 InvidiousTokenStore.delete_token(owner_id)
             return None
     except Exception as exc:

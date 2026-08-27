@@ -13,10 +13,10 @@ from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_auth
-from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.models import LOCAL_ADMIN_ID
+from deeptutor.multi_user.paths import current_owner_id
 from deeptutor.services.auth import TokenPayload, list_users
-from deeptutor.services.path_service import PathService, get_path_service
+from deeptutor.services.path_service import PathService
 from deeptutor.services.tunnel_handoff import create_pairing as create_phone_pairing
 from deeptutor.services.tunnel_handoff import load_tunnel_state
 from deeptutor.video_learning.invidious_auth import (
@@ -25,7 +25,13 @@ from deeptutor.video_learning.invidious_auth import (
     get_invidious_public_base_url,
     revoke_renderer_session,
 )
+from deeptutor.video_learning.marks import create_mark, delete_mark, marks_list, update_mark
 from deeptutor.video_learning.qr import generate_pairing_qr_data_url, generate_qr_data_url
+from deeptutor.video_learning.service import (
+    TimedMediaError,
+    ensure_remote_material,
+    get_timed_media_store,
+)
 from deeptutor.video_learning.store import (
     VideoLearningConflict,
     VideoLearningNotFound,
@@ -39,7 +45,10 @@ _auth = [Depends(require_auth)]
 
 
 def _session_db_path() -> Path:
-    return default_db_path(path_service=get_path_service())
+    # Invidious player tabs have no DeepTutor cookie, so bootstrap must read
+    # the same host-level remote.db that Open Invidious writes. Owner rows
+    # still isolate accounts inside that database.
+    return _device_db_path()
 
 
 def _device_db_path() -> Path:
@@ -57,7 +66,10 @@ def _store_for_session() -> VideoLearningStore:
 
 
 def _owner_id() -> str:
-    return get_current_user().id
+    # Admin accounts share the local-admin secrets workspace. Invidious tokens
+    # are stored under current_owner_id(), so renderer launch must use that
+    # same id or Open Invidious opens a logged-out public session.
+    return current_owner_id()
 
 
 def _auth_device(
@@ -97,6 +109,23 @@ def _http_error(exc: Exception) -> HTTPException:
     return HTTPException(400, str(exc))
 
 
+def _controller_session(
+    store: VideoLearningStore,
+    session_id: str,
+    controller_cookie: str | None,
+):
+    session = store.get_session(session_id, _owner_id())
+    if session is None:
+        raise HTTPException(404, "Session not found.")
+    if session.controller_token_hash and not store.verify_session_controller(
+        owner_id=_owner_id(),
+        session_id=session_id,
+        controller_cookie=controller_cookie,
+    ):
+        raise HTTPException(403, "This phone is not bound to the current player session.")
+    return session
+
+
 class ClaimPairingRequest(BaseModel):
     code: str = Field(..., min_length=4, max_length=12)
     device_name: str = Field("iPad", max_length=128)
@@ -134,6 +163,7 @@ class RendererCreateRequest(BaseModel):
     device_kind: str = Field("ipad", max_length=32)
     invidious_origin: str | None = Field(None, max_length=256)
     video_id: str | None = Field(None, min_length=11, max_length=11)
+    material_id: str | None = Field(None, min_length=16, max_length=64)
     position_seconds: int = Field(0, ge=0)
 
 
@@ -158,6 +188,16 @@ class NoteCreateRequest(BaseModel):
 
 class NoteUpdateRequest(BaseModel):
     body: str = Field(..., min_length=1, max_length=8000)
+
+
+class AnnotationCreateRequest(BaseModel):
+    kind: str = Field(default="key_point", max_length=32)
+    note: str = Field(default="", max_length=2000)
+
+
+class AnnotationUpdateRequest(BaseModel):
+    note: str = Field(..., min_length=0, max_length=2000)
+    reviewed: bool | None = None
 
 
 def _token_payload_for_owner(owner_id: str) -> TokenPayload:
@@ -246,18 +286,31 @@ async def list_devices() -> list[dict[str, Any]]:
 @router.post("/renderers", dependencies=_auth)
 async def create_renderer(body: RendererCreateRequest, response: Response) -> dict[str, Any]:
     store = _store_for_session()
-    configured_origin = get_invidious_public_base_url()
+    try:
+        configured_origin = get_invidious_public_base_url()
+    except TimedMediaError as exc:
+        raise HTTPException(400, str(exc)) from exc
     raw_origin = body.invidious_origin or configured_origin
     if not raw_origin:
         raise HTTPException(400, "Invidious public URL is not configured.")
     origin = _validate_origin(raw_origin)
     if body.video_id and not re.fullmatch(r"[A-Za-z0-9_-]{11}", body.video_id):
         raise HTTPException(400, "Invalid Invidious video ID.")
+    material_id = ""
+    if body.material_id:
+        if not re.fullmatch(r"[0-9a-f]{16,64}", body.material_id):
+            raise HTTPException(400, "Invalid learning material id.")
+        try:
+            get_timed_media_store().get(body.material_id)
+        except Exception as exc:
+            raise HTTPException(404, "Learning material was not found.") from exc
+        material_id = body.material_id
     bootstrap_id, ticket, expires_at = store.create_renderer_bootstrap(
         owner_id=_owner_id(),
         device_name=body.device_name,
         device_kind=body.device_kind,
         invidious_origin=origin,
+        material_id=material_id,
     )
     response.headers["Cache-Control"] = "no-store"
     # Invidious redirects its root to the configured feed. Starting at that
@@ -335,6 +388,23 @@ async def create_device_command(device_id: str, body: DeviceCommandRequest) -> d
     return {"command_id": command.command_id, "type": command.command_type, "payload": command.payload, "status": command.status, "created_at": command.created_at}
 
 
+@router.get("/devices/{device_id}/commands/{command_id}", dependencies=_auth)
+async def get_device_command(device_id: str, command_id: str) -> dict[str, Any]:
+    store = _store_for_session()
+    command = store.get_device_command(_owner_id(), device_id, command_id)
+    if command is None:
+        raise HTTPException(404, "Device command not found.")
+    return {
+        "command_id": command.command_id,
+        "type": command.command_type,
+        "payload": command.payload,
+        "status": command.status,
+        "created_at": command.created_at,
+        "acked_at": command.acked_at,
+        "error": command.error,
+    }
+
+
 @router.post("/player/device-commands/{command_id}/ack")
 async def ack_device_command(command_id: str, body: CommandAckRequest, auth=Depends(_auth_device)) -> dict[str, Any]:
     device, store = auth
@@ -377,12 +447,31 @@ async def player_sync(
         duration_ms=body.duration_ms,
         playback_state=body.playback_state,
         playback_rate=body.playback_rate,
+        material_id=store.get_renderer_material_binding(
+            owner_id=device.owner_id,
+            device_id=device.device_id,
+        ),
     )
+    if not session.material_id:
+        try:
+            material = ensure_remote_material(
+                session.video_id,
+                title=session.title,
+                duration_seconds=session.duration_ms / 1000,
+            )
+        except TimedMediaError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        session = store.bind_session_material(
+            session_id=session.session_id,
+            owner_id=session.owner_id,
+            material_id=str(material["material_id"]),
+        ) or session
     commands = store.pending_commands(device.device_id, session.session_id)
     return {
         "session": {
             "session_id": session.session_id,
             "video_id": session.video_id,
+            "material_id": session.material_id,
             "title": session.title,
             "position_ms": session.position_ms,
             "duration_ms": session.duration_ms,
@@ -480,15 +569,7 @@ async def create_session_command(
     dt_video_controller: str | None = Cookie(default=None, alias="dt_video_controller"),
 ) -> dict[str, Any]:
     store = _store_for_session()
-    session = store.get_session(session_id, _owner_id())
-    if session is None:
-        raise HTTPException(404, "Session not found.")
-    if session.controller_token_hash and not store.verify_session_controller(
-        owner_id=_owner_id(),
-        session_id=session_id,
-        controller_cookie=dt_video_controller,
-    ):
-        raise HTTPException(403, "This phone is not bound to the current player session.")
+    session = _controller_session(store, session_id, dt_video_controller)
     payload: dict[str, Any] = {}
     command_type = body.type
     if command_type in {"play", "pause", "fullscreen"}:
@@ -547,6 +628,106 @@ async def get_session_command(session_id: str, command_id: str) -> dict[str, Any
         "acked_at": command.acked_at,
         "error": command.error,
     }
+
+
+def _session_material(session) -> dict[str, Any]:
+    material_id = str(session.material_id or "")
+    if not material_id:
+        raise HTTPException(409, "The player has not synced a learning material yet. Wait a moment and retry.")
+    try:
+        material = get_timed_media_store().get(material_id)
+    except Exception as exc:
+        raise HTTPException(404, "The bound learning material is unavailable.") from exc
+    source = material.get("source") if isinstance(material.get("source"), dict) else {}
+    if str(source.get("video_id") or "") != session.video_id:
+        raise HTTPException(409, "The player changed videos. Wait for the new QR session and retry.")
+    return material
+
+
+@router.get("/sessions/{session_id}/annotations", dependencies=_auth)
+async def list_session_annotations(
+    session_id: str,
+    dt_video_controller: str | None = Cookie(default=None, alias="dt_video_controller"),
+) -> dict[str, Any]:
+    store = _store_for_session()
+    session = _controller_session(store, session_id, dt_video_controller)
+    material = _session_material(session)
+    return {"annotations": marks_list(material)}
+
+
+@router.post("/sessions/{session_id}/annotations", status_code=201, dependencies=_auth)
+async def create_session_annotation(
+    session_id: str,
+    body: AnnotationCreateRequest,
+    dt_video_controller: str | None = Cookie(default=None, alias="dt_video_controller"),
+) -> dict[str, Any]:
+    store = _store_for_session()
+    session = _controller_session(store, session_id, dt_video_controller)
+    material = _session_material(session)
+    timestamp = max(0.0, session.position_ms / 1000)
+    payload = {
+        "kind": body.kind,
+        "start_seconds": timestamp,
+        "end_seconds": timestamp,
+        "note": body.note.strip(),
+        "author": "user",
+        "source": "remote_phone",
+        "metadata": {
+            "session_id": session.session_id,
+            "instance_origin": session.instance_origin,
+            "video_id": session.video_id,
+        },
+    }
+    try:
+        with get_timed_media_store().lock(str(material["material_id"])):
+            material = get_timed_media_store().get(str(material["material_id"]))
+            mark = create_mark(material, payload)
+            get_timed_media_store().save(material)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return mark
+
+
+@router.patch("/sessions/{session_id}/annotations/{mark_id}", dependencies=_auth)
+async def update_session_annotation(
+    session_id: str,
+    mark_id: str,
+    body: AnnotationUpdateRequest,
+    dt_video_controller: str | None = Cookie(default=None, alias="dt_video_controller"),
+) -> dict[str, Any]:
+    store = _store_for_session()
+    session = _controller_session(store, session_id, dt_video_controller)
+    material = _session_material(session)
+    fields: dict[str, Any] = {"note": body.note.strip()}
+    if body.reviewed is not None:
+        fields["reviewed"] = body.reviewed
+    try:
+        with get_timed_media_store().lock(str(material["material_id"])):
+            material = get_timed_media_store().get(str(material["material_id"]))
+            mark = update_mark(material, mark_id, fields)
+            get_timed_media_store().save(material)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return mark
+
+
+@router.delete("/sessions/{session_id}/annotations/{mark_id}", dependencies=_auth)
+async def delete_session_annotation(
+    session_id: str,
+    mark_id: str,
+    dt_video_controller: str | None = Cookie(default=None, alias="dt_video_controller"),
+) -> dict[str, bool]:
+    store = _store_for_session()
+    session = _controller_session(store, session_id, dt_video_controller)
+    material = _session_material(session)
+    try:
+        with get_timed_media_store().lock(str(material["material_id"])):
+            material = get_timed_media_store().get(str(material["material_id"]))
+            delete_mark(material, mark_id)
+            get_timed_media_store().save(material)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return {"deleted": True}
 
 
 @router.get("/videos/{video_id}/notes", dependencies=_auth)

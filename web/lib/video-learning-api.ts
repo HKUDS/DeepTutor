@@ -75,6 +75,8 @@ export interface VideoLearningMark {
   quote: string;
   note: string;
   author: VideoMarkAuthor;
+  source?: "immersive" | "remote_phone";
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   reviewed_at?: string;

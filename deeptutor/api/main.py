@@ -489,6 +489,11 @@ app.include_router(
 )
 app.include_router(reading.router, prefix="/api/v1/reading", tags=["reading"], dependencies=_auth)
 app.include_router(
+    video_learning.public_router,
+    prefix="/api/v1/video-learning",
+    tags=["immersive-watching"],
+)
+app.include_router(
     video_learning.router,
     prefix="/api/v1/video-learning",
     tags=["immersive-watching"],

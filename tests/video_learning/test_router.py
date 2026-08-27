@@ -34,6 +34,7 @@ def client_and_store(tmp_path: Path, monkeypatch):
 
     app = FastAPI()
     app.include_router(video_learning.router, prefix="/api/v1/video-learning")
+    app.include_router(video_learning.public_router, prefix="/api/v1/video-learning")
     client = TestClient(app)
     return client, store
 

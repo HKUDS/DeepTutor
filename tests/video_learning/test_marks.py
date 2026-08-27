@@ -74,6 +74,8 @@ def test_normalize_mark_clamps_to_duration_and_snapshots_quote(tmp_path: Path):
     assert mark["end_seconds"] == 120
     assert mark["quote"] == "keep this quote"
     assert mark["start_locator"] == 1
+    assert mark["source"] == "immersive"
+    assert mark["metadata"] == {}
     store.save(material)
     assert store.get(material["material_id"])["learning"]["marks"][0]["mark_id"] == mark["mark_id"]
 

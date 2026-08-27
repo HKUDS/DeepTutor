@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import type { VideoLearningMark, VideoMarkKind } from "@/lib/video-learning-api";
 
 export type PlaybackState = "playing" | "paused" | "buffering" | "ended" | "unknown";
 
@@ -8,6 +9,7 @@ export interface RemoteSession {
   device_id: string;
   instance_origin: string;
   video_id: string;
+  material_id?: string;
   title: string;
   position_ms: number;
   duration_ms: number;
@@ -17,6 +19,8 @@ export interface RemoteSession {
   last_heartbeat_at: string;
   online: boolean;
 }
+
+export type RemoteAnnotation = VideoLearningMark;
 
 export interface RemoteNote {
   note_id: string;
@@ -73,6 +77,7 @@ export async function createRendererLaunch(options?: {
   deviceName?: string;
   videoId?: string;
   positionSeconds?: number;
+  materialId?: string;
 }): Promise<RendererLaunch> {
   const response = await apiFetch("/api/v1/video-learning/renderers", {
     method: "POST",
@@ -82,6 +87,7 @@ export async function createRendererLaunch(options?: {
       device_kind: "current-device",
       video_id: options?.videoId,
       position_seconds: options?.positionSeconds ?? 0,
+      material_id: options?.materialId,
     }),
   });
   if (!response.ok) throw new Error(await readError(response));
@@ -107,6 +113,14 @@ export async function sendDeviceCommand(deviceId: string, videoId: string): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "open_video", video_id: videoId }),
   });
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function getDeviceCommand(deviceId: string, commandId: string): Promise<RemoteCommand> {
+  const response = await apiFetch(
+    `/api/v1/video-learning/devices/${encodeURIComponent(deviceId)}/commands/${encodeURIComponent(commandId)}`,
+  );
   if (!response.ok) throw new Error(await readError(response));
   return response.json();
 }
@@ -181,6 +195,69 @@ export async function deleteVideoNote(noteId: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) throw new Error(await readError(response));
+}
+
+export async function listSessionAnnotations(sessionId: string): Promise<RemoteAnnotation[]> {
+  const response = await apiFetch(`/api/v1/video-learning/sessions/${encodeURIComponent(sessionId)}/annotations`);
+  if (!response.ok) throw new Error(await readError(response));
+  const data = await response.json();
+  return data.annotations || [];
+}
+
+export async function createSessionAnnotation(
+  sessionId: string,
+  payload: { kind: VideoMarkKind; note?: string },
+): Promise<RemoteAnnotation> {
+  const response = await apiFetch(`/api/v1/video-learning/sessions/${encodeURIComponent(sessionId)}/annotations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function updateSessionAnnotation(
+  sessionId: string,
+  markId: string,
+  payload: { note: string; reviewed?: boolean },
+): Promise<RemoteAnnotation> {
+  const response = await apiFetch(
+    `/api/v1/video-learning/sessions/${encodeURIComponent(sessionId)}/annotations/${encodeURIComponent(markId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
+}
+
+export async function deleteSessionAnnotation(sessionId: string, markId: string): Promise<void> {
+  const response = await apiFetch(
+    `/api/v1/video-learning/sessions/${encodeURIComponent(sessionId)}/annotations/${encodeURIComponent(markId)}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) throw new Error(await readError(response));
+}
+
+export function parseVideoIdInput(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+  if (/^[A-Za-z0-9_-]{11}$/.test(value)) return value;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.hostname === "youtu.be") {
+      const candidate = url.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : null;
+    }
+    const candidate = url.searchParams.get("v") || "";
+    return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
 }
 
 export function formatPosition(ms: number): string {

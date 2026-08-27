@@ -2,19 +2,24 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { BookmarkPlus, PlayCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { VideoMarkKind } from "@/lib/video-learning-api";
 import {
-  createVideoNote,
-  deleteVideoNote,
+  createSessionAnnotation,
+  deleteSessionAnnotation,
   formatPosition,
+  getDeviceCommand,
   getSessionCommand,
   listDevices,
   listRemoteSessions,
-  listVideoNotes,
+  listSessionAnnotations,
+  parseVideoIdInput,
   revokeDevice,
   sendSessionCommand,
-  updateVideoNote,
-  type RemoteNote,
+  sendDeviceCommand,
+  updateSessionAnnotation,
+  type RemoteAnnotation,
   type RemoteSession,
 } from "@/lib/video-learning-remote-api";
 
@@ -35,23 +40,36 @@ async function waitForCommand(sessionId: string, commandId: string) {
   throw new Error("videoRemote.commandTimeout");
 }
 
+async function waitForDeviceCommand(deviceId: string, commandId: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const command = await getDeviceCommand(deviceId, commandId);
+    if (command.status === "acked" || command.status === "failed" || command.status === "expired") {
+      return command;
+    }
+    await sleep(250);
+  }
+  throw new Error("videoRemote.commandTimeout");
+}
+
 function VideoLearningRemoteContent() {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const lockedSessionId = searchParams.get("viewer_session") || "";
   const [sessions, setSessions] = useState<RemoteSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState(lockedSessionId);
-  const [notes, setNotes] = useState<RemoteNote[]>([]);
+  const [annotations, setAnnotations] = useState<RemoteAnnotation[]>([]);
   const [devices, setDevices] = useState<Array<{ device_id: string; device_name: string; active: boolean }>>([]);
-  const [noteBody, setNoteBody] = useState("");
-  const [editingNote, setEditingNote] = useState<{ id: string; body: string } | null>(null);
+  const [annotationKind, setAnnotationKind] = useState<VideoMarkKind>("key_point");
+  const [annotationNote, setAnnotationNote] = useState("");
+  const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; note: string } | null>(null);
+  const [remoteVideoInput, setRemoteVideoInput] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const loadedVideoRef = useRef("");
   const [seekMs, setSeekMs] = useState(0);
   const [seekDragging, setSeekDragging] = useState(false);
   const [volume, setVolume] = useState(100);
+  const editingAnnotationRef = useRef<{ id: string; note: string } | null>(null);
 
   const selected = useMemo(() => {
     if (lockedSessionId) return sessions.find((session) => session.session_id === lockedSessionId) || null;
@@ -66,14 +84,16 @@ function VideoLearningRemoteContent() {
       : nextSessions.find((session) => session.session_id === selectedSessionId) || nextSessions[0];
     if (active) {
       setSelectedSessionId(active.session_id);
-      if (loadedVideoRef.current !== active.video_id) {
-        loadedVideoRef.current = active.video_id;
-        setNotes(await listVideoNotes(active.video_id));
+      if (!editingAnnotationRef.current) {
+        setAnnotations(
+          active.material_id
+            ? await listSessionAnnotations(active.session_id).catch(() => [])
+            : [],
+        );
       }
     } else {
       setSelectedSessionId("");
-      setNotes([]);
-      loadedVideoRef.current = "";
+      setAnnotations([]);
     }
   }, [lockedSessionId, selectedSessionId]);
 
@@ -127,18 +147,18 @@ function VideoLearningRemoteContent() {
     }
   }
 
-  async function onCreateNote() {
-    if (!selected || !noteBody.trim()) return;
+  async function onCreateAnnotation() {
+    if (!selected) return;
     setBusy(true);
     setError("");
     try {
-      const note = await createVideoNote(selected.video_id, {
-        body: noteBody.trim(),
-        session_id: selected.session_id,
+      const annotation = await createSessionAnnotation(selected.session_id, {
+        kind: annotationKind,
+        note: annotationNote.trim(),
       });
-      setNotes((rows) => [...rows, note]);
-      setNoteBody("");
-      setStatus(t("videoRemote.noteSavedAt", { time: formatPosition(note.position_ms) }));
+      setAnnotations((rows) => [...rows, annotation]);
+      setAnnotationNote("");
+      setStatus(t("videoRemote.annotationSavedAt", { time: formatPosition(annotation.start_seconds * 1000) }));
     } catch (err) {
       const message = String((err as Error).message || err);
       setError(message.startsWith("videoRemote.") ? t(message) : message);
@@ -147,15 +167,18 @@ function VideoLearningRemoteContent() {
     }
   }
 
-  async function onSaveEditedNote() {
-    if (!editingNote || !editingNote.body.trim()) return;
+  async function onSaveEditedAnnotation() {
+    if (!editingAnnotation || !selected) return;
     setBusy(true);
     setError("");
     try {
-      const updated = await updateVideoNote(editingNote.id, editingNote.body.trim());
-      setNotes((rows) => rows.map((note) => (note.note_id === updated.note_id ? updated : note)));
-      setEditingNote(null);
-      setStatus(t("videoRemote.noteUpdated"));
+      const updated = await updateSessionAnnotation(selected.session_id, editingAnnotation.id, {
+        note: editingAnnotation.note,
+      });
+      setAnnotations((rows) => rows.map((row) => (row.mark_id === updated.mark_id ? updated : row)));
+      editingAnnotationRef.current = null;
+      setEditingAnnotation(null);
+      setStatus(t("videoRemote.annotationUpdated"));
     } catch (err) {
       const message = String((err as Error).message || err);
       setError(message.startsWith("videoRemote.") ? t(message) : message);
@@ -164,13 +187,14 @@ function VideoLearningRemoteContent() {
     }
   }
 
-  async function onDeleteNote(noteId: string) {
+  async function onDeleteAnnotation(markId: string) {
+    if (!selected) return;
     setBusy(true);
     setError("");
     try {
-      await deleteVideoNote(noteId);
-      setNotes((rows) => rows.filter((note) => note.note_id !== noteId));
-      setStatus(t("videoRemote.noteDeleted"));
+      await deleteSessionAnnotation(selected.session_id, markId);
+      setAnnotations((rows) => rows.filter((row) => row.mark_id !== markId));
+      setStatus(t("videoRemote.annotationDeleted"));
     } catch (err) {
       setError(String((err as Error).message || err));
     } finally {
@@ -184,6 +208,47 @@ function VideoLearningRemoteContent() {
       void runCommand({ type: "seek", position_ms: seekMs }, t("videoRemote.positionUpdated"));
     }
   };
+
+  function beginEditAnnotation(annotation: RemoteAnnotation) {
+    const next = { id: annotation.mark_id, note: annotation.note };
+    editingAnnotationRef.current = next;
+    setEditingAnnotation(next);
+  }
+
+  function cancelEditAnnotation() {
+    editingAnnotationRef.current = null;
+    setEditingAnnotation(null);
+  }
+
+  async function onOpenRemoteVideo() {
+    const videoId = parseVideoIdInput(remoteVideoInput);
+    const device = devices.find((row) => row.device_id === selected?.device_id && row.active);
+    if (!selected || !device) {
+      setError(t("videoRemote.viewerOffline"));
+      return;
+    }
+    if (!videoId) {
+      setError(t("videoRemote.invalidVideoInput"));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const created = await sendDeviceCommand(device.device_id, videoId);
+      const result = await waitForDeviceCommand(device.device_id, created.command_id);
+      if (result.status !== "acked") {
+        throw new Error(result.error || t("videoRemote.commandDeviceBlocked", { status: result.status }));
+      }
+      setRemoteVideoInput("");
+      setStatus(t("videoRemote.videoOpening"));
+      await refresh();
+    } catch (err) {
+      const message = String((err as Error).message || err);
+      setError(message.startsWith("videoRemote.") ? t(message) : message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-col gap-4 px-4 pb-28 pt-4">
@@ -322,39 +387,76 @@ function VideoLearningRemoteContent() {
       </section>
 
       <section className="rounded-xl border border-[var(--border)] p-4">
-        <h2 className="mb-3 text-sm font-semibold">{t("videoRemote.notesTitle")}</h2>
+        <h2 className="mb-3 text-sm font-semibold">{t("videoRemote.openVideoTitle")}</h2>
+        <div className="flex gap-2">
+          <input
+            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+            placeholder={t("videoRemote.videoInputPlaceholder")}
+            value={remoteVideoInput}
+            disabled={busy || !selected?.online}
+            onChange={(event) => setRemoteVideoInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void onOpenRemoteVideo();
+            }}
+          />
+          <button
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm font-medium text-[var(--background)] disabled:opacity-50"
+            disabled={busy || !selected?.online || !remoteVideoInput.trim()}
+            onClick={() => void onOpenRemoteVideo()}
+          >
+            <PlayCircle size={15} />
+            {t("videoRemote.playOnDevice")}
+          </button>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--border)] p-4">
+        <h2 className="mb-3 text-sm font-semibold">{t("videoRemote.annotationsTitle")}</h2>
+        <div className="mb-2 grid grid-cols-3 gap-1">
+          {(["key_point", "question", "review"] as VideoMarkKind[]).map((kind) => (
+            <button
+              key={kind}
+              className={`rounded-md border border-[var(--border)] px-2 py-2 text-xs disabled:opacity-50 ${annotationKind === kind ? "bg-[var(--muted)] font-semibold" : ""}`}
+              disabled={!selected || busy}
+              onClick={() => setAnnotationKind(kind)}
+            >
+              {t(`videoRemote.markKind.${kind}`)}
+            </button>
+          ))}
+        </div>
         <textarea
           className="min-h-20 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-base"
           placeholder={selected
-            ? t("videoRemote.noteAt", { time: formatPosition(selected.position_ms) })
+            ? t("videoRemote.annotationAt", { time: formatPosition(selected.position_ms) })
             : t("videoRemote.waitingForSession")}
-          value={noteBody}
+          value={annotationNote}
           disabled={!selected || busy}
-          onChange={(event) => setNoteBody(event.target.value)}
+          onChange={(event) => setAnnotationNote(event.target.value)}
         />
         <button
-          className="mt-2 w-full rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm font-medium text-[var(--background)] disabled:opacity-50"
-          disabled={!selected || busy || !noteBody.trim()}
-          onClick={() => void onCreateNote()}
+          className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm font-medium text-[var(--background)] disabled:opacity-50"
+          disabled={!selected?.material_id || busy}
+          onClick={() => void onCreateAnnotation()}
         >
-          {t("videoRemote.saveNoteAtCurrentTime")}
+          <BookmarkPlus size={15} />
+          {t("videoRemote.saveAnnotation")}
         </button>
 
         <ul className="mt-4 space-y-2">
-          {notes.map((note) => (
-            <li key={note.note_id} className="rounded-lg border border-[var(--border)] p-3">
-              {editingNote?.id === note.note_id ? (
+          {[...annotations].sort((left, right) => left.start_seconds - right.start_seconds).map((annotation) => (
+            <li key={annotation.mark_id} className="rounded-lg border border-[var(--border)] p-3">
+              {editingAnnotation?.id === annotation.mark_id ? (
                 <div className="space-y-2">
                   <textarea
                     className="min-h-20 w-full rounded-md border border-[var(--border)] bg-transparent px-2 py-1 text-sm"
-                    value={editingNote.body}
-                    onChange={(event) => setEditingNote({ ...editingNote, body: event.target.value })}
+                    value={editingAnnotation.note}
+                    onChange={(event) => setEditingAnnotation({ ...editingAnnotation, note: event.target.value })}
                   />
                   <div className="flex gap-2">
-                    <button className="rounded-md bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] disabled:opacity-50" disabled={busy || !editingNote.body.trim()} onClick={() => void onSaveEditedNote()}>
+                    <button className="rounded-md bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] disabled:opacity-50" disabled={busy || !editingAnnotation.note.trim()} onClick={() => void onSaveEditedAnnotation()}>
                       {t("videoRemote.save")}
                     </button>
-                    <button className="rounded-md border border-[var(--border)] px-2 py-1 text-xs" onClick={() => setEditingNote(null)}>
+                    <button className="rounded-md border border-[var(--border)] px-2 py-1 text-xs" onClick={cancelEditAnnotation}>
                       {t("videoRemote.cancel")}
                     </button>
                   </div>
@@ -365,18 +467,23 @@ function VideoLearningRemoteContent() {
                     className="w-full text-left disabled:opacity-50"
                     disabled={busy || !selected?.online}
                     onClick={() => void runCommand(
-                      { type: "seek", position_ms: note.position_ms },
-                      t("videoRemote.jumpedToNote"),
+                      { type: "seek", position_ms: Math.round(annotation.start_seconds * 1000) },
+                      t("videoRemote.jumpedToAnnotation"),
                     )}
                   >
-                    <div className="text-xs font-medium text-[var(--primary)]">{formatPosition(note.position_ms)}</div>
-                    <div className="whitespace-pre-wrap text-sm">{note.body}</div>
+                    <div className="text-xs font-medium text-[var(--primary)]">
+                      {formatPosition(annotation.start_seconds * 1000)} · {t(`videoRemote.markKind.${annotation.kind}`)}
+                    </div>
+                    {annotation.note && <div className="whitespace-pre-wrap text-sm">{annotation.note}</div>}
+                    {!annotation.note && annotation.quote && (
+                      <div className="line-clamp-2 text-sm text-[var(--muted-foreground)]">{annotation.quote}</div>
+                    )}
                   </button>
                   <div className="mt-2 flex gap-3 text-xs text-[var(--muted-foreground)]">
-                    <button onClick={() => setEditingNote({ id: note.note_id, body: note.body })}>
+                    <button onClick={() => beginEditAnnotation(annotation)}>
                       {t("videoRemote.edit")}
                     </button>
-                    <button disabled={busy} onClick={() => void onDeleteNote(note.note_id)}>
+                    <button disabled={busy} onClick={() => void onDeleteAnnotation(annotation.mark_id)}>
                       {t("videoRemote.delete")}
                     </button>
                   </div>
@@ -384,9 +491,9 @@ function VideoLearningRemoteContent() {
               )}
             </li>
           ))}
-          {notes.length === 0 && (
+          {annotations.length === 0 && (
             <li className="text-sm text-[var(--muted-foreground)]">
-              {t("videoRemote.noNotes")}
+              {selected?.material_id ? t("videoRemote.noAnnotations") : t("videoRemote.waitingForMaterial")}
             </li>
           )}
         </ul>

@@ -10,8 +10,10 @@ metadata.
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -172,6 +174,34 @@ class TimedMediaStore:
         atomic_write_json(path, material)
         return material
 
+    @contextmanager
+    def lock(self, material_id: str):
+        """Serialize writers for one material across local processes."""
+        material_id = str(material_id or "")
+        if not re.fullmatch(r"[0-9a-f]{16,64}", material_id):
+            raise TimedMediaNotFound("Timed media material was not found.")
+        lock_root = self.root / ".locks"
+        lock_root.mkdir(parents=True, exist_ok=True)
+        with (lock_root / f"{material_id}.lock").open("a+", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    def find_by_video_id(self, video_id: str) -> dict[str, Any] | None:
+        for path in self.root.glob("*.json"):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict) or data.get("type") != "timed_media":
+                continue
+            source = data.get("source") if isinstance(data.get("source"), dict) else {}
+            if str(source.get("video_id") or "") == video_id:
+                return data
+        return None
+
     def create(self, material: dict[str, Any]) -> dict[str, Any]:
         material = dict(material)
         if not str(material.get("material_id") or ""):
@@ -186,6 +216,52 @@ class TimedMediaStore:
 
 def get_timed_media_store() -> TimedMediaStore:
     return TimedMediaStore()
+
+
+def ensure_remote_material(video_id: str, *, title: str = "", duration_seconds: float = 0) -> dict[str, Any]:
+    """Get or create an owner-scoped material for a feed-launched Invidious video."""
+    video_id = video_id.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+        raise TimedMediaError("Invalid Invidious video ID.")
+    store = get_timed_media_store()
+    existing = store.find_by_video_id(video_id)
+    if existing is not None:
+        return existing
+
+    material_id = hashlib.sha256(f"invidious-remote-{video_id}".encode()).hexdigest()[:32]
+    duration = max(0.0, float(duration_seconds or 0))
+    title = str(title or video_id).strip() or video_id
+    with store.lock(material_id):
+        try:
+            return store.get(material_id)
+        except TimedMediaNotFound:
+            material = {
+                "version": 1,
+                "type": "timed_media",
+                "material_id": material_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "source": {
+                    "provider": "youtube",
+                    "video_id": video_id,
+                    "url": f"https://youtu.be/{video_id}",
+                    "entry_time_seconds": 0,
+                    "duration_seconds": duration,
+                },
+                "metadata": {
+                    "title": title,
+                    "author": "",
+                    "duration_seconds": duration,
+                    "chapters": [],
+                },
+                "transcript": {"language": "", "source": "", "cues": []},
+                "segments": [],
+                "playback": {
+                    "formats": {},
+                    "official_url": f"https://youtu.be/{video_id}",
+                },
+                "learning": {"last_position": 0, "notes": [], "questions": [], "marks": []},
+            }
+            return store.save(material)
 
 
 class YouTubeResolver:
@@ -342,7 +418,27 @@ class YouTubeResolver:
             },
             "learning": {"last_position": request.entry_time_seconds, "notes": [], "questions": [], "marks": []},
         }
-        return (store or get_timed_media_store()).create(material)
+        target_store = store or get_timed_media_store()
+        existing = target_store.find_by_video_id(request.video_id)
+        material_id = str(
+            (existing or {}).get("material_id")
+            or hashlib.sha256(f"youtube-resolve-{request.video_id}".encode()).hexdigest()[:32]
+        )
+        with target_store.lock(material_id):
+            try:
+                saved = target_store.get(material_id)
+            except TimedMediaNotFound:
+                saved = material
+                saved["material_id"] = material_id
+                saved.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+            # Resolution enriches provider data but must not reset learning state. This
+            # also unifies feed-launched remote materials with Watch-resolved materials.
+            saved["source"] = material["source"]
+            saved["metadata"] = material["metadata"]
+            saved["transcript"] = material["transcript"]
+            saved["segments"] = material["segments"]
+            saved["playback"] = material["playback"]
+            return target_store.save(saved)
 
     async def refresh_formats(self, material: dict[str, Any]) -> dict[str, Any]:
         video_id = str(material.get("source", {}).get("video_id") or "")

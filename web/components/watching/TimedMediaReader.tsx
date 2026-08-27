@@ -25,6 +25,7 @@ import {
   createVideoMark,
   deleteVideoMark,
   getInvidiousStatus,
+  getVideoLearningMaterial,
   getTranscriptJob,
   patchVideoMark,
   publishVideoToKb,
@@ -49,6 +50,7 @@ import { InvidiousHome } from "./InvidiousHome";
 import {
   createRendererLaunch,
 } from "@/lib/video-learning-remote-api";
+import { invidiousFallbackUrl, shouldOpenInvidiousInCurrentTab } from "@/lib/invidious-open";
 import { KeyPointsPanel } from "./KeyPointsPanel";
 import { LearningTimeline } from "./LearningTimeline";
 
@@ -129,6 +131,24 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   }, [pendingSeek, clearSeek]);
 
   useEffect(() => {
+    if (!material) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const next = await getVideoLearningMaterial(material.material_id);
+        if (!cancelled) replaceMaterial(next);
+      } catch {
+        // The remote phone may be writing; the next interval will retry.
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [material, replaceMaterial]);
+
+  useEffect(() => {
     if (!jobId || !material) return;
     let cancelled = false;
     const poll = async () => {
@@ -189,19 +209,61 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     await openUrl(videoUrl);
   };
 
-  const openInvidiousRenderer = async (videoId?: string, positionSeconds?: number) => {
+  const openInvidiousRenderer = async (
+    videoId?: string,
+    positionSeconds?: number,
+    preferSameTab = false,
+  ) => {
     setOpeningInvidious(true);
-    setRendererMessage("");
-    // Keep the new-tab gesture synchronous so Safari/iPadOS does not block it.
-    const target = window.open("about:blank", "_blank", "noopener");
+    setRendererMessage(t("Opening Invidious..."));
+    const fallbackUrl = invidiousFallbackUrl(invidiousPublicUrl);
+    let target: Window | null = null;
+    // Hub / iPad: stay in the current tab so a blocked popup cannot look like
+    // "no jump". Watch page: open a tab first, then replace it with the
+    // bootstrap URL after the ticket is ready.
+    if (!preferSameTab) {
+      target = window.open(fallbackUrl || "about:blank", "_blank");
+      try {
+        if (target) target.opener = null;
+      } catch {
+        // Some browsers expose opener as read-only for a newly opened tab.
+      }
+    }
     try {
-      if (!target) throw new Error(t("Allow pop-ups to open Invidious."));
-      const launch = await createRendererLaunch({ videoId, positionSeconds });
+      const launch = await createRendererLaunch({
+        videoId,
+        positionSeconds,
+        materialId: material?.material_id,
+      });
+      try {
+        const origin = new URL(launch.launch_url).origin;
+        if (origin) setInvidiousPublicUrl(origin);
+      } catch {
+        // Keep the last known public origin if the launch URL is unexpected.
+      }
+      if (shouldOpenInvidiousInCurrentTab(preferSameTab, Boolean(target))) {
+        window.location.assign(launch.launch_url);
+        return;
+      }
+      if (!target) throw new Error(t("Could not open Invidious."));
       target.location.assign(launch.launch_url);
       setRendererMessage(t("Opened Invidious. Use Phone remote & notes there when ready."));
     } catch (caught) {
-      target?.close();
-      setRendererMessage(caught instanceof Error ? caught.message : t("Could not open Invidious."));
+      const message = caught instanceof Error ? caught.message : t("Could not open Invidious.");
+      if (target && fallbackUrl) {
+        try {
+          target.location.assign(fallbackUrl);
+        } catch {
+          target.close();
+        }
+      } else if (target) {
+        target.close();
+      }
+      setRendererMessage(
+        fallbackUrl
+          ? `${message} ${t("If the page did not jump, tap Continue to Invidious.")}`
+          : message,
+      );
     } finally {
       setOpeningInvidious(false);
     }
@@ -211,8 +273,11 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     return (
       <InvidiousHome
         onSelectVideo={handleVideoSelect}
-        onOpenInvidious={() => void openInvidiousRenderer()}
+        onOpenInvidious={() => void openInvidiousRenderer(undefined, undefined, true)}
         onClose={material ? () => setShowInvidiousHome(false) : onClose}
+        openingInvidious={openingInvidious}
+        openMessage={rendererMessage}
+        fallbackOpenUrl={invidiousFallbackUrl(invidiousPublicUrl)}
       />
     );
   }
