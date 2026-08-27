@@ -493,7 +493,14 @@ class YouTubeResolver:
         selected = _select_caption(captions, preferred_language)
         if selected:
             language = str(selected.get("languageCode") or selected.get("language_code") or "")
-            query = urlencode({"lang": language}) if language else ""
+            label = str(selected.get("label") or "")
+            query = (
+                urlencode({"lang": language})
+                if language
+                else urlencode({"label": label})
+                if label
+                else ""
+            )
             try:
                 payload = await self._json(client, f"{self.base_url}/api/v1/transcripts/{video_id}{f'?{query}' if query else ''}")
                 rows = payload.get("transcript", payload) if isinstance(payload, dict) else payload
@@ -564,10 +571,26 @@ def _rank_captions(captions: list[Any], preferred_language: str = "") -> list[di
     return matched
 
 def parse_webvtt(text: str) -> list[dict[str, Any]]:
-    pattern = re.compile(r"(?m)^(?P<start>\d{2}:\d{2}(?::\d{2})?[.,]\d{3})\s+-->\s+(?P<end>\d{2}:\d{2}(?::\d{2})?[.,]\d{3}).*\n(?P<body>.*?)(?=\n\s*\n|\Z)", re.DOTALL)
+    timing = re.compile(
+        r"^(?P<start>\d{2}:\d{2}(?::\d{2})?[.,]\d{3})\s+-->\s+"
+        r"(?P<end>\d{2}:\d{2}(?::\d{2})?[.,]\d{3})(?:\s+.*)?$"
+    )
+    lines = text.splitlines()
     result: list[dict[str, Any]] = []
-    for match in pattern.finditer(text):
-        body = re.sub(r"<[^>]+>", "", match.group("body")).strip().replace("\n", " ")
+    index = 0
+    while index < len(lines):
+        match = timing.match(lines[index].strip())
+        if not match:
+            index += 1
+            continue
+        index += 1
+        while index < len(lines) and not lines[index].strip():
+            index += 1
+        body_lines: list[str] = []
+        while index < len(lines) and lines[index].strip():
+            body_lines.append(lines[index].strip())
+            index += 1
+        body = re.sub(r"<[^>]+>", "", " ".join(body_lines)).strip()
         if body:
             result.append({"start": _vtt_time(match.group("start")), "end": _vtt_time(match.group("end")), "text": body})
     return result

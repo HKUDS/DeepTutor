@@ -236,6 +236,33 @@ async def test_invidious_caption_redirect_within_configured_origin_is_followed()
 
 
 @pytest.mark.asyncio
+async def test_invidious_caption_label_is_used_when_language_code_is_missing() -> None:
+    base = "http://127.0.0.1:18080"
+    video_id = "89ThCi5qq-A"
+    query = "label=English+%28auto-generated%29"
+    transcript_url = f"{base}/api/v1/transcripts/{video_id}?{query}"
+    caption_url = f"{base}/api/v1/captions/{video_id}?{query}"
+    companion_url = f"{base}/companion/api/v1/captions/{video_id}?{query}&check=trusted"
+    client = _InvidiousClient(
+        {
+            transcript_url: (404, {"error": "not found"}, {}),
+            caption_url: (302, b"", {"location": f"/companion/api/v1/captions/{video_id}?{query}&check=trusted"}),
+            companion_url: (200, b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n \nOpening <c>idea</c>\n", {}),
+        }
+    )
+
+    cues, language, source = await YouTubeResolver(base_url=base)._transcript(
+        client,
+        video_id,
+        {"captions": [{"label": "English (auto-generated)"}]},
+    )
+
+    assert cues == [{"start": 0.0, "end": 2.0, "text": "Opening idea"}]
+    assert language == ""
+    assert source == "invidious"
+
+
+@pytest.mark.asyncio
 async def test_resolve_honors_requested_caption_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base = "http://127.0.0.1:18080"
     video_url = f"{base}/api/v1/videos/89ThCi5qq-A"
