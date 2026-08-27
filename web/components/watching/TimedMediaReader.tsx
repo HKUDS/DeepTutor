@@ -32,6 +32,7 @@ import {
   recordWatchProgress,
   suggestVideoMarks,
   timedMediaStreamUrl,
+  timedMediaSubtitleUrl,
   type VideoLearningMark,
   type VideoMarkKind,
   type VideoMarkSuggestion,
@@ -555,7 +556,17 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                 const start = material.source.entry_time_seconds || material.learning.last_position || 0;
                 if (start > 0) event.currentTarget.currentTime = start;
               }}
-            />
+            >
+              {material.transcript.cues.length > 0 && (
+                <track
+                  kind="captions"
+                  src={timedMediaSubtitleUrl(material.material_id)}
+                  srcLang={material.transcript.language || "en"}
+                  label={material.transcript.language || "Subtitles"}
+                  default
+                />
+              )}
+            </video>
           ) : playbackError ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-white">
               <p>{t("Playback failed. Open the video in YouTube or Invidious.")}</p>

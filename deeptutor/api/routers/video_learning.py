@@ -159,6 +159,39 @@ def _public_material(material: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _vtt_timestamp(value: Any) -> str:
+    seconds = max(0.0, float(value or 0.0))
+    milliseconds = int(round(seconds * 1000))
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    whole_seconds, milliseconds = divmod(remainder, 1000)
+    return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}.{milliseconds:03d}"
+
+
+def _material_vtt(material: dict[str, Any]) -> str:
+    transcript = material.get("transcript") if isinstance(material.get("transcript"), dict) else {}
+    cues = transcript.get("cues") if isinstance(transcript.get("cues"), list) else []
+    lines = ["WEBVTT", ""]
+    for index, cue in enumerate(cues, start=1):
+        if not isinstance(cue, dict):
+            continue
+        text = str(cue.get("text") or "").strip()
+        if not text:
+            continue
+        escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        start = _vtt_timestamp(cue.get("start"))
+        end = _vtt_timestamp(cue.get("end"))
+        lines.extend(
+            [
+                str(index),
+                f"{start} --> {end}",
+                escaped,
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
 def _job_path(store: TimedMediaStore, job_id: str):
     if not re.fullmatch(_SAFE_JOB_ID, job_id or ""):
         raise TimedMediaNotFound("Transcript job was not found.")
@@ -313,6 +346,20 @@ async def get_video_material(material_id: str) -> dict[str, Any]:
     try:
         assert_learning_surface("watching")
         return _public_material(get_timed_media_store().get(material_id))
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/materials/{material_id}/subtitles.vtt")
+async def get_video_subtitles(material_id: str) -> Response:
+    try:
+        assert_learning_surface("watching")
+        material = get_timed_media_store().get(material_id)
+        return Response(
+            content=_material_vtt(material),
+            media_type="text/vtt",
+            headers={"Cache-Control": "no-store"},
+        )
     except Exception as exc:
         raise _error(exc) from exc
 

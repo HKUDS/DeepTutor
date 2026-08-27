@@ -213,6 +213,10 @@ export function timedMediaStreamUrl(materialId: string, formatId: string): strin
   );
 }
 
+export function timedMediaSubtitleUrl(materialId: string): string {
+  return apiUrl(`/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/subtitles.vtt`);
+}
+
 export async function createTranscriptJob(
   materialId: string,
   language = ""

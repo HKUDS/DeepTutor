@@ -58,6 +58,48 @@ def test_invidious_authorize_url(client_and_store):
     assert "scopes=" in url
 
 
+def test_video_subtitles_are_served_as_webvtt(client_and_store):
+    client, store = client_and_store
+    material = store.create(
+        {
+            "type": "timed_media",
+            "source": {
+                "provider": "youtube",
+                "video_id": "dQw4w9WgXcQ",
+                "url": "https://youtu.be/dQw4w9WgXcQ",
+                "duration_seconds": 3662,
+            },
+            "metadata": {"title": "Test Song", "author": "Singer", "duration_seconds": 3662, "chapters": []},
+            "transcript": {
+                "language": "en",
+                "source": "invidious",
+                "cues": [
+                    {"start": 1.25, "end": 2.5, "text": "Safe <caption> & text"},
+                    {"start": 3661.05, "end": 3661.2, "text": "Final line"},
+                ],
+            },
+            "segments": [],
+            "playback": {"formats": {}, "official_url": "https://youtu.be/dQw4w9WgXcQ"},
+            "learning": {"last_position": 0, "notes": []},
+        }
+    )
+
+    resp = client.get(f"/api/v1/video-learning/materials/{material['material_id']}/subtitles.vtt")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/vtt")
+    assert resp.headers["cache-control"] == "no-store"
+    assert resp.text == (
+        "WEBVTT\n\n"
+        "1\n"
+        "00:00:01.250 --> 00:00:02.500\n"
+        "Safe &lt;caption&gt; &amp; text\n\n"
+        "2\n"
+        "01:01:01.050 --> 01:01:01.200\n"
+        "Final line\n"
+    )
+
+
 @pytest.mark.asyncio
 async def test_invidious_callback_flow(client_and_store):
     client, _ = client_and_store
