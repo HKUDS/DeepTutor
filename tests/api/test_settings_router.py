@@ -18,6 +18,11 @@ from deeptutor.services.embedding import client as embedding_client_module
 from deeptutor.services.embedding import config as embedding_config_module
 from deeptutor.services.llm import client as llm_client_module
 from deeptutor.services.llm import config as llm_config_module
+from deeptutor.services.version_check import (
+    VersionCheckResult,
+    VersionInstallation,
+    VersionUpdateState,
+)
 
 
 def test_load_ui_settings_migrates_legacy_language_to_response_language(
@@ -322,6 +327,273 @@ async def test_network_settings_roundtrip_normalizes_cors_origins(
     ]
     assert response["effective"]["cors_mode"] == "explicit"
     assert response["auth"]["cross_site_cookie_ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_version_status_reads_cache_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"version_check_enabled": True})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+
+    class FakeService:
+        def cached_result(self) -> VersionCheckResult:
+            return VersionCheckResult(
+                current_version="1.2.3",
+                latest_release=None,
+                checked_at="",
+                cached=False,
+            )
+
+    monkeypatch.setattr(settings_router, "get_version_check_service", lambda: FakeService())
+    monkeypatch.setattr(
+        settings_router,
+        "get_version_update_service",
+        lambda: SimpleNamespace(
+            installation=lambda: VersionInstallation(
+                mode="pypi",
+                update_supported=True,
+                command="pip install -U deeptutor",
+                reason="",
+            ),
+            status=lambda: VersionUpdateState(
+                state="idle",
+                message="",
+                previous_version="1.2.3",
+                installed_version="1.2.3",
+                target_version="",
+                restart_required=False,
+                lines=(),
+            ),
+            history=lambda: None,
+        ),
+    )
+
+    response = await settings_router.get_version_status()
+
+    assert response["current_version"] == "1.2.3"
+    assert response["latest_release"] is None
+    assert response["checked_at"] == ""
+    assert response["cached"] is False
+    assert response["check_enabled"] is True
+    assert response["installation"]["mode"] == "pypi"
+    assert response["update"]["state"] == "idle"
+    assert response["last_update"] is None
+
+
+@pytest.mark.asyncio
+async def test_version_status_requires_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=False),
+    )
+
+    with pytest.raises(settings_router.HTTPException) as raised:
+        await settings_router.get_version_status()
+
+    assert raised.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_version_check_maps_service_failure_to_stable_503(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from deeptutor.services.version_check import VersionCheckError
+
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"version_check_enabled": True})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+
+    class FakeService:
+        async def check(self, *, force: bool) -> VersionCheckResult:
+            assert force is True
+            raise VersionCheckError("secret transport traceback")
+
+    monkeypatch.setattr(settings_router, "get_version_check_service", lambda: FakeService())
+
+    with pytest.raises(settings_router.HTTPException) as raised:
+        await settings_router.check_version_updates(settings_router.VersionCheckPayload(force=True))
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail == "Unable to check for updates"
+
+
+@pytest.mark.asyncio
+async def test_version_check_disabled_by_setting_never_reaches_network(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"version_check_enabled": False})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+
+    async def fail_if_called(*, force: bool) -> VersionCheckResult:
+        raise AssertionError("disabled check contacted GitHub")
+
+    monkeypatch.setattr(
+        settings_router,
+        "get_version_check_service",
+        lambda: SimpleNamespace(check=fail_if_called),
+    )
+
+    with pytest.raises(settings_router.HTTPException) as raised:
+        await settings_router.check_version_updates(settings_router.VersionCheckPayload(force=True))
+
+    assert raised.value.status_code == 409
+    assert raised.value.detail == "Version checks are disabled."
+
+
+@pytest.mark.asyncio
+async def test_version_settings_roundtrip_and_clears_cached_release(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"backend_port": 8001})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+    monkeypatch.setattr(
+        settings_router,
+        "get_version_check_service",
+        lambda: SimpleNamespace(
+            cached_result=lambda: VersionCheckResult(
+                current_version="1.2.3",
+                latest_release={"tag_name": "v1.3.0"},
+                checked_at="2026-01-01T00:00:00Z",
+                cached=True,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        settings_router,
+        "get_version_update_service",
+        lambda: SimpleNamespace(
+            installation=lambda: VersionInstallation(
+                mode="source",
+                update_supported=False,
+                command="git pull",
+                reason="Source install",
+            ),
+            status=lambda: VersionUpdateState(
+                state="idle",
+                message="",
+                previous_version="1.2.3",
+                installed_version="1.2.3",
+                target_version="",
+                restart_required=False,
+                lines=(),
+            ),
+            history=lambda: None,
+        ),
+    )
+
+    response = await settings_router.update_version_settings(
+        settings_router.VersionSettingsUpdate(check_enabled=False)
+    )
+
+    assert response["check_enabled"] is False
+    assert response["latest_release"] is None
+    assert service.load_system(include_process_overrides=False)["backend_port"] == 8001
+    assert service.load_system(include_process_overrides=False)["version_check_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_version_update_uses_latest_release_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"version_check_enabled": True})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+    latest = {
+        "tag_name": "v999.0.0",
+        "html_url": "https://github.com/HKUDS/DeepTutor/releases/tag/v999.0.0",
+        "update_available": True,
+    }
+
+    async def check(*, force: bool = False) -> VersionCheckResult:
+        return VersionCheckResult(
+            current_version="1.2.3",
+            latest_release=latest,
+            checked_at="2026-01-01T00:00:00Z",
+            cached=False,
+        )
+
+    targets: list[str] = []
+
+    def start_update(*, target_version: str) -> VersionUpdateState:
+        targets.append(target_version)
+        return VersionUpdateState(
+            state="running",
+            message="",
+            previous_version="1.2.3",
+            installed_version="1.2.3",
+            target_version="999.0.0",
+            restart_required=False,
+            lines=(),
+        )
+
+    monkeypatch.setattr(
+        settings_router,
+        "get_version_check_service",
+        lambda: SimpleNamespace(check=check),
+    )
+    monkeypatch.setattr(
+        settings_router,
+        "get_version_update_service",
+        lambda: SimpleNamespace(
+            installation=lambda: VersionInstallation(
+                mode="pypi",
+                update_supported=True,
+                command="pip install -U deeptutor",
+                reason="",
+            ),
+            status=lambda: VersionUpdateState(
+                state="running",
+                message="",
+                previous_version="1.2.3",
+                installed_version="1.2.3",
+                target_version="999.0.0",
+                restart_required=False,
+                lines=(),
+            ),
+            history=lambda: None,
+            start_update=start_update,
+        ),
+    )
+
+    response = await settings_router.start_version_update()
+
+    assert targets == ["v999.0.0"]
+    assert response["update"]["state"] == "running"
 
 
 @pytest.mark.asyncio

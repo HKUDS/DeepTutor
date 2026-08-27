@@ -21,6 +21,9 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     "cors_origin": "",
     "cors_origins": [],
     "disable_ssl_verify": False,
+    # Explicit version checks are user-triggered and cached; deployments can
+    # turn the feature off entirely for offline or audited environments.
+    "version_check_enabled": True,
     "chat_attachment_dir": "",
     # Enable the restricted-subprocess code-execution sandbox (the `exec` /
     # `code_execution` tools the office skills — docx/pdf/pptx/xlsx — run on).
@@ -590,6 +593,7 @@ class RuntimeSettingsService:
             "DISABLE_SSL_VERIFY": _bool_env(system["disable_ssl_verify"]),
             "CHAT_ATTACHMENT_DIR": system["chat_attachment_dir"],
             "DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS": _bool_env(system["sandbox_allow_subprocess"]),
+            "DEEPTUTOR_VERSION_CHECK_ENABLED": _bool_env(system["version_check_enabled"]),
             "AUTH_ENABLED": _bool_env(auth["enabled"]),
             "AUTH_USERNAME": auth["username"],
             "AUTH_PASSWORD_HASH": auth["password_hash"],
@@ -709,6 +713,8 @@ class RuntimeSettingsService:
             payload["chat_attachment_dir"] = value
         if value := self._process_env_value("DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS"):
             payload["sandbox_allow_subprocess"] = value
+        if value := self._process_env_value("DEEPTUTOR_VERSION_CHECK_ENABLED"):
+            payload["version_check_enabled"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_FILE_MB"):
             payload["chat_attachment_max_file_mb"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_TOTAL_MB"):
@@ -1044,6 +1050,10 @@ class RuntimeSettingsService:
             "cors_origin": _string(settings.get("cors_origin")),
             "cors_origins": _coerce_origins(settings.get("cors_origins")),
             "disable_ssl_verify": _coerce_bool(settings.get("disable_ssl_verify"), False),
+            "version_check_enabled": _coerce_bool(
+                settings.get("version_check_enabled"),
+                True,
+            ),
             "chat_attachment_dir": _string(settings.get("chat_attachment_dir")),
             "sandbox_allow_subprocess": _coerce_bool(
                 settings.get("sandbox_allow_subprocess"), True

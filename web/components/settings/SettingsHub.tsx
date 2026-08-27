@@ -14,6 +14,7 @@ import {
   type ServiceReadiness,
 } from "@/components/settings/SettingsContext";
 import SettingsStatusPanel from "@/components/settings/SettingsStatusPanel";
+import VersionUpdatesPanel from "@/components/settings/VersionUpdatesPanel";
 import {
   SETTINGS_CATEGORIES,
   type Lang,
@@ -137,6 +138,8 @@ export default function SettingsHub() {
       </header>
 
       <SettingsStatusPanel />
+
+      {catalogEditable === true && <VersionUpdatesPanel />}
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {SETTINGS_CATEGORIES.map((category) => (
