@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, RefreshCcw, X, ScrollText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { bookApi } from "@/lib/book-api";
+import type { GenerationSummary } from "@/lib/book-types";
 
 export interface BookHealthBannerProps {
   bookId: string | null;
   refreshKey?: number;
+  expectedRevision?: number;
+  onRevisionChange?: (revision: number) => void;
   onRecompile?: (pageId: string) => void;
   /** Retrieval failed while this book was planned — it was written from the
    *  proposal alone, with none of the selected sources behind it. */
@@ -32,12 +35,15 @@ interface LogHealth {
 export default function BookHealthBanner({
   bookId,
   refreshKey,
+  expectedRevision,
+  onRevisionChange,
   onRecompile,
   explorationFailed = false,
 }: BookHealthBannerProps) {
   const { t } = useTranslation();
   const [kbDrift, setKbDrift] = useState<KbDrift | null>(null);
   const [logHealth, setLogHealth] = useState<LogHealth | null>(null);
+  const [generation, setGeneration] = useState<GenerationSummary | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [acknowledgeError, setAcknowledgeError] = useState<string | null>(null);
@@ -48,6 +54,7 @@ export default function BookHealthBanner({
     if (!bookId) {
       setKbDrift(null);
       setLogHealth(null);
+      setGeneration(null);
       return;
     }
     // `refreshKey` is the book's `updated_at`, undefined until the book has
@@ -61,6 +68,7 @@ export default function BookHealthBanner({
         if (cancelled) return;
         setKbDrift(data.kb_drift);
         setLogHealth(data.log_health);
+        setGeneration(data.generation);
       } catch {
         // ignore – health is non-critical
       }
@@ -85,8 +93,22 @@ export default function BookHealthBanner({
     .slice(0, 3);
   const blockFailures = logHealth?.block_failures || 0;
   const hasLogIssues = blockFailures >= 3 || repeated.length > 0;
+  const sourceQuality = generation?.source_quality;
+  const hasSourceIssues =
+    !!sourceQuality &&
+    (sourceQuality.status !== "ready" || sourceQuality.warnings.length > 0);
+  const hasGenerationIssues =
+    (generation?.retryable_pages || 0) > 0 ||
+    Object.keys(generation?.failure_categories || {}).length > 0;
 
-  if (!hasDrift && !hasLogIssues && !explorationFailed) return null;
+  if (
+    !hasDrift &&
+    !hasLogIssues &&
+    !explorationFailed &&
+    !hasSourceIssues &&
+    !hasGenerationIssues
+  )
+    return null;
 
   // Convert technical signatures into a short human label.
   const humanizeSignature = (sig: string): string => {
@@ -100,7 +122,12 @@ export default function BookHealthBanner({
     setBusy(true);
     setAcknowledgeError(null);
     try {
-      await bookApi.refreshFingerprints(bookId, force);
+      const result = await bookApi.refreshFingerprints(
+        bookId,
+        force,
+        expectedRevision,
+      );
+      onRevisionChange?.(result.book_revision);
       setKbDrift({ has_drift: false });
       setCanForce(false);
     } catch (err) {
@@ -131,7 +158,36 @@ export default function BookHealthBanner({
               </span>
             </div>
           )}
-          {hasDrift && (
+          {hasSourceIssues && (
+            <div>
+              <strong>
+                {t("Some selected sources were not fully covered.")}
+              </strong>{" "}
+              <span className="opacity-90">
+                {sourceQuality?.missing_kbs.length
+                  ? t("Missing: {{sources}}.", {
+                      sources: sourceQuality.missing_kbs.join(", "),
+                    })
+                  : null}{" "}
+                {sourceQuality?.warnings.join(" ")}
+              </span>
+            </div>
+          )}
+          {hasGenerationIssues && (
+            <div className="text-xs">
+              <strong>
+                {t("{{count}} chapters can be retried.", {
+                  count: generation?.retryable_pages || 0,
+                })}
+              </strong>{" "}
+              <span className="opacity-90">
+                {Object.entries(generation?.failure_categories || {})
+                  .map(([category, count]) => `${category}: ${count}`)
+                  .join(" · ")}
+              </span>
+            </div>
+          )}
+          {hasDrift && onRecompile && (
             <div>
               <strong>
                 {t(
@@ -239,7 +295,7 @@ export default function BookHealthBanner({
               {busy ? "…" : t("Mark as seen")}
             </button>
           )}
-          {hasDrift && canForce && (
+          {hasDrift && canForce && onRecompile && (
             <button
               onClick={() => acknowledge(true)}
               disabled={busy}

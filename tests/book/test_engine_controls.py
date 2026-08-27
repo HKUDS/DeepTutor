@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from deeptutor.book.engine import BookEngine
-from deeptutor.book.models import Block, BlockStatus, BlockType, Page, PageStatus
+from deeptutor.book.models import (
+    Block,
+    BlockStatus,
+    BlockType,
+    Book,
+    BookStatus,
+    Page,
+    PageStatus,
+)
 
 
 def test_force_compile_reset_preserves_user_notes() -> None:
@@ -93,3 +101,47 @@ def test_mark_page_error_survives_save_failure() -> None:
     engine._mark_page_error(page, RuntimeError("boom"), prefix="x")
 
     assert page.status == PageStatus.ERROR
+
+
+class _GenerationStorage:
+    def __init__(self, book: Book, pages: list[Page]) -> None:
+        self.book = book
+        self.pages = pages
+
+    def load_book(self, book_id: str) -> Book | None:
+        return self.book
+
+    def list_pages(self, book_id: str) -> list[Page]:
+        return self.pages
+
+
+def test_generation_summary_classifies_retryable_failures() -> None:
+    book = Book(id="bk", status=BookStatus.PAUSED, metadata={"pause_reason": "quota"})
+    pages = [
+        Page(id="ready", status=PageStatus.READY),
+        Page(id="pending", status=PageStatus.PENDING),
+        Page(
+            id="failed",
+            status=PageStatus.ERROR,
+            error="429 rate limit",
+            blocks=[
+                Block(
+                    type=BlockType.TEXT,
+                    status=BlockStatus.ERROR,
+                    error="provider timeout",
+                )
+            ],
+        ),
+    ]
+    engine = BookEngine.__new__(BookEngine)
+    engine.storage = _GenerationStorage(book, pages)
+
+    summary = engine.generation_summary("bk")
+
+    assert summary["pages"]["ready"] == 1
+    assert summary["pages"]["pending"] == 1
+    assert summary["pages"]["error"] == 1
+    assert summary["retryable_pages"] == 2
+    assert summary["failed_blocks"] == 1
+    assert summary["can_resume"] is True
+    assert summary["failure_categories"] == {"rate_limit": 1, "provider": 1}

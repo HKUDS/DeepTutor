@@ -354,3 +354,146 @@ def test_bocha_surfaces_an_error_carried_inside_a_200(monkeypatch) -> None:
 
     with pytest.raises(Exception, match="quota exhausted"):
         BochaProvider(api_key="k").search("q")
+
+
+# --------------------------------------------------------------------------
+# Serply: one key, three Google verticals (web / news / scholar). It is a GET
+# API, so the cap lands in `params`, and the news feed ignores `num` server-side.
+# --------------------------------------------------------------------------
+
+_SERPLY_BODIES: dict[str, dict[str, Any]] = {
+    "search": {
+        "results": [
+            {
+                "title": "Attention Is All You Need - arXiv",
+                "link": "https://arxiv.org/abs/1706.03762",
+                "description": "The dominant sequence transduction models...",
+                "metadata": {"display_url": "arxiv.org"},
+            }
+        ],
+        "related_searches": [{"query": "transformer paper"}],
+    },
+    "news": {
+        "feed": {
+            "entries": [
+                {
+                    "title": f"Story {i}",
+                    "link": f"https://news.example/{i}",
+                    "summary": "<a href='x'>Genuine</a> attention &amp; chatbots",
+                    "published": "Mon, 25 Aug 2026 09:00:00 GMT",
+                    "source": "Example Times",
+                }
+                for i in range(10)
+            ]
+        }
+    },
+    "scholar": {
+        "articles": [
+            {
+                "id": "W2626778328",
+                "title": "Attention Is All You Need",
+                "link": "https://doi.org/10.65215/2q58a426",
+                "description": "We propose a new simple network architecture...",
+                "author": {"names": "A Vaswani, N Shazeer - 2017"},
+                "extras": {"citations": {"count": 120000}},
+                "doc": {"link": "https://example.org/attention.pdf", "type": "PDF"},
+            }
+        ]
+    },
+}
+
+
+@pytest.fixture
+def serply_calls(monkeypatch):
+    """Capture Serply GETs and answer each with the fixture body for its mode."""
+    captured: list[dict[str, Any]] = []
+
+    def _get(url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append({"method": "GET", "url": url, **kwargs})
+        mode = url.rsplit("/", 2)[-2]
+        return _FakeResponse(_SERPLY_BODIES[mode])
+
+    class _FakeRequests:
+        get = staticmethod(_get)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.serply.requests", _FakeRequests)
+    return captured
+
+
+def test_serply_carries_max_results_proxy_and_base_url_root(serply_calls) -> None:
+    from deeptutor.services.search.providers.serply import SerplyProvider
+
+    provider = SerplyProvider(api_key="k", proxy=PROXY)
+    provider.search("attention & focus", max_results=3, base_url="https://gateway.example/v1/")
+
+    call = serply_calls[-1]
+    assert call["url"] == ("https://gateway.example/v1/search/q=attention+%26+focus&num=3")
+    assert "params" not in call
+    assert call["headers"]["X-Api-Key"] == "k"
+    assert call["proxies"] == {"http": PROXY, "https": PROXY}
+
+
+def test_serply_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import list_providers
+    from deeptutor.services.search.providers.serply import SerplyProvider
+
+    spec = SEARCH_PROVIDERS["serply"]
+    assert "serply" in list_providers()
+    assert SerplyProvider.display_name == spec.label
+    assert SerplyProvider.requires_api_key is True
+    assert SerplyProvider.supports_answer is False
+    # Paid provider: never quietly turn a billed key into DuckDuckGo.
+    assert spec.soft_fallback is False
+
+
+def test_serply_web_rows_map_onto_search_results(serply_calls) -> None:
+    from deeptutor.services.search.providers.serply import SerplyProvider
+
+    response = SerplyProvider(api_key="k").search("attention is all you need")
+
+    assert response.provider == "serply"
+    assert response.answer == ""
+    (row,) = response.search_results
+    assert row.url == "https://arxiv.org/abs/1706.03762"
+    assert row.source == "arxiv.org"
+    assert response.citations[0].reference == "[1]"
+    assert response.metadata["relatedSearches"] == [{"query": "transformer paper"}]
+
+
+def test_serply_news_trims_client_side_and_strips_html(serply_calls) -> None:
+    from deeptutor.services.search.providers.serply import SerplyProvider
+
+    response = SerplyProvider(api_key="k").search("chatbots", mode="news", max_results=4)
+
+    assert "/news/q=chatbots&num=4" in serply_calls[-1]["url"]
+    assert len(response.search_results) == 4
+    assert response.search_results[0].snippet == "Genuine attention & chatbots"
+    assert response.search_results[0].source == "Example Times"
+    assert response.search_results[0].date.startswith("Mon, 25 Aug 2026")
+
+
+def test_serply_scholar_rows_render_through_the_academic_template(serply_calls) -> None:
+    from deeptutor.services.search.consolidation import AnswerConsolidator
+    from deeptutor.services.search.providers.serply import SerplyProvider
+
+    response = SerplyProvider(api_key="k").search("attention", mode="scholar")
+
+    assert response.provider == "serply_scholar"
+    (row,) = response.search_results
+    assert row.attributes == {
+        "publicationInfo": "A Vaswani, N Shazeer - 2017",
+        "citedBy": 120000,
+        "pdfUrl": "https://example.org/attention.pdf",
+        "paperId": "W2626778328",
+    }
+    rendered = AnswerConsolidator().consolidate(response).answer
+    assert "Cited by: 120000" in rendered
+    assert "[PDF](https://example.org/attention.pdf)" in rendered
+
+
+def test_serply_rejects_an_unknown_mode() -> None:
+    from deeptutor.services.search.providers.serply import SerplyProvider
+
+    with pytest.raises(ValueError, match="mode"):
+        SerplyProvider(api_key="k").search("q", mode="images")

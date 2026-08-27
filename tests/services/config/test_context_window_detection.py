@@ -99,6 +99,28 @@ def test_extract_context_window_reads_novita_context_size_key() -> None:
     )
 
 
+def test_extract_context_window_reads_llamacpp_n_ctx_meta() -> None:
+    """llama.cpp exposes the effective window as ``meta.n_ctx`` for loaded models."""
+    payload = {
+        "data": [
+            {
+                "id": "Qwen3.8-27B:Q6_K_XL",
+                "status": {
+                    "value": "loaded",
+                    "args": ["--alias", "Qwen3.8-27B:Q6_K_XL", "--ctx-size", "400000"],
+                },
+                "preset": "ctx-size = 400000\n",
+                "meta": {"n_ctx": 200_192, "n_ctx_train": 262_144},
+            },
+        ]
+    }
+
+    assert (
+        detection_module._extract_context_window_from_payload(payload, "Qwen3.8-27B:Q6_K_XL")
+        == 200_192
+    )
+
+
 def test_models_endpoint_probe_honors_disable_ssl_verify(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

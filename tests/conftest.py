@@ -89,6 +89,46 @@ def _guard_legacy_multi_user_migration(monkeypatch):
     yield
 
 
+@pytest.fixture
+def mu_isolated_root(tmp_path, monkeypatch) -> Path:
+    """Redirect multi-user state for cross-package API regression tests."""
+    from deeptutor.multi_user import grants, identity, paths
+    from deeptutor.services import auth as auth_service
+
+    project_root = tmp_path
+    admin_root = (project_root / "data").resolve()
+    users_root = admin_root / "users"
+    system_root = admin_root / "system"
+
+    monkeypatch.setattr(paths, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(paths, "USERS_ROOT", users_root)
+    monkeypatch.setattr(paths, "SYSTEM_ROOT", system_root)
+    monkeypatch.setattr(paths, "ADMIN_WORKSPACE_ROOT", admin_root)
+    monkeypatch.setattr(paths, "LEGACY_MULTI_USER_ROOT", project_root / "multi-user")
+    monkeypatch.setattr(paths, "_path_services", {})
+
+    monkeypatch.setattr(identity, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(identity, "SYSTEM_ROOT", system_root)
+    monkeypatch.setattr(identity, "AUTH_DIR", system_root / "auth")
+    monkeypatch.setattr(identity, "USERS_FILE", system_root / "auth" / "users.json")
+    monkeypatch.setattr(identity, "SECRET_FILE", system_root / "auth" / "auth_secret")
+    monkeypatch.setattr(
+        identity,
+        "LEGACY_USERS_FILE",
+        project_root / "data" / "user" / "auth_users.json",
+    )
+    monkeypatch.setattr(
+        identity,
+        "LEGACY_SECRET_FILE",
+        project_root / "data" / "user" / "auth_secret",
+    )
+    monkeypatch.setattr(grants, "GRANTS_DIR", system_root / "grants")
+    monkeypatch.setattr(auth_service, "AUTH_USERNAME", "")
+    monkeypatch.setattr(auth_service, "AUTH_PASSWORD_HASH", "")
+    admin_root.mkdir(parents=True, exist_ok=True)
+    return tmp_path
+
+
 @pytest.fixture(autouse=True)
 def _isolate_codebuddy_login(monkeypatch):
     """Hide the developer's real CodeBuddy session from every test.

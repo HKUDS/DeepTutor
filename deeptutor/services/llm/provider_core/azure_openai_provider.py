@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 import uuid
 
 from openai import AsyncOpenAI
@@ -19,6 +21,49 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     parse_response_output,
 )
 
+_ENDPOINT_SUFFIXES = (
+    "/chat/completions",
+    "/completions",
+    "/responses",
+    "/embeddings",
+)
+_DEPLOYMENT_SEGMENT = re.compile(r"/deployments/[^/]+")
+
+
+def normalize_azure_base_url(api_base: str) -> str:
+    """Reduce any Azure OpenAI endpoint spelling to the ``/openai/v1`` surface.
+
+    The portal hands out classic endpoints such as
+    ``https://res.openai.azure.com/openai/deployments/<name>/chat/completions``
+    (often with ``?api-version=``). Appending ``/openai/v1`` to those verbatim
+    yields an unreachable path, so chat answered ``404 Resource not found``
+    while the settings probe — which builds classic URLs — kept passing.
+    """
+    raw = (api_base or "").strip()
+    if not raw:
+        return raw
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", raw):
+        raw = f"https://{raw}"
+
+    parsed = urlsplit(raw)
+    path = parsed.path.rstrip("/")
+
+    stripped = True
+    while stripped:
+        stripped = False
+        for suffix in _ENDPOINT_SUFFIXES:
+            if path.endswith(suffix):
+                path = path[: -len(suffix)].rstrip("/")
+                stripped = True
+
+    path = _DEPLOYMENT_SEGMENT.sub("", path).rstrip("/")
+    for surface in ("/openai/v1", "/openai"):
+        if path.endswith(surface):
+            path = path[: -len(surface)].rstrip("/")
+            break
+
+    return urlunsplit((parsed.scheme, parsed.netloc, f"{path}/openai/v1/", "", ""))
+
 
 class AzureOpenAIProvider(LLMProvider):
     """Azure OpenAI provider using the Responses API."""
@@ -29,6 +74,7 @@ class AzureOpenAIProvider(LLMProvider):
         api_base: str = "",
         default_model: str = "gpt-5.2-chat",
         extra_headers: dict[str, str] | None = None,
+        api_version: str | None = None,
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
@@ -39,19 +85,27 @@ class AzureOpenAIProvider(LLMProvider):
         if not api_base:
             raise ValueError("Azure OpenAI api_base is required")
 
-        base_url = api_base.rstrip("/")
-        if not base_url.endswith("/openai/v1"):
-            base_url = f"{base_url}/openai/v1"
-        base_url = f"{base_url.rstrip('/')}/"
+        base_url = normalize_azure_base_url(api_base)
 
-        headers = {"x-session-affinity": uuid.uuid4().hex}
+        # Azure authenticates API keys through ``api-key``; the SDK only sends
+        # ``Authorization: Bearer``, which the service reserves for Entra tokens.
+        headers = {"x-session-affinity": uuid.uuid4().hex, "api-key": api_key}
         if extra_headers:
             headers.update(extra_headers)
+
+        # The ``/openai/v1`` surface supersedes ``?api-version=``, so a classic
+        # dated version configured for the probe's URL would be rejected here.
+        # Only ``preview`` is forwarded, since Azure still gates preview-only
+        # Responses features behind it.
+        default_query = (
+            {"api-version": "preview"} if (api_version or "").strip().lower() == "preview" else None
+        )
 
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             default_headers=headers,
+            default_query=default_query,
             max_retries=0,
             **openai_client_kwargs(),
         )

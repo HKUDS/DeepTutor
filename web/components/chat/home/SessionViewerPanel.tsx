@@ -34,6 +34,7 @@ import {
   ExternalLink,
   FileUp,
   Globe,
+  GraduationCap,
   Loader2,
   MessageSquarePlus,
   Paperclip,
@@ -56,6 +57,11 @@ import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
 import type { MessageAttachment } from "@/context/UnifiedChatContext";
 import type { StreamEvent } from "@/lib/unified-ws";
+import {
+  normalizeSelectedText,
+  selectionTutorKey,
+  type SelectionTutorContext,
+} from "@/lib/selection-tutor";
 
 const PdfPreview = dynamic(
   () => import("@/components/chat/preview/previewers/PdfPreview"),
@@ -136,6 +142,12 @@ type ViewerTab =
       context: QuizFollowupTabContext;
     }
   | {
+      kind: "selection-tutor";
+      id: string;
+      label: string;
+      context: QuizFollowupTabContext;
+    }
+  | {
       kind: "geogebra";
       id: string;
       label: string;
@@ -154,6 +166,11 @@ export interface SessionViewerPanelHandle {
   openWebTab(url: string): void;
   /** Opens (or focuses) the follow-up chat tab for a quiz question. */
   openQuizFollowupTab(context: QuizFollowupTabContext): void;
+  /** Opens an independent Little Tutor thread grounded in selected chat text. */
+  openSelectionTutorTab(
+    selection: SelectionTutorContext,
+    language: string,
+  ): void;
   /** Opens (or focuses) an interactive GeoGebra applet tab. */
   openGeogebraTab(payload: GeogebraTabPayload): void;
   /** Opens (first time) or live-updates a connected subagent's run tab. */
@@ -184,6 +201,10 @@ function webTabIdFor(url: string): string {
 
 function quizFollowupTabIdFor(questionKey: string): string {
   return `quiz-followup:${questionKey}`;
+}
+
+function selectionTutorTabIdFor(questionKey: string): string {
+  return `selection-tutor:${questionKey}`;
 }
 
 function geogebraTabIdFor(payloadId: string): string {
@@ -375,6 +396,65 @@ function SessionViewerPanelInner(
     [onAutoOpen],
   );
 
+  const openSelectionTutorTab = useCallback(
+    (selection: SelectionTutorContext, language: string) => {
+      const selectedText = normalizeSelectedText(selection.selectedText);
+      if (!selectedText) return;
+      const questionKey = selectionTutorKey(
+        selectedText,
+        sessionId,
+        selection.sourceMessageId,
+      );
+      const id = selectionTutorTabIdFor(questionKey);
+      const context: QuizFollowupTabContext = {
+        questionKey,
+        question: {
+          question_id: questionKey,
+          question: selectedText,
+          question_type: "concept",
+          correct_answer: "",
+          explanation: "",
+        },
+        userAnswer: "",
+        isCorrect: null,
+        answerImages: [],
+        aiJudgment: "",
+        parentQuizSessionId: null,
+        notebookEntryId: null,
+        followupSessionId: null,
+        language,
+        tabLabel: t("Little Tutor"),
+        tutorSelection: {
+          selectedText,
+          parentSessionId: sessionId,
+          sourceMessageId: selection.sourceMessageId,
+          sourceMessageText: selection.sourceMessageText,
+          sourceMessageRole: selection.sourceMessageRole,
+        },
+      };
+
+      setTabs((prev) => {
+        const existingIdx = prev.findIndex((tab) => tab.id === id);
+        const tab: ViewerTab = {
+          kind: "selection-tutor",
+          id,
+          label: t("Little Tutor"),
+          context,
+        };
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = tab;
+          setActiveTabId(id);
+          return next;
+        }
+        setActiveTabId(id);
+        return [...prev, tab];
+      });
+      onAutoOpen();
+    },
+    [onAutoOpen, sessionId, t],
+  );
+
   const openGeogebraTab = useCallback(
     (payload: GeogebraTabPayload) => {
       setTabs((prev) => {
@@ -448,6 +528,7 @@ function SessionViewerPanelInner(
       openFileTab,
       openWebTab,
       openQuizFollowupTab,
+      openSelectionTutorTab,
       openGeogebraTab,
       openSubagentTab,
       focusActivityHome,
@@ -456,6 +537,7 @@ function SessionViewerPanelInner(
       openFileTab,
       openWebTab,
       openQuizFollowupTab,
+      openSelectionTutorTab,
       openGeogebraTab,
       openSubagentTab,
       focusActivityHome,
@@ -571,6 +653,11 @@ function SessionViewerPanelInner(
             key={activeTab.context.questionKey}
             context={activeTab.context}
           />
+        ) : activeTab?.kind === "selection-tutor" ? (
+          <QuizFollowupTabBody
+            key={activeTab.context.questionKey}
+            context={activeTab.context}
+          />
         ) : activeTab?.kind === "geogebra" ? (
           <GeogebraTabBody key={activeTab.id} script={activeTab.script} />
         ) : activeTab?.kind === "subagent" ? (
@@ -650,11 +737,13 @@ function TabBar({
           const Icon =
             tab.kind === "web"
               ? Globe
-              : tab.kind === "quiz-followup"
-                ? MessageSquarePlus
-                : tab.kind === "geogebra"
-                  ? Compass
-                  : Paperclip;
+              : tab.kind === "selection-tutor"
+                ? GraduationCap
+                : tab.kind === "quiz-followup"
+                  ? MessageSquarePlus
+                  : tab.kind === "geogebra"
+                    ? Compass
+                    : Paperclip;
           return (
             <div
               key={tab.id}

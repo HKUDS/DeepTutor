@@ -529,6 +529,16 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
             )
             return schemas
 
+        async def execute(self, name: str, **kwargs):
+            if name == "ask_user":
+                self.executed.append({"name": name, "kwargs": kwargs})
+                return ToolResult(
+                    content="Asked the learner.",
+                    success=True,
+                    pause_for_user={"questions": kwargs["questions"]},
+                )
+            return await super().execute(name, **kwargs)
+
     explanation = (
         "### Binary addition\n\n"
         "| Carry | Sum |\n"
@@ -552,6 +562,19 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
                 ),
             ],
             [_llm_chunk(content="Choose the answer when you are ready.")],
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "ask-1",
+                            "name": "ask_user",
+                            "arguments": json.dumps(
+                                {"questions": [{"id": "q1", "prompt": "Which sum?"}]}
+                            ),
+                        }
+                    ]
+                )
+            ],
         ]
     )
     pipeline = AgenticChatPipeline(language="en")
@@ -559,7 +582,7 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
     monkeypatch.setattr(
         pipeline,
         "_compose_enabled_tools",
-        lambda _context: ["mastery_quiz"],
+        lambda _context: ["mastery_quiz", "ask_user"],
     )
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
 
@@ -569,7 +592,7 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
             session_id="s1",
             user_message="Teach me binary addition",
             enabled_tools=["mastery_quiz"],
-            metadata={"mastery_mode": True, "mastery_path_id": "path-1"},
+            metadata={"mastery_mode": True, "mastery_path_id": ""},
         ),
     )
 
@@ -582,7 +605,171 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
     ]
     assert markers[0]["call_role"] == "narration"
     assert markers[0]["answer_visible"] is True
-    assert "".join(_contents(events)) == explanation + "Choose the answer when you are ready."
+    joined_content = "".join(_contents(events))
+    assert joined_content.startswith(explanation)
+    assert "Choose the answer when you are ready." not in joined_content
+    assert "Which sum?" in joined_content
+    assert client.call_count == 3
+    assert [row["name"] for row in registry.executed] == ["mastery_quiz", "ask_user"]
+    redirect = client.calls[2]["messages"][-1]
+    assert redirect["role"] == "user"
+    assert "mastery_quiz" in redirect["content"]
+    assert "ask_user" in redirect["content"]
+    result = _result(events)
+    assert result.metadata["completed"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "plain_quiz",
+    [
+        (
+            "Which expression builds a dictionary?\n\n"
+            "- A. `{w: words.count(w) for w in words}`\n"
+            "- B. `[w: words.count(w) for w in words]`\n"
+            "- C. `{w for w in words}`\n"
+            "- D. `(w: words.count(w) for w in words)`"
+        ),
+        (
+            "请选择正确的字典推导式：\n\n"
+            "- A. `{w: words.count(w) for w in words}`\n"
+            "- B. `[w: words.count(w) for w in words]`\n"
+            "- C. `{w for w in words}`\n"
+            "- D. `(w: words.count(w) for w in words)`"
+        ),
+    ],
+)
+async def test_mastery_plain_choice_finish_gets_one_protocol_redirect(
+    plain_quiz: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prose A-D quiz cannot bypass the registered-card assessment flow."""
+
+    class _MasteryCardRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            if name == "ask_user":
+                self.executed.append({"name": name, "kwargs": kwargs})
+                return ToolResult(
+                    content="Asked the learner.",
+                    success=True,
+                    pause_for_user={"questions": kwargs["questions"]},
+                )
+            return await super().execute(name, **kwargs)
+
+    registry = _MasteryCardRegistry()
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(content=plain_quiz)],
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "ask-1",
+                            "name": "ask_user",
+                            "arguments": json.dumps(
+                                {"questions": [{"id": "q1", "prompt": "Which expression?"}]}
+                            ),
+                        }
+                    ]
+                )
+            ],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Continue",
+            enabled_tools=["ask_user"],
+            metadata={"mastery_mode": True, "mastery_path_id": ""},
+        ),
+    )
+
+    assert client.call_count == 2
+    assert [row["name"] for row in registry.executed] == ["ask_user"]
+    redirect = client.calls[1]["messages"][-1]
+    assert redirect["role"] == "user"
+    assert "plain text" in redirect["content"]
+    assert "mastery_quiz" in redirect["content"]
+    assert "ask_user" in redirect["content"]
+    assert _result(events).metadata["completed"] is False
+    assert plain_quiz not in "".join(_contents(events))
+
+
+@pytest.mark.asyncio
+async def test_repeated_plain_choice_failure_is_never_published_as_a_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One retry is bounded, but its second invalid quiz still cannot finish."""
+    plain_quiz = "Which value is correct?\n\nA. one\nB. two\nC. three\nD. four"
+    client = _ScriptedChatClient(
+        [[_llm_chunk(content=plain_quiz)], [_llm_chunk(content=plain_quiz)]]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Continue",
+            enabled_tools=["ask_user"],
+            metadata={"mastery_mode": True, "mastery_path_id": ""},
+        ),
+    )
+
+    assert client.call_count == 2
+    assert plain_quiz not in "".join(_contents(events))
+    rejected_calls = [
+        event.metadata
+        for event in events
+        if event.type == StreamEventType.PROGRESS and event.metadata.get("finish_rejected") is True
+    ]
+    assert len(rejected_calls) == 2
+    assert all(metadata["call_state"] == "complete" for metadata in rejected_calls)
+    assert all(metadata["call_role"] == "narration" for metadata in rejected_calls)
+    result = _result(events)
+    assert result.metadata["completed"] is False
+    assert result.metadata["response"] == ""
+
+
+@pytest.mark.asyncio
+async def test_mastery_labelled_teaching_examples_stay_direct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A labelled teaching list is not itself an assessment prompt."""
+    registry = _Registry()
+    teaching = (
+        "Here are container spellings to remember:\n\n"
+        "- A. lists use brackets.\n"
+        "- B. dictionaries answer key lookups with braces and a colon.\n"
+        "- C. sets use braces without a colon."
+    )
+    client = _ScriptedChatClient([[_llm_chunk(content=teaching)]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Teach me Python containers",
+            metadata={"mastery_mode": True, "mastery_path_id": ""},
+        ),
+    )
+
+    assert client.call_count == 1
+    assert "".join(_contents(events)) == teaching
+    assert _result(events).metadata["completed"] is True
 
 
 @pytest.mark.asyncio
@@ -1140,6 +1327,131 @@ async def test_ask_user_available_every_round(monkeypatch: pytest.MonkeyPatch) -
 
     loop_tools = {t["function"]["name"] for t in client.calls[0]["tools"]}
     assert loop_tools == {"web_search", "ask_user"}
+
+
+@pytest.mark.asyncio
+async def test_initial_tool_choice_only_forces_first_round_and_hides_preamble(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            return ToolResult(
+                content="Asked the user.",
+                success=True,
+                pause_for_user={"questions": [{"id": "q1", "prompt": "What matters most?"}]},
+            )
+
+    registry = _PausingRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content="Let me ask one thing first."),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "ask_user",
+                            "arguments": json.dumps(
+                                {"questions": [{"id": "q1", "prompt": "What matters most?"}]}
+                            ),
+                        }
+                    ]
+                ),
+            ],
+            [_llm_chunk(content="Completed with the added context.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en", initial_tool_choice="ask_user")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    async def _waiter():
+        return {"text": "Accuracy"}
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Help with this task",
+            metadata={"wait_for_user_reply": _waiter},
+        ),
+    )
+
+    assert client.calls[0]["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "ask_user"},
+    }
+    assert client.calls[1]["tool_choice"] == "auto"
+    assert _contents(events) == ["Completed with the added context."]
+
+
+@pytest.mark.asyncio
+async def test_ask_questions_uses_a_card_when_provider_rejects_tool_schemas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            return ToolResult(
+                content="Asked the user.",
+                success=True,
+                pause_for_user={"questions": kwargs["questions"]},
+            )
+
+    class _SchemaRejectingClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+            class _Completions:
+                def __init__(self, parent: _SchemaRejectingClient) -> None:
+                    self.parent = parent
+
+                async def create(self, **kwargs):
+                    self.parent.calls.append(kwargs)
+                    if len(self.parent.calls) == 1:
+                        raise ValueError("unsupported parameter: tools")
+                    content = (
+                        "Which outcome matters most?"
+                        if len(self.parent.calls) == 2
+                        else "Completed after clarification."
+                    )
+                    return _async_llm_stream([_llm_chunk(content=content)])
+
+            self.chat = SimpleNamespace(completions=_Completions(self))
+
+    registry = _PausingRegistry()
+    client = _SchemaRejectingClient()
+    pipeline = AgenticChatPipeline(language="en", initial_tool_choice="ask_user")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    async def _waiter():
+        return {"text": "Accuracy"}
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Help with this task",
+            metadata={"wait_for_user_reply": _waiter},
+        ),
+    )
+
+    assert "tools" in client.calls[0]
+    assert "tools" not in client.calls[1]
+    assert [item["name"] for item in registry.executed] == ["ask_user"]
+    assert registry.executed[0]["kwargs"]["questions"] == [
+        {
+            "id": "clarification",
+            "prompt": "Which outcome matters most?",
+            "allow_free_text": True,
+        }
+    ]
+    assert _contents(events) == ["Completed after clarification."]
+    assert any(event.metadata.get("tool_schema_fallback") for event in events)
 
 
 @pytest.mark.asyncio

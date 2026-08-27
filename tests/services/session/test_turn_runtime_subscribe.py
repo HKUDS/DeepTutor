@@ -8,6 +8,7 @@ import pytest
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.learning.storage import LearningStore
+from deeptutor.services.courses import CourseService
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import (
     TurnRuntimeManager,
@@ -173,6 +174,136 @@ async def test_start_turn_clears_orphan_running_turn_before_create(
     persisted = await store.get_turn(stale["id"])
     assert persisted is not None
     assert persisted["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_start_turn_preserves_selection_tutor_runtime_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Selected text must survive public config validation into turn execution."""
+
+    store = SQLiteSessionStore(tmp_path / "selection-tutor.db")
+    runtime = TurnRuntimeManager(store)
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    parent = await store.ensure_session(None)
+    source_text = "系统会把代码和静态数据加载进内存。"
+    source_message_id = await store.add_message(
+        parent["id"],
+        "assistant",
+        source_text,
+    )
+    selected_context = {
+        "selected_text": "把代码和静态数据加载进内存",
+        "parent_session_id": parent["id"],
+        "source_message_id": source_message_id,
+        "source_message_text": "untrusted client fallback",
+    }
+    _, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": None,
+            "capability": "chat",
+            "content": "内存不会爆炸吗？",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "zh",
+            "config": {"selection_tutor_context": selected_context},
+        }
+    )
+
+    execution = runtime._executions[turn["id"]]
+    resolved = execution.payload["config"]["selection_tutor_context"]
+    assert resolved["selected_text"] == selected_context["selected_text"]
+    assert resolved["source_message_text"] == source_text
+
+
+@pytest.mark.asyncio
+async def test_start_turn_persists_requested_course(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "course-chat.db")
+    runtime = TurnRuntimeManager(store)
+    course_service = CourseService(tmp_path / "courses")
+    course = course_service.create(name="Operating Systems")
+
+    monkeypatch.setattr("deeptutor.services.courses.get_course_service", lambda: course_service)
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    session, _ = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": None,
+            "capability": "chat",
+            "content": "Explain virtual memory",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {"_course_id": course.id},
+        }
+    )
+
+    persisted = await store.get_session(session["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["course_id"] == course.id
+
+
+@pytest.mark.asyncio
+async def test_selection_tutor_inherits_parent_course(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "course-tutor.db")
+    runtime = TurnRuntimeManager(store)
+    course_service = CourseService(tmp_path / "courses")
+    course = course_service.create(name="Operating Systems")
+    parent = await store.ensure_session(None)
+    await store.update_session_preferences(parent["id"], {"course_id": course.id})
+    source_text = "Load code and static data into memory before execution."
+    source_message_id = await store.add_message(parent["id"], "assistant", source_text)
+
+    monkeypatch.setattr("deeptutor.services.courses.get_course_service", lambda: course_service)
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    child, _ = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": None,
+            "capability": "chat",
+            "content": "Will memory explode?",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {
+                "selection_tutor_context": {
+                    "selected_text": "Load code and static data into memory",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": source_message_id,
+                    "source_message_text": "forged fallback",
+                }
+            },
+        }
+    )
+
+    persisted = await store.get_session(child["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["course_id"] == course.id
+    assert persisted["preferences"]["parent_session_id"] == parent["id"]
+    assert persisted["preferences"]["session_kind"] == "selection_tutor"
 
 
 @pytest.mark.asyncio

@@ -212,4 +212,149 @@ async def query(rag: Any, question: str, mode: str | None = None) -> str:
     return result if isinstance(result, str) else str(result)
 
 
-__all__ = ["build_rag", "ensure_ready", "finalize", "insert", "query"]
+async def query_with_sources(
+    rag: Any, question: str, mode: str | None = None
+) -> tuple[str, list[dict[str, Any]]]:
+    """Return a LightRAG answer together with its structured provenance.
+
+    ``RAGAnything.aquery`` owns the answer path, including its optional VLM
+    enhancement. LightRAG exposes the records used for retrieval separately via
+    ``aquery_data``. Keeping those calls separate preserves the existing answer
+    behavior while allowing DeepTutor to surface citation metadata.
+    """
+    answer = await query(rag, question, mode)
+    return answer, await query_sources(rag, question, mode)
+
+
+async def query_sources(rag: Any, question: str, mode: str | None = None) -> list[dict[str, Any]]:
+    """Fetch and normalize the structured records used by a LightRAG query.
+
+    ``aquery_data`` was added by LightRAG after some supported RAG-Anything
+    releases. Missing or failed provenance must not turn a successful answer
+    into a failed user request, so older installations gracefully return no
+    citations.
+    """
+    await ensure_ready(rag)
+    lightrag = getattr(rag, "lightrag", None)
+    aquery_data = getattr(lightrag, "aquery_data", None)
+    if not callable(aquery_data):
+        logger.debug("Installed LightRAG has no structured query data API.")
+        return []
+
+    resolved = normalize_mode(mode) or DEFAULT_MODE
+    extra = query_kwargs_from_settings()
+    try:
+        from lightrag import QueryParam
+
+        try:
+            result = await aquery_data(question, param=QueryParam(mode=resolved, **extra))
+        except TypeError:
+            if not extra:
+                raise
+            logger.debug("LightRAG rejected extra provenance query kwargs; retrying mode-only.")
+            result = await aquery_data(question, param=QueryParam(mode=resolved))
+    except Exception as exc:
+        logger.warning("LightRAG provenance lookup failed; omitting citations: %s", exc)
+        return []
+
+    return _query_data_to_sources(result)
+
+
+def _query_data_to_sources(result: Any) -> list[dict[str, Any]]:
+    """Map LightRAG's structured retrieval result to DeepTutor citations."""
+    if not isinstance(result, dict):
+        return []
+    data = result.get("data")
+    if not isinstance(data, dict):
+        return []
+
+    reference_paths = {
+        str(record.get("reference_id")): str(record.get("file_path"))
+        for record in data.get("references", [])
+        if isinstance(record, dict) and record.get("reference_id") and record.get("file_path")
+    }
+    sources: list[dict[str, Any]] = []
+
+    def source_path(record: dict[str, Any]) -> str:
+        return str(
+            record.get("file_path") or reference_paths.get(str(record.get("reference_id")), "")
+        )
+
+    def source_title(path: str, fallback: str) -> str:
+        return Path(path).name if path else fallback
+
+    for record in data.get("chunks", []):
+        if not isinstance(record, dict):
+            continue
+        path = source_path(record)
+        content = str(record.get("content") or "")
+        chunk_id = str(record.get("chunk_id") or "")
+        if not (path or content or chunk_id):
+            continue
+        sources.append(
+            {
+                "title": source_title(path, "LightRAG chunk"),
+                "content": content[:200],
+                "source": path,
+                "page": str(record.get("page") or ""),
+                "chunk_id": chunk_id,
+                "reference_id": str(record.get("reference_id") or ""),
+            }
+        )
+
+    for record in data.get("entities", []):
+        if not isinstance(record, dict):
+            continue
+        path = source_path(record)
+        entity_id = str(record.get("entity_name") or record.get("entity_id") or "")
+        description = str(record.get("description") or "")
+        if not (path or entity_id or description):
+            continue
+        sources.append(
+            {
+                "title": entity_id or source_title(path, "LightRAG entity"),
+                "content": description[:200],
+                "source": path,
+                "page": str(record.get("page") or ""),
+                "entity_id": entity_id,
+                "entity_type": str(record.get("entity_type") or ""),
+                "source_id": str(record.get("source_id") or ""),
+                "reference_id": str(record.get("reference_id") or ""),
+            }
+        )
+
+    for record in data.get("relationships", []):
+        if not isinstance(record, dict):
+            continue
+        path = source_path(record)
+        source_id = str(record.get("src_id") or "")
+        target_id = str(record.get("tgt_id") or "")
+        relation_id = str(record.get("relation_id") or f"{source_id}->{target_id}")
+        description = str(record.get("description") or "")
+        if not (path or relation_id or description):
+            continue
+        sources.append(
+            {
+                "title": relation_id or source_title(path, "LightRAG relationship"),
+                "content": description[:200],
+                "source": path,
+                "page": str(record.get("page") or ""),
+                "relation_id": relation_id,
+                "source_entity_id": source_id,
+                "target_entity_id": target_id,
+                "source_id": str(record.get("source_id") or ""),
+                "reference_id": str(record.get("reference_id") or ""),
+            }
+        )
+
+    return sources
+
+
+__all__ = [
+    "build_rag",
+    "ensure_ready",
+    "finalize",
+    "insert",
+    "query",
+    "query_with_sources",
+]

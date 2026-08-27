@@ -85,6 +85,46 @@ test("normalizeMarkdownForDisplay removes empty details blocks", () => {
   assert.equal(normalizeMarkdownForDisplay(input), "Before\n\nAfter");
 });
 
+test("normalizeMarkdownForDisplay decodes dense non-ASCII JSON escapes", () => {
+  const input = "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d";
+  assert.equal(normalizeMarkdownForDisplay(input), "「数制转换」");
+});
+
+test("decoded unicode cannot reintroduce invisible or bidi controls", () => {
+  assert.equal(normalizeMarkdownForDisplay("\\u200b\\u4e2d\\u6587"), "中文");
+  assert.equal(normalizeMarkdownForDisplay("\\u202e\\u0061\\u0062"), "ab");
+});
+
+test("normalizeMarkdownForDisplay keeps isolated and ASCII unicode escape examples", () => {
+  const inputs = [
+    "A JSON string can encode A as \\u0041.",
+    "Three ASCII escapes: \\u0041\\u0042\\u0043.",
+  ];
+
+  for (const input of inputs) {
+    assert.equal(normalizeMarkdownForDisplay(input), input);
+  }
+});
+
+test("normalizeMarkdownForDisplay keeps unicode escapes inside code verbatim", () => {
+  const input = [
+    "Escaped text: `\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d`",
+    "",
+    "```json",
+    '"label": "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d"',
+    "```",
+  ].join("\n");
+
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay keeps unicode escapes in indented code verbatim", () => {
+  const input =
+    'Example:\n\n    "label": "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d"';
+
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
 test("normalizeMarkdownForDisplay removes raw html control placeholders", () => {
   const input =
     'Before\n\n<progress></progress>\n<input type="text" />\n<textarea> </textarea>\n\nAfter';

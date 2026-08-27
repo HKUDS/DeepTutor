@@ -23,6 +23,7 @@ import {
   useQuizFollowupController,
 } from "@/context/QuizFollowupContext";
 import { buildQuizFollowupConfig } from "@/lib/quiz-types";
+import { buildSelectionTutorConfig } from "@/lib/selection-tutor";
 import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
 import {
@@ -41,15 +42,21 @@ import type { LLMSelection } from "@/lib/unified-ws";
 
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 const HistorySessionPicker = dynamic(
   () => import("@/components/chat/HistorySessionPicker"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 const QuestionBankPicker = dynamic(
   () => import("@/components/chat/QuestionBankPicker"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 const PersonaPicker = dynamic(() => import("@/components/chat/PersonaPicker"), {
   ssr: false,
@@ -59,7 +66,9 @@ const MemoryPicker = dynamic(() => import("@/components/chat/MemoryPicker"), {
 });
 const BookReferencePicker = dynamic(
   () => import("@/components/chat/BookReferencePicker"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 
 interface KnowledgeBase {
@@ -518,18 +527,20 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
 
       const personaPayload = selectedPersona ?? undefined;
 
-      const baseConfig = buildQuizFollowupConfig(
-        context.question,
-        context.userAnswer,
-        context.isCorrect,
-        context.parentQuizSessionId,
-        {
-          userAnswerImageFilenames: context.answerImages.map(
-            (image) => image.filename,
-          ),
-          aiJudgment: context.aiJudgment,
-        },
-      );
+      const baseConfig = context.tutorSelection
+        ? buildSelectionTutorConfig(context.tutorSelection)
+        : buildQuizFollowupConfig(
+            context.question,
+            context.userAnswer,
+            context.isCorrect,
+            context.parentQuizSessionId,
+            {
+              userAnswerImageFilenames: context.answerImages.map(
+                (image) => image.filename,
+              ),
+              aiJudgment: context.aiJudgment,
+            },
+          );
 
       // Memory references ride on ``config`` — same convention as the
       // main chat sendMessage path.

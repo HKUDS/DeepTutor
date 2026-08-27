@@ -36,6 +36,7 @@ function backendLabel(kind: string, tr: (l: Lang) => string): string {
   if (kind === "claude_code") return "Claude Code";
   if (kind === "codex") return "Codex";
   if (kind === "gemini") return "Gemini CLI";
+  if (kind === "antigravity") return "Antigravity CLI";
   if (kind === "kimi") return "Kimi CLI";
   if (kind === "opencode") return "opencode";
   if (kind === "mimo") return "MiMo Code";

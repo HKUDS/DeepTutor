@@ -65,6 +65,65 @@ async def _build_basic(path_id):
     )
 
 
+# ── naming ──────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_build_names_the_path_and_a_rebuild_keeps_that_name(path_id):
+    """A rebuild replaces the map, never the identity.
+
+    Before paths had names, the display name was the first module's — so
+    rebuilding renamed the course out from under the learner, and the tutor
+    could no longer find "the quadratics path" they asked to switch back to.
+    """
+    build = MasteryBuildTool()
+    first = await build.execute(
+        _mastery_path_id=path_id,
+        path_name="一元二次方程基础",
+        modules=[{"name": "模块一：定义", "knowledge_points": [{"name": "标准形式"}]}],
+    )
+    assert json.loads(first.content)["path_name"] == "一元二次方程基础"
+
+    rebuilt = await build.execute(
+        _mastery_path_id=path_id,
+        mode="replace",
+        path_name="配方法",
+        modules=[{"name": "模块一：配方法", "knowledge_points": [{"name": "配方法解方程"}]}],
+    )
+    payload = json.loads(rebuilt.content)
+    assert payload["path_name"] == "一元二次方程基础"
+    assert payload["map"]["modules"][0]["name"] == "模块一：配方法"
+    assert LearningStore().load(path_id).name == "一元二次方程基础"
+
+
+@pytest.mark.asyncio
+async def test_build_without_a_name_still_reports_the_derived_one(path_id):
+    result = await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[{"name": "Module 1", "knowledge_points": [{"name": "Truth tables"}]}],
+    )
+    assert json.loads(result.content)["path_name"] == "Module 1"
+    assert LearningStore().load(path_id).name == ""
+
+
+@pytest.mark.asyncio
+async def test_paths_listing_shows_the_stable_name(path_id):
+    """What the tutor matches against when the learner names a path."""
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        path_name="Quadratics",
+        modules=[{"name": "Module 1", "knowledge_points": [{"name": "Standard form"}]}],
+    )
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        mode="replace",
+        modules=[{"name": "Completing the square", "knowledge_points": [{"name": "Method"}]}],
+    )
+
+    payload = json.loads((await MasteryPathsTool().execute(_mastery_path_id=path_id)).content)
+    assert [p["name"] for p in payload["paths"]] == ["Quadratics"]
+
+
 # ── build ───────────────────────────────────────────────────────────────────
 
 
@@ -353,7 +412,12 @@ async def test_explicit_non_choice_rejects_options(path_id, question_type):
     ("options", "error"),
     [
         ("A: first, B: second", "must be an array"),
-        (["A: first", "A: second", "B: third"], "labels must be unique"),
+        (["A: first", "A: second", "B: third"], "must run A, B, C"),
+        (["A: repeated answer", "B: repeated answer"], "same answer"),
+        (["A: Repeated   answer", "B: repeated answer"], "same answer"),
+        (["A: repeated\nanswer", "B: repeated answer"], "same answer"),
+        (["A: Straße", "B: STRASSE"], "same answer"),
+        (["A: first", "B: second", "C: first"], "same answer"),
         (["A: first", ""], "non-empty strings"),
     ],
 )
@@ -373,6 +437,7 @@ async def test_choice_quiz_rejects_malformed_options(path_id, options, error):
 
     assert result.success is False
     assert error in result.content
+    assert LearningStore().load(path_id).pending_question is None
 
 
 @pytest.mark.asyncio
@@ -392,6 +457,57 @@ async def test_choice_quiz_requires_options_even_when_type_is_explicit(path_id):
 
     assert result.success is False
     assert "full option bodies" in result.content
+
+
+@pytest.mark.asyncio
+async def test_choice_grade_reads_an_answer_typed_in_the_composer(path_id):
+    """The card is not the only way in: a typed answer must grade the same."""
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Which is the general form?",
+        expected_answer="C",
+        question_type="choice",
+        options=[
+            "A: 3x² - 3x = 2x + 8",
+            "B: 3x² - x - 8 = 0",
+            "C: 3x² - 5x - 8 = 0",
+            "D: 3x² - 5x + 8 = 0",
+        ],
+    )
+
+    grade = await MasteryGradeTool().execute(_mastery_path_id=path_id, answer="选C")
+    assert grade.success is True
+    assert json.loads(grade.content)["is_correct"] is True
+
+
+@pytest.mark.asyncio
+async def test_choice_grade_refuses_an_unreadable_answer_instead_of_failing_it(path_id):
+    """An answer we cannot map to one option is unreadable, not wrong."""
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Which is the general form?",
+        expected_answer="A",
+        question_type="choice",
+        options=["A: 3x² - 5x - 8 = 0", "B: 3x² - 5x + 8 = 0"],
+    )
+
+    grade = await MasteryGradeTool().execute(_mastery_path_id=path_id, answer="A or B")
+    assert grade.success is False
+    assert "NOT graded" in grade.content
+    # Nothing was recorded, so the question is still open for a real answer.
+    progress = LearningStore().load(path_id)
+    assert progress.pending_question is not None
+    assert progress.quiz_attempts == []
 
 
 @pytest.mark.asyncio
@@ -713,6 +829,59 @@ async def test_status_recovers_answered_interaction_without_exposing_answer_key(
         ).content
     )
     assert graded["is_correct"] is True
+
+
+@pytest.mark.asyncio
+async def test_grade_recovers_unreadable_choice_answer(path_id):
+    """An unreadable clarifying commit must not permanently block grading (#1004)."""
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+    quiz = json.loads(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="Compute (2e^{iπ/3})³",
+                expected_answer="A",
+                options=["A: -8", "B: -6", "C: 8", "D: -2"],
+            )
+        ).content
+    )
+    from deeptutor.learning.service import LearningService
+
+    # Simulate the pre-fix deadlock: clarifying prose already persisted.
+    LearningService().record_question_answer(
+        path_id,
+        "先告诉我三角恒等式是什么？",
+        interaction_id=quiz["question_id"],
+    )
+    stuck = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert stuck is not None
+    assert stuck.status == InteractionStatus.ANSWERED
+
+    blocked = await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        question_id=quiz["question_id"],
+        answer="先告诉我三角恒等式是什么？",
+    )
+    assert blocked.success is False
+    assert "NOT graded" in blocked.content
+
+    recovered = json.loads(
+        (
+            await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                question_id=quiz["question_id"],
+                answer="A",
+            )
+        ).content
+    )
+    assert recovered["is_correct"] is True
+    graded = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert graded is not None
+    assert graded.status == InteractionStatus.GRADED
+    assert graded.user_answer == "A"
 
 
 # ── assess: the qualitative gate ─────────────────────────────────────────────

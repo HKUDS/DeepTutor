@@ -22,8 +22,10 @@ from typing import TYPE_CHECKING, Any
 import uuid
 
 from deeptutor.capabilities.mastery.choices import (
+    canonical_labels,
     format_options,
     has_option_bodies,
+    option_label_intent,
     parse_options,
     recover_options_from_turn,
     resolve_answer,
@@ -53,6 +55,7 @@ from deeptutor.learning.policy import (
     is_mastered,
     map_summary,
     next_objective,
+    path_display_name,
 )
 
 if TYPE_CHECKING:
@@ -118,6 +121,25 @@ def _question_bank_type(question_type: str) -> str:
     return "short_answer"
 
 
+def _duplicate_option_body(options: dict[str, str]) -> str:
+    """The first option body that appears twice, ignoring case and spacing.
+
+    A model does occasionally emit the same answer under two labels, and a
+    choice card with identical options is unanswerable: the learner picks the
+    one they believe is right and is graded wrong for picking the twin. Better
+    to reject the registration and let the model write a real distractor.
+    """
+    seen: set[str] = set()
+    for body in options.values():
+        key = "".join(str(body or "").split()).casefold()
+        if not key:
+            continue
+        if key in seen:
+            return body
+        seen.add(key)
+    return ""
+
+
 def _normalize_quiz_contract(
     raw_question_type: Any,
     raw_options: Any,
@@ -154,11 +176,22 @@ def _normalize_quiz_contract(
             )
         return question_type, [], expected_answer
 
-    choice_options = parse_options(options)
-    if len(choice_options) != len(options):
+    intended_labels = option_label_intent(options)
+    if intended_labels is not None and set(intended_labels) != canonical_labels(
+        len(intended_labels)
+    ):
         raise ValueError(
-            "Choice option labels must be unique; retry mastery_quiz with one full body "
-            "for each label."
+            f"Choice option labels must run A, B, C… with one option each; got "
+            f"{intended_labels}. Retry mastery_quiz with one full body per label."
+        )
+
+    choice_options = parse_options(options)
+    duplicate = _duplicate_option_body(choice_options)
+    if duplicate:
+        raise ValueError(
+            f"Two or more choice options have the same answer ({duplicate!r}), so the "
+            "learner would be shown identical choices. Retry mastery_quiz with one "
+            "distinct body per option."
         )
     if not has_option_bodies(choice_options):
         raise ValueError(
@@ -167,7 +200,12 @@ def _normalize_quiz_contract(
             "the labels A/B/C/D. Retry mastery_quiz with the exact option "
             "descriptions you will show through ask_user."
         )
-
+    normalized_bodies = {" ".join(body.split()).casefold() for body in choice_options.values()}
+    if len(normalized_bodies) != len(choice_options):
+        raise ValueError(
+            "Choice option bodies must be unique; retry mastery_quiz with "
+            "distinct answer text for every option."
+        )
     resolved_expected = resolve_answer(expected_answer, choice_options)
     if not resolved_expected:
         raise ValueError(
@@ -242,6 +280,25 @@ async def _sync_mastery_attempt_to_question_bank(
             session_id,
             exc_info=True,
         )
+
+
+def _unreadable_choice_result(answer: str, options: dict[str, str]) -> ToolResult:
+    """Ask for a definite choice rather than recording a guess as wrong."""
+    shown = "; ".join(f"{label} = {body}" for label, body in options.items())
+    blank = not str(answer or "").strip()
+    return ToolResult(
+        content=(
+            (
+                "The learner has not answered this question yet, so there is nothing to grade. "
+                if blank
+                else f"Could not tell which option {answer!r} picks, so it was NOT graded. "
+            )
+            + f"The options are: {shown}. Ask the learner which one they choose (or "
+            "present the question again with ask_user), then call mastery_grade with "
+            "the option label. Do not treat this as a wrong answer."
+        ),
+        success=False,
+    )
 
 
 def _json_result(payload: dict[str, Any], *, meta_key: str, success: bool = True) -> ToolResult:
@@ -358,6 +415,17 @@ class MasteryStatusTool(BaseTool):
                 # The answer is learner-authored state, not the hidden answer
                 # key. Returning it lets a restart grade rather than ask twice.
                 pending_interaction["learner_answer"] = interaction.user_answer
+            else:
+                # The card is not the only way in. A learner often answers the
+                # question in the composer — that reply never reaches the
+                # interaction, so without this the tutor re-posed the same
+                # question forever and the path stalled on answer_pending.
+                pending_interaction["instruction"] = (
+                    "A question is already open. If the learner has answered it "
+                    "anywhere in this conversation — on the card or in an ordinary "
+                    "message — call mastery_grade with their answer and this "
+                    "question_id instead of posing it again."
+                )
             payload["pending_interaction"] = pending_interaction
         return _json_result(payload, meta_key="mastery_status")
 
@@ -568,8 +636,17 @@ class MasteryGradeTool(BaseTool):
         )
         if interaction is not None and interaction.status == InteractionStatus.ANSWERED:
             # The pause/resume boundary already committed the learner's exact
-            # reply. Never let a later model round paraphrase the graded input.
-            answer = interaction.user_answer
+            # reply — unless that commit was unreadable clarifying prose on a
+            # choice card (#1004), in which case a later readable answer may
+            # still recover the gate.
+            from deeptutor.learning.pending import is_readable_choice_answer
+
+            stored = str(interaction.user_answer or "")
+            question = interaction.question
+            if question.question_type != "choice" or is_readable_choice_answer(
+                stored, question.options
+            ):
+                answer = stored
         progress_before = _load_path(service, path_id)
         if progress_before is None:
             return _no_built_path_result("mastery_grade")
@@ -587,7 +664,18 @@ class MasteryGradeTool(BaseTool):
             choice_options, expected_answer = await _resolve_pending_choice(
                 pending, _resolve_turn_id(kwargs)
             )
-            answer_for_grading = resolve_choice_submission(answer, choice_options) or answer
+            answer_for_grading = resolve_choice_submission(answer, choice_options)
+            if not answer_for_grading:
+                if has_option_bodies(choice_options):
+                    # Grading is a permanent, deterministic record. An answer
+                    # we cannot map onto exactly one option is not a wrong
+                    # answer — it is an unreadable one, and marking it wrong is
+                    # how a learner who typed their choice instead of tapping
+                    # the card lost mastery for being right.
+                    return _unreadable_choice_result(answer, choice_options)
+                # Legacy question with no recoverable bodies: the raw reply is
+                # the only thing there is to compare.
+                answer_for_grading = answer
         from deeptutor.learning.service import MasteryInteractionError
 
         try:
@@ -736,10 +824,11 @@ class MasteryBuildTool(BaseTool):
                 "Create or extend the learner's mastery path. Design modules and "
                 "their knowledge points from the learner's materials (use rag / "
                 "read_source first when materials are attached) and pass them "
-                "here. Each knowledge point needs a 'type': memory (facts), "
-                "procedure (step-by-step skills), concept (ideas to understand), "
-                "or design (open-ended judgement). Use mode='replace' to start "
-                "fresh or 'append' to add to an existing path."
+                "here, with a short path_name the learner will recognise. Each "
+                "knowledge point needs a 'type': memory (facts), procedure "
+                "(step-by-step skills), concept (ideas to understand), or design "
+                "(open-ended judgement). Use mode='replace' to start fresh or "
+                "'append' to add to an existing path."
             ),
             parameters=[
                 ToolParameter(
@@ -772,6 +861,18 @@ class MasteryBuildTool(BaseTool):
                     },
                 ),
                 ToolParameter(
+                    name="path_name",
+                    type="string",
+                    description=(
+                        "What to call this path — a short course title the "
+                        "learner will recognise in their dashboard, such as "
+                        "'Quadratic equations'. Used only when the path has no "
+                        "name yet; rebuilding a named path keeps its name, and "
+                        "renaming one is the learner's own call."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
                     name="mode",
                     type="string",
                     description="'replace' (default) starts fresh; 'append' adds modules.",
@@ -799,6 +900,7 @@ class MasteryBuildTool(BaseTool):
             path_id,
             new_modules,
             append=mode == "append",
+            name=str(kwargs.get("path_name") or ""),
             event_type="path.built",
             session_id=_resolve_session_id(kwargs),
             turn_id=_resolve_turn_id(kwargs),
@@ -809,6 +911,9 @@ class MasteryBuildTool(BaseTool):
                 "status": "built",
                 "path_revision": progress.version,
                 "mode": mode,
+                # The name in effect, which is not necessarily the one passed:
+                # an already-named path keeps the name the learner sees.
+                "path_name": path_display_name(progress),
                 "modules_added": len(new_modules),
                 "knowledge_points_added": kp_count,
                 "map": map_summary(progress),
@@ -849,8 +954,9 @@ class MasteryPathsTool(BaseTool):
                 "active_path_id": active,
                 "paths": paths,
                 "instruction": (
-                    "Switch with mastery_switch(path_id=...) — it takes effect "
-                    "from your next round, so call mastery_status afterwards."
+                    "Switch with mastery_switch(path_id=...); every later call "
+                    "in the turn — including ones issued alongside it — then "
+                    "acts on the new path. Call mastery_status after switching."
                 ),
             },
             meta_key="mastery_paths",
@@ -909,7 +1015,8 @@ class MasterySwitchTool(BaseTool):
                 "active_path_id": active,
                 "instruction": (
                     "This conversation now follows that path, on this turn and "
-                    "later ones. Call mastery_status to see where it stands."
+                    "later ones — anything else you called in this round acted "
+                    "on it too. Call mastery_status to see where it stands."
                 ),
             },
             meta_key="mastery_switch",

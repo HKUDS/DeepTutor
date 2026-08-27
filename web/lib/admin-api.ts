@@ -8,6 +8,11 @@ export interface UserRecord {
   disabled?: boolean;
   /** Avatar marker: "", "icon:<name>:<color>", or "img:<version>". */
   avatar?: string;
+  book_permission?: {
+    create: boolean;
+    default: "none" | "read";
+    books: Record<string, "none" | "read" | "edit">;
+  };
 }
 
 export async function listUsers(): Promise<UserRecord[]> {

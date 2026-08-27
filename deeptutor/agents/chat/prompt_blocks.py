@@ -76,6 +76,8 @@ class ChatPromptAssembler:
         # Capability playbooks sit high so they frame the whole turn when active;
         # empty blocks are omitted by ``system_prompt``'s join.
         blocks.extend(capability_blocks or [])
+        if context.sidebar_context:
+            blocks.append(PromptBlock("sidebar_tutor_context", context.sidebar_context))
         if context.persona_context:
             blocks.append(PromptBlock("persona_style", context.persona_context))
         partner_policy = self._partner_turn_policy(context)

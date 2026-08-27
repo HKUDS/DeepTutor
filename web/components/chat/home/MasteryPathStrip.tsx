@@ -56,7 +56,7 @@ export default function MasteryPathStrip({ pathId }: { pathId: string }) {
     <div className="mx-auto mb-2 flex w-full max-w-[760px] items-center gap-2.5 px-1 text-xs text-[var(--muted-foreground)]">
       <GraduationCap className="h-3.5 w-3.5 shrink-0" />
       <span className="shrink-0 font-medium text-[var(--foreground)]">
-        {map.modules[0]?.name || tr("精通之路", "Mastery Path")}
+        {result.name || tr("精通之路", "Mastery Path")}
       </span>
       <span className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-[var(--accent)]">
         <span

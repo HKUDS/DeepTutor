@@ -55,6 +55,10 @@ PAUSE_LAST_TOOLS = frozenset({"ask_user"})
 
 
 KwargAugmenter = Callable[[str, dict[str, Any], UnifiedContext], dict[str, Any]]
+# Tool names whose whole job is to change what the *rest* of the round operates
+# on (a mastery path, a workspace, …). Supplied per turn by the caller, since
+# which tools rebind is a capability's knowledge, not the dispatcher's.
+RebindingTools = frozenset[str]
 RetrieveMetaFactory = Callable[[dict[str, Any], str, dict[str, Any]], dict[str, Any] | None]
 UnknownErrorMessageFactory = Callable[[str], str]
 
@@ -92,6 +96,7 @@ async def dispatch_tool_calls(
     iteration_index: int,
     registry: ToolLookup | None = None,
     kwarg_augmenter: KwargAugmenter | None = None,
+    rebinding_tools: RebindingTools = frozenset(),
     retrieve_meta_factory: RetrieveMetaFactory | None = None,
     tool_call_label: str = "Tool call",
     retrieve_label: str = "Retrieve",
@@ -201,27 +206,60 @@ async def dispatch_tool_calls(
             retrieve_label=retrieve_label,
         )
 
-    # Pausing tools go last, and re-bind first: their whole job is to show the
-    # user the state of the round, which does not exist until the round has
-    # run. Everything else still runs concurrently, and a pause costs no
-    # parallelism worth keeping — the turn is about to stop and wait anyway.
-    deferred = [index for index, (_, name, _) in enumerate(prepared) if name in PAUSE_LAST_TOOLS]
-    if deferred:
-        immediate = [index for index in range(len(prepared)) if index not in set(deferred)]
-        by_index = dict(
-            zip(immediate, await asyncio.gather(*[_run_one(i) for i in immediate]), strict=True)
-        )
-        for index in deferred:
-            if kwarg_augmenter is None or duplicate_of.get(index) is not None:
+    def _rebind(indices: list[int]) -> None:
+        """Re-bind server-owned args from the model's originals.
+
+        As idempotent as the first bind, so a call can be re-bound at any
+        stage boundary; a duplicate short-circuits before it executes and has
+        nothing to re-bind.
+        """
+        if kwarg_augmenter is None:
+            return
+        for index in indices:
+            if duplicate_of.get(index) is not None:
                 continue
             call_id, name, _stale = prepared[index]
             prepared[index] = (call_id, name, kwarg_augmenter(name, raw_args[index], context))
+
+    # Three ordered stages around one concurrent middle. Every call in a round
+    # has its args bound before any of them runs, so a tool that *changes what
+    # the round operates on* has to run before the calls it affects — and those
+    # calls have to be re-bound afterwards, or they would still be pointed at
+    # the state the round started with.
+    #
+    #   1. rebinding tools (serial: two of them in one round are a handoff,
+    #      not a race), then everything else re-binds against the new target;
+    #   2. everything else, concurrently;
+    #   3. pausing tools, re-bound once more — their whole job is to show the
+    #      user the state of the round, which does not exist until it has run.
+    #      A pause costs no parallelism worth keeping: the turn is about to
+    #      stop and wait anyway.
+    rebinding = [index for index, (_, name, _) in enumerate(prepared) if name in rebinding_tools]
+    pausing = [
+        index
+        for index, (_, name, _) in enumerate(prepared)
+        if name in PAUSE_LAST_TOOLS and index not in set(rebinding)
+    ]
+    ordinary = [
+        index
+        for index in range(len(prepared))
+        if index not in set(rebinding) and index not in set(pausing)
+    ]
+    by_index: dict[int, dict[str, Any]] = {}
+    if rebinding:
+        for index in rebinding:
+            by_index[index] = await _run_one(index)
+        _rebind(ordinary)
+    if ordinary:
         by_index.update(
-            zip(deferred, await asyncio.gather(*[_run_one(i) for i in deferred]), strict=True)
+            zip(ordinary, await asyncio.gather(*[_run_one(i) for i in ordinary]), strict=True)
         )
-        results = [by_index[index] for index in range(len(prepared))]
-    else:
-        results = await asyncio.gather(*[_run_one(i) for i in range(len(prepared))])
+    if pausing:
+        _rebind(pausing)
+        by_index.update(
+            zip(pausing, await asyncio.gather(*[_run_one(i) for i in pausing]), strict=True)
+        )
+    results = [by_index[index] for index in range(len(prepared))]
 
     return await _collect_outcome(
         prepared=prepared,

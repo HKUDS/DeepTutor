@@ -12,6 +12,8 @@ from deeptutor.book.agents.source_explorer import (
     MAX_RETRIEVAL_CALLS,
     RETRIEVAL_CONCURRENCY,
 )
+from deeptutor.book.engine import _source_quality_summary
+from deeptutor.book.models import BookInputs, ExplorationReport, SourceChunk
 
 
 def _pairs(kbs: list[str], queries: list[str]) -> list[tuple[str, str]]:
@@ -49,3 +51,20 @@ def test_small_workloads_are_untouched() -> None:
 def test_concurrency_gate_is_sane() -> None:
     assert 1 <= RETRIEVAL_CONCURRENCY <= 16
     assert RETRIEVAL_CONCURRENCY < MAX_RETRIEVAL_CALLS
+
+
+def test_source_quality_reports_missing_selected_knowledge_base() -> None:
+    inputs = BookInputs(user_intent="topic", knowledge_bases=["covered", "missing"])
+    exploration = ExplorationReport(
+        chunks=[
+            SourceChunk(source="kb", kb_name="covered", text="evidence"),
+        ],
+        coverage={"kb": 1},
+    )
+
+    quality = _source_quality_summary(inputs, exploration)
+
+    assert quality["status"] == "warning"
+    assert quality["covered_kbs"] == ["covered"]
+    assert quality["missing_kbs"] == ["missing"]
+    assert "missing" in quality["warnings"][0]

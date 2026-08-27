@@ -17,6 +17,7 @@ import re
 from typing import TYPE_CHECKING, TypedDict
 
 from deeptutor.services.config import resolve_llm_runtime_config
+from deeptutor.services.keypool import primary_api_key
 from deeptutor.services.provider_registry import canonical_provider_name, find_by_name
 
 from .exceptions import LLMConfigError
@@ -29,7 +30,7 @@ class LLMConfigUpdate(TypedDict, total=False):
     """Fields allowed when cloning an LLMConfig instance."""
 
     model: str
-    api_key: str
+    api_key: str | list[str]
     base_url: str | None
     effective_url: str | None
     binding: str
@@ -59,9 +60,12 @@ def _is_openai_compatible_binding(binding: str | None) -> bool:
     return spec.backend in {"openai_compat", "azure_openai"}
 
 
-def _set_openai_env_vars(api_key: str | None, base_url: str | None, *, source: str) -> None:
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
+def _set_openai_env_vars(
+    api_key: str | list[str] | None, base_url: str | None, *, source: str
+) -> None:
+    primary_key = primary_api_key(api_key)
+    if primary_key:
+        os.environ["OPENAI_API_KEY"] = primary_key
         logger.debug("Set OPENAI_API_KEY env var (%s)", source)
 
     if base_url:
@@ -97,7 +101,7 @@ class LLMConfig:
     """LLM configuration dataclass."""
 
     model: str
-    api_key: str
+    api_key: str | list[str]
     base_url: str | None = None
     effective_url: str | None = None
     binding: str = "openai"
@@ -122,8 +126,12 @@ class LLMConfig:
         return replace(self, **(update or {}))
 
     def get_api_key(self) -> str:
-        """Return the API key string for provider consumers."""
-        return self.api_key
+        """Return the API key string for provider consumers.
+
+        The empty string, not ``None``, because callers here test it for
+        truthiness and pass it straight into a provider argument.
+        """
+        return primary_api_key(self.api_key) or ""
 
 
 _LLM_CONFIG_CACHE: LLMConfig | None = None

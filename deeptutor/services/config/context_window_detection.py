@@ -10,6 +10,7 @@ from typing import Any
 
 import aiohttp
 
+from deeptutor.services.keypool import primary_api_key
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.context_window import (
     coerce_positive_int,
@@ -31,6 +32,7 @@ _CONTEXT_WINDOW_KEYS = (
     "max_prompt_tokens",
     "max_model_len",
     "max_sequence_length",
+    "n_ctx",
 )
 
 _KNOWN_CONTEXT_WINDOWS: tuple[tuple[str, int], ...] = (
@@ -151,7 +153,7 @@ async def _detect_from_models_endpoint(
         return None
 
     url = f"{base_url.rstrip('/')}/models"
-    headers = build_auth_headers(llm_config.api_key, llm_config.binding)
+    headers = build_auth_headers(primary_api_key(llm_config.api_key), llm_config.binding)
     headers.pop("Content-Type", None)
 
     timeout = aiohttp.ClientTimeout(total=12)

@@ -9,7 +9,7 @@ from typing import Any
 
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
-from deeptutor.partners.channels.base import BaseChannel
+from deeptutor.partners.channels.base import BaseChannel, constructing_for
 from deeptutor.partners.config.schema import ChannelsConfig
 
 
@@ -72,7 +72,8 @@ class ChannelManager:
             if not enabled:
                 continue
             try:
-                channel = cls(section, self.bus)
+                with constructing_for(self._partner_id):
+                    channel = cls(section, self.bus)
                 channel.partner_id = self._partner_id
                 channel.transcription_api_key = self._groq_api_key
                 # Effective delivery flags are per-channel only. Historical

@@ -32,7 +32,13 @@ class StreamBus:
     """Fan-out async event bus for a single chat turn."""
 
     def __init__(self, *, max_history: int | None = None) -> None:
-        self._subscribers: list[asyncio.Queue[StreamEvent | None]] = []
+        # Keep the owning loop with each queue. Production normally uses one
+        # uvicorn loop, but desktop/TestClient hosts can serve sockets on
+        # different loops; writing an asyncio.Queue from another loop does not
+        # reliably wake its waiter.
+        self._subscribers: list[
+            tuple[asyncio.Queue[StreamEvent | None], asyncio.AbstractEventLoop]
+        ] = []
         self._closed = False
         self._history: list[StreamEvent] = []
         self._input_listeners: list[asyncio.Queue[str]] = []
@@ -48,13 +54,18 @@ class StreamBus:
         self._history.append(event)
         if self._max_history is not None and len(self._history) > self._max_history:
             del self._history[: len(self._history) - self._max_history]
-        for q in self._subscribers:
-            await q.put(event)
+        current_loop = asyncio.get_running_loop()
+        for q, loop in list(self._subscribers):
+            if loop is current_loop:
+                await q.put(event)
+            elif not loop.is_closed():
+                loop.call_soon_threadsafe(q.put_nowait, event)
 
     async def subscribe(self) -> AsyncIterator[StreamEvent]:
         """Yield events until the bus is closed."""
         q: asyncio.Queue[StreamEvent | None] = asyncio.Queue()
-        self._subscribers.append(q)
+        subscriber = (q, asyncio.get_running_loop())
+        self._subscribers.append(subscriber)
         # Snapshot the replay range in the same synchronous step as the
         # queue registration: events emitted while we replay are delivered
         # via the queue only. Iterating the live list instead would yield
@@ -71,7 +82,8 @@ class StreamBus:
                     break
                 yield event
         finally:
-            self._subscribers.remove(q)
+            if subscriber in self._subscribers:
+                self._subscribers.remove(subscriber)
 
     def mark_closed(self) -> None:
         """Synchronous ``close()``.
@@ -81,8 +93,14 @@ class StreamBus:
         CLI paths) shut a bus down without an event loop.
         """
         self._closed = True
-        for q in self._subscribers:
-            q.put_nowait(None)
+        for q, loop in list(self._subscribers):
+            try:
+                if loop.is_running():
+                    loop.call_soon_threadsafe(q.put_nowait, None)
+                elif not loop.is_closed():
+                    q.put_nowait(None)
+            except RuntimeError:
+                continue
 
     async def close(self) -> None:
         """Signal all subscribers that the stream is finished."""

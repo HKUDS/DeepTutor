@@ -3,6 +3,7 @@
 from deeptutor.partners.config.paths import (
     get_data_dir,
     get_media_dir,
+    get_partner_channel_dir,
     get_partner_dir,
     get_partner_media_dir,
     get_partner_sessions_dir,
@@ -16,6 +17,7 @@ __all__ = [
     "ChannelsConfig",
     "get_data_dir",
     "get_media_dir",
+    "get_partner_channel_dir",
     "get_partner_dir",
     "get_partner_media_dir",
     "get_partner_sessions_dir",

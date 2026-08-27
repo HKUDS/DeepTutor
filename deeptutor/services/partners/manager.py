@@ -20,11 +20,14 @@ from typing import Any, Awaitable, Callable
 
 import yaml
 
+from deeptutor.multi_user.models import CurrentUser
 from deeptutor.partners.config.paths import (
     get_data_dir,
     get_partner_dir,
     get_partner_sessions_dir,
 )
+from deeptutor.services.partners.interaction import forget_partner_stores
+from deeptutor.services.partners.links import forget_partner_links
 from deeptutor.services.partners.runtime import PartnerRunner
 from deeptutor.services.partners.sessions import PartnerSessionStore
 from deeptutor.services.partners.workspace import (
@@ -166,12 +169,21 @@ def _mcp_tools_setting(data: dict[str, Any]) -> list[str] | None:
     return None if MCP_TOOLS_UNRESTRICTED in names else names
 
 
+# Distinguishes "use the authenticated caller" (the default) from an explicit
+# ``actor=None``, which selects the partner's shared, un-attributed store.
+_CURRENT_ACTOR: Any = object()
+
+
 @dataclass
 class PartnerConfig:
     """Configuration for a single partner."""
 
     name: str
     description: str = ""
+    # Account id of the human who created the partner. Empty for partners that
+    # predate ownership (and for anything an admin created before this field
+    # existed) — those stay admin-managed, which is what they always were.
+    owner_id: str = ""
     channels: dict[str, Any] = field(default_factory=dict)
     llm_selection: dict[str, str] | None = None
     # Fallback model: when a turn fails outright on the primary selection
@@ -297,6 +309,7 @@ class PartnerInstance:
             "partner_id": self.partner_id,
             "name": self.config.name,
             "description": self.config.description,
+            "owner_id": self.config.owner_id,
             "channels": channels,
             "llm_selection": self.config.llm_selection,
             "backup_llm_selection": self.config.backup_llm_selection,
@@ -320,8 +333,8 @@ class PartnerManager:
 
     def __init__(self) -> None:
         self._partners: dict[str, PartnerInstance] = {}
-        self._stores: dict[str, PartnerSessionStore] = {}
         self._migrated_legacy = False
+        self._rehomed_channel_state = False
 
     # ── Path helpers ──────────────────────────────────────────────
 
@@ -332,12 +345,35 @@ class PartnerManager:
     def _partner_dir(self, partner_id: str) -> Path:
         return self._partners_dir / partner_id
 
-    def session_store(self, partner_id: str) -> PartnerSessionStore:
-        store = self._stores.get(partner_id)
-        if store is None:
-            store = PartnerSessionStore(get_partner_sessions_dir(partner_id))
-            self._stores[partner_id] = store
-        return store
+    def owner_id(self, partner_id: str) -> str:
+        """The account that created *partner_id*, or ``""`` when admin-managed.
+
+        Reads the live instance when the partner is running and falls back to
+        disk, so ownership is answerable whether or not it has been started.
+        """
+        instance = self._partners.get(partner_id)
+        if instance is not None:
+            return instance.config.owner_id
+        config = self.load_config(partner_id)
+        return config.owner_id if config else ""
+
+    def session_store(
+        self, partner_id: str, *, actor: CurrentUser | None = _CURRENT_ACTOR
+    ) -> PartnerSessionStore:
+        """The session store holding *actor*'s conversations with the partner.
+
+        Defaults to the authenticated caller, so every history / session
+        endpoint reads back exactly what that person's turns wrote. Pass
+        ``actor=None`` for the partner's shared thread pool (admin turns and
+        un-linked channel traffic).
+        """
+        from deeptutor.services.partners.interaction import session_store_for
+
+        if actor is _CURRENT_ACTOR:
+            from deeptutor.multi_user.context import get_current_user_or_none
+
+            actor = get_current_user_or_none()
+        return session_store_for(partner_id, actor)
 
     def _ensure_partner_dirs(self, partner_id: str) -> None:
         get_partner_dir(partner_id)
@@ -354,6 +390,7 @@ class PartnerManager:
     _MERGEABLE_FIELDS = (
         "name",
         "description",
+        "owner_id",
         "channels",
         "llm_selection",
         "backup_llm_selection",
@@ -377,6 +414,7 @@ class PartnerManager:
             return PartnerConfig(
                 name=data.get("name", partner_id),
                 description=data.get("description", ""),
+                owner_id=str(data.get("owner_id", "") or ""),
                 channels=strip_legacy_global_delivery(data.get("channels", {}) or {}),
                 llm_selection=data.get("llm_selection"),
                 backup_llm_selection=data.get("backup_llm_selection"),
@@ -411,6 +449,7 @@ class PartnerManager:
         data: dict[str, Any] = {
             "name": config.name,
             "description": config.description,
+            "owner_id": config.owner_id,
             "channels": strip_legacy_global_delivery(config.channels),
             "language": config.language,
             "emoji": config.emoji,
@@ -486,8 +525,7 @@ class PartnerManager:
         from deeptutor.partners.bus.queue import MessageBus
 
         bus = MessageBus()
-        store = self.session_store(partner_id)
-        runner = PartnerRunner(partner_id, config, bus, store, save_config=self.save_config)
+        runner = PartnerRunner(partner_id, config, bus, save_config=self.save_config)
 
         try:
             channel_manager = self._build_channel_manager(config, bus, partner_id=partner_id)
@@ -614,6 +652,7 @@ class PartnerManager:
         from deeptutor.partners.channels.manager import ChannelManager
         from deeptutor.partners.config.schema import ChannelsConfig
 
+        self._rehome_shared_channel_state()
         channels_config = ChannelsConfig(**config.channels)
         manager = ChannelManager(channels_config, bus, partner_id=partner_id)
         if not manager.channels:
@@ -722,6 +761,7 @@ class PartnerManager:
                 "partner_id": pid,
                 "name": cfg.name if cfg else pid,
                 "description": cfg.description if cfg else "",
+                "owner_id": cfg.owner_id if cfg else "",
                 "channels": list(cfg.channels.keys()) if cfg else [],
                 "llm_selection": cfg.llm_selection if cfg else None,
                 "backup_llm_selection": cfg.backup_llm_selection if cfg else None,
@@ -957,7 +997,8 @@ class PartnerManager:
 
     async def destroy_partner(self, partner_id: str) -> bool:
         await self.stop_partner(partner_id, preserve_auto_start=False)
-        self._stores.pop(partner_id, None)
+        forget_partner_stores(partner_id)
+        forget_partner_links(partner_id)
         try:
             from deeptutor.services.cron import get_cron_service
 
@@ -970,6 +1011,29 @@ class PartnerManager:
         shutil.rmtree(partner_dir)
         logger.info("Partner '%s' destroyed (data deleted)", partner_id)
         return True
+
+    def _rehome_shared_channel_state(self) -> None:
+        """One-shot: give each channel's formerly shared state to its owner.
+
+        Runs before any channel is constructed — a channel resolves its state
+        dir while starting, so the copy has to already be there.
+        """
+        if self._rehomed_channel_state:
+            return
+        self._rehomed_channel_state = True
+        try:
+            from deeptutor.services.partners.channel_state_migration import (
+                rehome_shared_channel_state,
+            )
+
+            candidates: dict[str, dict[str, Any]] = {}
+            for pid in self._discover_partner_ids():
+                cfg = self.load_config(pid)
+                if cfg and cfg.channels:
+                    candidates[pid] = cfg.channels
+            rehome_shared_channel_state(candidates)
+        except Exception:
+            logger.exception("Failed to rehome legacy channel state")
 
     # ── Legacy TutorBot migration ─────────────────────────────────
 

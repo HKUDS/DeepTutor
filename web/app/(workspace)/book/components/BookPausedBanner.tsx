@@ -7,7 +7,7 @@ import type { Book } from "@/lib/book-types";
 
 export interface BookPausedBannerProps {
   book: Book | null;
-  onResume: () => void;
+  onResume?: () => void;
   resuming?: boolean;
 }
 
@@ -47,19 +47,21 @@ export default function BookPausedBanner({
             </code>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onResume}
-          disabled={resuming}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-current px-2.5 py-1 text-xs font-medium hover:bg-white/40 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/10"
-        >
-          {resuming ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Play className="h-3.5 w-3.5" />
-          )}
-          {resuming ? t("Resuming…") : t("Resume generation")}
-        </button>
+        {onResume && (
+          <button
+            type="button"
+            onClick={onResume}
+            disabled={resuming}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-current px-2.5 py-1 text-xs font-medium hover:bg-white/40 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/10"
+          >
+            {resuming ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            {resuming ? t("Resuming…") : t("Resume generation")}
+          </button>
+        )}
       </div>
     </div>
   );

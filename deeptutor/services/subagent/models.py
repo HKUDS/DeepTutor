@@ -34,7 +34,11 @@ from pathlib import Path
 import re
 from typing import Any
 
-from deeptutor.services.subagent.process import probe_version, resolve_cli_command
+from deeptutor.services.subagent.process import (
+    not_found_detail,
+    probe_version,
+    resolve_cli_command,
+)
 from deeptutor.services.subagent.registry import get_backend
 
 logger = logging.getLogger(__name__)
@@ -58,6 +62,9 @@ _GEMINI_MODELS = (
     ("flash", "Gemini Flash"),
     ("flash-lite", "Gemini Flash-Lite"),
 )
+
+# Antigravity CLI: ``--effort`` accepts exactly these three.
+_ANTIGRAVITY_EFFORTS = ("low", "medium", "high")
 
 # opencode family: ``--variant`` — provider-relative reasoning effort.
 _OPENCODE_EFFORTS = ("minimal", "high", "max")
@@ -209,6 +216,8 @@ async def _probe(kind: str) -> tuple[bool, str]:
 
 
 async def _gemini_options() -> BackendOptions:
+    from deeptutor.services.subagent.gemini import GEMINI_NOT_FOUND_DETAIL
+
     ok, version = await _probe("gemini")
     return BackendOptions(
         kind="gemini",
@@ -218,7 +227,28 @@ async def _gemini_options() -> BackendOptions:
         models=[ModelOption(slug=slug, display_name=name) for slug, name in _GEMINI_MODELS],
         efforts=[],  # no reasoning-effort flag
         allow_custom_model=True,
-        detail="" if ok else (version or "gemini CLI not found on PATH"),
+        detail="" if ok else not_found_detail(version, GEMINI_NOT_FOUND_DETAIL),
+    )
+
+
+async def _antigravity_options() -> BackendOptions:
+    from deeptutor.services.subagent.antigravity import (
+        _NOT_FOUND_DETAIL as _ANTIGRAVITY_NOT_FOUND,
+    )
+
+    ok, version = await _probe("antigravity")
+    return BackendOptions(
+        kind="antigravity",
+        display_name="Antigravity CLI",
+        available=ok,
+        version=version if ok else "",
+        # `agy models` prints the live list, and the slugs move with the Gemini
+        # releases behind them; naming a stale set here would be worse than
+        # letting the operator paste the one they ran.
+        models=[],
+        efforts=list(_ANTIGRAVITY_EFFORTS),
+        allow_custom_model=True,
+        detail="" if ok else not_found_detail(version, _ANTIGRAVITY_NOT_FOUND),
     )
 
 
@@ -299,6 +329,7 @@ _PROVIDERS: dict[str, Callable[..., Awaitable[BackendOptions]]] = {
     "claude_code": _claude_options,
     "codex": _codex_options,
     "gemini": _gemini_options,
+    "antigravity": _antigravity_options,
     "kimi": _kimi_options,
     "opencode": _opencode_options,
     "mimo": _mimo_options,

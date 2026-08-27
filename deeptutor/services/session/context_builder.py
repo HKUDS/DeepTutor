@@ -1,6 +1,4 @@
-"""
-Build bounded conversation history for unified chat sessions.
-"""
+"""Build budgeted conversation history for unified chat sessions."""
 
 from __future__ import annotations
 
@@ -11,13 +9,30 @@ from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.services.llm.config import LLMConfig
-from deeptutor.services.llm.context_window import resolve_effective_context_window
+from deeptutor.services.llm.context_window import (
+    coerce_positive_int,
+    resolve_effective_context_window,
+)
 
+from .ask_user_trace import (
+    extract_ask_user_clarification_blocks,
+    extract_ask_user_clarifications,
+)
 from .protocol import SessionStoreProtocol
 
 #: When the summarizer's output lands within this fraction of its hard token
 #: cap, assume the provider cut it mid-sentence and trim the partial tail.
 TRUNCATION_GUARD_RATIO = 0.95
+
+# Ratio-only budgets become impractical for models with very large context
+# windows: a 1M-token window would otherwise reserve hundreds of thousands of
+# tokens for chat history and ask the summarizer for a six-figure response.
+# Keep the rolling-summary strategy, but bound its history plan, summary
+# output, and raw-rebuild eligibility threshold. The summary ceiling is also
+# constrained by the active generation limit when that setting is lower.
+MAX_HISTORY_PLAN_TOKENS = 131_072
+MAX_SUMMARY_OUTPUT_TOKENS = 16_384
+MAX_RAW_REBUILD_TOKENS = 131_072
 
 
 def count_tokens(text: str) -> int:
@@ -45,6 +60,29 @@ def trim_incomplete_tail(text: str) -> str:
     return text.rstrip()
 
 
+def expand_message_context(message: dict[str, Any]) -> list[dict[str, str]]:
+    """Expand one stored row into its true assistant/user chronology."""
+    role = str(message.get("role", "user"))
+    content = str(message.get("content", "") or "")
+    blocks = extract_ask_user_clarification_blocks(message)
+    if role != "assistant" or not blocks:
+        return [{"role": role, "content": content}] if content.strip() else []
+
+    expanded: list[dict[str, str]] = []
+    cursor = 0
+    for raw_offset, clarification in blocks:
+        offset = min(len(content), max(cursor, raw_offset))
+        prefix = content[cursor:offset]
+        if prefix.strip():
+            expanded.append({"role": "assistant", "content": prefix})
+        expanded.append({"role": "user", "content": clarification})
+        cursor = offset
+    suffix = content[cursor:]
+    if suffix.strip():
+        expanded.append({"role": "assistant", "content": suffix})
+    return expanded
+
+
 def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     role_map = {
@@ -53,11 +91,10 @@ def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
         "system": "System",
     }
     for item in messages:
-        content = str(item.get("content", "") or "").strip()
-        if not content:
-            continue
-        role = role_map.get(str(item.get("role", "user")), "User")
-        lines.append(f"{role}: {content}")
+        for expanded in expand_message_context(item):
+            content = expanded["content"].strip()
+            role = role_map.get(expanded["role"], "User")
+            lines.append(f"{role}: {content}")
     return "\n\n".join(lines)
 
 
@@ -102,7 +139,11 @@ class _ContextSummaryAgent(BaseAgent):
 
 
 class ContextBuilder:
-    """Construct a bounded conversation history plus optional summary trace."""
+    """Construct history against a bounded plan plus optional summary trace.
+
+    The budget is a planning target, not destructive truncation: the newest
+    non-empty message is retained even when that single message exceeds it.
+    """
 
     def __init__(
         self,
@@ -123,33 +164,39 @@ class ContextBuilder:
 
     def _history_budget(self, llm_config: LLMConfig) -> int:
         effective_context_window = self._effective_context_window(llm_config)
-        return max(256, int(effective_context_window * self.history_budget_ratio))
+        ratio_budget = max(256, int(effective_context_window * self.history_budget_ratio))
+        return min(ratio_budget, MAX_HISTORY_PLAN_TOKENS)
 
-    def _summary_budget(self, budget: int) -> int:
-        return max(96, int(budget * self.summary_target_ratio))
+    def _summary_budget(self, budget: int, llm_config: LLMConfig | None = None) -> int:
+        ratio_budget = max(96, int(budget * self.summary_target_ratio))
+        output_cap = MAX_SUMMARY_OUTPUT_TOKENS
+        if llm_config is not None:
+            generation_limit = coerce_positive_int(getattr(llm_config, "max_tokens", None))
+            if generation_limit is not None:
+                output_cap = min(output_cap, generation_limit)
+        return min(ratio_budget, output_cap)
 
     def _recent_budget(self, budget: int) -> int:
-        return max(128, budget - self._summary_budget(budget))
+        # Keep the original ratio-based split independent of the summarizer's
+        # output cap. Otherwise lowering that cap expands the verbatim tail and
+        # leaves almost no headroom before the next compaction.
+        return max(128, int(budget * (1 - self.summary_target_ratio)))
 
     def _rebuild_source_budget(self, llm_config: LLMConfig) -> int:
-        # Raw-rebuild input may use up to half the effective context window;
-        # beyond that we degrade to fold-in (existing summary + new turns).
-        return max(1024, self._effective_context_window(llm_config) // 2)
+        # A raw prefix is eligible for drift-free rebuild up to this threshold;
+        # beyond it we degrade to fold-in (existing summary + new turns).
+        ratio_budget = max(1024, self._effective_context_window(llm_config) // 2)
+        return min(ratio_budget, MAX_RAW_REBUILD_TOKENS)
 
     def _build_history(self, summary: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
         cleaned_summary = summary.strip()
         if cleaned_summary:
             history.append({"role": "system", "content": cleaned_summary})
-        history.extend(
-            {
-                "role": item.get("role", "user"),
-                "content": str(item.get("content", "") or ""),
-            }
-            for item in messages
-            if item.get("role") in {"user", "assistant"}
-            and str(item.get("content", "") or "").strip()
-        )
+        for item in messages:
+            for expanded in expand_message_context(item):
+                if expanded["role"] in {"user", "assistant"}:
+                    history.append(expanded)
         return history
 
     async def _append_event(
@@ -171,7 +218,8 @@ class ContextBuilder:
         total = 0
         for item in reversed(messages):
             content = str(item.get("content", "") or "")
-            tokens = count_tokens(content)
+            clarification = extract_ask_user_clarifications(item)
+            tokens = count_tokens(f"{content}\n{clarification}" if clarification else content)
             if selected and total + tokens > recent_budget:
                 break
             selected.insert(0, item)
@@ -282,7 +330,7 @@ class ContextBuilder:
         )
         # The instruction targets ~80% of the hard cap so the model's own
         # length control — not the max_tokens cut — is the binding limit.
-        target_tokens = max(96, int(summary_budget * 0.8))
+        target_tokens = max(1, int(summary_budget * 0.8))
         system_prompt = (
             "You maintain a running summary of a conversation so future turns can "
             "continue seamlessly. Rewrite the summary from the material provided, "
@@ -365,7 +413,7 @@ class ContextBuilder:
             return ContextBuildResult([], "", "", [], 0, self._history_budget(llm_config))
 
         budget = self._history_budget(llm_config)
-        summary_budget = self._summary_budget(budget)
+        summary_budget = self._summary_budget(budget, llm_config)
         recent_budget = self._recent_budget(budget)
 
         stored_summary = str(session.get("compressed_summary", "") or "").strip()
@@ -474,5 +522,6 @@ __all__ = [
     "build_history_text",
     "count_tokens",
     "format_messages_as_transcript",
+    "extract_ask_user_clarifications",
     "trim_incomplete_tail",
 ]

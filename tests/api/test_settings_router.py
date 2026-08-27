@@ -381,6 +381,25 @@ async def test_mineru_settings_roundtrip_redacts_token(
 
 
 @pytest.mark.asyncio
+async def test_mineru_settings_accept_token_array(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    response = await settings_router.update_mineru_settings(
+        settings_router.MinerUSettingsUpdate(
+            mode="cloud",
+            api_token=[" token-a ", "token-b"],
+        )
+    )
+
+    assert response["api_token_set"] is True
+    assert "api_token" not in response["settings"]
+    assert service.load_mineru()["api_token"] == ["token-a", "token-b"]
+
+
+@pytest.mark.asyncio
 async def test_mineru_token_tristate_keep_then_clear(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

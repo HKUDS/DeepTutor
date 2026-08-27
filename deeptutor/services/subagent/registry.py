@@ -2,7 +2,8 @@
 
 Add a new subagent by writing a :class:`SubagentBackend` and listing it here;
 the capability, API and UI all discover it through these helpers. Local-CLI
-backends (Claude Code, Codex, Gemini CLI, Kimi CLI, opencode, MiMo Code) and
+backends (Claude Code, Codex, Gemini CLI, Antigravity CLI, Kimi CLI, opencode,
+MiMo Code) and
 the in-process partner backend live in the same registry but are told apart by
 ``local_cli`` — only CLIs are detected on the machine and offered in the
 connect-CLI modal.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 
+from deeptutor.services.subagent.antigravity import AntigravityBackend
 from deeptutor.services.subagent.base import SubagentBackend
 from deeptutor.services.subagent.claude_code import ClaudeCodeBackend
 from deeptutor.services.subagent.codex import CodexBackend
@@ -27,6 +29,7 @@ _BACKENDS: dict[str, SubagentBackend] = {
         ClaudeCodeBackend(),
         CodexBackend(),
         GeminiBackend(),
+        AntigravityBackend(),
         KimiBackend(),
         OpencodeBackend(),
         MimoBackend(),

@@ -1,5 +1,10 @@
 import { apiFetch, apiUrl } from "@/lib/api";
-import type { GrantPayload, MultiUserResources } from "./types";
+import type {
+  AdminBook,
+  BookPermission,
+  GrantPayload,
+  MultiUserResources,
+} from "./types";
 
 async function readError(res: Response, fallback: string): Promise<string> {
   try {
@@ -45,4 +50,46 @@ export async function saveUserGrant(
     throw new Error(await readError(res, "Failed to save user grant"));
   const data = await res.json();
   return data.grant as GrantPayload;
+}
+
+export async function fetchAdminBooks(): Promise<AdminBook[]> {
+  const res = await apiFetch(apiUrl("/api/v1/multi-user/admin/books"));
+  if (!res.ok)
+    throw new Error(await readError(res, "Failed to load shared books"));
+  const data = await res.json();
+  return data.books as AdminBook[];
+}
+
+export async function fetchBookPermission(
+  userId: string,
+): Promise<BookPermission> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/multi-user/users/${encodeURIComponent(userId)}/book-permission`,
+    ),
+  );
+  if (!res.ok)
+    throw new Error(await readError(res, "Failed to load book permission"));
+  const data = await res.json();
+  return data.permission as BookPermission;
+}
+
+export async function saveBookPermission(
+  userId: string,
+  permission: BookPermission,
+): Promise<BookPermission> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/multi-user/users/${encodeURIComponent(userId)}/book-permission`,
+    ),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(permission),
+    },
+  );
+  if (!res.ok)
+    throw new Error(await readError(res, "Failed to save book permission"));
+  const data = await res.json();
+  return data.permission as BookPermission;
 }

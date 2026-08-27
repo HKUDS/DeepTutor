@@ -129,6 +129,7 @@ notices:
   provider_stream_interrupted: "The model provider interrupted this response. Please retry."
   context_window_guard: "Trimmed older tool results to keep this turn within the model's context window."
   tool_schema_fallback: "Provider rejected native tool schemas; retrying without tools."
+  ask_questions_fallback_prompt: "What is the most important goal or constraint I should account for?"
   image_fallback: "Model does not support image input; retrying without images."
   empty_final_response: "I could not produce a useful response from the model output. Please try again or narrow the request."
   empty_finish_nudged: "The round produced only internal reasoning; asked the model to continue."

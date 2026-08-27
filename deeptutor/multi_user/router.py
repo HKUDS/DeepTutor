@@ -10,7 +10,7 @@ from typing import Any
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StrictBool
 
 from deeptutor.api.routers.auth import require_admin
 from deeptutor.knowledge.manager import KnowledgeBaseManager
@@ -20,8 +20,9 @@ from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.skill.service import SkillService
 
 from .audit import log_admin_action
+from .book_permission import BookDefaultLevel, BookPermission, BookPermissionLevel
 from .grants import load_grant, normalize_grant, save_grant, validate_grant
-from .identity import get_user_by_id, list_user_info
+from .identity import get_user_by_id, list_user_info, set_book_permission
 from .knowledge_access import admin_kb_base_dir
 from .model_access import is_owner_bound
 from .paths import get_admin_path_service, get_path_service_for_scope, scope_for_user
@@ -31,6 +32,12 @@ router = APIRouter()
 
 class GrantPayload(BaseModel):
     grant: dict[str, Any]
+
+
+class BookPermissionPayload(BaseModel):
+    create: StrictBool = True
+    default: BookDefaultLevel = "none"
+    books: dict[str, BookPermissionLevel] = Field(default_factory=dict)
 
 
 class SkillInstallPayload(BaseModel):
@@ -183,6 +190,13 @@ async def admin_resources(_: object = Depends(require_admin)) -> dict[str, Any]:
     }
 
 
+@router.get("/admin/books")
+async def admin_books(_: object = Depends(require_admin)) -> dict[str, Any]:
+    from .book_access import admin_book_catalog
+
+    return {"books": admin_book_catalog()}
+
+
 @router.get("/users/{user_id}/grants")
 async def get_user_grants(user_id: str, _: object = Depends(require_admin)) -> dict[str, Any]:
     _require_assignable_user(user_id)
@@ -220,6 +234,54 @@ async def put_user_grants(
         },
     )
     return {"grant": grant}
+
+
+@router.get("/users/{user_id}/book-permission")
+async def get_user_book_permission(
+    user_id: str,
+    _: object = Depends(require_admin),
+) -> dict[str, Any]:
+    from .book_permission import normalize_book_permission, public_permission_dict
+
+    _, record = _require_assignable_user(user_id)
+    return {
+        "permission": public_permission_dict(
+            normalize_book_permission(record.get("book_permission"))
+        )
+    }
+
+
+@router.put("/users/{user_id}/book-permission")
+async def put_user_book_permission(
+    user_id: str,
+    payload: BookPermissionPayload,
+    _: object = Depends(require_admin),
+) -> dict[str, Any]:
+    from .book_access import shared_book_exists
+    from .book_permission import public_permission_dict
+
+    username, _record = _require_assignable_user(user_id)
+    unknown = sorted(book_id for book_id in payload.books if not shared_book_exists(book_id))
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown book id: {unknown[0]}")
+    permission = BookPermission(
+        create=bool(payload.create),
+        default=payload.default,
+        books=tuple(payload.books.items()),
+    )
+    if not set_book_permission(username, permission):
+        raise HTTPException(status_code=404, detail="User not found")
+    result = public_permission_dict(permission)
+    log_admin_action(
+        "book_permission_set",
+        target_user_id=user_id,
+        summary={
+            "create": permission.create,
+            "default": permission.default,
+            "book_count": len(permission.books),
+        },
+    )
+    return {"permission": result}
 
 
 @router.post("/admin/skills/install")

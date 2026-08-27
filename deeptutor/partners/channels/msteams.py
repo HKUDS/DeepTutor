@@ -38,7 +38,6 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_runtime_subdir
 from deeptutor.partners.config.schema import DeliveryOverrides
 
 MSTEAMS_AVAILABLE = (
@@ -133,7 +132,7 @@ class MSTeamsChannel(BaseChannel):
         self._botframework_openid_config_expires_at: float = 0.0
         self._botframework_jwks: dict[str, Any] | None = None
         self._botframework_jwks_expires_at: float = 0.0
-        state_dir = get_runtime_subdir("msteams")
+        state_dir = self.state_dir()
         self._refs_path = state_dir / MSTEAMS_REF_FILENAME
         self._refs_meta_path = state_dir / MSTEAMS_REF_META_FILENAME
         self._refs_lock_path = state_dir / MSTEAMS_REF_LOCK_FILENAME

@@ -40,6 +40,14 @@ _RECOMMENDATION_SUFFIX = re.compile(
     r"[\s　]*[（(]\s*(?:推荐|建议|recommended|recommend)\s*[)）][\s　]*$",
     re.IGNORECASE,
 )
+_PLAIN_CHOICE_OPTION_RE = re.compile(
+    r"^(?:[-*+]\s*)?(?:\*\*)?([A-D])(?:\*\*)?\s*[.、):：-]\s*(\S.*)$",
+    re.IGNORECASE,
+)
+_PLAIN_QUIZ_PROMPT_RE = re.compile(
+    r"\b(?:which|choose|select|answer)\b|选择|选哪个|请选择|请回答|答案",
+    re.IGNORECASE,
+)
 
 
 def _without_recommendation(text: Any) -> Any:
@@ -78,6 +86,26 @@ def _strip_answer_hints(kwargs: dict[str, Any]) -> dict[str, Any]:
             }
         )
     return {**kwargs, "questions": cleaned_questions}
+
+
+def _looks_like_plain_choice_quiz(text: str) -> bool:
+    """Recognise a rendered A-D option list with high precision.
+
+    The model may discuss labelled options while teaching. Requiring both an
+    assessment prompt and at least three distinct labelled answer bodies keeps
+    ordinary prose, headings, and option-like vocabulary examples out of this
+    protocol guard.
+    """
+    labels: set[str] = set()
+    prompt_lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = _PLAIN_CHOICE_OPTION_RE.match(line)
+        if match:
+            labels.add(match.group(1).upper())
+        else:
+            prompt_lines.append(line)
+    return len(labels) >= 3 and any(_PLAIN_QUIZ_PROMPT_RE.search(line) for line in prompt_lines)
 
 
 def _bind_pending_ask_user_args(kwargs: dict[str, Any], path_id: str) -> dict[str, Any]:
@@ -119,6 +147,12 @@ class MasteryLoopCapability:
 
     name = "mastery"
     owned_tools = MASTERY_TOOL_NAMES
+    # Declared to the dispatcher so a switch that shares a round with a write
+    # runs first and the write lands on the path the model switched *to*. Every
+    # call in a round is bound before any of them runs, so without this a
+    # ``mastery_switch`` + ``mastery_build`` round rebuilt the map of the path
+    # the conversation was leaving.
+    rebinding_tools = tuple(_PATH_BINDING_TOOLS)
 
     def is_active(self, context: UnifiedContext) -> bool:
         return bool(context.metadata.get("mastery_mode"))
@@ -146,11 +180,16 @@ class MasteryLoopCapability:
             return kwargs
         path_id = str(context.metadata.get("mastery_path_id") or "").strip()
         if tool_name == "ask_user":
+            context.metadata["_mastery_quiz_needs_card"] = False
             # Strip hints last, so a card rebound from persisted state is
             # cleaned too — the persisted options were model-authored as well.
             return _strip_answer_hints(_bind_pending_ask_user_args(kwargs, path_id))
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
+            if tool_name == "mastery_quiz":
+                context.metadata["_mastery_quiz_needs_card"] = True
+            elif tool_name == "mastery_grade":
+                context.metadata["_mastery_quiz_needs_card"] = False
             updated["_mastery_path_id"] = path_id
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
@@ -162,6 +201,22 @@ class MasteryLoopCapability:
                 updated["_bind_active_path"] = _path_binder(context)
             return updated
         return kwargs
+
+    def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
+        """Redirect a quantitative assessment away from a plain-text finish."""
+        if not self.is_active(context):
+            return None
+        needs_card = bool(context.metadata.get("_mastery_quiz_needs_card"))
+        if not needs_card and not _looks_like_plain_choice_quiz(final_text):
+            return None
+
+        return (
+            "The previous reply tried to finish a mastery assessment as plain text. "
+            "Do not repeat the question in prose. First ensure the question and its "
+            "answer are registered with mastery_quiz (retry it if the previous call "
+            "failed), then present the persisted question with ask_user and stop for "
+            "the learner's answer."
+        )
 
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         _ = context
@@ -194,19 +249,41 @@ class MasteryLoopCapability:
         reply_text: str,
         answers: list[dict[str, str]] | None,
     ) -> None:
-        """Commit the learner answer before giving it back to the LLM."""
+        """Commit the learner answer before giving it back to the LLM.
+
+        Clarifying composer text on a *choice* card (no option picked) must not
+        be persisted as the formal answer — that freezes the gate when
+        ``mastery_grade`` later refuses to map the prose onto an option (#1004).
+        Leave the interaction awaiting so a later real pick can still commit.
+        """
         path_id = str(context.metadata.get("mastery_path_id") or "").strip()
         if not path_id:
             return
+        from deeptutor.learning.pending import is_readable_choice_answer
         from deeptutor.learning.service import LearningService
 
-        await asyncio.to_thread(
-            LearningService().record_question_answer,
-            path_id,
-            _answer_from_reply(ask_user, reply_text=reply_text, answers=answers),
-            session_id=str(context.session_id or ""),
-            turn_id=str(context.metadata.get("turn_id") or ""),
-        )
+        answer = _answer_from_reply(ask_user, reply_text=reply_text, answers=answers)
+        from_card = _reply_matches_card(ask_user, answers)
+
+        def _commit() -> None:
+            service = LearningService()
+            if not from_card:
+                interaction = service.store.get_active_interaction(path_id)
+                question = interaction.question if interaction is not None else None
+                if (
+                    question is not None
+                    and question.question_type == "choice"
+                    and not is_readable_choice_answer(answer, question.options)
+                ):
+                    return
+            service.record_question_answer(
+                path_id,
+                answer,
+                session_id=str(context.session_id or ""),
+                turn_id=str(context.metadata.get("turn_id") or ""),
+            )
+
+        await asyncio.to_thread(_commit)
 
 
 def _path_binder(context: UnifiedContext) -> Callable[[str], None]:
@@ -216,6 +293,17 @@ def _path_binder(context: UnifiedContext) -> Callable[[str], None]:
         context.metadata["mastery_path_id"] = path_id
 
     return bind
+
+
+def _reply_matches_card(
+    ask_user: dict[str, Any],
+    answers: list[dict[str, str]] | None,
+) -> bool:
+    """Whether the resume carried a structured answer for this ask_user card."""
+    card_question_id = _first_question_id(ask_user)
+    if not card_question_id:
+        return False
+    return any(entry.get("questionId") == card_question_id for entry in answers or [])
 
 
 def _answer_from_reply(

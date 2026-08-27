@@ -112,6 +112,16 @@ def _assemble_persisted_answer(
     )
 
 
+def _stamp_ask_user_content_offset(
+    payload_event: dict[str, Any],
+    assistant_content: str,
+) -> None:
+    """Attach the replay boundary to a persisted ask_user resolution event."""
+    metadata = payload_event.get("metadata")
+    if isinstance(metadata, dict) and metadata.get("ask_user_resolved"):
+        metadata.setdefault("assistant_content_offset", len(assistant_content))
+
+
 def _clip_text(value: str, limit: int = 4000) -> str:
     text = str(value or "").strip()
     if len(text) <= limit:
@@ -520,6 +530,131 @@ def _extract_followup_question_context(
     }
 
 
+def _extract_selection_tutor_context(
+    config: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Remove and normalize context for the selected-text side tutor."""
+    if not isinstance(config, dict):
+        return None
+    raw = config.pop("selection_tutor_context", None)
+    if not isinstance(raw, dict):
+        return None
+
+    selected_text = _clip_text(str(raw.get("selected_text", "") or "").strip())
+    if not selected_text:
+        return None
+    context: dict[str, Any] = {
+        "selected_text": selected_text,
+        "parent_session_id": str(raw.get("parent_session_id", "") or "").strip(),
+    }
+    raw_source_message_id = raw.get("source_message_id")
+    if isinstance(raw_source_message_id, int) and not isinstance(raw_source_message_id, bool):
+        context["source_message_id"] = raw_source_message_id
+    elif str(raw_source_message_id or "").strip().isdigit():
+        context["source_message_id"] = int(str(raw_source_message_id).strip())
+
+    source_message_text = str(raw.get("source_message_text", "") or "").strip()
+    if source_message_text:
+        context["source_message_text"] = source_message_text
+    source_message_role = str(raw.get("source_message_role", "") or "").strip()
+    if source_message_role in {"user", "assistant", "system"}:
+        context["source_message_role"] = source_message_role
+    return context
+
+
+def _selection_source_excerpt(
+    source_text: str,
+    selected_text: str,
+    *,
+    limit: int = 12_000,
+) -> str:
+    """Bound a source message while keeping the selected passage in view."""
+    text = str(source_text or "").strip()
+    if len(text) <= limit:
+        return text
+
+    needle = str(selected_text or "").strip()
+    selection_start = text.find(needle) if needle else -1
+    if selection_start < 0:
+        return _clip_text(text, limit=limit)
+
+    before = max(1_000, (limit - len(needle)) // 2)
+    start = max(0, selection_start - before)
+    end = min(len(text), start + limit)
+    start = max(0, end - limit)
+    excerpt = text[start:end]
+    if start > 0:
+        excerpt = "[earlier content omitted]\n" + excerpt
+    if end < len(text):
+        excerpt += "\n[later content omitted]"
+    return excerpt
+
+
+def _selection_is_grounded(source_text: str, selected_text: str) -> bool:
+    """Whether the claimed selection occurs in its containing message."""
+    source = str(source_text or "")
+    selected = str(selected_text or "").strip()
+    if not source or not selected:
+        return False
+    if selected in source:
+        return True
+    # Browser selections collapse rendered whitespace while the stored source
+    # preserves Markdown/code layout. Permit that representational difference,
+    # but never accept text that is absent from the authoritative message.
+    normalized_source = " ".join(source.split())
+    normalized_selected = " ".join(selected.split())
+    return bool(normalized_selected and normalized_selected in normalized_source)
+
+
+async def _resolve_selection_tutor_context(
+    store: Any,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve the selected passage's containing message from its parent chat."""
+    resolved = dict(context)
+    parent_session_id = str(resolved.get("parent_session_id") or "").strip()
+    source_message_id = resolved.get("source_message_id")
+
+    authoritative_source_required = bool(
+        parent_session_id and isinstance(source_message_id, int) and source_message_id > 0
+    )
+    source_message = None
+    if authoritative_source_required:
+        try:
+            path = await store.get_messages_for_context(
+                parent_session_id,
+                source_message_id,
+            )
+        except Exception:
+            raise ValueError("Could not resolve the selected text's source message") from None
+        else:
+            source_message = next(
+                (
+                    message
+                    for message in reversed(path)
+                    if str(message.get("id")) == str(source_message_id)
+                ),
+                None,
+            )
+            if source_message is None:
+                raise ValueError("The selected text's source message was not found")
+            resolved["source_message_text"] = str(source_message.get("content") or "").strip()
+            role = str(source_message.get("role") or "").strip()
+            if role in {"user", "assistant", "system"}:
+                resolved["source_message_role"] = role
+
+    source_text = str(resolved.get("source_message_text") or "").strip()
+    selected_text = str(resolved.get("selected_text") or "")
+    if not _selection_is_grounded(source_text, selected_text):
+        qualifier = "authoritative " if authoritative_source_required else ""
+        raise ValueError(f"Selected text was not found in the {qualifier}source message")
+    resolved["source_message_text"] = _selection_source_excerpt(
+        source_text,
+        selected_text,
+    )
+    return resolved
+
+
 def _extract_persist_user_message(config: dict[str, Any] | None) -> bool:
     if not isinstance(config, dict):
         return True
@@ -677,6 +812,65 @@ def _format_followup_question_context(context: dict[str, Any], language: str = "
                 context["knowledge_context"],
             ]
         )
+    return "\n".join(lines).strip()
+
+
+def _format_selection_tutor_context(context: dict[str, Any], language: str = "en") -> str:
+    selected_text = context.get("selected_text", "").strip()
+    parent_session_id = context.get("parent_session_id", "").strip() or "(none)"
+    source_message_text = str(context.get("source_message_text") or "").strip()
+    source_message_role = str(context.get("source_message_role") or "").strip()
+    if str(language or "en").lower().startswith("zh"):
+        lines = [
+            "你是侧栏中的“小老师”，负责回答学习者对聊天内容的局部追问。",
+            "用户精确选中的文字是当前问题的直接指代；原消息上下文只用于解释该选中内容在此处的具体含义。",
+            "优先依据原消息中的定义、代码、前后句和符号关系回答，不要把短变量名脱离上下文解释成其他缩写。",
+            "不要读取、引用或写入全局记忆；不要把用户问题里的“这个/它/上述内容”解释成记忆系统。",
+            "如果先前回答偏离了选中内容，请明确纠正并回到选中内容本身。",
+            "回答当前问题时要简明、循序渐进；原消息没有提供的信息不要臆造。",
+        ]
+        if source_message_text:
+            role_label = source_message_role or "unknown"
+            lines.extend(
+                [
+                    "",
+                    "[原消息上下文]",
+                    f"消息角色：{role_label}",
+                    source_message_text,
+                    "",
+                    "[用户精确选中的内容]",
+                    selected_text,
+                ]
+            )
+        else:
+            lines.extend(["", "[选中内容]", selected_text])
+        lines.extend(["", f"来源会话：{parent_session_id}"])
+        return "\n".join(lines).strip()
+
+    lines = [
+        "You are the Little Tutor in a sidebar, answering local questions about chat content.",
+        "The learner's exact selection is the direct referent of the question; use the containing message only to determine what that selection means here.",
+        "Prioritize definitions, code, surrounding sentences, and symbol relationships in the source message. Do not reinterpret a short identifier as an unrelated abbreviation.",
+        "Do not read, cite, or write global memory. Never reinterpret words such as 'this', 'it', or 'the above' as referring to the memory system.",
+        "If an earlier answer drifted away from the selection, correct it explicitly and return to the selection.",
+        "Answer clearly and step by step; do not invent information absent from the source message.",
+    ]
+    if source_message_text:
+        role_label = source_message_role or "unknown"
+        lines.extend(
+            [
+                "",
+                "[Containing message]",
+                f"Message role: {role_label}",
+                source_message_text,
+                "",
+                "[Learner's exact selection]",
+                selected_text,
+            ]
+        )
+    else:
+        lines.extend(["", "[Selected passage]", selected_text])
+    lines.extend(["", f"Source session: {parent_session_id}"])
     return "\n".join(lines).strip()
 
 
@@ -856,6 +1050,8 @@ class TurnRuntimeManager:
             "_regenerated_from_message_id",
             "_superseded_turn_id",
             "followup_question_context",
+            "selection_tutor_context",
+            "_course_id",
             # Per-turn subagent consult budget (composer stepper). Not part of
             # any capability's public config schema, so it rides as a runtime
             # key — stripped before validation, merged back into the turn config
@@ -1006,6 +1202,60 @@ class TurnRuntimeManager:
             "knowledge_bases": list(payload.get("knowledge_bases") or []),
             "language": str(payload.get("language") or "en"),
         }
+        requested_course_id = str(runtime_only_config.get("_course_id") or "").strip()
+        if requested_course_id:
+            from deeptutor.services.courses import (
+                CourseNotFoundError,
+                get_course_service,
+            )
+
+            try:
+                get_course_service().get(requested_course_id)
+            except CourseNotFoundError:
+                requested_course_id = ""
+        if "_course_id" in runtime_only_config:
+            preference_update["course_id"] = requested_course_id
+
+        raw_selection_context = runtime_only_config.get("selection_tutor_context")
+        if isinstance(raw_selection_context, dict):
+            selection_tutor_context = _extract_selection_tutor_context(
+                {"selection_tutor_context": dict(raw_selection_context)}
+            )
+            if selection_tutor_context is None:
+                raise RuntimeError("Selection tutor context requires selected text")
+            try:
+                selection_tutor_context = await _resolve_selection_tutor_context(
+                    self.store,
+                    selection_tutor_context,
+                )
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
+            runtime_only_config["selection_tutor_context"] = selection_tutor_context
+            payload["config"]["selection_tutor_context"] = selection_tutor_context
+            parent_session_id = str(selection_tutor_context.get("parent_session_id") or "").strip()
+            if parent_session_id == session["id"]:
+                raise RuntimeError("A selection tutor session cannot parent itself")
+            if parent_session_id:
+                from deeptutor.services.session.organization import (
+                    validate_parent_assignment,
+                )
+
+                try:
+                    parent_session = await validate_parent_assignment(
+                        self.store,
+                        session_id=session["id"],
+                        parent_session_id=parent_session_id,
+                    )
+                except (LookupError, ValueError) as exc:
+                    raise RuntimeError(str(exc)) from exc
+                parent_preferences = parent_session.get("preferences") or {}
+                preference_update.update(
+                    {
+                        "parent_session_id": parent_session_id,
+                        "session_kind": "selection_tutor",
+                        "course_id": str(parent_preferences.get("course_id") or ""),
+                    }
+                )
         if llm_selection:
             preference_update["llm_selection"] = llm_selection
         if persona_explicit:
@@ -1507,6 +1757,13 @@ class TurnRuntimeManager:
 
             request_config = dict(payload.get("config", {}) or {})
             followup_question_context = _extract_followup_question_context(request_config)
+            selection_tutor_context = _extract_selection_tutor_context(request_config)
+            if selection_tutor_context:
+                selection_tutor_context = await _resolve_selection_tutor_context(
+                    self.store,
+                    selection_tutor_context,
+                )
+            request_config.pop("_course_id", None)
             persist_user_message = _extract_persist_user_message(request_config)
             is_regenerate = _extract_regenerate_flag(request_config)
             request_config.pop("_regenerated_from_message_id", None)
@@ -1621,6 +1878,17 @@ class TurnRuntimeManager:
                 for r in attachment_records
             ]
 
+            sidebar_system_context = ""
+            if selection_tutor_context:
+                sidebar_system_context = _format_selection_tutor_context(
+                    selection_tutor_context,
+                    language=str(payload.get("language", "en") or "en"),
+                )
+
+            # Quiz follow-up context is part of the child session's durable
+            # history and is inserted exactly once. Selection tutoring is
+            # intentionally different: its source passage remains a per-turn
+            # sidebar context and must not be copied into chat history.
             if followup_question_context:
                 existing_messages = await self.store.get_messages_for_context(
                     session_id, leaf_message_id=branch_parent_id
@@ -1909,6 +2177,9 @@ class TurnRuntimeManager:
                 user_message=effective_user_message,
                 conversation_history=conversation_history,
                 enabled_tools=payload.get("tools"),
+                # Selected-text tutoring must stay isolated from global
+                # memory and every other auto-mounted built-in.
+                allowed_builtin_tools=[] if selection_tutor_context else None,
                 active_capability=payload.get("capability"),
                 knowledge_bases=payload.get("knowledge_bases", []),
                 attachments=attachments,
@@ -1916,6 +2187,7 @@ class TurnRuntimeManager:
                 language=payload.get("language", "en"),
                 memory_context=memory_context,
                 persona_context=persona_context,
+                sidebar_context=sidebar_system_context,
                 skills_manifest=skills_manifest,
                 source_manifest=source_manifest_text,
                 metadata={
@@ -1925,6 +2197,7 @@ class TurnRuntimeManager:
                     "history_budget": history_result.budget,
                     "turn_id": turn_id,
                     "question_followup_context": followup_question_context or {},
+                    "selection_tutor_context": selection_tutor_context or {},
                     "notebook_references": notebook_references,
                     "history_references": history_references,
                     "question_notebook_references": question_notebook_references,
@@ -1947,6 +2220,7 @@ class TurnRuntimeManager:
                     "llm_selection": payload.get("llm_selection") or {},
                     "llm_model": str(getattr(llm_config, "model", "") or ""),
                     "llm_provider": str(getattr(llm_config, "provider_name", "") or ""),
+                    "llm_reasoning_effort": str(getattr(llm_config, "reasoning_effort", "") or ""),
                     # Per-turn full-text payload for read_source. Empty when
                     # the manifest is empty (non-chat capabilities, or chat
                     # turns with no attached sources). Consumed by the chat
@@ -1971,6 +2245,10 @@ class TurnRuntimeManager:
                     continue
                 payload_event = await self._publish_live_event(execution, event)
                 if payload_event.get("type") not in {"done", "session"}:
+                    # A card reply lives inside this assistant row. Persist
+                    # the exact user-facing answer boundary so future context
+                    # can replay assistant -> user -> assistant in order.
+                    _stamp_ask_user_content_offset(payload_event, _persisted_answer())
                     assistant_events.append(payload_event)
                 if _should_capture_assistant_content(event):
                     call_id = (event.metadata or {}).get("call_id")

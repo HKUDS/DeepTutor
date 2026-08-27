@@ -63,6 +63,11 @@ ddgs>=9.9.1
 typer>=0.9.0
 rich>=13.0.0
 prompt_toolkit>=3.0.36
+pyte>=0.8.1
+
+# --- Shared LLM runtime (imported by the CLI entry point) ---
+loguru>=0.7.3,<1.0.0
+json-repair>=0.57.0,<1.0.0
 
 # --- MCP client (configurable deferred tools; core, not partners-only) ---
 mcp>=1.26.0,<2.0.0

@@ -15,6 +15,18 @@ export interface BookSocketOperationOptions {
   onEvent?: (event: BookWsEvent) => void;
 }
 
+export class BookSocketOperationError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    public readonly code?: string,
+    public readonly currentRevision?: number,
+  ) {
+    super(message);
+    this.name = "BookSocketOperationError";
+  }
+}
+
 function errorMessage(event: BookWsEvent): string {
   const detail = event.content ?? event.message ?? event.detail;
   return typeof detail === "string" && detail.trim()
@@ -70,7 +82,20 @@ export function runBookSocketOperation<T extends BookWsEvent = BookWsEvent>(
       options.onEvent?.(event);
 
       if (event.type === "error") {
-        finish(() => reject(new Error(errorMessage(event))), true);
+        finish(
+          () =>
+            reject(
+              new BookSocketOperationError(
+                errorMessage(event),
+                typeof event.status === "number" ? event.status : undefined,
+                typeof event.code === "string" ? event.code : undefined,
+                typeof event.current_revision === "number"
+                  ? event.current_revision
+                  : undefined,
+              ),
+            ),
+          true,
+        );
         return;
       }
 

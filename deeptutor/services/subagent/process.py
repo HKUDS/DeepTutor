@@ -138,6 +138,19 @@ async def _terminate(process: asyncio.subprocess.Process) -> None:
         await process.wait()
 
 
+def not_found_detail(probe_text: str, fallback: str) -> str:
+    """What to show a reader when a CLI probe failed.
+
+    :func:`probe_version` reports a bare ``"not installed"`` for a missing
+    binary, which repeats what the status chip already says and crowds out the
+    backend's own guidance — every caller writing ``version or "<cli> not found
+    on PATH"`` was in fact unreachable for the common case. Real probe output (a
+    version banner, a permission error) is more informative and still wins.
+    """
+    text = (probe_text or "").strip()
+    return fallback if text in ("", "not installed") else text
+
+
 async def probe_version(cmd: Sequence[str], *, timeout: float = 8.0) -> tuple[bool, str]:
     """Run a fast ``--version``-style probe; return ``(ok, stdout-or-error)``.
 
@@ -165,4 +178,10 @@ async def probe_version(cmd: Sequence[str], *, timeout: float = 8.0) -> tuple[bo
     return process.returncode == 0, text
 
 
-__all__ = ["ProcessLine", "resolve_cli_command", "stream_process_lines", "probe_version"]
+__all__ = [
+    "ProcessLine",
+    "not_found_detail",
+    "probe_version",
+    "resolve_cli_command",
+    "stream_process_lines",
+]

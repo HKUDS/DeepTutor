@@ -197,6 +197,8 @@ export function agentGlyph(kind: string | undefined): AgentGlyph | null {
   if (kind === "claude_code") return ClaudeGlyph;
   if (kind === "codex") return CodexGlyph;
   if (kind === "gemini") return GeminiGlyph;
+  // Google's own successor to Gemini CLI, and it carries the same mark.
+  if (kind === "antigravity") return GeminiGlyph;
   if (kind === "kimi") return KimiGlyph;
   if (kind === "opencode") return OpencodeGlyph;
   if (kind === "mimo") return MimoGlyph;

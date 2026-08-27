@@ -30,7 +30,7 @@ import shutil
 from typing import Any
 
 from deeptutor.services.file_io import atomic_write_text as _atomic_write_text
-from deeptutor.services.path_service import get_path_service
+from deeptutor.services.path_service import PathService, get_path_service
 
 from .models import (
     Book,
@@ -60,18 +60,23 @@ _SAFE_ID = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _safe_book_id(book_id: str) -> str:
-    """Reduce a caller-supplied id to something that cannot escape its root.
+    """Validate a caller-supplied id before it becomes a directory name.
 
     Book ids arrive in request bodies and are used verbatim as directory names.
-    Ids the engine mints are ``bk_<hex>``; anything containing a separator or a
-    dot segment is either a bug or an attempt to walk out of the workspace, and
-    neither should reach the filesystem. Mirrors the containment rule in
-    ``services/storage/attachment_store.py``.
+    Silently deleting invalid characters is unsafe because ``../bk_1`` would
+    alias the real ``bk_1``. Reject invalid input instead.
     """
-    cleaned = _SAFE_ID.sub("", (book_id or "").strip())
-    if not cleaned:
+    value = (book_id or "").strip()
+    if not value or _SAFE_ID.search(value):
         raise ValueError(f"Invalid book id: {book_id!r}")
-    return cleaned
+    return value
+
+
+def _safe_page_id(page_id: str) -> str:
+    value = (page_id or "").strip()
+    if not value or _SAFE_ID.search(value):
+        raise ValueError(f"Invalid page id: {page_id!r}")
+    return value
 
 
 def _read_json(path: Path) -> Any | None:
@@ -106,9 +111,12 @@ class BookStorage:
     nothing ever acquired, which read as protection that was not present.)
     """
 
+    def __init__(self, *, path_service: PathService | None = None) -> None:
+        self._path_service = path_service
+
     @property
-    def path_service(self):
-        return get_path_service()
+    def path_service(self) -> PathService:
+        return self._path_service or get_path_service()
 
     # ── Path helpers ─────────────────────────────────────────────────────
 
@@ -125,22 +133,34 @@ class BookStorage:
         ids = []
         for child in root.iterdir():
             if child.is_dir() and child.name.startswith("book_"):
-                ids.append(child.name[len("book_") :])
+                candidate = child.name[len("book_") :]
+                try:
+                    ids.append(_safe_book_id(candidate))
+                except ValueError:
+                    logger.warning("Skipping invalid book directory: %s", child)
         return ids
 
     def book_exists(self, book_id: str) -> bool:
-        return self.book_root(book_id).exists()
+        try:
+            return self.book_root(book_id).exists()
+        except ValueError:
+            return False
 
     # ── Manifest ─────────────────────────────────────────────────────────
 
     def save_book(self, book: Book) -> None:
-        self.ensure_book_root(book.id)
+        book_id = _safe_book_id(book.id)
+        self.ensure_book_root(book_id)
         _atomic_write_json(
-            self.path_service.get_book_manifest_file(book.id), book.model_dump(mode="json")
+            self.path_service.get_book_manifest_file(book_id), book.model_dump(mode="json")
         )
 
     def load_book(self, book_id: str) -> Book | None:
-        data = _read_json(self.path_service.get_book_manifest_file(book_id))
+        try:
+            path = self.path_service.get_book_manifest_file(_safe_book_id(book_id))
+        except ValueError:
+            return None
+        data = _read_json(path)
         if data is None:
             return None
         try:
@@ -152,12 +172,14 @@ class BookStorage:
     # ── Inputs (immutable snapshot) ─────────────────────────────────────
 
     def save_inputs(self, book_id: str, inputs: BookInputs) -> None:
+        book_id = _safe_book_id(book_id)
         self.ensure_book_root(book_id)
         _atomic_write_json(
             self.path_service.get_book_inputs_file(book_id), inputs.model_dump(mode="json")
         )
 
     def load_inputs(self, book_id: str) -> BookInputs | None:
+        book_id = _safe_book_id(book_id)
         data = _read_json(self.path_service.get_book_inputs_file(book_id))
         if data is None:
             return None
@@ -170,13 +192,15 @@ class BookStorage:
     # ── Spine ────────────────────────────────────────────────────────────
 
     def save_spine(self, spine: Spine) -> None:
-        self.ensure_book_root(spine.book_id)
+        book_id = _safe_book_id(spine.book_id)
+        self.ensure_book_root(book_id)
         _atomic_write_json(
-            self.path_service.get_book_spine_file(spine.book_id),
+            self.path_service.get_book_spine_file(book_id),
             spine.model_dump(mode="json"),
         )
 
     def load_spine(self, book_id: str) -> Spine | None:
+        book_id = _safe_book_id(book_id)
         data = _read_json(self.path_service.get_book_spine_file(book_id))
         if data is None:
             return None
@@ -209,9 +233,10 @@ class BookStorage:
     # ── Progress ─────────────────────────────────────────────────────────
 
     def save_progress(self, progress: Progress) -> None:
-        self.ensure_book_root(progress.book_id)
+        book_id = _safe_book_id(progress.book_id)
+        self.ensure_book_root(book_id)
         _atomic_write_json(
-            self.path_service.get_book_progress_file(progress.book_id),
+            self.path_service.get_book_progress_file(book_id),
             progress.model_dump(mode="json"),
         )
 
@@ -271,6 +296,7 @@ class BookStorage:
         self.save_learning_captures(capture.book_id, captures)
 
     def load_progress(self, book_id: str) -> Progress | None:
+        book_id = _safe_book_id(book_id)
         data = _read_json(self.path_service.get_book_progress_file(book_id))
         if data is None:
             return None
@@ -283,13 +309,20 @@ class BookStorage:
     # ── Pages ────────────────────────────────────────────────────────────
 
     def save_page(self, page: Page) -> None:
-        self.ensure_book_root(page.book_id)
+        book_id = _safe_book_id(page.book_id)
+        page_id = _safe_page_id(page.id)
+        self.ensure_book_root(book_id)
         _atomic_write_json(
-            self.path_service.get_book_page_file(page.book_id, page.id),
+            self.path_service.get_book_page_file(book_id, page_id),
             page.model_dump(mode="json"),
         )
 
     def load_page(self, book_id: str, page_id: str) -> Page | None:
+        try:
+            book_id = _safe_book_id(book_id)
+            page_id = _safe_page_id(page_id)
+        except ValueError:
+            return None
         data = _read_json(self.path_service.get_book_page_file(book_id, page_id))
         if data is None:
             return None
@@ -300,7 +333,7 @@ class BookStorage:
             return None
 
     def list_pages(self, book_id: str) -> list[Page]:
-        pages_dir = self.path_service.get_book_pages_dir(book_id)
+        pages_dir = self.path_service.get_book_pages_dir(_safe_book_id(book_id))
         if not pages_dir.exists():
             return []
         result: list[Page] = []
@@ -318,7 +351,12 @@ class BookStorage:
         return result
 
     def delete_page(self, book_id: str, page_id: str) -> bool:
-        path = self.path_service.get_book_page_file(book_id, page_id)
+        try:
+            path = self.path_service.get_book_page_file(
+                _safe_book_id(book_id), _safe_page_id(page_id)
+            )
+        except ValueError:
+            return False
         if path.exists():
             path.unlink()
             return True
@@ -327,7 +365,7 @@ class BookStorage:
     # ── Log (append-only) ────────────────────────────────────────────────
 
     def append_log(self, book_id: str, message: str, *, op: str = "info") -> None:
-        path = self.path_service.get_book_log_file(book_id)
+        path = self.path_service.get_book_log_file(_safe_book_id(book_id))
         path.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
         line = f"- `{ts}Z` **{op}** — {message.strip()}\n"

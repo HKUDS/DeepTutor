@@ -26,8 +26,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-release-tag:
+    name: Validate release tag
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a package version tag
+        shell: python
+        run: |
+          import os
+          import re
+
+          tag = os.environ["RELEASE_TAG"]
+          pattern = (
+              r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+              r"(?:(?:a|b|rc)(?:0|[1-9]\d*))?"
+              r"(?:\.post(?:0|[1-9]\d*))?"
+              r"(?:\.dev(?:0|[1-9]\d*))?"
+              r"(?:\+[0-9A-Za-z]+(?:[._-][0-9A-Za-z]+)*)?$"
+          )
+          if not re.fullmatch(pattern, tag):
+              raise SystemExit(
+                  f"Release tag {tag!r} is not a package version tag "
+                  "(expected vX.Y.Z with an optional suffix)."
+              )
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+
   build-and-publish:
     name: Build and Publish PyPI Package
+    needs: validate-release-tag
     runs-on: ubuntu-latest
     environment:
       name: pypi

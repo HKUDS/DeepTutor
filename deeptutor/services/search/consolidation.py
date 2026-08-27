@@ -147,6 +147,7 @@ class AnswerConsolidator:
         "serper": "serper",
         "jina": "jina",
         "serper_scholar": "serper_scholar",
+        "serply_scholar": "serper_scholar",
     }
 
     def __init__(

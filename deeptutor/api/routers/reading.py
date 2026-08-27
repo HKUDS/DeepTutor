@@ -490,10 +490,19 @@ async def create_epub_pair(payload: EpubPairingRequest) -> dict[str, Any]:
     try:
         assert_learning_material(payload.english_material_id)
         assert_learning_material(payload.chinese_material_id)
-        from deeptutor.reading.epub_bilingual import create_epub_pairing
-
-        pairing, manifest = await asyncio.to_thread(
+        from deeptutor.reading.epub_bilingual import (
+            build_bilingual_revision,
             create_epub_pairing,
+        )
+
+        await asyncio.to_thread(
+            create_epub_pairing,
+            store,
+            payload.english_material_id,
+            payload.chinese_material_id,
+        )
+        pairing, manifest = await asyncio.to_thread(
+            build_bilingual_revision,
             store,
             payload.english_material_id,
             payload.chinese_material_id,

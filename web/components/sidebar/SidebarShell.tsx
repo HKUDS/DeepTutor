@@ -25,12 +25,17 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import OrganizedSessionList from "@/components/courses/OrganizedSessionList";
 import SessionList from "@/components/SessionList";
 import { useSidebarDrawer } from "@/components/layout/AppShell";
 import { useDevice } from "@/hooks/useDevice";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
-import type { SessionSummary } from "@/lib/session-api";
+import type {
+  SessionOrganizationPatch,
+  SessionSummary,
+} from "@/lib/session-api";
+import type { StudyCourse } from "@/lib/courses-api";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import type { Capability } from "@/lib/capability-routes";
@@ -132,6 +137,11 @@ interface SidebarShellProps {
   onSelectSession?: (sessionId: string) => void | Promise<void>;
   onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
   onDeleteSession?: (sessionId: string) => void | Promise<void>;
+  courses?: StudyCourse[];
+  onOrganizeSession?: (
+    sessionId: string,
+    patch: SessionOrganizationPatch,
+  ) => void | Promise<void>;
   /**
    * Footer content rendered below the nav. Pass a render function to receive
    * the current ``collapsed`` state so footer items (e.g. Admin / Sign out) can
@@ -149,6 +159,8 @@ export function SidebarShell({
   onSelectSession,
   onRenameSession,
   onDeleteSession,
+  courses = [],
+  onOrganizeSession,
   footerSlot,
 }: SidebarShellProps) {
   const pathname = usePathname();
@@ -213,6 +225,14 @@ export function SidebarShell({
     onNewChat?.();
     router.push("/home");
   };
+
+  const recentSessions = sessions
+    .filter(
+      (session) =>
+        !session.preferences?.archived &&
+        !session.preferences?.parent_session_id,
+    )
+    .slice(0, 8);
 
   /* ---- Collapsed state ---- */
   if (collapsed) {
@@ -459,18 +479,42 @@ export function SidebarShell({
           </button>
           {!recentsCollapsed && (
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-0.5">
-              <SessionList
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                loading={loadingSessions}
-                onSelect={(sessionId) => {
-                  drawer?.close();
-                  return onSelectSession(sessionId);
-                }}
-                onRename={onRenameSession}
-                onDelete={onDeleteSession}
-                compact
-              />
+              {loadingSessions ? (
+                <SessionList
+                  sessions={[]}
+                  activeSessionId={activeSessionId}
+                  loading
+                  onSelect={onSelectSession}
+                  onRename={onRenameSession}
+                  onDelete={onDeleteSession}
+                  compact
+                />
+              ) : onOrganizeSession ? (
+                <OrganizedSessionList
+                  sessions={recentSessions}
+                  courses={courses}
+                  activeSessionId={activeSessionId}
+                  onSelect={(sessionId) => {
+                    drawer?.close();
+                    return onSelectSession(sessionId);
+                  }}
+                  onRename={onRenameSession}
+                  onDelete={onDeleteSession}
+                  onOrganize={onOrganizeSession}
+                />
+              ) : (
+                <SessionList
+                  sessions={recentSessions}
+                  activeSessionId={activeSessionId}
+                  onSelect={(sessionId) => {
+                    drawer?.close();
+                    return onSelectSession(sessionId);
+                  }}
+                  onRename={onRenameSession}
+                  onDelete={onDeleteSession}
+                  compact
+                />
+              )}
             </div>
           )}
         </section>

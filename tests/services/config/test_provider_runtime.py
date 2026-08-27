@@ -80,6 +80,23 @@ def test_llm_explicit_binding_and_headers() -> None:
     assert resolved.extra_headers == {"APP-Code": "abc"}
 
 
+def test_llm_runtime_preserves_api_key_array() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM pool",
+            "binding": "openai",
+            "base_url": "https://api.example.com/v1",
+            "api_key": ["key-a", "key-b"],
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "m", "model": "gpt-4o-mini"}],
+        }
+    )
+
+    assert resolve_llm_runtime_config(catalog=catalog).api_key == ["key-a", "key-b"]
+
+
 def test_llm_api_key_prefix_gateway() -> None:
     catalog = _build_catalog(
         llm_profile={
@@ -549,6 +566,69 @@ def test_llm_reasoning_effort_resolves_from_catalog() -> None:
     )
     resolved = resolve_llm_runtime_config(catalog=catalog)
     assert resolved.reasoning_effort == "high"
+
+
+def test_llm_selection_reasoning_effort_overrides_catalog_default() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM",
+            "binding": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "GPT 4o mini",
+                    "model": "gpt-4o-mini",
+                    "reasoning_effort": "high",
+                }
+            ],
+        }
+    )
+    resolved = resolve_llm_runtime_config(
+        catalog=catalog,
+        llm_selection={"profile_id": "llm-p", "model_id": "llm-m", "reasoning_effort": "low"},
+    )
+    assert resolved.reasoning_effort == "low"
+
+
+def test_llm_selection_without_reasoning_effort_keeps_catalog_default() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM",
+            "binding": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-test",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "GPT 4o mini",
+                    "model": "gpt-4o-mini",
+                    "reasoning_effort": "high",
+                }
+            ],
+        }
+    )
+    resolved = resolve_llm_runtime_config(
+        catalog=catalog,
+        llm_selection={"profile_id": "llm-p", "model_id": "llm-m"},
+    )
+    assert resolved.reasoning_effort == "high"
+
+
+def test_llm_selection_reasoning_effort_applies_even_without_catalog_default() -> None:
+    catalog = _build_catalog()
+    resolved = resolve_llm_runtime_config(
+        catalog=catalog,
+        llm_selection={"profile_id": "llm-p", "model_id": "llm-m", "reasoning_effort": "xhigh"},
+    )
+    assert resolved.reasoning_effort == "xhigh"
 
 
 def test_search_fallback_to_duckduckgo_without_key() -> None:

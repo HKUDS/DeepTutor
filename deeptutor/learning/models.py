@@ -253,6 +253,11 @@ class LearningProgress(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     book_id: str
+    # The learner-facing name of this path. Empty means "never named": the
+    # display name is then derived (``policy.path_display_name``), which is how
+    # every path behaved before this field existed — so an aggregate persisted
+    # without it needs no migration.
+    name: str = ""
     diagnostic: DiagnosticResult | None = None
     modules: list[LearningModule] = Field(default_factory=list)
     current_module_id: str = ""

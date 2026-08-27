@@ -37,6 +37,33 @@ def _resolve_adapter_class(binding: str) -> type[BaseEmbeddingAdapter]:
 class EmbeddingClient:
     """Unified embedding client for RAG and retrieval services."""
 
+    # 全局发帖节流：KB reindex 时 LlamaIndex 用线程池并发调 embedding，
+    # 每个线程经 _run_in_new_loop 跑独立 event loop——asyncio.Lock 绑定
+    # 创建时的 loop，跨 loop 既不互斥还会挂死。必须用线程级锁。
+    _spacing_lock: Any = None
+    _last_request_monotonic: float = 0.0
+    _thread_guard: Any = None
+
+    @classmethod
+    def _global_spacing_lock(cls):
+        import threading
+
+        if cls._spacing_lock is None:
+            cls._thread_guard = threading.Lock()
+            with cls._thread_guard:
+                if cls._spacing_lock is None:
+                    from threading import Lock as _TLock
+
+                    cls._spacing_lock = _TLock()
+        return cls._spacing_lock
+
+    @staticmethod
+    def _hold_spacing_lock():
+        """Blocking acquire — cross-thread, loop-agnostic."""
+        lock = EmbeddingClient._global_spacing_lock()
+        lock.acquire()
+        return lock
+
     def __init__(self, config: Optional[EmbeddingConfig] = None):
         self.config = config or get_embedding_config()
         self.logger = logging.getLogger(__name__)
@@ -111,7 +138,24 @@ class EmbeddingClient:
                 input_type=role,
             )
             try:
-                response = await self.adapter.embed(request)
+                # 全局发帖节流：线程级锁串行化"等待间隔+发帖"，跨线程/跨
+                # event loop 互斥（asyncio 锁在新 loop 模型下失效的教训）。
+                # asyncio.sleep 换成阻塞等待发帖侧可接受：DT 的 embedding
+                # 并发都在后台线程里，阻塞不伤 API 主线程。
+                import time as _time
+                from time import monotonic as _mono
+
+                _lock = EmbeddingClient._hold_spacing_lock()
+                try:
+                    delay = self.config.batch_delay
+                    if delay > 0:
+                        elapsed = _mono() - EmbeddingClient._last_request_monotonic
+                        if elapsed < delay:
+                            _time.sleep(delay - elapsed)
+                    EmbeddingClient._last_request_monotonic = _mono()
+                    response = await self.adapter.embed(request)
+                finally:
+                    _lock.release()
             except Exception as exc:
                 # Capture batch context so the task log stream / KB diagnostics
                 # show actionable info instead of a bare exception string.

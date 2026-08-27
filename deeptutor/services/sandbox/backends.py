@@ -249,7 +249,33 @@ class RestrictedSubprocessBackend(SandboxBackend):
 
     level = IsolationLevel.APPLICATION
 
-    _SAFE_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+    _SAFE_ENV_KEYS = ("PATH", "PATHEXT", "HOME", "LANG", "LC_ALL", "TMPDIR", "SYSTEMROOT")
+
+    @staticmethod
+    def _powershell_executable() -> str:
+        """Return the PowerShell executable available on PATH.
+
+        Prefer ``pwsh`` (PowerShell 7+) when present: it defaults to UTF-8 and
+        is the version still receiving updates. The commands we generate are
+        written for Windows PowerShell 5.1 syntax, which 7 also accepts, so
+        either host works.
+        """
+        return (
+            shutil.which("pwsh")
+            or shutil.which("powershell.exe")
+            or shutil.which("powershell")
+            or "powershell.exe"
+        )
+
+    @staticmethod
+    def _powershell_command(command: str) -> str:
+        # PowerShell 5 defaults to the active console code page.  Force UTF-8
+        # before running model-authored commands so Chinese output survives the
+        # byte-oriented asyncio pipe consistently.
+        return (
+            "$OutputEncoding = [Console]::OutputEncoding = "
+            "[System.Text.UTF8Encoding]::new($false); " + command
+        )
 
     async def exec(self, request: ExecRequest) -> ExecResult:
         env = {k: os.environ[k] for k in self._SAFE_ENV_KEYS if k in os.environ}
@@ -259,6 +285,18 @@ class RestrictedSubprocessBackend(SandboxBackend):
             if request.argv:
                 process = await asyncio.create_subprocess_exec(
                     *request.argv,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=env,
+                )
+            elif sys.platform == "win32":
+                process = await asyncio.create_subprocess_exec(
+                    self._powershell_executable(),
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    self._powershell_command(request.command),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=cwd,
@@ -281,7 +319,27 @@ async def _communicate(process: asyncio.subprocess.Process, timeout_s: int) -> E
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_s)
     except asyncio.TimeoutError:
-        process.kill()
+        if sys.platform == "win32" and process.pid:
+            # ``Process.kill`` only terminates powershell.exe; taskkill's /T
+            # flag also tears down python/compiler children started by it.
+            try:
+                killer = await asyncio.create_subprocess_exec(
+                    "taskkill",
+                    "/PID",
+                    str(process.pid),
+                    "/T",
+                    "/F",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                with suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(killer.wait(), timeout=5.0)
+            except OSError:
+                # Extremely unusual (PATH corruption / stripped-down host),
+                # but still return a timeout result instead of masking it.
+                process.kill()
+        else:
+            process.kill()
         with suppress(asyncio.TimeoutError):
             await asyncio.wait_for(process.wait(), timeout=5.0)
         return ExecResult(timed_out=True, exit_code=124)

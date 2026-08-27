@@ -12,6 +12,12 @@ import threading
 from typing import Any
 from uuid import uuid4
 
+from .book_permission import (
+    BookPermission,
+    canonical_book_permission,
+    normalize_book_permission,
+    public_permission_dict,
+)
 from .models import Role
 from .paths import PROJECT_ROOT, SYSTEM_ROOT, migrate_legacy_multi_user_tree
 
@@ -62,7 +68,7 @@ def _canonical_record(
     role = str(value.get("role") or default_role)
     if role not in {"admin", "user"}:
         role = default_role
-    return {
+    record = {
         "id": str(value.get("id") or new_user_id()),
         "hash": hashed,
         "role": role,
@@ -70,6 +76,9 @@ def _canonical_record(
         "disabled": bool(value.get("disabled", False)),
         "avatar": str(value.get("avatar") or ""),
     }
+    if "book_permission" in value:
+        record["book_permission"] = canonical_book_permission(value.get("book_permission"))
+    return record
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -236,6 +245,7 @@ def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[
             "created_at": str(existing.get("created_at") or utc_now()),
             "disabled": bool(existing.get("disabled", False)),
             "avatar": str(existing.get("avatar") or ""),
+            "book_permission": canonical_book_permission(existing.get("book_permission")),
         }
         users[username] = record
         _write_users(users)
@@ -254,6 +264,9 @@ def list_user_info(  # nosec B107 - empty defaults mean "no env fallback supplie
             "created_at": record.get("created_at", ""),
             "disabled": bool(record.get("disabled", False)),
             "avatar": str(record.get("avatar") or ""),
+            "book_permission": public_permission_dict(
+                normalize_book_permission(record.get("book_permission"))
+            ),
         }
         for username, record in load_users(env_username, env_password_hash).items()
     ]
@@ -268,6 +281,48 @@ def get_user_by_id(user_id: str) -> tuple[str, dict[str, Any]] | None:
         if str(record.get("id") or "") == user_id:
             return username, record
     return None
+
+
+def set_book_permission(username: str, permission: BookPermission) -> bool:
+    """Atomically replace one ordinary user's shared-book permission."""
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        record = users.get(username)
+        if record is None:
+            return False
+        record["book_permission"] = public_permission_dict(permission)
+        _write_users(users)
+    return True
+
+
+def remove_book_permission_overrides(book_id: str) -> list[str]:
+    """Remove a deleted shared book from every explicit ACL."""
+    if not USERS_FILE.exists():
+        return []
+    affected: list[str] = []
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        changed = False
+        for record in users.values():
+            permission = normalize_book_permission(record.get("book_permission"))
+            books = permission.books_dict()
+            if book_id not in books:
+                continue
+            books.pop(book_id)
+            record["book_permission"] = public_permission_dict(
+                BookPermission(
+                    create=permission.create,
+                    default=permission.default,
+                    books=tuple(books.items()),
+                )
+            )
+            affected.append(str(record.get("id") or ""))
+            changed = True
+        if changed:
+            _write_users(users)
+    return affected
 
 
 def delete_user(username: str) -> bool:

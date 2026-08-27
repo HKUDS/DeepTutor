@@ -50,6 +50,26 @@ QUALITATIVE_TYPES: frozenset[KnowledgeType] = frozenset(
 _QUALITATIVE_PASS_DISPLAY = 1.0
 
 
+def path_display_name(progress: LearningProgress) -> str:
+    """What to call this path, everywhere it is named.
+
+    A path's own :attr:`~deeptutor.learning.models.LearningProgress.name` wins.
+    Without one the first module's name stands in, and failing that the storage
+    id — the behaviour every surface implemented separately before this
+    function existed, which is why rebuilding a map used to rename the path
+    (``mastery_build`` replaces module one) and why three surfaces could
+    disagree about the same path.
+
+    Derivation is the fallback, never the record: a named path keeps its name
+    across every rebuild.
+    """
+    named = str(progress.name or "").strip()
+    if named:
+        return named
+    first_module = progress.modules[0].name.strip() if progress.modules else ""
+    return first_module or progress.book_id
+
+
 def gate_threshold(kp_type: KnowledgeType) -> float:
     """The quantitative mastery bar for *kp_type* (qualitative types report
     their pass-display value so callers have a single number to show)."""
@@ -273,6 +293,7 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
             }
         )
     return {
+        "name": path_display_name(progress),
         "counts": counts,
         "due_reviews": len(due_reviews(progress, now=now)),
         "complete": counts["total"] > 0 and counts["mastered"] == counts["total"],
@@ -361,4 +382,5 @@ __all__ = [
     "find_knowledge_point",
     "next_objective",
     "map_summary",
+    "path_display_name",
 ]

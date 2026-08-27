@@ -97,6 +97,7 @@ notices:
   provider_stream_interrupted: "模型服务中断了本次回答，请重试。"
   context_window_guard: "已裁剪较旧的工具结果，以确保本轮在模型上下文窗口内。"
   tool_schema_fallback: "服务方拒绝了原生工具 schema；将不带工具重试。"
+  ask_questions_fallback_prompt: "我最需要了解的目标或限制条件是什么？"
   image_fallback: "当前模型不支持图片输入；将去除图片后重试。"
   empty_final_response: "未能从模型输出中得到有效回答。请重试或缩小问题范围。"
   empty_finish_nudged: "模型这一轮只有内部推理，已提示其继续执行。"

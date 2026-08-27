@@ -35,7 +35,7 @@ def test_a_cli_app_call_is_given_a_workdir_and_a_writable_mount(
     kwargs = _augment("cli_blender", monkeypatch, tmp_path)
 
     workdir = kwargs["_sandbox_workdir"]
-    assert workdir.endswith("/cli")
+    assert Path(workdir).as_posix().endswith("/cli")
     assert Path(workdir).is_dir(), "the app cannot write into a directory nobody created"
     assert kwargs["_sandbox_user_id"] == "u_ada"
     mount = kwargs["_sandbox_mounts"][0]

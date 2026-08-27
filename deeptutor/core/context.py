@@ -56,6 +56,8 @@ class UnifiedContext:
         persona_context: Selected persona's instructions, eagerly injected
             into the system prompt (a persona must shape the voice from the
             first token; empty when no persona is active).
+        sidebar_context: High-priority grounding for an isolated sidebar tutor
+            (for example, the exact passage selected in another chat).
         skills_manifest: System-prompt Skills block — one line per
             capability skill visible to this user, plus any ``always``
             skills' full bodies. The model pulls full skill content on
@@ -79,6 +81,7 @@ class UnifiedContext:
     language: str = "en"
     memory_context: str = ""
     persona_context: str = ""
+    sidebar_context: str = ""
     skills_manifest: str = ""
     source_manifest: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)

@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 import {
   BookHeart,
   Check,
@@ -50,6 +51,8 @@ export default function SoulPicker({
   onChange: (next: SoulSpec) => void;
 }) {
   const { t } = useTranslation();
+  // The soul library is shared deployment-wide; only an admin may add to it.
+  const { isAdmin } = useAuthStatus();
   const [sources, setSources] = useState<SoulSources | null>(null);
   const [tab, setTab] = useState<SourceTab>(
     value.source === "persona"
@@ -229,7 +232,7 @@ export default function SoulPicker({
         </div>
       )}
 
-      {tab === "custom" && (value.content ?? "").trim() && (
+      {isAdmin && tab === "custom" && (value.content ?? "").trim() && (
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={saveName}

@@ -208,6 +208,7 @@ export default memo(function ChatComposer({
   selectedMemoryFiles,
   selectedKnowledgeBases,
   isStreaming,
+  awaitingUserReply = false,
   isVisualizeMode,
   capabilityNeedsConfig,
   capabilityConfigConfirmed,
@@ -299,6 +300,8 @@ export default memo(function ChatComposer({
   selectedMemoryFiles: SpaceMemoryFile[];
   selectedKnowledgeBases: string[];
   isStreaming: boolean;
+  /** The live turn is paused on an ask_user card and needs an answer. */
+  awaitingUserReply?: boolean;
   isVisualizeMode: boolean;
   /**
    * True when the active capability (e.g. Quiz / Visualize / Research)
@@ -514,13 +517,18 @@ export default memo(function ChatComposer({
   // (via `onRequestConfigConfirm`) instead of silently doing nothing.
   const isConfigBlocked = capabilityNeedsConfig && !capabilityConfigConfirmed;
   const hasIntent = hasContent || hasReferences;
-  const canSend = hasIntent && !isStreaming && !isConfigBlocked;
+  // A turn paused on a question is technically still streaming, but the only
+  // thing that can move it forward is the user's answer. Locking the composer
+  // there made the interactive card the ONLY way to answer — and left the
+  // learner with no way out at all if the card failed to render.
+  const streamingBlocksSend = isStreaming && !awaitingUserReply;
+  const canSend = hasIntent && !streamingBlocksSend && !isConfigBlocked;
 
   // `blocked` only exists once there is intent: without it the button stays
   // `idle` so an empty composer doesn't present a live send affordance. That
   // makes intent — not `canSend` — the thing that decides interactivity, so
   // the `blocked` state can stay clickable and surface the config card.
-  const sendState: SendState = isStreaming
+  const sendState: SendState = streamingBlocksSend
     ? "streaming"
     : !hasIntent
       ? "idle"
@@ -640,17 +648,22 @@ export default memo(function ChatComposer({
     doSend(content);
   }, [canSend, doSend, isConfigBlocked, onRequestConfigConfirm]);
 
-  // One button, so one handler: mid-turn the same control cancels.
+  // One button, so one handler: mid-turn the same control cancels — except
+  // while the turn is waiting on the user, where sending IS how it continues.
   const handleSendButtonClick = useCallback(() => {
-    if (isStreaming) {
+    if (streamingBlocksSend) {
       onCancelStreaming();
       return;
     }
     handleManualSend();
-  }, [handleManualSend, isStreaming, onCancelStreaming]);
+  }, [handleManualSend, streamingBlocksSend, onCancelStreaming]);
 
   const sendLabel =
-    sendState === "streaming" ? t("Stop generating") : t("Send");
+    sendState === "streaming"
+      ? t("Stop generating")
+      : awaitingUserReply
+        ? t("Send answer")
+        : t("Send");
   const sendTitle =
     sendState === "blocked"
       ? t("Confirm settings on the right to send.")

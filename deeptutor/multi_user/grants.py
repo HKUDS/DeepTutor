@@ -28,10 +28,11 @@ def empty_grant(user_id: str) -> dict[str, Any]:
         "models": {"llm": []},
         "knowledge_bases": [],
         "skills": [],
-        # Partners an admin has assigned to this user. Partners stay
-        # admin-managed (the /api/v1/partners CRUD router is admin-gated); a
-        # grant only lets the user *see and consult* the named partners — same
-        # shape as ``skills`` (``[{"partner_id": ...}]``).
+        # Partners an admin has lent this user. People build their own partners
+        # now, so a grant is only about someone *else's*: it lets the user talk
+        # to the named partners — never configure them — and their side of each
+        # conversation stays private to their account. Same shape as ``skills``
+        # (``[{"partner_id": ...}]``).
         "partners": [],
         # Tool whitelists share the partner-config semantics for built-ins:
         # ``enabled_tools=None`` means "default" (every tool in the pool),

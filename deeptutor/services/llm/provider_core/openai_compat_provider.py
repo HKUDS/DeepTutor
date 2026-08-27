@@ -18,6 +18,7 @@ import uuid
 import json_repair
 from openai import AsyncOpenAI
 
+from deeptutor.services.keypool import KeyPool
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
 from deeptutor.services.llm.exceptions import LLMConfigError
 from deeptutor.services.llm.openai_http_client import openai_client_kwargs
@@ -115,26 +116,32 @@ class OpenAICompatProvider(LLMProvider):
 
     def __init__(
         self,
-        api_key: str | None = None,
+        api_key: str | list[str] | None = None,
         api_base: str | None = None,
         default_model: str = "gpt-4o",
         extra_headers: dict[str, str] | None = None,
         spec: Any = None,
         provider_name: str | None = None,
     ):
-        super().__init__(api_key, api_base)
+        keys = api_key if isinstance(api_key, list) else [api_key]
+        keys = [str(key).strip() for key in keys if str(key or "").strip()]
+        primary_key = keys[0] if keys else None
+        super().__init__(primary_key, api_base)
+        self._key_pool = KeyPool(keys) if keys else None
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
         self._spec = spec
         self._provider_name = provider_name
 
-        if api_key and spec and spec.env_key:
-            self._setup_env(api_key, api_base)
+        if primary_key and spec and spec.env_key:
+            self._setup_env(primary_key, api_base)
 
         effective_base = api_base or (spec.default_api_base if spec else None) or None
         self._effective_base = effective_base
         endpoint = (effective_base or "").rstrip("/")
-        placeholder_key = api_key in {None, "", "no-key", "sk-no-key-required"}
+        # api_key may be a list (key pool); only the resolved primary key
+        # counts for the configured-key check.
+        placeholder_key = primary_key in {None, "", "no-key", "sk-no-key-required"}
         if (
             provider_name == "openai"
             and (not endpoint or endpoint == "https://api.openai.com/v1")
@@ -151,7 +158,7 @@ class OpenAICompatProvider(LLMProvider):
             default_headers.update(extra_headers)
 
         self._client = AsyncOpenAI(
-            api_key=api_key or "no-key",
+            api_key=primary_key or "no-key",
             base_url=effective_base,
             default_headers=default_headers,
             max_retries=0,
@@ -159,6 +166,32 @@ class OpenAICompatProvider(LLMProvider):
         )
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}
+
+    @staticmethod
+    def _status_code(exc: Exception) -> int | None:
+        return getattr(exc, "status_code", None) or getattr(
+            getattr(exc, "response", None), "status_code", None
+        )
+
+    async def _create_with_key_rotation(self, create, kwargs: dict[str, Any]) -> Any:
+        if not self._key_pool:
+            return await create(**kwargs)
+        api_key = self._key_pool.next()
+        for attempt in range(2):
+            request = dict(kwargs)
+            headers = dict(request.get("extra_headers") or {})
+            headers["Authorization"] = f"Bearer {api_key}"
+            request["extra_headers"] = headers
+            try:
+                return await create(**request)
+            except Exception as exc:
+                if self._status_code(exc) != 429:
+                    raise
+                self._key_pool.mark_429(api_key)
+                if attempt:
+                    raise
+                api_key = self._key_pool.next()
+        raise RuntimeError("LLM key rotation exhausted")
 
     def _setup_env(self, api_key: str, api_base: str | None) -> None:
         import os
@@ -327,8 +360,11 @@ class OpenAICompatProvider(LLMProvider):
         self,
         model: str | None,
         reasoning_effort: str | None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> bool:
         spec = self._spec
+        if self._uses_native_web_search(model, tools):
+            return self._responses_circuit_allows(model, reasoning_effort)
         if spec and spec.name not in {"openai", "github_copilot"}:
             return False
         if spec is None or spec.name != "github_copilot":
@@ -343,6 +379,13 @@ class OpenAICompatProvider(LLMProvider):
         if not wants_responses:
             return False
 
+        return self._responses_circuit_allows(model, reasoning_effort)
+
+    def _responses_circuit_allows(
+        self,
+        model: str | None,
+        reasoning_effort: str | None,
+    ) -> bool:
         circuit_key = _responses_circuit_key(model, self.default_model, reasoning_effort)
         failures = self._responses_failures.get(circuit_key, 0)
         if failures >= _RESPONSES_FAILURE_THRESHOLD:
@@ -350,6 +393,25 @@ class OpenAICompatProvider(LLMProvider):
             if (time.monotonic() - tripped_at) < _RESPONSES_PROBE_INTERVAL_S:
                 return False
         return True
+
+    def _uses_native_web_search(
+        self,
+        model: str | None,
+        tools: list[dict[str, Any]] | None,
+    ) -> bool:
+        patterns = {
+            str(name).strip().lower()
+            for name in getattr(self._spec, "native_web_search_models", ())
+            if str(name).strip()
+        }
+        model_name = (model or self.default_model or "").strip().lower().split("/")[-1]
+        if model_name not in patterns:
+            return False
+        return any(
+            ((tool.get("function") or {}).get("name") == "web_search")
+            for tool in tools or []
+            if isinstance(tool, dict) and tool.get("type") == "function"
+        )
 
     def _record_responses_failure(self, model: str | None, reasoning_effort: str | None) -> None:
         circuit_key = _responses_circuit_key(model, self.default_model, reasoning_effort)
@@ -442,7 +504,10 @@ class OpenAICompatProvider(LLMProvider):
             body["reasoning"] = {"effort": reasoning_effort}
             body["include"] = ["reasoning.encrypted_content"]
         if tools:
-            body["tools"] = convert_tools(tools)
+            body["tools"] = convert_tools(
+                tools,
+                native_web_search=self._uses_native_web_search(model, tools),
+            )
             body["tool_choice"] = tool_choice or "auto"
         return body
 
@@ -679,7 +744,7 @@ class OpenAICompatProvider(LLMProvider):
         **extra_kwargs: Any,
     ) -> LLMResponse:
         try:
-            if self._should_use_responses_api(model, reasoning_effort):
+            if self._should_use_responses_api(model, reasoning_effort, tools):
                 try:
                     body = self._build_responses_body(
                         messages,
@@ -691,7 +756,9 @@ class OpenAICompatProvider(LLMProvider):
                         tool_choice,
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
-                    result = parse_response_output(await self._client.responses.create(**body))
+                    result = parse_response_output(
+                        await self._create_with_key_rotation(self._client.responses.create, body)
+                    )
                     self._record_responses_success(model, reasoning_effort)
                     return result
                 except Exception as responses_error:
@@ -712,7 +779,11 @@ class OpenAICompatProvider(LLMProvider):
             )
             request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
             try:
-                return self._parse(await self._client.chat.completions.create(**request_kwargs))
+                return self._parse(
+                    await self._create_with_key_rotation(
+                        self._client.chat.completions.create, request_kwargs
+                    )
+                )
             except Exception as exc:
                 if request_kwargs.get(
                     "response_format"
@@ -721,7 +792,11 @@ class OpenAICompatProvider(LLMProvider):
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
-                    return self._parse(await self._client.chat.completions.create(**retry_kwargs))
+                    return self._parse(
+                        await self._create_with_key_rotation(
+                            self._client.chat.completions.create, retry_kwargs
+                        )
+                    )
                 raise
         except Exception as e:
             if tools and self._is_tool_format_error(e):
@@ -762,7 +837,7 @@ class OpenAICompatProvider(LLMProvider):
         request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
         idle_timeout_s = 90
         try:
-            if self._should_use_responses_api(model, reasoning_effort):
+            if self._should_use_responses_api(model, reasoning_effort, tools):
                 try:
                     body = self._build_responses_body(
                         messages,
@@ -775,7 +850,9 @@ class OpenAICompatProvider(LLMProvider):
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
                     body["stream"] = True
-                    stream = await self._client.responses.create(**body)
+                    stream = await self._create_with_key_rotation(
+                        self._client.responses.create, body
+                    )
 
                     async def _timed_stream():
                         stream_iter = stream.__aiter__()
@@ -788,6 +865,18 @@ class OpenAICompatProvider(LLMProvider):
                             except StopAsyncIteration:
                                 break
 
+                    native_output_items: list[dict[str, Any]] = []
+                    native_citations: list[dict[str, Any]] = []
+
+                    def _collect_provider_event(
+                        kind: str,
+                        payload: dict[str, Any],
+                    ) -> None:
+                        if kind == "output_item":
+                            native_output_items.append(payload)
+                        elif kind == "citation":
+                            native_citations.append(payload)
+
                     (
                         content,
                         tool_calls,
@@ -798,6 +887,7 @@ class OpenAICompatProvider(LLMProvider):
                         _timed_stream(),
                         on_content_delta,
                         on_reasoning_delta=on_reasoning_delta,
+                        on_provider_event=_collect_provider_event,
                     )
                     self._record_responses_success(model, reasoning_effort)
                     return LLMResponse(
@@ -806,6 +896,14 @@ class OpenAICompatProvider(LLMProvider):
                         finish_reason=finish_reason,
                         usage=usage,
                         reasoning_content=reasoning_content,
+                        provider_specific_fields=(
+                            {
+                                "native_output_items": native_output_items,
+                                "citations": native_citations,
+                            }
+                            if native_output_items or native_citations
+                            else {}
+                        ),
                     )
                 except Exception as responses_error:
                     if self._spec and self._spec.name == "github_copilot":
@@ -818,7 +916,9 @@ class OpenAICompatProvider(LLMProvider):
             if self._spec is None or self._spec.supports_stream_options:
                 request_kwargs["stream_options"] = {"include_usage": True}
             try:
-                stream = await self._client.chat.completions.create(**request_kwargs)
+                stream = await self._create_with_key_rotation(
+                    self._client.chat.completions.create, request_kwargs
+                )
             except Exception as exc:
                 if request_kwargs.get(
                     "response_format"
@@ -827,7 +927,9 @@ class OpenAICompatProvider(LLMProvider):
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
-                    stream = await self._client.chat.completions.create(**retry_kwargs)
+                    stream = await self._create_with_key_rotation(
+                        self._client.chat.completions.create, retry_kwargs
+                    )
                 else:
                     raise
 

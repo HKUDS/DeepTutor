@@ -683,7 +683,15 @@ async def test_detect_all_excludes_partner_backend() -> None:
 
     kinds = {d.kind for d in await detect_all()}
     assert "partner" not in kinds
-    assert kinds <= {"claude_code", "codex", "gemini", "kimi", "opencode", "mimo"}
+    assert kinds <= {
+        "claude_code",
+        "codex",
+        "gemini",
+        "antigravity",
+        "kimi",
+        "opencode",
+        "mimo",
+    }
 
 
 # ---- partner backend: drive a partner as a subagent --------------------------
@@ -706,6 +714,11 @@ class _FakePartnerManager:
         self.started: list[str] = []
         self.sent: list[dict] = []
         self._trace: list = []
+
+    def owner_id(self, partner_id: str) -> str:
+        # These partners are admin-created, so the access check falls through
+        # to the grant rather than short-circuiting on ownership.
+        return ""
 
     def script_trace(self, events: list) -> None:
         self._trace = events

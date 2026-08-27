@@ -83,6 +83,12 @@ function describe(
     }
     case "path.reset":
       return tr("重置了进度", "Progress reset");
+    case "path.renamed": {
+      const renamed = String(event.payload?.name ?? "").trim();
+      return renamed
+        ? tr(`改名为「${renamed}」`, `Renamed to "${renamed}"`)
+        : tr("恢复了自动命名", "Restored the derived name");
+    }
     case "interaction.registered":
       return tr(`出了一道题：${name}`, `Posed a question on ${name}`);
     case "interaction.awaiting_input":

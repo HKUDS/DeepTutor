@@ -26,13 +26,13 @@ _CODE = _REPO / "deeptutor" / "agents" / "visualize" / "capability.py"
 
 
 def _status_keys(lang: str) -> set[str]:
-    data = yaml.safe_load((_PROMPTS / lang / "visualize.yaml").read_text()) or {}
+    data = yaml.safe_load((_PROMPTS / lang / "visualize.yaml").read_text(encoding="utf-8")) or {}
     status = data.get("status") if isinstance(data, dict) else None
     return set((status or {}).keys())
 
 
 def _code() -> str:
-    return _CODE.read_text()
+    return _CODE.read_text(encoding="utf-8")
 
 
 def test_en_zh_status_parity() -> None:

@@ -148,6 +148,12 @@ class InitModulesRequest(BaseModel):
     modules: list[dict]  # list of LearningModule-compatible dicts
 
 
+class RenamePathRequest(BaseModel):
+    """An empty name is a valid request: it restores the derived display name."""
+
+    name: str = ""
+
+
 class ChapterImport(BaseModel):
     title: str
     knowledge_points: list[str] = []
@@ -189,6 +195,7 @@ async def get_progress_map(book_id: str):
     progress = service.get_or_create(book_id)
     return {
         "book_id": book_id,
+        "name": learning_policy.path_display_name(progress),
         "path_revision": progress.version,
         "next": learning_policy.next_objective(progress).to_dict(),
         "map": learning_policy.map_summary(progress),
@@ -299,6 +306,27 @@ async def import_from_book(book_id: str, body: ImportFromBookRequest):
     return {
         "status": "ok",
         "module_count": len(modules),
+        "path_revision": progress.version,
+    }
+
+
+@router.patch("/progress/{book_id}")
+async def rename_progress(book_id: str, body: RenamePathRequest):
+    """Rename a path — the only edit that is the learner's rather than the tutor's.
+
+    Guarded like every other path mutation so a rename cannot interleave with a
+    tutoring turn's own commit, and emitted as an event so the activity feed
+    records who called it what.
+    """
+    _validate_book_id(book_id)
+    store = LearningStore()
+    if not await asyncio.to_thread(store.exists, book_id):
+        raise HTTPException(status_code=404, detail="Progress not found")
+    async with _exclusive_path_mutation(book_id):
+        progress = await asyncio.to_thread(LearningService(store).rename_path, book_id, body.name)
+    return {
+        "status": "ok",
+        "name": learning_policy.path_display_name(progress),
         "path_revision": progress.version,
     }
 

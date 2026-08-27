@@ -99,19 +99,6 @@ class OpenAICodexProvider(LLMProvider):
                                 "Codex login expired and could not be renewed. Sign in again.",
                             ) from None
                     raise
-                except Exception as exc:
-                    if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
-                        raise
-                    logger.warning(
-                        "SSL verification failed for Codex API; retrying with verify=False"
-                    )
-                    content, tool_calls, finish_reason = await _request_codex(
-                        CODEX_RESPONSES_URL,
-                        headers,
-                        body,
-                        verify=False,
-                        on_content_delta=on_content_delta,
-                    )
                 return LLMResponse(
                     content=content,
                     tool_calls=tool_calls,

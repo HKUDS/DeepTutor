@@ -7,6 +7,7 @@ import inspect
 import logging
 from typing import Any
 
+from deeptutor.capabilities.ask_questions import AskQuestionsLoopCapability
 from deeptutor.capabilities.explore_context import ExploreContextCapability
 from deeptutor.capabilities.ima import ImaCapability
 from deeptutor.capabilities.marginnote4 import MarginNoteCapability
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 LOOP_CAPABILITIES_GROUP = "deeptutor.loop_capabilities"
 
 LOOP_CAPABILITIES: tuple[LoopCapability, ...] = (
+    AskQuestionsLoopCapability(),
     MasteryLoopCapability(),
     SolveLoopCapability(),
     ObsidianCapability(),

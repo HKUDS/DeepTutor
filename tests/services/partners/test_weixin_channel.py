@@ -23,13 +23,17 @@ from deeptutor.partners.channels.weixin import (
     _parse_aes_key,
     _pkcs7_unpad_safe,
 )
+from deeptutor.partners.config import paths as partner_paths
+from deeptutor.partners.helpers import ensure_dir
 
 
 @pytest.fixture
 def state_dir(tmp_path, monkeypatch):
     """Redirect default Weixin runtime state to a temp directory."""
 
-    monkeypatch.setattr(weixin_mod, "get_runtime_subdir", lambda name: tmp_path / name)
+    monkeypatch.setattr(
+        partner_paths, "get_runtime_subdir", lambda name: ensure_dir(tmp_path / name)
+    )
     return tmp_path / "weixin"
 
 
@@ -119,6 +123,12 @@ class TestDefaultAndDiscovery:
         assert "weixin" in discover_channel_names()
         assert discover_all()["weixin"] is WeixinChannel
 
+    def test_qr_helper_module_is_not_offered_as_a_channel(self, state_dir):
+        """``weixin_qr`` holds the login protocol, not a channel."""
+        assert "weixin_qr" in discover_channel_names()
+        assert "weixin_qr" not in discover_all()
+        assert "weixin_qr" not in all_channel_schemas()
+
     def test_schema_exposes_weixin_and_delivery_fields(self, state_dir):
         payload = all_channel_schemas()["weixin"]
         assert payload["display_name"] == "WeChat"
@@ -143,6 +153,52 @@ class TestStateAndHeaders:
         assert loaded._get_updates_buf == "cursor"
         assert loaded._context_tokens == {"wx-user-1": "ctx"}
         assert loaded._typing_tickets["wx-user-1"]["ticket"] == "typing"
+
+    def test_state_is_isolated_per_partner(self, tmp_path, monkeypatch):
+        """Two Partners on WeChat must not share one bot identity."""
+        monkeypatch.setattr(partner_paths, "_base_dir", lambda: ensure_dir(tmp_path / "partners"))
+
+        alice = _make_channel(token="")
+        alice.partner_id = "alice-tutor"
+        bob = _make_channel(token="")
+        bob.partner_id = "bob-tutor"
+
+        assert alice._get_state_dir() != bob._get_state_dir()
+
+        alice._token = "token-alice"
+        alice._get_updates_buf = "cursor-alice"
+        alice._save_state()
+
+        # Bob has no identity of his own: he must NOT inherit Alice's.
+        assert bob._load_state() is False
+        assert bob._token == ""
+
+        # And Bob logging in must not overwrite Alice's stored identity.
+        bob._token = "token-bob"
+        bob._get_updates_buf = "cursor-bob"
+        bob._save_state()
+
+        reloaded = _make_channel(token="")
+        reloaded.partner_id = "alice-tutor"
+        assert reloaded._load_state() is True
+        assert reloaded._token == "token-alice"
+        assert reloaded._get_updates_buf == "cursor-alice"
+
+    def test_configured_token_wins_but_session_still_loads(self, state_dir):
+        """Config owns identity; the file owns cursor and context tokens."""
+        seeded = _make_channel(token="", state_dir=str(state_dir))
+        seeded._token = "token-from-file"
+        seeded._get_updates_buf = "cursor"
+        seeded._context_tokens = {"wx-user-1": "ctx"}
+        seeded._save_state()
+
+        ch = _make_channel(token="token-from-config", state_dir=str(state_dir))
+        ch._token = ch.config.token
+        ch._load_state()
+
+        assert ch._token == "token-from-config"
+        assert ch._get_updates_buf == "cursor"
+        assert ch._context_tokens == {"wx-user-1": "ctx"}
 
     def test_headers_include_auth_and_route_tag(self):
         ch = _make_channel(route_tag="r1")

@@ -165,6 +165,65 @@ def _prune_concept_graph(spine: Spine) -> int:
     return dropped
 
 
+def _source_quality_summary(
+    inputs: BookInputs,
+    exploration: ExplorationReport | None,
+    *,
+    error: str = "",
+) -> dict[str, Any]:
+    """Compact, persisted source coverage for management views."""
+
+    requested_kbs = list(dict.fromkeys(inputs.knowledge_bases or []))
+    covered_kbs = sorted(
+        {
+            chunk.kb_name
+            for chunk in (exploration.chunks if exploration else [])
+            if chunk.source == "kb" and chunk.kb_name
+        }
+    )
+    missing_kbs = [name for name in requested_kbs if name not in covered_kbs]
+    requested_non_kb = {
+        "notebook": len(inputs.notebook_refs or []),
+        "chat": len(inputs.chat_selections or []),
+        "questions": len(inputs.question_entries or []) + len(inputs.question_categories or []),
+    }
+    coverage = dict(exploration.coverage) if exploration else {}
+    warnings: list[str] = []
+    if error:
+        warnings.append(f"Source exploration failed: {error[:240]}")
+    if missing_kbs:
+        warnings.append("No retrieved evidence from: " + ", ".join(missing_kbs))
+    requested_any = bool(requested_kbs or any(requested_non_kb.values()))
+    chunk_count = len(exploration.chunks) if exploration else 0
+    if requested_any and chunk_count == 0 and not error:
+        warnings.append("Selected sources produced no reusable evidence chunks.")
+    return {
+        "status": "failed" if error else ("warning" if warnings else "ready"),
+        "requested_kbs": requested_kbs,
+        "covered_kbs": covered_kbs,
+        "missing_kbs": missing_kbs,
+        "requested_non_kb": requested_non_kb,
+        "coverage": coverage,
+        "chunk_count": chunk_count,
+        "warnings": warnings,
+    }
+
+
+def _generation_error_category(message: str) -> str:
+    text = (message or "").lower()
+    if any(token in text for token in ("quota", "insufficient", "credit", "billing")):
+        return "quota"
+    if any(token in text for token in ("unauthorized", "forbidden", "api key", "credential")):
+        return "authentication"
+    if any(token in text for token in ("rate limit", "too many requests", "429")):
+        return "rate_limit"
+    if any(token in text for token in ("timeout", "timed out", "connection", "provider")):
+        return "provider"
+    if any(token in text for token in ("parse", "invalid json", "validation")):
+        return "content"
+    return "unknown"
+
+
 def _is_auto_overview(chapter: Chapter) -> bool:
     """Whether *chapter* is the engine-injected overview.
 
@@ -481,6 +540,10 @@ class BookEngine:
                         stream=bus,
                     )
                     self.storage.save_exploration(book.id, exploration)
+                    book.metadata = {
+                        **(book.metadata or {}),
+                        "source_quality": _source_quality_summary(inputs, exploration),
+                    }
                     if (book.metadata or {}).get("exploration_failed"):
                         book.metadata = {
                             k: v
@@ -505,6 +568,11 @@ class BookEngine:
                     **(book.metadata or {}),
                     "exploration_failed": True,
                     "exploration_error": str(exc)[:400],
+                    "source_quality": _source_quality_summary(
+                        inputs,
+                        None,
+                        error=str(exc),
+                    ),
                 }
                 self.storage.save_book(book)
                 self.storage.append_log(
@@ -784,7 +852,6 @@ class BookEngine:
             raise ValueError(f"No spine for book {book_id}")
         if edited_spine is not None:
             spine.book_id = book_id
-            self.storage.save_spine(spine)
 
         # Chapters the reader deleted must not survive on the concept map.
         dropped = _prune_concept_graph(spine)
@@ -797,7 +864,6 @@ class BookEngine:
 
         # ── Inject Overview chapter (idempotent) ─────────────────────
         spine = await self._ensure_overview_chapter(spine, book, stream=stream)
-        self.storage.save_spine(spine)
 
         existing = {p.chapter_id: p for p in self.storage.list_pages(book_id)}
         pages: list[Page] = []
@@ -815,7 +881,6 @@ class BookEngine:
                 )
                 self.storage.save_page(page)
                 chapter.page_ids = [page.id]
-                self.storage.save_spine(spine)
             elif (
                 page.order != chapter.order
                 or page.title != chapter.title
@@ -833,6 +898,9 @@ class BookEngine:
                 self.storage.save_page(page)
             pages.append(page)
         pages.sort(key=lambda p: (p.order, p.created_at))
+        # Persist assigned page ids once. Previously the growing spine was
+        # rewritten after every new chapter shell.
+        self.storage.save_spine(spine)
 
         # Build the Overview page eagerly (no LLM, no queue).
         await self._materialize_overview_page(spine, pages, book, stream=stream)
@@ -1460,6 +1528,66 @@ class BookEngine:
 
         return scan_log_health(book_id, storage=self.storage).to_dict()
 
+    def generation_overview(self, book: Book) -> dict[str, Any]:
+        """Manifest-only generation state, cheap enough for the library."""
+
+        source_quality = (book.metadata or {}).get("source_quality")
+        return {
+            "status": book.status.value,
+            "can_resume": book.status
+            in {BookStatus.COMPILING, BookStatus.PAUSED, BookStatus.ERROR},
+            "pause_reason": str((book.metadata or {}).get("pause_reason") or ""),
+            "source_quality": source_quality if isinstance(source_quality, dict) else None,
+        }
+
+    def generation_summary(
+        self,
+        book_id: str,
+        *,
+        book: Book | None = None,
+        pages: list[Page] | None = None,
+    ) -> dict[str, Any]:
+        """Actionable generation, retry, source, and failure diagnostics."""
+
+        book = book or self.storage.load_book(book_id)
+        if book is None:
+            return {"book_id": book_id, "status": "missing"}
+        pages = pages if pages is not None else self.storage.list_pages(book_id)
+        page_counts = {status.value: 0 for status in PageStatus}
+        failed_blocks = 0
+        categories: dict[str, int] = {}
+        for page in pages:
+            page_counts[page.status.value] += 1
+            errors = [page.error] if page.error else []
+            for block in page.blocks:
+                if block.status == BlockStatus.ERROR:
+                    failed_blocks += 1
+                    if block.error:
+                        errors.append(block.error)
+            for error in errors:
+                category = _generation_error_category(error)
+                categories[category] = categories.get(category, 0) + 1
+
+        retryable = sum(
+            page_counts[status.value]
+            for status in (
+                PageStatus.PENDING,
+                PageStatus.PLANNING,
+                PageStatus.GENERATING,
+                PageStatus.ERROR,
+            )
+        )
+        overview = self.generation_overview(book)
+        return {
+            "book_id": book.id,
+            **overview,
+            "pages": {"total": len(pages), **page_counts},
+            "failed_blocks": failed_blocks,
+            "retryable_pages": retryable,
+            "can_resume": bool(retryable) and bool(overview["can_resume"]),
+            "failure_categories": categories,
+        }
+
     # ── Block CRUD operations (Phase 3) ────────────────────────────────
 
     async def insert_block(
@@ -1476,7 +1604,8 @@ class BookEngine:
         """Insert a fresh PENDING block at *position* (default: end)."""
         spine = self.storage.load_spine(book_id)
         page = self.storage.load_page(book_id, page_id)
-        if spine is None or page is None:
+        book = self.storage.load_book(book_id)
+        if spine is None or page is None or book is None:
             return None
         chapter = spine.chapter_by_id(page.chapter_id)
         if chapter is None:
@@ -1505,12 +1634,8 @@ class BookEngine:
                     chapter=chapter,
                     page=page,
                     block=block,
-                    language=self.storage.load_book(book_id).language
-                    if self.storage.load_book(book_id)
-                    else "en",
-                    knowledge_bases=self.storage.load_book(book_id).knowledge_bases
-                    if self.storage.load_book(book_id)
-                    else [],
+                    language=book.language,
+                    knowledge_bases=book.knowledge_bases,
                 )
                 bus = stream or get_book_bus(book_id)
                 bstream = BookStream(bus)

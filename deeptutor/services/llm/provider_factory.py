@@ -19,10 +19,11 @@ _provider_pool: "OrderedDict[tuple[Any, ...], LLMProvider]" = OrderedDict()
 _provider_pool_lock = threading.RLock()
 
 
-def _secret_fingerprint(value: str | None) -> str:
+def _secret_fingerprint(value: str | list[str] | None) -> str:
     if not value:
         return ""
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
 
 
 def _provider_cache_key(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> tuple[Any, ...]:
@@ -45,6 +46,7 @@ def _provider_cache_key(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> t
 def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
     """Construct one provider, importing only the selected backend SDK."""
     provider_name = llm_config.provider_name or llm_config.binding
+    api_key = llm_config.get_api_key()
     spec = find_by_name(provider_name)
     backend = spec.backend if spec else "openai_compat"
 
@@ -66,23 +68,24 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
         )
 
         provider = build_codebuddy_provider(
-            api_key=llm_config.api_key or None,
+            api_key=api_key or None,
             default_model=llm_config.model,
         )
     elif backend == "azure_openai":
         from deeptutor.services.llm.provider_core.azure_openai_provider import AzureOpenAIProvider
 
         provider = AzureOpenAIProvider(
-            api_key=llm_config.api_key or "",
+            api_key=api_key,
             api_base=llm_config.effective_url or llm_config.base_url or "",
             default_model=llm_config.model,
             extra_headers=llm_config.extra_headers or None,
+            api_version=llm_config.api_version,
         )
     elif backend == "anthropic":
         from deeptutor.services.llm.provider_core.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider(
-            api_key=llm_config.api_key or None,
+            api_key=api_key or None,
             api_base=llm_config.effective_url or llm_config.base_url or None,
             default_model=llm_config.model,
             extra_headers=llm_config.extra_headers or None,

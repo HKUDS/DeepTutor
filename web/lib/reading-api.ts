@@ -373,8 +373,16 @@ export async function createEpubPairing(
 }
 
 export async function listReadingExtensions(): Promise<ReadingExtensionManifest[]> {
-  return unwrap(
+  const payload: unknown = await unwrap(
     await apiFetch(apiUrl(`${BASE}/extensions`), { cache: "no-store" }),
+  );
+  if (!Array.isArray(payload)) return [];
+  return payload.filter(
+    (row): row is ReadingExtensionManifest =>
+      Boolean(row) &&
+      typeof row === "object" &&
+      typeof (row as ReadingExtensionManifest).id === "string" &&
+      Array.isArray((row as ReadingExtensionManifest).actions),
   );
 }
 
@@ -386,7 +394,6 @@ export async function runReadingExtension(
     locator: number;
     source_anchor?: string;
     selection?: string;
-    visible_text?: string;
     locale?: string;
   },
 ): Promise<ReadingExtensionResult> {

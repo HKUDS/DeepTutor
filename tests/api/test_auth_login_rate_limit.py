@@ -6,8 +6,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
-pytest_plugins = ["tests.multi_user.conftest"]
-
 
 @pytest.fixture
 def login_client(mu_isolated_root, monkeypatch):

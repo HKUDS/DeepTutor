@@ -16,7 +16,6 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_runtime_subdir
 from deeptutor.partners.config.schema import Base, DeliveryOverrides
 
 try:
@@ -293,7 +292,7 @@ class MochatChannel(BaseChannel):
         self._socket: Any = None
         self._ws_connected = self._ws_ready = False
 
-        self._state_dir = get_runtime_subdir("mochat")
+        self._state_dir = self.state_dir()
         self._cursor_path = self._state_dir / "session_cursors.json"
         self._session_cursor: dict[str, int] = {}
         self._cursor_save_task: asyncio.Task | None = None

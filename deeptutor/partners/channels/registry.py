@@ -14,6 +14,16 @@ if TYPE_CHECKING:
 _INTERNAL = frozenset({"base", "manager", "registry"})
 
 
+class NotAChannelModule(Exception):
+    """The module imported fine but defines no channel.
+
+    Distinct from :class:`ImportError` on purpose. A channel whose *import*
+    fails is a real channel with a missing optional dependency, and the UI
+    should say so; a module with no channel in it is a helper (e.g. a shared
+    protocol implementation) that was never meant to appear as one.
+    """
+
+
 def discover_channel_names() -> list[str]:
     """Return all built-in channel module names by scanning the package (zero imports)."""
     import deeptutor.partners.channels as pkg
@@ -34,7 +44,7 @@ def load_channel_class(module_name: str) -> type[BaseChannel]:
         obj = getattr(mod, attr)
         if isinstance(obj, type) and issubclass(obj, _Base) and obj is not _Base:
             return obj
-    raise ImportError(f"No BaseChannel subclass in deeptutor.partners.channels.{module_name}")
+    raise NotAChannelModule(f"deeptutor.partners.channels.{module_name} defines no channel")
 
 
 def discover_plugins() -> dict[str, type[BaseChannel]]:
@@ -73,6 +83,8 @@ def discover_all_with_errors() -> tuple[dict[str, type[BaseChannel]], dict[str, 
     for modname in discover_channel_names():
         try:
             builtin[modname] = load_channel_class(modname)
+        except NotAChannelModule:
+            continue  # A helper module, not a channel — never surface it.
         except ImportError as e:
             errors[modname] = str(e)
             logger.debug("Skipping built-in channel '{}': {}", modname, e)

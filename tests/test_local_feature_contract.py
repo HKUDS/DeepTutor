@@ -23,7 +23,7 @@ def test_required_local_and_upstream_route_families_are_installed():
         path.startswith("/api/v1/partners/") and path.endswith("/channel-onboarding/start")
         for path in paths
     )
-    assert __version__ == "1.5.16"
+    assert __version__ == "1.6.0"
 
 
 def test_kids_reward_extension_is_fork_local():

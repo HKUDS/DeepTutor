@@ -35,14 +35,16 @@ from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.multi_user.paths import get_current_path_service, user_context
 from deeptutor.partners.bus.events import InboundMessage, OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
-from deeptutor.partners.config.paths import get_partner_user_sessions_dir
 from deeptutor.partners.helpers import detect_image_mime
 from deeptutor.services.partners.commands import PartnerCommandHandler
 from deeptutor.services.partners.interaction import (
+    actor_for_account,
     build_partner_turn_context,
     partner_turn_context,
     personal_actor_id,
+    session_store_for,
 )
+from deeptutor.services.partners.links import linked_user_id
 from deeptutor.services.partners.scope import partner_user
 from deeptutor.services.partners.sessions import PartnerSessionStore
 from deeptutor.services.partners.workspace import ensure_partner_workspace, read_soul
@@ -83,16 +85,13 @@ class PartnerRunner:
         partner_id: str,
         config: Any,
         bus: MessageBus,
-        store: PartnerSessionStore,
         save_config: Callable[[str, Any], None] | None = None,
     ) -> None:
         self.partner_id = partner_id
         self.config = config
         self.bus = bus
-        self.store = store
         self.save_config = save_config
         self._session_locks: dict[str, asyncio.Lock] = {}
-        self._personal_stores: dict[str, PartnerSessionStore] = {}
         self._tasks: set[asyncio.Task] = set()
 
     # ── inbound loop ──────────────────────────────────────────────
@@ -134,15 +133,26 @@ class PartnerRunner:
 
     # ── one turn ──────────────────────────────────────────────────
 
+    def _identify(self, msg: InboundMessage) -> None:
+        """Attach the sender's DeepTutor identity to a channel message, if any.
+
+        In-app turns arrive with an actor already set. A channel message
+        carries only a sender id, which counts as an identity once that account
+        has been linked (``/link``). Group traffic deliberately stays
+        un-attributed: a group thread is a shared conversation, and splitting it
+        per speaker would leave the partner answering each person out of a
+        history nobody else in the room can see.
+        """
+        if msg.actor is not None or (msg.metadata or {}).get("is_group"):
+            return
+        user_id = linked_user_id(self.partner_id, msg.channel, msg.sender_id)
+        if user_id:
+            msg.actor = actor_for_account(user_id)
+
     def _store_for(self, msg: InboundMessage) -> PartnerSessionStore:
-        actor_id = personal_actor_id(msg.actor)
-        if actor_id is None:
-            return self.store
-        store = self._personal_stores.get(actor_id)
-        if store is None:
-            store = PartnerSessionStore(get_partner_user_sessions_dir(self.partner_id, actor_id))
-            self._personal_stores[actor_id] = store
-        return store
+        """Where this message's turn is persisted — the sender's own thread pool
+        when the message carries an identity, the partner's shared one otherwise."""
+        return session_store_for(self.partner_id, msg.actor)
 
     def _lock_for(self, session_key: str, *, actor_id: str | None) -> asyncio.Lock:
         lock_key = f"{actor_id or 'legacy'}:{session_key}"
@@ -165,6 +175,7 @@ class PartnerRunner:
         should attach to the final outbound message (e.g. ``_streamed``
         when the reply was already delivered live via stream deltas).
         """
+        self._identify(msg)
         session_key = msg.session_key
         store = self._store_for(msg)
         async with self._lock_for(session_key, actor_id=personal_actor_id(msg.actor)):

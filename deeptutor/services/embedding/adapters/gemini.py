@@ -30,18 +30,25 @@ class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
 
     SUPPORTS_INPUT_TYPE = True
 
+    # ``multimodal`` states what the model maps into its embedding space, and
+    # is the single place that decides it: ``get_model_info`` reports it to
+    # Settings, and ``_embed_native`` refuses ``contents`` for a model that
+    # says False rather than posting parts the endpoint will reject (#814).
     MODELS_INFO: dict[str, object] = {
         "gemini-embedding-2": {
             "default": 3072,
             "dimensions": [128, 256, 512, 768, 1536, 3072],
+            "multimodal": True,
         },
         "gemini-embedding-2-preview": {
             "default": 3072,
             "dimensions": [128, 256, 512, 768, 1536, 3072],
+            "multimodal": True,
         },
         "gemini-embedding-001": {
             "default": 3072,
             "dimensions": [128, 256, 512, 768, 1536, 3072],
+            "multimodal": False,
         },
     }
 
@@ -135,6 +142,89 @@ class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
                 redacted = redacted.replace(secret, "[REDACTED]")
         return redacted[:500]
 
+    @classmethod
+    def _model_info(cls, model_name: str | None) -> dict[str, Any] | None:
+        """The MODELS_INFO row for a model, falling back across the 2.x line."""
+        model_id = cls._model_id(model_name)
+        info = cls.MODELS_INFO.get(model_id)
+        if info is None and cls._is_embedding2(model_id):
+            info = cls.MODELS_INFO["gemini-embedding-2"]
+        return info if isinstance(info, dict) else None
+
+    @classmethod
+    def _supports_multimodal(cls, model_name: str | None) -> bool:
+        info = cls._model_info(model_name)
+        return bool(info.get("multimodal", False)) if info else False
+
+    @staticmethod
+    def _inline_data(value: str, kind: str) -> dict[str, Any]:
+        """Turn one ``data:`` URI into Gemini's ``inlineData`` part.
+
+        Only ``data:`` URIs are accepted. `batchEmbedContents` has no remote-URL
+        part — the alternative to inline bytes is a File API upload — so an
+        http(s) value could only be honoured by fetching it here, and this
+        repository has already settled that question against doing so (see
+        ``services/llm/multimodal._resolve_local_attachment_url``: sync network
+        IO on an async path, and an SSRF footgun). Callers hand us bytes.
+        """
+        text = str(value or "").strip()
+        if not text.startswith("data:"):
+            raise ValueError(
+                f"Gemini embeddings need inline bytes for '{kind}' content, but got "
+                f"{'an http(s) URL' if text[:4].lower() == 'http' else 'an unsupported value'}. "
+                "Pass a data: URI (base64) instead."
+            )
+        header, _, payload = text.partition(",")
+        if not payload:
+            raise ValueError(f"Malformed data: URI for '{kind}' content — no base64 payload.")
+        mime_type = header[len("data:") :].split(";", 1)[0].strip()
+        if not mime_type:
+            raise ValueError(f"Malformed data: URI for '{kind}' content — no MIME type.")
+        return {"inlineData": {"mimeType": mime_type, "data": payload}}
+
+    @classmethod
+    def _content_parts(cls, item: dict[str, Any]) -> list[dict[str, Any]]:
+        """Map one ``{"text"|"image"|"video"|"audio": value}`` item to parts."""
+        parts: list[dict[str, Any]] = []
+        for kind, value in item.items():
+            if kind == "text":
+                parts.append({"text": str(value or "")})
+            elif kind in {"image", "video", "audio", "document"}:
+                parts.append(cls._inline_data(str(value or ""), kind))
+            else:
+                raise ValueError(f"Gemini embeddings do not support content type '{kind}'.")
+        return parts
+
+    def _native_multimodal_payload(
+        self,
+        request: EmbeddingRequest,
+        model: str,
+    ) -> dict[str, Any]:
+        """Build ``batchEmbedContents`` requests from provider-agnostic contents.
+
+        One vector per content item, matching the Cohere adapter's reading of
+        the same contract — except that Gemini maps every modality into one
+        shared space, so ``enable_fusion`` genuinely works here: it folds every
+        item's parts into a single content and returns one vector for the lot.
+        """
+        model_id = self._model_id(model)
+        items = [item for item in (request.contents or []) if isinstance(item, dict)]
+        dimension = request.dimensions or self.dimensions
+
+        def _request(parts: list[dict[str, Any]]) -> dict[str, Any]:
+            entry: dict[str, Any] = {
+                "model": f"models/{model_id}",
+                "content": {"parts": parts},
+            }
+            if dimension and self.send_dimensions is not False:
+                entry["outputDimensionality"] = dimension
+            return entry
+
+        if request.enable_fusion:
+            fused = [part for item in items for part in self._content_parts(item)]
+            return {"requests": [_request(fused)] if fused else []}
+        return {"requests": [_request(self._content_parts(item)) for item in items]}
+
     def _native_payload(
         self,
         request: EmbeddingRequest,
@@ -175,13 +265,18 @@ class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
                 f"Gemini endpoint model '{endpoint_model}' does not match selected "
                 f"model '{model_id}'. Update the visible embedding Endpoint URL."
             )
-        if request.contents:
+        if request.contents and not self._supports_multimodal(model_id):
             raise ValueError(
-                "DeepTutor's Gemini embedding adapter currently supports text only; "
-                "multimodal `contents` require a dedicated native content mapper."
+                f"Gemini model '{model_id}' is text-only and cannot embed multimodal "
+                "`contents`. Select gemini-embedding-2, which maps text, images, "
+                "video, audio and documents into one space."
             )
 
-        payload = self._native_payload(request, model_id)
+        payload = (
+            self._native_multimodal_payload(request, model_id)
+            if request.contents
+            else self._native_payload(request, model_id)
+        )
         headers = {"Content-Type": "application/json"}
         api_key = self._auth_api_key()
         explicit_auth = {str(key).lower() for key in self.extra_headers} & {
@@ -302,10 +397,14 @@ class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
             not isinstance(vector, list) or not vector for vector in embeddings
         ):
             raise ValueError("Gemini native embedding response contains no usable vectors.")
-        if len(embeddings) != len(request.texts):
+        # Count against what was actually posted, not against `request.texts`:
+        # a multimodal turn carries no texts at all, and a fused one collapses
+        # many items into a single vector.
+        expected = len(payload.get("requests", []))
+        if len(embeddings) != expected:
             raise ValueError(
                 "Gemini native embedding response count does not match the request: "
-                f"expected {len(request.texts)}, got {len(embeddings)}."
+                f"expected {expected}, got {len(embeddings)}."
             )
 
         requested_dimension = request.dimensions or self.dimensions
@@ -343,10 +442,8 @@ class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
     def get_model_info(self) -> Dict[str, Any]:
         """Return Gemini embedding dimensions exposed to Settings diagnostics."""
         model_name = self._model_id(self.model)
-        model_info = self.MODELS_INFO.get(model_name)
-        if model_info is None and self._is_embedding2(model_name):
-            model_info = self.MODELS_INFO["gemini-embedding-2"]
-        if not isinstance(model_info, dict):
+        model_info = self._model_info(model_name)
+        if model_info is None:
             return {
                 "model": model_name,
                 "dimensions": self.dimensions,
@@ -360,8 +457,6 @@ class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
             "dimensions": model_info["default"],
             "supported_dimensions": list(model_info["dimensions"]),
             "supports_variable_dimensions": True,
-            # The current DeepTutor content contract is text-only. Advertising
-            # multimodal here would route images into an unsupported payload.
-            "multimodal": False,
+            "multimodal": bool(model_info.get("multimodal", False)),
             "provider": "gemini",
         }

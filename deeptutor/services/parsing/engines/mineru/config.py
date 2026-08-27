@@ -37,7 +37,7 @@ class MinerUConfig:
 
     mode: str = MINERU_MODE_LOCAL
     api_base_url: str = "https://mineru.net"
-    api_token: str = ""
+    api_token: str | list[str] = ""
     # Explicit path to a local MinerU executable; "" = auto-detect from PATH.
     local_cli_path: str = ""
     # Local-mode model weight download source + optional custom address
@@ -69,6 +69,11 @@ class MinerUConfig:
         auto-detect) so callers can drop the field from the request body."""
         return None if self.language.lower() == "auto" else self.language
 
+    @property
+    def api_keys(self) -> list[str]:
+        values = self.api_token if isinstance(self.api_token, list) else [self.api_token]
+        return [key for value in values if (key := str(value).strip())]
+
 
 def resolve_mineru_config() -> MinerUConfig:
     """Load the effective MinerU config from ``document_parsing.json`` (+ env overrides)."""
@@ -76,7 +81,11 @@ def resolve_mineru_config() -> MinerUConfig:
     return MinerUConfig(
         mode=str(settings.get("mode") or MINERU_MODE_LOCAL),
         api_base_url=str(settings.get("api_base_url") or "https://mineru.net"),
-        api_token=str(settings.get("api_token") or ""),
+        api_token=(
+            [str(value).strip() for value in settings.get("api_token", []) if str(value).strip()]
+            if isinstance(settings.get("api_token"), list)
+            else str(settings.get("api_token") or "").strip()
+        ),
         local_cli_path=str(settings.get("local_cli_path") or ""),
         model_download_source=str(settings.get("model_download_source") or "huggingface"),
         model_download_endpoint=str(settings.get("model_download_endpoint") or ""),

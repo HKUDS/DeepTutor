@@ -21,6 +21,47 @@ FINISH_REASON_MAP = {
     "cancelled": "error",
 }
 
+# Output-item types a provider's server-side web search emits. OpenAI and
+# DeepSeek name the item "web_search_call"; "web_search" is accepted
+# defensively for providers that shorten it.
+_WEB_SEARCH_ITEM_TYPES = {"web_search_call", "web_search"}
+
+
+def _dump_model(value: Any) -> Any:
+    """Normalize an SDK object / dict into a plain dict."""
+    if isinstance(value, dict):
+        return value
+    dump = getattr(value, "model_dump", None)
+    return dump() if callable(dump) else vars(value)
+
+
+def _citation_from_annotation(annotation: Any) -> dict[str, str] | None:
+    """Extract {url, title} from a url_citation annotation, else None."""
+    if not isinstance(annotation, dict):
+        annotation = _dump_model(annotation)
+    if not isinstance(annotation, dict):
+        return None
+    if annotation.get("type") not in {None, "url_citation", "url"}:
+        return None
+    url = str(annotation.get("url") or "").strip()
+    if not url:
+        return None
+    return {"url": url, "title": str(annotation.get("title") or "")}
+
+
+def _citations_from_content_blocks(blocks: Any) -> list[dict[str, str]]:
+    """Collect url_citation annotations attached to message content blocks."""
+    citations: list[dict[str, str]] = []
+    for block in blocks or []:
+        block = _dump_model(block)
+        if not isinstance(block, dict):
+            continue
+        for annotation in block.get("annotations") or []:
+            citation = _citation_from_annotation(annotation)
+            if citation:
+                citations.append(citation)
+    return citations
+
 
 def map_finish_reason(status: str | None) -> str:
     return FINISH_REASON_MAP.get(status or "completed", "stop")
@@ -183,12 +224,14 @@ async def iter_sse(response: httpx.Response) -> AsyncGenerator[dict[str, Any], N
 async def consume_sse(
     response: httpx.Response,
     on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+    on_provider_event: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> tuple[str, list[ToolCallRequest], str]:
     """Consume a Responses API SSE stream."""
     content = ""
     tool_calls: list[ToolCallRequest] = []
     tool_call_buffers = _ToolCallBuffers()
     finish_reason = "stop"
+    seen_web_search_items: set[str] = set()
 
     async for event in iter_sse(response):
         event_type = event.get("type")
@@ -209,6 +252,10 @@ async def consume_sse(
             content += delta_text
             if on_content_delta and delta_text:
                 await on_content_delta(delta_text)
+        elif event_type == "response.output_text.annotation.added":
+            citation = _citation_from_annotation(event.get("annotation"))
+            if citation and on_provider_event:
+                on_provider_event("citation", citation)
         elif event_type == "response.function_call_arguments.delta":
             tool_call_buffers.append(
                 event.get("delta") or "",
@@ -223,6 +270,13 @@ async def consume_sse(
             )
         elif event_type == "response.output_item.done":
             item = event.get("item") or {}
+            if item.get("type") in _WEB_SEARCH_ITEM_TYPES:
+                item_id = str(item.get("id") or "")
+                if item_id and item_id not in seen_web_search_items:
+                    seen_web_search_items.add(item_id)
+                    if on_provider_event:
+                        on_provider_event("output_item", dict(item))
+                continue
             if item.get("type") == "function_call":
                 call_id = item.get("call_id")
                 if not call_id:
@@ -259,27 +313,37 @@ def parse_response_output(response: Any) -> LLMResponse:
     content_parts: list[str] = []
     tool_calls: list[ToolCallRequest] = []
     reasoning_content: str | None = None
+    native_output_items: list[dict[str, Any]] = []
+    native_citations: list[dict[str, str]] = []
 
     for item in output:
+        item = _dump_model(item)
         if not isinstance(item, dict):
-            dump = getattr(item, "model_dump", None)
-            item = dump() if callable(dump) else vars(item)
+            continue
 
         item_type = item.get("type")
         if item_type == "message":
             for block in item.get("content") or []:
+                block = _dump_model(block)
                 if not isinstance(block, dict):
-                    dump = getattr(block, "model_dump", None)
-                    block = dump() if callable(dump) else vars(block)
+                    continue
                 if block.get("type") == "output_text":
                     content_parts.append(block.get("text") or "")
+                    native_citations.extend(_citations_from_content_blocks([block]))
         elif item_type == "reasoning":
             for summary in item.get("summary") or []:
+                summary = _dump_model(summary)
                 if not isinstance(summary, dict):
-                    dump = getattr(summary, "model_dump", None)
-                    summary = dump() if callable(dump) else vars(summary)
+                    continue
                 if summary.get("type") == "summary_text" and summary.get("text"):
                     reasoning_content = (reasoning_content or "") + summary["text"]
+        elif item_type in _WEB_SEARCH_ITEM_TYPES:
+            # This action already ran inside the provider and accompanies a
+            # terminal answer. Preserve it verbatim as provider metadata; do
+            # not synthesize a local ToolCallRequest and trigger a fake second
+            # agent-loop round.
+            native_output_items.append(dict(item))
+            native_citations.extend(_citations_from_content_blocks(item.get("results")))
         elif item_type == "function_call":
             call_id = item.get("call_id") or ""
             item_id = item.get("id") or _ToolCallBuffers.PLACEHOLDER_ITEM_ID
@@ -297,12 +361,19 @@ def parse_response_output(response: Any) -> LLMResponse:
     usage = token_counts(response.get("usage"), prompt="input_tokens", completion="output_tokens")
 
     finish_reason = map_finish_reason(response.get("status"))
+    provider_specific_fields: dict[str, Any] = {}
+    if native_output_items or native_citations:
+        provider_specific_fields = {
+            "native_output_items": native_output_items,
+            "citations": native_citations,
+        }
     return LLMResponse(
         content="".join(content_parts) or None,
         tool_calls=tool_calls,
         finish_reason=finish_reason,
         usage=usage,
         reasoning_content=reasoning_content if isinstance(reasoning_content, str) else None,
+        provider_specific_fields=provider_specific_fields,
     )
 
 
@@ -310,6 +381,7 @@ async def consume_sdk_stream(
     stream: Any,
     on_content_delta: Callable[[str], Awaitable[None]] | None = None,
     on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
+    on_provider_event: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> tuple[str, list[ToolCallRequest], str, dict[str, int], str | None]:
     """Consume an SDK async stream from client.responses.create(stream=True)."""
     content = ""
@@ -318,6 +390,7 @@ async def consume_sdk_stream(
     finish_reason = "stop"
     usage: dict[str, int] = {}
     reasoning_content: str | None = None
+    seen_web_search_items: set[str] = set()
 
     async for event in stream:
         event_type = getattr(event, "type", None)
@@ -338,6 +411,10 @@ async def consume_sdk_stream(
             content += delta_text
             if on_content_delta and delta_text:
                 await on_content_delta(delta_text)
+        elif event_type == "response.output_text.annotation.added":
+            citation = _citation_from_annotation(getattr(event, "annotation", None))
+            if citation and on_provider_event:
+                on_provider_event("citation", citation)
         elif event_type == "response.function_call_arguments.delta":
             tool_call_buffers.append(
                 getattr(event, "delta", "") or "",
@@ -352,6 +429,14 @@ async def consume_sdk_stream(
             )
         elif event_type == "response.output_item.done":
             item = getattr(event, "item", None)
+            item_dict = _dump_model(item) if item is not None else None
+            if isinstance(item_dict, dict) and item_dict.get("type") in _WEB_SEARCH_ITEM_TYPES:
+                item_id = str(item_dict.get("id") or "")
+                if item_id and item_id not in seen_web_search_items:
+                    seen_web_search_items.add(item_id)
+                    if on_provider_event:
+                        on_provider_event("output_item", dict(item_dict))
+                continue
             if item and getattr(item, "type", None) == "function_call":
                 call_id = getattr(item, "call_id", None)
                 if not call_id:

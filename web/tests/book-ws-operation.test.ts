@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  BookSocketOperationError,
   runBookSocketOperation,
   type BookSocketLike,
   type BookWsEvent,
@@ -93,6 +94,32 @@ test("book operation rejects backend error frames and closes its socket", async 
   socket.message({ type: "error", content: "provider unavailable" });
 
   await assert.rejects(operation, /provider unavailable/);
+  assert.equal(socket.closeCalls, 1);
+});
+
+test("book operation preserves structured revision conflicts", async () => {
+  const socket = new FakeBookSocket();
+  const operation = runBookSocketOperation(() => socket, {
+    message: { type: "compile_page", book_id: "book-1", page_id: "page-1" },
+    resultType: "compile_page_result",
+  });
+
+  socket.open();
+  socket.message({
+    type: "error",
+    content: "The book was updated by another collaborator.",
+    status: 409,
+    code: "book_revision_conflict",
+    current_revision: 7,
+  });
+
+  await assert.rejects(operation, (error: unknown) => {
+    assert.ok(error instanceof BookSocketOperationError);
+    assert.equal(error.status, 409);
+    assert.equal(error.code, "book_revision_conflict");
+    assert.equal(error.currentRevision, 7);
+    return true;
+  });
   assert.equal(socket.closeCalls, 1);
 });
 

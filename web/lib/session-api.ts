@@ -41,6 +41,13 @@ export interface SessionPreferences {
    *  shown at that branch point. Missing keys default to the latest
    *  sibling (most recently created child). */
   selected_branches?: Record<string, number>;
+  /** Study-course organization. Empty/absent means Unclassified. */
+  course_id?: string;
+  /** Source conversation for nested selected-text tutor threads. */
+  parent_session_id?: string;
+  session_kind?: "chat" | "selection_tutor";
+  pinned?: boolean;
+  archived?: boolean;
 }
 
 export interface SessionSummary {
@@ -148,6 +155,19 @@ export async function listSessions(
   );
 }
 
+/** Fetch the complete session index in bounded pages for course organization. */
+export async function listAllSessions(options?: {
+  force?: boolean;
+}): Promise<SessionSummary[]> {
+  const pageSize = 200;
+  const sessions: SessionSummary[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await listSessions(pageSize, offset, options);
+    sessions.push(...page);
+    if (page.length < pageSize) return sessions;
+  }
+}
+
 export async function getSession(
   sessionId: string,
   signal?: AbortSignal,
@@ -168,6 +188,31 @@ export async function updateSessionTitle(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
   });
+  const data = await expectJson<{ session: SessionDetail }>(response);
+  invalidateClientCache("sessions:");
+  return data.session;
+}
+
+export type SessionOrganizationPatch = Partial<{
+  course_id: string;
+  parent_session_id: string;
+  session_kind: "chat" | "selection_tutor";
+  pinned: boolean;
+  archived: boolean;
+}>;
+
+export async function updateSessionOrganization(
+  sessionId: string,
+  patch: SessionOrganizationPatch,
+): Promise<SessionDetail> {
+  const response = await apiFetch(
+    apiUrl(`/api/v1/sessions/${sessionId}/organization`),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    },
+  );
   const data = await expectJson<{ session: SessionDetail }>(response);
   invalidateClientCache("sessions:");
   return data.session;

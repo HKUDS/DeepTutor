@@ -157,8 +157,34 @@ export interface ReadingSummary {
   percent: number;
 }
 
+export interface SourceQuality {
+  status: "ready" | "warning" | "failed";
+  requested_kbs: string[];
+  covered_kbs: string[];
+  missing_kbs: string[];
+  coverage: Record<string, number>;
+  chunk_count: number;
+  warnings: string[];
+}
+
+export interface GenerationOverview {
+  status: BookStatus;
+  can_resume: boolean;
+  pause_reason: string;
+  source_quality: SourceQuality | null;
+}
+
+export interface GenerationSummary extends GenerationOverview {
+  book_id: string;
+  pages: Record<string, number> & { total: number };
+  failed_blocks: number;
+  retryable_pages: number;
+  failure_categories: Record<string, number>;
+}
+
 export interface Book {
   id: string;
+  revision: number;
   title: string;
   description: string;
   status: BookStatus;
@@ -177,6 +203,12 @@ export interface Book {
   };
   /** Present on list responses only. */
   reading?: ReadingSummary;
+  /** Permission-aware fields attached by Book APIs. */
+  source?: "own" | "shared";
+  permission?: "none" | "read" | "edit";
+  can_edit?: boolean;
+  can_delete?: boolean;
+  generation?: GenerationOverview;
 }
 
 export interface QuizAttempt {
@@ -235,4 +267,5 @@ export interface BookDetail {
   spine: Spine | null;
   pages: Page[];
   progress: Progress;
+  generation: GenerationSummary;
 }

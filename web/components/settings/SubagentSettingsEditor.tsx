@@ -104,6 +104,17 @@ const KIND_FEATURES: Record<string, KindFeatures> = {
     thinking: false,
     forwardImages: true, // @path syntax
   },
+  antigravity: {
+    effort: true, // --effort low|medium|high
+    systemPrompt: true,
+    permissionMode: true, // permissive modes map onto --dangerously-skip-permissions
+    codexSandbox: false,
+    autoApprove: false,
+    thinking: false,
+    // Headless `agy` documents no attachment flag; images are named as paths
+    // in the prompt for the agent's own file-reading tools instead.
+    forwardImages: false,
+  },
   kimi: {
     effort: false,
     systemPrompt: true,

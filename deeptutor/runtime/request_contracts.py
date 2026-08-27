@@ -18,6 +18,8 @@ from deeptutor.agents.research.request_config import (
 _RUNTIME_ONLY_KEYS = {
     "_persist_user_message",
     "followup_question_context",
+    "selection_tutor_context",
+    "_course_id",
     # Per-turn subagent consult budget (composer stepper). Not part of any
     # capability's public config schema; stripped here so it never trips
     # ``extra="forbid"`` (turn_runtime carries it through to the turn config).

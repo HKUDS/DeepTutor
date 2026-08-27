@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 import importlib.util
+import inspect
 import logging
 import re
 from typing import TYPE_CHECKING, TypeVar
@@ -301,8 +302,8 @@ def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
     async def embedding_func(texts, context=None, **_ignored):
         import numpy as np
 
-        # No context means no role, which is what the pinned LightRAG always
-        # passes — defaulting to "document" would label queries as passages.
+        # No context means no role. Defaulting to "document" would label
+        # queries as passages.
         input_type = {
             "query": "search_query",
             "document": "search_document",
@@ -314,11 +315,14 @@ def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
         vectors = await io_bridge.run(request) if io_bridge is not None else await request()
         return np.asarray(vectors, dtype=np.float32)
 
-    return EmbeddingFunc(
-        embedding_dim=dim,
-        max_token_size=int(getattr(cfg, "max_tokens", 0) or _DEFAULT_MAX_TOKEN_SIZE),
-        func=embedding_func,
-    )
+    embedding_kwargs = {
+        "embedding_dim": dim,
+        "max_token_size": int(getattr(cfg, "max_tokens", 0) or _DEFAULT_MAX_TOKEN_SIZE),
+        "func": embedding_func,
+    }
+    if "supports_asymmetric" in inspect.signature(EmbeddingFunc).parameters:
+        embedding_kwargs["supports_asymmetric"] = True
+    return EmbeddingFunc(**embedding_kwargs)
 
 
 __all__ = [

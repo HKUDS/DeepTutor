@@ -19,6 +19,8 @@ import uuid
 
 from deeptutor.services.path_service import get_path_service
 
+from .ask_user_trace import select_ask_user_events
+
 
 def _json_dumps(value: Any) -> str:
     # default=str: a single non-serializable object inside an event payload
@@ -1345,7 +1347,7 @@ class SQLiteSessionStore:
             if leaf_message_id is None:
                 rows = conn.execute(
                     """
-                    SELECT id, role, content
+                    SELECT id, role, content, events_json
                     FROM messages
                     WHERE session_id = ?
                       AND role IN ('user', 'assistant', 'system')
@@ -1358,6 +1360,7 @@ class SQLiteSessionStore:
                         "id": row["id"],
                         "role": row["role"],
                         "content": row["content"] or "",
+                        "events": select_ask_user_events(row["events_json"]),
                     }
                     for row in rows
                 ]
@@ -1369,7 +1372,7 @@ class SQLiteSessionStore:
             while current is not None and safety > 0:
                 row = conn.execute(
                     """
-                    SELECT id, role, content, parent_message_id
+                    SELECT id, role, content, events_json, parent_message_id
                     FROM messages
                     WHERE id = ? AND session_id = ?
                       AND role IN ('user', 'assistant', 'system')
@@ -1383,6 +1386,7 @@ class SQLiteSessionStore:
                         "id": row["id"],
                         "role": row["role"],
                         "content": row["content"] or "",
+                        "events": select_ask_user_events(row["events_json"]),
                     }
                 )
                 parent = row["parent_message_id"]

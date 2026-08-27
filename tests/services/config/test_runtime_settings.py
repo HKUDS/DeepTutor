@@ -275,6 +275,9 @@ def test_mineru_defaults_and_normalization(tmp_path: Path) -> None:
     # Unknown mode falls back to local.
     assert service.save_mineru({"mode": "weird"})["mode"] == "local"
 
+    pooled = service.save_mineru({"mode": "cloud", "api_token": [" tok-a ", "tok-b"]})
+    assert pooled["api_token"] == ["tok-a", "tok-b"]
+
     # Model-download fields: source whitelisted, endpoint trimmed.
     saved = service.save_mineru(
         {

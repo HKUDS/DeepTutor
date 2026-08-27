@@ -54,10 +54,16 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
 
     def _auth_api_key(self) -> str:
         """Return a real API key, suppressing local-provider placeholder keys."""
-        key = str(self.api_key or "").strip()
+        key = self._key_pool.next() if self._key_pool else str(self.api_key or "").strip()
         if key == self.NO_KEY_SENTINEL:
             return ""
         return key
+
+    def _set_auth_header(self, headers: dict[str, str], api_key: str) -> None:
+        header = "api-key" if self.api_version else "Authorization"
+        headers.pop(header, None)
+        if api_key:
+            headers[header] = api_key if self.api_version else f"Bearer {api_key}"
 
     @staticmethod
     def _extract_embeddings_from_response(data: Any) -> list[list[float]]:
@@ -166,11 +172,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
 
         headers = {"Content-Type": "application/json"}
         api_key = self._auth_api_key()
-        if self.api_version:
-            if api_key:
-                headers["api-key"] = api_key
-        elif api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+        self._set_auth_header(headers, api_key)
         headers.update({str(k): str(v) for k, v in self.extra_headers.items()})
 
         # Multimodal: pass `contents` through as `input` only for model names
@@ -225,7 +227,11 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             pool=10.0,
         )
         last_exc: Exception | None = None
-        for attempt in range(1 + self._MAX_RETRIES):
+        rate_limit_retries = 0
+        # 槽位必须 > 限流重试上限：429 的 continue 也消耗 attempt，若循环
+        # 先耗尽而 last_exc 仍为 None，会静默落到循环外的 data 引用上
+        # （UnboundLocalError）。多给 4 个槽位兜住 8 轮限流 + 网络重试。
+        for attempt in range(1 + max(self._MAX_RETRIES, 10)):
             try:
                 async with httpx.AsyncClient(
                     timeout=timeout, verify=not disable_ssl_verify_enabled()
@@ -234,15 +240,34 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
 
                     # Handle rate limiting (429) with retry
                     if response.status_code == 429:
+                        if self._key_pool:
+                            self._key_pool.mark_429(api_key)
+                        # 滑动窗口 429 是瞬态的：长跑（全库 reindex 数小时）里
+                        # 单次 429 不该报废整跑。最多 8 轮，每轮等窗口滑过
+                        # （Retry-After 优先，无头保守 60s）。月度额度耗尽的
+                        # 429 会连挂 8 轮后仍然 raise，不会无限空转。
+                        if rate_limit_retries < 8:
+                            rate_limit_retries += 1
+                            retry_after = float(response.headers.get("Retry-After", 0))
+                            await asyncio.sleep(max(retry_after, 60))
+                            try:
+                                api_key = self._auth_api_key()
+                            except RuntimeError:
+                                # 池内 key 全在冷却（KeyPool 冷却 60s）。
+                                # 等冷却期过后再取一次；仍取不到才认输。
+                                await asyncio.sleep(65)
+                                api_key = self._auth_api_key()
+                            self._set_auth_header(headers, api_key)
+                            continue
                         retry_after = float(response.headers.get("Retry-After", 0))
-                        wait = max(retry_after, self._RATE_LIMIT_BACKOFF * (2**attempt))
-                        logger.warning(
-                            f"Rate limited (429) on attempt {attempt + 1}/{1 + self._MAX_RETRIES}, "
-                            f"retrying in {wait:.1f}s..."
+                        raise EmbeddingProviderError(
+                            "Embedding provider remained rate limited after key rotation"
+                            + (f" (Retry-After: {retry_after:g}s)" if retry_after else ""),
+                            status=429,
+                            model=model,
+                            url=url,
+                            provider="openai_compat",
                         )
-                        await asyncio.sleep(wait)
-                        last_exc = Exception("HTTP 429 Too Many Requests")
-                        continue
 
                     if response.status_code >= 400:
                         body_text = response.text

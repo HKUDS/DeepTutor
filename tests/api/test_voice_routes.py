@@ -90,6 +90,7 @@ def test_stt_returns_text(client: TestClient, monkeypatch: pytest.MonkeyPatch) -
     async def fake_transcribe(audio: bytes, *, filename: str, content_type: str, language=None):
         captured["bytes"] = len(audio)
         captured["filename"] = filename
+        captured["content_type"] = content_type
         return "hello world"
 
     monkeypatch.setattr(voice_router, "transcribe_audio", fake_transcribe)
@@ -101,6 +102,31 @@ def test_stt_returns_text(client: TestClient, monkeypatch: pytest.MonkeyPatch) -
     assert resp.json() == {"text": "hello world"}
     assert captured["filename"] == "clip.webm"
     assert captured["bytes"] == 10
+    assert captured["content_type"] == "audio/webm"
+
+
+def test_stt_forwards_the_browser_reported_mime_verbatim(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route reports what the client sent; the adapter owns wire shaping.
+
+    Stripping the codec parameter happens once, at the boundary that puts the
+    value on the wire (``OpenAICompatSTTAdapter._post_multipart``), so the route
+    must not normalize it a second time.
+    """
+    captured: dict[str, Any] = {}
+
+    async def fake_transcribe(audio: bytes, *, filename: str, content_type: str, language=None):
+        captured["content_type"] = content_type
+        return "hello"
+
+    monkeypatch.setattr(voice_router, "transcribe_audio", fake_transcribe)
+    resp = client.post(
+        "/api/v1/voice/stt",
+        files={"file": ("recording.webm", b"audiobytes", "audio/webm;codecs=opus")},
+    )
+    assert resp.status_code == 200
+    assert captured["content_type"] == "audio/webm;codecs=opus"
 
 
 def test_stt_rejects_empty_upload(client: TestClient) -> None:

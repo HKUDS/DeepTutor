@@ -12,7 +12,7 @@ class EmbeddingConfig:
     """Embedding runtime configuration."""
 
     model: str
-    api_key: str
+    api_key: str | list[str]
     base_url: str | None = None
     effective_url: str | None = None
     binding: str = "openai"

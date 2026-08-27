@@ -35,6 +35,7 @@ SourceType = Literal[
 
 AnnotationKind = Literal["highlight", "underline", "note"]
 TextSelectorType = Literal["TextQuoteSelector", "TextPositionSelector"]
+MAX_TEXT_SELECTOR_CHARS = 2000
 
 # Palette offered by the reader toolbar. Kept server-side too so an annotation
 # arriving from an older client (or a tool call) can be validated rather than
@@ -403,7 +404,7 @@ def parse_text_selectors(value: Any) -> tuple[TextSelector, ...]:
             continue
         selector_type = str(raw.get("type") or "")
         if selector_type == "TextQuoteSelector":
-            exact = str(raw.get("exact") or "")[:2000]
+            exact = str(raw.get("exact") or "")[:MAX_TEXT_SELECTOR_CHARS]
             if exact:
                 parsed.append(
                     TextQuoteSelector(
@@ -539,6 +540,7 @@ __all__ = [
     "DEFAULT_ANNOTATION_COLOR",
     "Annotation",
     "AnnotationKind",
+    "MAX_TEXT_SELECTOR_CHARS",
     "MaterialManifest",
     "MaterialNotFound",
     "OutlineEntry",
@@ -549,6 +551,10 @@ __all__ = [
     "Rect",
     "SearchHit",
     "SourceType",
+    "TextPositionSelector",
+    "TextQuoteSelector",
+    "TextSelector",
+    "TextSelectorType",
     "UnitKind",
     "UnitReference",
 ]

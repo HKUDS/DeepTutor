@@ -1,9 +1,7 @@
 """DISABLE_SSL_VERIFY coverage for the OpenAI Codex Responses provider.
 
-The codex provider was previously hardcoded to ``verify=True`` on the first
-attempt, with an auto-retry on ``CERTIFICATE_VERIFY_FAILED``. The flag now
-short-circuits the first attempt while preserving the retry-on-cert-failure
-fallback.
+The flag controls the initial request. A certificate verification failure must
+never trigger an automatic retry with verification disabled.
 """
 
 from __future__ import annotations
@@ -11,9 +9,11 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 import pytest
 
 from deeptutor.services.llm import openai_http_client
+from deeptutor.services.llm.exceptions import LLMProviderTransportError
 from deeptutor.services.llm.provider_core import openai_codex_provider
 
 
@@ -98,25 +98,21 @@ async def test_codex_first_attempt_verify_false_when_flag_set(
 
 
 @pytest.mark.asyncio
-async def test_codex_retry_on_cert_failure_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The CERTIFICATE_VERIFY_FAILED retry fallback is preserved."""
+async def test_codex_certificate_failure_never_retries_without_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _stub_token_loader(monkeypatch)
     captured: list[dict[str, Any]] = []
-    call_count = {"n": 0}
 
     async def fake_request(*args: Any, **kwargs: Any) -> tuple[str, list[Any], str]:
         captured.append(kwargs)
-        call_count["n"] += 1
-        if call_count["n"] == 1:
-            raise RuntimeError("[SSL: CERTIFICATE_VERIFY_FAILED] cert chain")
-        return ("recovered", [], "stop")
+        raise httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED] cert chain")
 
     monkeypatch.setattr(openai_codex_provider, "_request_codex", fake_request)
 
     provider = openai_codex_provider.OpenAICodexProvider()
-    result = await provider.chat(messages=[{"role": "user", "content": "hi"}])
+    with pytest.raises(LLMProviderTransportError):
+        await provider.chat(messages=[{"role": "user", "content": "hi"}])
 
-    assert result.content == "recovered"
-    assert len(captured) == 2
+    assert len(captured) == 1
     assert captured[0]["verify"] is True
-    assert captured[1]["verify"] is False

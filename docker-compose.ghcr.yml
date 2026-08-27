@@ -56,6 +56,22 @@ services:
       # CONTAINERIZATION.md → "One-time migration".
       - ./data:/app/data
 
+    # Optional dependencies, re-applied on every start (#762). This image
+    # ships the base install; anything added with `docker exec … pip install`
+    # or `apt-get install` lives in the container's writable layer and is
+    # discarded on the next `compose down`. Declaring it here instead makes it
+    # a property of the deployment, so every container started from this file
+    # has it. Both steps are idempotent (a warm container only pays a check)
+    # and neither is fatal — a package that fails to install leaves that one
+    # feature unavailable rather than stopping the app. The pip cache lives on
+    # the data volume above, so a recreate reuses the downloads it already
+    # paid for. Preview an extra with
+    # `python scripts/install_extras.py --dry-run "<name>"`. Uncomment the
+    # `environment:` key together with the entries under it.
+    # environment:
+    #   - DEEPTUTOR_EXTRAS=math-animator,partners
+    #   - DEEPTUTOR_APT_PACKAGES=ffmpeg
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]
       interval: 30s

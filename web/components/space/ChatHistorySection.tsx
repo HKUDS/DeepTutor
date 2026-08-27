@@ -10,15 +10,18 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import SessionList from "@/components/SessionList";
+import OrganizedSessionList from "@/components/courses/OrganizedSessionList";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   deleteSession,
-  listSessions,
+  listAllSessions,
   updateSessionTitle,
+  updateSessionOrganization,
+  type SessionOrganizationPatch,
   type SessionSummary,
 } from "@/lib/session-api";
+import { listCourses, type StudyCourse } from "@/lib/courses-api";
 
 /**
  * Sessions list for chat history. Reopened sessions always route back to
@@ -40,13 +43,22 @@ export default function ChatHistorySection({
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [courses, setCourses] = useState<StudyCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [courseFilter, setCourseFilter] = useState("all");
+  const [kindFilter, setKindFilter] = useState("all");
+  const [archiveFilter, setArchiveFilter] = useState("active");
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
     try {
-      setSessions(await listSessions(200, 0, { force }));
+      const [nextSessions, nextCourses] = await Promise.all([
+        listAllSessions({ force }),
+        listCourses({ force }),
+      ]);
+      setSessions(nextSessions);
+      setCourses(nextCourses);
     } finally {
       setLoading(false);
     }
@@ -58,13 +70,30 @@ export default function ChatHistorySection({
 
   const filteredSessions = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return sessions;
-    return sessions.filter((session) =>
-      [session.title, session.last_message]
+    return sessions.filter((session) => {
+      const prefs = session.preferences ?? {};
+      if (archiveFilter === "active" && prefs.archived) return false;
+      if (archiveFilter === "archived" && !prefs.archived) return false;
+      if (courseFilter === "unclassified" && prefs.course_id) return false;
+      if (
+        courseFilter !== "all" &&
+        courseFilter !== "unclassified" &&
+        prefs.course_id !== courseFilter
+      )
+        return false;
+      if (kindFilter === "chat" && prefs.session_kind === "selection_tutor")
+        return false;
+      if (
+        kindFilter === "selection_tutor" &&
+        prefs.session_kind !== "selection_tutor"
+      )
+        return false;
+      if (!needle) return true;
+      return [session.title, session.last_message]
         .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(needle)),
-    );
-  }, [query, sessions]);
+        .some((value) => value.toLowerCase().includes(needle));
+    });
+  }, [archiveFilter, courseFilter, kindFilter, query, sessions]);
 
   const handleSelect = useCallback(
     (sessionId: string) => {
@@ -92,6 +121,14 @@ export default function ChatHistorySection({
       );
     },
     [activeSessionId, setActiveSessionId, t],
+  );
+
+  const handleOrganize = useCallback(
+    async (sessionId: string, patch: SessionOrganizationPatch) => {
+      await updateSessionOrganization(sessionId, patch);
+      await load(true);
+    },
+    [load],
   );
 
   const HeaderIcon = icon ?? History;
@@ -141,17 +178,74 @@ export default function ChatHistorySection({
               className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/55"
             />
           </label>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <label className="sr-only" htmlFor="history-course-filter">
+              {t("Filter by course")}
+            </label>
+            <select
+              id="history-course-filter"
+              value={courseFilter}
+              onChange={(event) => setCourseFilter(event.target.value)}
+              className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+            >
+              <option value="all">{t("All courses")}</option>
+              <option value="unclassified">{t("Unclassified")}</option>
+              {courses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.name}
+                </option>
+              ))}
+            </select>
+            <label className="sr-only" htmlFor="history-kind-filter">
+              {t("Filter by conversation type")}
+            </label>
+            <select
+              id="history-kind-filter"
+              value={kindFilter}
+              onChange={(event) => setKindFilter(event.target.value)}
+              className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+            >
+              <option value="all">{t("All conversation types")}</option>
+              <option value="chat">{t("Main conversations")}</option>
+              <option value="selection_tutor">{t("Tutor threads")}</option>
+            </select>
+            <label className="sr-only" htmlFor="history-archive-filter">
+              {t("Filter by archive status")}
+            </label>
+            <select
+              id="history-archive-filter"
+              value={archiveFilter}
+              onChange={(event) => setArchiveFilter(event.target.value)}
+              className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+            >
+              <option value="active">{t("Active")}</option>
+              <option value="archived">{t("Archived")}</option>
+              <option value="all">{t("Active and archived")}</option>
+            </select>
+          </div>
         </div>
 
         <div className="px-3 py-3">
-          <SessionList
-            sessions={filteredSessions}
-            activeSessionId={activeSessionId}
-            loading={loading}
-            onSelect={handleSelect}
-            onRename={handleRename}
-            onDelete={handleDelete}
-          />
+          {loading ? (
+            <div className="space-y-2 p-2">
+              {[0, 1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="h-8 animate-pulse rounded bg-[var(--muted)]/45"
+                />
+              ))}
+            </div>
+          ) : (
+            <OrganizedSessionList
+              sessions={filteredSessions}
+              courses={courses}
+              activeSessionId={activeSessionId}
+              onSelect={handleSelect}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              onOrganize={handleOrganize}
+            />
+          )}
         </div>
       </section>
     </div>

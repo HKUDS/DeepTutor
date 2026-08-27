@@ -310,4 +310,148 @@ def test_gemini2_model_info_advertises_matryoshka_dimensions() -> None:
     assert info["dimensions"] == 3072
     assert 768 in info["supported_dimensions"]
     assert info["supports_variable_dimensions"] is True
-    assert info["multimodal"] is False
+    # Was False while the adapter was text-only; Embedding 2 maps text, images,
+    # video and audio into one space and the adapter now sends them (#814).
+    assert info["multimodal"] is True
+
+
+# ── Multimodal contents (#814) ──────────────────────────────────────────────
+#
+# The reporter's scenario: a textbook knowledge base whose image nodes should be
+# retrievable by a natural-language query. That needs the parsed image to reach
+# the model as an embedding, which the adapter used to refuse outright.
+
+_PNG_DATA_URI = "data:image/png;base64,iVBORw0KGgo="
+_INLINE_PNG = {"inlineData": {"mimeType": "image/png", "data": "iVBORw0KGgo="}}
+
+
+def _multimodal_request(contents: list[dict[str, Any]], **kwargs: Any) -> EmbeddingRequest:
+    return EmbeddingRequest(
+        texts=[],
+        model="gemini-embedding-2",
+        contents=contents,
+        **kwargs,
+    )
+
+
+def test_image_content_becomes_an_inline_data_part() -> None:
+    payload = _adapter()._native_multimodal_payload(
+        _multimodal_request([{"image": _PNG_DATA_URI}]),
+        "gemini-embedding-2",
+    )
+
+    (request,) = payload["requests"]
+    assert request["content"]["parts"] == [_INLINE_PNG]
+    assert request["model"] == "models/gemini-embedding-2"
+
+
+def test_each_content_item_gets_its_own_vector() -> None:
+    """One vector per node is what makes an image node independently retrievable."""
+    payload = _adapter()._native_multimodal_payload(
+        _multimodal_request([{"text": "a number line"}, {"image": _PNG_DATA_URI}]),
+        "gemini-embedding-2",
+    )
+
+    assert [r["content"]["parts"][0] for r in payload["requests"]] == [
+        {"text": "a number line"},
+        _INLINE_PNG,
+    ]
+
+
+def test_fusion_folds_every_item_into_one_vector() -> None:
+    payload = _adapter()._native_multimodal_payload(
+        _multimodal_request(
+            [{"text": "caption"}, {"image": _PNG_DATA_URI}],
+            enable_fusion=True,
+        ),
+        "gemini-embedding-2",
+    )
+
+    (request,) = payload["requests"]
+    assert request["content"]["parts"] == [{"text": "caption"}, _INLINE_PNG]
+
+
+def test_multimodal_payload_carries_output_dimensionality() -> None:
+    payload = _adapter(dimensions=768)._native_multimodal_payload(
+        _multimodal_request([{"image": _PNG_DATA_URI}]),
+        "gemini-embedding-2",
+    )
+
+    assert payload["requests"][0]["outputDimensionality"] == 768
+
+
+def test_remote_urls_are_refused_with_an_actionable_message() -> None:
+    """batchEmbedContents has no remote-URL part, and this path must not fetch."""
+    with pytest.raises(ValueError) as caught:
+        _adapter()._native_multimodal_payload(
+            _multimodal_request([{"image": "https://example.com/x.png"}]),
+            "gemini-embedding-2",
+        )
+
+    assert "http(s) URL" in str(caught.value)
+    assert "data: URI" in str(caught.value)
+
+
+@pytest.mark.parametrize("value", ["data:image/png;base64,", "data:;base64,abc", "not-a-uri"])
+def test_malformed_inline_values_are_refused(value: str) -> None:
+    with pytest.raises(ValueError):
+        _adapter()._native_multimodal_payload(
+            _multimodal_request([{"image": value}]),
+            "gemini-embedding-2",
+        )
+
+
+def test_unknown_content_kind_is_refused() -> None:
+    with pytest.raises(ValueError, match="content type 'hologram'"):
+        _adapter()._native_multimodal_payload(
+            _multimodal_request([{"hologram": _PNG_DATA_URI}]),
+            "gemini-embedding-2",
+        )
+
+
+@pytest.mark.asyncio
+async def test_text_only_model_refuses_contents_naming_the_alternative() -> None:
+    adapter = _adapter(model="gemini-embedding-001", base_url=NATIVE_GEMINI001_ENDPOINT)
+
+    with pytest.raises(ValueError) as caught:
+        await adapter._embed_native(
+            EmbeddingRequest(
+                texts=[],
+                model="gemini-embedding-001",
+                contents=[{"image": _PNG_DATA_URI}],
+            ),
+            "gemini-embedding-001",
+        )
+
+    assert "text-only" in str(caught.value)
+    assert "gemini-embedding-2" in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_multimodal_contents_reach_the_provider(
+    capturing_httpx: _CapturingTransport,
+) -> None:
+    """End to end: the image survives into the posted body, one vector per item."""
+    response = await _adapter().embed(
+        _multimodal_request([{"text": "a number line"}, {"image": _PNG_DATA_URI}])
+    )
+
+    posted = capturing_httpx.requests[-1]["json"]["requests"]
+    assert posted[1]["content"]["parts"] == [_INLINE_PNG]
+    assert len(response.embeddings) == 2
+
+
+def test_text_only_path_is_unchanged_by_the_multimodal_addition() -> None:
+    """No `contents` must produce byte-identical requests to before."""
+    payload = _adapter()._native_payload(
+        EmbeddingRequest(
+            texts=["hello"],
+            model="gemini-embedding-2",
+            input_type="search_document",
+        ),
+        "gemini-embedding-2",
+    )
+
+    (request,) = payload["requests"]
+    assert request["content"]["parts"] == [{"text": "title: none | text: hello"}]
+    assert "taskType" not in request

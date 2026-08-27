@@ -29,6 +29,10 @@ import {
 import { segmentTextByQuotes } from "@/lib/reading-quote-locator";
 import { cleanQuote } from "@/lib/reading-selection";
 import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
+import {
+  DEFAULT_READER_DISPLAY_PREFERENCES,
+  readerDisplayShortcut,
+} from "@/lib/reading-display-preferences";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 
 const COLOR_INK: Record<string, string> = {
@@ -177,10 +181,7 @@ export function TextUnitView({
   }, [updatePreferences]);
 
   const resetPreferences = useCallback(() => {
-    updatePreferences({
-      fontSize: DEFAULT_FONT_SIZE,
-      lineWidth: DEFAULT_LINE_WIDTH,
-    });
+    updatePreferences(DEFAULT_READER_DISPLAY_PREFERENCES);
   }, [updatePreferences]);
 
   const cycleLineWidth = useCallback(() => {
@@ -191,15 +192,18 @@ export function TextUnitView({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.metaKey && !event.ctrlKey) return;
-      const plus = event.key === "+" || event.key === "=";
-      const minus = event.key === "-";
-      const reset = event.key === "0";
-      if (!plus && !minus && !reset) return;
+      const root = containerRef.current;
+      const action = readerDisplayShortcut({
+        key: event.key,
+        modifier: event.metaKey || event.ctrlKey,
+        readerHovered: root?.matches(":hover") ?? false,
+        readerFocused: Boolean(root && root.contains(document.activeElement)),
+      });
+      if (!action) return;
       event.preventDefault();
-      if (plus) changeFontSize(fontSize + 1);
-      if (minus) changeFontSize(fontSize - 1);
-      if (reset) resetPreferences();
+      if (action === "increase") changeFontSize(fontSize + 1);
+      if (action === "decrease") changeFontSize(fontSize - 1);
+      if (action === "reset") resetPreferences();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

@@ -2454,6 +2454,26 @@ export function TraceFlow({
 }
 
 /**
+ * Trace rows hanging from the guide line that aligns them under the activity
+ * mark, so they read as "nested below" whatever they belong to. Shared by the
+ * status header's own trace and by the resumed-round trace the chat surface
+ * renders under an ``ask_user`` card.
+ */
+export function NestedTraceFlow({
+  events,
+  isStreaming,
+}: {
+  events: StreamEvent[];
+  isStreaming?: boolean;
+}) {
+  return (
+    <div className="ml-[11px] border-l border-[var(--border)]/45 pl-[13px] pt-2 [&>div]:mb-0">
+      <TraceFlow events={events} isStreaming={isStreaming} />
+    </div>
+  );
+}
+
+/**
  * Has the turn entered its final-answer phase? Used to auto-collapse the
  * reasoning trace once DeepTutor stops working and starts (or has finished)
  * its answer.
@@ -2520,6 +2540,7 @@ function isFinalAnswerPhase(
  */
 export function AssistantActivity({
   events,
+  traceEvents,
   isStreaming,
   content,
   className = "",
@@ -2528,6 +2549,15 @@ export function AssistantActivity({
   headerClassName = "",
 }: {
   events: StreamEvent[];
+  /**
+   * The subset of ``events`` whose trace rows belong under this header.
+   * Defaults to all of them. The chat surface narrows it to the rounds
+   * before the first ``ask_user`` card, because the rounds after one render
+   * below that card instead — this block is pinned to the top of the
+   * message, so anything appended here after the user answers lands above
+   * content they have already read.
+   */
+  traceEvents?: StreamEvent[];
   isStreaming?: boolean;
   content?: string;
   className?: string;
@@ -2539,7 +2569,11 @@ export function AssistantActivity({
    *  vertically centers against an adjacent avatar). */
   headerClassName?: string;
 }) {
-  const hasTrace = useMemo(() => hasRenderableCallTrace(events), [events]);
+  const shownTraceEvents = traceEvents ?? events;
+  const hasTrace = useMemo(
+    () => hasRenderableCallTrace(shownTraceEvents),
+    [shownTraceEvents],
+  );
   const hasFinalContent = Boolean(content && content.trim().length > 0);
   const finalPhase = useMemo(
     () => isFinalAnswerPhase(events, Boolean(isStreaming), hasFinalContent),
@@ -2580,9 +2614,10 @@ export function AssistantActivity({
                 below the header when open; [&>div]:mb-0 strips
                 CallTracePanel's own bottom margin so the single gap to the
                 body comes from this block's outer ``mb-3`` in both states. */}
-            <div className="ml-[11px] border-l border-[var(--border)]/45 pl-[13px] pt-2 [&>div]:mb-0">
-              <TraceFlow events={events} isStreaming={isStreaming} />
-            </div>
+            <NestedTraceFlow
+              events={shownTraceEvents}
+              isStreaming={isStreaming}
+            />
           </div>
         </div>
       ) : null}

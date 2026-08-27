@@ -220,10 +220,8 @@ def test_book_ids_cannot_escape_the_workspace() -> None:
     """Ids arrive in request bodies and become directory names."""
     from deeptutor.book.storage import _safe_book_id
 
-    assert "/" not in _safe_book_id("../../etc/passwd")
-    assert ".." not in _safe_book_id("bk_1/../../x")
     assert _safe_book_id("bk_7c5634d091") == "bk_7c5634d091"
 
-    for rejected in ("", "   ", "..", "///"):
+    for rejected in ("", "   ", "..", "///", "../../etc/passwd", "bk_1/../../x"):
         with pytest.raises(ValueError):
             _safe_book_id(rejected)

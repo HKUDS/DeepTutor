@@ -44,6 +44,16 @@ def _raw_rel_path(github_path: str, path_prefix: str) -> str:
     return github_path
 
 
+def _contained_dest(raw_dir: Path, rel: str) -> Path | None:
+    """Resolve remote tree paths beneath the KB raw directory only."""
+    candidate = (raw_dir / rel).resolve()
+    root = raw_dir.resolve()
+    if candidate != root and root not in candidate.parents:
+        logger.warning("GitHub sync: refusing path outside the KB raw dir: %s", rel)
+        return None
+    return candidate
+
+
 def _filter_markdown_changes(changes, path_prefix, glob):
     from fnmatch import fnmatch
 
@@ -145,7 +155,9 @@ async def _full_sync(
     downloaded = []
     for entry in entries:
         rel = _raw_rel_path(entry.path, path_prefix)
-        dest = raw_dir / rel
+        dest = _contained_dest(raw_dir, rel)
+        if dest is None:
+            continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         content = await client.download_file(repo, entry.path, latest_sha)
         dest.write_bytes(content)
@@ -170,9 +182,11 @@ async def _incremental_sync(
             added_or_modified.append(ch.path)
     downloaded = []
     for gh_path in added_or_modified:
-        content = await client.download_file(repo, gh_path, new_sha)
         rel = _raw_rel_path(gh_path, path_prefix)
-        dest = raw_dir / rel
+        dest = _contained_dest(raw_dir, rel)
+        if dest is None:
+            continue
+        content = await client.download_file(repo, gh_path, new_sha)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(content)
         downloaded.append(str(dest))
@@ -180,8 +194,8 @@ async def _incremental_sync(
         await _index_files(kb_name, downloaded, base_dir)
     removed_count = 0
     for rel in removed:
-        target = raw_dir / rel
-        if target.exists():
+        target = _contained_dest(raw_dir, rel)
+        if target is not None and target.exists():
             try:
                 from deeptutor.knowledge.add_documents import remove_raw_document
 

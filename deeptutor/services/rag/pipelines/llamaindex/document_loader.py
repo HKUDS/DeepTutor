@@ -59,8 +59,9 @@ class _ImageSource:
 class LlamaIndexDocumentLoader:
     """Convert source files into LlamaIndex ``Document`` / ``ImageNode`` objects."""
 
-    def __init__(self, logger=None) -> None:
+    def __init__(self, logger=None, image_concurrency: int = 6) -> None:
         self.logger = logger or logging.getLogger(__name__)
+        self.image_concurrency = max(1, int(image_concurrency))
 
     async def load(
         self,

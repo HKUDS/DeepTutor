@@ -10,6 +10,7 @@ from deeptutor.services.parsing.engines.mineru import models as mineru_models
 from deeptutor.services.parsing.engines.mineru.models import (
     ModelDownloadManager,
     model_env_overrides,
+    render_env_overrides,
     resolve_models_downloader,
 )
 
@@ -173,3 +174,22 @@ def test_manager_rejects_concurrent_start_and_cancels(
 
 def test_manager_cancel_without_job() -> None:
     assert ModelDownloadManager().cancel()["ok"] is False
+
+
+def test_render_env_overrides_is_windows_only(monkeypatch) -> None:
+    """The render-thread guard must not slow Linux/macOS.
+
+    ``MINERU_PDF_RENDER_THREADS`` is honored on every platform (upstream
+    default 3-4 workers), so serializing it unconditionally would cost every
+    non-Windows user parse throughput for a Windows-only heap-corruption crash.
+    """
+    import deeptutor.services.parsing.engines.mineru.models as models
+
+    monkeypatch.setattr(models.sys, "platform", "win32")
+    assert render_env_overrides() == {"MINERU_PDF_RENDER_THREADS": "1"}
+
+    monkeypatch.setattr(models.sys, "platform", "linux")
+    assert render_env_overrides() == {}
+
+    monkeypatch.setattr(models.sys, "platform", "darwin")
+    assert render_env_overrides() == {}

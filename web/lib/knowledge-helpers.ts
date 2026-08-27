@@ -116,7 +116,7 @@ export interface KnowledgeBase {
     vault_path?: string;
     /** SQLite store of a connected MarginNote 4 library (when type === "marginnote4"). */
     db_path?: string;
-    /** Backend of a connected subagent (when type === "subagent"): "claude_code" | "codex" | "gemini" | "kimi" | "opencode" | "mimo" | "partner". */
+    /** Backend of a connected subagent (when type === "subagent"): "claude_code" | "codex" | "gemini" | "antigravity" | "kimi" | "opencode" | "mimo" | "partner". */
     agent_kind?: string;
     /** Bound partner id when agent_kind === "partner". */
     partner_id?: string;

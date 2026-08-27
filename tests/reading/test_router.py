@@ -867,7 +867,7 @@ def test_annotation_round_trips_w3c_text_selectors(client: TestClient) -> None:
                     "prefix": "",
                     "suffix": " are",
                 },
-                {"type": "TextPositionSelector", "start": 0, "end": 15},
+                {"type": "TextPositionSelector", "start": 13, "end": 28},
             ],
         },
     )
@@ -879,7 +879,7 @@ def test_annotation_round_trips_w3c_text_selectors(client: TestClient) -> None:
             "exact": "Sequence models",
             "suffix": " are",
         },
-        {"type": "TextPositionSelector", "start": 0, "end": 15},
+        {"type": "TextPositionSelector", "start": 13, "end": 28},
     ]
 
 

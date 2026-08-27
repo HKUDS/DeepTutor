@@ -19,7 +19,7 @@ from __future__ import annotations
 import pytest
 
 from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
-from deeptutor.services.provider_registry import find_by_name, model_overrides_for
+from deeptutor.services.provider_registry import find_by_model, find_by_name, model_overrides_for
 
 _MOONSHOT_BASE = "https://api.moonshot.cn/v1"
 
@@ -83,3 +83,12 @@ def test_vendor_prefixed_routing_still_finds_the_model() -> None:
     assert model_overrides_for("moonshotai/kimi-k2", find_by_name("openai")) == {
         "temperature": None
     }
+
+
+def test_bare_k3_is_exact_and_does_not_capture_unrelated_short_ids() -> None:
+    moonshot = find_by_name("moonshot")
+    assert model_overrides_for("k3", moonshot) == {"temperature": None}
+    assert model_overrides_for("sk3", moonshot) == {}
+    assert model_overrides_for("k30", moonshot) == {}
+    assert find_by_model("k3") is moonshot
+    assert find_by_model("sk3") is None

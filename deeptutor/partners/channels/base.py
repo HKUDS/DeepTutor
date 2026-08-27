@@ -3,11 +3,30 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
 from deeptutor.partners.bus.events import InboundMessage, OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
+
+#: Owning Partner of the channel currently being constructed. Channels that
+#: resolve paths in ``__init__`` need the id *then*, but ``ChannelManager``
+#: builds the instance before it can assign an attribute — and threading the
+#: id through every subclass signature would break external plugins, which
+#: are constructed the same way.
+_constructing_for: ContextVar[str] = ContextVar("partner_channel_owner", default="")
+
+
+@contextmanager
+def constructing_for(partner_id: str):
+    """Mark whose channel is being built, so ``__init__`` can resolve paths."""
+    token = _constructing_for.set(str(partner_id or ""))
+    try:
+        yield
+    finally:
+        _constructing_for.reset(token)
 
 
 def _logger():
@@ -44,6 +63,7 @@ class BaseChannel(ABC):
         self.config = config
         self.bus = bus
         self._running = False
+        self.partner_id = _constructing_for.get()
 
     def media_dir(self, channel: str | None = None) -> Path:
         """Download directory isolated to this channel's owning Partner."""
@@ -54,6 +74,21 @@ class BaseChannel(ABC):
         # Plugin/tests may construct a channel outside PartnerManager. Preserve
         # the legacy location in that standalone case.
         return get_media_dir(channel or self.name)
+
+    def state_dir(self) -> Path:
+        """Runtime state directory isolated to this channel's owning Partner.
+
+        Channel state is an *account identity* (bot tokens, poll cursors), so
+        it must never be shared: two Partners on the same channel would read
+        each other's credentials and overwrite each other's cursor. Resolve
+        lazily — ``PartnerManager`` sets ``partner_id`` after construction.
+        """
+        from deeptutor.partners.config.paths import get_partner_channel_dir, get_runtime_subdir
+
+        if self.partner_id:
+            return get_partner_channel_dir(self.partner_id, self.name)
+        # Standalone construction (plugins/tests): keep the legacy location.
+        return get_runtime_subdir(self.name)
 
     async def transcribe_audio(self, file_path: str | Path) -> str:
         """Transcribe an audio file via Groq Whisper. Returns empty string on failure."""

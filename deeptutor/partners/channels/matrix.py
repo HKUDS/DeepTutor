@@ -47,7 +47,6 @@ else:
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_data_dir
 from deeptutor.partners.config.schema import DeliveryOverrides
 from deeptutor.partners.helpers import safe_filename
 
@@ -244,7 +243,7 @@ class MatrixChannel(BaseChannel):
                 "sure libolm is available on your system."
             )
 
-        store_path = get_data_dir() / "matrix-store"
+        store_path = self.state_dir()
         store_path.mkdir(parents=True, exist_ok=True)
 
         self.client = AsyncClient(

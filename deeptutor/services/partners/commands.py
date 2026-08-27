@@ -34,6 +34,11 @@ BUILTIN_PARTNER_COMMANDS: tuple[PartnerCommandSpec, ...] = (
     PartnerCommandSpec("/status", "Show partner, session, model, and tool status."),
     PartnerCommandSpec("/history", "Show recent messages in this conversation.", "[n]"),
     PartnerCommandSpec("/tool", "Show or change enabled tools.", "[on|off <name>|reset]"),
+    PartnerCommandSpec(
+        "/link",
+        "Connect this chat account to your DeepTutor account.",
+        "<code from the web app>",
+    ),
 )
 
 
@@ -109,7 +114,43 @@ class PartnerCommandHandler:
             return self._history(msg, args)
         if command == "/tool":
             return self._tool(args)
+        if command == "/link":
+            return self._link(msg, args)
         return PartnerCommandResult(f"Unknown command: {parts[0]}\n\n{build_partner_help_text()}")
+
+    def _link(self, msg: InboundMessage, args: list[str]) -> PartnerCommandResult:
+        """Claim a link code, so this chat account speaks as its owner from now on."""
+        from deeptutor.services.partners.interaction import actor_for_account
+        from deeptutor.services.partners.links import redeem_link_code
+
+        if msg.channel == "web":
+            return PartnerCommandResult("You're already signed in here — nothing to link.")
+        if (msg.metadata or {}).get("is_group"):
+            return PartnerCommandResult(
+                "Send /link in a direct message instead — group chats stay shared, "
+                "and a code posted in one would be visible to everyone."
+            )
+        if not args:
+            return PartnerCommandResult(
+                "Usage: /link <code>. Open this partner in DeepTutor and choose "
+                "“Link this chat account” to get a code."
+            )
+        user_id = redeem_link_code(
+            self.partner_id, args[0], channel=msg.channel, sender_id=msg.sender_id
+        )
+        if not user_id:
+            return PartnerCommandResult(
+                "That code is not valid — it may have expired or already been used. "
+                "Generate a fresh one in DeepTutor and try again."
+            )
+        actor = actor_for_account(user_id)
+        if actor is None:
+            return PartnerCommandResult("That code belongs to an account that no longer exists.")
+        return PartnerCommandResult(
+            f"Linked — I'll talk to you as {actor.username} from now on. "
+            "This conversation is private to your account, and I can reach your "
+            "library and notes here just like in the app."
+        )
 
     def _new(self, msg: InboundMessage) -> PartnerCommandResult:
         archived = self.store.archive(msg.session_key)

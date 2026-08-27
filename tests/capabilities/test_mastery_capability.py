@@ -163,6 +163,78 @@ async def test_pause_and_resume_hooks_persist_interaction_boundaries(tmp_path, m
 
 
 @pytest.mark.asyncio
+async def test_choice_clarifying_composer_text_does_not_commit_answer(tmp_path, monkeypatch):
+    """Composer clarifying prose must not freeze a choice question as answered.
+
+    Regression for #1004: typing "what is this?" into the composer used to
+    persist as user_answer, after which mastery_grade could never map it to an
+    option and the gate stalled forever.
+    """
+    _use_store_root(monkeypatch, tmp_path)
+    pending = PendingQuestion(
+        question_id="stable-question",
+        knowledge_point_id="kp-1",
+        prompt="Compute (2e^{iπ/3})³",
+        question_type="choice",
+        expected_answer="A",
+        options=["A: -8", "B: -6", "C: 8", "D: -2"],
+    )
+    LearningStore().save(_progress_with_objective())
+    LearningService().register_question(
+        "path-1",
+        pending,
+        session_id="session-1",
+        turn_id="turn-2",
+    )
+    ask_user = {"questions": [{"id": "stable-question", "prompt": pending.prompt}]}
+    capability = MasteryLoopCapability()
+
+    await capability.on_user_pause(_context(), ask_user)
+    await capability.on_user_resume(
+        _context(),
+        ask_user,
+        reply_text="为什么 B 不是正确答案？",
+        answers=None,
+    )
+
+    still_open = LearningStore().get_interaction("path-1", "stable-question")
+    assert still_open is not None
+    assert still_open.status == InteractionStatus.AWAITING_INPUT
+    assert still_open.user_answer == ""
+
+
+@pytest.mark.asyncio
+async def test_choice_composer_option_label_still_commits(tmp_path, monkeypatch):
+    """Typing a readable option into the composer remains a valid commit."""
+    _use_store_root(monkeypatch, tmp_path)
+    pending = PendingQuestion(
+        question_id="stable-question",
+        knowledge_point_id="kp-1",
+        prompt="Which colour?",
+        question_type="choice",
+        expected_answer="B",
+        options=["A: red", "B: blue"],
+    )
+    LearningStore().save(_progress_with_objective())
+    LearningService().register_question(
+        "path-1",
+        pending,
+        session_id="session-1",
+        turn_id="turn-2",
+    )
+    ask_user = {"questions": [{"id": "stable-question", "prompt": "Which colour?"}]}
+    capability = MasteryLoopCapability()
+
+    await capability.on_user_pause(_context(), ask_user)
+    await capability.on_user_resume(_context(), ask_user, reply_text="选B", answers=None)
+
+    answered = LearningStore().get_interaction("path-1", "stable-question")
+    assert answered is not None
+    assert answered.status == InteractionStatus.ANSWERED
+    assert answered.user_answer == "选B"
+
+
+@pytest.mark.asyncio
 async def test_hooks_bind_to_the_open_interaction_not_the_card_id(tmp_path, monkeypatch):
     """A same-round mastery_quiz + ask_user leaves the model's id on the card.
 
@@ -411,3 +483,61 @@ async def test_recording_tools_refuse_an_unbuilt_path_without_creating_it(tmp_pa
         assert result.success is False
         assert "mastery_paths" in result.content
     assert LearningStore().list_all() == []
+
+
+@pytest.mark.asyncio
+async def test_a_switch_and_a_build_in_one_round_land_on_the_switched_path(tmp_path, monkeypatch):
+    """The regression behind "my paths contaminate each other".
+
+    Every tool call in a round has its arguments bound before any of them runs,
+    so a ``mastery_switch`` + ``mastery_build`` round used to rebuild the map of
+    the path the conversation was *leaving*: the learner edited path B's map and
+    watched path A's map change instead. Driven through the real dispatcher so
+    the ordering contract, not just the tool, is under test.
+    """
+    from deeptutor.core.agentic.tool_dispatch import dispatch_tool_calls
+
+    _use_store_root(monkeypatch, tmp_path)
+    LearningStore().save(_built_path("path-a", name="Path A"))
+    LearningStore().save(_built_path("path-b", name="Path B"))
+
+    context = UnifiedContext(
+        user_message="switch to path B and rebuild its map",
+        session_id="session-1",
+        metadata={"mastery_mode": True, "mastery_path_id": "path-a", "turn_id": "turn-1"},
+    )
+    capability = MasteryLoopCapability()
+    pipeline = AgenticChatPipeline(language="en")
+
+    await dispatch_tool_calls(
+        tool_calls=[
+            {
+                "id": "c1",
+                "name": "mastery_build",
+                "arguments": json.dumps(
+                    {
+                        "mode": "replace",
+                        "modules": [
+                            {
+                                "name": "Rebuilt module",
+                                "knowledge_points": [{"name": "New objective"}],
+                            }
+                        ],
+                    }
+                ),
+            },
+            {"id": "c2", "name": "mastery_switch", "arguments": '{"path_id": "path-b"}'},
+        ],
+        context=context,
+        stream=StreamBus(),
+        source="chat",
+        stage="responding",
+        iteration_index=0,
+        kwarg_augmenter=pipeline._augment_tool_kwargs,
+        rebinding_tools=frozenset(capability.rebinding_tools),
+    )
+
+    store = LearningStore()
+    assert [m.name for m in store.load("path-b").modules] == ["Rebuilt module"]
+    # The path the turn started on is untouched.
+    assert [m.name for m in store.load("path-a").modules] == ["Path A"]

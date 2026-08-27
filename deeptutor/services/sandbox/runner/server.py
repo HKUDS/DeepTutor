@@ -63,11 +63,15 @@ from __future__ import annotations
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
-import resource
 import subprocess
 import sys
 import traceback
 from typing import Any
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - non-POSIX platforms (e.g. Windows)
+    resource = None  # type: ignore[assignment]
 
 # Port to listen on inside the container; overridable for local testing.
 DEFAULT_PORT = 8900
@@ -128,23 +132,24 @@ def _build_preexec_fn(memory_mb: int, cpu_seconds: int):
 
     def _apply() -> None:
         # Address space (bytes). Cap virtual memory as a secondary guard.
-        if memory_mb > 0:
+        if memory_mb > 0 and resource is not None:
             mem_bytes = memory_mb * 1024 * 1024
             try:
-                resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+                resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))  # type: ignore[attr-defined]
             except (ValueError, OSError):
                 pass
         # CPU time (seconds). SIGXCPU/SIGKILL the child if it burns this much CPU.
-        if cpu_seconds > 0:
+        if cpu_seconds > 0 and resource is not None:
             try:
-                resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
+                resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))  # type: ignore[attr-defined]
             except (ValueError, OSError):
                 pass
         # Open file descriptors.
-        try:
-            resource.setrlimit(resource.RLIMIT_NOFILE, (_RLIMIT_NOFILE, _RLIMIT_NOFILE))
-        except (ValueError, OSError):
-            pass
+        if resource is not None:
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (_RLIMIT_NOFILE, _RLIMIT_NOFILE))  # type: ignore[attr-defined]
+            except (ValueError, OSError):
+                pass
 
     return _apply
 

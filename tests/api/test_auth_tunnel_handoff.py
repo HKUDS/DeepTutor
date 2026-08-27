@@ -9,8 +9,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
-pytest_plugins = ["tests.multi_user.conftest"]
-
 
 @pytest.fixture
 def tunnel_file(mu_isolated_root) -> Path:

@@ -16,6 +16,7 @@ import {
   fetchMasteryMap,
   deleteProgress,
   redoProgress,
+  renameProgress,
   skipPendingQuestion,
   type ProgressSummary,
   type MasteryMapResult,
@@ -24,6 +25,7 @@ import { newMasteryPathChatUrl } from "@/lib/chat-launch-intent";
 import { useMasteryPathActivity } from "@/hooks/useMasteryPathActivity";
 import { ActivityTimeline } from "@/components/space/learning/ActivityTimeline";
 import { PathMap } from "@/components/space/learning/PathMap";
+import { PathTitle } from "@/components/space/learning/PathTitle";
 import { formatRelative } from "@/components/space/learning/format";
 
 /**
@@ -139,6 +141,27 @@ export default function MasteryPathPage() {
     [afterMutation, tr],
   );
 
+  const handleRename = useCallback(
+    async (pathId: string, name: string) => {
+      const { name: applied } = await renameProgress(pathId, name);
+      // Show it at once. Everything else on this page refreshes by noticing a
+      // new revision in the event feed, which is right for changes made by a
+      // tutoring turn elsewhere and wrong for an edit made right here: the
+      // title would stay stale for up to one poll interval.
+      setDetail((previous) =>
+        previous && previous.book_id === pathId
+          ? {
+              ...previous,
+              name: applied,
+              map: { ...previous.map, name: applied },
+            }
+          : previous,
+      );
+      await afterMutation();
+    },
+    [afterMutation],
+  );
+
   const handleSkipQuestion = useCallback(
     async (pathId: string) => {
       if (
@@ -239,6 +262,7 @@ export default function MasteryPathPage() {
           <PathView
             pathId={selected}
             result={detail}
+            onRename={(name) => handleRename(selected, name)}
             revision={revision}
             events={events}
             objectiveNames={objectiveNames}
@@ -280,6 +304,7 @@ function PathView({
   zh,
   tr,
   onContinue,
+  onRename,
   onSkipQuestion,
   onRedo,
   onDelete,
@@ -294,6 +319,7 @@ function PathView({
   zh: boolean;
   tr: (cn: string, en: string) => string;
   onContinue: () => void;
+  onRename: (name: string) => Promise<void>;
   onSkipQuestion: () => void;
   onRedo: () => void;
   onDelete: () => void;
@@ -313,7 +339,15 @@ function PathView({
       {/* Header: progress + actions */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+          {/* Keyed by path: an open editor belongs to the path it was
+              opened on, and its draft must not follow a switch. */}
+          <PathTitle
+            key={pathId}
+            name={result.name}
+            onRename={onRename}
+            tr={tr}
+          />
+          <div className="mt-1 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
             <span>
               {map.counts.mastered}/{map.counts.total}{" "}
               {tr("已掌握", "mastered")}

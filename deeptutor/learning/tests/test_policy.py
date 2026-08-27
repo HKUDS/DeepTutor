@@ -295,3 +295,35 @@ def test_objective_report_carries_qualitative_evidence():
 
 def test_objective_report_is_none_for_an_unknown_objective():
     assert policy.objective_report(_progress(_kp("kp1", KnowledgeType.MEMORY)), "nope") is None
+
+
+# ── path_display_name ──────────────────────────────────────────────────────
+
+
+def test_path_display_name_prefers_the_paths_own_name():
+    progress = _progress(_kp("kp1", KnowledgeType.MEMORY))
+    progress.name = "一元二次方程基础"
+    assert policy.path_display_name(progress) == "一元二次方程基础"
+
+
+def test_path_display_name_falls_back_to_the_first_module():
+    """How every unnamed path was named before paths had names."""
+    progress = _progress(_kp("kp1", KnowledgeType.MEMORY))
+    assert policy.path_display_name(progress) == "M1"
+
+
+def test_path_display_name_falls_back_to_the_id_with_no_modules():
+    assert policy.path_display_name(LearningProgress(book_id="b1")) == "b1"
+
+
+def test_path_display_name_ignores_a_blank_name():
+    progress = _progress(_kp("kp1", KnowledgeType.MEMORY))
+    progress.name = "   "
+    assert policy.path_display_name(progress) == "M1"
+
+
+def test_map_summary_carries_the_display_name():
+    """So the dashboard and the composer strip read it instead of deriving it."""
+    progress = _progress(_kp("kp1", KnowledgeType.MEMORY))
+    progress.name = "Quadratics"
+    assert policy.map_summary(progress)["name"] == "Quadratics"

@@ -82,6 +82,15 @@ services:
       # DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=1, a restricted subprocess.
       - DEEPTUTOR_SANDBOX_RUNNER_URL=http://sandbox-runner:8900
 
+      # Optional dependencies, re-applied on every start (#762). Installing
+      # these with `docker exec` does not survive `compose down`, so declare
+      # them here instead. Both are idempotent and never fatal; the pip cache
+      # lives on the data volume, so a rebuild reuses what it already fetched.
+      # Extras come from pyproject.toml — preview one with
+      # `python scripts/install_extras.py --dry-run "<name>"`.
+      # - DEEPTUTOR_EXTRAS=math-animator,partners
+      # - DEEPTUTOR_APT_PACKAGES=ffmpeg
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]
       interval: 30s

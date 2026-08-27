@@ -7,6 +7,14 @@ export interface PartnerInfo {
   partner_id: string;
   name: string;
   description: string;
+  /** Account that created the partner; empty for admin-managed ones. */
+  owner_id?: string;
+  /**
+   * Whether the signed-in user may configure this partner (its owner, or an
+   * admin). False for a partner merely assigned to them, whose response is
+   * reduced to identity fields — so read this rather than re-deriving it.
+   */
+  can_manage?: boolean;
   /** List endpoints: channel name keys only. Detail: full (masked) dict. */
   channels: string[] | Record<string, unknown>;
   llm_selection?: LLMSelection | null;
@@ -505,6 +513,111 @@ export async function branchPartnerSession(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source_key: sourceKey, new_key: newKey }),
       },
+    ),
+  );
+}
+
+// ── Channel account links ─────────────────────────────────────
+//
+// Connecting a chat account (QQ, Telegram, …) to your DeepTutor account, so
+// messages you send the partner there are yours: private history you can read
+// back here, answered out of your own library and memory.
+
+export interface PartnerLink {
+  key: string;
+  channel: string;
+  sender_id: string;
+  linked_at: string;
+}
+
+export interface PartnerLinkCode {
+  code: string;
+  expires_at: string;
+  /** Ready-to-send command, e.g. "/link A1B2C3". */
+  command: string;
+}
+
+export async function createPartnerLinkCode(
+  partnerId: string,
+): Promise<PartnerLinkCode> {
+  return json(
+    await apiFetch(
+      apiUrl(`/api/v1/partners/${encodeURIComponent(partnerId)}/links/code`),
+      { method: "POST" },
+    ),
+  );
+}
+
+export async function listPartnerLinks(
+  partnerId: string,
+): Promise<PartnerLink[]> {
+  const data = await json<{ links: PartnerLink[] }>(
+    await apiFetch(
+      apiUrl(`/api/v1/partners/${encodeURIComponent(partnerId)}/links`),
+    ),
+  );
+  return data.links ?? [];
+}
+
+export async function removePartnerLink(
+  partnerId: string,
+  key: string,
+): Promise<void> {
+  await json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/links/${encodeURIComponent(key)}`,
+      ),
+      { method: "DELETE" },
+    ),
+  );
+}
+
+// ── WeChat QR onboarding (#951) ───────────────────────────────────────────────
+//
+// The personal-WeChat channel authenticates by scanning a QR code. The channel
+// has always known how to run that exchange, but drew the code on the server's
+// stdout — unreachable on a container deployment — so these drive it from the
+// browser instead. The bot token is written into the partner's channel config
+// server-side; nothing here ever sees it.
+
+export interface WeixinQrSession {
+  session_id: string;
+  /** waiting | scanned | confirmed | expired | error */
+  status: string;
+  error: string;
+  expires_in: number;
+  /** What the phone scans. Present on start, and again whenever it changes. */
+  scan_payload?: string;
+  /** Inline SVG of `scan_payload`, rendered server-side (no QR lib in the web
+   *  bundle). Absent when unchanged since the last reply, or when the server
+   *  lacks the `qrcode` library — fall back to showing `scan_payload`. */
+  qr_svg?: string;
+}
+
+export async function startWeixinQr(
+  partnerId: string,
+): Promise<WeixinQrSession> {
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/channels/weixin/qr`,
+      ),
+      { method: "POST" },
+    ),
+  );
+}
+
+export async function pollWeixinQr(
+  partnerId: string,
+  sessionId: string,
+): Promise<WeixinQrSession> {
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/channels/weixin/qr/${encodeURIComponent(sessionId)}`,
+      ),
+      { cache: "no-store" },
     ),
   );
 }

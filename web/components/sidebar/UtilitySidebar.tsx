@@ -11,15 +11,19 @@ import { useAppShell } from "@/context/AppShellContext";
 import {
   deleteSession,
   listSessions,
+  updateSessionOrganization,
   updateSessionTitle,
+  type SessionOrganizationPatch,
   type SessionSummary,
 } from "@/lib/session-api";
+import { listCourses, type StudyCourse } from "@/lib/courses-api";
 
 export default function UtilitySidebar() {
   const { t } = useTranslation();
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [courses, setCourses] = useState<StudyCourse[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const hasLoadedSessionsRef = useRef(false);
 
@@ -28,7 +32,12 @@ export default function UtilitySidebar() {
       setLoadingSessions(true);
     }
     try {
-      setSessions(await listSessions(50, 0, { force: true }));
+      const [nextSessions, nextCourses] = await Promise.all([
+        listSessions(50, 0, { force: true }),
+        listCourses({ force: true }),
+      ]);
+      setSessions(nextSessions);
+      setCourses(nextCourses);
       hasLoadedSessionsRef.current = true;
     } catch (error) {
       console.error("Failed to load sessions", error);
@@ -81,16 +90,36 @@ export default function UtilitySidebar() {
     [activeSessionId, setActiveSessionId, t],
   );
 
+  const handleOrganizeSession = useCallback(
+    async (sessionId: string, patch: SessionOrganizationPatch) => {
+      const updated = await updateSessionOrganization(sessionId, patch);
+      setSessions((previous) =>
+        previous.map((session) =>
+          session.session_id === sessionId
+            ? {
+                ...session,
+                updated_at: updated.updated_at,
+                preferences: updated.preferences,
+              }
+            : session,
+        ),
+      );
+    },
+    [],
+  );
+
   return (
     <SidebarShell
       showSessions
       sessions={sessions}
+      courses={courses}
       activeSessionId={activeSessionId}
       loadingSessions={loadingSessions}
       onNewChat={() => setActiveSessionId(null)}
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
+      onOrganizeSession={handleOrganizeSession}
       footerSlot={(collapsed) => (
         <>
           <ProfileLink collapsed={collapsed} />

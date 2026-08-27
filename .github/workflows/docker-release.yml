@@ -19,8 +19,49 @@ permissions:
   packages: write
 
 jobs:
+  validate-release-tag:
+    name: Validate release tag
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.validate.outputs.image_tag }}
+      is_stable: ${{ steps.validate.outputs.is_stable }}
+    steps:
+      - name: Require an image version tag
+        id: validate
+        shell: python
+        run: |
+          import os
+          import re
+
+          tag = os.environ["RELEASE_TAG"]
+          pattern = (
+              r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+              r"(?:(?:a|b|rc)(?:0|[1-9]\d*))?"
+              r"(?:\.post(?:0|[1-9]\d*))?"
+              r"(?:\.dev(?:0|[1-9]\d*))?"
+              r"(?:\+[0-9A-Za-z]+(?:[._-][0-9A-Za-z]+)*)?$"
+          )
+          if not re.fullmatch(pattern, tag):
+              raise SystemExit(
+                  f"Release tag {tag!r} is not an image version tag "
+                  "(expected vX.Y.Z with an optional suffix)."
+              )
+          # '+' is valid version metadata but not valid in an OCI tag.
+          image_tag = tag[1:].replace("+", "-")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"image_tag={image_tag}\n")
+              output.write(
+                  "is_stable="
+                  + str(bool(re.fullmatch(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", tag))).lower()
+                  + "\n"
+              )
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+
   build-and-push:
     name: Build and Push Multi-Platform Docker Image
+    needs: validate-release-tag
     runs-on: ubuntu-latest
 
     steps:
@@ -42,17 +83,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Extract tags from the release:
-      #   type=semver strips the leading 'v' (v1.2.3 → 1.2.3)
-      #   type=raw adds a 'latest' tag on every published release
+      # The validated version drops the leading 'v'. Pre-releases retain a
+      # versioned image but never replace the stable 'latest' tag.
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/hkuds/deeptutor
           tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest
+            type=raw,value=${{ needs.validate-release-tag.outputs.image_tag }}
+            type=raw,value=latest,enable=${{ github.event.release.prerelease == false && needs.validate-release-tag.outputs.is_stable == 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6

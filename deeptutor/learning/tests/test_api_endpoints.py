@@ -412,6 +412,54 @@ class TestSkipPendingQuestion:
 # -- POST /progress/{book_id}/redo ----------------------------------------
 
 
+class TestRenamePath:
+    """Renaming is the learner's edit: the tutor names, the learner decides."""
+
+    def _built_path(self, client, book_id: str) -> None:
+        client.post(
+            f"/api/v1/learning/progress/{book_id}/init-modules",
+            json={"modules": [_module_payload()]},
+        )
+
+    def test_rename_replaces_the_derived_name_everywhere(self, client):
+        self._built_path(client, "renamed")
+        assert client.get("/api/v1/learning/progress/renamed/map").json()["name"] == "M1"
+
+        resp = client.patch(
+            "/api/v1/learning/progress/renamed", json={"name": "  Linear algebra  "}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "Linear algebra"
+
+        assert (
+            client.get("/api/v1/learning/progress/renamed/map").json()["name"] == "Linear algebra"
+        )
+        listed = client.get("/api/v1/learning/progress").json()["summaries"]
+        assert [p["name"] for p in listed if p["book_id"] == "renamed"] == ["Linear algebra"]
+
+    def test_an_empty_name_restores_the_derived_one(self, client):
+        self._built_path(client, "cleared")
+        client.patch("/api/v1/learning/progress/cleared", json={"name": "Temporary"})
+
+        resp = client.patch("/api/v1/learning/progress/cleared", json={"name": ""})
+
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "M1"
+
+    def test_rename_is_recorded_in_the_activity_feed(self, client):
+        self._built_path(client, "audited")
+        client.patch("/api/v1/learning/progress/audited", json={"name": "Calculus"})
+
+        events = client.get("/api/v1/learning/progress/audited/events").json()["events"]
+        renames = [e for e in events if e["event_type"] == "path.renamed"]
+        assert [e["payload"]["name"] for e in renames] == ["Calculus"]
+
+    def test_rename_of_a_missing_path_is_404(self, client):
+        assert (
+            client.patch("/api/v1/learning/progress/ghost", json={"name": "x"}).status_code == 404
+        )
+
+
 class TestRedoProgress:
     def test_redo_resets_stage(self, client):
         client.post(

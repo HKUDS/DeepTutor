@@ -8,6 +8,8 @@ option text. This module owns the translation between those shapes so the tool
 layer (:mod:`deeptutor.capabilities.mastery.tools`) reads as orchestration:
 
 * :func:`parse_options` — option strings → a ``{label: body}`` map.
+* :func:`option_label_intent` / :func:`canonical_labels` — were the options
+  meant to be labelled A/B/C, and do those labels form a well-formed set?
 * :func:`has_option_bodies` — did the model send real bodies, not bare labels?
 * :func:`format_options` — a ``{label: body}`` map → canonical option strings.
 * :func:`resolve_answer` — a model-supplied answer → its stable option label.
@@ -25,8 +27,11 @@ import logging
 from typing import Any
 
 from deeptutor.learning.pending import (
+    canonical_labels,
     format_options,
     has_option_bodies,
+    is_readable_choice_answer,
+    option_label_intent,
     parse_options,
     resolve_answer,
     resolve_choice_submission,
@@ -84,8 +89,11 @@ async def recover_options_from_turn(store: Any, turn_id: str, question: str) -> 
 
 
 __all__ = [
+    "canonical_labels",
     "format_options",
     "has_option_bodies",
+    "is_readable_choice_answer",
+    "option_label_intent",
     "parse_options",
     "recover_options_from_turn",
     "resolve_answer",

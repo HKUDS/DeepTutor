@@ -117,3 +117,94 @@ async def test_results_stay_paired_with_their_tool_calls() -> None:
         ("c2", "rag-done"),
         ("c3", "web_search-done"),
     ]
+
+
+class _PathRegistry:
+    """Stands in for the mastery path binding: switch moves it, writes follow it."""
+
+    def __init__(self) -> None:
+        self.order: list[str] = []
+        self.active = "path-a"
+        self.written_to: list[str] = []
+
+    async def execute(self, name: str, **kwargs: Any) -> ToolResult:
+        self.order.append(name)
+        if name == "mastery_switch":
+            self.active = str(kwargs.get("path_id") or self.active)
+        if name == "mastery_build":
+            self.written_to.append(str(kwargs.get("_mastery_path_id") or ""))
+        return ToolResult(content="ok", success=True)
+
+
+async def _dispatch_with_rebinding(
+    registry: _PathRegistry, tool_calls: list[dict[str, Any]]
+) -> None:
+    def augment(tool_name: str, tool_args: dict[str, Any], _ctx: UnifiedContext) -> dict[str, Any]:
+        if tool_name.startswith("mastery_"):
+            return {**tool_args, "_mastery_path_id": registry.active}
+        return dict(tool_args)
+
+    await dispatch_tool_calls(
+        tool_calls=tool_calls,
+        context=UnifiedContext(session_id="s1", user_message="hi"),
+        stream=StreamBus(),
+        source="chat",
+        stage="responding",
+        iteration_index=0,
+        registry=registry,
+        kwarg_augmenter=augment,
+        rebinding_tools=frozenset({"mastery_switch"}),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_rebinding_tool_runs_first_and_its_round_mates_follow_it() -> None:
+    """A switch + build round must build the path it switched TO, not FROM."""
+    registry = _PathRegistry()
+
+    await _dispatch_with_rebinding(
+        registry,
+        [
+            {"id": "c1", "name": "mastery_build", "arguments": "{}"},
+            {"id": "c2", "name": "mastery_switch", "arguments": '{"path_id": "path-b"}'},
+        ],
+    )
+
+    assert registry.order == ["mastery_switch", "mastery_build"]
+    assert registry.written_to == ["path-b"]
+
+
+@pytest.mark.asyncio
+async def test_a_pausing_tool_still_runs_after_a_rebound_round() -> None:
+    registry = _PathRegistry()
+
+    await _dispatch_with_rebinding(
+        registry,
+        [
+            {"id": "c1", "name": "ask_user", "arguments": "{}"},
+            {"id": "c2", "name": "mastery_build", "arguments": "{}"},
+            {"id": "c3", "name": "mastery_switch", "arguments": '{"path_id": "path-b"}'},
+        ],
+    )
+
+    assert registry.order == ["mastery_switch", "mastery_build", "ask_user"]
+
+
+@pytest.mark.asyncio
+async def test_declaring_no_rebinding_tools_leaves_the_round_concurrent() -> None:
+    registry = _PathRegistry()
+
+    await dispatch_tool_calls(
+        tool_calls=[
+            {"id": "c1", "name": "mastery_build", "arguments": "{}"},
+            {"id": "c2", "name": "mastery_switch", "arguments": '{"path_id": "path-b"}'},
+        ],
+        context=UnifiedContext(session_id="s1", user_message="hi"),
+        stream=StreamBus(),
+        source="chat",
+        stage="responding",
+        iteration_index=0,
+        registry=registry,
+    )
+
+    assert sorted(registry.order) == ["mastery_build", "mastery_switch"]

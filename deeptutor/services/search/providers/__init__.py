@@ -181,6 +181,7 @@ def _register_builtin_providers() -> None:
         qianfan,
         searxng,
         serper,
+        serply,
         tavily,
         zhipu,
     )
@@ -197,6 +198,7 @@ def _register_builtin_providers() -> None:
         qianfan,
         searxng,
         serper,
+        serply,
         tavily,
         zhipu,
     )

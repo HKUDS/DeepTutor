@@ -205,10 +205,17 @@ class PersonaService:
         body = body.strip()
         if not body:
             return ""
+        # The scope sentence has to name capability playbooks, because they are
+        # what a persona actually competes with. Mastery Path's playbook runs
+        # 600 words and prescribes its own tone ("be warm and encouraging"),
+        # sits above this block, and is plainly not a "generic style default" —
+        # so a persona claiming only those was read as the weaker instruction
+        # and the tutor stayed a stock teacher no matter what was written (#793).
         return (
             "## Active Persona\n"
-            "Embody the persona below for this entire conversation. "
-            "It overrides generic style defaults.\n\n"
+            "Embody the persona below for this entire conversation. It sets your "
+            "voice and outranks any tone a mode above prescribes; carry out that "
+            "mode's steps in this voice.\n\n"
             f"### Persona: {detail.name}\n\n{body}"
         )
 

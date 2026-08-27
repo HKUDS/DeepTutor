@@ -49,8 +49,8 @@ class LLMClient:
 
         # Only set env vars for OpenAI-compatible bindings
         if binding in ("openai", "azure_openai", "gemini"):
-            if self.config.api_key:
-                os.environ["OPENAI_API_KEY"] = self.config.api_key
+            if api_key := self.config.get_api_key():
+                os.environ["OPENAI_API_KEY"] = api_key
                 self.logger.debug("Set OPENAI_API_KEY env var")
 
             if self.config.base_url:

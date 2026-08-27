@@ -170,11 +170,18 @@ export function useChatAutoScroll({
   // Mermaid …) finish hydrating and grow the content height. The user
   // expects to land at the bottom so they see the full result.
   //
-  // The observer is intentionally short-lived (4s after stream stop):
-  // a longer window would mis-classify post-turn user interactions
-  // (expanding a trace ``<details>``, clicking a citation) as
-  // "streaming-style growth" and rip them back to the bottom.
+  // The window is intentionally short (4s after stream stop): a longer one
+  // would mis-classify post-turn user interactions (expanding a trace
+  // ``<details>``, clicking a citation) as "streaming-style growth" and rip
+  // the user back to the bottom.
+  //
+  // Viewers that tag themselves ``[data-chat-grow]`` are the one exception.
+  // Their first JS chunk can land after the short window (issue #955),
+  // leaving the card below the fold until the user scrolls. A *newly
+  // appearing* tagged node is an unambiguous "this growth is not the user"
+  // signal, so it — and nothing else — extends the window.
   const POST_STREAM_AUTOSCROLL_WINDOW_MS = 4000;
+  const LATE_VIEWER_AUTOSCROLL_WINDOW_MS = 12_000;
   useEffect(() => {
     if (isStreaming) return;
     if (!hasMessages) return;
@@ -184,12 +191,42 @@ export function useChatAutoScroll({
 
     let prevHeight = container.scrollHeight;
     let rafId = 0;
-    const deadline = performance.now() + POST_STREAM_AUTOSCROLL_WINDOW_MS;
+    let stopTimer = 0;
+    const startedAt = performance.now();
+    let deadline = startedAt + POST_STREAM_AUTOSCROLL_WINDOW_MS;
+    let growTargets = container.querySelectorAll("[data-chat-grow]").length;
+
+    const stop = () => {
+      mo.disconnect();
+      container.removeEventListener("load", check, true);
+      if (rafId) cancelAnimationFrame(rafId);
+      if (stopTimer) window.clearTimeout(stopTimer);
+      stopTimer = 0;
+    };
+
+    // Keep the teardown pinned to whatever the current deadline is, so the
+    // common case (no late viewer) still stops observing after 4s.
+    const armStop = () => {
+      if (stopTimer) window.clearTimeout(stopTimer);
+      stopTimer = window.setTimeout(
+        stop,
+        Math.max(0, deadline - performance.now()),
+      );
+    };
 
     const check = () => {
       if (rafId) return;
       rafId = requestAnimationFrame(() => {
         rafId = 0;
+        const tagged = container.querySelectorAll("[data-chat-grow]").length;
+        if (tagged > growTargets) {
+          growTargets = tagged;
+          const extended = startedAt + LATE_VIEWER_AUTOSCROLL_WINDOW_MS;
+          if (extended > deadline) {
+            deadline = extended;
+            armStop();
+          }
+        }
         if (performance.now() > deadline) return;
         const curHeight = container.scrollHeight;
         if (curHeight > prevHeight && shouldAutoScrollRef.current) {
@@ -209,18 +246,9 @@ export function useChatAutoScroll({
     // (Opening a history session is not this path: that effect does not
     // re-run on a session switch, so the page re-pins there itself.)
     container.addEventListener("load", check, true);
-    const stopTimer = window.setTimeout(() => {
-      mo.disconnect();
-      container.removeEventListener("load", check, true);
-      if (rafId) cancelAnimationFrame(rafId);
-    }, POST_STREAM_AUTOSCROLL_WINDOW_MS);
+    armStop();
 
-    return () => {
-      window.clearTimeout(stopTimer);
-      mo.disconnect();
-      container.removeEventListener("load", check, true);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
+    return stop;
   }, [hasMessages, isStreaming, pinToBottom]);
 
   const handleScroll = useCallback(() => {

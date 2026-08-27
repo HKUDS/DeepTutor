@@ -54,6 +54,15 @@ def get_partner_media_dir(partner_id: str, channel: str | None = None) -> Path:
     return ensure_dir(base / channel) if channel else base
 
 
+def get_partner_channel_dir(partner_id: str, channel: str) -> Path:
+    """Private runtime state for one channel of one partner.
+
+    Nested under ``channels/`` so a channel name can never collide with the
+    partner dir's own entries (``workspace``, ``sessions``, ``users``, ...).
+    """
+    return ensure_dir(get_partner_dir(partner_id) / "channels" / channel)
+
+
 _ACCOUNT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 

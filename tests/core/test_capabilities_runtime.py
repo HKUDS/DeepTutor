@@ -15,6 +15,7 @@ from deeptutor.agents.question.capability import DeepQuestionCapability
 from deeptutor.agents.research.capability import DeepResearchCapability
 from deeptutor.agents.visualize.capability import VisualizeCapability
 import deeptutor.agents.visualize.pipeline as visualize_pipeline
+from deeptutor.capabilities.ask_questions.capability import AskQuestionsCapability
 from deeptutor.capabilities.solve.capability import DeepSolveCapability
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
@@ -69,6 +70,7 @@ async def _collect_events(run_coro) -> list[StreamEvent]:
 def test_builtin_capability_registry_covers_documented_capabilities() -> None:
     assert set(BUILTIN_CAPABILITY_CLASSES) == {
         "chat",
+        "ask_questions",
         "deep_solve",
         "deep_question",
         "deep_research",
@@ -77,6 +79,43 @@ def test_builtin_capability_registry_covers_documented_capabilities() -> None:
         "mastery_path",
         "immersive_reading",
     }
+
+
+@pytest.mark.asyncio
+async def test_ask_questions_capability_forces_card_on_selected_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakePipeline:
+        def __init__(
+            self,
+            *,
+            language: str = "en",
+            initial_tool_choice: str | None = None,
+        ) -> None:
+            captured["language"] = language
+            captured["initial_tool_choice"] = initial_tool_choice
+
+        async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+            captured["ask_questions_mode"] = context.metadata.get("ask_questions_mode")
+            await stream.content("question", source="chat", stage="responding")
+
+    monkeypatch.setattr(
+        "deeptutor.capabilities.ask_questions.capability.AgenticChatPipeline",
+        FakePipeline,
+    )
+
+    context = UnifiedContext(user_message="Help me plan", language="zh")
+    capability = AskQuestionsCapability()
+    events = await _collect_events(lambda bus: capability.run(context, bus))
+
+    assert captured == {
+        "language": "zh",
+        "initial_tool_choice": "ask_user",
+        "ask_questions_mode": True,
+    }
+    assert any(event.type == StreamEventType.CONTENT for event in events)
 
 
 @pytest.mark.asyncio

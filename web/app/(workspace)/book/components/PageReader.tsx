@@ -15,6 +15,13 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Block, BlockType, Page, QuizAttempt } from "@/lib/book-types";
+import {
+  SCROLL_EDGE_TOLERANCE_PX,
+  chapterReadingPercent,
+  sequentialReadTarget,
+  type ChapterScrollPlacement,
+  type SequentialReadDirection,
+} from "@/lib/book-reader-navigation";
 import BlockRenderer from "./blocks/BlockRenderer";
 import type { QuizAttemptArgs } from "./blocks/QuizBlock";
 import PageOutlineNav from "./PageOutlineNav";
@@ -103,6 +110,11 @@ export default function PageReader({
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(
     null,
   );
+  const [readingPercent, setReadingPercent] = useState(0);
+  const [chapterHasScroll, setChapterHasScroll] = useState(false);
+  const pendingScrollPlacementRef = useRef<ChapterScrollPlacement>("start");
+  const pendingScrollPlacementPageIdRef = useRef<string | null>(null);
+  const lastSeenPageIdRef = useRef<string | null>(null);
 
   // ── Collapsible header ──────────────────────────────────────────────
   // Default expanded; collapse on user-initiated scroll-down past threshold;
@@ -118,12 +130,87 @@ export default function PageReader({
     lastScrollTopRef.current = 0;
   }, [page?.id]);
 
+  const updateReadingProgress = useCallback(() => {
+    if (!scrollContainer) {
+      setReadingPercent(0);
+      setChapterHasScroll(false);
+      return;
+    }
+
+    setReadingPercent(
+      chapterReadingPercent({
+        scrollTop: scrollContainer.scrollTop,
+        scrollHeight: scrollContainer.scrollHeight,
+        clientHeight: scrollContainer.clientHeight,
+      }),
+    );
+    setChapterHasScroll(
+      scrollContainer.scrollHeight - scrollContainer.clientHeight >
+        SCROLL_EDGE_TOLERANCE_PX,
+    );
+  }, [scrollContainer]);
+
+  // Chapter summaries hydrate blocks asynchronously. A requested "end"
+  // placement must therefore follow the target page id and wait for its real
+  // content instead of using the old or empty content height.
+  useEffect(() => {
+    if (!scrollContainer || !page) return;
+
+    const isNewPage = lastSeenPageIdRef.current !== page.id;
+    lastSeenPageIdRef.current = page.id;
+    const requestedPageId = pendingScrollPlacementPageIdRef.current;
+    const pendingMatchesPage = requestedPageId === page.id;
+    const placement = pendingMatchesPage
+      ? pendingScrollPlacementRef.current
+      : "start";
+    if (!pendingMatchesPage) {
+      pendingScrollPlacementRef.current = "start";
+      pendingScrollPlacementPageIdRef.current = null;
+    }
+
+    // Content refreshes for the current chapter must never move an active
+    // reader. Only a page transition or an explicit pending placement may.
+    if (!isNewPage && !pendingMatchesPage) return;
+
+    const waitingForContent =
+      page.blocks.length === 0 && (loading || (page.block_count ?? 0) > 0);
+    // "Start" is safe on an empty summary and keeps its old scroll position
+    // from surviving into the hydrated chapter. "End" must wait for content.
+    if (waitingForContent && placement === "end") return;
+
+    pendingScrollPlacementRef.current = "start";
+    pendingScrollPlacementPageIdRef.current = null;
+    const pendingFrames: number[] = [];
+    pendingFrames.push(
+      window.requestAnimationFrame(() => {
+        pendingFrames.push(
+          window.requestAnimationFrame(() => {
+            scrollContainer.scrollTop =
+              placement === "end" ? scrollContainer.scrollHeight : 0;
+            updateReadingProgress();
+          }),
+        );
+      }),
+    );
+
+    return () => {
+      for (const frame of pendingFrames) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [scrollContainer, page, loading, updateReadingProgress]);
+
+  useEffect(() => {
+    updateReadingProgress();
+  }, [updateReadingProgress, page?.id, page?.blocks.length, loading]);
+
   useEffect(() => {
     if (!scrollContainer) return;
     const handler = () => {
       const top = scrollContainer.scrollTop;
       const last = lastScrollTopRef.current;
       lastScrollTopRef.current = top;
+      updateReadingProgress();
       // Snap back to expanded when user scrolls all the way to the top,
       // even if they previously toggled manually.
       if (top <= 8) {
@@ -139,7 +226,7 @@ export default function PageReader({
     };
     scrollContainer.addEventListener("scroll", handler, { passive: true });
     return () => scrollContainer.removeEventListener("scroll", handler);
-  }, [scrollContainer, userToggled]);
+  }, [scrollContainer, userToggled, updateReadingProgress]);
 
   const normalizeText = useCallback((value: string): string => {
     return (value || "").replace(/\s+/g, " ").trim();
@@ -199,8 +286,50 @@ export default function PageReader({
     selection.removeAllRanges();
   }, [onCaptureSelection, normalizeText, page, t]);
 
+  const navigateSequentially = useCallback(
+    (direction: SequentialReadDirection): boolean => {
+      // A newly selected chapter may still be compiling. Keep arrows inert in
+      // that state so they cannot skip a chapter before its height is known.
+      if (loading && page?.blocks.length === 0) return false;
+
+      if (
+        !scrollContainer ||
+        scrollContainer.clientHeight <= SCROLL_EDGE_TOLERANCE_PX
+      ) {
+        return false;
+      }
+
+      const target = sequentialReadTarget(scrollContainer, direction);
+      if (target !== null) {
+        scrollContainer?.scrollTo({ top: target });
+        return true;
+      }
+
+      if (direction === "previous" && previousPage) {
+        pendingScrollPlacementRef.current = "end";
+        pendingScrollPlacementPageIdRef.current = previousPage.id;
+        onNavigate?.(previousPage.id);
+        return true;
+      }
+      if (direction === "next" && nextPage) {
+        pendingScrollPlacementRef.current = "start";
+        pendingScrollPlacementPageIdRef.current = nextPage.id;
+        onNavigate?.(nextPage.id);
+        return true;
+      }
+      return false;
+    },
+    [
+      loading,
+      nextPage,
+      onNavigate,
+      page?.blocks.length,
+      previousPage,
+      scrollContainer,
+    ],
+  );
+
   useEffect(() => {
-    if (!onNavigate) return;
     const handler = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
@@ -212,15 +341,15 @@ export default function PageReader({
       ) {
         return;
       }
-      if (event.key === "ArrowLeft" && previousPage) {
-        onNavigate(previousPage.id);
-      } else if (event.key === "ArrowRight" && nextPage) {
-        onNavigate(nextPage.id);
+      if (event.key === "ArrowLeft") {
+        if (navigateSequentially("previous")) event.preventDefault();
+      } else if (event.key === "ArrowRight") {
+        if (navigateSequentially("next")) event.preventDefault();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onNavigate, previousPage, nextPage]);
+  }, [navigateSequentially]);
 
   if (!page) {
     return (
@@ -330,6 +459,7 @@ export default function PageReader({
 
       <div
         ref={setScrollContainer}
+        data-testid="chapter-scroll-container"
         className="flex-1 overflow-y-auto px-8 py-8"
       >
         {loading && page.blocks.length === 0 ? (
@@ -491,9 +621,29 @@ export default function PageReader({
               label={t("Previous chapter")}
               onNavigate={onNavigate}
             />
-            <span className="shrink-0 text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/70">
-              {t("← / → to turn pages")}
-            </span>
+            <div className="flex min-w-0 shrink-0 flex-col items-center gap-1">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/70">
+                {t("← / → to turn pages")}
+              </span>
+              {chapterHasScroll && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[var(--muted-foreground)]/70">
+                    {t("Chapter progress: {{percent}}%", {
+                      percent: readingPercent,
+                    })}
+                  </span>
+                  <progress
+                    data-testid="chapter-progress"
+                    className="h-1.5 w-24 accent-[var(--primary)]"
+                    max={100}
+                    value={readingPercent}
+                    aria-label={t("Chapter progress: {{percent}}%", {
+                      percent: readingPercent,
+                    })}
+                  />
+                </div>
+              )}
+            </div>
             <NavButton
               page={nextPage}
               direction="next"

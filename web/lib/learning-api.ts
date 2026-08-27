@@ -78,6 +78,8 @@ export interface MapModule {
 }
 
 export interface MasteryMap {
+  /** What to call this path — see policy.path_display_name. */
+  name: string;
   counts: { mastered: number; learning: number; new: number; total: number };
   due_reviews: number;
   complete: boolean;
@@ -100,6 +102,7 @@ export interface NextStep {
 
 export interface MasteryMapResult {
   book_id: string;
+  name: string;
   path_revision: number;
   next: NextStep;
   map: MasteryMap;
@@ -115,6 +118,20 @@ export async function fetchMasteryMap(
   );
   if (!res.ok) throw new Error(`Failed to fetch mastery map: ${res.status}`);
   return res.json() as Promise<MasteryMapResult>;
+}
+
+/** Rename a path. An empty name restores the derived display name. */
+export async function renameProgress(pathId: string, name: string) {
+  const res = await apiFetch(
+    apiUrl(`/api/v1/learning/progress/${encodeURIComponent(pathId)}`),
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed to rename path: ${res.status}`);
+  return res.json() as Promise<{ status: string; name: string }>;
 }
 
 // ── Activity feed ─────────────────────────────────────────────────────────

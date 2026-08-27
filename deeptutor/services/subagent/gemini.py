@@ -29,7 +29,11 @@ from typing import Any
 
 from deeptutor.services.subagent.base import OnEvent, SubagentBackend
 from deeptutor.services.subagent.config import BackendConfig
-from deeptutor.services.subagent.process import probe_version, stream_process_lines
+from deeptutor.services.subagent.process import (
+    not_found_detail,
+    probe_version,
+    stream_process_lines,
+)
 from deeptutor.services.subagent.types import (
     EVENT_ERROR,
     EVENT_LOG,
@@ -42,6 +46,16 @@ from deeptutor.services.subagent.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Google retired Gemini CLI on 2026-06-18 for Google AI Pro/Ultra and Gemini
+# Code Assist users, so "not found" is now the expected state for most people
+# rather than a mistake. Say where the CLI went instead of leaving them to work
+# out why a CLI they used to have stopped being detected (#828).
+GEMINI_NOT_FOUND_DETAIL = (
+    "gemini CLI not found on PATH. Google retired Gemini CLI on 2026-06-18 for "
+    "plan-based accounts — connect Antigravity CLI (agy) instead. Gemini CLI "
+    "still works with a Gemini API key."
+)
 
 _MAX_FIELD_CHARS = 4000
 _TOOL_HEADER_CHARS = 160
@@ -83,7 +97,7 @@ class GeminiBackend(SubagentBackend):
             display_name=self.display_name,
             available=ok,
             version=text if ok else "",
-            detail="" if ok else (text or "gemini CLI not found on PATH"),
+            detail="" if ok else not_found_detail(text, GEMINI_NOT_FOUND_DETAIL),
         )
 
     def _build_command(

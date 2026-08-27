@@ -61,9 +61,9 @@
 
 DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测验生成、研究、可视化和掌握度练习整合在一个可扩展的系统中。
 
-- **统一的运行时** — Chat、Quiz、Research、Visualize、Solve、Mastery Path 和 Immersive Reading 运行在同一个智能体循环上，切换的是目标，而非引擎，上下文始终随学习者流转。
+- **统一的运行时** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Mastery Path 和 Immersive Reading 共享同一套能力运行时与会话上下文，同时保留各自为特定用途设计的循环和流水线。
 - **互联的学习上下文** — 知识库、书籍、Co-Writer 草稿、笔记本、题库、人格预设和 Memory，在每个工作流中始终可用，而不是各自孤立。
-- **子智能体与 Partners** — 在任意对话轮次中调用实时运行的编程 CLI（Claude Code、Codex、Gemini、Kimi、opencode 或 MiMo）或 Partner（或导入其历史对话），并在同一大脑上运行持久化的 IM 伴侣。
+- **子智能体与 Partners** — 在任意对话轮次中调用实时运行的编程 CLI（Claude Code、Codex、Gemini、Antigravity、Kimi、opencode 或 MiMo）或 Partner（或导入其历史对话），并在同一大脑上运行持久化的 IM 伴侣。
 - **多引擎知识库** — 跨 LlamaIndex、PageIndex、GraphRAG、LightRAG、远程 LightRAG Server、Tencent IMA 或 MarginNote 4 知识库，或链接的 Obsidian vault 的版本化 RAG 知识库，支持可插拔的文档解析。
 - **可扩展工具与技能** — 内置工具、MCP 服务器、CLI 应用、图像 / 视频 / 语音生成模型，以及从 EduHub 安装的社区技能。
 - **可审计的记忆** — L1 追踪、L2 表面摘要和 L3 综合让个性化透明可编辑，Memory Graph 将每一条结论追溯到其原始证据。
@@ -82,11 +82,11 @@ DeepTutor 提供四种安装方式，共享同一个工作区布局：设置存�
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
 pip install -U deeptutor
-deeptutor init     # 提示配置端口 + LLM 提供商 + 可选嵌入
+deeptutor init     # 提示配置端口 + LLM 提供商 + 可选嵌入/搜索
 deeptutor start    # 启动后端 + 前端；保持终端窗口打开
 ```
 
-`deeptutor init` 会提示配置后端端口（默认 `8001`）、前端端口（默认 `3782`）、LLM 提供商 / 基础 URL / API Key / 模型，以及可选的知识库 / RAG 嵌入提供商。
+`deeptutor init` 会提示配置后端端口（默认 `8001`）、前端端口（默认 `3782`）、LLM 提供商 / 基础 URL / API Key / 模型、可选的知识库 / RAG 嵌入提供商，以及可选的 Web Search 搜索提供商。
 
 `deeptutor start` 完成后，打开终端打印的前端 URL — 默认为 [http://127.0.0.1:3782](http://127.0.0.1:3782)。在该终端按 `Ctrl+C` 可同时停止后端和前端。跳过 `deeptutor init` 也可用于快速体验；应用会以默认端口和空模型设置启动，稍后在 **Settings → Models** 中配置即可。
 
@@ -132,7 +132,7 @@ python -m pip install --upgrade pip
 
 ```bash
 pip install -e ".[dev]"             # 测试/代码检查工具
-pip install -e ".[partners]"        # Partner IM 渠道 SDK + MCP 客户端
+pip install -e ".[partners]"        # Partner IM 渠道 SDK
 pip install -e ".[matrix]"          # Matrix 渠道（不含 E2EE/libolm）
 pip install -e ".[matrix-e2e]"      # Matrix E2EE；需要 libolm
 pip install -e ".[math-animator]"   # Manim 插件；需要 LaTeX/ffmpeg/系统库
@@ -175,7 +175,7 @@ docker run --rm --name deeptutor \
 
 > **只需发布 `3782` 端口。** 浏览器只与前端源通信；Next.js 中间件（`web/proxy.ts`）在**容器内部**将 `/api/*` 和 `/ws/*` 转发给 FastAPI 后端。发布 `8001`（`-p 127.0.0.1:8001:8001`）是可选的 — 仅在需要用 curl 或脚本直接访问 API 时才有用。
 
-打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器首次启动时会创建 `/app/data/user/settings/*.json`；通过 Web Settings 页面配置模型提供商。配置、API Key、日志、工作区文件、记忆和知识库均持久化在 `deeptutor-data` 卷中。
+打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器首次启动时会创建 `/app/data/user/settings/*.json`；通过 Web Settings 页面配置模型提供商。配置、API Key、日志、工作区文件、记忆和知识库均持久化在 `deeptutor-data` 卷中。可选的额外依赖应配置在部署层面，而不是在 shell 中临时安装：设置 `DEEPTUTOR_EXTRAS`（系统库则用 `DEEPTUTOR_APT_PACKAGES`），由此启动的每个容器都会重新应用这些依赖；而 `docker exec … pip install` 这类临时安装会在下一次 `compose down` 后丢失。
 
 - **不同宿主机端口：** 修改每个 `-p host:container` 映射的左侧（例如 `-p 127.0.0.1:8088:3782`）。如果修改了 `/app/data/user/settings/system.json` 中容器侧的端口，重启并更新映射右侧以匹配。
 - **后台运行：** 添加 `-d`，然后用 `docker logs -f deeptutor` 查看日志，`docker stop deeptutor` 停止，重用名称前执行 `docker rm deeptutor`。`deeptutor-data` 卷在重启之间保留设置和工作区。
@@ -332,7 +332,7 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 
 上下文分为两类：**粘性会话上下文**（子智能体、知识库、人格预设、模型、语音）存在于编辑器工具栏，在各轮次间持续保留；**一次性引用**（文件、聊天历史、书籍、笔记本、题库、导入的智能体）通过 `+` 菜单添加，仅用于单次对话轮次。
 
-Chat 也是进入更深层能力的入口：**Quiz** 用于题目生成，**Visualize** 用于图表 / 示意图 / 动画，**Mastery Path** 用于学习计划流程，以及 **Immersive Reading** — 在对话旁打开一份文档，每条论断都标注来源页码。**Research**（带引用的报告）和 **Solve**（有步骤的推理）则位于 *更多能力* 之下。
+Chat 也是进入更深层能力的入口：**Ask Questions** 提供感知上下文的澄清卡片，**Quiz** 用于题目生成，**Visualize** 用于图表 / 示意图 / 动画，**Mastery Path** 用于学习计划流程，**Immersive Reading** 则可在对话旁阅读 PDF、EPUB 及其他文档，提供页码/章节定位、持久化阅读位置与大纲、批注和选中文本操作。**Research**（带引用的报告）和 **Solve**（有步骤的推理）则位于 *更多能力* 之下。
 
 </details>
 
@@ -357,6 +357,8 @@ Partners 是拥有独立灵魂、模型策略、知识库、记忆和渠道的�
 
 渠道层基于 Schema 驱动，根据已安装的额外依赖和配置的凭证，可连接飞书、Telegram、Slack、Discord、钉钉、QQ/NapCat、企业微信、WhatsApp、Zulip、Mattermost、Matrix、Mochat 和 Microsoft Teams 等 IM 平台。Partner 也可以作为子智能体连接，并从普通聊天轮次中调用 — 详见下方的**我的智能体**。
 
+为加快配置，Partner 渠道页面可以直接在浏览器中绘制二维码（而非依赖服务器日志）来创建飞书/Lark 应用或企业微信 AI 机器人，或扫码登录个人微信账号。飞书/Lark 会检测账号所属域名，并将扫码用户保存为初始允许的发送者。企业微信会保留已有的白名单，否则默认允许所有能触达机器人的用户使用，并显示明显的开放访问警告；如果某个平台的扫码协议发生变化，手动渠道配置表单仍然可用。
+
 </details>
 
 <details>
@@ -366,7 +368,7 @@ Partners 是拥有独立灵魂、模型策略、知识库、记忆和渠道的�
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor 我的智能体工作区" width="900">
 </div>
 
-"我的智能体"将其他智能体转化为 DeepTutor 的上下文，具备两种不同的功能。**连接实时智能体** — 连接你机器上的 Claude Code、Codex、Gemini、Kimi、opencode 或 MiMo Code CLI，或你的某个 Partner，在聊天轮次中调用它：DeepTutor 实际上会*运行*另一个智能体，并通过 `consult_subagent` 工具将其工作流式传输到 Activity 面板。通过智能体选项（或输入 `@`）选择它，并设置调用可进行的最大轮数。
+"我的智能体"将其他智能体转化为 DeepTutor 的上下文，具备两种不同的功能。**连接实时智能体** — 连接你机器上的 Claude Code、Codex、Gemini、Antigravity、Kimi、opencode 或 MiMo Code CLI，或你的某个 Partner，在聊天轮次中调用它：DeepTutor 实际上会*运行*另一个智能体，并通过 `consult_subagent` 工具将其工作流式传输到 Activity 面板。通过智能体选项（或输入 `@`）选择它，并设置调用可进行的最大轮数。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="实时调用 Claude Code 子智能体" width="900">
@@ -410,7 +412,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Book 交互式组件块" width="31%">
 </p>
 
-每章编译为类型化块 — 文本、标注、测验、闪卡、时间轴、代码、图形、交互式 HTML、动画、概念图、深度解析和用户笔记 — 每页都有独立的 Page Chat。块可编辑：插入、移动、重新生成、改写正文或切换类型，无需重做整章。访问过的页面、书签和测验作答会汇总为完成度分数和薄弱章节；任何书籍都可导出为 Markdown。长时间编译可暂停并恢复；`deeptutor book health` 和 `refresh-fingerprints` 会标记出已漂移的来源知识。
+每章会编译为可编辑的类型化块 — 文本、标注、测验、闪卡、时间轴、代码、图形、交互式 HTML、动画、概念图、深度解析和用户笔记 — 并拥有自己的 Page Chat。你可以插入、移动、重新生成、改写或切换块类型；选中的段落会进入可审核的学习摘录收件箱。即使管理员将书籍共享为只读或协作编辑，每位读者的学习进度、书签、测验作答、学习摘录和 Page Chat 仍保持私有；共享书籍只能由管理员删除。任何书籍都可导出为 Markdown，长时间编译可暂停并恢复，`deeptutor book health` / `refresh-fingerprints` 会标记来源漂移。
 
 </details>
 
@@ -427,7 +429,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="创建知识库" width="900">
 </div>
 
-创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向 Apache Tika 服务器（`TIKA_SERVER_URL`）。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
+创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。知识库还可以追踪 **GitHub 仓库**（仓库、分支和 glob 匹配模式）或**文档站点 URL**（限制爬取深度和页面数量）；按需同步时会通过内容哈希差异识别新增、变更和移除的内容，让你关注的文档保持最新，无需重新上传。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向 Apache Tika 服务器（`TIKA_SERVER_URL`）。CLI 通过 `list/info/create/add/search/set-default/delete`、来源添加/移除命令、`list-sources` 和 `sync` 管理完整生命周期。
 
 </details>
 
@@ -438,7 +440,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor 学习空间中心" width="900">
 </div>
 
-学习空间是知识库和个性化层 — 持久化内容的存放之处。**对话与素材**保存聊天历史、笔记本 — 现已拥有独立的控制台，记录可在笔记本之间移动或复制，并支持导出为 Markdown — 以及题库（每道保存的题目包含你的答案、参考答案和解析）。**个性化**保存掌握路径、人格预设（如*同伴*、*研究助手*、*教师*等行为预设）、技能（模型按需读取的 `SKILL.md` 剧本）、**MCP 服务** — 一键为自己安装的托管 MCP 服务器精选商店，外加通过 URL 配置的任意远程服务器 — 以及**CLI 应用**，即来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录、由聊天智能体直接调用的命令行工具，每个应用的使用指南按需加载。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
+学习空间是内容库、组织与个性化层。**我的课程**按学科归拢对话，并将导师线程嵌套在所属父线程下；聊天历史可按课程或线程类型筛选，并支持固定、归档或移动会话。**对话与素材**还包含笔记本 — 记录可在笔记本之间移动或复制，并支持导出为 Markdown — 以及保存你的答案、参考答案和解析的题库。**个性化**包含掌握路径、人格预设、技能（`SKILL.md` 剧本）、一键安装的 **MCP 服务**，以及来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录的 **CLI 应用**，每个应用的使用指南按需加载。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="从 EduHub 导入技能" width="900">
@@ -518,9 +520,9 @@ data/
 └── system/                  # auth · grants · audit · user-secrets/<owner> (OAuth 令牌)
 ```
 
-**第一个注册用户成为管理员**，拥有模型目录、提供商凭证、共享知识库、技能和用户授权的管理权。其他所有人获得隔离的工作区和删减版的 Settings 页面 — 管理员分配的模型、知识库和技能以作用域只读选项的形式出现，原始 API Key 不可见。
+**第一个注册用户成为管理员**，拥有模型目录、提供商凭证、共享知识库、技能、共享书籍主副本和用户授权的管理权。其他所有人获得隔离的工作区和删减版的 Settings 页面 — 分配的模型、知识库和技能以作用域只读选项的形式出现，原始 API Key 不可见。书籍创建权限以及默认/逐本的只读或协作编辑权限在 **Book access** 中单独分配；共享书籍仍只能由管理员删除。
 
-**启用方式：** 在 `data/user/settings/auth.json` 中开启认证，重启 `deeptutor start`，在 `/register` 注册第一个管理员，然后从 `/admin/users` 添加用户，并通过授权分配模型、知识库、技能、Partner、工具/MCP/CLI 应用策略和代码执行权限。
+**启用方式：** 在 `data/user/settings/auth.json` 中开启认证，重启 `deeptutor start`，在 `/register` 注册第一个管理员，然后从 `/admin/users` 添加用户，并通过授权分配模型、知识库、技能、Partner、工具/MCP/CLI 应用策略和代码执行权限；在每个用户的 **Book access** 面板中配置共享书籍。
 
 > PocketBase 仍为单用户集成 — 多用户部署时请将 `integrations.pocketbase_url` 留空，除非你已接入外部用户存储。
 
@@ -543,7 +545,7 @@ deeptutor run deep_research "调研 2026 年 RAG 论文" \
   --config mode=report --config depth=standard
 ```
 
-Web 应用的所有功能在这里都有对应 — 知识库（`kb`）、会话（`session`）、Partners（`partner`）、技能（`skill`）、笔记本、记忆和配置。完整列表见下方。
+这里也提供核心工作区管理功能 — 知识库（`kb`）、会话（`session`）、Partners（`partner`）、技能（`skill`）、笔记本、记忆和配置；课程与会话组织仍需在 Web 应用中进行。完整列表见下方。
 
 </details>
 
@@ -573,12 +575,13 @@ deeptutor run deep_question "就那篇调研测验我" --session "$SID" --format
 | 命令 | 说明 |
 |:---|:---|
 | `deeptutor init` | 为当前工作区创建或更新 `data/user/settings` |
+| `deeptutor doctor [--online]` | 检查工作区是否已准备好启动会话；`--online` 还会探测已配置的模型提供商，`--format json` 打印报告 |
 | `deeptutor start [--home PATH] [--dev]` | 同时启动后端 + 前端；`--dev` 启用前端热更新 |
 | `deeptutor serve [--port PORT]` | 仅启动 FastAPI 后端 |
-| `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`）；添加 `--format json` 可获得 NDJSON 输出 |
+| `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`）；添加 `--format json` 可获得 NDJSON 输出 |
 | `deeptutor chat` | 交互式 REPL，支持能力、工具、知识库、笔记本和历史控制 |
 | `deeptutor partner list/create/start/stop` | 管理 IM 连接的 Partners |
-| `deeptutor kb list/info/create/add/search/set-default/delete` | 管理 LlamaIndex 知识库 |
+| `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | 管理知识库并同步已注册的 GitHub/Web 来源（包含来源添加/移除命令） |
 | `deeptutor skill search/install/list/remove/login/logout/publish/update` | 管理技能、从 Hub 安装并发布自己的技能（默认 `eduhub:<slug>`，详见生态系统） |
 | `deeptutor memory show/clear` | 查看 L2/L3 记忆文档或清除 L1/全部记忆 |
 | `deeptutor session list/show/open/rename/delete` | 管理共享会话 |
@@ -643,7 +646,7 @@ EduHub 也是一个独立的、ClawHub 兼容的注册表，因此非 DeepTutor 
 - frontmatter 被规范化并**去除** `always:`，因此下载的技能永远无法强制将自己注入每个系统提示；
 - 来源信息 — Hub、版本、验证结果和安装时间 — 被写入 `.hub-lock.json` 以供审计和更新。
 
-在多用户部署中，安装为管理员专属操作：新技能进入管理员目录，在授权分配前对其他用户不可见，管理员可以在推广前进行审核。
+在多用户部署中，导入的技能会进入调用者自己的技能库；管理员分配的技能仍受授权范围约束，且为只读。
 
 </details>
 

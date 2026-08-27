@@ -41,6 +41,7 @@ import uuid
 
 from deeptutor.reading.extract import extract_material, synthesise_outline
 from deeptutor.reading.models import (
+    MAX_TEXT_SELECTOR_CHARS,
     Annotation,
     BilingualGroup,
     MaterialManifest,
@@ -49,6 +50,7 @@ from deeptutor.reading.models import (
     ReadingError,
     ReadingPosition,
     ReadingUpgradeConflict,
+    TextPositionSelector,
     TextQuoteSelector,
     UnitReference,
 )
@@ -882,6 +884,9 @@ class ReadingStore:
         material_dir = self._dir(material_id)
         if not material_dir.is_dir():
             return False
+        from deeptutor.reading.epub_bilingual import delete_epub_pairings_for_material
+
+        delete_epub_pairings_for_material(self, material_id)
         with self._locked(material_id):
             shutil.rmtree(material_dir, ignore_errors=True)
         return not material_dir.exists()
@@ -1051,18 +1056,34 @@ class ReadingStore:
             )
         if len(annotation.source_anchor) > 4096:
             raise ReadingError("source anchor is too long")
-        quote_selector = next(
-            (
-                selector
-                for selector in annotation.selectors
-                if isinstance(selector, TextQuoteSelector)
-            ),
-            None,
-        )
+        quote_selectors = [
+            selector for selector in annotation.selectors if isinstance(selector, TextQuoteSelector)
+        ]
+        position_selectors = [
+            selector
+            for selector in annotation.selectors
+            if isinstance(selector, TextPositionSelector)
+        ]
+        if len(quote_selectors) > 1 or len(position_selectors) > 1:
+            raise ReadingError("annotations may contain at most one selector of each type")
+        quote_selector = quote_selectors[0] if quote_selectors else None
+        position_selector = position_selectors[0] if position_selectors else None
+        unit_text = self.unit_text(material_id, annotation.locator) if annotation.selectors else ""
+        position_text = ""
+        if position_selector:
+            if position_selector.end > len(unit_text):
+                raise ReadingError("TextPositionSelector extends past this reading unit")
+            if position_selector.end - position_selector.start > MAX_TEXT_SELECTOR_CHARS:
+                raise ReadingError("TextPositionSelector span is too long")
+            position_text = unit_text[position_selector.start : position_selector.end]
         if quote_selector and annotation.quote and quote_selector.exact != annotation.quote:
             raise ReadingError("annotation quote does not match its TextQuoteSelector")
         if quote_selector and not annotation.quote:
             annotation = dataclass_replace(annotation, quote=quote_selector.exact)
+        elif position_selector:
+            if annotation.quote and annotation.quote != position_text:
+                raise ReadingError("annotation quote does not match its TextPositionSelector")
+            annotation = dataclass_replace(annotation, quote=position_text)
         with self._locked(material_id):
             existing = self.annotations(material_id)
             stored = annotation

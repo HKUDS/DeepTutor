@@ -124,6 +124,7 @@ function paletteFor(id: string) {
 export interface BookLibraryProps {
   books: Book[];
   loading: boolean;
+  canCreate: boolean;
   onNewBook: () => void;
   onSelectBook: (id: string) => void;
   onDeleteBook: (id: string) => void;
@@ -132,6 +133,7 @@ export interface BookLibraryProps {
 export default function BookLibrary({
   books,
   loading,
+  canCreate,
   onNewBook,
   onSelectBook,
   onDeleteBook,
@@ -192,14 +194,16 @@ export default function BookLibrary({
               className="h-8 w-56 rounded-md border border-[var(--border)] bg-[var(--secondary)]/30 pl-7 pr-2.5 text-xs text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]/60 focus:border-[var(--primary)]/40 focus:outline-none"
             />
           </div>
-          <button
-            type="button"
-            onClick={onNewBook}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
-          >
-            <Plus size={13} />
-            {t("New book")}
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={onNewBook}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+            >
+              <Plus size={13} />
+              {t("New book")}
+            </button>
+          )}
         </div>
       </header>
 
@@ -252,7 +256,7 @@ export default function BookLibrary({
             {t("Loading books…")}
           </div>
         ) : books.length === 0 ? (
-          <EmptyState onNewBook={onNewBook} />
+          <EmptyState onNewBook={canCreate ? onNewBook : undefined} />
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--secondary)]/30 px-6 py-12 text-center text-sm text-[var(--muted-foreground)]">
             {t("No books match “{{query}}”.", { query })}
@@ -347,30 +351,39 @@ export default function BookLibrary({
                       />
                       {t(status.label)}
                     </span>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (isPendingDelete) {
-                          onDeleteBook(book.id);
-                          setPendingDeleteId(null);
-                        } else {
-                          setPendingDeleteId(book.id);
+                    {book.source === "shared" && (
+                      <span className="absolute bottom-2 left-4 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-medium text-slate-700 backdrop-blur-sm dark:bg-black/40 dark:text-slate-200">
+                        {book.can_edit
+                          ? t("Shared · edit")
+                          : t("Shared · read")}
+                      </span>
+                    )}
+                    {book.can_delete !== false && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (isPendingDelete) {
+                            onDeleteBook(book.id);
+                            setPendingDeleteId(null);
+                          } else {
+                            setPendingDeleteId(book.id);
+                          }
+                        }}
+                        title={
+                          isPendingDelete
+                            ? t("Click again to confirm")
+                            : t("Delete book")
                         }
-                      }}
-                      title={
-                        isPendingDelete
-                          ? t("Click again to confirm")
-                          : t("Delete book")
-                      }
-                      className={`absolute right-2 top-2 rounded-md p-1.5 transition-colors ${
-                        isPendingDelete
-                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                          : "bg-white/60 text-[var(--muted-foreground)] opacity-0 backdrop-blur-sm hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100 dark:bg-black/30 dark:hover:text-rose-400"
-                      }`}
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                        className={`absolute right-2 top-2 rounded-md p-1.5 transition-colors ${
+                          isPendingDelete
+                            ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                            : "bg-white/60 text-[var(--muted-foreground)] opacity-0 backdrop-blur-sm hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100 dark:bg-black/30 dark:hover:text-rose-400"
+                        }`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
 
                   {(book.reading?.percent ?? 0) > 0 && (
@@ -478,7 +491,7 @@ function StatCard({
   );
 }
 
-function EmptyState({ onNewBook }: { onNewBook: () => void }) {
+function EmptyState({ onNewBook }: { onNewBook?: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--secondary)]/30 px-8 py-16 text-center">
@@ -493,14 +506,16 @@ function EmptyState({ onNewBook }: { onNewBook: () => void }) {
           )}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={onNewBook}
-        className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
-      >
-        <Plus size={14} />
-        {t("New book")}
-      </button>
+      {onNewBook && (
+        <button
+          type="button"
+          onClick={onNewBook}
+          className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+        >
+          <Plus size={14} />
+          {t("New book")}
+        </button>
+      )}
     </div>
   );
 }

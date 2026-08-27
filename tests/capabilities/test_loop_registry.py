@@ -226,7 +226,7 @@ def test_active_loop_capabilities_includes_external(monkeypatch) -> None:
     assert all(cap.name != "demo_loop" for cap in idle)
 
     active = registry.active_loop_capabilities(UnifiedContext(active_capability="demo_loop"))
-    assert [cap.name for cap in active] == ["demo_loop"]
+    assert [cap.name for cap in active].count("demo_loop") == 1
 
 
 def test_capability_tool_owners_includes_external(monkeypatch) -> None:
@@ -239,5 +239,6 @@ def test_capability_tool_owners_includes_external(monkeypatch) -> None:
 
     owners = registry.capability_tool_owners()
     assert owners["demo_tool"] == "demo_loop"
-    builtin_tool = LOOP_CAPABILITIES[0].owned_tools[0]
-    assert owners[builtin_tool] == LOOP_CAPABILITIES[0].name
+    builtin = next(cap for cap in LOOP_CAPABILITIES if cap.owned_tools)
+    builtin_tool = builtin.owned_tools[0]
+    assert owners[builtin_tool] == builtin.name

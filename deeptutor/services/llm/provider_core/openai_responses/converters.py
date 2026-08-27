@@ -83,13 +83,28 @@ def convert_user_message(content: Any) -> dict[str, Any]:
     return {"role": "user", "content": [{"type": "input_text", "text": ""}]}
 
 
-def convert_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Convert OpenAI function calling schemas to Responses API tools."""
+def convert_tools(
+    tools: list[dict[str, Any]],
+    *,
+    native_web_search: bool = False,
+) -> list[dict[str, Any]]:
+    """Convert OpenAI function calling schemas to Responses API tools.
+
+    With ``native_web_search=True`` (providers whose Responses API performs
+    web searches server-side, e.g. DeepSeek), DeepTutor's ``web_search``
+    function tool is declared as the provider's native ``{"type":
+    "web_search"}`` tool instead of a function schema: the server runs the
+    search mid-generation and the response carries ``web_search_call`` items
+    with ``url_citation`` annotations rather than a function call.
+    """
     converted: list[dict[str, Any]] = []
     for tool in tools:
         fn = (tool.get("function") or {}) if tool.get("type") == "function" else tool
         name = fn.get("name")
         if not name:
+            continue
+        if native_web_search and name == "web_search":
+            converted.append({"type": "web_search"})
             continue
         params = fn.get("parameters") or {}
         converted.append(

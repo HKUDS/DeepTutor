@@ -5,7 +5,6 @@ import { AudioLines, ClipboardCheck, Loader2, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { speakBrowserText, stopBrowserSpeech } from "@/lib/browser-speech";
 import {
-  getUnitText,
   listReadingExtensions,
   runReadingExtension,
   submitReadingInteraction,
@@ -69,12 +68,10 @@ export function ReadingExtensionBar({
     setBusy(key);
     setActiveExtension(extension.id);
     try {
-      const unit = await getUnitText(materialId, locator);
       const next = await runReadingExtension(materialId, extension.id, action.id, {
         locator,
         source_anchor: selection?.sourceAnchor || "",
         selection: selection?.quote || "",
-        visible_text: unit.text,
         locale: i18n.language,
       });
       setResult(next);
@@ -176,6 +173,7 @@ function ExtensionResult({ result, answers, busy, onAnswer, onSubmit, onClose, c
       <h3 className="pr-6 font-semibold">{result.title}</h3>
       {result.message ? <p className="mt-1 text-[var(--muted-foreground)]">{result.message}</p> : null}
       {String(result.payload.overview || "") ? <p className="mt-2">{String(result.payload.overview)}</p> : null}
+      {String(result.payload.body || "") ? <p className="mt-2 whitespace-pre-wrap">{String(result.payload.body)}</p> : null}
       {concepts.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{concepts.map((row) => <li key={row}>{row}</li>)}</ul> : null}
       {String(result.payload.reflection || "") ? <p className="mt-2 font-medium">{String(result.payload.reflection)}</p> : null}
       {questions.map((question) => (

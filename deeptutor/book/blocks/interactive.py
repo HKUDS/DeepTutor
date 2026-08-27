@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from deeptutor.services.keypool import primary_api_key
+
 from ..models import BlockType, SourceAnchor
 from ._prompts import get_book_prompt, load_book_prompts
 from .base import BlockContext, BlockGenerator, GenerationFailure
@@ -70,7 +72,7 @@ class InteractiveGenerator(BlockGenerator):
 
             llm_config = get_llm_config()
             pipeline = VisualizePipeline(
-                api_key=llm_config.api_key,
+                api_key=primary_api_key(llm_config.api_key),
                 base_url=llm_config.base_url,
                 api_version=llm_config.api_version,
                 language=ctx.language,

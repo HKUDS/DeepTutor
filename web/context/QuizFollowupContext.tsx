@@ -36,6 +36,7 @@ import {
   UnifiedWSClient,
 } from "@/lib/unified-ws";
 import type { QuizQuestion } from "@/lib/quiz-types";
+import type { SelectionTutorContext } from "@/lib/selection-tutor";
 
 export interface FollowupMessage {
   role: "user" | "assistant" | "system";
@@ -107,6 +108,8 @@ export interface QuizFollowupTabContext {
   language: string;
   /** Short label for the tab strip, e.g. "Q1 follow-up". */
   tabLabel: string;
+  /** Present when this thread tutors a selected chat passage, not a quiz. */
+  tutorSelection?: SelectionTutorContext;
 }
 
 export interface SendMessageInput {

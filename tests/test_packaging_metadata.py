@@ -80,3 +80,31 @@ def test_pageindex_sdk_range_matches_every_install_surface() -> None:
     assert (REPOSITORY_ROOT / "requirements" / "cli.txt").read_text(
         encoding="utf-8"
     ).splitlines().count(expected) == 1
+
+
+@pytest.mark.parametrize(
+    "expected",
+    [
+        "loguru>=0.7.3,<1.0.0",
+        "json-repair>=0.57.0,<1.0.0",
+        "pyte>=0.8.1",
+        "pdfplumber>=0.11.0,<0.11.8",
+        "reportlab>=4.0.0",
+    ],
+)
+def test_cli_runtime_dependencies_match_every_install_surface(expected: str) -> None:
+    """CLI-only installs must include everything used by terminal workflows."""
+    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:
+        root = tomllib.load(file)["project"]
+    with (REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml").open("rb") as file:
+        cli_package = tomllib.load(file)["project"]
+
+    assert root["dependencies"].count(expected) == 1
+    assert cli_package["dependencies"].count(expected) == 1
+    requirement_lines = [
+        line.split("#", 1)[0].strip()
+        for line in (REPOSITORY_ROOT / "requirements" / "cli.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert requirement_lines.count(expected) == 1

@@ -61,9 +61,9 @@
 
 DeepTutor คือ workspace การเรียนรู้แบบ agent-native ที่เชื่อมต่อการสอนพิเศษ, การแก้ปัญหา, การสร้าง quiz, การวิจัย, การสร้างภาพ และการฝึกความเชี่ยวชาญในระบบที่ขยายได้หนึ่งเดียว
 
-- **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Quiz, Research, Visualize, Solve, Mastery Path และ Immersive Reading บนลูป agent เดียวกัน คุณเปลี่ยนวัตถุประสงค์ ไม่ใช่เอ็นจิน และบริบทเดินทางไปพร้อมกับผู้เรียน
+- **รันไทม์เดียวสำหรับทุกโหมด** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Mastery Path และ Immersive Reading ใช้ capability runtime และบริบท session ชุดเดียวกัน โดยยังคงลูปและ pipeline ที่ออกแบบมาเฉพาะสำหรับแต่ละวัตถุประสงค์
 - **บริบทการเรียนรู้ที่เชื่อมต่อกัน** — ฐานความรู้, หนังสือ, ร่าง Co-Writer, สมุดบันทึก, คลังคำถาม, บุคลิกภาพ และ Memory พร้อมใช้งานในทุกเวิร์กโฟลว์ แทนที่จะอยู่ในเครื่องมือที่แยกจากกัน
-- **ซับเอเจนต์และ Partners** — ปรึกษา coding CLI แบบสด (Claude Code, Codex, Gemini, Kimi, opencode หรือ MiMo) หรือ Partner จากทุก turn (หรือนำเข้าบทสนทนาในอดีต) และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
+- **ซับเอเจนต์และ Partners** — ปรึกษา coding CLI แบบสด (Claude Code, Codex, Gemini, Antigravity, Kimi, opencode หรือ MiMo) หรือ Partner จากทุก turn (หรือนำเข้าบทสนทนาในอดีต) และรันเพื่อนถาวรบน IM ด้วยสมองเดียวกัน
 - **ความรู้หลายเอ็นจิน** — ไลบรารี RAG แบบเวอร์ชันผ่าน LlamaIndex, PageIndex, GraphRAG, LightRAG, LightRAG Server ระยะไกล, ไลบรารี Tencent IMA หรือ MarginNote 4 หรือ Obsidian vault ที่เชื่อมโยง พร้อมการแยกวิเคราะห์เอกสารแบบ pluggable
 - **เครื่องมือและทักษะที่ขยายได้** — เครื่องมือในตัว, เซิร์ฟเวอร์ MCP, แอป CLI, โมเดลสร้างรูปภาพ/วิดีโอ/เสียง และทักษะชุมชนที่ติดตั้งได้จาก EduHub
 - **หน่วยความจำที่ตรวจสอบได้** — การติดตาม L1, สรุปพื้นผิว L2 และการสังเคราะห์ L3 ทำให้การปรับแต่งส่วนบุคคลมองเห็นได้และแก้ไขได้ พร้อม Memory Graph ที่ติดตามทุกการอ้างสิทธิ์กลับไปสู่หลักฐาน
@@ -82,11 +82,11 @@ DeepTutor มีเส้นทางการติดตั้งสี่เ�
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
 pip install -U deeptutor
-deeptutor init     # ขอพอร์ต + LLM provider + embedding แบบเสริม
+deeptutor init     # ขอพอร์ต + LLM provider + embedding/search แบบเสริม
 deeptutor start    # เริ่ม backend + frontend; เปิด terminal ไว้
 ```
 
-`deeptutor init` จะขอพอร์ต backend (ค่าเริ่มต้น `8001`), พอร์ต frontend (ค่าเริ่มต้น `3782`), LLM provider / base URL / API key / model และ embedding provider แบบเสริมสำหรับ Knowledge Base / RAG
+`deeptutor init` จะขอพอร์ต backend (ค่าเริ่มต้น `8001`), พอร์ต frontend (ค่าเริ่มต้น `3782`), LLM provider / base URL / API key / model, embedding provider แบบเสริมสำหรับ Knowledge Base / RAG และ search provider แบบเสริมสำหรับ Web Search
 
 หลังจาก `deeptutor start` ให้เปิด URL ของ frontend ที่พิมพ์ใน terminal — ค่าเริ่มต้น [http://127.0.0.1:3782](http://127.0.0.1:3782) กด `Ctrl+C` ใน terminal นั้นเพื่อหยุดทั้ง backend และ frontend การข้าม `deeptutor init` ก็ใช้ได้สำหรับการทดลองอย่างรวดเร็ว แอปจะบูตด้วยพอร์ตเริ่มต้นและการตั้งค่า model ว่าง กำหนดค่าในภายหลังใน **Settings → Models**
 
@@ -132,7 +132,7 @@ python -m pip install --upgrade pip
 
 ```bash
 pip install -e ".[dev]"             # เครื่องมือ tests/lint
-pip install -e ".[partners]"        # SDKs ช่องทาง IM ของ Partners + MCP client
+pip install -e ".[partners]"        # SDKs ช่องทาง IM ของ Partners
 pip install -e ".[matrix]"          # ช่องทาง Matrix โดยไม่มี E2EE/libolm
 pip install -e ".[matrix-e2e]"      # Matrix E2EE; ต้องการ libolm
 pip install -e ".[math-animator]"   # Manim addon; ต้องการ LaTeX/ffmpeg/system libs
@@ -175,7 +175,7 @@ docker run --rm --name deeptutor \
 
 > **จำเป็นต้อง publish เฉพาะ `3782`** เบราว์เซอร์คุยกับ frontend origin เท่านั้น; Next.js middleware (`web/proxy.ts`) ส่งต่อ `/api/*` และ `/ws/*` ไปยัง FastAPI backend **ภายใน container** การ publish `8001` (`-p 127.0.0.1:8001:8001`) เป็นทางเลือก — มีประโยชน์เฉพาะเมื่อต้องการเรียก API โดยตรงด้วย curl หรือ scripts
 
-เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782) Container จะสร้าง `/app/data/user/settings/*.json` เมื่อบูตครั้งแรก กำหนดค่า model providers จากหน้า Web Settings Config, API keys, logs, ไฟล์ workspace, memory และ knowledge bases จะคงอยู่ใน volume `deeptutor-data`
+เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782) Container จะสร้าง `/app/data/user/settings/*.json` เมื่อบูตครั้งแรก กำหนดค่า model providers จากหน้า Web Settings Config, API keys, logs, ไฟล์ workspace, memory และ knowledge bases จะคงอยู่ใน volume `deeptutor-data` ส่วนเสริมที่เป็นทางเลือกควรอยู่ที่การปรับใช้ ไม่ใช่ใน shell: ตั้งค่า `DEEPTUTOR_EXTRAS` (และ `DEEPTUTOR_APT_PACKAGES` สำหรับ system libraries) แล้ว container ทุกตัวที่เริ่มจากมันจะ apply ส่วนเสริมเหล่านั้นซ้ำโดยอัตโนมัติ ในขณะที่ `docker exec … pip install` จะหายไปเมื่อ `compose down` ครั้งถัดไป
 
 - **พอร์ต host ที่แตกต่าง:** เปลี่ยนด้านซ้ายของการ mapping `-p host:container` แต่ละอัน (เช่น `-p 127.0.0.1:8088:3782`) หากคุณเปลี่ยนพอร์ตฝั่ง container ใน `/app/data/user/settings/system.json` ให้รีสตาร์ทและอัปเดตด้านขวาของการ mapping แต่ละอันให้ตรงกัน
 - **แบบ detached:** เพิ่ม `-d` จากนั้น `docker logs -f deeptutor` เพื่อติดตาม, `docker stop deeptutor` เพื่อหยุด, `docker rm deeptutor` ก่อนนำชื่อมาใช้ซ้ำ Volume `deeptutor-data` จะเก็บการตั้งค่าและ workspace ของคุณข้ามการรีสตาร์ท
@@ -332,7 +332,7 @@ Chat คือความสามารถเริ่มต้นและส
 
 บริบทมีสองประเภท: **sticky session context** (subagent, knowledge bases, persona, model, voice) อยู่บน composer toolbar และคงอยู่ตลอด turns; **one-time references** (ไฟล์, ประวัติ chat, หนังสือ, notebooks, question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว
 
-Chat ยังเป็นจุดเปิดตัวสำหรับความสามารถที่ลึกกว่า: **Quiz** สำหรับการสร้างคำถาม, **Visualize** สำหรับ charts / diagrams / animations, **Mastery Path** สำหรับ learning-plan flows และ **Immersive Reading** — เอกสารที่เปิดอยู่ข้าง thread โดยทุกการอ้างสิทธิ์ถูกอ้างอิงกลับไปยังหน้าที่มันมาจาก **Research** สำหรับรายงานที่อ้างอิง และ **Solve** สำหรับการให้เหตุผลแบบมีขั้นตอน อยู่ภายใต้ *More Capabilities*
+Chat ยังเป็นจุดเปิดตัวสำหรับความสามารถที่ลึกกว่า: **Ask Questions** สำหรับการ์ดคำถามเพื่อขอความชัดเจนตามบริบท, **Quiz** สำหรับการสร้างคำถาม, **Visualize** สำหรับ charts / diagrams / animations, **Mastery Path** สำหรับ learning-plan flows และ **Immersive Reading** สำหรับอ่าน PDF, EPUB และเอกสารอื่นข้าง thread พร้อม grounding ระดับหน้า/บท, ตำแหน่งการอ่านและโครงร่างที่บันทึกต่อเนื่อง, annotations และการดำเนินการกับข้อความที่เลือก **Research** สำหรับรายงานที่อ้างอิง และ **Solve** สำหรับการให้เหตุผลแบบมีขั้นตอน อยู่ภายใต้ *More Capabilities*
 
 </details>
 
@@ -357,6 +357,8 @@ Partners คือเพื่อนถาวรที่มี soul, นโย�
 
 ชั้น channel ที่ขับเคลื่อนด้วย schema สามารถเชื่อมต่อกับแพลตฟอร์ม IM ได้แก่ Feishu, Telegram, Slack, Discord, DingTalk, QQ/NapCat, WeCom, WhatsApp, Zulip, Mattermost, Matrix, Mochat และ Microsoft Teams ขึ้นอยู่กับ extras ที่ติดตั้งและ credentials ที่กำหนดค่า partner ยังสามารถเชื่อมต่อเป็น subagent และปรึกษาได้จาก chat turn ปกติ — ดู **My Agents** ด้านล่าง
 
+เพื่อการตั้งค่าที่รวดเร็วขึ้น หน้า channel ของ Partner สามารถสร้างแอป Feishu/Lark หรือ WeCom AI bot หรือลงชื่อเข้าใช้บัญชี WeChat ส่วนตัว ผ่านการสแกน QR ที่วาดในเบราว์เซอร์แทนที่จะอยู่ใน server log Feishu/Lark จะตรวจจับ account domain และบันทึกผู้ใช้ที่สแกนเป็นผู้ส่งที่ได้รับอนุญาตเริ่มต้น WeCom จะคง allowlist ที่มีอยู่ไว้ และหากไม่มีจะ default เป็นผู้ใช้ทุกคนที่เข้าถึง bot ได้ พร้อมคำเตือน open-access ที่มองเห็นได้ชัดเจน; ฟอร์ม channel แบบ manual ยังคงใช้งานได้หากโปรโตคอลการสแกนของ provider เปลี่ยนไป
+
 </details>
 
 <details>
@@ -366,7 +368,7 @@ Partners คือเพื่อนถาวรที่มี soul, นโย�
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor workspace My Agents" width="900">
 </div>
 
-My Agents เปลี่ยน agent อื่น ๆ ให้กลายเป็นบริบทสำหรับ DeepTutor และทำสองสิ่งที่แตกต่างกัน **เชื่อมต่อ agent แบบสด** — Claude Code, Codex, Gemini, Kimi, opencode หรือ MiMo Code CLI บนเครื่องของคุณ หรือหนึ่งใน Partners ของคุณ — และปรึกษามันจากภายใน chat turn: DeepTutor จริง ๆ *รัน* agent อื่นและ stream งานเข้าสู่แผง Activity ผ่านเครื่องมือ `consult_subagent` เลือกด้วย Agent chip (หรือพิมพ์ `@`) และตั้งค่าจำนวนรอบที่การปรึกษาอาจทำได้
+My Agents เปลี่ยน agent อื่น ๆ ให้กลายเป็นบริบทสำหรับ DeepTutor และทำสองสิ่งที่แตกต่างกัน **เชื่อมต่อ agent แบบสด** — Claude Code, Codex, Gemini, Antigravity, Kimi, opencode หรือ MiMo Code CLI บนเครื่องของคุณ หรือหนึ่งใน Partners ของคุณ — และปรึกษามันจากภายใน chat turn: DeepTutor จริง ๆ *รัน* agent อื่นและ stream งานเข้าสู่แผง Activity ผ่านเครื่องมือ `consult_subagent` เลือกด้วย Agent chip (หรือพิมพ์ `@`) และตั้งค่าจำนวนรอบที่การปรึกษาอาจทำได้
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="การปรึกษา subagent Claude Code แบบสด" width="900">
@@ -410,7 +412,7 @@ Book แปลงแหล่งที่มาที่เลือกให้
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Book interactive widget block" width="31%">
 </p>
 
-แต่ละบทคอมไพล์เป็น typed blocks — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives และ user notes — และทุกหน้ามี Page Chat ของตัวเอง Blocks สามารถแก้ไขได้: แทรก, ย้าย, สร้างใหม่, เขียนเนื้อหาใหม่ หรือเปลี่ยนประเภท โดยไม่ต้องทำบททั้งบทใหม่ หน้าที่เข้าชมแล้ว, bookmarks และการทำ quiz จะรวมกันเป็นคะแนนความสำเร็จและบทที่ยังอ่อนอยู่ หนังสือเล่มใดก็ export เป็น Markdown ได้ การคอมไพล์ที่ใช้เวลานานจะหยุดพักและทำต่อได้ในภายหลัง; `deeptutor book health` และ `refresh-fingerprints` ช่วยตรวจจับความรู้ต้นทางที่เปลี่ยนแปลงไป
+แต่ละบทคอมไพล์เป็น typed blocks ที่แก้ไขได้ — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives และ user notes — พร้อม Page Chat ของบทนั้นเอง คุณสามารถแทรก, ย้าย, สร้างใหม่, เขียนใหม่ หรือสลับประเภท block ได้; ข้อความบางช่วงที่เลือกไว้จะเข้าสู่กล่องรายการ learning capture สำหรับตรวจทาน ความคืบหน้า, bookmarks, ครั้งที่ทำ quiz, captures และ Page Chat ยังคงเป็นส่วนตัวสำหรับผู้อ่านแต่ละคน แม้หนังสือจาก admin จะถูกแชร์แบบอ่านอย่างเดียวหรือเปิดให้แก้ไขร่วมกัน; การลบหนังสือที่แชร์ยังคงทำได้เฉพาะ admin หนังสือทุกเล่ม export เป็น Markdown ได้, การคอมไพล์ที่ใช้เวลานานหยุดพักและทำต่อได้ และ `deeptutor book health` / `refresh-fingerprints` จะตรวจจับความเปลี่ยนแปลงของแหล่งข้อมูล
 
 </details>
 
@@ -427,7 +429,7 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">
 </div>
 
-เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika (`TIKA_SERVER_URL`) CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
+เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) KB ยังสามารถติดตาม **GitHub repositories** (repo, branch, glob) หรือ **URL ของเว็บไซต์เอกสาร** (จำกัดความลึกในการ crawl และจำนวนหน้า) ได้; การ sync ตามต้องการจะเปรียบเทียบ hash ของเนื้อหาที่เพิ่ม เปลี่ยนแปลง และลบ เพื่อให้เอกสารที่ติดตามทันสมัยอยู่เสมอโดยไม่ต้องอัพโหลดใหม่ การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ สามารถลบเอกสารหนึ่งรายการได้แม้ KB จะอยู่ในสถานะ **error** — ตัดไฟล์ที่แยกวิเคราะห์ไม่สำเร็จออกโดยไม่ต้องลบและสร้างใหม่ทั้งหมด การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika (`TIKA_SERVER_URL`) CLI ครอบคลุม lifecycle ด้วย `list/info/create/add/search/set-default/delete`, คำสั่งเพิ่ม/ลบ source, `list-sources` และ `sync`
 
 </details>
 
@@ -438,7 +440,7 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
 </div>
 
-Learning Space คือชั้น library และ personalization — ที่ซึ่งสิ่งที่คงอยู่ถาวรอาศัยอยู่ **Conversations & Materials** เก็บประวัติ chat, notebooks — ตอนนี้มีคอนโซลเป็นของตัวเอง พร้อมรายการที่ย้ายหรือคัดลอกระหว่าง notebooks ได้ และการ export เป็น Markdown — และ question bank (แต่ละคำถามที่บันทึกเก็บคำตอบของคุณ, คำตอบอ้างอิง และคำอธิบาย) **Personalization** เก็บ mastery paths, personas (พฤติกรรมที่ตั้งค่าล่วงหน้าเช่น *peer*, *research-assistant*, *teacher*), skills (`SKILL.md` playbooks ที่ model อ่านตามต้องการ), **MCP Services** — คลังที่คัดสรรของเซิร์ฟเวอร์ MCP แบบ hosted ที่คุณติดตั้งให้ตัวเองได้ในคลิกเดียว รวมถึงเซิร์ฟเวอร์ remote ใด ๆ ที่คุณกำหนดค่าผ่าน URL — และ **CLI Apps** เครื่องมือบรรทัดคำสั่งจาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) ที่ chat agent เรียกใช้โดยตรง พร้อมคู่มือการใช้งานของแต่ละแอปที่โหลดตามต้องการ ทุกอย่างที่นี่สามารถนำมาใช้ซ้ำได้จาก Chat, Partners, Co-Writer และ Book
+Learning Space คือชั้น library, organization และ personalization **My courses** จัดกลุ่มบทสนทนาของแต่ละวิชาและวาง tutor threads ซ้อนไว้ใต้ parent ของตน; Chat History กรองตาม course หรือประเภท thread และให้คุณ pin, archive หรือย้าย sessions ได้ **Conversations & Materials** ยังเก็บ notebooks — ซึ่งรายการสามารถย้ายหรือคัดลอกระหว่าง notebooks และ export เป็น Markdown ได้ — รวมถึง question bank ที่เก็บคำตอบของคุณ, คำตอบอ้างอิง และคำอธิบาย **Personalization** เก็บ mastery paths, personas, skills (`SKILL.md` playbooks), **MCP Services** แบบคลิกเดียว และ **CLI Apps** จาก catalog [CLI-Anything](https://github.com/HKUDS/CLI-Anything) โดยแต่ละรายการมีคู่มือการใช้งานที่โหลดตามต้องการ ทุกอย่างที่นี่สามารถนำมาใช้ซ้ำได้จาก Chat, Partners, Co-Writer และ Book
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="นำเข้า skills จาก EduHub" width="900">
@@ -518,9 +520,9 @@ data/
 └── system/                  # auth · grants · audit · user-secrets/<owner> (โทเค็น OAuth)
 ```
 
-**ผู้ใช้คนแรกที่ลงทะเบียนจะกลายเป็น admin** และเป็นเจ้าของ model catalogs, provider credentials, shared knowledge bases, skills และ per-user grants ทุกคนอื่นจะได้รับ workspace แบบแยกส่วนและหน้า Settings ที่ถูก redact — models, KBs และ skills ที่ admin กำหนดจะแสดงเป็นตัวเลือก scoped แบบอ่านอย่างเดียว ไม่ใช่ API keys ดิบ
+**ผู้ใช้คนแรกที่ลงทะเบียนจะกลายเป็น admin** และเป็นเจ้าของ model catalogs, provider credentials, shared knowledge bases, skills, หนังสือที่แชร์ซึ่งเป็นต้นฉบับกลาง และ per-user grants ทุกคนอื่นจะได้รับ workspace แบบแยกส่วนและหน้า Settings ที่ถูก redact — models, KBs และ skills ที่ได้รับมอบหมายจะแสดงเป็นตัวเลือก scoped แบบอ่านอย่างเดียว ไม่ใช่ API keys ดิบ การสร้าง Book และสิทธิ์ read หรือ collaborative-edit แบบค่าเริ่มต้น/รายเล่มถูกกำหนดแยกกันภายใต้ **Book access**; การลบหนังสือที่แชร์ยังคงทำได้เฉพาะ admin หาก `auth.json` มี `username` + `password_hash` อยู่แล้ว บัญชีนั้นคือ admin: `/register` จะยังคงปิดอยู่ และบัญชีที่สร้างจาก `/admin/users` จะเป็น `role=user` เสมอจนกว่าคุณจะเลื่อนสิทธิ์
 
-**เปิดใช้งาน:** เปิด auth ใน `data/user/settings/auth.json`, รีสตาร์ท `deeptutor start`, ลงทะเบียน admin คนแรกที่ `/register` จากนั้นเพิ่มผู้ใช้จาก `/admin/users` และกำหนด models, KBs, skills, Partners, นโยบาย tool/MCP/CLI-app และสิทธิ์การรันโค้ดผ่าน grants
+**เปิดใช้งาน:** เปิด auth ใน `data/user/settings/auth.json`, รีสตาร์ท `deeptutor start`, ลงทะเบียน admin คนแรกที่ `/register` จากนั้นเพิ่มผู้ใช้จาก `/admin/users` และกำหนด models, KBs, skills, Partners, นโยบาย tool/MCP/CLI-app และสิทธิ์การรันโค้ดผ่าน grants; กำหนดค่าหนังสือที่แชร์ในแผง **Book access** ของผู้ใช้แต่ละคน
 
 > PocketBase ยังคงเป็น integration สำหรับผู้ใช้คนเดียว — เว้น `integrations.pocketbase_url` ว่างสำหรับการปรับใช้ multi-user เว้นแต่คุณจะเชื่อมต่อ user store ภายนอก
 
@@ -543,7 +545,7 @@ deeptutor run deep_research "Survey 2026 papers on RAG" \
   --config mode=report --config depth=standard
 ```
 
-ทุกอย่างที่แอป Web ทำก็มีที่นี่ด้วย — knowledge bases (`kb`), sessions (`session`), partners (`partner`), skills (`skill`), notebooks, memory และ config รายการเต็มด้านล่าง
+การจัดการ workspace หลักมีให้ใช้งานที่นี่ด้วย — knowledge bases (`kb`), sessions (`session`), partners (`partner`), skills (`skill`), notebooks, memory และ config; การจัดระเบียบ course และ session ยังคงอยู่ในแอป Web รายการเต็มอยู่ด้านล่าง
 
 </details>
 
@@ -573,12 +575,13 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~1
 | คำสั่ง | คำอธิบาย |
 |:---|:---|
 | `deeptutor init` | สร้างหรืออัพเดต `data/user/settings` สำหรับ workspace ปัจจุบัน |
+| `deeptutor doctor [--online]` | ตรวจสอบว่า workspace พร้อมเริ่ม session หรือไม่; `--online` ยังตรวจสอบ model provider ที่กำหนดค่าไว้ด้วย, `--format json` พิมพ์รายงานออกมา |
 | `deeptutor start [--home PATH] [--dev]` | เปิดตัว backend + frontend ด้วยกัน |
 | `deeptutor serve [--port PORT]` | เริ่มเฉพาะ FastAPI backend |
-| `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`); เพิ่ม `--format json` สำหรับ NDJSON output |
+| `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`); เพิ่ม `--format json` สำหรับ NDJSON output |
 | `deeptutor chat` | Interactive REPL พร้อม capability, tool, KB, notebook และ history controls |
 | `deeptutor partner list/create/start/stop` | จัดการ partners ที่เชื่อมต่อผ่าน IM |
-| `deeptutor kb list/info/create/add/search/set-default/delete` | จัดการ knowledge bases LlamaIndex |
+| `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | จัดการ knowledge bases และ sync GitHub/web sources ที่ลงทะเบียนไว้ (พร้อมคำสั่งเพิ่ม/ลบ source) |
 | `deeptutor skill search/install/list/remove/login/logout/publish/update` | จัดการทักษะ ติดตั้งจากฮับ และเผยแพร่ของคุณเอง (`eduhub:<slug>` โดยค่าเริ่มต้น ดู Ecosystem) |
 | `deeptutor memory show/clear` | ตรวจสอบ L2/L3 memory docs หรือล้าง L1/all memory |
 | `deeptutor session list/show/open/rename/delete` | จัดการ shared sessions |
@@ -643,7 +646,7 @@ EduHub ยังเป็น registry แบบ standalone ที่เข้า
 - frontmatter จะถูก normalize เป็น schema ของ DeepTutor และ `always:` จะถูก **ลบออก** ดังนั้น skill ที่ดาวน์โหลดมาไม่สามารถบังคับตัวเองเข้าสู่ system prompt ทุกอัน;
 - provenance — hub, version, verdict และเวลาติดตั้ง — จะถูกเขียนลง `.hub-lock.json` สำหรับการตรวจสอบและอัพเดต
 
-ในการปรับใช้ multi-user การติดตั้งเป็นสิทธิ์ของ admin เท่านั้น: skill ใหม่จะลงใน admin catalog และมองไม่เห็นสำหรับผู้ใช้อื่นจนกว่า grant จะกำหนดมัน ดังนั้น admin สามารถตรวจสอบก่อนนำออกใช้
+ในการปรับใช้ multi-user การนำเข้าจะลงใน skill library ของผู้เรียกเอง; skills ที่ admin มอบหมายยังคงอยู่ภายใต้ขอบเขต grant และเป็นแบบอ่านอย่างเดียว
 
 </details>
 

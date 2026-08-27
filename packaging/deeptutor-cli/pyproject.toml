@@ -29,6 +29,11 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.36",
+    "pyte>=0.8.1",
+    # Imported eagerly by the shared LLM provider stack.  These must remain
+    # core dependencies: even `deeptutor --help` imports that stack.
+    "loguru>=0.7.3,<1.0.0",
+    "json-repair>=0.57.0,<1.0.0",
     # MCP client. This distribution ships the configurable MCP tool surface, so
     # it needs the client without an optional extra (issue #792).
     "mcp>=1.26.0,<2.0.0",
@@ -50,6 +55,8 @@ dependencies = [
     "openpyxl>=3.1.0",
     "python-pptx>=1.0.0",
     "pypdf>=4.0.0",
+    "pdfplumber>=0.11.0,<0.11.8",
+    "reportlab>=4.0.0",
     "defusedxml>=0.7.1",
 ]
 
