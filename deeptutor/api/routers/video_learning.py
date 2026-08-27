@@ -88,6 +88,7 @@ class WatchProgressRequest(BaseModel):
 class NoteRequest(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
     time_seconds: float = Field(default=0.0, ge=0, le=24 * 60 * 60)
+    quote: str = Field(default="", max_length=4000)
 
 
 class MarkCreateRequest(BaseModel):
@@ -470,6 +471,7 @@ async def add_video_note(material_id: str, payload: NoteRequest) -> dict[str, An
                 ).hexdigest()[:24],
                 "text": payload.text.strip(),
                 "time_seconds": payload.time_seconds,
+                "quote": payload.quote.strip(),
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
             if not note["text"]:

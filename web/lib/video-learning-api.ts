@@ -59,6 +59,7 @@ export interface VideoNote {
   note_id: string;
   text: string;
   time_seconds: number;
+  quote?: string;
   created_at: string;
 }
 
@@ -243,13 +244,14 @@ export async function getTranscriptJob(
 export async function addVideoNote(
   materialId: string,
   text: string,
-  timeSeconds: number
+  timeSeconds: number,
+  quote = ""
 ): Promise<VideoNote> {
   return unwrap(
     await apiFetch(apiUrl(`/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/notes`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, time_seconds: timeSeconds }),
+      body: JSON.stringify({ text, time_seconds: timeSeconds, quote }),
     })
   );
 }

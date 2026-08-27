@@ -218,6 +218,24 @@ async def test_invidious_redirect_outside_configured_origin_is_rejected() -> Non
 
 
 @pytest.mark.asyncio
+async def test_invidious_caption_redirect_within_configured_origin_is_followed() -> None:
+    base = "http://127.0.0.1:18080"
+    caption_url = f"{base}/api/v1/captions/89ThCi5qq-A?lang=en"
+    companion_url = f"{base}/companion/api/v1/captions/89ThCi5qq-A?lang=en&check=trusted"
+    client = _InvidiousClient(
+        {
+            caption_url: (302, b"", {"location": "/companion/api/v1/captions/89ThCi5qq-A?lang=en&check=trusted"}),
+            companion_url: (200, b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nOpening idea\n", {}),
+        }
+    )
+
+    response = await YouTubeResolver(base_url=base)._get(client, caption_url)
+
+    assert response.status_code == 200
+    assert "Opening idea" in response.text
+
+
+@pytest.mark.asyncio
 async def test_resolve_honors_requested_caption_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base = "http://127.0.0.1:18080"
     video_url = f"{base}/api/v1/videos/89ThCi5qq-A"

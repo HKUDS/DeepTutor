@@ -13,6 +13,7 @@ import {
   MessageSquareText,
   Plus,
   Sparkles,
+  StickyNote,
   Upload,
   X,
 } from "lucide-react";
@@ -42,8 +43,6 @@ import {
   cueIndexesFromSelection,
   formatWatchTime,
   locatorsForRange,
-  markCoversTime,
-  marksAtTime,
   rangeFromCues,
 } from "@/lib/video-learning-marks";
 import { WATCHING_ASK_EVENT } from "@/lib/watching-turn-state";
@@ -81,6 +80,9 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
+  const [cueNoteDraft, setCueNoteDraft] = useState<{ cueIndex: number; timeSeconds: number; quote: string } | null>(null);
+  const [cueNoteText, setCueNoteText] = useState("");
+  const [cueNoteSaving, setCueNoteSaving] = useState(false);
   const [playbackErrorMaterialId, setPlaybackErrorMaterialId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ start_seconds: number; end_seconds: number; quote: string; note?: string } | null>(null);
   const [draftNote, setDraftNote] = useState("");
@@ -116,6 +118,8 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     }
     lastPlaybackTimeRef.current = -1;
     setDraft(null);
+    setCueNoteDraft(null);
+    setCueNoteText("");
     setRangeStart(null);
     setSuggestions([]);
     setEndPrompt(null);
@@ -184,7 +188,6 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     () => material?.transcript.cues.find((cue) => currentTime >= cue.start && currentTime <= cue.end),
     [material, currentTime]
   );
-  const activeMarks = useMemo(() => (material ? marksAtTime(marks, currentTime) : []), [marks, currentTime, material]);
   const selectedFormat = material ? Object.keys(material.playback.formats)[0] ?? "" : "";
   const format = material?.playback.formats[selectedFormat];
   const playbackError = playbackErrorMaterialId === material?.material_id;
@@ -322,20 +325,54 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const saveNote = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!noteText.trim()) return;
+  const persistNote = async (text: string, timeSeconds: number, quote = "") => {
+    if (!text.trim()) return false;
     try {
-      const saved = await addVideoNote(material.material_id, noteText.trim(), currentTime);
+      const saved = await addVideoNote(material.material_id, text.trim(), timeSeconds, quote);
       replaceMaterial({
         ...material,
         learning: { ...material.learning, notes: [...(material.learning.notes || []), saved] },
       });
-      setNoteText("");
       setNoteMessage(t("Note saved."));
+      return true;
     } catch (caught) {
       setNoteMessage(caught instanceof Error ? caught.message : t("Note could not be saved."));
+      return false;
     }
+  };
+
+  const saveNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const saved = await persistNote(noteText, currentTime, activeCue?.text || "");
+    if (saved) setNoteText("");
+  };
+
+  const saveCueNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!cueNoteDraft || cueNoteSaving) return;
+    setCueNoteSaving(true);
+    const saved = await persistNote(cueNoteText, cueNoteDraft.timeSeconds, cueNoteDraft.quote);
+    setCueNoteSaving(false);
+    if (saved) {
+      setCueNoteDraft(null);
+      setCueNoteText("");
+    }
+  };
+
+  const openCueNote = (cueIndex: number) => {
+    const cue = material.transcript.cues[cueIndex];
+    if (!cue) return;
+    setCueNoteDraft({ cueIndex, timeSeconds: cue.start, quote: cue.text });
+    setCueNoteText("");
+    setNoteMessage("");
+  };
+
+  const markCue = (cueIndex: number) => {
+    const cue = material.transcript.cues[cueIndex];
+    if (!cue) return;
+    setDraft({ start_seconds: cue.start, end_seconds: cue.end, quote: cue.text });
+    setDraftNote("");
+    window.getSelection()?.removeAllRanges();
   };
 
   const handleTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -677,6 +714,7 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                       {t("Set end")}
                     </button>
                   </div>
+                  {noteMessage && <p className="mb-3 text-xs text-[var(--muted-foreground)]">{noteMessage}</p>}
                   {draft && (
                     <div ref={actionBarRef} className="sticky top-0 z-10 mb-3 rounded border border-[var(--border)] bg-[var(--background)] p-2 shadow-sm">
                       <p className="mb-2 text-xs text-[var(--muted-foreground)]">
@@ -718,21 +756,102 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                   )}
                   {material.transcript.cues.map((cue, index) => {
                     const cueActive = activeCue === cue;
-                    const marked = activeMarks.some((mark) => markCoversTime(mark, cue.start + (cue.end - cue.start) / 2));
+                    const marked = marks.some(
+                      (mark) => mark.end_seconds >= cue.start && mark.start_seconds <= cue.end
+                    );
+                    const cueNotes = (material.learning.notes || []).filter(
+                      (note) => Boolean(note.quote) && Math.abs(note.time_seconds - cue.start) < 0.5
+                    );
+                    const noteOpen = cueNoteDraft?.cueIndex === index;
                     return (
                       <div
                         key={`${cue.start}-${index}`}
                         data-cue-index={index}
-                        className={`mb-1 flex w-full gap-2 rounded p-2 text-sm ${cueActive ? "bg-[var(--muted)]" : "hover:bg-[var(--muted)]/60"} ${marked ? "ring-1 ring-amber-700/40" : ""}`}
+                        data-testid={`watching-cue-${index}`}
+                        className={`mb-1 flex w-full items-start gap-2 rounded p-2 text-sm ${cueActive ? "bg-[var(--muted)]" : "hover:bg-[var(--muted)]/60"} ${marked ? "ring-1 ring-amber-700/40" : ""}`}
                       >
                         <button
                           type="button"
                           onClick={() => seek(cue.start)}
-                          className="shrink-0 font-mono text-xs text-[var(--muted-foreground)]"
+                          className="min-h-11 shrink-0 py-3 font-mono text-xs text-[var(--muted-foreground)]"
                         >
                           {formatWatchTime(cue.start)}
                         </button>
-                        <span data-testid="watching-cue-text" className="select-text leading-relaxed">{cue.text}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start gap-1">
+                            <span data-testid="watching-cue-text" className="min-w-0 flex-1 select-text py-2 leading-relaxed">
+                              {cue.text}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                data-testid={`watching-cue-note-${index}`}
+                                aria-label={`${t("Add note to this subtitle")} ${formatWatchTime(cue.start)}`}
+                                title={t("Add note to this subtitle")}
+                                className={`inline-flex h-11 w-11 items-center justify-center rounded hover:bg-[var(--background)] ${cueNotes.length ? "text-amber-700" : "text-[var(--muted-foreground)]"}`}
+                                onClick={() => openCueNote(index)}
+                              >
+                                <StickyNote size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                data-testid={`watching-cue-mark-${index}`}
+                                aria-label={`${t("Mark this subtitle")} ${formatWatchTime(cue.start)}`}
+                                title={t("Mark this subtitle")}
+                                className={`inline-flex h-11 w-11 items-center justify-center rounded hover:bg-[var(--background)] ${marked ? "text-amber-700" : "text-[var(--muted-foreground)]"}`}
+                                onClick={() => markCue(index)}
+                              >
+                                <BookmarkPlus size={16} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {noteOpen && (
+                            <form className="mt-2 border-l-2 border-amber-600 pl-2" onSubmit={(event) => void saveCueNote(event)}>
+                              <textarea
+                                autoFocus
+                                rows={2}
+                                value={cueNoteText}
+                                onChange={(event) => setCueNoteText(event.target.value)}
+                                placeholder={t("Write a note about this subtitle...")}
+                                className="w-full resize-y rounded border border-[var(--border)] bg-[var(--background)] px-2 py-2 text-sm"
+                              />
+                              <div className="mt-2 flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  aria-label={t("Cancel")}
+                                  title={t("Cancel")}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded border border-[var(--border)]"
+                                  onClick={() => {
+                                    setCueNoteDraft(null);
+                                    setCueNoteText("");
+                                  }}
+                                >
+                                  <X size={15} />
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={!cueNoteText.trim() || cueNoteSaving}
+                                  className="inline-flex min-h-9 items-center gap-1 rounded bg-[var(--foreground)] px-3 py-1.5 text-xs text-[var(--background)] disabled:opacity-50"
+                                >
+                                  {cueNoteSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                  {t("Save note")}
+                                </button>
+                              </div>
+                            </form>
+                          )}
+
+                          {cueNotes.length > 0 && !noteOpen && (
+                            <div className="mt-1 space-y-1 text-xs text-[var(--muted-foreground)]">
+                              {cueNotes.map((note) => (
+                                <p key={note.note_id} className="flex items-start gap-1.5">
+                                  <StickyNote size={13} className="mt-0.5 shrink-0 text-amber-700" />
+                                  <span>{note.text}</span>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -791,10 +910,11 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                       onClick={() => seek(note.time_seconds)}
                       className="block w-full rounded border border-[var(--border)] p-2 text-left hover:bg-[var(--muted)]"
                     >
-                      <span className="mr-2 font-mono text-xs text-[var(--muted-foreground)]">
+                      <span className="block font-mono text-xs text-[var(--muted-foreground)]">
                         {formatWatchTime(note.time_seconds)}
                       </span>
-                      {note.text}
+                      {note.quote && <span className="mt-1 block border-l-2 border-[var(--border)] pl-2 text-xs">{note.quote}</span>}
+                      <span className="mt-1 block text-[var(--foreground)]">{note.text}</span>
                     </button>
                   ))}
                 </div>

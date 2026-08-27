@@ -100,6 +100,46 @@ def test_video_subtitles_are_served_as_webvtt(client_and_store):
     )
 
 
+def test_video_note_persists_optional_subtitle_quote(client_and_store):
+    client, store = client_and_store
+    material = store.create(
+        {
+            "type": "timed_media",
+            "source": {"provider": "youtube", "video_id": "dQw4w9WgXcQ", "duration_seconds": 120},
+            "metadata": {"title": "Lesson", "duration_seconds": 120, "chapters": []},
+            "transcript": {
+                "language": "en",
+                "source": "invidious",
+                "cues": [{"start": 10, "end": 18, "text": "Gradient descent finds a local minimum."}],
+            },
+            "segments": [],
+            "playback": {"formats": {}, "official_url": "https://youtu.be/dQw4w9WgXcQ"},
+            "learning": {"last_position": 0, "notes": []},
+        }
+    )
+    material_id = material["material_id"]
+
+    response = client.post(
+        f"/api/v1/video-learning/materials/{material_id}/notes",
+        json={
+            "text": "Core idea",
+            "time_seconds": 10,
+            "quote": "  Gradient descent finds a local minimum.  ",
+        },
+    )
+    legacy = client.post(
+        f"/api/v1/video-learning/materials/{material_id}/notes",
+        json={"text": "Timestamp only", "time_seconds": 20},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["quote"] == "Gradient descent finds a local minimum."
+    assert legacy.status_code == 201
+    assert legacy.json()["quote"] == ""
+    saved_notes = store.get(material_id)["learning"]["notes"]
+    assert [note["text"] for note in saved_notes] == ["Core idea", "Timestamp only"]
+
+
 @pytest.mark.asyncio
 async def test_invidious_callback_flow(client_and_store):
     client, _ = client_and_store

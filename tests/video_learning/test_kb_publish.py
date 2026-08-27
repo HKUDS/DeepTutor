@@ -97,9 +97,19 @@ def test_timed_media_ref_roundtrip_and_jump_url():
 def test_render_note_and_source_chunks_include_marks(tmp_path: Path):
     store = TimedMediaStore(tmp_path / "timed_media")
     material = _material(store)
+    material["learning"]["notes"] = [
+        {
+            "note_id": "note-1",
+            "time_seconds": 10,
+            "text": "Remember this",
+            "quote": "Gradient descent finds a local minimum.",
+            "created_at": "2026-08-27T00:00:00Z",
+        }
+    ]
     note = render_video_learning_note(material)
     assert "Gradient Descent Intro" in note
     assert "Gradient descent finds a local minimum." in note
+    assert "Remember this" in note
     assert note_relative_path(material) == "video-learning/youtube-dQw4w9WgXcQ.md"
     chunks = source_chunks_for_material(material)
     assert chunks

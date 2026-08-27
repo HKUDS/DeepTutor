@@ -196,11 +196,14 @@ def render_video_learning_note(material: dict[str, Any]) -> str:
             if not isinstance(row, dict):
                 continue
             text = _clip(row.get("text") or "", 500)
+            quote = _clip(row.get("quote") or "", 500)
             if not text:
                 continue
             when = float(row.get("time_seconds") or 0)
             jump = watching_jump_url(material_id, when)
             lines.append(f"- [{format_timestamp(when)}]({jump}) {text}")
+            if quote:
+                lines.append(f"  > {quote}")
         lines.append("")
 
     transcript_bits: list[str] = []
