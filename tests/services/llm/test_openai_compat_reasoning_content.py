@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -147,3 +148,40 @@ def test_services_moonshot_v1_keeps_temperature() -> None:
     kwargs = _build_services_kwargs("moonshot", None, model="moonshot-v1-8k")
 
     assert kwargs["temperature"] == 0.7
+
+
+@pytest.mark.parametrize(
+    ("responses", "include_state", "preserve_id"),
+    [(False, True, False), (True, False, False), (True, True, True)],
+)
+def test_tool_id_sanitization_is_scoped_to_responses_replay(
+    responses: bool,
+    include_state: bool,
+    preserve_id: bool,
+) -> None:
+    raw_id = "call_1|fc_1"
+    assistant = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": raw_id,
+                "type": "function",
+                "function": {"name": "rag", "arguments": "{}"},
+            }
+        ],
+    }
+    if include_state:
+        assistant["_responses_output_items"] = [{"type": "reasoning", "id": "rs_1"}]
+    messages = [
+        assistant,
+        {"role": "tool", "tool_call_id": raw_id, "content": "context"},
+    ]
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+
+    sanitized = provider._sanitize_messages(messages, responses=responses)
+
+    expected_id = raw_id if preserve_id else hashlib.sha256(raw_id.encode()).hexdigest()[:9]
+    assert sanitized[0]["tool_calls"][0]["id"] == expected_id
+    assert sanitized[1]["tool_call_id"] == expected_id
+    assert ("_responses_output_items" in sanitized[0]) is preserve_id

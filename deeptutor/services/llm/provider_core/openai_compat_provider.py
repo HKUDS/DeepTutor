@@ -50,6 +50,7 @@ _ALLOWED_MSG_KEYS = frozenset(
         "extra_content",
     }
 )
+_RESPONSES_ALLOWED_MSG_KEYS = _ALLOWED_MSG_KEYS | {"_responses_output_items"}
 _ALNUM = string.ascii_letters + string.digits
 
 _DEFAULT_OPENROUTER_HEADERS = {
@@ -262,8 +263,19 @@ class OpenAICompatProvider(LLMProvider):
             return tool_call_id
         return hashlib.sha256(tool_call_id.encode()).hexdigest()[:9]
 
-    def _sanitize_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        sanitized = LLMProvider._sanitize_request_messages(messages, _ALLOWED_MSG_KEYS)
+    def _sanitize_messages(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        responses: bool = False,
+    ) -> list[dict[str, Any]]:
+        allowed_keys = _RESPONSES_ALLOWED_MSG_KEYS if responses else _ALLOWED_MSG_KEYS
+        sanitized = LLMProvider._sanitize_request_messages(messages, allowed_keys)
+        if responses and any(msg.get("_responses_output_items") for msg in sanitized):
+            # Responses function-call outputs must use the exact call_id
+            # returned by the preceding output item. The Chat Completions
+            # compatibility hashing below would sever that pairing.
+            return sanitized
         id_map: dict[str, str] = {}
 
         def map_id(value: Any) -> Any:
@@ -487,7 +499,7 @@ class OpenAICompatProvider(LLMProvider):
             model_name = model_name.split("/")[-1]
 
         instructions, input_items = convert_messages(
-            self._sanitize_messages(self._sanitize_empty_content(messages))
+            self._sanitize_messages(self._sanitize_empty_content(messages), responses=True)
         )
         body: dict[str, Any] = {
             "model": model_name,

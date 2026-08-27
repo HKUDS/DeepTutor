@@ -162,6 +162,7 @@ class AgentLoopState:
 class LLMCallResult:
     text: str
     visible_text: str = ""
+    response_output_items: list[dict[str, Any]] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     finish_reason: str = ""
     deferred_chunk_metadata: dict[str, Any] | None = None
@@ -448,7 +449,10 @@ class AgentLoop:
                 )
 
             await self._release_deferred_output(result)
-            messages.append(assistant_message_with_tool_calls(result.text, result.tool_calls))
+            assistant = assistant_message_with_tool_calls(result.text, result.tool_calls)
+            if result.response_output_items:
+                assistant["_responses_output_items"] = result.response_output_items
+            messages.append(assistant)
             dispatch = await self.pipeline._dispatch_tool_calls(
                 tool_calls=result.tool_calls,
                 context=self.context,
@@ -741,6 +745,7 @@ class AgentLoop:
             # once, only after a successful attempt.
             usage_seen: Any = None
             text_parts: list[str] = []
+            response_output_items: list[dict[str, Any]] = []
             tool_acc = ToolCallAccumulator()
             output_chars = 0
             finish_reason = ""
@@ -780,6 +785,16 @@ class AgentLoop:
                     if not choices:
                         continue
                     choice = choices[0]
+                    provider_fields = getattr(choice, "provider_specific_fields", None)
+                    if isinstance(provider_fields, dict):
+                        native_items = provider_fields.get("native_output_items")
+                        if isinstance(native_items, list) and any(
+                            isinstance(item, dict) and item.get("type") == "reasoning"
+                            for item in native_items
+                        ):
+                            response_output_items = [
+                                dict(item) for item in native_items if isinstance(item, dict)
+                            ]
                     if getattr(choice, "finish_reason", None):
                         finish_reason = str(choice.finish_reason)
                     delta = getattr(choice, "delta", None)
@@ -976,6 +991,7 @@ class AgentLoop:
         return LLMCallResult(
             text=text,
             visible_text="".join(visible_text_parts),
+            response_output_items=response_output_items,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
             deferred_chunk_metadata=chunk_meta if defer_visible_output else None,

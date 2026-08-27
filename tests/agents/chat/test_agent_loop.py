@@ -38,6 +38,7 @@ def _llm_chunk(
     tool_calls: list[dict[str, Any]] | None = None,
     usage: Any = None,
     finish_reason: str | None = None,
+    provider_specific_fields: dict[str, Any] | None = None,
 ) -> SimpleNamespace:
     delta_fields: dict[str, Any] = {"content": content}
     if tool_calls is not None:
@@ -59,6 +60,7 @@ def _llm_chunk(
             SimpleNamespace(
                 delta=SimpleNamespace(**delta_fields),
                 finish_reason=finish_reason,
+                provider_specific_fields=provider_specific_fields,
             )
         ],
         usage=usage,
@@ -495,6 +497,7 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
     assistant_tc = [m for m in second_round if m.get("role") == "assistant" and m.get("tool_calls")]
     assert assistant_tc and assistant_tc[0]["tool_calls"][0]["function"]["name"] == "web_search"
     assert assistant_tc[0]["content"] == "Searching."
+    assert "_responses_output_items" not in assistant_tc[0]
     tool_msgs = [m for m in second_round if m.get("role") == "tool"]
     assert tool_msgs and "tool answer" in tool_msgs[0]["content"]
     result = _result(events)
@@ -502,6 +505,64 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.metadata["rounds"] == 2
     # Only the finish round's text is the persisted answer.
     assert result.metadata["response"] == "Found what was needed."
+
+
+@pytest.mark.asyncio
+async def test_tool_round_replays_responses_reasoning_items(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response_output_items = [
+        {
+            "type": "reasoning",
+            "id": "rs_1",
+            "content": [{"type": "reasoning_text", "text": "Search first."}],
+            "summary": [],
+        },
+        {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": "web_search",
+            "arguments": '{"query":"Fourier transform"}',
+        },
+    ]
+    registry = _Registry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "call_1|fc_1",
+                            "name": "web_search",
+                            "arguments": '{"query":"Fourier transform"}',
+                        }
+                    ],
+                    provider_specific_fields={
+                        "native_output_items": response_output_items,
+                    },
+                )
+            ],
+            [_llm_chunk(content="Found it.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Look up Fourier",
+            enabled_tools=["web_search"],
+        ),
+    )
+
+    second_round = client.calls[1]["messages"]
+    assistant = next(message for message in second_round if message.get("tool_calls"))
+    assert assistant["_responses_output_items"] == response_output_items
 
 
 @pytest.mark.asyncio

@@ -391,6 +391,7 @@ async def consume_sdk_stream(
     usage: dict[str, int] = {}
     reasoning_content: str | None = None
     seen_web_search_items: set[str] = set()
+    completed_output_items: list[dict[str, Any]] = []
 
     async for event in stream:
         event_type = getattr(event, "type", None)
@@ -430,13 +431,17 @@ async def consume_sdk_stream(
         elif event_type == "response.output_item.done":
             item = getattr(event, "item", None)
             item_dict = _dump_model(item) if item is not None else None
-            if isinstance(item_dict, dict) and item_dict.get("type") in _WEB_SEARCH_ITEM_TYPES:
-                item_id = str(item_dict.get("id") or "")
-                if item_id and item_id not in seen_web_search_items:
-                    seen_web_search_items.add(item_id)
-                    if on_provider_event:
-                        on_provider_event("output_item", dict(item_dict))
-                continue
+            if isinstance(item_dict, dict):
+                item_type = item_dict.get("type")
+                if item_type in _WEB_SEARCH_ITEM_TYPES:
+                    item_id = str(item_dict.get("id") or "")
+                    if item_id and item_id in seen_web_search_items:
+                        continue
+                    if item_id:
+                        seen_web_search_items.add(item_id)
+                completed_output_items.append(dict(item_dict))
+                if item_type in _WEB_SEARCH_ITEM_TYPES:
+                    continue
             if item and getattr(item, "type", None) == "function_call":
                 call_id = getattr(item, "call_id", None)
                 if not call_id:
@@ -469,5 +474,13 @@ async def consume_sdk_stream(
             )
         elif event_type in {"error", "response.failed"}:
             raise RuntimeError(f"Response failed: {_response_error_detail(event)[:500]}")
+
+    if on_provider_event:
+        preserve_response_items = any(
+            item.get("type") == "reasoning" for item in completed_output_items
+        )
+        for item in completed_output_items:
+            if preserve_response_items or item.get("type") in _WEB_SEARCH_ITEM_TYPES:
+                on_provider_event("output_item", item)
 
     return content, tool_calls, finish_reason, usage, reasoning_content

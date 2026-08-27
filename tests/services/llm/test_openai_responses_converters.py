@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from deeptutor.services.llm.provider_core.openai_responses import (
     adapt_chat_kwargs_to_responses,
+    convert_messages,
 )
 
 
@@ -52,3 +53,59 @@ class TestAdaptChatKwargsToResponses:
         source = {"max_completion_tokens": 8192, "temperature": 0.2}
         adapt_chat_kwargs_to_responses(source)
         assert source == {"max_completion_tokens": 8192, "temperature": 0.2}
+
+
+def test_convert_messages_replays_native_reasoning_turn() -> None:
+    response_output_items = [
+        {"type": "reasoning", "id": "rs_1", "content": [], "summary": []},
+        {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": "rag",
+            "arguments": "{}",
+        },
+    ]
+    messages = [
+        {
+            "role": "assistant",
+            "content": None,
+            "_responses_output_items": response_output_items,
+            "tool_calls": [],
+        },
+        {"role": "tool", "tool_call_id": "call_1|fc_1", "content": "context"},
+    ]
+
+    _, input_items = convert_messages(messages)
+
+    assert input_items == [
+        *response_output_items,
+        {"type": "function_call_output", "call_id": "call_1", "output": "context"},
+    ]
+
+
+def test_convert_messages_without_native_items_keeps_legacy_conversion() -> None:
+    messages = [
+        {
+            "role": "assistant",
+            "content": "Checking.",
+            "tool_calls": [
+                {
+                    "id": "call_1|fc_1",
+                    "type": "function",
+                    "function": {"name": "rag", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1|fc_1", "content": "context"},
+    ]
+
+    _, input_items = convert_messages(messages)
+
+    assert [item["type"] for item in input_items] == [
+        "message",
+        "function_call",
+        "function_call_output",
+    ]
+    assert input_items[1]["call_id"] == "call_1"
+    assert input_items[2]["call_id"] == "call_1"

@@ -213,3 +213,68 @@ async def test_a_call_without_an_item_id_does_not_inherit_another_calls_identity
         ("delete_kb", {"kb": "secret"}),
         ("list_kb", {"scope": "mine"}),
     ]
+
+
+@pytest.mark.asyncio
+async def test_sdk_reasoning_turn_preserves_all_output_items() -> None:
+    reasoning_item = SimpleNamespace(
+        type="reasoning",
+        id="rs_1",
+        content=[{"type": "reasoning_text", "text": "Query the KB."}],
+        summary=[],
+    )
+    function_item = SimpleNamespace(
+        type="function_call",
+        id="fc_1",
+        call_id="call_1",
+        name="rag",
+        arguments="{}",
+    )
+    events = [
+        SimpleNamespace(type="response.output_item.done", item=reasoning_item),
+        SimpleNamespace(type="response.output_item.added", item=function_item),
+        SimpleNamespace(type="response.output_item.done", item=function_item),
+    ]
+    output_items: list[dict] = []
+
+    def collect(kind: str, payload: dict) -> None:
+        if kind == "output_item":
+            output_items.append(payload)
+
+    _, tool_calls, _, _, _ = await consume_sdk_stream(
+        _sdk_events(events),
+        on_provider_event=collect,
+    )
+
+    assert [item["type"] for item in output_items] == ["reasoning", "function_call"]
+    assert tool_calls[0].id == "call_1|fc_1"
+
+
+@pytest.mark.asyncio
+async def test_sdk_non_reasoning_turn_keeps_legacy_output_metadata() -> None:
+    function_item = SimpleNamespace(
+        type="function_call",
+        id="fc_1",
+        call_id="call_1",
+        name="rag",
+        arguments="{}",
+    )
+    web_search_item = SimpleNamespace(type="web_search_call", id="ws_1", results=[])
+    events = [
+        SimpleNamespace(type="response.output_item.added", item=function_item),
+        SimpleNamespace(type="response.output_item.done", item=function_item),
+        SimpleNamespace(type="response.output_item.done", item=web_search_item),
+    ]
+    output_items: list[dict] = []
+
+    def collect(kind: str, payload: dict) -> None:
+        if kind == "output_item":
+            output_items.append(payload)
+
+    _, tool_calls, _, _, _ = await consume_sdk_stream(
+        _sdk_events(events),
+        on_provider_event=collect,
+    )
+
+    assert tool_calls[0].id == "call_1|fc_1"
+    assert [item["type"] for item in output_items] == ["web_search_call"]

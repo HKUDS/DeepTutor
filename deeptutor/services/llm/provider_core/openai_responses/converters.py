@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 _CHAT_TOKEN_LIMIT_ALIASES = ("max_completion_tokens", "max_tokens")
+_RESPONSES_OUTPUT_ITEMS_KEY = "_responses_output_items"
 
 
 def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
@@ -27,6 +28,17 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
             continue
 
         if role == "assistant":
+            response_output_items = msg.get(_RESPONSES_OUTPUT_ITEMS_KEY)
+            if isinstance(response_output_items, list) and response_output_items:
+                # Stateful reasoning/tool calls from a stateless Responses API
+                # must be replayed as the exact output items returned by the
+                # provider. Reconstructing only assistant text and function
+                # calls drops the reasoning item and causes thinking-mode
+                # providers such as DeepSeek to reject the next request.
+                input_items.extend(
+                    dict(item) for item in response_output_items if isinstance(item, dict)
+                )
+                continue
             if isinstance(content, str) and content:
                 input_items.append(
                     {
