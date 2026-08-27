@@ -11,8 +11,23 @@ const LABELS: Record<string, string> = {
   medium: "Medium",
   high: "High",
   xhigh: "Extra high",
+  max: "Max",
   adaptive: "Adaptive",
 };
+
+const REQUEST_EFFORTS = new Set([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+export function isConversationReasoningEffort(value: string): boolean {
+  return REQUEST_EFFORTS.has(value.trim().toLowerCase());
+}
 
 // Mirrors the reasoning-relevant half of PROVIDER_ALIASES in
 // deeptutor/services/provider_registry.py. A profile stored as "azure" or
@@ -170,9 +185,42 @@ export function reasoningEffortOptionsFromSupportedLevels(
   values: readonly string[],
 ): ReasoningEffortOption[] {
   const supported = [
-    ...new Set(values.map((value) => value.trim()).filter(Boolean)),
+    ...new Set(
+      values.map((value) => value.trim().toLowerCase()).filter(Boolean),
+    ),
   ];
   return options(supported, "");
+}
+
+export function conversationReasoningEffortOptions(
+  binding: string | null | undefined,
+  model: string | null | undefined,
+  current = "",
+  supportedLevels?: readonly string[],
+): ReasoningEffortOption[] {
+  const normalizedCurrent = current.trim().toLowerCase();
+  let requestLevels: string[];
+  if (supportedLevels?.length) {
+    requestLevels = [
+      ...new Set(
+        [
+          ...supportedLevels.map((level) => level.trim().toLowerCase()),
+          // Keep a stale but wire-valid override visible so its reset path
+          // is not hidden when the catalog's supported list changes.
+          ...(normalizedCurrent && REQUEST_EFFORTS.has(normalizedCurrent)
+            ? [normalizedCurrent]
+            : []),
+        ].filter((level) => REQUEST_EFFORTS.has(level)),
+      ),
+    ];
+  } else {
+    requestLevels = reasoningEffortOptions(binding, model, current).map(
+      (option) => option.value,
+    ).filter((level) => REQUEST_EFFORTS.has(level));
+  }
+  return requestLevels.length
+    ? reasoningEffortOptionsFromSupportedLevels(requestLevels)
+    : [];
 }
 
 export function setModelReasoningEffort(

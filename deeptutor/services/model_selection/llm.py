@@ -132,6 +132,15 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
                     profile_id == active_profile_id and model_id == active_model_id
                 ),
             }
+            supported_reasoning = model.get(
+                "supported_reasoning_levels", model.get("codex_supported_reasoning_levels")
+            )
+            if isinstance(supported_reasoning, list):
+                levels = [
+                    level for level in (str(item).strip() for item in supported_reasoning) if level
+                ]
+                if levels:
+                    option["supported_reasoning_levels"] = levels
             context_window = _coerce_int(model.get("context_window"))
             if context_window is None:
                 context_window = _coerce_int(model.get("context_window_tokens"))

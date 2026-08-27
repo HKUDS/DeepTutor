@@ -27,6 +27,7 @@ def _catalog():
                                 "name": "Gemini Flash",
                                 "model": "google/gemini-3-flash-preview",
                                 "context_window": "1000000",
+                                "supported_reasoning_levels": ["low", "medium", "high"],
                             },
                             {
                                 "id": "m2",
@@ -59,6 +60,11 @@ def test_list_llm_options_is_redacted_and_marks_active_default():
     assert [o["model_id"] for o in payload["options"]] == ["m1", "m2", "m3"]
     assert payload["options"][0]["is_active_default"] is True
     assert payload["options"][0]["context_window"] == 1000000
+    assert payload["options"][0]["supported_reasoning_levels"] == [
+        "low",
+        "medium",
+        "high",
+    ]
     assert "api_key" not in payload["options"][0]
     assert "base_url" not in payload["options"][0]
     assert "extra_headers" not in payload["options"][0]

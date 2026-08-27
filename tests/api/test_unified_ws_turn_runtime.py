@@ -297,7 +297,9 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     def fake_activate(selection):
         captured["activated_selection"] = selection
         return SimpleNamespace(
-            model="anthropic/claude-sonnet-4", provider_name="openrouter"
+            model="anthropic/claude-sonnet-4",
+            provider_name="openrouter",
+            reasoning_effort="high",
         ), object()
 
     monkeypatch.setattr(
@@ -326,7 +328,7 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
     monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
-    selection = {"profile_id": "p-alt", "model_id": "m-alt"}
+    selection = {"profile_id": "p-alt", "model_id": "m-alt", "reasoning_effort": "high"}
     session, turn = await runtime.start_turn(
         {
             "type": "start_turn",
@@ -349,6 +351,11 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     assert detail is not None
     assert detail["preferences"]["llm_selection"] == selection
     assert detail["messages"][0]["metadata"]["request_snapshot"]["llmSelection"] == selection
+    assert detail["messages"][0]["metadata"]["request_snapshot"]["llmRuntime"] == {
+        "model": "anthropic/claude-sonnet-4",
+        "provider": "openrouter",
+        "reasoningEffort": "high",
+    }
     assert captured["activated_selection"] == selection
     assert captured["builder_llm_config"].model == "anthropic/claude-sonnet-4"
     assert captured["metadata"]["llm_selection"] == selection
