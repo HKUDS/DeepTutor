@@ -143,6 +143,100 @@ async def test_build_rejects_empty_modules(path_id):
 
 
 @pytest.mark.asyncio
+async def test_build_does_not_salvage_explicitly_empty_modules(path_id):
+    result = await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[{"name": "Logic basics", "knowledge_points": []}],
+    )
+    assert result.success is False
+    assert not LearningStore().exists(path_id)
+
+
+@pytest.mark.asyncio
+async def test_build_skips_empty_modules_without_turning_them_into_objectives(path_id):
+    result = await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[
+            {"name": "Logic basics", "knowledge_points": ["Truth tables"]},
+            {"name": "Empty module", "knowledge_points": []},
+        ],
+    )
+
+    assert result.success
+    payload = json.loads(result.content)
+    assert payload["modules_added"] == 1
+    assert [kp["name"] for kp in payload["map"]["modules"][0]["knowledge_points"]] == [
+        "Truth tables"
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("arguments", "expected_names"),
+    [
+        (
+            {"objectives": [{"title": "Truth tables", "type": "memory"}]},
+            ["Truth tables"],
+        ),
+        (
+            {
+                "modules": [],
+                "objectives": [{"title": "Truth tables", "type": "memory"}],
+            },
+            ["Truth tables"],
+        ),
+        (
+            {"modules": {"objectives": [{"id": "truth-tables", "type": "procedure"}]}},
+            ["truth tables"],
+        ),
+        (
+            {
+                "modules": [
+                    {
+                        "name": "Logic basics",
+                        "knowledge_points": ["Truth tables", "Boolean identities"],
+                    }
+                ]
+            },
+            ["Truth tables", "Boolean identities"],
+        ),
+        (
+            {
+                "modules": [
+                    {
+                        "id": "truth-tables",
+                        "title": "Truth tables",
+                        "description": "Compare logic gates",
+                        "type": "concept",
+                    }
+                ]
+            },
+            ["Truth tables"],
+        ),
+        ({"modules": [{"description": "Compare truth tables"}]}, ["Compare truth tables"]),
+    ],
+)
+async def test_build_normalizes_common_model_objective_shapes(path_id, arguments, expected_names):
+    result = await MasteryBuildTool().execute(_mastery_path_id=path_id, **arguments)
+    assert result.success
+    payload = json.loads(result.content)
+    assert payload["knowledge_points_added"] == len(expected_names)
+    kps = payload["map"]["modules"][0]["knowledge_points"]
+    assert [kp["name"] for kp in kps] == expected_names
+
+
+@pytest.mark.asyncio
+async def test_build_invalid_modules_fail_before_saving_a_path(path_id):
+    result = await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        modules=[{"description": " "}],
+    )
+    assert result.success is False
+    assert "modules=[{name, knowledge_points" in result.content
+    assert not LearningStore().exists(path_id)
+
+
+@pytest.mark.asyncio
 async def test_build_append_keeps_existing(path_id):
     await _build_basic(path_id)
     result = await MasteryBuildTool().execute(

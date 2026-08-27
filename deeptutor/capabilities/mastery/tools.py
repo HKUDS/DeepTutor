@@ -892,7 +892,10 @@ class MasteryBuildTool(BaseTool):
             mode = "replace"
 
         service = _new_service()
-        new_modules, error = _parse_modules(kwargs.get("modules"), path_id, 0)
+        raw_modules = kwargs.get("modules")
+        if raw_modules is None or raw_modules == []:
+            raw_modules = kwargs.get("objectives")
+        new_modules, error = _parse_modules(raw_modules, path_id, 0)
         if error:
             return ToolResult(content=error, success=False)
 
@@ -1076,42 +1079,109 @@ def _parse_modules(
 
     Ids are generated server-side (``<path>_m<i>_kp<j>``) so the model never
     controls storage keys; unknown knowledge types fall back to 'concept'.
+    Models also describe the same tree with ``objectives`` / ``title`` / ``id``
+    or a flat objective list, so preserve that meaning while normalizing here.
     """
+    if isinstance(raw_modules, dict):
+        wrapped = raw_modules.get("modules")
+        if wrapped is None:
+            wrapped = raw_modules.get("objectives")
+        raw_modules = wrapped
     if not isinstance(raw_modules, list) or not raw_modules:
-        return [], "mastery_build needs a non-empty 'modules' array."
+        return [], "mastery_build needs a non-empty 'modules' or 'objectives' array."
     modules: list[LearningModule] = []
-    for i, raw in enumerate(raw_modules):
-        if not isinstance(raw, dict):
+
+    def _knowledge_points(raw: dict[str, Any]) -> list[Any]:
+        points = raw.get("knowledge_points")
+        if points is None:
+            points = raw.get("objectives")
+        return points if isinstance(points, list) else []
+
+    def _declares_knowledge_points(raw: dict[str, Any]) -> bool:
+        return "knowledge_points" in raw or "objectives" in raw
+
+    entries: list[tuple[dict[str, Any], list[Any]]]
+    if any(isinstance(raw, dict) and _knowledge_points(raw) for raw in raw_modules):
+        entries = []
+        for raw in raw_modules:
+            if not isinstance(raw, dict):
+                continue
+            points = _knowledge_points(raw)
+            if points:
+                entries.append((raw, points))
+                continue
+            if _declares_knowledge_points(raw):
+                continue
+            kp = _parse_knowledge_point(raw, f"{path_id}_m{offset + len(entries)}_kp0")
+            if kp is not None:
+                entries.append(
+                    (
+                        {"name": _display_name(raw) or f"Objective {offset + len(entries) + 1}"},
+                        [raw],
+                    )
+                )
+    elif not any(isinstance(raw, dict) and _declares_knowledge_points(raw) for raw in raw_modules):
+        entries = [({}, raw_modules)]
+    else:
+        entries = []
+
+    for i, (raw, raw_kps) in enumerate(entries):
+        if not raw_kps:
             continue
         index = offset + i
-        name = str(raw.get("name") or "").strip()[:200]
+        name = _display_name(raw) or ("Objectives" if not raw else f"Module {index + 1}")
+        name = name[:200]
         if not name:
             continue
         module_id = f"{path_id}_m{index}"
         kps: list[KnowledgePoint] = []
-        for j, raw_kp in enumerate(raw.get("knowledge_points") or []):
-            if not isinstance(raw_kp, dict):
-                continue
-            kp_name = str(raw_kp.get("name") or "").strip()[:200]
-            if len(kp_name) < 2:
-                continue
-            kp_type = str(raw_kp.get("type") or "concept").strip().lower()
-            if kp_type not in _ALLOWED_KP_TYPES:
-                kp_type = "concept"
-            kps.append(
-                KnowledgePoint(
-                    id=f"{module_id}_kp{j}",
-                    name=kp_name,
-                    type=KnowledgeType(kp_type),
-                    module_id=module_id,
-                )
-            )
+        for j, raw_kp in enumerate(raw_kps):
+            kp = _parse_knowledge_point(raw_kp, f"{module_id}_kp{j}")
+            if kp is not None:
+                kps.append(kp)
         if not kps:
             continue
         modules.append(LearningModule(id=module_id, name=name, order=index, knowledge_points=kps))
     if not modules:
-        return [], "No valid modules: each module needs a name and at least one knowledge point."
+        return [], (
+            "No valid modules: pass modules=[{name, knowledge_points: "
+            "[{name, type}]}]. A non-empty title/id/description can be used "
+            "as a fallback name."
+        )
     return modules, None
+
+
+def _display_name(raw: dict[str, Any]) -> str:
+    for key in ("name", "title", "id", "description"):
+        value = raw.get(key)
+        if not isinstance(value, str):
+            continue
+        if key == "id":
+            value = value.replace("_", " ").replace("-", " ")
+        value = " ".join(value.split())
+        if len(value) >= 2:
+            return value
+    return ""
+
+
+def _parse_knowledge_point(raw_kp: Any, kp_id: str) -> KnowledgePoint | None:
+    if isinstance(raw_kp, str):
+        raw_kp = {"name": raw_kp}
+    if not isinstance(raw_kp, dict):
+        return None
+    kp_name = _display_name(raw_kp)[:200]
+    if len(kp_name) < 2:
+        return None
+    kp_type = str(raw_kp.get("type") or "concept").strip().lower()
+    if kp_type not in _ALLOWED_KP_TYPES:
+        kp_type = "concept"
+    module_id, _, _ = kp_id.rpartition("_kp")
+    return KnowledgePoint(
+        id=kp_id,
+        name=kp_name,
+        type=KnowledgeType(kp_type),
+        module_id=module_id,
+    )
 
 
 MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
