@@ -9,6 +9,7 @@ Layout, one directory per extracted content::
         raw/<filename>       # the original bytes, for the faithful viewer
         annotations/<material_id>.json
         positions/<material_id>.json
+        description_index.json # derived retrieval cards, shared by content
 
 One file per unit is the point of the layout: ``read_material(locator=12)``
 opens one small file instead of deserialising the whole document, so a 600-page
@@ -71,6 +72,7 @@ BOOKMARKS_DIR = "bookmarks"
 # scans, and the file is rewritten whole on every change.
 MAX_BOOKMARKS = 200
 UNIT_REFS_NAME = "unit_refs.json"
+DESCRIPTION_INDEX_NAME = "description_index.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
 ASSETS_DIR = "assets"
@@ -1028,6 +1030,36 @@ class ReadingStore:
             self._write_annotations(material_id, remaining)
             return True
 
+    # -- semantic-search index -------------------------------------------
+
+    def description_index(self, material_id: str) -> dict[str, Any] | None:
+        """Return the durable retrieval-card index, if one is readable.
+
+        The index is derived state: a corrupt or interrupted write is treated
+        as absent and can be rebuilt from the immutable locator files.  It
+        deliberately lives beside the material rather than in a second reading
+        database, so deletion and per-user isolation follow the existing store.
+        """
+        self.manifest(material_id)
+        row = _read_json(self._dir(material_id) / DESCRIPTION_INDEX_NAME)
+        return row if isinstance(row, dict) else None
+
+    def save_description_index(
+        self,
+        material_id: str,
+        state: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Atomically persist derived semantic-search state for one material."""
+        self.manifest(material_id)
+        payload = dict(state)
+        payload["material_id"] = material_id
+        with self._locked(material_id):
+            _atomic_write(
+                self._dir(material_id) / DESCRIPTION_INDEX_NAME,
+                json.dumps(payload, ensure_ascii=False, indent=2),
+            )
+        return payload
+
 
 def _safe_filename(name: str, *, fallback: str) -> str:
     """A filesystem-safe basename for the stored original.
@@ -1053,6 +1085,7 @@ def _guess_mime(filename: str) -> str:
 
 __all__ = [
     "ANNOTATIONS_NAME",
+    "DESCRIPTION_INDEX_NAME",
     "MANIFEST_NAME",
     "MAX_READ_CHARS",
     "OUTLINE_NAME",

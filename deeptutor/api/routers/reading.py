@@ -47,6 +47,15 @@ from deeptutor.reading import (
     SourceKind,
     export_material,
     render_outline,
+    search_material,
+)
+from deeptutor.reading.description_search import (
+    DescriptionSearchModelError,
+    DescriptionSearchUnavailable,
+    build_description_index,
+    description_capabilities,
+    description_index_status,
+    description_search,
 )
 from deeptutor.reading.ingestion import ReadingIngestionService, url_material_id
 from deeptutor.reading.knowledge_capture import (
@@ -54,6 +63,7 @@ from deeptutor.reading.knowledge_capture import (
     send_workspace_to_notebook,
 )
 from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS
+from deeptutor.reading.search import terms_of
 from deeptutor.services.session.workspace_preferences import WORKSPACE_MODE_READING
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -373,6 +383,50 @@ class NotebookCaptureRequest(OrganizeNotesRequest):
     notebook_ids: list[str] = Field(min_length=1, max_length=20)
     title: str = Field(default="", max_length=300)
     summary: str = Field(default="", max_length=1000)
+
+
+class MaterialSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+    mode: Literal["exact", "description_fast", "description_fine"] = "exact"
+    limit: int = Field(default=12, ge=1, le=20)
+
+
+class DescriptionIndexRebuildRequest(BaseModel):
+    force: bool = True
+
+
+async def _build_description_index_background(root: str, material_id: str, force: bool) -> None:
+    try:
+        await build_description_index(ReadingStore(root), material_id, force=force)
+    except DescriptionSearchUnavailable:
+        # Model capability can change after upload.  The material remains fully
+        # usable and the status endpoint explains why semantic search is gated.
+        return
+    except Exception:
+        logger.exception("Background reading index failed material=%s", material_id)
+
+
+def _queue_description_index(
+    background_tasks: BackgroundTasks,
+    store: ReadingStore,
+    material_id: str,
+    *,
+    force: bool,
+) -> None:
+    try:
+        if not description_capabilities()["enabled"]:
+            return
+    except Exception:
+        return
+    # Capture the request-scoped root now.  A background task must never resolve
+    # a different user's workspace after the request context has been released.
+    rooted = str(store.root.resolve())
+    background_tasks.add_task(
+        _build_description_index_background,
+        rooted,
+        material_id,
+        force,
+    )
 
 
 # === Routes ===================================================================
@@ -908,8 +962,10 @@ async def list_materials() -> list[MaterialInfo]:
 
 @router.post("/materials", response_model=MaterialDetail)
 async def upload_material(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),  # noqa: B008
     reuse: bool = Query(default=True),
+    build_description_search: bool = Query(False),
 ) -> MaterialDetail:
     """Ingest an uploaded document and return it ready to read.
 
@@ -954,21 +1010,22 @@ async def upload_material(
             catalog = _catalog()
             if reuse or catalog.get_material(manifest.material_id) is None:
                 catalog.register_manifest(manifest)
-                return _detail(store, manifest)
-            # A separate material over the same extracted content: the bytes
-            # are stored once, while annotations and reading position are kept
-            # apart because the user asked for a second, independent copy.
-            record = catalog.upsert_material(
-                content_id=manifest.material_id,
-                material_id=_new_material_id(),
-                filename=manifest.filename,
-                title=manifest.title,
-                source_kind=SourceKind.FILE,
-                mime=manifest.mime,
-                render_mode=manifest.render_mode,
-                status=IngestionStatus.READY,
-            )
-            return _detail(store, store.manifest(record.material_id))
+            else:
+                # Independent material state over shared extracted content.
+                record = catalog.upsert_material(
+                    content_id=manifest.material_id,
+                    material_id=_new_material_id(),
+                    filename=manifest.filename,
+                    title=manifest.title,
+                    source_kind=SourceKind.FILE,
+                    mime=manifest.mime,
+                    render_mode=manifest.render_mode,
+                    status=IngestionStatus.READY,
+                )
+                manifest = store.manifest(record.material_id)
+        if build_description_search:
+            _queue_description_index(background_tasks, store, manifest.material_id, force=False)
+        return _detail(store, manifest)
     except HTTPException:
         raise
     except Exception as exc:
@@ -1092,6 +1149,16 @@ async def list_material_revisions(material_id: str) -> list[dict[str, Any]]:
         raise _http_error(exc) from exc
 
 
+@router.get("/materials/{material_id}/description-search/capabilities")
+async def get_description_search_capabilities(material_id: str) -> dict[str, Any]:
+    try:
+        assert_learning_material(material_id)
+        _store().manifest(material_id)
+        return description_capabilities()
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.get(
     "/materials/{material_id}/revisions/{revision}/units/{locator}",
     response_model=UnitText,
@@ -1110,6 +1177,116 @@ async def get_revision_unit(material_id: str, revision: int, locator: int) -> Un
             unit=manifest.unit,
             text=store.revision_unit_text(material_id, revision, locator),
         )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/materials/{material_id}/description-search/index")
+async def get_description_search_index(material_id: str) -> dict[str, Any]:
+    try:
+        assert_learning_material(material_id)
+        return description_index_status(_store(), material_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/description-search/index/rebuild")
+async def rebuild_description_search_index(
+    material_id: str,
+    payload: DescriptionIndexRebuildRequest,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        store.manifest(material_id)
+        capabilities = description_capabilities()
+        if not capabilities["enabled"]:
+            raise DescriptionSearchUnavailable(
+                "Description search requires a default model with at least a 50k context window."
+            )
+        current = description_index_status(store, material_id)
+        _queue_description_index(
+            background_tasks,
+            store,
+            material_id,
+            force=payload.force,
+        )
+        return {**current, "status": "building", "needs_build": True}
+    except DescriptionSearchUnavailable as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/search")
+async def search_reading_material(
+    material_id: str,
+    payload: MaterialSearchRequest,
+) -> dict[str, Any]:
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        manifest = store.manifest(material_id)
+        if payload.mode == "exact":
+            result = search_material(
+                store,
+                material_id,
+                payload.query,
+                limit=payload.limit,
+            )
+            hits: list[dict[str, Any]] = []
+            literal_hits = result.hits if result.mode in {"exact", "normalised"} else ()
+            for hit in literal_hits:
+                source = store.unit_text(material_id, hit.locator)
+                start = source.casefold().find(payload.query.casefold())
+                if start >= 0:
+                    quote = source[start : start + len(payload.query)]
+                else:
+                    quote = ""
+                    for term in terms_of(payload.query):
+                        term_start = source.casefold().find(term.casefold())
+                        if term_start >= 0:
+                            quote = source[term_start : term_start + len(term)]
+                            break
+                hits.append(
+                    {
+                        "locator": hit.locator,
+                        "quote": quote,
+                        "snippet": hit.snippet,
+                        "score": 1.0,
+                        "reason": result.mode or "",
+                        "group_title": f"{manifest.unit.title()} {hit.locator}",
+                        "start_offset": max(0, start if start >= 0 else hit.offset),
+                        "end_offset": max(0, start if start >= 0 else hit.offset) + len(quote),
+                    }
+                )
+            return {
+                "hits": hits,
+                "requested_mode": "exact",
+                "resolved_mode": "exact",
+                "match_mode": result.mode,
+                "fallback_used": False,
+                "truncated": result.truncated,
+            }
+
+        hits, metadata = await description_search(
+            store,
+            material_id,
+            payload.query,
+            payload.mode,
+            limit=payload.limit,
+        )
+        return {
+            "hits": [hit.to_dict() for hit in hits],
+            "requested_mode": payload.mode,
+            "truncated": len(hits) >= payload.limit,
+            **metadata,
+        }
+    except DescriptionSearchUnavailable as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DescriptionSearchModelError as exc:
+        raise HTTPException(status_code=502, detail=f"Description search failed: {exc}") from exc
     except Exception as exc:
         raise _http_error(exc) from exc
 

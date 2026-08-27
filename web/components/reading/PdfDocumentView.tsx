@@ -36,6 +36,8 @@ export interface SelectionPayload {
 export interface JumpRequest {
   locator: number;
   quote?: string;
+  /** Optional lifetime for a transient search-result highlight. */
+  highlightMs?: number;
   /** Changes on every request so repeats of the same target still fire. */
   nonce: number;
 }
@@ -305,6 +307,13 @@ export function PdfDocumentView({
             });
             if (rects.length) {
               setFlash({ nonce, locator, rects });
+              if (jump.highlightMs) {
+                timer = window.setTimeout(() => {
+                  setFlash((current) =>
+                    current?.nonce === nonce ? null : current,
+                  );
+                }, jump.highlightMs);
+              }
               return;
             }
           }

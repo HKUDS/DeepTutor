@@ -13,6 +13,8 @@ export type AnnotationKind = "highlight" | "underline" | "note" | "citation";
 export type ExportFormat = "auto" | "pdf" | "markdown";
 export type RenderMode = "text" | "pdf" | "epub" | "video" | "audio";
 export type ContentFormat = "plain_text" | "web_markdown";
+export type ReadingSearchMode =
+  "exact" | "description_fast" | "description_fine";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -177,6 +179,48 @@ export interface SupportedFormats {
   raw_view_extensions: string[];
 }
 
+export interface ReadingSearchHit {
+  locator: number;
+  quote: string;
+  snippet: string;
+  score: number;
+  reason: string;
+  group_title: string;
+  start_offset: number;
+  end_offset: number;
+}
+
+export interface ReadingSearchResponse {
+  hits: ReadingSearchHit[];
+  requested_mode: ReadingSearchMode;
+  resolved_mode: string;
+  fallback_used: boolean;
+  fallback_reason?: string;
+  warnings?: string[];
+  truncated: boolean;
+}
+
+export interface DescriptionSearchCapabilities {
+  model: string;
+  binding: string;
+  context_window: number;
+  enabled: boolean;
+  minimum_context_window: number;
+}
+
+export interface DescriptionIndexStatus {
+  status: "not_started" | "building" | "ready" | "partial" | "failed" | "stale";
+  total_groups: number;
+  completed_groups: number;
+  failed_groups: number;
+  model: string;
+  binding: string;
+  prompt_version: string;
+  updated_at: number;
+  needs_build: boolean;
+  errors: Record<string, string>;
+}
+
 export interface ReadingExtensionAction {
   id: string;
   label: string;
@@ -241,7 +285,7 @@ export async function uploadMaterial(
   // reuse=false asks the server to mint a separate material for content it
   // already holds, so a second copy carries its own annotations instead of
   // silently collapsing onto the first upload.
-  const query = options?.reuse === false ? "?reuse=false" : "";
+  const query = `?build_description_search=true${options?.reuse === false ? "&reuse=false" : ""}`;
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials${query}`), {
       method: "POST",
@@ -273,6 +317,64 @@ export async function getUnitText(
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials/${materialId}/units/${locator}`), {
       cache: "no-store",
+    }),
+  );
+}
+
+export async function getDescriptionSearchCapabilities(
+  materialId: string,
+): Promise<DescriptionSearchCapabilities> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/description-search/capabilities`),
+      {
+        cache: "no-store",
+      },
+    ),
+  );
+}
+
+export async function getDescriptionIndexStatus(
+  materialId: string,
+): Promise<DescriptionIndexStatus> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/description-search/index`),
+      {
+        cache: "no-store",
+      },
+    ),
+  );
+}
+
+export async function rebuildDescriptionIndex(
+  materialId: string,
+): Promise<DescriptionIndexStatus> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(
+        `${BASE}/materials/${materialId}/description-search/index/rebuild`,
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      },
+    ),
+  );
+}
+
+export async function searchReadingMaterial(
+  materialId: string,
+  query: string,
+  mode: ReadingSearchMode,
+  limit = 12,
+): Promise<ReadingSearchResponse> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/search`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, mode, limit }),
     }),
   );
 }
@@ -382,7 +484,9 @@ export async function deleteBookmark(
   await unwrap(
     await apiFetch(
       apiUrl(`${BASE}/materials/${materialId}/bookmarks/${bookmarkId}`),
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+      },
     ),
   );
 }
@@ -417,7 +521,9 @@ export async function deleteAnnotation(
   await unwrap(
     await apiFetch(
       apiUrl(`${BASE}/materials/${materialId}/annotations/${annotationId}`),
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+      },
     ),
   );
 }

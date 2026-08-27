@@ -15,6 +15,7 @@ import {
   History,
   PanelRightClose,
   PanelRightOpen,
+  Search,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -44,6 +45,7 @@ import {
   type SelectionPayload,
 } from "./PdfDocumentView";
 import { ReadingExtensionBar } from "./ReadingExtensionBar";
+import { ReadingSearchPanel } from "./ReadingSearchPanel";
 import { TextUnitView, unitLabel } from "./TextUnitView";
 import type { ReaderHeading } from "@/lib/reading-outline";
 import {
@@ -167,6 +169,7 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  const [showSearch, setShowSearch] = useState(false);
   const nonceRef = useRef(0);
   const headingLocatorRef = useRef(1);
   const jumpMaterialIdRef = useRef<string | null>(null);
@@ -272,9 +275,14 @@ export function ReaderPane({
   // -- reader actions from the assistant -----------------------------------
 
   const requestJump = useCallback(
-    (locator: number, quote?: string, targetMaterialId?: string) => {
+    (
+      locator: number,
+      quote?: string,
+      targetMaterialId?: string,
+      highlightMs?: number,
+    ) => {
       nonceRef.current += 1;
-      setJump({ locator, quote, nonce: nonceRef.current });
+      setJump({ locator, quote, highlightMs, nonce: nonceRef.current });
       jumpMaterialIdRef.current =
         targetMaterialId ?? material?.material_id ?? null;
     },
@@ -693,7 +701,8 @@ export function ReaderPane({
 
   // -- render --------------------------------------------------------------
 
-  const showAnnotations = annotationPanel ?? annotations.length > 0;
+  const showAnnotations =
+    !showSearch && (annotationPanel ?? annotations.length > 0);
   const unitWord = material ? t(unitLabel(material.unit)) : "";
   const bookmarkedHere = bookmarks.some(
     (row) => row.locator === currentLocator,
@@ -777,6 +786,12 @@ export function ReaderPane({
                 onClick={() => onToggleBookmark(currentLocator)}
               />
             )}
+            <HeaderButton
+              icon={Search}
+              label={t("Search this book")}
+              active={showSearch}
+              onClick={() => setShowSearch((current) => !current)}
+            />
             <HeaderButton
               icon={Crosshair}
               label={
@@ -961,6 +976,20 @@ export function ReaderPane({
               onDelete={(annotation) => void removeMark(annotation)}
             />
           </aside>
+        )}
+
+        {material && showSearch && (
+          <ReadingSearchPanel
+            key={material.material_id}
+            materialId={material.material_id}
+            unit={material.unit}
+            onJump={(locator, quote) => {
+              rememberExplicitLocation(locator);
+              requestJump(locator, quote, undefined, 5000);
+            }}
+            onClose={() => setShowSearch(false)}
+            onError={setError}
+          />
         )}
       </div>
 
