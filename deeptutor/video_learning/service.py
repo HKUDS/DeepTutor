@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import fcntl
 import hashlib
+from html import unescape
 import ipaddress
 import json
 from pathlib import Path
@@ -107,7 +108,7 @@ def normalize_cues(rows: Any) -> list[dict[str, Any]]:
                 "duration": getattr(row, "duration", 0),
                 "text": getattr(row, "text", ""),
             }
-        text = str(merged.get("text") or merged.get("content") or "").strip()
+        text = unescape(str(merged.get("text") or merged.get("content") or "")).strip()
         if not text:
             continue
         try:
@@ -577,6 +578,7 @@ def parse_webvtt(text: str) -> list[dict[str, Any]]:
     )
     lines = text.splitlines()
     result: list[dict[str, Any]] = []
+    has_rolling_timestamps = False
     index = 0
     while index < len(lines):
         match = timing.match(lines[index].strip())
@@ -590,10 +592,74 @@ def parse_webvtt(text: str) -> list[dict[str, Any]]:
         while index < len(lines) and lines[index].strip():
             body_lines.append(lines[index].strip())
             index += 1
-        body = re.sub(r"<[^>]+>", "", " ".join(body_lines)).strip()
+        raw_body = "\n".join(body_lines)
+        has_rolling_timestamps = has_rolling_timestamps or bool(
+            re.search(r"<\d{2}:\d{2}(?::\d{2})?[.,]\d{3}>", raw_body)
+        )
+        body = unescape(re.sub(r"<[^>]+>", "", raw_body)).strip()
         if body:
-            result.append({"start": _vtt_time(match.group("start")), "end": _vtt_time(match.group("end")), "text": body})
+            result.append(
+                {
+                    "start": _vtt_time(match.group("start")),
+                    "end": _vtt_time(match.group("end")),
+                    "text": body,
+                }
+            )
+    if has_rolling_timestamps:
+        return _normalize_rolling_vtt(result)
+    return [{**cue, "text": " ".join(str(cue["text"]).splitlines())} for cue in result]
+
+
+def _normalize_rolling_vtt(cues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse YouTube's 10 ms echo cues without changing ordinary VTT."""
+    result: list[dict[str, Any]] = []
+    for index, cue in enumerate(cues):
+        lines = _unique_caption_lines(str(cue["text"]))
+        text = " ".join(lines)
+        duration = float(cue["end"]) - float(cue["start"])
+        next_text = _collapse_repeated_lines(str(cues[index + 1]["text"])) if index + 1 < len(cues) else ""
+        if duration <= 0.05 and next_text and _rolling_text_contains(next_text, text):
+            continue
+        if result and len(lines) > 1 and _rolling_text_contains(str(result[-1]["text"]), lines[0]):
+            text = " ".join(lines[1:])
+        if not text:
+            continue
+        normalized = {**cue, "text": text}
+        if result and _normalized_caption_text(result[-1]["text"]) == _normalized_caption_text(text):
+            result[-1]["end"] = max(float(result[-1]["end"]), float(cue["end"]))
+            continue
+        result.append(normalized)
     return result
+
+
+def _collapse_repeated_lines(text: str) -> str:
+    return " ".join(_unique_caption_lines(text))
+
+
+def _unique_caption_lines(text: str) -> list[str]:
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return lines
+    collapsed: list[str] = []
+    for line in lines:
+        if collapsed and _normalized_caption_text(collapsed[-1]) == _normalized_caption_text(line):
+            continue
+        collapsed.append(line)
+    return collapsed
+
+
+def _normalized_caption_text(text: str) -> str:
+    return " ".join(unescape(str(text)).split()).casefold()
+
+
+def _rolling_text_contains(container: str, value: str) -> bool:
+    container_normalized = _normalized_caption_text(container)
+    value_normalized = _normalized_caption_text(value)
+    return bool(value_normalized) and (
+        container_normalized.startswith(value_normalized)
+        or container_normalized.endswith(value_normalized)
+        or value_normalized in container_normalized
+    )
 
 
 def _vtt_time(value: str) -> float:

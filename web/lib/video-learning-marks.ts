@@ -1,4 +1,4 @@
-import type { TimedCue, TimedSegment, VideoLearningMark, VideoMarkKind } from "./video-learning-api";
+import type { TimedCue, TimedSegment, VideoLearningMark, VideoMarkKind, VideoNote } from "./video-learning-api";
 
 export const VIDEO_MARK_KINDS = ["key_point", "question", "review"] as const;
 
@@ -7,6 +7,52 @@ export const VIDEO_MARK_COLORS: Record<VideoMarkKind, string> = {
   question: "#1d4ed8",
   review: "#be123c",
 };
+
+export function findActiveCueIndex(cues: TimedCue[], currentTime: number): number {
+  let low = 0;
+  let high = cues.length - 1;
+  let candidate = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (cues[middle].start <= currentTime) {
+      candidate = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return candidate >= 0 && currentTime <= cues[candidate].end ? candidate : -1;
+}
+
+export function normalizeCueQuote(value: string): string {
+  const entities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+  return value
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
+      if (entity[0] !== "#") return entities[entity.toLowerCase()] ?? match;
+      const hex = entity[1]?.toLowerCase() === "x";
+      const codePoint = Number.parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match;
+    })
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase();
+}
+
+export function noteMatchesCue(note: VideoNote, cue: TimedCue): boolean {
+  if (note.time_seconds >= cue.start - 0.5 && note.time_seconds <= cue.end + 0.5) return true;
+  const noteQuote = normalizeCueQuote(note.quote || "");
+  const cueQuote = normalizeCueQuote(cue.text);
+  return Boolean(noteQuote) && (
+    noteQuote === cueQuote || noteQuote.includes(cueQuote) || cueQuote.includes(noteQuote)
+  );
+}
 
 export function uniqueSortedIndexes(values: number[]): number[] {
   return [...new Set(values.filter((value) => Number.isInteger(value) && value >= 0))].sort(

@@ -7,15 +7,40 @@ import type { TimedCue, TimedSegment, VideoLearningMark } from "../lib/video-lea
 import {
   cueIndexesFromSelection,
   filterMarks,
+  findActiveCueIndex,
   formatMarkRange,
   locatorsForRange,
   markCoversTime,
   marksAtTime,
+  normalizeCueQuote,
+  noteMatchesCue,
   rangeFromCues,
   sortMarks,
   timelineStyle,
   uniqueSortedIndexes,
 } from "../lib/video-learning-marks";
+
+test("findActiveCueIndex locates playback cues with binary search boundaries", () => {
+  assert.equal(findActiveCueIndex(cues, 9.99), -1);
+  assert.equal(findActiveCueIndex(cues, 10), 0);
+  assert.equal(findActiveCueIndex(cues, 23.9), 1);
+  assert.equal(findActiveCueIndex(cues, 30), -1);
+  assert.equal(findActiveCueIndex(cues, 48), 2);
+});
+
+test("subtitle notes prefer time ranges and fall back to normalized quotes", () => {
+  const timed = { note_id: "n1", text: "note", time_seconds: 15.8, created_at: "1" };
+  const rebuilt = {
+    note_id: "n2",
+    text: "note",
+    time_seconds: 100,
+    quote: "&gt;&gt; Mark   Zuckerberg",
+    created_at: "1",
+  };
+  assert.equal(noteMatchesCue(timed, cues[0]), true);
+  assert.equal(noteMatchesCue(rebuilt, { start: 78, end: 80, text: ">> Mark Zuckerberg" }), true);
+  assert.equal(normalizeCueQuote("&gt;&gt;\u00a0Speaker"), ">> speaker");
+});
 
 const cues: TimedCue[] = [
   { start: 10, end: 16, text: "Gradient descent" },

@@ -20,6 +20,8 @@ const material: TimedMediaMaterial = {
     cues: [
       { start: 10, end: 18, text: "Gradient descent finds a local minimum." },
       { start: 18, end: 30, text: "Why does the learning rate matter?" },
+      { start: 30, end: 45, text: "A smaller step can make training more stable." },
+      { start: 45, end: 60, text: "Compare the loss before changing the optimizer." },
     ],
   },
   segments: [
@@ -30,11 +32,26 @@ const material: TimedMediaMaterial = {
       text: "Gradient descent finds a local minimum. Why does the learning rate matter?",
     },
   ],
-  playback: { formats: {}, official_url: "https://youtu.be/dQw4w9WgXcQ" },
+  playback: {
+    formats: {
+      fixture: {
+        format_id: "fixture",
+        mime_type: "video/mp4",
+        quality: "360p",
+        content_length: 0,
+        stream_url: "fixture",
+      },
+    },
+    official_url: "https://youtu.be/dQw4w9WgXcQ",
+  },
   learning: { last_position: 0, notes: [], marks: [] },
 };
 
-async function mockWatchingApis(page: Page, marks: VideoLearningMark[], options: { failCreate?: boolean } = {}) {
+async function mockWatchingApis(
+  page: Page,
+  marks: VideoLearningMark[],
+  options: { failCreate?: boolean; failNote?: boolean } = {}
+) {
   const notes: VideoNote[] = [];
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -123,6 +140,7 @@ async function mockWatchingApis(page: Page, marks: VideoLearningMark[], options:
       return json(saved, 201);
     }
     if (path === `/api/v1/video-learning/materials/${material.material_id}/notes` && request.method() === "POST") {
+      if (options.failNote) return json({ detail: "Note could not be saved." }, 500);
       const body = request.postDataJSON() as Partial<VideoNote>;
       const saved: VideoNote = {
         note_id: `note-${notes.length + 1}`,
@@ -157,7 +175,13 @@ async function mockWatchingApis(page: Page, marks: VideoLearningMark[], options:
   });
 }
 
-async function openWatching(page: Page, context: BrowserContext, testInfo: TestInfo, marks: VideoLearningMark[], options: { failCreate?: boolean } = {}) {
+async function openWatching(
+  page: Page,
+  context: BrowserContext,
+  testInfo: TestInfo,
+  marks: VideoLearningMark[],
+  options: { failCreate?: boolean; failNote?: boolean } = {}
+) {
   await context.addCookies([
     {
       name: "dt_token",
@@ -173,6 +197,65 @@ async function openWatching(page: Page, context: BrowserContext, testInfo: TestI
   await page.getByRole("button", { name: "Start Learning" }).click();
   await expect(page.getByTestId("watching-cue-0")).toBeVisible();
 }
+
+async function setPlaybackTime(page: Page, time: number) {
+  const cueIndex = material.transcript.cues.findIndex((cue) => time >= cue.start && time <= cue.end);
+  if (cueIndex < 0) throw new Error(`No fixture cue covers ${time}`);
+  await page.getByTestId(`watching-cue-${cueIndex}`).locator("button").first().click();
+}
+
+test("playback highlights and follows the current subtitle except while editing", async ({ page, context }, testInfo) => {
+  const marks: VideoLearningMark[] = [];
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "__watchScrollCount", { configurable: true, writable: true, value: 0 });
+    HTMLElement.prototype.scrollTo = function (this: HTMLElement) {
+      (window as Window & { __watchScrollCount?: number }).__watchScrollCount =
+        ((window as Window & { __watchScrollCount?: number }).__watchScrollCount || 0) + 1;
+    } as typeof HTMLElement.prototype.scrollTo;
+  });
+  await openWatching(page, context, testInfo, marks);
+
+  await setPlaybackTime(page, 20);
+  await expect(page.getByTestId("watching-cue-1")).toHaveAttribute("aria-current", "true");
+  await expect.poll(() => page.evaluate(() => (window as Window & { __watchScrollCount?: number }).__watchScrollCount || 0)).toBeGreaterThan(0);
+  const beforeEditing = await page.evaluate(() => (window as Window & { __watchScrollCount?: number }).__watchScrollCount || 0);
+
+  await page.getByTestId("watching-cue-note-0").click();
+  await setPlaybackTime(page, 35);
+  await expect(page.getByTestId("watching-cue-2")).toHaveAttribute("data-active", "true");
+  await page.waitForTimeout(100);
+  await expect.poll(() => page.evaluate(() => (window as Window & { __watchScrollCount?: number }).__watchScrollCount || 0)).toBe(beforeEditing);
+
+  await page.getByTestId("watching-cue-0").getByRole("button", { name: "Cancel" }).click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __watchScrollCount?: number }).__watchScrollCount || 0)).toBeGreaterThan(beforeEditing);
+});
+
+test("focus mode keeps watching mounted and reveals the existing assistant", async ({ page, context }, testInfo) => {
+  const marks: VideoLearningMark[] = [];
+  await openWatching(page, context, testInfo, marks);
+  const reader = page.getByTestId("watching-reader");
+  await reader.evaluate((element) => {
+    element.setAttribute("data-mount-check", "preserved");
+  });
+  await page.getByRole("button", { name: "Focus mode" }).click();
+  await expect(page.locator(".dt-reader-shell")).toHaveAttribute("data-watching-focus", "true");
+  await page.getByRole("button", { name: "Show assistant" }).click();
+  await expect(page.locator(".dt-reader-shell")).toHaveAttribute("data-watching-assistant", "true");
+  await expect(reader).toHaveAttribute("data-mount-check", "preserved");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".dt-reader-shell")).toHaveAttribute("data-watching-focus", "false");
+});
+
+test("failed subtitle note keeps the draft open and stops transcript following", async ({ page, context }, testInfo) => {
+  const marks: VideoLearningMark[] = [];
+  await openWatching(page, context, testInfo, marks, { failNote: true });
+  await page.getByTestId("watching-cue-note-0").click();
+  const input = page.getByPlaceholder("Write a note about this subtitle...");
+  await input.fill("Keep this draft");
+  await page.getByTestId("watching-cue-0").getByRole("button", { name: "Save note" }).click();
+  await expect(page.getByText("Note could not be saved.")).toBeVisible();
+  await expect(input).toHaveValue("Keep this draft");
+});
 
 test("desktop: select subtitles, save a key point, and replay from the list", async ({ page, context }, testInfo) => {
   const marks: VideoLearningMark[] = [];

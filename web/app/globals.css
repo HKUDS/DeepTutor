@@ -858,7 +858,8 @@ body[data-picker-open] .dt-mark-pulse {
 /* Focus reading escapes the transformed split-pane containing block. The
    assistant stays mounted as the existing chat column and can be revealed as
    a genuine, collapsible side panel without duplicating chat state. */
-.dt-reader-shell[data-reader-focus="true"] {
+.dt-reader-shell[data-reader-focus="true"],
+.dt-reader-shell[data-watching-focus="true"] {
   --reader-assistant-width: clamp(320px, 36vw, 520px);
   position: fixed;
   inset: 0;
@@ -868,11 +869,33 @@ body[data-picker-open] .dt-mark-pulse {
   visibility: visible;
   transition: none;
 }
-.dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"] {
+.dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"],
+.dt-reader-shell[data-watching-focus="true"][data-watching-assistant="true"] {
   right: var(--reader-assistant-width);
   width: auto;
 }
+@media (min-width: 768px) {
+  .dt-reader-shell[data-watching-focus="true"] [data-watching-layout] {
+    grid-template-columns: minmax(0, 58%) minmax(320px, 42%);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .dt-reader-shell[data-watching-focus="true"] [data-watching-layout] > :first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .dt-reader-shell[data-watching-focus="true"] [data-watching-layout] > :nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .dt-reader-shell[data-watching-focus="true"] [data-watching-layout] > :nth-child(3) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    border-left: 1px solid var(--border);
+  }
+}
 .dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"]
+  ~ .chat-preview-shell,
+.dt-reader-shell[data-watching-focus="true"][data-watching-assistant="true"]
   ~ .chat-preview-shell {
   position: fixed;
   inset: 0 0 0 auto;
@@ -885,14 +908,18 @@ body[data-picker-open] .dt-mark-pulse {
   box-shadow: -12px 0 30px rgb(0 0 0 / 0.08);
 }
 @media (max-width: 767px) {
-  .dt-reader-shell[data-reader-focus="true"] {
+  .dt-reader-shell[data-reader-focus="true"],
+  .dt-reader-shell[data-watching-focus="true"] {
     --reader-assistant-width: min(88vw, 380px);
   }
-  .dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"] {
+  .dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"],
+  .dt-reader-shell[data-watching-focus="true"][data-watching-assistant="true"] {
     right: 0;
     width: 100%;
   }
   .dt-reader-shell[data-reader-focus="true"][data-reader-assistant="true"]
+    ~ .chat-preview-shell,
+  .dt-reader-shell[data-watching-focus="true"][data-watching-assistant="true"]
     ~ .chat-preview-shell {
     width: min(88vw, 380px);
   }

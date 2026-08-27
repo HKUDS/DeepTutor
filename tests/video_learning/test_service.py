@@ -13,8 +13,49 @@ from deeptutor.video_learning.service import (
     ensure_remote_material,
     normalize_cues,
     parse_timestamp,
+    parse_webvtt,
     parse_youtube_url,
 )
+
+
+def test_normalize_cues_decodes_html_entities():
+    assert normalize_cues([{"start": 78, "duration": 2, "text": "&gt;&gt; Speaker"}])[0]["text"] == ">> Speaker"
+
+
+def test_parse_webvtt_decodes_entities_and_removes_youtube_echo_cues():
+    cues = parse_webvtt(
+        """WEBVTT
+
+00:01:16.320 --> 00:01:18.469
+Olman, Dario Amade.
+&gt;&gt; Mark<00:01:16.560><c> Zuckerberg</c><00:01:17.360><c> says,</c><00:01:17.680><c> \"We'll</c><00:01:18.080><c> continue</c><00:01:18.320><c> to</c>
+
+00:01:18.469 --> 00:01:18.479
+&gt;&gt; Mark Zuckerberg says, \"We'll continue to
+
+00:01:18.479 --> 00:01:19.990
+&gt;&gt; Mark Zuckerberg says, \"We'll continue to
+invest<00:01:18.720><c> aggressively</c><00:01:19.200><c> in</c><00:01:19.360><c> infrastructure</c>
+"""
+    )
+
+    assert len(cues) == 2
+    assert cues[0]["text"].endswith('>> Mark Zuckerberg says, "We\'ll continue to')
+    assert cues[1]["text"].startswith("invest aggressively in infrastructure")
+    assert all("&gt;" not in cue["text"] for cue in cues)
+
+
+def test_parse_webvtt_leaves_ordinary_multiline_cues_intact():
+    cues = parse_webvtt(
+        """WEBVTT
+
+00:00:01.000 --> 00:00:03.000
+First line
+second line
+"""
+    )
+
+    assert cues == [{"start": 1.0, "end": 3.0, "text": "First line second line"}]
 
 
 class _InvidiousClient:

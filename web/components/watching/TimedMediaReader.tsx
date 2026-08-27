@@ -10,7 +10,12 @@ import {
   Flag,
   Globe,
   Loader2,
+  Maximize2,
   MessageSquareText,
+  Minimize2,
+  PanelRightClose,
+  PanelRightOpen,
+  PictureInPicture2,
   Plus,
   Sparkles,
   StickyNote,
@@ -41,8 +46,10 @@ import {
 import {
   VIDEO_MARK_COLORS,
   cueIndexesFromSelection,
+  findActiveCueIndex,
   formatWatchTime,
   locatorsForRange,
+  noteMatchesCue,
   rangeFromCues,
 } from "@/lib/video-learning-marks";
 import { WATCHING_ASK_EVENT } from "@/lib/watching-turn-state";
@@ -55,6 +62,18 @@ import { KeyPointsPanel } from "./KeyPointsPanel";
 import { LearningTimeline } from "./LearningTimeline";
 
 type WatchTab = "transcript" | "notes" | "marks";
+
+type WebKitVideoElement = HTMLVideoElement & {
+  webkitPresentationMode?: string;
+  webkitSetPresentationMode?: (mode: "inline" | "fullscreen" | "picture-in-picture") => void;
+};
+
+function showVideoCaptions(video: HTMLVideoElement | null) {
+  if (!video) return;
+  for (let index = 0; index < video.textTracks.length; index += 1) {
+    video.textTracks[index].mode = "showing";
+  }
+}
 
 export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
@@ -70,6 +89,7 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     clearSeek,
   } = useWatching();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const readerRef = useRef<HTMLElement | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const actionBarRef = useRef<HTMLDivElement | null>(null);
   const insideMarksRef = useRef<Set<string>>(new Set());
@@ -96,9 +116,70 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   const [publishMessage, setPublishMessage] = useState("");
   const [rendererMessage, setRendererMessage] = useState("");
   const [openingInvidious, setOpeningInvidious] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [assistantPanelOpen, setAssistantPanelOpen] = useState(false);
+  const [pipSupported, setPipSupported] = useState(false);
+  const [pipActive, setPipActive] = useState(false);
 
   const cumulativePlayedRef = useRef<number>(0);
   const lastPlaybackTimeRef = useRef<number>(-1);
+  const wasEditingTranscriptRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFocusMode(false);
+        setAssistantPanelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusMode]);
+
+  useEffect(() => {
+    const shell = readerRef.current?.closest<HTMLElement>(".dt-reader-shell");
+    if (!shell) return;
+    shell.dataset.watchingFocus = focusMode ? "true" : "false";
+    shell.dataset.watchingAssistant = focusMode && assistantPanelOpen ? "true" : "false";
+    return () => {
+      delete shell.dataset.watchingFocus;
+      delete shell.dataset.watchingAssistant;
+    };
+  }, [assistantPanelOpen, focusMode]);
+
+  useEffect(() => {
+    const video = videoRef.current as WebKitVideoElement | null;
+    if (!video) return;
+    const documentWithPip = document as Document & { pictureInPictureEnabled?: boolean };
+    setPipSupported(
+      Boolean(
+        (documentWithPip.pictureInPictureEnabled && "requestPictureInPicture" in video) ||
+          video.webkitSetPresentationMode
+      )
+    );
+    const onEnter = () => {
+      showVideoCaptions(video);
+      setPipActive(true);
+    };
+    const onLeave = () => {
+      showVideoCaptions(video);
+      setPipActive(false);
+    };
+    const onWebKitModeChange = () => {
+      showVideoCaptions(video);
+      setPipActive(video.webkitPresentationMode === "picture-in-picture");
+    };
+    video.addEventListener("enterpictureinpicture", onEnter);
+    video.addEventListener("leavepictureinpicture", onLeave);
+    video.addEventListener("webkitpresentationmodechanged", onWebKitModeChange);
+    showVideoCaptions(video);
+    return () => {
+      video.removeEventListener("enterpictureinpicture", onEnter);
+      video.removeEventListener("leavepictureinpicture", onLeave);
+      video.removeEventListener("webkitpresentationmodechanged", onWebKitModeChange);
+    };
+  }, [material?.material_id]);
 
   useEffect(() => {
     void getInvidiousStatus()
@@ -184,14 +265,30 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   }, [jobId, material, openUrl, t]);
 
   const marks = useMemo(() => material?.learning.marks || [], [material?.learning.marks]);
-  const activeCue = useMemo(
-    () => material?.transcript.cues.find((cue) => currentTime >= cue.start && currentTime <= cue.end),
-    [material, currentTime]
+  const activeCueIndex = useMemo(
+    () => findActiveCueIndex(material?.transcript.cues || [], currentTime),
+    [material?.transcript.cues, currentTime]
   );
+  const activeCue = activeCueIndex >= 0 ? material?.transcript.cues[activeCueIndex] : undefined;
   const selectedFormat = material ? Object.keys(material.playback.formats)[0] ?? "" : "";
   const format = material?.playback.formats[selectedFormat];
   const playbackError = playbackErrorMaterialId === material?.material_id;
   const duration = material?.source.duration_seconds || material?.metadata.duration_seconds || 0;
+  const editingTranscript = cueNoteDraft !== null || draft !== null;
+
+  useEffect(() => {
+    const wasEditing = wasEditingTranscriptRef.current;
+    wasEditingTranscriptRef.current = editingTranscript;
+    if (editingTranscript || tab !== "transcript" || activeCueIndex < 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = transcriptRef.current;
+      const row = container?.querySelector<HTMLElement>(`[data-cue-index="${activeCueIndex}"]`);
+      if (!container || !row) return;
+      const top = row.offsetTop - (container.clientHeight - row.offsetHeight) / 2;
+      container.scrollTo({ top: Math.max(0, top), behavior: wasEditing ? "auto" : "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeCueIndex, editingTranscript, tab]);
 
   useEffect(() => {
     if (!material) return;
@@ -406,12 +503,37 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   };
 
   const markCurrentTime = () => {
-    const cue = material.transcript.cues.find((row) => currentTime >= row.start && currentTime <= row.end);
+    const cue = activeCueIndex >= 0 ? material.transcript.cues[activeCueIndex] : undefined;
     setDraft({
       start_seconds: currentTime,
       end_seconds: currentTime,
       quote: cue?.text || "",
     });
+  };
+
+  const togglePictureInPicture = async () => {
+    const video = videoRef.current as WebKitVideoElement | null;
+    if (!video) return;
+    const requestPip = (
+      video as HTMLVideoElement & { requestPictureInPicture?: () => Promise<PictureInPictureWindow> }
+    ).requestPictureInPicture;
+    const setWebKitMode = video.webkitSetPresentationMode;
+    showVideoCaptions(video);
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (typeof requestPip === "function") {
+        await requestPip.call(video);
+      } else if (setWebKitMode) {
+        setWebKitMode.call(
+          video,
+          video.webkitPresentationMode === "picture-in-picture" ? "inline" : "picture-in-picture"
+        );
+      }
+      showVideoCaptions(video);
+    } catch {
+      setMarkError(t("Picture in Picture is not available for this video."));
+    }
   };
 
   const setRangeAnchor = (which: "start" | "end") => {
@@ -501,7 +623,11 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
     : "";
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--background)]">
+    <section
+      ref={readerRef}
+      data-testid="watching-reader"
+      className="flex h-full min-h-0 flex-col bg-[var(--background)]"
+    >
       <header className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
         <button
           type="button"
@@ -527,6 +653,40 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
           <h2 className="truncate text-sm font-semibold">{material.metadata.title}</h2>
           <p className="truncate text-xs text-[var(--muted-foreground)]">{material.metadata.author}</p>
         </div>
+        {pipSupported && (
+          <button
+            type="button"
+            onClick={() => void togglePictureInPicture()}
+            aria-label={pipActive ? t("Exit Picture in Picture") : t("Picture in Picture")}
+            title={pipActive ? t("Exit Picture in Picture") : t("Picture in Picture")}
+            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-[var(--muted)] ${pipActive ? "bg-[var(--muted)]" : ""}`}
+          >
+            <PictureInPicture2 size={16} />
+          </button>
+        )}
+        {focusMode && (
+          <button
+            type="button"
+            onClick={() => setAssistantPanelOpen((open) => !open)}
+            aria-label={assistantPanelOpen ? t("Hide assistant") : t("Show assistant")}
+            title={assistantPanelOpen ? t("Hide assistant") : t("Show assistant")}
+            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-[var(--muted)] ${assistantPanelOpen ? "bg-[var(--muted)]" : ""}`}
+          >
+            {assistantPanelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setFocusMode((focused) => !focused);
+            if (focusMode) setAssistantPanelOpen(false);
+          }}
+          aria-label={focusMode ? t("Exit focus mode") : t("Focus mode")}
+          title={focusMode ? t("Exit focus mode") : t("Focus mode")}
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-[var(--muted)] ${focusMode ? "bg-[var(--muted)]" : ""}`}
+        >
+          {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
         <button
           type="button"
           onClick={() => void publishToKb()}
@@ -575,7 +735,7 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
       )}
       {rendererMessage && <div className="border-b border-[var(--border)] px-3 py-1.5 text-xs">{rendererMessage}</div>}
 
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(180px,38%)_auto_1fr]">
+      <div data-watching-layout className="grid min-h-0 flex-1 grid-rows-[minmax(180px,38%)_auto_1fr]">
         <div className="border-b border-[var(--border)] bg-black p-2">
           {format && !playbackError ? (
             <video
@@ -592,6 +752,7 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
               onLoadedMetadata={(event) => {
                 const start = material.source.entry_time_seconds || material.learning.last_position || 0;
                 if (start > 0) event.currentTarget.currentTime = start;
+                showVideoCaptions(event.currentTarget);
               }}
             >
               {material.transcript.cues.length > 0 && (
@@ -600,6 +761,10 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                   src={timedMediaSubtitleUrl(material.material_id)}
                   srcLang={material.transcript.language || "en"}
                   label={material.transcript.language || "Subtitles"}
+                  onLoad={(event) => {
+                    event.currentTarget.track.mode = "showing";
+                    showVideoCaptions(videoRef.current);
+                  }}
                   default
                 />
               )}
@@ -672,57 +837,58 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
             <div className="min-h-0 flex-1 overflow-y-auto p-3" ref={transcriptRef} onMouseUp={captureSelection} onTouchEnd={captureSelection}>
               {material.transcript.cues.length ? (
                 <>
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => askAboutCurrent("explain")}
-                      className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
-                    >
-                      <MessageSquareText size={15} />
-                      {t("Explain here")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void extractKeyPoints()}
-                      disabled={extracting}
-                      className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)] disabled:opacity-50"
-                    >
-                      {extracting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                      {t("Extract key points")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={markCurrentTime}
-                      className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
-                    >
-                      <BookmarkPlus size={15} />
-                      {t("Mark here")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRangeAnchor("start")}
-                      className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
-                    >
-                      <Flag size={15} />
-                      {rangeStart === null ? t("Set start") : `${t("Start")}: ${formatWatchTime(rangeStart)}`}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRangeAnchor("end")}
-                      className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
-                    >
-                      {t("Set end")}
-                    </button>
-                  </div>
-                  {noteMessage && <p className="mb-3 text-xs text-[var(--muted-foreground)]">{noteMessage}</p>}
-                  {draft && (
-                    <div ref={actionBarRef} className="sticky top-0 z-10 mb-3 rounded border border-[var(--border)] bg-[var(--background)] p-2 shadow-sm">
-                      <p className="mb-2 text-xs text-[var(--muted-foreground)]">
-                        {formatWatchTime(draft.start_seconds)}
-                        {draft.end_seconds !== draft.start_seconds ? ` – ${formatWatchTime(draft.end_seconds)}` : ""}
-                      </p>
-                      <div className="mb-2 flex flex-wrap gap-2">
-                        {(["key_point", "question", "review"] as VideoMarkKind[]).map((kind) => (
+                  <div ref={actionBarRef} className="sticky top-0 z-20 mb-3 border-b border-[var(--border)] bg-[var(--background)] pb-3 shadow-sm">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => askAboutCurrent("explain")}
+                        className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+                      >
+                        <MessageSquareText size={15} />
+                        {t("Explain here")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void extractKeyPoints()}
+                        disabled={extracting}
+                        className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)] disabled:opacity-50"
+                      >
+                        {extracting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                        {t("Extract key points")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={markCurrentTime}
+                        className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+                      >
+                        <BookmarkPlus size={15} />
+                        {t("Mark here")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRangeAnchor("start")}
+                        className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+                      >
+                        <Flag size={15} />
+                        {rangeStart === null ? t("Set start") : `${t("Start")}: ${formatWatchTime(rangeStart)}`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRangeAnchor("end")}
+                        className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+                      >
+                        {t("Set end")}
+                      </button>
+                    </div>
+                    {noteMessage && <p className="mb-3 text-xs text-[var(--muted-foreground)]">{noteMessage}</p>}
+                    {draft && (
+                      <div className="mt-3 rounded border border-[var(--border)] bg-[var(--background)] p-2">
+                        <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                          {formatWatchTime(draft.start_seconds)}
+                          {draft.end_seconds !== draft.start_seconds ? ` – ${formatWatchTime(draft.end_seconds)}` : ""}
+                        </p>
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {(["key_point", "question", "review"] as VideoMarkKind[]).map((kind) => (
                           <button
                             key={kind}
                             type="button"
@@ -733,8 +899,8 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                           >
                             {kind === "question" ? t("Question mark") : kind === "review" ? t("Review later") : t("Key point")}
                           </button>
-                        ))}
-                        <button
+                          ))}
+                          <button
                           type="button"
                           className="rounded border border-[var(--border)] px-2 py-1 text-xs"
                           onClick={() => {
@@ -744,31 +910,34 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                           }}
                         >
                           {t("Cancel")}
-                        </button>
+                          </button>
+                        </div>
+                        <input
+                          value={draftNote}
+                          onChange={(event) => setDraftNote(event.target.value)}
+                          placeholder={t("Optional note for this mark")}
+                          className="w-full rounded border border-[var(--border)] bg-transparent px-2 py-1 text-xs"
+                        />
                       </div>
-                      <input
-                        value={draftNote}
-                        onChange={(event) => setDraftNote(event.target.value)}
-                        placeholder={t("Optional note for this mark")}
-                        className="w-full rounded border border-[var(--border)] bg-transparent px-2 py-1 text-xs"
-                      />
-                    </div>
-                  )}
+                    )}
+                  </div>
                   {material.transcript.cues.map((cue, index) => {
-                    const cueActive = activeCue === cue;
+                    const cueActive = activeCueIndex === index;
                     const marked = marks.some(
                       (mark) => mark.end_seconds >= cue.start && mark.start_seconds <= cue.end
                     );
                     const cueNotes = (material.learning.notes || []).filter(
-                      (note) => Boolean(note.quote) && Math.abs(note.time_seconds - cue.start) < 0.5
+                      (note) => noteMatchesCue(note, cue)
                     );
                     const noteOpen = cueNoteDraft?.cueIndex === index;
                     return (
                       <div
                         key={`${cue.start}-${index}`}
                         data-cue-index={index}
+                        data-active={cueActive ? "true" : "false"}
                         data-testid={`watching-cue-${index}`}
-                        className={`mb-1 flex w-full items-start gap-2 rounded p-2 text-sm ${cueActive ? "bg-[var(--muted)]" : "hover:bg-[var(--muted)]/60"} ${marked ? "ring-1 ring-amber-700/40" : ""}`}
+                        aria-current={cueActive ? "true" : undefined}
+                        className={`mb-1 flex w-full items-start gap-2 rounded border-l-4 p-2 text-sm ${cueActive ? "border-amber-600 bg-amber-500/15 font-medium" : "border-transparent hover:bg-[var(--muted)]/60"} ${marked ? "ring-1 ring-amber-700/40" : ""}`}
                       >
                         <button
                           type="button"
@@ -955,6 +1124,17 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
+      {focusMode && assistantPanelOpen && (
+        <button
+          type="button"
+          onClick={() => setAssistantPanelOpen(false)}
+          aria-label={t("Hide assistant")}
+          title={t("Hide assistant")}
+          className="fixed left-1 top-1 z-[102] inline-flex h-8 w-8 items-center justify-center rounded bg-[var(--card)] text-[var(--foreground)] shadow md:hidden"
+        >
+          <PanelRightClose size={15} />
+        </button>
+      )}
     </section>
   );
 }

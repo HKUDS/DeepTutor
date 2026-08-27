@@ -17,4 +17,11 @@ test("the player exposes stored transcript cues as default captions", () => {
   assert.match(source, /kind="captions"/);
   assert.match(source, /timedMediaSubtitleUrl\(material\.material_id\)/);
   assert.match(source, /default\b/);
+  assert.match(source, /textTracks/);
+  assert.match(source, /mode = "showing"/);
+  assert.match(source, /requestPictureInPicture/);
+  assert.match(source, /webkitpresentationmodechanged/);
+  assert.match(source, /data-active/);
+  assert.match(source, /aria-current/);
+  assert.match(source, /scrollTo/);
 });
