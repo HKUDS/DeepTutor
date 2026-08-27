@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ALargeSmall,
   ChevronLeft,
@@ -24,6 +31,7 @@ import { getBilingualUnit, getUnitText } from "@/lib/reading-api";
 import {
   activeReaderHeading,
   extractReaderHeadings,
+  readerLinesWithHeadings,
   type ReaderHeading,
 } from "@/lib/reading-outline";
 import { segmentTextByQuotes } from "@/lib/reading-quote-locator";
@@ -267,26 +275,29 @@ export function TextUnitView({
     if (containerRef.current) containerRef.current.scrollTop = 0;
   }, [jump, unitCount]);
 
-  const runs = useMemo(
+  const legacyAnnotations = useMemo(
     () =>
-      segmentTextByQuotes(
-        text,
-        annotations.filter((a) => a.locator === locator),
+      annotations.filter(
+        (annotation) =>
+          annotation.locator === locator &&
+          toRecogitoTextAnnotation(annotation, text) === null,
       ),
     [text, annotations, locator],
+  );
+  const runs = useMemo(
+    () => segmentTextByQuotes(text, legacyAnnotations),
+    [legacyAnnotations, text],
   );
 
   const pageHeadings = useMemo(
     () =>
-      bilingualGroups.length || contentFormat === "markdown"
-        ? extractReaderHeadings(
-            bilingualGroups.length
-              ? bilingualGroups.map((group) => group.source_markdown)
-              : [text],
-            locator,
-          )
-        : [],
-    [bilingualGroups, contentFormat, locator, text],
+      extractReaderHeadings(
+        bilingualGroups.length
+          ? bilingualGroups.map((group) => group.source_markdown)
+          : [text],
+        locator,
+      ),
+    [bilingualGroups, locator, text],
   );
 
   useEffect(() => {
@@ -370,11 +381,9 @@ export function TextUnitView({
     activeHeadingChangeRef.current?.(next);
   }, [pageHeadings]);
 
-  const richAnnotations = contentFormat === "markdown" || bilingualGroups.length > 0;
-
   useEffect(() => {
     const article = articleRef.current;
-    if (!article || !richAnnotations || loading || error) return;
+    if (!article || loading || error) return;
     let cancelled = false;
     let annotator: { destroy: () => void } | null = null;
 
@@ -441,7 +450,6 @@ export function TextUnitView({
     loading,
     locator,
     onAnnotationClick,
-    richAnnotations,
     text,
   ]);
 
@@ -458,7 +466,7 @@ export function TextUnitView({
     }
     const tools = textSelectorToolsRef.current;
     const selector =
-      richAnnotations && tools && articleRef.current
+      tools && articleRef.current
         ? tools.rangeToSelector(range, articleRef.current)
         : null;
     const quote = selector?.quote || cleanQuote(selection.toString());
@@ -492,7 +500,7 @@ export function TextUnitView({
         ? { x: last.left + last.width / 2, y: last.top }
         : { x: 0, y: 0 },
     });
-  }, [locator, onSelection, richAnnotations]);
+  }, [locator, onSelection]);
 
   const canPrev = locator > 1;
   const canNext = locator < unitCount;
@@ -705,10 +713,12 @@ export function TextUnitView({
                 variant="prose"
                 allowHtml={false}
               />
-            ) : runs.length === 0 ? (
+            ) : !text.trim() ? (
               <span className="text-[var(--muted-foreground)]">
                 {t("This section has no extractable text.")}
               </span>
+            ) : legacyAnnotations.length === 0 ? (
+              <TextWithHeadings text={text} headings={pageHeadings} />
             ) : (
               <div className="whitespace-pre-wrap">{runs.map((run, index) =>
                 run.mark ? (
@@ -744,6 +754,54 @@ export function TextUnitView({
           </article>
         )}
       </div>
+    </div>
+  );
+}
+
+function TextWithHeadings({
+  text,
+  headings,
+}: {
+  text: string;
+  headings: ReaderHeading[];
+}) {
+  const lines = useMemo(
+    () => readerLinesWithHeadings(text, headings),
+    [headings, text],
+  );
+
+  return (
+    <div className="whitespace-pre-wrap">
+      {lines.map((line, lineIndex) => {
+        const key = `line-${lineIndex}`;
+        if (line.heading) {
+          const Heading = `h${line.heading.level}` as
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6";
+          return (
+            <Fragment key={key}>
+              {lineIndex > 0 && "\n"}
+              <Heading
+                id={line.heading.id}
+                data-reader-heading-id={line.heading.id}
+                className="mt-5 mb-2 font-serif text-[var(--foreground)] first:mt-0"
+              >
+                {line.text}
+              </Heading>
+            </Fragment>
+          );
+        }
+        return (
+          <Fragment key={key}>
+            {lineIndex > 0 && "\n"}
+            {line.text}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

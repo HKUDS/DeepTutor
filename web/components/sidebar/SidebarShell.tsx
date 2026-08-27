@@ -242,7 +242,7 @@ export function SidebarShell({
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
           <Link
             href="/"
-            aria-label="DeepTutor"
+            aria-label={t("DeepTutor")}
             className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
           >
             <Image
@@ -373,7 +373,11 @@ export function SidebarShell({
     <aside className="flex w-[220px] h-dvh shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/" className="group flex items-center gap-1.5">
+        <Link
+          href="/"
+          aria-label={t("DeepTutor")}
+          className="group flex items-center gap-1.5"
+        >
           <Image
             src="/logo.png"
             alt="DeepTutor"

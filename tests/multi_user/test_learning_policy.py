@@ -152,6 +152,19 @@ async def test_http_surface_guard_returns_403_for_default_denied_surface(
 
 
 @pytest.mark.asyncio
+async def test_surface_guard_accepts_websocket_connections(as_user):
+    from starlette.requests import HTTPConnection
+
+    from deeptutor.api.routers.auth import require_learning_surface
+
+    connection = HTTPConnection(
+        {"type": "websocket", "path": "/api/v1/ws", "headers": []}
+    )
+    with as_user("u_admin", role="admin"):
+        await require_learning_surface(connection)
+
+
+@pytest.mark.asyncio
 async def test_auth_status_exposes_only_the_public_policy(monkeypatch, grantable_alice):
     from deeptutor.api.routers import auth as auth_router
 

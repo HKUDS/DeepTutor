@@ -36,7 +36,15 @@ async function illustratedEpub(): Promise<Buffer> {
 
 test("faithfully renders EPUB resources, navigates, and restores its CFI", async ({
   page,
+  context,
 }, testInfo) => {
+  await context.addCookies([
+    {
+      name: "dt_token",
+      value: "e30.eyJleHAiOjQxMDI0NDQ4MDB9.fixture",
+      url: String(testInfo.project.use.baseURL || "http://localhost:3782"),
+    },
+  ]);
   const filename = `faithful-reader-${Date.now()}.epub`;
   await page.goto("/home?capability=immersive_reading");
   const fileInput = page

@@ -21,6 +21,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
+from starlette.requests import HTTPConnection
 
 from deeptutor.services.config import load_auth_settings
 
@@ -410,7 +411,7 @@ def _learning_surface_for_path(path: str) -> str:
 
 
 async def require_learning_surface(
-    request: Request,
+    request: HTTPConnection,
     _: TokenPayload | None = Depends(require_auth),
 ) -> None:
     """Second-stage HTTP guard installed after ``require_auth``.

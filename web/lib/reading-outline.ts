@@ -11,6 +11,12 @@ export interface ReaderHeading {
   level: number;
 }
 
+export interface ReaderDisplayLine {
+  /** Original source line, including Markdown heading markers. */
+  text: string;
+  heading: ReaderHeading | null;
+}
+
 export function headingAnchor(locator: number, index: number): string {
   return `dt-reader-heading-${locator}-${index + 1}`;
 }
@@ -29,6 +35,42 @@ function markdownHeading(
     title,
     level: match[1].length,
   };
+}
+
+/**
+ * Attach outline entries to source lines without changing their text.
+ *
+ * Recogito positions resolve against ``article.textContent``. Preserving the
+ * Markdown markers and newlines keeps that DOM text identical to the source
+ * used when W3C selectors were stored.
+ */
+export function readerLinesWithHeadings(
+  text: string,
+  headings: ReaderHeading[],
+): ReaderDisplayLine[] {
+  let fence: string | null = null;
+  let headingIndex = 0;
+  return text.split("\n").map((line) => {
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fenceMatch) {
+      if (!fence) fence = fenceMatch[1];
+      else if (line.trim().startsWith(fence)) fence = null;
+      return { text: line, heading: null };
+    }
+    if (fence) return { text: line, heading: null };
+
+    const parsed = markdownHeading(line, 0, 0);
+    if (!parsed) return { text: line, heading: null };
+    const expected = headings[headingIndex++];
+    if (
+      !expected ||
+      expected.title !== parsed.title ||
+      expected.level !== parsed.level
+    ) {
+      return { text: line, heading: null };
+    }
+    return { text: line, heading: expected };
+  });
 }
 
 /** Extract source headings while leaving fenced code and translation blocks alone. */

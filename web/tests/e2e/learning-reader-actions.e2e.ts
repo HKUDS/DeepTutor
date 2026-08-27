@@ -169,6 +169,27 @@ test("clicking a rich text annotation activates its sidebar entry", async ({ pag
   await expect(highlight).toBeVisible();
   const activeEntry = page.getByRole("button").filter({ hasText: "Wave behavior" });
   await expect(activeEntry).not.toHaveClass(/border-\[var\(--ring\)\]/);
-  await highlight.click();
+  // Recogito's highlight layer is deliberately pointer-transparent so text
+  // selection still works. Click the annotated coordinates on the article,
+  // matching the interaction a reader performs instead of targeting the
+  // visual overlay itself.
+  const article = page.locator("article.r6o-annotatable");
+  const articleBox = await article.boundingBox();
+  const highlightBox = await highlight.boundingBox();
+  if (!articleBox || !highlightBox) {
+    throw new Error("Reader annotation boxes were not measurable");
+  }
+  await article.click({
+    position: {
+      x: Math.max(
+        1,
+        Math.round(highlightBox.x - articleBox.x + highlightBox.width / 2),
+      ),
+      y: Math.max(
+        1,
+        Math.round(highlightBox.y - articleBox.y + highlightBox.height / 2),
+      ),
+    },
+  });
   await expect(activeEntry).toHaveClass(/border-\[var\(--ring\)\]/);
 });

@@ -178,16 +178,34 @@ export default function PageReader({
     // from surviving into the hydrated chapter. "End" must wait for content.
     if (waitingForContent && placement === "end") return;
 
-    pendingScrollPlacementRef.current = "start";
-    pendingScrollPlacementPageIdRef.current = null;
+    if (placement === "start") {
+      pendingScrollPlacementRef.current = "start";
+      pendingScrollPlacementPageIdRef.current = null;
+    }
     const pendingFrames: number[] = [];
+    let settleTimer: number | null = null;
+    const placeScroll = () => {
+      scrollContainer.scrollTop =
+        placement === "end" ? scrollContainer.scrollHeight : 0;
+      updateReadingProgress();
+    };
     pendingFrames.push(
       window.requestAnimationFrame(() => {
         pendingFrames.push(
           window.requestAnimationFrame(() => {
-            scrollContainer.scrollTop =
-              placement === "end" ? scrollContainer.scrollHeight : 0;
-            updateReadingProgress();
+            placeScroll();
+            // Opening the previous chapter also expands its header. Re-apply
+            // the end placement after that 200 ms layout transition settles,
+            // otherwise the viewport can grow below the original scroll edge.
+            if (placement === "end") {
+              settleTimer = window.setTimeout(() => {
+                if (pendingScrollPlacementPageIdRef.current === page.id) {
+                  placeScroll();
+                  pendingScrollPlacementRef.current = "start";
+                  pendingScrollPlacementPageIdRef.current = null;
+                }
+              }, 240);
+            }
           }),
         );
       }),
@@ -197,6 +215,7 @@ export default function PageReader({
       for (const frame of pendingFrames) {
         window.cancelAnimationFrame(frame);
       }
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
     };
   }, [scrollContainer, page, loading, updateReadingProgress]);
 

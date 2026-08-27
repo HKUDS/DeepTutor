@@ -1,5 +1,15 @@
 import { test, expect } from "@playwright/test";
 
+test.beforeEach(async ({ context }, testInfo) => {
+  await context.addCookies([
+    {
+      name: "dt_token",
+      value: "e30.eyJleHAiOjQxMDI0NDQ4MDB9.fixture",
+      url: String(testInfo.project.use.baseURL || "http://localhost:3782"),
+    },
+  ]);
+});
+
 // Minimal compliance and UX checks without external deps (axe-core)
 // Focus on semantic landmarks, headings, alt text, link names, and basic error messaging.
 
