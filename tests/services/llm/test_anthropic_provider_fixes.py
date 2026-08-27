@@ -1,9 +1,10 @@
 """Regression tests for Anthropic provider support of newer Claude models.
 
-Covers three fixes:
+Covers four fixes:
 1. A ``base_url`` ending in ``/v1`` must not be doubled by the SDK.
 2. ``temperature`` is omitted for effort-based models that reject it.
 3. ``cache_control`` breakpoints never exceed the Anthropic limit of 4.
+4. Temperature stays on the wire but moves behind ``extra_body`` for SDK 1.x.
 """
 
 from __future__ import annotations
@@ -56,9 +57,10 @@ def test_temperature_omitted_for_effort_based_models() -> None:
         "claude-fable-5",
     ):
         assert "temperature" not in _kwargs(provider, model), model
+        assert "extra_body" not in _kwargs(provider, model), model
 
 
-def test_temperature_kept_for_models_that_accept_it() -> None:
+def test_temperature_uses_extra_body_for_models_that_accept_it() -> None:
     provider = _provider()
     # Opus 4.6 / Sonnet 4.6 still accept temperature — omitting it there
     # would silently drop the user's configured setting.
@@ -69,7 +71,9 @@ def test_temperature_kept_for_models_that_accept_it() -> None:
         "claude-haiku-4-5-20251001",
         "claude-opus-4-1",
     ):
-        assert "temperature" in _kwargs(provider, model), model
+        kwargs = _kwargs(provider, model)
+        assert "temperature" not in kwargs, model
+        assert kwargs["extra_body"]["temperature"] == 0.7, model
 
 
 def _count_cache_control(system: Any, messages: list[dict[str, Any]], tools: list) -> int:
@@ -123,6 +127,7 @@ def test_effort_based_families_map_real_effort_to_adaptive_thinking() -> None:
         kwargs = _kwargs_with_effort(provider, model, "high")
         assert kwargs["thinking"] == {"type": "adaptive"}, model
         assert "temperature" not in kwargs, model
+        assert "extra_body" not in kwargs, model
         assert kwargs["max_tokens"] == 1024, model  # no budget headroom inflation
 
 
@@ -138,7 +143,7 @@ def test_older_models_keep_budget_tokens_thinking() -> None:
     kwargs = _kwargs_with_effort(provider, "claude-opus-4-6", "high")
     assert kwargs["thinking"]["type"] == "enabled"
     assert kwargs["thinking"]["budget_tokens"] >= 8192
-    assert kwargs["temperature"] == 1.0
+    assert kwargs["extra_body"]["temperature"] == 1.0
 
 
 def test_older_models_omit_thinking_for_off_sentinels() -> None:
@@ -148,7 +153,7 @@ def test_older_models_omit_thinking_for_off_sentinels() -> None:
     for effort in ("none", "minimal", "minimum"):
         kwargs = _kwargs_with_effort(provider, "claude-opus-4-6", effort)
         assert "thinking" not in kwargs, effort
-        assert kwargs["temperature"] == 0.7, effort
+        assert kwargs["extra_body"]["temperature"] == 0.7, effort
 
 
 def test_older_models_translate_adaptive_into_budget_thinking() -> None:
@@ -157,7 +162,7 @@ def test_older_models_translate_adaptive_into_budget_thinking() -> None:
     provider = _provider()
     kwargs = _kwargs_with_effort(provider, "claude-sonnet-4-5", "adaptive")
     assert kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4096}
-    assert kwargs["temperature"] == 1.0
+    assert kwargs["extra_body"]["temperature"] == 1.0
 
 
 def test_off_sentinels_leave_tool_choice_to_the_caller() -> None:
