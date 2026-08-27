@@ -73,6 +73,8 @@ export interface TextUnitViewProps {
   onHeadingsChange?: (headings: ReaderHeading[]) => void;
   onActiveHeadingChange?: (headingId: string | null) => void;
   headingJump?: { id: string; nonce: number } | null;
+  maxLocator?: number;
+  onBlockedForward?: () => void;
 }
 
 /**
@@ -98,6 +100,8 @@ export function TextUnitView({
   onHeadingsChange,
   onActiveHeadingChange,
   headingJump,
+  maxLocator,
+  onBlockedForward,
 }: TextUnitViewProps) {
   const { t } = useTranslation();
   const readerRootRef = useRef<HTMLDivElement | null>(null);
@@ -251,13 +255,17 @@ export function TextUnitView({
   // why it cannot simply be computed from `jump`.
   useEffect(() => {
     if (!jump) return;
-    const target = Math.min(Math.max(1, jump.locator), unitCount);
+    const target = Math.min(
+      Math.max(1, jump.locator),
+      maxLocator ?? unitCount,
+      unitCount,
+    );
     setLocator(target);
     // Assigned rather than animated: programmatic smooth scrolling is a silent
     // no-op in some embedded browsers, and landing at the top of the section is
     // the part that matters. CSS `scroll-behavior` supplies the easing.
     if (containerRef.current) containerRef.current.scrollTop = 0;
-  }, [jump, unitCount]);
+  }, [jump, maxLocator, unitCount]);
 
   useEffect(() => {
     const article = articleRef.current;
@@ -464,11 +472,11 @@ export function TextUnitView({
           ? { background: "#f4ecd8", color: "#473c2c" }
           : readerTheme === "night"
             ? { background: "#16181d", color: "#e8e5df" }
-            // A desk, not a page — the page is the article below, the same
-            // relationship a scrolled PDF already has between its grey field
-            // and the white sheets on it. Sepia and Night are whole-surface
-            // paper by design, so they keep painting edge to edge.
-            : { background: "var(--secondary)" }
+            : // A desk, not a page — the page is the article below, the same
+              // relationship a scrolled PDF already has between its grey field
+              // and the white sheets on it. Sepia and Night are whole-surface
+              // paper by design, so they keep painting edge to edge.
+              { background: "var(--secondary)" }
       }
     >
       {/* Display controls on the left, position on the right.
@@ -547,9 +555,13 @@ export function TextUnitView({
             label={t("Next {{unit}}", { unit: t(unitLabel(unit)) })}
             icon={ChevronRight}
             disabled={!canNext}
-            onClick={() =>
-              setLocator((current) => Math.min(unitCount, current + 1))
-            }
+            onClick={() => {
+              if (maxLocator && locator >= maxLocator && locator < unitCount) {
+                onBlockedForward?.();
+                return;
+              }
+              setLocator((current) => Math.min(unitCount, current + 1));
+            }}
           />
         </div>
       </div>
@@ -587,9 +599,7 @@ export function TextUnitView({
               paperSheet
                 ? "rounded-2xl border border-[var(--border)] bg-[var(--card)] px-6 py-8 shadow-[0_1px_3px_rgba(0,0,0,0.06),0_10px_30px_-16px_rgba(0,0,0,0.14)] sm:px-10 "
                 : ""
-            }${isWebMarkdown ? "" : "whitespace-pre-wrap "}${
-              serif ? "font-serif" : "font-sans"
-            }`}
+            }${isWebMarkdown ? "" : "whitespace-pre-wrap "}${serif ? "font-serif" : "font-sans"}`}
             style={{
               // The sheet's padding is added on top of the line width, so
               // "84ch" stays 84 characters of text either way.
@@ -674,12 +684,7 @@ function TextWithHeadings({
         const key = `line-${lineIndex}`;
         if (line.heading) {
           const Heading = `h${line.heading.level}` as
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6";
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
           const titleOffset = line.text.indexOf(line.heading.title);
           const markerPrefix =
             titleOffset >= 0 ? line.text.slice(0, titleOffset) : "";

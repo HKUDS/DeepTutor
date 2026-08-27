@@ -15,7 +15,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import reading
-from deeptutor.reading import ReadingCatalogStore, ReadingError, ReadingStore
+from deeptutor.reading import FocusEvaluationError, ReadingCatalogStore, ReadingError, ReadingStore
+import deeptutor.reading.focus as focus_service
 from deeptutor.services.path_service import PathService
 
 pymupdf = pytest.importorskip("pymupdf")
@@ -58,6 +59,17 @@ def _upload(client: TestClient, name: str = "attention.pdf", data: bytes | None 
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _upload_long_text(client: TestClient) -> dict:
+    paragraphs = [
+        f"Chapter material {index}. " + ("substantive detail " * 80) for index in range(36)
+    ]
+    return _upload(
+        client,
+        name="long-reading.txt",
+        data="\n\n".join(paragraphs).encode("utf-8"),
+    )
 
 
 def _epub_bytes(*, language: str = "en", paragraph: str = "Readable EPUB text.") -> bytes:
@@ -208,6 +220,100 @@ def test_delete_material_restores_content_when_catalog_cleanup_fails(
     assert response.json()["detail"] == "catalog cleanup failed"
     assert ReadingStore().manifest(material_id).material_id == material_id
     assert ReadingCatalogStore().get_material(material_id) is not None
+
+
+def test_focus_api_rejects_a_later_checkpoint_without_changing_progress(
+    client: TestClient,
+) -> None:
+    material = _upload_long_text(client)
+    base = f"/api/reading/materials/{material['material_id']}/focus"
+    started = client.post(f"{base}/start", json={"reset": False})
+    assert started.status_code == 200, started.text
+    focus = started.json()
+    assert len(focus["checkpoints"]) >= 2
+
+    response = client.post(
+        f"{base}/check",
+        json={
+            "checkpoint_id": focus["checkpoints"][1]["checkpoint_id"],
+            "run_id": focus["run_id"],
+            "revision": focus["revision"],
+            "summary": "This summary is long enough to satisfy validation.",
+            "reflection": "This part affected me.",
+        },
+    )
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]["expected_checkpoint_id"]
+        == focus["expected_checkpoint"]["checkpoint_id"]
+    )
+    current = client.get(base).json()
+    assert current["passed_checkpoint_ids"] == []
+    assert current["revision"] == focus["revision"]
+
+
+@pytest.mark.parametrize(
+    "method,suffix,payload",
+    [
+        ("GET", "", None),
+        ("POST", "/start", {"reset": False}),
+        ("POST", "/stop", None),
+        (
+            "POST",
+            "/check",
+            {
+                "checkpoint_id": "checkpoint",
+                "run_id": "run",
+                "revision": 1,
+                "summary": "A sufficiently detailed summary.",
+                "reflection": "This mattered to me.",
+            },
+        ),
+    ],
+)
+def test_focus_routes_reject_unassigned_learning_materials(
+    client: TestClient, monkeypatch, method, suffix, payload
+) -> None:
+    def deny(material_id):
+        assert material_id == "rm_123456abcdef"
+        raise PermissionError("Reading material is not assigned")
+
+    monkeypatch.setattr(reading, "assert_learning_material", deny)
+    response = client.request(
+        method, f"/api/reading/materials/rm_123456abcdef/focus{suffix}", json=payload
+    )
+    assert response.status_code == 403, response.text
+    assert "not assigned" in response.json()["detail"]
+
+
+def test_focus_provider_error_is_visible_and_does_not_create_a_zero_score(
+    client: TestClient, monkeypatch
+) -> None:
+    material = _upload_long_text(client)
+    base = f"/api/reading/materials/{material['material_id']}/focus"
+    focus = client.post(f"{base}/start", json={"reset": False}).json()
+
+    async def unavailable(*_args: str):
+        raise FocusEvaluationError("The configured model is offline.")
+
+    monkeypatch.setattr(focus_service, "evaluate_focus_answer", unavailable)
+    response = client.post(
+        f"{base}/check",
+        json={
+            "checkpoint_id": focus["expected_checkpoint"]["checkpoint_id"],
+            "run_id": focus["run_id"],
+            "revision": focus["revision"],
+            "summary": "This summary is long enough to satisfy validation.",
+            "reflection": "This part affected me.",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "offline" in response.json()["detail"]
+    current = client.get(base).json()
+    assert current["revision"] == focus["revision"]
+    assert current["attempts"] == []
 
 
 def test_supported_formats_names_faithful_documents_and_media(client: TestClient) -> None:

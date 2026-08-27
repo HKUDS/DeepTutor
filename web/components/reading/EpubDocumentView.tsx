@@ -111,6 +111,8 @@ export interface EpubDocumentViewProps {
     sourceHref?: string;
   } | null;
   onError?: (message: string) => void;
+  maxLocator?: number;
+  onBlockedForward?: () => void;
 }
 
 /** Source-faithful, paginated EPUB renderer aligned to server locators. */
@@ -127,6 +129,8 @@ export function EpubDocumentView({
   onHeadingsChange,
   headingJump,
   onError,
+  maxLocator,
+  onBlockedForward,
 }: EpubDocumentViewProps) {
   const { t } = useTranslation();
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -141,6 +145,9 @@ export function EpubDocumentView({
   const headingsChangeRef = useRef(onHeadingsChange);
   const headingsByLocatorRef = useRef<Map<number, ReaderHeading[]>>(new Map());
   const errorRef = useRef(onError);
+  const maxLocatorRef = useRef(maxLocator);
+  const blockedForwardRef = useRef(onBlockedForward);
+  const lastSafeAnchorRef = useRef("");
   const locatorRef = useRef(1);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -164,6 +171,12 @@ export function EpubDocumentView({
   useEffect(() => {
     errorRef.current = onError;
   }, [onError]);
+  useEffect(() => {
+    maxLocatorRef.current = maxLocator;
+  }, [maxLocator]);
+  useEffect(() => {
+    blockedForwardRef.current = onBlockedForward;
+  }, [onBlockedForward]);
 
   const turnPage = useCallback((direction: EpubPageTurnDirection) => {
     const rendition = renditionRef.current;
@@ -184,6 +197,16 @@ export function EpubDocumentView({
       const href = location.start?.href ?? "";
       const nextLocator = locatorForEpubHref(href, refsRef.current) || 1;
       const cfi = location.start?.cfi ?? "";
+      if (maxLocatorRef.current && nextLocator > maxLocatorRef.current) {
+        blockedForwardRef.current?.();
+        const fallback =
+          lastSafeAnchorRef.current ||
+          book?.spine.get(maxLocatorRef.current - 1)?.href ||
+          refsRef.current.find((row) => row.locator === maxLocatorRef.current)
+            ?.source_href;
+        if (fallback) void rendition?.display(fallback);
+        return;
+      }
       const percentage = Math.min(
         1,
         Math.max(
@@ -196,6 +219,7 @@ export function EpubDocumentView({
         ),
       );
       locatorRef.current = nextLocator;
+      lastSafeAnchorRef.current = cfi || href;
       visibleChangeRef.current?.(nextLocator);
       headingsChangeRef.current?.(
         headingsByLocatorRef.current.get(nextLocator) ?? [],
@@ -354,14 +378,19 @@ export function EpubDocumentView({
         rendition.on("selected", onSelected);
         rendition.on("keydown", onRenditionKey);
         rendition.hooks.content.register(installContentSafety);
+        const restoredLocator = Math.min(
+          position?.locator ?? 1,
+          maxLocatorRef.current ?? unitCount,
+        );
         const fallbackHref =
-          book.spine.get((position?.locator ?? 1) - 1)?.href ??
-          refsRef.current.find(
-            (ref) => ref.locator === (position?.locator ?? 1),
-          )?.source_href;
+          book.spine.get(restoredLocator - 1)?.href ??
+          refsRef.current.find((ref) => ref.locator === restoredLocator)
+            ?.source_href;
         try {
           await rendition.display(
-            position?.source_anchor || fallbackHref || undefined,
+            position && position.locator <= restoredLocator
+              ? position.source_anchor || fallbackHref || undefined
+              : fallbackHref || undefined,
           );
         } catch {
           await rendition.display(
@@ -474,13 +503,14 @@ export function EpubDocumentView({
 
   useEffect(() => {
     if (!jump || !renditionRef.current) return;
-    const sectionTarget = bookRef.current?.spine.get(jump.locator - 1);
-    const ref = unitRefs.find((row) => row.locator === jump.locator);
+    const locator = Math.min(jump.locator, maxLocator ?? unitCount);
+    const sectionTarget = bookRef.current?.spine.get(locator - 1);
+    const ref = unitRefs.find((row) => row.locator === locator);
     const target = sectionTarget?.href ?? ref?.source_href;
     if (!target) return;
     void renditionRef.current.display(target).then(async () => {
       if (!jump.quote || !bookRef.current || !renditionRef.current) return;
-      const section = bookRef.current.spine.get(jump.locator - 1);
+      const section = bookRef.current.spine.get(locator - 1);
       if (!section) return;
       try {
         await section.load(bookRef.current.load.bind(bookRef.current));
@@ -491,7 +521,9 @@ export function EpubDocumentView({
           {},
           undefined,
           "dt-epub-jump",
-          { fill: "rgba(99, 102, 241, 0.35)" },
+          {
+            fill: "rgba(99, 102, 241, 0.35)",
+          },
         );
         window.setTimeout(() => {
           renditionRef.current?.annotations.remove(matches[0].cfi, "highlight");
@@ -500,7 +532,7 @@ export function EpubDocumentView({
         // Reaching the requested locator is still useful if quote search fails.
       }
     });
-  }, [jump, unitRefs]);
+  }, [jump, maxLocator, unitCount, unitRefs]);
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden bg-[var(--background)] pb-[env(safe-area-inset-bottom)]">

@@ -49,6 +49,8 @@ export interface PdfDocumentViewProps {
   onSelection: (payload: SelectionPayload | null) => void;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
   onVisibleLocatorChange?: (locator: number) => void;
+  maxLocator?: number;
+  onBlockedForward?: () => void;
 }
 
 /**
@@ -69,6 +71,8 @@ export function PdfDocumentView({
   onSelection,
   onAnnotationClick,
   onVisibleLocatorChange,
+  maxLocator,
+  onBlockedForward,
 }: PdfDocumentViewProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -98,6 +102,7 @@ export function PdfDocumentView({
   const fallbackRatio =
     loaded?.materialId === materialId ? loaded.ratio : 1.414; // A4 until measured
   const error = loadError?.materialId === materialId ? loadError.message : null;
+  const visibleUnitCount = Math.min(unitCount, maxLocator ?? unitCount);
 
   // -- document ------------------------------------------------------------
 
@@ -213,7 +218,7 @@ export function PdfDocumentView({
       root.removeEventListener("scroll", onScroll);
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [doc, unitCount, pageWidth]);
+  }, [doc, pageWidth, visibleUnitCount]);
 
   useEffect(() => {
     onVisibleLocatorChange?.(visibleLocator);
@@ -264,7 +269,7 @@ export function PdfDocumentView({
 
   useEffect(() => {
     if (!jump || !doc) return;
-    const locator = Math.min(Math.max(1, jump.locator), unitCount);
+    const locator = Math.min(Math.max(1, jump.locator), visibleUnitCount);
     const nonce = jump.nonce;
     const quote = jump.quote;
     let cancelled = false;
@@ -326,7 +331,7 @@ export function PdfDocumentView({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [jump, doc, unitCount, scrollToLocator]);
+  }, [jump, doc, scrollToLocator, visibleUnitCount]);
 
   // Tagged with the nonce that produced it, so the previous jump's highlight is
   // superseded by derivation — no timer, and no way for a stale highlight to
@@ -424,25 +429,33 @@ export function PdfDocumentView({
         </div>
       ) : (
         <div className="flex flex-col items-center" style={{ gap: PAGE_GAP }}>
-          {Array.from({ length: unitCount }, (_, index) => index + 1).map(
-            (locator) => (
-              <PdfPage
-                key={locator}
-                doc={doc}
-                locator={locator}
-                width={pageWidth}
-                fallbackRatio={fallbackRatio}
-                active={isActive(locator)}
-                annotations={annotations}
-                highlightedAnnotationId={highlightedAnnotationId}
-                flashRects={
-                  activeFlash?.locator === locator
-                    ? activeFlash.rects
-                    : undefined
-                }
-                onAnnotationClick={onAnnotationClick}
-              />
-            ),
+          {Array.from(
+            { length: visibleUnitCount },
+            (_, index) => index + 1,
+          ).map((locator) => (
+            <PdfPage
+              key={locator}
+              doc={doc}
+              locator={locator}
+              width={pageWidth}
+              fallbackRatio={fallbackRatio}
+              active={isActive(locator)}
+              annotations={annotations}
+              highlightedAnnotationId={highlightedAnnotationId}
+              flashRects={
+                activeFlash?.locator === locator ? activeFlash.rects : undefined
+              }
+              onAnnotationClick={onAnnotationClick}
+            />
+          ))}
+          {visibleUnitCount < unitCount && (
+            <button
+              type="button"
+              onClick={onBlockedForward}
+              className="my-3 inline-flex rounded-full border border-[var(--primary)]/30 bg-[var(--background)] px-4 py-2 text-xs font-medium text-[var(--primary)] shadow-sm hover:bg-[var(--muted)]"
+            >
+              {t("Complete Focus-Check to continue")}
+            </button>
           )}
         </div>
       )}

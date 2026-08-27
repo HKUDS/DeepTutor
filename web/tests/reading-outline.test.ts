@@ -169,7 +169,11 @@ test("page headings are searchable from the workspace navigator", () => {
   // where a reader looks for structure — so the reader reports them up and
   // owns none of the navigation UI itself.
   assert.match(reader, /onHeadingsChange/);
-  assert.match(reader, /headingJump=\{headingJump\}/);
+  assert.match(reader, /headingJump=\{allowedHeadingJump\}/);
+  assert.match(
+    reader,
+    /!focusAllowsLocator\(\s*currentFocus,\s*headingJump\.locator/,
+  );
   assert.match(workspace, /onHeadingsChange=\{setPageHeadings\}/);
   assert.match(navigator, /filterReaderHeadings/);
   assert.match(navigator, /aria-label=\{t\("On this page"\)\}/);

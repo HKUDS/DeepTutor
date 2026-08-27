@@ -37,6 +37,8 @@ from deeptutor.multi_user.learning_access import (
 from deeptutor.reading import (
     ANNOTATION_COLORS,
     Annotation,
+    FocusCheckpointConflict,
+    FocusEvaluationError,
     IngestionStatus,
     MaterialNotFound,
     ReadingCatalogStore,
@@ -46,7 +48,11 @@ from deeptutor.reading import (
     ReadingUpgradeConflict,
     SourceKind,
     export_material,
+    get_focus_snapshot,
     render_outline,
+    start_focus,
+    stop_focus,
+    submit_focus_check,
 )
 from deeptutor.reading.ingestion import ReadingIngestionService, url_material_id
 from deeptutor.reading.knowledge_capture import (
@@ -121,6 +127,16 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, ReadingUpgradeConflict):
         return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, FocusCheckpointConflict):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "expected_checkpoint_id": exc.expected_checkpoint_id,
+            },
+        )
+    if isinstance(exc, FocusEvaluationError):
+        return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, ReadingError):
         return HTTPException(status_code=400, detail=str(exc))
     logger.warning("unexpected reading error", exc_info=True)
@@ -373,6 +389,63 @@ class NotebookCaptureRequest(OrganizeNotesRequest):
     notebook_ids: list[str] = Field(min_length=1, max_length=20)
     title: str = Field(default="", max_length=300)
     summary: str = Field(default="", max_length=1000)
+
+
+class FocusStartPayload(BaseModel):
+    reset: bool = False
+
+
+class FocusCheckPayload(BaseModel):
+    checkpoint_id: str = Field(min_length=1, max_length=64)
+    run_id: str = Field(min_length=1, max_length=64)
+    revision: int = Field(ge=0)
+    summary: str = Field(min_length=20, max_length=20_000)
+    reflection: str = Field(min_length=10, max_length=10_000)
+    locale: str = Field(
+        default="en",
+        max_length=32,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+    )
+
+
+class FocusCheckpointInfo(BaseModel):
+    checkpoint_id: str
+    title: str
+    start_locator: int
+    end_locator: int
+    char_count: int
+
+
+class FocusAttemptInfo(BaseModel):
+    checkpoint_id: str
+    passed: bool
+    score: int
+    feedback: str
+    strengths: list[str] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)
+    attempt_count: int
+    updated_at: float
+
+
+class FocusInfo(BaseModel):
+    active: bool
+    run_id: str
+    revision: int
+    plan_hash: str
+    passed_checkpoint_ids: list[str] = Field(default_factory=list)
+    attempts: list[FocusAttemptInfo] = Field(default_factory=list)
+    updated_at: float
+    checkpoints: list[FocusCheckpointInfo] = Field(default_factory=list)
+    expected_checkpoint: FocusCheckpointInfo | None = None
+    completed: bool
+    unlocked_through_locator: int
+    pass_score: int
+
+
+class FocusCheckResponse(BaseModel):
+    attempt: FocusAttemptInfo
+    focus: FocusInfo
+    idempotent: bool
 
 
 # === Routes ===================================================================
@@ -1245,6 +1318,62 @@ async def delete_bookmark(material_id: str, bookmark_id: str) -> dict[str, bool]
     if not removed:
         raise HTTPException(status_code=404, detail="Bookmark not found")
     return {"ok": True}
+
+
+@router.get("/materials/{material_id}/focus", response_model=FocusInfo)
+async def get_focus(material_id: str) -> dict[str, object]:
+    """Return the server-derived checkpoint plan and durable run state."""
+    try:
+        assert_learning_material(material_id)
+        return get_focus_snapshot(_store(), material_id).to_dict()
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/focus/start", response_model=FocusInfo)
+async def start_focus_reading(material_id: str, payload: FocusStartPayload) -> dict[str, object]:
+    """Resume Focus Reading, or start a fresh run when ``reset`` is true."""
+    try:
+        assert_learning_material(material_id)
+        snapshot = await asyncio.to_thread(start_focus, _store(), material_id, reset=payload.reset)
+        return snapshot.to_dict()
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/focus/stop", response_model=FocusInfo)
+async def stop_focus_reading(material_id: str) -> dict[str, object]:
+    """Pause Focus Reading without discarding already passed checkpoints."""
+    try:
+        assert_learning_material(material_id)
+        snapshot = await asyncio.to_thread(stop_focus, _store(), material_id)
+        return snapshot.to_dict()
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/focus/check", response_model=FocusCheckResponse)
+async def check_focus_reading(material_id: str, payload: FocusCheckPayload) -> dict[str, object]:
+    """Evaluate and advance only the current server-required checkpoint."""
+    try:
+        assert_learning_material(material_id)
+        attempt, focus, idempotent = await submit_focus_check(
+            _store(),
+            material_id,
+            checkpoint_id=payload.checkpoint_id,
+            run_id=payload.run_id,
+            revision=payload.revision,
+            summary=payload.summary,
+            reflection=payload.reflection,
+            locale=payload.locale,
+        )
+        return {
+            "attempt": attempt.to_dict(),
+            "focus": focus.to_dict(),
+            "idempotent": idempotent,
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
 
 
 @router.put("/materials/{material_id}/annotations", response_model=AnnotationInfo)
