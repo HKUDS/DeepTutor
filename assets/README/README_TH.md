@@ -301,7 +301,7 @@ sandbox ย่อย subprocess ถูกควบคุมโดยการต
 เริ่มต้นด้วยพื้นผิวหลักที่คุณจะใช้ทุกวัน: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory และ Settings จากนั้นจะครอบคลุมการปรับใช้ Multi-User สำหรับ workspace แบบแชร์และแยกส่วน
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor home — workspace Chat พร้อมทุกพื้นผิวใน sidebar" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor home — workspace Chat พร้อมทุกพื้นผิวใน sidebar" width="900">
 </div>
 
 <details>

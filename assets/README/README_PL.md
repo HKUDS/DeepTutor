@@ -301,7 +301,7 @@ Plik `.env` w katalogu głównym projektu **nie** jest czytany jako plik konfigu
 Zacznij od głównych powierzchni, których będziesz używać na co dzień: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory i Settings. Wycieczka obejmuje następnie wdrożenia dla wielu użytkowników dla współdzielonych, izolowanych obszarów roboczych.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="Strona główna DeepTutor — obszar roboczy Chat z każdą powierzchnią w pasku bocznym" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Strona główna DeepTutor — obszar roboczy Chat z każdą powierzchnią w pasku bocznym" width="900">
 </div>
 
 <details>

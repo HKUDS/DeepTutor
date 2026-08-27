@@ -301,7 +301,7 @@ deeptutor config show
 ابدأ بالأسطح الرئيسية التي ستستخدمها يومياً: Chat وPartners وMy Agents وCo-Writer وBook ومركز المعرفة وفضاء التعلم والذاكرة والإعدادات. ثم تغطي الجولة عمليات النشر متعددة المستخدمين لمساحات العمل المشتركة المعزولة.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="الصفحة الرئيسية لـ DeepTutor — مساحة عمل Chat مع كل الأسطح في الشريط الجانبي" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="الصفحة الرئيسية لـ DeepTutor — مساحة عمل Chat مع كل الأسطح في الشريط الجانبي" width="900">
 </div>
 
 <details>

@@ -301,7 +301,7 @@ Project-root `.env` application config file के रूप में **नह�
 दैनिक उपयोग की मुख्य surfaces से शुरू करें: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory, और Settings। फिर tour साझा, isolated workspaces के लिए Multi-User deployments को cover करता है।
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor home — sidebar में हर surface के साथ Chat workspace" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor home — sidebar में हर surface के साथ Chat workspace" width="900">
 </div>
 
 <details>

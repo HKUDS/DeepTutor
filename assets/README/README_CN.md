@@ -301,7 +301,7 @@ deeptutor config show
 从日常使用的主要界面开始：Chat、Partners、My Agents、Co-Writer、Book、知识中心、学习空间、Memory 和 Settings。之后将介绍用于共享隔离工作区的多用户部署。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
 </div>
 
 <details>

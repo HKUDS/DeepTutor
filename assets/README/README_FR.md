@@ -323,7 +323,7 @@ Le fichier `.env` à la racine du projet n'est **pas** lu comme fichier de confi
 Commencez par les surfaces principales que vous utiliserez au quotidien : Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory et Settings. La visite couvre ensuite les déploiements Multi-Utilisateur pour des espaces de travail partagés et isolés.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="Accueil DeepTutor — l'espace de travail Chat avec chaque surface dans la barre latérale" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Accueil DeepTutor — l'espace de travail Chat avec chaque surface dans la barre latérale" width="900">
 </div>
 
 <details>

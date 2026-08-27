@@ -301,7 +301,7 @@ deeptutor config show
 日常的に使用するメインサーフェスから始めましょう：Chat、Partners、My Agents、Co-Writer、Book、Knowledge Center、Learning Space、Memory、Settings。ツアーの最後はマルチユーザーデプロイメントとして共有・分離ワークスペースをカバーします。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
 </div>
 
 <details>

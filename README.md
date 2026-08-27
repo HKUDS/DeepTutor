@@ -472,7 +472,7 @@ Project-root `.env` is **not** read as an application config file. For a minimal
 Start with the main surfaces you will use day to day: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory, and Settings. The tour then covers Multi-User deployments for shared, isolated workspaces.
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
+<img src="assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
 </div>
 
 <details>

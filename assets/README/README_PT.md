@@ -313,7 +313,7 @@ O `.env` da raiz do projeto **não** é lido como ficheiro de configuração da 
 Comece pelas superfícies principais que usará no dia a dia: Chat, Partners, Meus Agentes, Co-Writer, Book, Centro de Conhecimento, Espaço de Aprendizado, Memory e Configurações. O tour cobre também as implementações Multi-Utilizador para espaços de trabalho partilhados e isolados.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor home — o espaço de trabalho Chat com todas as superfícies na barra lateral" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor home — o espaço de trabalho Chat com todas as superfícies na barra lateral" width="900">
 </div>
 
 <details>

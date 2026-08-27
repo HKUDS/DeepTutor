@@ -313,7 +313,7 @@ El `.env` de la raíz del proyecto **no** se lee como archivo de configuración 
 Comienza con las superficies principales que usarás día a día: Chat, Partners, Mis Agentes, Co-Writer, Book, Centro de Conocimiento, Espacio de Aprendizaje, Memory y Settings. El tour luego cubre los despliegues Multi-Usuario para espacios de trabajo compartidos y aislados.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="Inicio de DeepTutor — el espacio de trabajo Chat con todas las superficies en la barra lateral" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Inicio de DeepTutor — el espacio de trabajo Chat con todas las superficies en la barra lateral" width="900">
 </div>
 
 <details>

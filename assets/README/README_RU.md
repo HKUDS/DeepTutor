@@ -301,7 +301,7 @@ deeptutor config show
 Начните с основных поверхностей, которые вы будете использовать ежедневно: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory и Settings. Затем тур охватывает многопользовательские развёртывания для общих изолированных рабочих пространств.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="Главная страница DeepTutor — рабочее пространство чата со всеми поверхностями на боковой панели" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Главная страница DeepTutor — рабочее пространство чата со всеми поверхностями на боковой панели" width="900">
 </div>
 
 <details>
