@@ -17,6 +17,7 @@ from deeptutor.services.auth import TokenPayload
 _TICKET_TTL_SECONDS = 60
 _PAIRING_TTL_SECONDS = 120
 _TUNNEL_SUFFIX = ".trycloudflare.com"
+_FORBIDDEN_COOKIE_NAMES = frozenset({"dt_token"})
 _tickets: dict[str, "_Ticket"] = {}
 _tickets_lock = threading.Lock()
 _pairings: dict[str, "_Pairing"] = {}
@@ -78,36 +79,50 @@ def _valid_tunnel_host(host: str | None) -> bool:
 
 
 def _valid_redirect_path(redirect_path: str) -> bool:
-    if not redirect_path.startswith("/") or redirect_path.startswith("//"):
+    if (
+        not redirect_path.startswith("/")
+        or redirect_path.startswith("//")
+        or redirect_path.startswith(r"/\\")
+        or "\\" in redirect_path
+    ):
         return False
-    if len(redirect_path) > 2048 or any(ord(character) < 0x20 for character in redirect_path):
+    if len(redirect_path) > 2048 or any(
+        ord(character) < 0x21 or ord(character) > 0x7E for character in redirect_path
+    ):
+        return False
+    lower = redirect_path.lower()
+    if "%5c" in lower:
         return False
     parsed = urlsplit(redirect_path)
     return not parsed.scheme and not parsed.netloc and not parsed.fragment
 
 
 def _valid_cookie_name(name: str) -> bool:
+    forbidden = {'(', ')', '<', '>', '@', ',', ';', ':', '"', '/', '[', ']', '?', '=', '{', '}', '\\'}
     return (
         0 < len(name) <= 128
+        and name.lower() not in _FORBIDDEN_COOKIE_NAMES
         and all(0x21 <= ord(character) <= 0x7E for character in name)
-        and not any(character in '()<>@,;:\\"/[]?={}' for character in name)
+        and not any(character in forbidden for character in name)
     )
 
 
 def _valid_cookie_value(value: str) -> bool:
+    forbidden = {';', '"', '\\'}
     return (
         0 < len(value) <= 1024
         and all(0x21 <= ord(character) <= 0x7E for character in value)
-        and not any(character in ';\\"' for character in value)
+        and not any(character in forbidden for character in value)
     )
 
 
 def _valid_cookie_path(path: str) -> bool:
+    forbidden = {';', ',', '"', '?', '#', '\\'}
     return (
-        path.startswith("/")
+        path.startswith('/')
         and len(path) <= 512
-        and all(0x20 <= ord(character) <= 0x7E for character in path)
-        and not any(character in "?#" for character in path)
+        and all(0x21 <= ord(character) <= 0x7E for character in path)
+        and not any(character in forbidden for character in path)
     )
 
 
@@ -118,13 +133,22 @@ def _valid_handoff(handoff: SessionHandoff) -> bool:
         return False
     if any(not _valid_cookie_name(name) for name in handoff.clear_cookie_names):
         return False
-    return all(
-        _valid_cookie_name(cookie.name)
-        and _valid_cookie_value(cookie.value)
-        and _valid_cookie_path(cookie.path)
-        and 0 < cookie.max_age <= 30 * 24 * 60 * 60
-        for cookie in handoff.cookies
-    )
+    cookie_names: set[str] = set()
+    for cookie in handoff.cookies:
+        if not _valid_cookie_name(cookie.name):
+            return False
+        if cookie.name in cookie_names:
+            return False
+        cookie_names.add(cookie.name)
+        if not _valid_cookie_value(cookie.value):
+            return False
+        if not _valid_cookie_path(cookie.path):
+            return False
+        if not (0 < cookie.max_age <= 30 * 24 * 60 * 60):
+            return False
+    if cookie_names.intersection(set(handoff.clear_cookie_names)):
+        return False
+    return True
 
 
 def load_tunnel_state() -> TunnelState | None:

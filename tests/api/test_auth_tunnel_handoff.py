@@ -43,6 +43,11 @@ def handoff_client(mu_isolated_root, monkeypatch, tunnel_file):
     monkeypatch.setattr(auth_router, "AUTH_ENABLED", True)
     monkeypatch.setattr(auth_router, "POCKETBASE_ENABLED", False)
     monkeypatch.setattr(auth_router, "_COOKIE_MAX_AGE", 30 * 24 * 60 * 60)
+    monkeypatch.setattr(
+        auth_router,
+        "load_auth_settings",
+        lambda: {"cookie_secure": False, "private_login_hosts": ["100.101.207.44"]},
+    )
     monkeypatch.setattr(auth_router, "decode_token", lambda _: payload)
     monkeypatch.setattr(
         auth_router, "create_token", lambda username, role, user_id: f"{username}:{role}:{user_id}"
@@ -338,3 +343,149 @@ def test_proxy_headers_are_trusted_only_from_loopback_peers():
     )
     assert auth_router._request_client_ip(proxied) == "198.51.100.10"
     assert auth_router._request_host(proxied) == "example-deep.trycloudflare.com"
+
+
+def test_password_login_is_fail_closed_on_unknown_or_corrupted_tunnel_state(handoff_client, monkeypatch, tunnel_file):
+    import deeptutor.api.routers.auth as auth_router
+    from deeptutor.services.auth import TokenPayload
+
+    monkeypatch.setattr(
+        auth_router,
+        "authenticate",
+        lambda username, password: TokenPayload(username, "admin", "u_alice"),
+    )
+    monkeypatch.setattr(
+        auth_router,
+        "load_auth_settings",
+        lambda: {"private_login_hosts": ["100.101.207.44"], "cookie_secure": False},
+    )
+
+    # Tunnel file removed / corrupted
+    tunnel_file.unlink(missing_ok=True)
+
+    # Allowed: configured Tailscale host and implicit loopback
+    assert handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": "100.101.207.44:3782"},
+    ).status_code == 200
+
+    assert handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": "localhost:3782"},
+    ).status_code == 200
+
+    assert handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": "127.0.0.1:3782"},
+    ).status_code == 200
+
+    # Rejected: unknown public hosts, trycloudflare domains, empty hosts
+    assert handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": "attacker.com"},
+    ).status_code == 403
+
+    assert handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": "any-subdomain.trycloudflare.com"},
+    ).status_code == 403
+
+    assert handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": ""},
+    ).status_code == 403
+
+
+def test_learning_activation_is_private_network_only(handoff_client):
+    public = handoff_client.post(
+        "/api/v1/auth/activate-learning",
+        json={"username": "alice", "password": "password-123", "code": "ACT-1234"},
+        headers={"x-deeptutor-frontend-host": "example-deep.trycloudflare.com"},
+    )
+    assert public.status_code == 403
+
+
+def test_proxy_client_ip_rejects_malformed_or_forged_ips():
+    from starlette.requests import Request
+
+    import deeptutor.api.routers.auth as auth_router
+
+    def req(ip_hdr: str) -> Request:
+        return Request(
+            scope={
+                "type": "http",
+                "headers": [(b"x-deeptutor-client-ip", ip_hdr.encode())],
+                "client": ("127.0.0.1", 50000),
+                "scheme": "http",
+                "server": ("example.internal", 80),
+                "path": "/",
+                "query_string": b"",
+            }
+        )
+
+    assert auth_router._request_client_ip(req("203.0.113.195")) == "203.0.113.195"
+    assert auth_router._request_client_ip(req("2001:db8::1")) == "2001:db8::1"
+    # Non-IP garbage / injection fallback to peer host 127.0.0.1
+    assert auth_router._request_client_ip(req("invalid-ip-string")) == "127.0.0.1"
+    assert auth_router._request_client_ip(req("1.2.3.4; DROP TABLE")) == "127.0.0.1"
+
+
+def test_session_handoff_strictly_validates_security_boundaries(tunnel_file):
+    from deeptutor.services.auth import TokenPayload
+    from deeptutor.services.tunnel_handoff import HandoffCookie, SessionHandoff, create_pairing
+
+    payload = TokenPayload("alice", "admin", "u_alice")
+
+    # Cannot set or clear dt_token
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(cookies=(HandoffCookie("dt_token", "val", max_age=60),)))
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(clear_cookie_names=("dt_token",)))
+
+    # Cannot duplicate cookie names or set & clear same name
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(cookies=(
+            HandoffCookie("c1", "val1", max_age=60),
+            HandoffCookie("c1", "val2", max_age=60),
+        )))
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(
+            cookies=(HandoffCookie("c1", "val1", max_age=60),),
+            clear_cookie_names=("c1",),
+        ))
+
+    # Reject backslash and encoded backslash in redirect path
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(redirect_path="/path\evil"))
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(redirect_path="/path%5cevil"))
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(redirect_path="/\evil"))
+
+    # Reject path with whitespace or semicolons in cookie path
+    with pytest.raises(ValueError):
+        create_pairing(payload, handoff=SessionHandoff(cookies=(HandoffCookie("c1", "val", path="/path; secure", max_age=60),)))
+
+
+def test_default_handoff_clears_dt_video_controller(handoff_client):
+    headers = {"Authorization": "Bearer session-token"}
+    created = handoff_client.post("/api/v1/auth/handoff", headers=headers)
+    assert created.status_code == 200
+    code = created.json()["code"]
+
+    consumed = handoff_client.post(
+        "/api/v1/auth/handoff/consume",
+        data={"code": code},
+        headers={"x-deeptutor-frontend-host": "example-deep.trycloudflare.com"},
+        follow_redirects=False,
+    )
+    assert consumed.status_code == 303
+    cookies = consumed.headers.get_list("set-cookie")
+    # dt_video_controller is cleared by delete_cookie (Max-Age=0 or expires in the past)
+    assert any("dt_video_controller=" in c and ("max-age=0" in c.lower() or "1970" in c) for c in cookies)

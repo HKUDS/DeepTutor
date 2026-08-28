@@ -1,6 +1,7 @@
 """Auth router — login, logout, status, registration, profile, and user-management endpoints."""
 
 from contextvars import Token as _CtxToken
+import ipaddress
 import logging
 import re
 from urllib.parse import urlsplit
@@ -58,6 +59,7 @@ from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
 from deeptutor.services.login_rate_limit import LoginRateLimited, login_rate_limiter
 from deeptutor.services.tunnel_handoff import (
+    SessionHandoff,
     consume_ticket_details,
     create_pairing,
     create_ticket,
@@ -233,6 +235,10 @@ def _bearer_token_from_header(authorization: str | None) -> str | None:
     return None
 
 
+_IMPLICIT_PRIVATE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_DEFAULT_LOGIN_HANDOFF = SessionHandoff(clear_cookie_names=("dt_video_controller",))
+
+
 def _request_client_ip(request: Request) -> str:
     # The Next proxy sanitizes client-supplied values and copies Cloudflare's
     # connector header only for HTTPS tunnel requests. The proxy and API run on
@@ -241,7 +247,12 @@ def _request_client_ip(request: Request) -> str:
     if peer_host in {"127.0.0.1", "::1", "::ffff:127.0.0.1"}:
         forwarded = request.headers.get("x-deeptutor-client-ip")
         if forwarded:
-            return forwarded.split(",", 1)[0].strip() or "unknown"
+            candidate = forwarded.split(",", 1)[0].strip()
+            try:
+                ipaddress.ip_address(candidate)
+                return candidate
+            except ValueError:
+                pass
     return peer_host or "unknown"
 
 
@@ -255,12 +266,35 @@ def _request_host(request: Request) -> str | None:
     return request.url.hostname
 
 
-def _reject_public_tunnel_credentials(request: Request) -> None:
+def _is_private_login_host(host: str | None) -> bool:
+    if not host:
+        return False
+    normalized = host.strip().lower()
     state = load_tunnel_state()
-    if state is not None and _request_host(request) == state.host:
+    if state is not None and normalized == state.host:
+        return False
+    if normalized.endswith(".trycloudflare.com"):
+        return False
+    if normalized in _IMPLICIT_PRIVATE_HOSTS:
+        return True
+    auth_settings = load_auth_settings()
+    configured_hosts = {
+        item.strip().lower()
+        for item in (auth_settings.get("private_login_hosts") or [])
+        if isinstance(item, str) and item.strip()
+    }
+    return normalized in configured_hosts
+
+
+def _reject_public_tunnel_credentials(request: Request) -> None:
+    host = _request_host(request)
+    if not _is_private_login_host(host):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Password sign-in and registration are available only on the private network.",
+            detail=(
+                "Password sign-in, registration, and learning activation "
+                "are available only on the private network."
+            ),
         )
 
 
@@ -589,8 +623,12 @@ async def login(body: LoginRequest, response: Response, request: Request) -> dic
 
 
 @router.post("/activate-learning")
-async def activate_learning_account(body: LearningActivationRequest) -> dict[str, bool]:
+async def activate_learning_account(
+    body: LearningActivationRequest,
+    request: Request,
+) -> dict[str, bool]:
     """Set a migrated learner's password with a single-use seven-day code."""
+    _reject_public_tunnel_credentials(request)
     if POCKETBASE_ENABLED:
         raise HTTPException(
             status_code=409, detail="Learning activation is unavailable in PocketBase mode."
@@ -718,7 +756,7 @@ async def create_tunnel_handoff(
             detail="Tunnel handoff is unavailable in PocketBase mode.",
         )
     try:
-        code, state = create_ticket(payload)
+        code, state = create_ticket(payload, handoff=_DEFAULT_LOGIN_HANDOFF)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return TunnelHandoffResponse(
@@ -742,7 +780,7 @@ async def create_tunnel_handoff_pairing(
             status_code=501,
             detail="Tunnel handoff is unavailable in PocketBase mode.",
         )
-    pairing_id, expires_in = create_pairing(payload)
+    pairing_id, expires_in = create_pairing(payload, handoff=_DEFAULT_LOGIN_HANDOFF)
     return TunnelHandoffPairingResponse(
         pairing_id=pairing_id,
         expires_in=expires_in,

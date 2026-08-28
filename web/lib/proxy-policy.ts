@@ -38,14 +38,37 @@ export function frontendForwardingHost(
   return inboundHost?.trim() || nextUrlHost?.trim() || null;
 }
 
+const TUNNEL_SUFFIX = ".trycloudflare.com";
+
+export function isCloudflareTunnelHost(host: string | null): boolean {
+  if (!host) return false;
+  const lower = host.trim().toLowerCase();
+  const hostname = lower.split(":")[0];
+  return (
+    hostname.endsWith(TUNNEL_SUFFIX) &&
+    hostname.length > TUNNEL_SUFFIX.length &&
+    hostname
+      .slice(0, -TUNNEL_SUFFIX.length)
+      .split("-")
+      .every((part) => part.length > 0 && /^[a-z0-9]+$/.test(part))
+  );
+}
+
 export function trustedCloudflareClientIp(
   protocol: string | null,
   value: string | null,
+  host?: string | null,
 ): string | null {
   // Stable Tailscale access is HTTP and does not pass through Cloudflare.
   // Do not let a direct HTTP client forge Cloudflare's connector header and
   // evade or target the login rate limiter.
-  return protocol === "https" || protocol === "https:" ? value : null;
+  const isHttps = protocol === "https" || protocol === "https:";
+  if (!isHttps || !value) return null;
+  if (host !== undefined && host !== null && !isCloudflareTunnelHost(host)) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 
 // Paths whose responses come from the backend, not the Next app. The middleware

@@ -589,3 +589,29 @@ def test_compute_ws_max_size_floor_and_inflation() -> None:
     derived = compute_ws_max_size(total)
     assert derived > (total * 4) // 3
     assert derived == (total * 4) // 3 + 8 * 1024 * 1024
+
+
+def test_auth_private_login_hosts_normalization_and_overrides(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings")
+    assert service.load_auth()["private_login_hosts"] == []
+
+    service.save_auth(
+        {
+            "enabled": True,
+            "private_login_hosts": [
+                "100.101.207.44:3782",
+                "http://100.101.207.44",
+                "  192.168.1.50  ",
+                "100.101.207.44",
+            ],
+        }
+    )
+    loaded = service.load_auth()
+    assert loaded["private_login_hosts"] == ["100.101.207.44", "192.168.1.50"]
+
+    env_service = RuntimeSettingsService(
+        tmp_path / "settings_env",
+        process_env={"AUTH_PRIVATE_LOGIN_HOSTS": "100.101.207.44, 10.0.0.2\n10.0.0.3"},
+    )
+    env_loaded = env_service.load_auth()
+    assert env_loaded["private_login_hosts"] == ["100.101.207.44", "10.0.0.2", "10.0.0.3"]

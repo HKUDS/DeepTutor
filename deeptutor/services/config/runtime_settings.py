@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from deeptutor.services.file_io import atomic_write_json as _atomic_write_json
 from deeptutor.services.path_service import get_path_service
@@ -56,6 +57,7 @@ DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "token_expire_hours": 24,
     "cookie_secure": False,
     "allow_registration": False,
+    "private_login_hosts": [],
 }
 
 DEFAULT_INTEGRATIONS_SETTINGS: dict[str, Any] = {
@@ -345,6 +347,26 @@ def _coerce_origins(value: Any) -> list[str]:
     return normalize_origins(value)
 
 
+def _coerce_private_hosts(value: Any) -> list[str]:
+    raw_list: list[str] = []
+    if isinstance(value, str):
+        raw_list = [part.strip() for part in value.replace("\n", ",").split(",") if part.strip()]
+    elif isinstance(value, (list, tuple, set)):
+        raw_list = [str(part).strip() for part in value if str(part).strip()]
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in raw_list:
+        host = item.strip().lower()
+        if not host:
+            continue
+        parsed = urlsplit("//" + host if not host.startswith(("http://", "https://")) else host)
+        normalized = (parsed.hostname or host).strip().lower()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(normalized)
+    return result
+
+
 def _deepcopy_default(defaults: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(defaults)
 
@@ -599,6 +621,7 @@ class RuntimeSettingsService:
             "AUTH_TOKEN_EXPIRE_HOURS": str(auth["token_expire_hours"]),
             "AUTH_COOKIE_SECURE": _bool_env(auth["cookie_secure"]),
             "AUTH_ALLOW_REGISTRATION": _bool_env(auth.get("allow_registration", False)),
+            "AUTH_PRIVATE_LOGIN_HOSTS": ",".join(auth.get("private_login_hosts", [])),
             "NEXT_PUBLIC_AUTH_ENABLED": _bool_env(auth["enabled"]),
             # Consumed server-side by the Next.js middleware (web/proxy.ts) at
             # request time — NOT inlined into the browser bundle. The proxy
@@ -740,6 +763,8 @@ class RuntimeSettingsService:
             payload["cookie_secure"] = value
         if value := self._process_env_value("AUTH_ALLOW_REGISTRATION"):
             payload["allow_registration"] = value
+        if value := self._process_env_value("AUTH_PRIVATE_LOGIN_HOSTS"):
+            payload["private_login_hosts"] = value
         return self._normalize_auth(payload)
 
     def _apply_integrations_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1081,6 +1106,7 @@ class RuntimeSettingsService:
             "token_expire_hours": max(1, _coerce_int(settings.get("token_expire_hours"), 24)),
             "cookie_secure": _coerce_bool(settings.get("cookie_secure"), False),
             "allow_registration": _coerce_bool(settings.get("allow_registration"), False),
+            "private_login_hosts": _coerce_private_hosts(settings.get("private_login_hosts")),
         }
 
     def _normalize_integrations(self, settings: dict[str, Any]) -> dict[str, Any]:

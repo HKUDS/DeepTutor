@@ -19,6 +19,7 @@ import {
   isAuthExempt,
   isBackendPath,
   isCodexCallbackPath,
+  isCloudflareTunnelHost,
   trustedCloudflareClientIp,
 } from "../lib/proxy-policy";
 
@@ -73,16 +74,42 @@ test("frontend forwarding host falls back to the Next URL host", () => {
   assert.equal(frontendForwardingHost(null, null), null);
 });
 
-test("Cloudflare client IP is trusted only on HTTPS requests", () => {
+test("isCloudflareTunnelHost matches only valid *.trycloudflare.com hostnames", () => {
   assert.equal(
-    trustedCloudflareClientIp("https", "203.0.113.10"),
+    isCloudflareTunnelHost("district-groundwater-chain-publisher.trycloudflare.com"),
+    true,
+  );
+  assert.equal(
+    isCloudflareTunnelHost("district-groundwater-chain-publisher.trycloudflare.com:443"),
+    true,
+  );
+  assert.equal(isCloudflareTunnelHost("100.101.207.44:3782"), false);
+  assert.equal(isCloudflareTunnelHost("localhost"), false);
+  assert.equal(isCloudflareTunnelHost("evil.com"), false);
+  assert.equal(isCloudflareTunnelHost(".trycloudflare.com"), false);
+});
+
+test("Cloudflare client IP is trusted only on HTTPS requests targeting a tunnel host", () => {
+  assert.equal(
+    trustedCloudflareClientIp("https", "203.0.113.10", "example-deep.trycloudflare.com"),
     "203.0.113.10",
   );
   assert.equal(
-    trustedCloudflareClientIp("https:", "203.0.113.10"),
+    trustedCloudflareClientIp("https:", "203.0.113.10", "example-deep.trycloudflare.com:443"),
     "203.0.113.10",
   );
-  assert.equal(trustedCloudflareClientIp("http", "203.0.113.10"), null);
+  assert.equal(
+    trustedCloudflareClientIp("http", "203.0.113.10", "example-deep.trycloudflare.com"),
+    null,
+  );
+  assert.equal(
+    trustedCloudflareClientIp("https", "203.0.113.10", "100.101.207.44:3782"),
+    null,
+  );
+  assert.equal(
+    trustedCloudflareClientIp("https", "203.0.113.10", "attacker.com"),
+    null,
+  );
 });
 
 test("large knowledge uploads bypass the buffering proxy", () => {

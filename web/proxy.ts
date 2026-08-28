@@ -45,11 +45,16 @@ function redirectToLogin(
 export function proxy(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl;
 
+  const forwardingHost = frontendForwardingHost(
+    req.headers.get("host"),
+    req.nextUrl.host,
+  );
   const extraHeaders = backendForwardingHeaders(
-    frontendForwardingHost(req.headers.get("host"), req.nextUrl.host),
+    forwardingHost,
     trustedCloudflareClientIp(
       req.headers.get("x-forwarded-proto"),
       req.headers.get("cf-connecting-ip"),
+      forwardingHost,
     ),
   );
   const forwardingHeaders = new Headers(req.headers);
