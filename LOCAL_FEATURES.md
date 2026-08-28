@@ -272,14 +272,19 @@ pairing and simulated device sync are covered by tests.
    - `~/Library/LaunchAgents/com.deeptutor.cloudflared.plist`：常驻隧道守护进程。
    - `~/Library/LaunchAgents/com.deeptutor.rotate-tunnel.plist`：定时轮换任务。
 2. **后端状态机与路由（独立模块）**：
-   - `deeptutor/services/tunnel_handoff.py`：单文件状态机，管理 120 秒一次性配对码 (`Pairing`)、60 秒一次性凭证 (`Ticket`) 与隧道 Host 绑定校验。
-   - `deeptutor/api/routers/auth.py`：挂载 `/handoff`、`/handoff/pairing`、`/handoff/pairing/{pairing_id}`、`/handoff/consume` 接口。
+   - `deeptutor/services/tunnel_handoff.py`：单文件状态机，管理 120 秒一次性配对码 (`Pairing`)、60 秒一次性凭证 (`Ticket`)、隧道 Host 绑定校验，以及通用的 `SessionHandoff`（安全站内 redirect 与受限附加 Cookie）。
+   - `deeptutor/api/routers/auth.py`：挂载 `/handoff`、`/handoff/pairing`、`/handoff/pairing/{pairing_id}`、`/handoff/consume` 接口；当前 Quick Tunnel Host 上拒绝密码登录和注册。
+   - `deeptutor/api/routers/video_remote_control.py`：作为本地扩展调用方声明自己的 `dt_video_controller` Cookie 与 `/video-learning` redirect；认证核心不依赖视频学习模块。
 3. **前端页面与代理策略（独立路由）**：
    - `web/app/(auth)/access/page.tsx`：Mac 已登录展示页，生成 120 秒动态二维码（`qrcode.react`）及「在此电脑上打开」直连入口。
    - `web/app/(auth)/access/device/page.tsx`：手机扫码落地页，免认证（`isAuthExempt`）获取一次性 Ticket 并自动 POST 提交至消费端。
    - `web/proxy.ts` 与 `web/lib/proxy-policy.ts`：`frontendForwardingHost` 优先转发公网 `Host` 请求头。
 4. **反向代理身份守卫**：
    - Uvicorn 各启动点（`run_server.py`、`deeptutor_cli/main.py`、`launcher.py`、Dockerfile）统一设置 `--no-proxy-headers` (`proxy_headers=False`)，确保后端仅信任来自本机 Next.js 代理清洗后的 `x-deeptutor-*` 头部。
+
+### 本地扩展边界
+
+本能力保持“本地薄扩展”，暂不注册为 DeepTutor Tool/Capability 插件。现有插件协议只覆盖 LLM 工具和会话能力，不能声明 FastAPI 认证路由、登录前公共 Next.js 页面、代理豁免规则或跨域 Cookie 策略；强行包装会把认证入口和部署细节混入插件注册表。等官方提供 Web/API/Auth 扩展点后，再把 `SessionHandoff` 与 `/access/device` 迁移到正式插件协议。
 
 ### 上游（`origin/main`）更新同步与维护手册
 
@@ -302,12 +307,14 @@ git rebase origin/main
 * **`web/proxy.ts`**：确认 `backendForwardingHeaders` 使用 `frontendForwardingHost(req.headers.get("host"), req.nextUrl.host)`。
 * **`web/lib/proxy-policy.ts`**：确认 `isAuthExempt` 包含 `pathname.startsWith("/access/device")`。
 * **`deeptutor/api/routers/auth.py`**：确认引入 `tunnel_handoff` 相关路由处理函数并保留 `/handoff` 路由定义。
+* **`deeptutor/api/routers/video_remote_control.py`**：确认视频学习只通过 `SessionHandoff` 声明 redirect 和附加 Cookie，不向通用状态机添加视频字段。
 * **`run_server.py` / `launcher.py`**：确认 Uvicorn 启动参数包含 `proxy_headers=False` 或 `--no-proxy-headers`。
 
 #### 4. 本地回归验证门禁
 ```bash
 .venv/bin/python -m pytest \
   tests/api/test_auth_tunnel_handoff.py \
+  tests/video_learning/test_renderer_remote.py \
   tests/runtime/test_uvicorn_launch_flags.py \
   tests/test_local_feature_contract.py
 cd web && npm run test:node && npm run lint && npm run build
