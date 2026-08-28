@@ -3397,7 +3397,7 @@
   "access.title": "Temporary access",
   "access.preparing": "Preparing a secure connection…",
   "access.redirecting": "Opening the current secure address…",
-  "access.securityNote": "This handoff is valid for 60 seconds and can be used once.",
+  "access.securityNote": "This handoff is valid for 3 minutes and can be used once.",
   "access.handoffFailed": "Could not prepare secure access. Sign in and try again.",
   "access.scanWithPhone": "Scan with phone",
   "access.scanDesc": "Make sure your phone is connected to Tailscale, then scan the QR code to sign in automatically.",

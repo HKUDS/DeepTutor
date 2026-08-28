@@ -14,8 +14,8 @@ from urllib.parse import urlsplit
 
 from deeptutor.services.auth import TokenPayload
 
-_TICKET_TTL_SECONDS = 60
-_PAIRING_TTL_SECONDS = 120
+TICKET_TTL_SECONDS = 180
+PAIRING_TTL_SECONDS = 300
 _TUNNEL_SUFFIX = ".trycloudflare.com"
 _FORBIDDEN_COOKIE_NAMES = frozenset({"dt_token"})
 _tickets: dict[str, "_Ticket"] = {}
@@ -204,7 +204,7 @@ def create_ticket(
             code_digest=digest,
             payload=payload,
             target_host=state.host,
-            expires_at=current + _TICKET_TTL_SECONDS,
+            expires_at=current + TICKET_TTL_SECONDS,
             handoff=ticket_handoff,
         )
     return code, state
@@ -229,10 +229,10 @@ def create_pairing(
             _pairings.pop(key, None)
         _pairings[digest] = _Pairing(
             payload=payload,
-            expires_at=current + _PAIRING_TTL_SECONDS,
+            expires_at=current + PAIRING_TTL_SECONDS,
             handoff=pairing_handoff,
         )
-    return pairing_id, _PAIRING_TTL_SECONDS
+    return pairing_id, PAIRING_TTL_SECONDS
 
 
 def exchange_pairing_details(
@@ -295,7 +295,7 @@ def consume_ticket_details(
 
 
 def clear_tickets() -> None:
-    """Test helper; production state naturally expires in 60 seconds."""
+    """Test helper; production state naturally expires after the ticket TTL."""
     with _tickets_lock:
         _tickets.clear()
 

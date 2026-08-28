@@ -48,7 +48,7 @@ def handoff_client(mu_isolated_root, monkeypatch, tunnel_file):
         "load_auth_settings",
         lambda: {"cookie_secure": False, "private_login_hosts": ["100.101.207.44"]},
     )
-    monkeypatch.setattr(auth_router, "decode_token", lambda _: payload)
+    monkeypatch.setattr(auth_router, "decode_token", lambda token: payload if token else None)
     monkeypatch.setattr(
         auth_router, "create_token", lambda username, role, user_id: f"{username}:{role}:{user_id}"
     )
@@ -105,17 +105,17 @@ def test_handoff_pairing_flow_is_single_use_and_burns_after_exchange(handoff_cli
     assert created.headers["cache-control"] == "no-store"
     data = created.json()
     assert "pairing_id" in data
-    assert data["expires_in"] == 120
+    assert data["expires_in"] == 300
     pairing_id = data["pairing_id"]
     assert len(pairing_id) >= 40
 
-    # Unauthenticated phone can exchange the pairing ID for a fresh 60s ticket
+    # Unauthenticated phone can exchange the pairing ID for a fresh 3m ticket
     exchanged = handoff_client.get(f"/api/v1/auth/handoff/pairing/{pairing_id}")
     assert exchanged.status_code == 200
     assert exchanged.headers["cache-control"] == "no-store"
     ticket_data = exchanged.json()
     assert ticket_data["tunnel_url"] == "https://example-deep.trycloudflare.com"
-    assert ticket_data["expires_in"] == 60
+    assert ticket_data["expires_in"] == 180
     assert len(ticket_data["code"]) >= 40
 
     # Replay on pairing ID is rejected (single-use)
@@ -168,13 +168,13 @@ def test_registration_is_private_network_only(handoff_client):
     assert public.status_code == 403
 
 
-def test_handoff_pairing_expires_after_120_seconds(tunnel_file):
+def test_handoff_pairing_expires_after_five_minutes(tunnel_file):
     from deeptutor.services.auth import TokenPayload
     from deeptutor.services.tunnel_handoff import create_pairing, exchange_pairing
 
     pairing_id, ttl = create_pairing(TokenPayload("alice", "admin", "u_alice"), now=100)
-    assert ttl == 120
-    assert exchange_pairing(pairing_id, now=221) is None
+    assert ttl == 300
+    assert exchange_pairing(pairing_id, now=401) is None
 
 
 def test_handoff_is_single_use_and_bound_to_current_tunnel_host(handoff_client):
@@ -226,6 +226,51 @@ def test_handoff_is_single_use_and_bound_to_current_tunnel_host(handoff_client):
     assert replay.status_code == 400
 
 
+def test_handoff_replay_redirects_an_already_authenticated_browser(handoff_client):
+    headers = {"Authorization": "Bearer session-token"}
+    created = handoff_client.post("/api/v1/auth/handoff", headers=headers)
+    code = created.json()["code"]
+    target_headers = {"x-deeptutor-frontend-host": "example-deep.trycloudflare.com"}
+
+    consumed = handoff_client.post(
+        "/api/v1/auth/handoff/consume",
+        data={"code": code},
+        headers=target_headers,
+        follow_redirects=False,
+    )
+    assert consumed.status_code == 303
+
+    replay = handoff_client.post(
+        "/api/v1/auth/handoff/consume",
+        data={"code": code},
+        headers=target_headers,
+        cookies={"dt_token": "existing-session"},
+        follow_redirects=False,
+    )
+    assert replay.status_code == 303
+    assert replay.headers["location"] == "/"
+    assert replay.headers["cache-control"] == "no-store"
+    assert replay.headers["referrer-policy"] == "no-referrer"
+
+
+def test_handoff_expiry_returns_html_error_to_browser_navigation(handoff_client):
+    response = handoff_client.post(
+        "/api/v1/auth/handoff/consume",
+        data={"code": "expired-code"},
+        headers={
+            "accept": "text/html,application/xhtml+xml",
+            "x-deeptutor-frontend-host": "example-deep.trycloudflare.com",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("text/html")
+    assert "登录链接已失效" in response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
 def test_extension_handoff_sets_redirect_and_declared_cookie(handoff_client):
     from deeptutor.services.auth import TokenPayload
     from deeptutor.services.tunnel_handoff import HandoffCookie, SessionHandoff, create_pairing
@@ -270,7 +315,7 @@ def test_extension_handoff_sets_redirect_and_declared_cookie(handoff_client):
     assert replay.status_code == 400
 
 
-def test_handoff_ticket_expires_after_sixty_seconds(tunnel_file):
+def test_handoff_ticket_expires_after_three_minutes(tunnel_file):
     from deeptutor.services.auth import TokenPayload
     from deeptutor.services.tunnel_handoff import consume_ticket, create_ticket
 
@@ -279,7 +324,7 @@ def test_handoff_ticket_expires_after_sixty_seconds(tunnel_file):
         encoding="utf-8",
     )
     code, state = create_ticket(TokenPayload("alice", "admin", "u_alice"), now=100)
-    assert consume_ticket(code, state.host, now=160) is None
+    assert consume_ticket(code, state.host, now=280) is None
 
 
 def test_handoff_rejects_untrusted_redirects_and_cookie_values(tunnel_file):

@@ -59,6 +59,7 @@ from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
 from deeptutor.services.login_rate_limit import LoginRateLimited, login_rate_limiter
 from deeptutor.services.tunnel_handoff import (
+    TICKET_TTL_SECONDS,
     SessionHandoff,
     consume_ticket_details,
     create_pairing,
@@ -746,7 +747,7 @@ async def create_tunnel_handoff(
     response: Response,
     payload: TokenPayload | None = Depends(require_auth),
 ) -> TunnelHandoffResponse:
-    """Create a 60-second, single-use cross-origin session handoff."""
+    """Create a short-lived, single-use cross-origin session handoff."""
     response.headers["Cache-Control"] = "no-store"
     if not AUTH_ENABLED or payload is None:
         raise HTTPException(status_code=400, detail="Authentication is required")
@@ -762,7 +763,7 @@ async def create_tunnel_handoff(
     return TunnelHandoffResponse(
         tunnel_url=state.url,
         code=code,
-        expires_in=60,
+        expires_in=TICKET_TTL_SECONDS,
     )
 
 
@@ -805,7 +806,7 @@ async def exchange_tunnel_handoff_pairing(
     return TunnelHandoffResponse(
         tunnel_url=state.url,
         code=code,
-        expires_in=60,
+        expires_in=TICKET_TTL_SECONDS,
     )
 
 
@@ -813,11 +814,41 @@ async def exchange_tunnel_handoff_pairing(
 async def consume_tunnel_handoff(
     request: Request,
     code: str = Form(...),
-) -> RedirectResponse:
+) -> Response:
     """Exchange a valid one-time code for a cookie scoped to the tunnel host."""
     target_host = _request_host(request)
     consumed = consume_ticket_details(code, target_host)
     if consumed is None:
+        # Mobile browsers can restore or re-submit the one-time POST after the
+        # first exchange succeeded. Preserve one-time ticket semantics while
+        # making that benign retry idempotent for an already signed-in browser.
+        if decode_token(request.cookies.get(_COOKIE_NAME)):
+            response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            return response
+
+        if "text/html" in request.headers.get("accept", "").lower():
+            response = HTMLResponse(
+                "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\">"
+                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                "<title>登录链接已失效</title>"
+                "<body style=\"font-family:system-ui,-apple-system,sans-serif;margin:0;"
+                "min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#0f172a\">"
+                "<main style=\"max-width:28rem;margin:1.5rem;padding:2rem;border-radius:1rem;"
+                "background:#fff;box-shadow:0 8px 24px #0f172a14;text-align:center\">"
+                "<h1 style=\"font-size:1.25rem\">登录链接已失效</h1>"
+                "<p style=\"line-height:1.6;color:#475569\">此登录交接已使用或已过期。"
+                "请回到显示二维码的设备，刷新二维码后重新扫码。</p>"
+                "<a href=\"/login\" style=\"display:inline-block;padding:.7rem 1rem;border-radius:.5rem;"
+                "background:#0f766e;color:#fff;text-decoration:none\">返回登录</a>"
+                "</main></body></html>",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            return response
+
         raise HTTPException(status_code=400, detail="Login handoff is invalid or expired")
     payload, handoff = consumed
 
