@@ -368,9 +368,14 @@ def test_phone_handoff_binds_latest_controller_cookie(
     )
     secrets_captured: list[str] = []
 
-    def fake_pairing(payload, redirect_path, viewer_session_id, controller_secret):
+    def fake_pairing(payload, handoff):
+        assert handoff.redirect_path.startswith("/video-learning?viewer_session=")
+        assert len(handoff.cookies) == 1
+        cookie = handoff.cookies[0]
+        assert cookie.name == "dt_video_controller"
+        session_id, controller_secret = cookie.value.split(":", 1)
         secrets_captured.append(controller_secret)
-        assert redirect_path == f"/video-learning?viewer_session={viewer_session_id}"
+        assert handoff.redirect_path.endswith(session_id)
         return "pairing-id", 120
 
     monkeypatch.setattr(video_remote_control, "create_phone_pairing", fake_pairing)

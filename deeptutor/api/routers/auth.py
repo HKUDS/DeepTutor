@@ -62,6 +62,7 @@ from deeptutor.services.tunnel_handoff import (
     create_pairing,
     create_ticket,
     exchange_pairing_details,
+    load_tunnel_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,6 @@ router = APIRouter()
 
 _COOKIE_NAME = "dt_token"
 _COOKIE_MAX_AGE = TOKEN_EXPIRE_HOURS * 3600
-_VIDEO_CONTROLLER_COOKIE = "dt_video_controller"
-_VIDEO_CONTROLLER_MAX_AGE = 12 * 60 * 60
 
 
 def _cookie_attrs() -> dict:
@@ -254,6 +253,15 @@ def _request_host(request: Request) -> str | None:
             forwarded_host = forwarded.split(",", 1)[0].strip()
             return urlsplit("//" + forwarded_host).hostname
     return request.url.hostname
+
+
+def _reject_public_tunnel_credentials(request: Request) -> None:
+    state = load_tunnel_state()
+    if state is not None and _request_host(request) == state.host:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password sign-in and registration are available only on the private network.",
+        )
 
 
 def _extract_token(authorization: str | None, dt_token: str | None) -> str | None:
@@ -524,6 +532,7 @@ async def login(body: LoginRequest, response: Response, request: Request) -> dic
     """Validate credentials and set a JWT cookie."""
     if not AUTH_ENABLED:
         return {"ok": True, "message": "Auth is disabled — no login required."}
+    _reject_public_tunnel_credentials(request)
 
     client_ip = _request_client_ip(request)
     try:
@@ -610,7 +619,7 @@ async def logout(response: Response) -> dict:
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest) -> dict:
+async def register(body: RegisterRequest, request: Request) -> dict:
     """
     Bootstrap-only registration.
 
@@ -625,6 +634,7 @@ async def register(body: RegisterRequest) -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Auth is disabled — registration is not available.",
         )
+    _reject_public_tunnel_credentials(request)
 
     if POCKETBASE_ENABLED:
         # PocketBase deployments are documented as single-user. Keep registration
@@ -749,14 +759,9 @@ async def exchange_tunnel_handoff_pairing(
     exchanged = exchange_pairing_details(pairing_id)
     if exchanged is None:
         raise HTTPException(status_code=400, detail="Phone pairing is invalid or expired")
-    payload, viewer = exchanged
+    payload, handoff = exchanged
     try:
-        code, state = create_ticket(
-            payload,
-            redirect_path=viewer.redirect_path,
-            viewer_session_id=viewer.viewer_session_id,
-            controller_secret=viewer.controller_secret,
-        )
+        code, state = create_ticket(payload, handoff=handoff)
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return TunnelHandoffResponse(
@@ -776,10 +781,10 @@ async def consume_tunnel_handoff(
     consumed = consume_ticket_details(code, target_host)
     if consumed is None:
         raise HTTPException(status_code=400, detail="Login handoff is invalid or expired")
-    payload, viewer = consumed
+    payload, handoff = consumed
 
     token = create_token(payload.username, payload.role, payload.user_id)
-    response = RedirectResponse(viewer.redirect_path, status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(handoff.redirect_path, status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         key=_COOKIE_NAME,
         value=token,
@@ -790,19 +795,19 @@ async def consume_tunnel_handoff(
     )
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
-    if viewer.viewer_session_id and viewer.controller_secret:
+    for cookie in handoff.cookies:
         response.set_cookie(
-            key=_VIDEO_CONTROLLER_COOKIE,
-            value=f"{viewer.viewer_session_id}:{viewer.controller_secret}",
-            max_age=_VIDEO_CONTROLLER_MAX_AGE,
+            key=cookie.name,
+            value=cookie.value,
+            max_age=cookie.max_age,
             httponly=True,
             secure=True,
             samesite="lax",
-            path="/",
+            path=cookie.path,
         )
-    else:
+    for cookie_name in handoff.clear_cookie_names:
         response.delete_cookie(
-            key=_VIDEO_CONTROLLER_COOKIE,
+            key=cookie_name,
             path="/",
             secure=True,
             httponly=True,

@@ -17,8 +17,8 @@ from deeptutor.multi_user.models import LOCAL_ADMIN_ID
 from deeptutor.multi_user.paths import current_owner_id
 from deeptutor.services.auth import TokenPayload, list_users
 from deeptutor.services.path_service import PathService
+from deeptutor.services.tunnel_handoff import HandoffCookie, SessionHandoff, load_tunnel_state
 from deeptutor.services.tunnel_handoff import create_pairing as create_phone_pairing
-from deeptutor.services.tunnel_handoff import load_tunnel_state
 from deeptutor.video_learning.invidious_auth import (
     InvidiousTokenStore,
     create_renderer_session_handoff,
@@ -42,6 +42,8 @@ from deeptutor.video_learning.store import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _auth = [Depends(require_auth)]
+_VIDEO_CONTROLLER_COOKIE = "dt_video_controller"
+_VIDEO_CONTROLLER_MAX_AGE = 12 * 60 * 60
 
 
 def _session_db_path() -> Path:
@@ -516,12 +518,18 @@ async def create_player_phone_handoff(
         raise HTTPException(503, "No active DeepTutor tunnel is configured")
     payload = _token_payload_for_owner(device.owner_id)
     redirect_path = f"/video-learning?viewer_session={quote(session.session_id, safe='')}"
-    pairing_id, expires_in = create_phone_pairing(
-        payload,
+    handoff = SessionHandoff(
         redirect_path=redirect_path,
-        viewer_session_id=session.session_id,
-        controller_secret=controller_secret,
+        cookies=(
+            HandoffCookie(
+                name=_VIDEO_CONTROLLER_COOKIE,
+                value=f"{session.session_id}:{controller_secret}",
+                path="/",
+                max_age=_VIDEO_CONTROLLER_MAX_AGE,
+            ),
+        ),
     )
+    pairing_id, expires_in = create_phone_pairing(payload, handoff=handoff)
     qr_url = f"{state.url}/access/device?pairing={quote(pairing_id, safe='')}"
     response.headers["Cache-Control"] = "no-store"
     return {

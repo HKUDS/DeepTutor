@@ -21,11 +21,13 @@ def tunnel_file(mu_isolated_root) -> Path:
 
 @pytest.fixture(autouse=True)
 def clean_tickets():
-    from deeptutor.services.tunnel_handoff import clear_tickets
+    from deeptutor.services.tunnel_handoff import clear_pairings, clear_tickets
 
     clear_tickets()
+    clear_pairings()
     yield
     clear_tickets()
+    clear_pairings()
 
 
 @pytest.fixture
@@ -127,6 +129,40 @@ def test_handoff_pairing_flow_is_single_use_and_burns_after_exchange(handoff_cli
     assert "alice:admin:u_alice" in consumed.headers["set-cookie"]
 
 
+def test_password_login_is_private_network_only(handoff_client, monkeypatch):
+    import deeptutor.api.routers.auth as auth_router
+    from deeptutor.services.auth import TokenPayload
+
+    monkeypatch.setattr(
+        auth_router,
+        "authenticate",
+        lambda username, password: TokenPayload(username, "admin", "u_alice"),
+    )
+
+    public = handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": "example-deep.trycloudflare.com"},
+    )
+    assert public.status_code == 403
+
+    private = handoff_client.post(
+        "/api/v1/auth/login",
+        json={"username": "alice", "password": "password"},
+        headers={"x-deeptutor-frontend-host": "100.101.207.44:3782"},
+    )
+    assert private.status_code == 200
+
+
+def test_registration_is_private_network_only(handoff_client):
+    public = handoff_client.post(
+        "/api/v1/auth/register",
+        json={"username": "alice", "password": "password-123"},
+        headers={"x-deeptutor-frontend-host": "example-deep.trycloudflare.com"},
+    )
+    assert public.status_code == 403
+
+
 def test_handoff_pairing_expires_after_120_seconds(tunnel_file):
     from deeptutor.services.auth import TokenPayload
     from deeptutor.services.tunnel_handoff import create_pairing, exchange_pairing
@@ -185,17 +221,23 @@ def test_handoff_is_single_use_and_bound_to_current_tunnel_host(handoff_client):
     assert replay.status_code == 400
 
 
-def test_video_handoff_sets_viewer_redirect_and_controller_cookie(handoff_client):
+def test_extension_handoff_sets_redirect_and_declared_cookie(handoff_client):
     from deeptutor.services.auth import TokenPayload
-    from deeptutor.services.tunnel_handoff import create_pairing
+    from deeptutor.services.tunnel_handoff import HandoffCookie, SessionHandoff, create_pairing
 
     payload = TokenPayload("alice", "admin", "u_alice")
-    pairing_id, _ = create_pairing(
-        payload,
+    handoff = SessionHandoff(
         redirect_path="/video-learning?viewer_session=session-1",
-        viewer_session_id="session-1",
-        controller_secret="controller-secret",
+        cookies=(
+            HandoffCookie(
+                name="dt_video_controller",
+                value="session-1:controller-secret",
+                path="/",
+                max_age=12 * 60 * 60,
+            ),
+        ),
     )
+    pairing_id, _ = create_pairing(payload, handoff=handoff)
     exchanged = handoff_client.get(f"/api/v1/auth/handoff/pairing/{pairing_id}")
     assert exchanged.status_code == 200
     ticket = exchanged.json()
@@ -235,26 +277,29 @@ def test_handoff_ticket_expires_after_sixty_seconds(tunnel_file):
     assert consume_ticket(code, state.host, now=160) is None
 
 
-def test_video_handoff_rejects_partial_or_untrusted_redirects(tunnel_file):
+def test_handoff_rejects_untrusted_redirects_and_cookie_values(tunnel_file):
     from deeptutor.services.auth import TokenPayload
-    from deeptutor.services.tunnel_handoff import create_pairing
+    from deeptutor.services.tunnel_handoff import HandoffCookie, SessionHandoff, create_pairing
 
     payload = TokenPayload("alice", "admin", "u_alice")
     invalid = [
-        ("/", "session-1", ""),
-        ("/", "", "secret"),
-        ("/video-learning", "session-1", "secret"),
-        ("/video-learning?viewer_session=other", "session-1", "secret"),
-        ("/video-learning?viewer_session=../escape", "../escape", "secret"),
+        SessionHandoff(redirect_path="https://example.com"),
+        SessionHandoff(redirect_path="//example.com"),
+        SessionHandoff(redirect_path="/path#fragment"),
+        SessionHandoff(cookies=(HandoffCookie("bad name", "value"),)),
+        SessionHandoff(cookies=(HandoffCookie("dt_cookie", "bad;value"),)),
+        SessionHandoff(cookies=(HandoffCookie("dt_cookie", "value", path="?path"),)),
+        SessionHandoff(cookies=(HandoffCookie("dt_cookie", "value", max_age=0),)),
     ]
-    for redirect_path, session_id, secret in invalid:
+    for handoff in invalid:
         with pytest.raises(ValueError):
-            create_pairing(
-                payload,
-                redirect_path=redirect_path,
-                viewer_session_id=session_id,
-                controller_secret=secret,
-            )
+            create_pairing(payload, handoff=handoff)
+
+    valid = SessionHandoff(
+        redirect_path="/video-learning",
+        cookies=(HandoffCookie("dt_video_controller", "session-1:secret", max_age=60),),
+    )
+    assert create_pairing(payload, handoff=valid)[0]
 
 
 def test_proxy_headers_are_trusted_only_from_loopback_peers():
