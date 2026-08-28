@@ -299,7 +299,7 @@ async def _process_page(
     )
 
     try:
-        title, body = extract_article_markdown(html)
+        title, body = extract_article_markdown(html, base_url=final_url or url)
     except Exception:
         title, body = _extract_readable(html)
     content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()

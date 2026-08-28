@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -88,6 +89,39 @@ async def test_fetch_page_blocks_private_redirect_before_request():
 
     assert result is None
     assert requested == ["https://docs.example.com/start"]
+
+
+@pytest.mark.asyncio
+async def test_process_page_resolves_relative_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.web_source.crawler import _process_page
+
+    html = """
+    <html><head><title>Introduction</title></head><body>
+      <article><p><img src="../images/diagram.png" alt="Diagram"></p></article>
+    </body></html>
+    """
+
+    async def fake_fetch_page(url, client):
+        return html, "https://docs.example.com/guide/introduction/"
+
+    monkeypatch.setattr("deeptutor.services.web_source.crawler._fetch_page", fake_fetch_page)
+
+    result = await _process_page(
+        "https://docs.example.com/guide/introduction",
+        depth=0,
+        client=None,
+        sem=asyncio.Semaphore(1),
+        base_host="docs.example.com",
+        base_path_prefix="/guide/",
+        max_depth=1,
+    )
+
+    assert result is not None
+    assert (
+        "![Diagram](https://docs.example.com/guide/images/diagram.png)" in result["page"].markdown
+    )
 
 
 def _make_kb(tmp_path: Path, kb_name: str = "kb") -> tuple[str, Path]:
