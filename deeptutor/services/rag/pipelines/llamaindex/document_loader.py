@@ -16,6 +16,7 @@ import base64
 from dataclasses import dataclass
 import logging
 import mimetypes
+import re
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -40,6 +41,11 @@ IMAGE_DESCRIPTION_PROMPT = (
     "and cite it later. Include visible text/OCR if present, the main subject, "
     "and any educational or technical meaning. Keep the answer under 180 words."
 )
+
+# Match Markdown image references: ![alt](path) or ![](path)
+_MD_IMAGE_RE = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+# Max size for embedding referenced images as data URIs
+_MAX_EMBED_IMAGE_SIZE = 500 * 1024  # 500 KB
 
 
 @dataclass(frozen=True)
@@ -338,17 +344,54 @@ class LlamaIndexDocumentLoader:
             "mimetype": mimetype,
         }
 
+    def _resolve_markdown_images(self, text: str, md_file_path: Path) -> str:
+        """Resolve local image references in Markdown to inline data URIs.
+
+        Images referenced by URL or data URI are left untouched. Images whose
+        resolved path doesn't exist or exceeds the size limit are also kept
+        as-is so they may still work at serving time.
+        """
+        def _replace(m: re.Match) -> str:
+            alt_text = m.group(1)
+            img_path = m.group(2).strip()
+            # Skip external URLs and data URIs
+            if img_path.startswith(("http://", "https://", "data:")):
+                return m.group(0)
+            # Resolve relative to the markdown file's parent directory
+            resolved = (md_file_path.parent / img_path).resolve()
+            if not resolved.exists() or not resolved.is_file():
+                return m.group(0)
+            try:
+                img_bytes = resolved.read_bytes()
+                if len(img_bytes) > _MAX_EMBED_IMAGE_SIZE:
+                    self.logger.debug(f"Image too large to embed ({len(img_bytes)}B): {img_path}")
+                    return m.group(0)
+                mime = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
+                b64 = base64.b64encode(img_bytes).decode("ascii")
+                self.logger.info(f"Embedded image: {img_path} ({len(img_bytes)}B) as data URI")
+                return f"![{alt_text}](data:{mime};base64,{b64})"
+            except OSError:
+                return m.group(0)
+
+        return _MD_IMAGE_RE.sub(_replace, text)
+
     def _append_if_nonempty(self, documents: list[Any], file_path: Path, text: str) -> None:
         if text.strip():
+            # Preprocess Markdown images if this looks like a Markdown file
+            is_markdown = file_path.suffix.lower() in (".md", ".markdown")
+            final_text = self._resolve_markdown_images(text, file_path) if is_markdown else text
             documents.append(
                 Document(
-                    text=text,
+                    text=final_text,
                     metadata={
                         "file_name": file_path.name,
                         "file_path": str(file_path),
                     },
                 )
             )
-            self.logger.info(f"Loaded: {file_path.name} ({len(text)} chars)")
+            self.logger.info(
+                f"Loaded: {file_path.name} ({len(final_text)} chars)"
+                f"{' (with embedded images)' if is_markdown and final_text != text else ''}"
+            )
         else:
             self.logger.warning(f"Skipped empty document: {file_path.name}")
