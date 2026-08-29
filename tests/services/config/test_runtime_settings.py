@@ -528,6 +528,22 @@ def test_runtime_settings_can_ignore_process_overrides(tmp_path: Path) -> None:
     assert service.load_auth()["enabled"] is False
 
 
+def test_version_check_setting_defaults_persists_and_supports_env(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    assert service.load_system()["version_check_enabled"] is True
+    assert service.save_system({"version_check_enabled": False})["version_check_enabled"] is False
+    assert service.load_system(include_process_overrides=False)["version_check_enabled"] is False
+
+    env_service = RuntimeSettingsService(
+        tmp_path / "settings2",
+        process_env={"DEEPTUTOR_VERSION_CHECK_ENABLED": "false"},
+    )
+    env_service.load_system(include_process_overrides=False)
+
+    assert env_service.load_system()["version_check_enabled"] is False
+    assert env_service.render_environment()["DEEPTUTOR_VERSION_CHECK_ENABLED"] == "false"
+
+
 def test_chat_attachment_limits_defaults_and_clamping(tmp_path: Path) -> None:
     service = RuntimeSettingsService(tmp_path / "settings", process_env={})
     system = service.load_system()

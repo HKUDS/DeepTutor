@@ -57,6 +57,13 @@ from deeptutor.services.settings.interface_settings import (
 from deeptutor.services.settings.starter_settings import (
     TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
 )
+from deeptutor.services.version_check import (
+    VersionCheckError,
+    VersionCheckResult,
+    VersionUpdateError,
+    get_version_check_service,
+    get_version_update_service,
+)
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 router = APIRouter()
@@ -234,6 +241,14 @@ class ChatStarterSettingsUpdate(BaseModel):
     """
 
     trace_count: int = Field(ge=STARTER_TRACE_COUNT_RANGE[0], le=STARTER_TRACE_COUNT_RANGE[1])
+
+
+class VersionCheckPayload(BaseModel):
+    force: bool = True
+
+
+class VersionSettingsUpdate(BaseModel):
+    check_enabled: bool
 
 
 class MinerUSettingsUpdate(BaseModel):
@@ -744,6 +759,129 @@ async def get_catalog():
 async def get_network_settings():
     _require_settings_admin()
     return _network_settings_payload()
+
+
+@router.get("/version")
+async def get_version_status() -> dict[str, Any]:
+    """Return the running version plus any cached release result.
+
+    This endpoint never contacts GitHub. The settings page can render the
+    current version immediately, then use the explicit check endpoint when the
+    user asks for fresh release information.
+    """
+    _require_settings_admin()
+    return _version_check_payload(get_version_check_service().cached_result())
+
+
+@router.post("/version/check")
+async def check_version_updates(
+    payload: VersionCheckPayload | None = None,
+) -> dict[str, Any]:
+    _require_settings_admin()
+    if not get_runtime_settings_service().load_system()["version_check_enabled"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Version checks are disabled.",
+        )
+    try:
+        result = await get_version_check_service().check(
+            force=True if payload is None else payload.force
+        )
+    except VersionCheckError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to check for updates",
+        ) from None
+    return _version_check_payload(result)
+
+
+@router.put("/version/settings")
+async def update_version_settings(payload: VersionSettingsUpdate) -> dict[str, Any]:
+    _require_settings_admin()
+    service = get_runtime_settings_service()
+    current = service.load_system(include_process_overrides=False)
+    service.save_system(
+        {
+            **current,
+            "version_check_enabled": payload.check_enabled,
+        }
+    )
+    return _version_check_payload(get_version_check_service().cached_result())
+
+
+@router.post("/version/update")
+async def start_version_update() -> dict[str, Any]:
+    _require_settings_admin()
+    if not get_runtime_settings_service().load_system()["version_check_enabled"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Version checks are disabled.",
+        )
+    try:
+        result = await get_version_check_service().check()
+    except VersionCheckError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to check for updates",
+        ) from None
+
+    latest = result.latest_release
+    if latest is None or not latest.get("update_available"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No newer DeepTutor release is available.",
+        )
+    try:
+        get_version_update_service().start_update(target_version=str(latest["tag_name"]))
+    except VersionUpdateError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from None
+    return _version_check_payload(result)
+
+
+@router.get("/version/update/status")
+async def get_version_update_status() -> dict[str, Any]:
+    _require_settings_admin()
+    return _version_check_payload(get_version_check_service().cached_result())
+
+
+@router.post("/version/update/cancel")
+async def cancel_version_update() -> dict[str, Any]:
+    _require_settings_admin()
+    get_version_update_service().cancel()
+    return _version_check_payload(get_version_check_service().cached_result())
+
+
+def _version_check_payload(result: VersionCheckResult) -> dict[str, Any]:
+    update_service = get_version_update_service()
+    check_enabled = get_runtime_settings_service().load_system()["version_check_enabled"]
+    installation = update_service.installation()
+    update_state = update_service.status()
+    return {
+        "current_version": result.current_version,
+        "latest_release": result.latest_release if check_enabled else None,
+        "checked_at": result.checked_at,
+        "cached": result.cached,
+        "check_enabled": check_enabled,
+        "installation": {
+            "mode": installation.mode,
+            "update_supported": installation.update_supported,
+            "command": installation.command,
+            "reason": installation.reason,
+        },
+        "update": {
+            "state": update_state.state,
+            "message": update_state.message,
+            "previous_version": update_state.previous_version,
+            "installed_version": update_state.installed_version,
+            "target_version": update_state.target_version,
+            "restart_required": update_state.restart_required,
+            "lines": update_state.lines,
+        },
+        "last_update": update_service.history(),
+    }
 
 
 @router.put("/network")
