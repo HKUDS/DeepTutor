@@ -79,6 +79,20 @@ class MemorySnapshot:
         return self.total_rss_bytes / self.limit_bytes
 
 
+def _is_harmonyos() -> bool:
+    """Detect HarmonyOS/OpenHarmony, where unprivileged ``/proc`` access is restricted.
+
+    On HarmonyOS a non-root process cannot read most ``/proc/<pid>/stat``
+    entries, so psutil's ``children()``/``_ppid_map()`` raises
+    ``PermissionError`` on the unreadable init process. The psutil-free
+    ``_scan_proc()`` walker skips such entries instead, so it is used there.
+    """
+    try:
+        return os.uname().sysname == "HarmonyOS"
+    except (AttributeError, OSError):
+        return False
+
+
 def _load_psutil() -> Any | None:
     """Import psutil lazily; it is a soft dependency (see ``_scan_proc``)."""
     try:
@@ -136,6 +150,14 @@ def _classify(pid: int, name: str, cmdline: str, root_pid: int | None = None) ->
 
 def _scan_psutil(psutil: Any) -> tuple[list[ProcessMemory], bool]:
     """Walk the supervisor's tree with psutil (the cross-platform path)."""
+    if _is_harmonyos():
+        # HarmonyOS/OpenHarmony hide most ``/proc/<pid>/stat`` entries from
+        # unprivileged processes, so psutil's ``children()``/``_ppid_map()``
+        # raises ``PermissionError`` on the unreadable init process. Walk
+        # the tree with the psutil-free ``/proc`` reader instead, which skips
+        # unreadable entries defensively.
+        return _scan_proc()
+
     root_pid = _supervisor_pid(psutil.pid_exists)
     partial = root_pid is None
     try:
