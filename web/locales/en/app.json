@@ -3402,5 +3402,16 @@
   "Tutor threads": "Tutor threads",
   "Filter by archive status": "Filter by archive status",
   "Active and archived": "Active and archived",
-  "Loading conversations": "Loading conversations"
+  "Loading conversations": "Loading conversations",
+  "Relationship graph": "Relationship graph",
+  "Graph scope": "Graph scope",
+  "Current unit": "Current unit",
+  "Through current unit": "Through current unit",
+  "Generating relationship graph…": "Generating relationship graph…",
+  "Failed to generate relationship graph": "Failed to generate relationship graph",
+  "No supported entities were found in this scope.": "No supported entities were found in this scope.",
+  "The source range was too long, so the graph uses the earliest units plus the current unit.": "The source range was too long, so the graph uses the earliest units plus the current unit.",
+  "Entities": "Entities",
+  "Relationships": "Relationships",
+  "Also known as": "Also known as"
 }

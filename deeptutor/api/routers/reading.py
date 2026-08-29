@@ -124,6 +124,44 @@ class TextPositionSelectorPayload(BaseModel):
         return self
 
 
+class CharacterGraphRequest(BaseModel):
+    locator: int = Field(ge=1)
+    scope: Literal["current", "through_current"] = "current"
+    force_refresh: bool = False
+
+
+class CharacterGraphNode(BaseModel):
+    id: str
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    description: str = ""
+    confidence: float = Field(ge=0, le=1)
+
+
+class CharacterGraphEdge(BaseModel):
+    source: str
+    target: str
+    relation: str
+    evidence: str
+    evidence_locators: list[int] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+
+
+class CharacterGraphPayload(BaseModel):
+    nodes: list[CharacterGraphNode] = Field(default_factory=list)
+    edges: list[CharacterGraphEdge] = Field(default_factory=list)
+
+
+class CharacterGraphResponse(BaseModel):
+    graph: CharacterGraphPayload
+    mermaid: str
+    generated_at: float
+    scope: Literal["current", "through_current"]
+    locator: int
+    included_locators: list[int]
+    truncated: bool
+
+
 class AnnotationPayload(BaseModel):
     """An annotation as the reader sends it.
 
@@ -345,6 +383,33 @@ async def get_unit(material_id: str, locator: int) -> UnitText:
         )
     except Exception as exc:
         raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/character-graph", response_model=CharacterGraphResponse)
+async def character_graph(
+    material_id: str, payload: CharacterGraphRequest
+) -> CharacterGraphResponse:
+    """Extract and render entities for the selected unit, or units through it."""
+    from deeptutor.reading.entity_graph import EntityGraphExtractionError
+    from deeptutor.services.reading_entity_graph import build_entity_graph
+
+    store = _store()
+    try:
+        result = await build_entity_graph(
+            store,
+            material_id,
+            locator=payload.locator,
+            scope=payload.scope,
+            force_refresh=payload.force_refresh,
+        )
+    except EntityGraphExtractionError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The reader could not generate the relationship graph. Try again.",
+        ) from exc
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return CharacterGraphResponse.model_validate(result.to_dict())
 
 
 @router.get("/materials/{material_id}/raw")

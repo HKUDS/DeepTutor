@@ -12,6 +12,7 @@ export type UnitKind = "page" | "chapter" | "slide" | "section";
 export type AnnotationKind = "highlight" | "underline" | "note";
 export type ExportFormat = "auto" | "pdf" | "markdown";
 export type RenderMode = "text" | "pdf" | "epub";
+export type EntityGraphScope = "current" | "through_current";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -145,6 +146,37 @@ export interface ReadingExtensionResult {
   payload: Record<string, unknown>;
 }
 
+
+export interface EntityGraphNode {
+  id: string;
+  name: string;
+  aliases: string[];
+  description: string;
+  confidence: number;
+}
+
+export interface EntityGraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  evidence: string;
+  evidence_locators: number[];
+  confidence: number;
+}
+
+export interface EntityGraphResult {
+  graph: {
+    nodes: EntityGraphNode[];
+    edges: EntityGraphEdge[];
+  };
+  mermaid: string;
+  generated_at: number;
+  scope: EntityGraphScope;
+  locator: number;
+  included_locators: number[];
+  truncated: boolean;
+}
+
 const BASE = "/api/v1/reading";
 
 /** Surface the server's own message — it explains what the user can do next. */
@@ -197,6 +229,26 @@ export async function deleteMaterial(materialId: string): Promise<void> {
   await unwrap(
     await apiFetch(apiUrl(`${BASE}/materials/${materialId}`), {
       method: "DELETE",
+    }),
+  );
+}
+
+export async function fetchEntityGraph(
+  materialId: string,
+  locator: number,
+  scope: EntityGraphScope,
+  forceRefresh = false,
+): Promise<EntityGraphResult> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/character-graph`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        locator,
+        scope,
+        force_refresh: forceRefresh,
+      }),
+      cache: "no-store",
     }),
   );
 }
