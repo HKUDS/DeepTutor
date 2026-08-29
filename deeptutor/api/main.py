@@ -418,6 +418,7 @@ from deeptutor.api.routers import (
     video_learning,
     video_remote_control,
     voice,
+    youtube_subtitles,
 )
 from deeptutor.api.routers import (
     tools as tools_router,
@@ -497,6 +498,12 @@ app.include_router(
 )
 app.include_router(
     video_learning.router,
+    prefix="/api/v1/video-learning",
+    tags=["immersive-watching"],
+    dependencies=_auth,
+)
+app.include_router(
+    youtube_subtitles.router,
     prefix="/api/v1/video-learning",
     tags=["immersive-watching"],
     dependencies=_auth,
