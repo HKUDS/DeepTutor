@@ -12,6 +12,7 @@ export type UnitKind = "page" | "chapter" | "slide" | "section";
 export type AnnotationKind = "highlight" | "underline" | "note";
 export type ExportFormat = "auto" | "pdf" | "markdown";
 export type RenderMode = "text" | "pdf" | "epub";
+export type ContentFormat = "plain_text" | "web_markdown";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -36,6 +37,9 @@ export interface MaterialInfo {
   /** True when the original bytes can be rendered faithfully (PDF today). */
   has_raw_view: boolean;
   render_mode: RenderMode;
+  content_format?: ContentFormat;
+  source_type?: string;
+  source_url?: string;
   annotation_count: number;
 }
 
@@ -182,6 +186,16 @@ export async function uploadMaterial(file: File): Promise<MaterialDetail> {
   form.append("file", file, file.name);
   return unwrap(
     await apiFetch(apiUrl(`${BASE}/materials`), { method: "POST", body: form }),
+  );
+}
+
+export async function createMaterialFromUrl(url: string): Promise<MaterialDetail> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/from-url`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }),
   );
 }
 

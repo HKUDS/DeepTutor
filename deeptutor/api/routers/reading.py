@@ -19,9 +19,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+import re
 import shutil
 import tempfile
 from typing import Any, Literal
+from urllib.parse import urldefrag, urlparse, urlunparse
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.params import File
@@ -88,6 +90,9 @@ class MaterialInfo(BaseModel):
     created_at: float = 0.0
     has_raw_view: bool = False
     render_mode: Literal["text", "pdf", "epub"] = "text"
+    content_format: Literal["plain_text", "web_markdown"] = "plain_text"
+    source_type: str = "upload"
+    source_url: str = ""
     annotation_count: int = 0
 
 
@@ -199,6 +204,10 @@ class EpubPairingRequest(BaseModel):
     chinese_material_id: str
 
 
+class UrlMaterialRequest(BaseModel):
+    url: str
+
+
 # === Routes ===================================================================
 
 
@@ -263,6 +272,46 @@ async def upload_material(file: UploadFile = File(...)) -> MaterialDetail:  # no
         raise _http_error(exc) from exc
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@router.post("/materials/from-url", response_model=MaterialDetail)
+async def material_from_url(payload: UrlMaterialRequest) -> MaterialDetail:
+    """Capture one public page as a structured reading snapshot."""
+    url = _normalise_public_url(payload.url)
+    try:
+        from deeptutor.services.web_source.crawler import crawl_docs_site
+        from deeptutor.services.web_source.markdown import (
+            strip_leading_snapshot_provenance,
+        )
+
+        result = await crawl_docs_site(url, max_depth=0, max_pages=1)
+        if not result.pages:
+            detail = "; ".join(result.errors) or "No readable page was returned."
+            raise ReadingError(f"The page could not be captured: {detail}")
+        page = result.pages[0]
+        markdown = strip_leading_snapshot_provenance(page.markdown)
+        if not markdown.strip():
+            raise ReadingError("The page has no readable content.")
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="dt-reading-web-"))
+        try:
+            tmp_path = tmp_dir / _web_filename(page.title, url)
+            tmp_path.write_text(markdown, encoding="utf-8")
+            store = _store()
+            manifest = await asyncio.to_thread(
+                store.ingest,
+                tmp_path,
+                content_format="web_markdown",
+                source_type="url_snapshot",
+                source_url=url,
+            )
+            return _detail(store, manifest)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _http_error(exc) from exc
 
 
 @router.get("/materials/{material_id}", response_model=MaterialDetail)
@@ -487,6 +536,35 @@ def _attachment_header(filename: str) -> str:
 
     ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "export"
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
+
+
+def _normalise_public_url(value: str) -> str:
+    raw = str(value or "").strip()
+    parsed = urlparse(raw)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Enter a complete http:// or https:// URL.")
+    if parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Authenticated URLs are not supported.")
+    clean, _fragment = urldefrag(raw)
+    parsed = urlparse(clean)
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="The URL has an invalid port.") from exc
+    host = (parsed.hostname or "").lower()
+    netloc = host
+    if port:
+        netloc += f":{port}"
+    return urlunparse(
+        (parsed.scheme.lower(), netloc, parsed.path or "/", parsed.params, parsed.query, "")
+    )
+
+
+def _web_filename(title: str, url: str) -> str:
+    candidate = re.sub(r"[^\w\-. ]+", " ", str(title or ""), flags=re.UNICODE).strip()
+    if not candidate:
+        candidate = urlparse(url).path.rstrip("/").rsplit("/", 1)[-1] or "web-page"
+    return f"{candidate[:120]}.md"
 
 
 __all__ = ["MAX_MATERIAL_BYTES", "router"]

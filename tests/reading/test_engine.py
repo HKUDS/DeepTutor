@@ -347,6 +347,30 @@ def test_reingesting_the_same_bytes_reuses_the_material_and_its_annotations(
     assert [a.note for a in store.annotations(second.material_id)] == ["key idea"]
 
 
+def test_identical_upload_and_web_snapshot_bytes_stay_separate(
+    store: ReadingStore, tmp_path: Path
+) -> None:
+    data = b"# Same bytes\n\nDifferent ingestion provenance.\n"
+    upload_path = tmp_path / "source.md"
+    upload_path.write_bytes(data)
+    snapshot_path = tmp_path / "snapshot.md"
+    snapshot_path.write_bytes(data)
+
+    upload = store.ingest(upload_path)
+    snapshot = store.ingest(
+        snapshot_path,
+        content_format="web_markdown",
+        source_type="url_snapshot",
+        source_url="https://docs.example.com/page",
+    )
+
+    assert snapshot.material_id != upload.material_id
+    assert upload.content_format == "plain_text"
+    assert upload.source_type == "upload"
+    assert snapshot.content_format == "web_markdown"
+    assert snapshot.source_type == "url_snapshot"
+
+
 def test_unknown_material_and_bad_id_are_distinguishable(store: ReadingStore) -> None:
     with pytest.raises(MaterialNotFound):
         store.manifest("0123456789abcdef")

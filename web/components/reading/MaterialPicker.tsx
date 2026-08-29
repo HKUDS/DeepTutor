@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Loader2, Trash2, Upload } from "lucide-react";
+import { FileText, Globe, Loader2, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   deleteMaterial,
+  createMaterialFromUrl,
   getSupportedFormats,
   listMaterials,
   uploadMaterial,
@@ -38,6 +39,7 @@ export function MaterialPicker({
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [urlInput, setUrlInput] = useState("");
 
   const reload = useCallback(async () => {
     try {
@@ -94,6 +96,27 @@ export function MaterialPicker({
     [busy, onOpen, reload, t],
   );
 
+  const openUrl = useCallback(async () => {
+    const url = urlInput.trim();
+    if (!url || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const material = await createMaterialFromUrl(url);
+      setUrlInput("");
+      await reload();
+      onOpen(material);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : t("This page could not be opened."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, onOpen, reload, t, urlInput]);
+
   const remove = useCallback(
     async (materialId: string) => {
       try {
@@ -109,6 +132,33 @@ export function MaterialPicker({
   return (
     <div className="flex h-full flex-col items-center overflow-y-auto px-6 py-8">
       <div className="w-full max-w-[520px]">
+        <div className="mb-4 space-y-2 rounded-xl border border-[var(--border)] bg-[var(--card)]/45 p-3">
+          <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--foreground)]">
+            <Globe size={14} />
+            {t("Read a web page")}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(event) => setUrlInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void openUrl();
+              }}
+              placeholder={t("https://docs.example.com/tutorial")}
+              className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12px] outline-none focus:border-[var(--ring)]"
+            />
+            <button
+              type="button"
+              onClick={() => void openUrl()}
+              disabled={busy || !urlInput.trim()}
+              className="rounded-lg bg-[var(--primary)] px-3 py-2 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-45"
+            >
+              {t("Open")}
+            </button>
+          </div>
+        </div>
+
         <div
           onDragOver={(event) => {
             event.preventDefault();

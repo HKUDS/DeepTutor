@@ -108,6 +108,69 @@ def test_upload_rejects_an_empty_file(client: TestClient) -> None:
     assert response.status_code == 400
 
 
+def test_url_snapshot_renders_as_web_markdown_without_provenance(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from deeptutor.services.web_source import crawler
+
+    async def fake_crawl(url: str, *, max_depth: int, max_pages: int):
+        assert url == "https://docs.example.com/guide?from=reader"
+        assert max_depth == 0
+        assert max_pages == 1
+        return crawler.CrawlResult(
+            pages=[
+                crawler.CrawledPage(
+                    url=url,
+                    title="Guide",
+                    markdown=(
+                        "<!-- source: https://docs.example.com/canonical -->\n"
+                        "# Guide\n\n- Read structured Markdown.\n"
+                    ),
+                    content_hash="hash",
+                )
+            ]
+        )
+
+    monkeypatch.setattr(crawler, "crawl_docs_site", fake_crawl)
+
+    response = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={"url": "HTTPS://docs.example.com/guide?from=reader#section"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source_type"] == "url_snapshot"
+    assert body["source_url"] == "https://docs.example.com/guide?from=reader"
+    assert body["content_format"] == "web_markdown"
+    unit = client.get(f"/api/v1/reading/materials/{body['material_id']}/units/1")
+    assert unit.status_code == 200
+    assert "<!-- source:" not in unit.json()["text"]
+    assert "# Guide" in unit.json()["text"]
+
+
+def test_url_snapshot_rejects_a_malformed_port(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/reading/materials/from-url",
+        json={"url": "https://docs.example.com:not-a-port/page"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "The URL has an invalid port."
+
+
+def test_uploaded_markdown_remains_plain_text(client: TestClient) -> None:
+    body = _upload(
+        client,
+        name="source.md",
+        data=b"# Literal Markdown\n\nThis remains a source document.",
+    )
+
+    assert body["content_format"] == "plain_text"
+    assert body["source_type"] == "upload"
+
+
 def test_upload_rejects_an_oversized_file(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr(reading, "MAX_MATERIAL_BYTES", 1024)
 
