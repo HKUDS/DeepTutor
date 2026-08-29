@@ -9,6 +9,7 @@ from __future__ import annotations
 import html as _html
 import logging
 import re
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +210,7 @@ def extract_headings(markdown: str) -> list[dict]:
     return headings
 
 
-def extract_article_markdown(raw_html: str) -> tuple[str, str]:
+def extract_article_markdown(raw_html: str, base_url: str = "") -> tuple[str, str]:
     """Extract ``(title, markdown)`` from a doc-site HTML page.
 
     Falls back to full-body text if no article container is found, but
@@ -292,7 +293,7 @@ def extract_article_markdown(raw_html: str) -> tuple[str, str]:
         content_el = body[0] if body else tree
 
     # Convert to markdown
-    md = _element_to_markdown(content_el)
+    md = _element_to_markdown(content_el, base_url=base_url)
     md = _clean_markdown(md)
 
     if not title:
@@ -339,7 +340,7 @@ def _pre_to_text(el) -> str:
     return "".join(parts)
 
 
-def _element_to_markdown(el) -> str:
+def _element_to_markdown(el, base_url: str = "") -> str:
     """Recursively convert an lxml element to markdown text.
 
     Correctly preserves inter-element whitespace by including both
@@ -362,7 +363,7 @@ def _element_to_markdown(el) -> str:
                 parts.append(child.tail)
             continue
 
-        text = _element_to_markdown(child)
+        text = _element_to_markdown(child, base_url=base_url)
 
         if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             level = int(tag[1])
@@ -423,6 +424,8 @@ def _element_to_markdown(el) -> str:
             alt = child.get("alt", "")
             src = child.get("src", "")
             if src:
+                if base_url:
+                    src = urljoin(base_url, src)
                 parts.append(f"![{alt}]({src})")
         elif tag in ("div", "section", "span", "article", "main"):
             parts.append(text)
