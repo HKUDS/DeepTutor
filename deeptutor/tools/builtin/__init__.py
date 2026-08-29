@@ -344,7 +344,10 @@ class CodeExecutionTool(_PromptHintsMixin, BaseTool):
                 "complete, ready-to-run source in `code` and pick `language` "
                 "(python, c, or cpp). Use it for calculation, data processing, "
                 "and code-generated deliverables instead of embedding source in "
-                "an exec command. Print concise results to stdout."
+                "an exec command. Preserve explicit quantities and scope; after "
+                "failure or a missing artifact, diagnose the cause and change "
+                "strategy rather than retrying identical code. Print concise "
+                "results to stdout."
             ),
             parameters=[
                 ToolParameter(
