@@ -3221,6 +3221,7 @@
   "Open in YouTube": "在 YouTube 中打开",
   "No compatible video stream was returned.": "未返回兼容的视频流。",
   "No subtitles are available for this video.": "此视频没有可用字幕。",
+  "YouTube is connected. New videos without subtitles will be prepared automatically.": "YouTube 已连接；新打开的无字幕视频会自动准备字幕。",
   "Connect YouTube": "连接 YouTube",
   "Preparing YouTube subtitles…": "正在准备 YouTube 字幕…",
   "Using this Mac's existing Chrome session to retrieve YouTube subtitles.": "正在使用此 Mac 已登录的 Chrome 会话获取 YouTube 字幕。",

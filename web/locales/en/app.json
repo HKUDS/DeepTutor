@@ -3221,6 +3221,7 @@
   "Open in YouTube": "Open in YouTube",
   "No compatible video stream was returned.": "No compatible video stream was returned.",
   "No subtitles are available for this video.": "No subtitles are available for this video.",
+  "YouTube is connected. New videos without subtitles will be prepared automatically.": "YouTube is connected. New videos without subtitles will be prepared automatically.",
   "Connect YouTube": "Connect YouTube",
   "Preparing YouTube subtitles…": "Preparing YouTube subtitles…",
   "Using this Mac's existing Chrome session to retrieve YouTube subtitles.": "Using this Mac's existing Chrome session to retrieve YouTube subtitles.",

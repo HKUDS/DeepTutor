@@ -23,8 +23,12 @@ import {
   InvidiousFeedItem,
   InvidiousHomeFeed,
   disconnectInvidious,
+  disconnectYouTubeSession,
+  connectYouTubeSession,
   getInvidiousAuthorizeUrl,
   getInvidiousHome,
+  getYouTubeSessionStatus,
+  type YouTubeSessionStatus,
 } from "@/lib/video-learning-api";
 
 interface InvidiousHomeProps {
@@ -53,6 +57,9 @@ export function InvidiousHome({
   const [feed, setFeed] = useState<InvidiousHomeFeed | null>(null);
   const [activeTab, setActiveTab] = useState<string>("");
   const [authorizing, setAuthorizing] = useState(false);
+  const [youtube, setYoutube] = useState<YouTubeSessionStatus | null>(null);
+  const [youtubeConnecting, setYoutubeConnecting] = useState(false);
+  const [youtubeMessage, setYoutubeMessage] = useState("");
 
   const fetchFeed = useCallback(async (tab?: string) => {
     setLoading(true);
@@ -72,6 +79,7 @@ export function InvidiousHome({
 
   useEffect(() => {
     void fetchFeed();
+    void getYouTubeSessionStatus().then(setYoutube).catch(() => {});
     const handleAuthMessage = (event: MessageEvent) => {
       if (event.data?.type === "INVIDIOUS_AUTH_SUCCESS") {
         void fetchFeed();
@@ -80,6 +88,35 @@ export function InvidiousHome({
     window.addEventListener("message", handleAuthMessage);
     return () => window.removeEventListener("message", handleAuthMessage);
   }, [fetchFeed]);
+
+  const handleYouTubeConnect = async () => {
+    if (youtubeConnecting) return;
+    setYoutubeConnecting(true);
+    setYoutubeMessage(t("Using this Mac's existing Chrome session to retrieve YouTube subtitles."));
+    try {
+      const session = await connectYouTubeSession();
+      setYoutube({ connection: session.connection as YouTubeSessionStatus["connection"], helper_available: session.helper_available });
+      setYoutubeMessage(
+        session.helper_available
+          ? t("YouTube is connected. New videos without subtitles will be prepared automatically.")
+          : t("Chrome or Chromium is required on the Mac running DeepTutor.")
+      );
+    } catch (caught) {
+      setYoutubeMessage(caught instanceof Error ? caught.message : t("Could not connect YouTube."));
+    } finally {
+      setYoutubeConnecting(false);
+    }
+  };
+
+  const handleYouTubeDisconnect = async () => {
+    try {
+      await disconnectYouTubeSession();
+      await getYouTubeSessionStatus().then(setYoutube);
+      setYoutubeMessage(t("YouTube disconnected. Cached subtitles remain available."));
+    } catch (caught) {
+      setYoutubeMessage(caught instanceof Error ? caught.message : t("Could not disconnect YouTube."));
+    }
+  };
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -163,6 +200,27 @@ export function InvidiousHome({
             </button>
           )}
 
+          {youtube?.connection === "connected" ? (
+            <button
+              type="button"
+              onClick={() => void handleYouTubeDisconnect()}
+              className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              <LogOut size={13} />
+              {t("Disconnect YouTube")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleYouTubeConnect()}
+              disabled={youtubeConnecting}
+              className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-50"
+            >
+              {youtubeConnecting ? <Loader2 size={13} className="animate-spin" /> : <Globe size={13} />}
+              {t("Connect YouTube")}
+            </button>
+          )}
+
           {onOpenInvidious && (
             <button
               type="button"
@@ -191,6 +249,12 @@ export function InvidiousHome({
           )}
         </div>
       </header>
+
+      {youtubeMessage && (
+        <div className="border-b border-[var(--border)] bg-[var(--muted)]/30 px-4 py-2 text-xs text-[var(--muted-foreground)]" role="status" aria-live="polite">
+          {youtubeMessage}
+        </div>
+      )}
 
       {(openingInvidious || openMessage) && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--muted)]/30 px-4 py-2 text-xs">

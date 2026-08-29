@@ -56,6 +56,12 @@ export interface TimedMediaMaterial {
   };
 }
 
+export interface YouTubeSessionStatus {
+  connection: "disconnected" | "connected" | "error";
+  helper_available: boolean;
+  last_error_code?: string | null;
+}
+
 export interface VideoNote {
   note_id: string;
   text: string;
@@ -190,6 +196,14 @@ export async function connectYouTubeSession(materialId = ""): Promise<{ connecti
       body: JSON.stringify({ material_id: materialId }),
     })
   );
+}
+
+export async function getYouTubeSessionStatus(): Promise<YouTubeSessionStatus> {
+  return unwrap(await apiFetch(apiUrl("/api/v1/video-learning/youtube-session/status"), { cache: "no-store" }));
+}
+
+export async function disconnectYouTubeSession(): Promise<void> {
+  await unwrap(await apiFetch(apiUrl("/api/v1/video-learning/youtube-session"), { method: "DELETE" }));
 }
 
 export async function requestSubtitlePrefetch(materialId: string): Promise<void> {

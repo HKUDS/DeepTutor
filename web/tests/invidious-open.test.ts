@@ -41,3 +41,15 @@ test("Invidious hub surfaces Open Invidious status and current-tab navigation", 
   assert.match(home, /Continue to Invidious/);
   assert.match(home, /disabled=\{openingInvidious\}/);
 });
+
+test("Invidious hub offers a host-Chrome YouTube connection", () => {
+  const home = readFileSync(
+    path.join(process.cwd(), "components/watching/InvidiousHome.tsx"),
+    "utf8",
+  );
+  assert.match(home, /getYouTubeSessionStatus/);
+  assert.match(home, /connectYouTubeSession/);
+  assert.match(home, /Connect YouTube/);
+  assert.match(home, /Disconnect YouTube/);
+  assert.match(home, /Using this Mac's existing Chrome session/);
+});
