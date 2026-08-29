@@ -122,6 +122,30 @@ def test_auth_disabled_reads_local_admin_output(output_app) -> None:
     assert response.content == b"local output"
 
 
+def test_authenticated_user_downloads_visible_partner_output(output_app, monkeypatch) -> None:
+    relative_path = "workspace/chat/chat/session-1/code_runs/chart.png"
+    alice = TokenPayload(username="alice", role="user", user_id="u_alice")
+    client, admin_root, _users_root = output_app({"alice-token": alice})
+
+    from deeptutor.api.routers import outputs
+
+    partner_root = admin_root / "partners" / "math-bot" / "workspace"
+    _write_output(partner_root, relative_path, b"\x89PNG\r\n\x1a\npartner image")
+    monkeypatch.setattr(
+        outputs,
+        "visible_partners",
+        lambda: [{"partner_id": "math-bot", "can_manage": True}],
+    )
+
+    with client:
+        client.cookies.set("dt_token", "alice-token")
+        response = client.get(f"/api/outputs/{relative_path}")
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert response.headers["content-type"] == "image/png"
+
+
 def test_private_suffix_is_rejected(output_app) -> None:
     relative_path = "workspace/chat/chat/session-1/code_runs/private.json"
     alice = TokenPayload(username="alice", role="user", user_id="u_alice")

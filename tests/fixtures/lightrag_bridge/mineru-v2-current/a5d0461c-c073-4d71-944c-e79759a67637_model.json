@@ -1,0 +1,141 @@
+[
+    {
+        "layout_dets": [
+            {
+                "cls_id": 17,
+                "label": "paragraph_title",
+                "score": 0.5515,
+                "bbox": [
+                    195,
+                    156,
+                    1055,
+                    215
+                ],
+                "index": 1
+            },
+            {
+                "cls_id": 22,
+                "label": "text",
+                "score": 0.9291,
+                "bbox": [
+                    191,
+                    255,
+                    968,
+                    295
+                ],
+                "index": 2
+            },
+            {
+                "cls_id": 5,
+                "label": "display_formula",
+                "score": 0.9417,
+                "bbox": [
+                    740,
+                    353,
+                    958,
+                    401
+                ],
+                "index": 3,
+                "latex": "E = m c ^ { \\wedge } 2"
+            },
+            {
+                "cls_id": 7,
+                "label": "figure_title",
+                "score": 0.9427,
+                "bbox": [
+                    193,
+                    477,
+                    653,
+                    517
+                ],
+                "index": 4
+            },
+            {
+                "cls_id": 21,
+                "label": "table",
+                "score": 0.9627,
+                "bbox": [
+                    197,
+                    554,
+                    1034,
+                    694
+                ],
+                "index": 5,
+                "html": "<table><tr><td>Engine</td><td>Path</td></tr><tr><td>LightRAG</td><td>Native</td></tr></table>"
+            },
+            {
+                "cls_id": 3,
+                "label": "chart",
+                "score": 0.9352,
+                "bbox": [
+                    284,
+                    851,
+                    1122,
+                    1226
+                ],
+                "index": 6
+            },
+            {
+                "cls_id": 7,
+                "label": "figure_title",
+                "score": 0.9393,
+                "bbox": [
+                    193,
+                    1278,
+                    583,
+                    1317
+                ],
+                "index": 7
+            },
+            {
+                "label": "ocr_text",
+                "bbox": [
+                    200,
+                    159,
+                    1051,
+                    212
+                ],
+                "score": 1.0,
+                "text": ""
+            },
+            {
+                "label": "ocr_text",
+                "bbox": [
+                    200,
+                    260,
+                    962,
+                    289
+                ],
+                "score": 1.0,
+                "text": ""
+            },
+            {
+                "label": "ocr_text",
+                "bbox": [
+                    199,
+                    478,
+                    648,
+                    513
+                ],
+                "score": 1.0,
+                "text": ""
+            },
+            {
+                "label": "ocr_text",
+                "bbox": [
+                    199,
+                    1283,
+                    578,
+                    1313
+                ],
+                "score": 1.0,
+                "text": ""
+            }
+        ],
+        "page_info": {
+            "page_no": 0,
+            "width": 1700,
+            "height": 2200
+        }
+    }
+]

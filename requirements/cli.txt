@@ -52,7 +52,7 @@ python-docx>=1.1.0
 openpyxl>=3.1.0
 python-pptx>=1.0.0
 pypdf>=4.0.0
-pdfplumber>=0.11.0,<0.11.8  # 0.11.8+ pins pdfminer.six==20251230, conflicts with mineru (via raganything)
+pdfplumber>=0.11.0
 reportlab>=4.0.0
 defusedxml>=0.7.1
 

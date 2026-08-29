@@ -167,3 +167,79 @@ def test_capture_is_empty_when_no_backend_is_available(monkeypatch: pytest.Monke
 
     assert snapshot.processes == ()
     assert snapshot.total_rss_bytes == 0
+
+
+def test_scan_psutil_falls_back_when_children_raises_permission_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HarmonyOS: psutil.children() raises raw PermissionError on /proc/1/stat (#1076)."""
+
+    class _PsutilError(Exception):
+        pass
+
+    class _BoomProcess:
+        def children(self, recursive: bool = False):
+            raise PermissionError("[Errno 13] Permission denied: '/proc/1/stat'")
+
+    class _FakePsutil:
+        Error = _PsutilError
+        AccessDenied = _PsutilError
+
+        @staticmethod
+        def pid_exists(pid: int) -> bool:
+            return True
+
+        @staticmethod
+        def Process(pid: int | None = None):
+            return _BoomProcess()
+
+    fallback = (
+        [memory_probe.ProcessMemory(pid=os.getpid(), label="backend", rss_bytes=1024)],
+        True,
+    )
+    monkeypatch.setattr(memory_probe.sys, "platform", "linux")
+    monkeypatch.setattr(memory_probe, "_scan_proc", lambda: fallback)
+
+    processes, partial = memory_probe._scan_psutil(_FakePsutil())
+
+    assert processes == fallback[0]
+    assert partial is True
+
+
+def test_scan_psutil_self_path_when_permission_error_off_linux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _PsutilError(Exception):
+        pass
+
+    class _BoomProcess:
+        def children(self, recursive: bool = False):
+            raise PermissionError("denied")
+
+        @property
+        def pid(self) -> int:
+            return os.getpid()
+
+        def memory_info(self):
+            return type("MI", (), {"rss": 2048})()
+
+    class _FakePsutil:
+        Error = _PsutilError
+        AccessDenied = _PsutilError
+
+        @staticmethod
+        def pid_exists(pid: int) -> bool:
+            return True
+
+        @staticmethod
+        def Process(pid: int | None = None):
+            return _BoomProcess()
+
+    monkeypatch.setattr(memory_probe.sys, "platform", "darwin")
+
+    processes, partial = memory_probe._scan_psutil(_FakePsutil())
+
+    assert len(processes) == 1
+    assert processes[0].pid == os.getpid()
+    assert processes[0].rss_bytes == 2048
+    assert partial is True

@@ -83,7 +83,7 @@ def render_artifacts_for_tool(artifacts: list[SandboxArtifact]) -> str:
     """
 
     if not artifacts:
-        return ""
+        return "No generated artifacts were found in the workspace."
     lines = [
         "Generated artifacts (now saved — shown to the user as download cards):",
         *[

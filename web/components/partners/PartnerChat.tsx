@@ -25,6 +25,7 @@ import {
   resumePartnerSession,
 } from "@/lib/partners-api";
 import { freshPartnerSessionKey } from "@/lib/partner-session";
+import { createPartnerDraftPublisher } from "@/lib/partner-chat-draft";
 import { ReconnectingWebSocket } from "@/lib/reconnecting-websocket";
 import type { ExportableMessage } from "@/lib/chat-export";
 import type { StreamEvent } from "@/lib/unified-ws";
@@ -328,11 +329,10 @@ export default function PartnerChat({
     // Authoritative live-turn accumulator. Lives in the effect scope so
     // connection handlers can mutate it cheaply; renders see snapshots only.
     let live: { events: StreamEvent[]; content: string } | null = null;
-    const publish = () => {
-      setDraft(
-        live ? { events: [...live.events], content: live.content } : null,
-      );
-    };
+    // Local providers can emit many tokens between animation frames. Publish
+    // one immutable snapshot per frame so React never enters an update storm.
+    const { publish, publishNow, cancel: cancelPendingPublish } =
+      createPartnerDraftPublisher(() => live, setDraft);
 
     const handleMessage = (message: MessageEvent) => {
       let data: {
@@ -389,11 +389,11 @@ export default function PartnerChat({
             events: finished?.events.length ? finished.events : undefined,
           },
         ]);
-        publish();
+        publishNow();
       } else if (data.type === "done") {
         setStreaming(false);
         live = null;
-        publish();
+        publishNow();
       } else if (data.type === "stopped") {
         // Server cancelled the turn (/stop or the stop button). Keep any
         // partial answer the user already saw; drop the live draft.
@@ -410,7 +410,7 @@ export default function PartnerChat({
           ]);
         }
         setStreaming(false);
-        publish();
+        publishNow();
       } else if (data.type === "proactive") {
         setMessages((msgs) => [
           ...msgs,
@@ -422,7 +422,7 @@ export default function PartnerChat({
           { role: "assistant", content: data.content ?? "Error", error: true },
         ]);
         live = null;
-        publish();
+        publishNow();
         setStreaming(false);
       }
     };
@@ -464,6 +464,7 @@ export default function PartnerChat({
     connection.start();
 
     return () => {
+      cancelPendingPublish();
       window.removeEventListener("focus", wakeWhenActive);
       window.removeEventListener("online", wakeWhenActive);
       document.removeEventListener("visibilitychange", wakeWhenActive);

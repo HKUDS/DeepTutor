@@ -1,1557 +1,891 @@
-"""Unit tests for the LightRAG RAG pipeline + provider routing.
-
-RAG-Anything / LightRAG is an optional dependency that is NOT installed in CI,
-so these tests exercise everything that does not require the package (factory
-routing, config bridge, storage, lifecycle gating, parse-layer consumption)
-directly, and stub the thin ``engine`` adapter + the parse service to cover the
-index/search orchestration without the heavy deps.
-"""
-
 from __future__ import annotations
 
 import asyncio
-import contextvars
+import importlib.util
 import inspect
 import json
-import logging
 from pathlib import Path
 import sys
-import threading
-import time
 import types
 
 import pytest
 
-from deeptutor.services.llm.exceptions import (
-    LLMAPIError,
-    LLMAuthenticationError,
-    LLMConfigError,
-    LLMParseError,
-    LLMProviderTransportError,
-    LLMRateLimitError,
-    LLMTimeoutError,
+from deeptutor.services.llm.exceptions import LLMAPIError, LLMAuthenticationError
+from deeptutor.services.parsing.types import ParsedDocument
+from deeptutor.services.rag.factory import get_pipeline, list_pipelines, normalize_provider_name
+from deeptutor.services.rag.index_versioning import list_kb_versions
+from deeptutor.services.rag.pipelines.lightrag import config, engine, storage
+from deeptutor.services.rag.pipelines.lightrag.ingress import (
+    IngressError,
+    bundles_root,
+    freeze_document,
+    load_verified_bundle,
+    pending_root,
 )
-from deeptutor.services.rag.factory import (
-    LIGHTRAG_PROVIDER,
-    get_pipeline,
-    list_pipelines,
-    normalize_provider_name,
+from deeptutor.services.rag.pipelines.lightrag.pipeline import (
+    BatchOutcome,
+    LightRagBatchError,
+    LightRagNeedsReindexError,
+    LightRagPipeline,
 )
-from deeptutor.services.rag.index_versioning import resolve_storage_dir_for_read
-from deeptutor.services.rag.pipelines.lightrag import (
-    block_policy,
-    engine,
-    storage,
+
+REQUIRES_LIGHTRAG = pytest.mark.skipif(
+    importlib.util.find_spec("lightrag") is None,
+    reason="requires the optional rag-lightrag extra",
 )
-from deeptutor.services.rag.pipelines.lightrag import (
-    config as lr_config,
-)
-from deeptutor.services.rag.pipelines.lightrag.pipeline import LightRagPipeline
-from deeptutor.services.rag.pipelines.lightrag.worker import run_in_worker_loop
-
-# --------------------------------------------------------------------------- #
-# factory routing + config
-# --------------------------------------------------------------------------- #
 
 
-def test_factory_dispatches_lightrag_lazily(tmp_path) -> None:
-    pipe = get_pipeline("lightrag", kb_base_dir=str(tmp_path))
-    assert type(pipe).__name__ == "LightRagPipeline"
-    # Building the pipeline must NOT import the heavy optional dependency.
-    assert "raganything" not in sys.modules
-
-
-def test_list_pipelines_includes_lightrag(monkeypatch) -> None:
-    monkeypatch.setattr(lr_config, "is_lightrag_available", lambda: False)
-    entry = next(p for p in list_pipelines() if p["id"] == LIGHTRAG_PROVIDER)
-    assert entry["requires_api_key"] is False
-    assert entry["configured"] is False
-
-
-def test_normalize_provider_keeps_lightrag() -> None:
-    assert normalize_provider_name("lightrag") == "lightrag"
-    assert normalize_provider_name("LightRAG") == "lightrag"
-
-
-@pytest.mark.parametrize(
-    "given,expected",
-    [
-        ("hybrid", "hybrid"),
-        ("MIX", "mix"),
-        ("naive", "naive"),
-        ("local", "local"),
-        ("global", "global"),
-        ("", "hybrid"),
-        (None, "hybrid"),
-        ("bogus", "hybrid"),
-    ],
-)
-def test_normalize_mode(given, expected) -> None:
-    assert lr_config.normalize_mode(given) == expected
-
-
-def test_is_lightrag_available_false_when_dependency_missing(monkeypatch) -> None:
-    def fake_find_spec(name):
-        return None if name == "raganything" else object()
-
-    monkeypatch.setattr(lr_config.importlib.util, "find_spec", fake_find_spec)
-    assert lr_config.is_lightrag_available() is False
-
-
-# --------------------------------------------------------------------------- #
-# storage
-# --------------------------------------------------------------------------- #
-
-
-def test_storage_meta_and_has_output(tmp_path) -> None:
-    root = tmp_path / "version-1"
-    root.mkdir()
-    assert storage.has_output(root) is False
-    assert storage.has_output(None) is False
-
-    (root / "vdb_chunks.json").write_text("{}", encoding="utf-8")
-    assert storage.has_output(root) is False
-
-    (root / "graph_chunk_entity_relation.graphml").write_text("<graph/>", encoding="utf-8")
-    assert storage.has_output(root) is False
-
-    (root / "kv_store_doc_status.json").write_text(
-        json.dumps(
-            {
-                "doc-1": {
-                    "status": "failed",
-                    "file_path": "bad.docx",
-                    "error_msg": "embedding failed",
-                    "chunks_list": [],
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    assert storage.has_output(root) is False
-    assert storage.failure_summary(root) == "bad.docx: embedding failed"
-    assert storage.document_error(root, "doc-1") == "embedding failed"
-
-    (root / "kv_store_doc_status.json").write_text(
-        json.dumps(
-            {
-                "doc-1": {
-                    "status": "processed",
-                    "file_path": "good.docx",
-                    "chunks_list": ["chunk-1"],
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    assert storage.has_output(root) is True
-
-    storage.write_meta(root)
-    meta = json.loads((root / storage.META_FILENAME).read_text())
-    assert meta["signature"] == "lightrag"
-    assert meta["provider"] == "lightrag"
-
-
-class _FakeEmbeddingFunc:
-    """Stands in for ``lightrag.utils.EmbeddingFunc``.
-
-    Its signature is deliberately limited to the real dataclass's fields, so a
-    constructor kwarg the pinned dependency does not accept fails here too.
-    ``test_fake_embedding_func_matches_the_real_dataclass`` pins the two
-    together whenever LightRAG is installed.
-    """
-
-    def __init__(
-        self,
-        *,
-        embedding_dim,
-        func,
-        max_token_size=8192,
-        send_dimensions=None,
-        model_name=None,
-        supports_asymmetric=False,
-    ) -> None:
-        self.embedding_dim = embedding_dim
-        self.func = func
-        self.max_token_size = max_token_size
-        self.send_dimensions = send_dimensions
-        self.model_name = model_name
-        self.supports_asymmetric = supports_asymmetric
-
-    async def __call__(self, *args, **kwargs):
-        if not self.supports_asymmetric:
-            kwargs.pop("context", None)
-        return await self.func(*args, **kwargs)
-
-
-class _LegacyFakeEmbeddingFunc:
-    """Models LightRAG before ``supports_asymmetric`` was introduced."""
-
-    def __init__(
-        self,
-        *,
-        embedding_dim,
-        func,
-        max_token_size=8192,
-        send_dimensions=None,
-        model_name=None,
-    ) -> None:
-        self.embedding_dim = embedding_dim
-        self.func = func
-        self.max_token_size = max_token_size
-        self.send_dimensions = send_dimensions
-        self.model_name = model_name
-
-    async def __call__(self, *args, **kwargs):
-        return await self.func(*args, **kwargs)
-
-
-class _RecordingBridge:
+class _Bridge:
     def __init__(self) -> None:
         self.calls = 0
+
+    def raise_if_cancelled(self) -> None:
+        return None
 
     async def run(self, factory):
         self.calls += 1
         return await factory()
 
-
-def _install_fake_lightrag(monkeypatch, embedding_func_cls=_FakeEmbeddingFunc) -> None:
-    fake_lightrag = types.ModuleType("lightrag")
-    fake_utils = types.ModuleType("lightrag.utils")
-    fake_utils.EmbeddingFunc = embedding_func_cls
-    monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
-    monkeypatch.setitem(sys.modules, "lightrag.utils", fake_utils)
+    async def call(self, callback, *args):
+        self.calls += 1
+        value = callback(*args)
+        return await value if inspect.isawaitable(value) else value
 
 
-def test_fake_embedding_func_matches_the_real_dataclass() -> None:
-    """Guard against the stub drifting from the dependency it stands in for."""
-    import dataclasses
-
-    lightrag_utils = pytest.importorskip("lightrag.utils")
-
-    real_fields = {field.name for field in dataclasses.fields(lightrag_utils.EmbeddingFunc)}
-    stub = _FakeEmbeddingFunc if "supports_asymmetric" in real_fields else _LegacyFakeEmbeddingFunc
-    stub_fields = set(inspect.signature(stub.__init__).parameters.keys() - {"self"})
-    assert stub_fields == real_fields
-
-
-def test_embedding_func_returns_numpy_array(monkeypatch) -> None:
-    _install_fake_lightrag(monkeypatch)
-
-    class _Config:
-        dim = 3
-        max_tokens = 99
-
-    class _Client:
-        async def embed(self, texts, *, input_type=None):
-            del input_type
-            return [[1, 2, 3] for _ in texts]
-
-    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: _Config())
-    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", lambda: _Client())
-
-    bridge = _RecordingBridge()
-    embedding = lr_config.build_embedding_func(io_bridge=bridge)
-    vectors = asyncio.run(embedding.func(["a", "b"]))
-    assert embedding.embedding_dim == 3
-    assert embedding.max_token_size == 99
-    assert vectors.shape == (2, 3)
-    assert hasattr(vectors, "size")
-    assert bridge.calls == 1
+def test_factory_routes_without_importing_optional_sdk(tmp_path: Path, monkeypatch) -> None:
+    sys.modules.pop("lightrag", None)
+    pipeline = get_pipeline("lightrag", kb_base_dir=str(tmp_path))
+    assert isinstance(pipeline, LightRagPipeline)
+    assert "lightrag" not in sys.modules
+    monkeypatch.setattr(config, "is_lightrag_available", lambda: False)
+    entry = next(item for item in list_pipelines() if item["id"] == "lightrag")
+    assert entry["configured"] is False
+    assert normalize_provider_name("LightRAG") == "lightrag"
 
 
 @pytest.mark.parametrize(
-    ("embedding_func_cls", "expected_opt_in"),
-    [
-        (_FakeEmbeddingFunc, True),
-        (_LegacyFakeEmbeddingFunc, None),
-    ],
+    ("value", "expected"),
+    [("MIX", "mix"), ("local", "local"), (None, "hybrid"), ("invalid", "hybrid")],
 )
-def test_embedding_func_maps_lightrag_query_and_document_context(
-    monkeypatch,
-    embedding_func_cls,
-    expected_opt_in,
-) -> None:
-    calls: list[tuple[list[str], str | None]] = []
-    _install_fake_lightrag(monkeypatch, embedding_func_cls)
+def test_normalize_mode(value, expected) -> None:
+    assert config.normalize_mode(value) == expected
 
-    class _Config:
+
+def test_availability_checks_native_lightrag_module(monkeypatch) -> None:
+    seen: list[str] = []
+
+    def find_spec(name: str):
+        seen.append(name)
+        return None
+
+    monkeypatch.setattr(config.importlib.util, "find_spec", find_spec)
+    assert config.is_lightrag_available() is False
+    assert seen == ["lightrag"]
+
+
+@REQUIRES_LIGHTRAG
+def test_distribution_identity_is_exact_rc2() -> None:
+    assert engine.installed_version() == "1.5.7rc2"
+    assert engine.LIGHTRAG_DISTRIBUTION == "lightrag-hku"
+
+
+def test_preflight_rejects_a_different_installed_lightrag_version(monkeypatch) -> None:
+    from deeptutor.services.rag import preflight
+
+    monkeypatch.setattr(config, "is_lightrag_available", lambda: True)
+    monkeypatch.setattr(engine, "installed_version", lambda: "1.5.8")
+    monkeypatch.setattr(preflight, "_active_embedding", lambda: ("embedding", 3))
+    monkeypatch.setattr(preflight, "_active_chat_model", lambda: ("chat", "openai"))
+    report = preflight._lightrag_preflight()
+    package = next(check for check in report["checks"] if check["key"] == "package")
+    assert package["ok"] is False
+    assert package["detail"] == "Found 1.5.8; required 1.5.7rc2."
+
+
+def test_workspace_is_stable_and_version_specific(tmp_path: Path) -> None:
+    first = engine.workspace_for(tmp_path / "version-1")
+    assert first == engine.workspace_for(tmp_path / "version-1")
+    assert first != engine.workspace_for(tmp_path / "version-2")
+    assert first.startswith("deeptutor_")
+
+
+def _resolver(tmp_path: Path):
+    cls = engine._controlled_class()
+    rag = object.__new__(cls)
+    rag.working_dir = str(tmp_path)
+    return rag
+
+
+@REQUIRES_LIGHTRAG
+def test_source_resolver_only_reads_version_ingress(tmp_path: Path, monkeypatch) -> None:
+    pending = pending_root(tmp_path)
+    pending.mkdir(parents=True)
+    expected = pending / "doc.pdf"
+    expected.write_bytes(b"right")
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    (decoy / "doc.pdf").write_bytes(b"wrong")
+    monkeypatch.chdir(decoy)
+    rag = _resolver(tmp_path)
+    assert rag._resolve_source_file_for_parser("doc.pdf", parser_engine="deeptutor") == str(
+        expected.resolve()
+    )
+
+
+@REQUIRES_LIGHTRAG
+@pytest.mark.parametrize("bad", ["../doc.pdf", "/tmp/doc.pdf", "nested/doc.pdf"])
+def test_source_resolver_rejects_noncanonical_paths(tmp_path: Path, bad: str) -> None:
+    rag = _resolver(tmp_path)
+    with pytest.raises(IngressError):
+        rag._resolve_source_file_for_parser(bad, parser_engine="deeptutor")
+
+
+@REQUIRES_LIGHTRAG
+def test_source_resolver_rejects_symlink_and_ambiguity(tmp_path: Path) -> None:
+    pending = pending_root(tmp_path)
+    archived = pending / "__parsed__"
+    archived.mkdir(parents=True)
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"outside")
+    (pending / "doc.pdf").symlink_to(outside)
+    rag = _resolver(tmp_path)
+    with pytest.raises(IngressError, match="missing"):
+        rag._resolve_source_file_for_parser("doc.pdf", parser_engine="deeptutor")
+    (pending / "doc.pdf").unlink()
+    (pending / "doc.pdf").write_bytes(b"one")
+    (archived / "doc.pdf").write_bytes(b"two")
+    with pytest.raises(IngressError, match="ambiguous"):
+        rag._resolve_source_file_for_parser("doc.pdf", parser_engine="deeptutor")
+
+
+@REQUIRES_LIGHTRAG
+def test_source_resolver_rejects_other_parser(tmp_path: Path) -> None:
+    with pytest.raises(IngressError, match="Unsupported parser"):
+        _resolver(tmp_path)._resolve_source_file_for_parser("doc.pdf", parser_engine="mineru")
+
+
+def test_vision_adapter_maps_one_base64_unchanged(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class Client:
+        def get_vision_model_func(self):
+            async def call(prompt, **kwargs):
+                captured["prompt"] = prompt
+                captured.update(kwargs)
+                return "seen"
+
+            return call
+
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: Client())
+    func = config.build_vision_model_func()
+    assert asyncio.run(func("describe", image_inputs=[{"base64": "sentinel"}])) == "seen"
+    assert captured["image_data"] == "sentinel"
+    assert captured["allow_image_fallback"] is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, [], [{"base64": "a"}, {"base64": "b"}], [{}], ["image"], [{"base64": ""}]],
+)
+def test_vision_adapter_rejects_invalid_inputs(monkeypatch, value) -> None:
+    class Client:
+        def get_vision_model_func(self):
+            async def call(*_args, **_kwargs):
+                raise AssertionError("prompt-only fallback must not run")
+
+            return call
+
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: Client())
+    with pytest.raises(ValueError):
+        asyncio.run(config.build_vision_model_func()("describe", image_inputs=value))
+
+
+@REQUIRES_LIGHTRAG
+def test_embedding_adapter_preserves_query_and_document_roles(monkeypatch) -> None:
+    calls: list[tuple[list[str], str | None]] = []
+
+    class EmbeddingConfig:
         dim = 3
         max_tokens = 99
 
-    class _Client:
+    class Client:
         async def embed(self, texts, *, input_type=None):
             calls.append((list(texts), input_type))
             return [[1, 2, 3] for _ in texts]
 
-    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: _Config())
-    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", lambda: _Client())
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", EmbeddingConfig)
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", Client)
+    adapter = config.build_embedding_func()
+    query = asyncio.run(adapter(["question"], context="query"))
+    document = asyncio.run(adapter(["passage"], context="document"))
 
-    embedding = lr_config.build_embedding_func()
-    asyncio.run(embedding(["question"], context="query", _priority=1))
-    asyncio.run(embedding(["passage"], context="document"))
-    asyncio.run(embedding(["unlabelled"]))
-
-    assert getattr(embedding, "supports_asymmetric", None) is expected_opt_in
+    assert query.shape == (1, 3)
+    assert document.shape == (1, 3)
     assert calls == [
         (["question"], "search_query"),
         (["passage"], "search_document"),
-        (["unlabelled"], None),
     ]
 
 
-def test_lightrag_llm_adapter_preserves_messages_and_drops_extra_kwargs(
-    monkeypatch,
-) -> None:
-    captured: dict[str, object] = {}
+def test_llm_adapter_retries_only_transient_failures(monkeypatch) -> None:
+    attempts = 0
+    sleeps: list[float] = []
 
-    class _Client:
+    class Client:
         def get_model_func(self):
-            async def model_func(prompt, **kwargs):
-                captured["prompt"] = prompt
-                captured.update(kwargs)
+            async def call(_prompt, **kwargs):
+                nonlocal attempts
+                attempts += 1
+                assert kwargs["max_retries"] == 0
+                if attempts < 3:
+                    raise LLMAPIError("temporary", status_code=503)
                 return "ok"
 
-            return model_func
+            return call
 
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
+    async def sleep(delay: float) -> None:
+        sleeps.append(delay)
 
-    bridge = _RecordingBridge()
-    func = lr_config.build_llm_model_func(io_bridge=bridge)
-    result = asyncio.run(
-        func(
-            "",
-            system_prompt="sys",
-            messages=[{"role": "user", "content": "from messages"}],
-            response_format={"type": "json_object"},
-            hashing_kv=object(),
-            keyword_extraction=True,
-        )
-    )
-
-    assert result == "ok"
-    assert captured["prompt"] == ""
-    assert captured["system_prompt"] == "sys"
-    assert captured["history_messages"] == []
-    assert captured["messages"] == [{"role": "user", "content": "from messages"}]
-    assert captured["max_retries"] == 0
-    assert captured["allow_image_fallback"] is False
-    assert "response_format" not in captured
-    assert "hashing_kv" not in captured
-    assert "keyword_extraction" not in captured
-    assert bridge.calls == 1
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", Client)
+    monkeypatch.setattr(config.asyncio, "sleep", sleep)
+    assert asyncio.run(config.build_llm_model_func()("prompt")) == "ok"
+    assert attempts == 3
+    assert sleeps == [1.0, 2.0]
 
 
-def test_lightrag_vision_adapter_preserves_messages(monkeypatch) -> None:
-    captured: dict[str, object] = {}
+def test_llm_adapter_does_not_retry_authentication_failure(monkeypatch) -> None:
+    error = LLMAuthenticationError("unauthorized")
+    attempts = 0
 
-    class _Client:
-        def get_vision_model_func(self):
-            async def model_func(prompt, **kwargs):
-                captured["prompt"] = prompt
-                captured.update(kwargs)
-                return "ok"
-
-            return model_func
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-
-    bridge = _RecordingBridge()
-    func = lr_config.build_vision_model_func(io_bridge=bridge)
-    result = asyncio.run(
-        func(
-            "",
-            image_data="abc123",
-            messages=[{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
-        )
-    )
-
-    assert result == "ok"
-    assert captured["prompt"] == ""
-    assert captured["image_data"] == "abc123"
-    assert captured["messages"] == [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
-    assert captured["max_retries"] == 0
-    assert captured["allow_image_fallback"] is False
-    assert bridge.calls == 1
-
-
-def test_lightrag_llm_adapter_uses_three_total_attempts_and_disables_provider_retry(
-    monkeypatch,
-) -> None:
-    calls: list[dict[str, object]] = []
-    sleep_delays: list[float] = []
-    failures = [
-        LLMAPIError("temporary server error", status_code=503),
-        LLMRateLimitError("rate limited"),
-    ]
-
-    class _Client:
+    class Client:
         def get_model_func(self):
-            async def model_func(_prompt, **kwargs):
-                calls.append(kwargs)
-                if failures:
-                    raise failures.pop(0)
-                return "ok"
-
-            return model_func
-
-    async def fake_sleep(delay: float) -> None:
-        sleep_delays.append(delay)
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
-
-    bridge = _RecordingBridge()
-    func = lr_config.build_llm_model_func(io_bridge=bridge)
-
-    assert asyncio.run(func("prompt")) == "ok"
-    assert len(calls) == 3
-    assert [call["max_retries"] for call in calls] == [0, 0, 0]
-    assert sleep_delays == [1.0, 2.0]
-    assert bridge.calls == 3
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        LLMTimeoutError("timeout"),
-        LLMProviderTransportError("provider transport failed"),
-        TimeoutError("timeout"),
-        ConnectionError("connection"),
-        LLMRateLimitError("rate limited"),
-        LLMAPIError("temporary server error", status_code=500),
-        LLMAPIError("temporary overload", status_code=529),
-        LLMAPIError("Error calling Codex: Codex returned HTTP 503."),
-        LLMAPIError("Error code: 529 - overloaded_error"),
-    ],
-)
-def test_lightrag_adapter_retries_classified_transient_errors(monkeypatch, error) -> None:
-    calls = 0
-
-    class _Client:
-        def get_model_func(self):
-            async def model_func(_prompt, **_kwargs):
-                nonlocal calls
-                calls += 1
-                if calls == 1:
-                    raise error
-                return "ok"
-
-            return model_func
-
-    async def fake_sleep(_delay: float) -> None:
-        return None
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
-
-    assert asyncio.run(lr_config.build_llm_model_func()("prompt")) == "ok"
-    assert calls == 2
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        LLMAuthenticationError("unauthorized"),
-        LLMAPIError("forbidden", status_code=403),
-        LLMAPIError("not implemented", status_code=501),
-        LLMConfigError("bad configuration"),
-        LLMParseError("bad response"),
-        ValueError("contract mismatch"),
-    ],
-)
-def test_lightrag_adapter_does_not_retry_deterministic_errors(monkeypatch, error) -> None:
-    calls = 0
-
-    class _Client:
-        def get_model_func(self):
-            async def model_func(_prompt, **_kwargs):
-                nonlocal calls
-                calls += 1
+            async def call(_prompt, **_kwargs):
+                nonlocal attempts
+                attempts += 1
                 raise error
 
-            return model_func
+            return call
 
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
+    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", Client)
+    with pytest.raises(LLMAuthenticationError) as caught:
+        asyncio.run(config.build_llm_model_func()("prompt"))
+    assert caught.value is error
+    assert attempts == 1
 
-    with pytest.raises(type(error)) as captured:
-        asyncio.run(lr_config.build_llm_model_func()("prompt"))
 
-    assert captured.value is error
+def test_preparse_runs_once_and_bundle_ignores_later_parser_drift(
+    monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "source.md"
+    source.write_text("original source", encoding="utf-8")
+    calls = 0
+
+    class ParseService:
+        def parse(self, _path):
+            nonlocal calls
+            calls += 1
+            return ParsedDocument(
+                markdown="frozen markdown",
+                engine="text_only",
+                source_hash="source-hash",
+                parser_signature="parser-v1",
+            )
+
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", ParseService)
+    monkeypatch.setattr(config, "vision_model_available", lambda: False)
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path / "kb"))
+    staged, failures = pipeline._stage_documents(tmp_path / "version-1", [str(source)])
+    source.write_text("changed after staging", encoding="utf-8")
+
+    manifest, bundle = load_verified_bundle(tmp_path / "version-1", "source.md")
     assert calls == 1
-
-
-def test_lightrag_adapter_exhaustion_reraises_original_final_exception(monkeypatch) -> None:
-    failures = [
-        LLMAPIError("first", status_code=502),
-        LLMAPIError("second", status_code=503),
-        LLMAPIError("final", status_code=504),
-    ]
-    final_error = failures[-1]
-    calls = 0
-
-    class _Client:
-        def get_model_func(self):
-            async def model_func(_prompt, **_kwargs):
-                nonlocal calls
-                calls += 1
-                raise failures.pop(0)
-
-            return model_func
-
-    async def fake_sleep(_delay: float) -> None:
-        return None
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
-
-    with pytest.raises(LLMAPIError) as captured:
-        asyncio.run(lr_config.build_llm_model_func()("prompt"))
-
-    assert captured.value is final_error
-    assert calls == 3
-
-
-@pytest.mark.parametrize(
-    ("retry_after", "expected_delay"),
-    [(7.5, 7.5), (120.0, 60.0), (-1.0, 1.0), ("invalid", 1.0)],
-)
-def test_lightrag_adapter_honors_bounded_retry_after(
-    monkeypatch,
-    retry_after,
-    expected_delay,
-) -> None:
-    calls = 0
-    sleep_delays: list[float] = []
-
-    class _Client:
-        def get_model_func(self):
-            async def model_func(_prompt, **_kwargs):
-                nonlocal calls
-                calls += 1
-                if calls == 1:
-                    raise LLMRateLimitError("rate limited", retry_after=retry_after)
-                return "ok"
-
-            return model_func
-
-    async def fake_sleep(delay: float) -> None:
-        sleep_delays.append(delay)
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
-
-    assert asyncio.run(lr_config.build_llm_model_func()("prompt")) == "ok"
-    assert sleep_delays == [expected_delay]
-
-
-def test_lightrag_adapter_honors_retry_after_response_header(monkeypatch) -> None:
-    calls = 0
-    sleep_delays: list[float] = []
-
-    class RetryableResponseError(Exception):
-        status_code = 503
-        response = types.SimpleNamespace(headers={"Retry-After": "4"})
-
-    class _Client:
-        def get_model_func(self):
-            async def model_func(_prompt, **_kwargs):
-                nonlocal calls
-                calls += 1
-                if calls == 1:
-                    raise RetryableResponseError("temporary")
-                return "ok"
-
-            return model_func
-
-    async def fake_sleep(delay: float) -> None:
-        sleep_delays.append(delay)
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
-
-    assert asyncio.run(lr_config.build_llm_model_func()("prompt")) == "ok"
-    assert sleep_delays == [4.0]
-
-
-def test_lightrag_adapter_preserves_cancellation_without_retry(monkeypatch) -> None:
-    calls = 0
-
-    class _Client:
-        def get_model_func(self):
-            async def model_func(_prompt, **_kwargs):
-                nonlocal calls
-                calls += 1
-                raise asyncio.CancelledError
-
-            return model_func
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-
-    with pytest.raises(asyncio.CancelledError):
-        asyncio.run(lr_config.build_llm_model_func()("prompt"))
-
-    assert calls == 1
-
-
-@pytest.mark.asyncio
-async def test_lightrag_vision_adapter_disables_provider_image_fallback(
-    monkeypatch,
-) -> None:
-    from deeptutor.services.llm.client import LLMClient
-    from deeptutor.services.llm.config import LLMConfig
-    from deeptutor.services.llm.multimodal import has_image_parts
-    from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse
-
-    class ScriptedProvider(LLMProvider):
-        def __init__(self) -> None:
-            super().__init__()
-            self.calls_had_image: list[bool] = []
-
-        async def chat(self, messages, **kwargs):
-            del kwargs
-            self.calls_had_image.append(has_image_parts(messages))
-            if len(self.calls_had_image) == 1:
-                return LLMResponse(
-                    content="this model does not support images",
-                    finish_reason="error",
-                )
-            return LLMResponse(content="text fallback should not run")
-
-        def get_default_model(self) -> str:
-            return "unknown-model"
-
-    config = LLMConfig(
-        model="unknown-model",
-        api_key="test-key",
-        base_url="https://api.example.com/v1",
-        binding="custom",
-        provider_name="custom",
-    )
-    client = LLMClient(config)
-    provider = ScriptedProvider()
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: client)
-    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", lambda: config)
-    monkeypatch.setattr(
-        "deeptutor.services.llm.factory.get_runtime_provider",
-        lambda _config: provider,
-    )
-
-    func = lr_config.build_vision_model_func()
-    with pytest.raises(LLMAPIError, match="does not support images"):
-        await func("prompt", image_data="QUJD")
-
-    assert provider.calls_had_image == [True]
-
-
-def test_lightrag_vision_adapter_preserves_payload_and_redacts_retry_log(
-    monkeypatch,
-    caplog,
-) -> None:
-    sensitive_message = "prompt-secret base64-secret token-secret account-secret"
-    image_payload = "base64-secret-image-payload"
-    image_calls: list[object] = []
-    retry_settings: list[object] = []
-    calls = 0
-
-    class _Client:
-        def get_vision_model_func(self):
-            async def model_func(_prompt, **kwargs):
-                nonlocal calls
-                calls += 1
-                image_calls.append(kwargs["image_data"])
-                retry_settings.append(kwargs["max_retries"])
-                if calls == 1:
-                    raise ConnectionError(sensitive_message)
-                return "ok"
-
-            return model_func
-
-    async def fake_sleep(_delay: float) -> None:
-        return None
-
-    monkeypatch.setattr("deeptutor.services.llm.get_llm_client", lambda: _Client())
-    monkeypatch.setattr(lr_config.asyncio, "sleep", fake_sleep)
-    caplog.set_level(logging.WARNING, logger=lr_config.__name__)
-
-    func = lr_config.build_vision_model_func()
-    assert asyncio.run(func("prompt-secret", image_data=image_payload)) == "ok"
-
-    assert calls == 2
-    assert all(payload is image_payload for payload in image_calls)
-    assert retry_settings == [0, 0]
-    assert sensitive_message not in caplog.text
-    assert "prompt-secret" not in caplog.text
-    assert image_payload not in caplog.text
-    assert (
-        "LightRAG adapter retry attempt=1 exception=ConnectionError status=transport" in caplog.text
-    )
-
-
-def test_build_rag_skips_raganything_parser_install_check(monkeypatch) -> None:
-    """Regression for issue #594.
-
-    RAG-Anything validates its *default* parser (``mineru``) at LightRAG-init
-    time, even though DeepTutor only ever inserts a pre-parsed ``content_list``
-    and never uses RAG-Anything's parser. ``build_rag`` must pre-satisfy that
-    check so indexing with a different parse engine (e.g. pymupdf4llm) doesn't
-    hard-fail when MinerU is absent.
-    """
-    captured: dict[str, object] = {}
-
-    class _FakeConfig:
-        def __init__(self, *, working_dir) -> None:
-            self.working_dir = working_dir
-            self.parser = "mineru"  # RAG-Anything's default
-
-    class _FakeRagAnything:
-        def __init__(self, *, config, llm_model_func, vision_model_func, embedding_func) -> None:
-            # Mirror the real constructor: the install check starts unsatisfied.
-            self._parser_installation_checked = False
-            captured["config"] = config
-
-    fake_module = types.ModuleType("raganything")
-    fake_module.RAGAnything = _FakeRagAnything
-    fake_module.RAGAnythingConfig = _FakeConfig
-    monkeypatch.setitem(sys.modules, "raganything", fake_module)
-    monkeypatch.setattr(engine, "build_llm_model_func", lambda: "llm")
-    monkeypatch.setattr(engine, "build_vision_model_func", lambda: "vision")
-    monkeypatch.setattr(engine, "build_embedding_func", lambda: "embed")
-
-    rag = engine.build_rag(Path("/tmp/kb-wd"))  # noqa: S108
-
-    assert rag._parser_installation_checked is True
-    assert captured["config"].working_dir == "/tmp/kb-wd"
-
-
-def test_lightrag_query_initializes_raganything_before_aquery(monkeypatch) -> None:
-    calls: list[str] = []
-
-    class _Rag:
-        lightrag = None
-
-        async def _ensure_lightrag_initialized(self):
-            calls.append("ensure")
-            self.lightrag = object()
-            return {"success": True}
-
-        async def aquery(self, question, mode=None, **kwargs):
-            calls.append("aquery")
-            assert self.lightrag is not None
-            assert question == "hello"
-            assert mode == "hybrid"
-            assert kwargs == {}
-            return "answer"
-
-    monkeypatch.setattr(engine, "query_kwargs_from_settings", lambda: {})
-
-    result = asyncio.run(engine.query(_Rag(), "hello", "hybrid"))
-
-    assert result == "answer"
-    assert calls == ["ensure", "aquery"]
-
-
-def test_lightrag_query_surfaces_raganything_initialization_failure() -> None:
-    class _Rag:
-        lightrag = None
-
-        async def _ensure_lightrag_initialized(self):
-            return {"success": False, "error": "storage failed"}
-
-        async def aquery(self, question, mode=None, **kwargs):  # pragma: no cover
-            raise AssertionError("aquery should not run")
-
-    with pytest.raises(RuntimeError, match="storage failed"):
-        asyncio.run(engine.query(_Rag(), "hello", "hybrid"))
-
-
-def test_lightrag_query_with_sources_keeps_answer_and_exposes_provenance(monkeypatch) -> None:
-    """The answer path remains RAG-Anything while citations use LightRAG data."""
-    captured: dict[str, object] = {}
-
-    class _QueryParam:
-        def __init__(self, **kwargs) -> None:
-            captured["query_param"] = kwargs
-
-    fake_lightrag = types.ModuleType("lightrag")
-    fake_lightrag.QueryParam = _QueryParam
-    monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
-    monkeypatch.setattr(engine, "query_kwargs_from_settings", lambda: {"top_k": 3})
-
-    class _LightRag:
-        async def aquery_data(self, question, *, param):
-            captured["provenance_query"] = question
-            captured["provenance_param"] = param
-            return {
-                "status": "success",
-                "data": {
-                    "references": [{"reference_id": "ref-1", "file_path": "/kb/book.pdf"}],
-                    "chunks": [
-                        {
-                            "chunk_id": "chunk-1",
-                            "content": "The retrieved passage.",
-                            "reference_id": "ref-1",
-                        }
-                    ],
-                    "entities": [
-                        {
-                            "entity_name": "Newton's laws",
-                            "entity_type": "concept",
-                            "description": "A mechanics foundation.",
-                            "source_id": "chunk-1",
-                            "reference_id": "ref-1",
-                        }
-                    ],
-                    "relationships": [
-                        {
-                            "src_id": "force",
-                            "tgt_id": "acceleration",
-                            "description": "Force produces acceleration.",
-                            "source_id": "chunk-1",
-                            "reference_id": "ref-1",
-                        }
-                    ],
-                },
-            }
-
-    class _Rag:
-        lightrag = _LightRag()
-
-        async def aquery(self, question, mode=None, **kwargs):
-            captured["answer_query"] = (question, mode, kwargs)
-            return "Grounded answer"
-
-    answer, sources = asyncio.run(engine.query_with_sources(_Rag(), "What is force?", "hybrid"))
-
-    assert answer == "Grounded answer"
-    assert captured["answer_query"] == ("What is force?", "hybrid", {"top_k": 3})
-    assert captured["provenance_query"] == "What is force?"
-    assert captured["query_param"] == {"mode": "hybrid", "top_k": 3}
-    assert sources == [
-        {
-            "title": "book.pdf",
-            "content": "The retrieved passage.",
-            "source": "/kb/book.pdf",
-            "page": "",
-            "chunk_id": "chunk-1",
-            "reference_id": "ref-1",
-        },
-        {
-            "title": "Newton's laws",
-            "content": "A mechanics foundation.",
-            "source": "/kb/book.pdf",
-            "page": "",
-            "entity_id": "Newton's laws",
-            "entity_type": "concept",
-            "source_id": "chunk-1",
-            "reference_id": "ref-1",
-        },
-        {
-            "title": "force->acceleration",
-            "content": "Force produces acceleration.",
-            "source": "/kb/book.pdf",
-            "page": "",
-            "relation_id": "force->acceleration",
-            "source_entity_id": "force",
-            "target_entity_id": "acceleration",
-            "source_id": "chunk-1",
-            "reference_id": "ref-1",
-        },
-    ]
-
-
-def test_lightrag_query_sources_falls_back_when_structured_api_is_unavailable() -> None:
-    class _Rag:
-        lightrag = object()
-
-    assert asyncio.run(engine.query_sources(_Rag(), "hello", "hybrid")) == []
-
-
-# --------------------------------------------------------------------------- #
-# pipeline lifecycle (engine + parse service stubbed)
-# --------------------------------------------------------------------------- #
-
-
-class _FakeRag:
-    def __init__(self, working_dir) -> None:
-        self.working_dir = Path(working_dir)
-
-
-def _force_available(monkeypatch, available: bool = True) -> None:
-    monkeypatch.setattr(lr_config, "is_lightrag_available", lambda: available)
-
-
-def _stub_engine(monkeypatch, answer: str = "ANSWER") -> list[dict]:
-    """Stub the engine so insert writes a readiness marker and query echoes."""
-    inserts: list[dict] = []
-    monkeypatch.setattr(engine, "build_rag", lambda wd, **_: _FakeRag(wd))
-
-    async def fake_insert(rag, content_list, *, file_name, doc_id):
-        inserts.append({"file": file_name, "doc_id": doc_id, "blocks": content_list})
-        (rag.working_dir / "vdb_chunks.json").write_text(
-            json.dumps({"vectors": [[1.0]]}), encoding="utf-8"
-        )
-        (rag.working_dir / "kv_store_doc_status.json").write_text(
-            json.dumps(
+    assert failures == {}
+    assert len(staged) == 1
+    assert (bundle / manifest["markdown"]["path"]).read_text() == "frozen markdown"
+    assert staged[0].source_path.read_text() == "original source"
+
+
+class _QueryRag:
+    def __init__(self, result) -> None:
+        self.result = result
+        self.calls = 0
+        self.param = None
+
+    async def aquery_llm(self, _question, *, param):
+        self.calls += 1
+        self.param = param
+        return self.result
+
+
+def _query_result() -> dict:
+    return {
+        "status": "success",
+        "llm_response": {"is_streaming": False, "content": "answer"},
+        "data": {
+            "chunks": [
                 {
-                    doc_id: {
-                        "status": "processed",
-                        "file_path": file_name,
-                        "chunks_list": ["chunk-1"],
-                    }
+                    "chunk_id": "c1",
+                    "content": "x" * 500,
+                    "reference_id": "r1",
+                    "page": 2,
                 }
-            ),
-            encoding="utf-8",
-        )
-
-    async def fake_query_with_sources(rag, question, mode):
-        return f"{answer}|{mode}", []
-
-    monkeypatch.setattr(engine, "insert", fake_insert)
-    monkeypatch.setattr(engine, "query_with_sources", fake_query_with_sources)
-    return inserts
-
-
-def _stub_parse(
-    monkeypatch,
-    *,
-    blocks=None,
-    markdown: str = "# md",
-    engine_name: str = "fake",
-    parser_signature: str = "",
-) -> None:
-    from deeptutor.services.parsing.types import ParsedDocument
-
-    class _Service:
-        def parse(self, path, **_):
-            return ParsedDocument(
-                markdown=markdown,
-                blocks=blocks,
-                source_hash="h_" + Path(path).stem,
-                parser_signature=parser_signature,
-                engine=engine_name,
-            )
-
-    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: _Service())
-
-
-def test_indexing_isolated_from_owner_loop_with_context_and_progress(tmp_path, monkeypatch) -> None:
-    """Regression for #761: local JSON work must not stall service I/O."""
-    from deeptutor.services.parsing.types import ParsedDocument
-
-    request_scope = contextvars.ContextVar("lightrag_test_scope", default="missing")
-    captured: dict[str, object] = {"inserts": [], "progress": [], "parse_threads": []}
-
-    class _ParseService:
-        def parse(self, path, **_):
-            captured["parse_threads"].append(threading.get_ident())
-            source = Path(path)
-            return ParsedDocument(
-                markdown="",
-                blocks=[{"type": "text", "text": source.stem, "page_idx": 0}],
-                source_hash=f"hash-{source.stem}",
-                engine="fake",
-            )
-
-    class _BlockingRag:
-        def __init__(self, working_dir, io_bridge) -> None:
-            self.working_dir = Path(working_dir)
-            self.io_bridge = io_bridge
-
-        async def insert_content_list(self, *, content_list, file_path, doc_id):
-            captured["worker_thread"] = threading.get_ident()
-            captured["worker_context"] = request_scope.get()
-            captured["block_started_at"] = time.monotonic()
-            time.sleep(0.15)
-
-            async def fake_network_io():
-                captured["io_thread"] = threading.get_ident()
-                captured["io_context"] = request_scope.get()
-                return "io-ok"
-
-            captured["io_result"] = await self.io_bridge.run(fake_network_io)
-            captured["inserts"].append(
-                {"content_list": content_list, "file_path": file_path, "doc_id": doc_id}
-            )
-            self.working_dir.mkdir(parents=True, exist_ok=True)
-            (self.working_dir / "kv_store_doc_status.json").write_text(
-                json.dumps(
-                    {
-                        doc_id: {
-                            "status": "processed",
-                            "file_path": file_path,
-                            "chunks_list": ["chunk-1"],
-                        }
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-    def fake_build_rag(working_dir, *, io_bridge):
-        captured["build_thread"] = threading.get_ident()
-        return _BlockingRag(working_dir, io_bridge)
-
-    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: _ParseService())
-    monkeypatch.setattr(engine, "build_rag", fake_build_rag)
-    _force_available(monkeypatch, True)
-
-    docs = [tmp_path / "one.pdf", tmp_path / "two.pdf"]
-    for doc in docs:
-        doc.write_bytes(b"%PDF")
-
-    async def scenario() -> bool:
-        owner_thread = threading.get_ident()
-        captured["owner_thread"] = owner_thread
-        request_scope.set("user-761")
-
-        async def on_progress(current: int, total: int) -> None:
-            await asyncio.sleep(0)
-            captured["progress"].append(
-                (current, total, threading.get_ident(), request_scope.get())
-            )
-
-        async def heartbeat() -> None:
-            while "block_started_at" not in captured:
-                await asyncio.sleep(0)
-            await asyncio.sleep(0.01)
-            captured["heartbeat_at"] = time.monotonic()
-
-        pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-        indexing = asyncio.create_task(
-            pipe.initialize("kb", [str(doc) for doc in docs], progress_callback=on_progress)
-        )
-        pulse = asyncio.create_task(heartbeat())
-        result = await indexing
-        await pulse
-        return result
-
-    assert asyncio.run(scenario()) is True
-    owner_thread = captured["owner_thread"]
-    assert captured["build_thread"] != owner_thread
-    assert captured["worker_thread"] != owner_thread
-    assert set(captured["parse_threads"]) == {captured["worker_thread"]}
-    assert captured["io_thread"] == owner_thread
-    assert captured["worker_context"] == "user-761"
-    assert captured["io_context"] == "user-761"
-    assert captured["io_result"] == "io-ok"
-    assert captured["heartbeat_at"] - captured["block_started_at"] < 0.1
-    assert captured["progress"] == [
-        (1, 2, owner_thread, "user-761"),
-        (2, 2, owner_thread, "user-761"),
-    ]
-    assert captured["inserts"] == [
-        {
-            "content_list": [{"type": "text", "text": "one", "page_idx": 0}],
-            "file_path": "one.pdf",
-            "doc_id": "hash-one",
+            ],
+            "entities": [
+                {
+                    "entity_name": "Euler",
+                    "entity_type": "person",
+                    "description": "entity body",
+                    "source_id": "c1",
+                    "reference_id": "r1",
+                }
+            ],
+            "relationships": [
+                {
+                    "src_id": "Euler",
+                    "tgt_id": "Identity",
+                    "description": "relationship body",
+                    "keywords": ["math"],
+                    "weight": 3.5,
+                    "source_id": "c1",
+                    "reference_id": "r1",
+                }
+            ],
+            "references": [{"reference_id": "r1", "file_path": "notes.pdf"}],
         },
+        "metadata": {"keywords": {"high_level": ["math"]}, "processing_info": {"chunks": 1}},
+    }
+
+
+@REQUIRES_LIGHTRAG
+def test_query_uses_one_call_and_preserves_complete_sources(monkeypatch) -> None:
+    monkeypatch.setattr(engine, "query_kwargs_from_settings", lambda: {})
+    rag = _QueryRag(_query_result())
+    answer, sources = asyncio.run(engine.query_with_sources(rag, "q", "hybrid"))
+    assert rag.calls == 1
+    assert rag.param.stream is False
+    assert answer == "answer"
+    assert sources[0]["content"] == "x" * 500
+    assert sources[0]["kind"] == "chunk"
+    assert sources[1]["entity_name"] == "Euler"
+    assert sources[2]["weight"] == 3.5
+    assert "score" not in sources[2]
+    assert sources[3]["kind"] == "reference"
+    assert sources[3]["reference"] == {"reference_id": "r1", "file_path": "notes.pdf"}
+    assert sources[-1]["metadata"]["processing_info"] == {"chunks": 1}
+
+
+@REQUIRES_LIGHTRAG
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"status": "failure", "message": "retrieval failed"},
+        {"status": "success", "llm_response": {}, "data": {}, "metadata": {}},
         {
-            "content_list": [{"type": "text", "text": "two", "page_idx": 0}],
-            "file_path": "two.pdf",
-            "doc_id": "hash-two",
+            "status": "success",
+            "llm_response": {"is_streaming": True, "content": "x"},
+            "data": {},
+            "metadata": {},
         },
-    ]
+        "not an object",
+    ],
+)
+def test_query_rejects_failure_and_malformed_envelopes(result) -> None:
+    with pytest.raises(engine.LightRagContractError):
+        asyncio.run(engine.query_with_sources(_QueryRag(result), "q"))
 
 
-def test_indexing_worker_exception_propagates_unchanged(tmp_path, monkeypatch) -> None:
-    class _IndexingFailure(RuntimeError):
-        pass
-
-    class _FailingRag:
-        def __init__(self, working_dir) -> None:
-            self.working_dir = Path(working_dir)
-
-        async def insert_content_list(self, **_):
-            raise _IndexingFailure("nano-vdb merge failed")
-
-    monkeypatch.setattr(engine, "build_rag", lambda wd, **_: _FailingRag(wd))
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
-    _force_available(monkeypatch, True)
-    document = tmp_path / "bad.pdf"
-    document.write_bytes(b"%PDF")
-
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    with pytest.raises(_IndexingFailure, match="nano-vdb merge failed"):
-        asyncio.run(pipe.initialize("kb", [str(document)]))
+@REQUIRES_LIGHTRAG
+def test_storage_publishes_schema_two_metadata(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "kv_store_doc_status.json").write_text(
+        json.dumps({"id": {"status": "processed", "chunks_list": ["c"]}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.embedding_signature.embedding_meta_fields",
+        lambda: {"embedding": "e"},
+    )
+    storage.write_meta(tmp_path)
+    meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))
+    assert meta["state"] == "published"
+    assert meta["lightrag_adapter_schema"] == 2
+    assert meta["lightrag_package_version"] == "1.5.7rc2"
+    assert meta["parser_inputs"] == []
+    assert storage.meta_is_native_published(tmp_path) is True
 
 
-def test_indexing_cancellation_waits_for_worker_loop_to_close() -> None:
-    started = threading.Event()
-    stopped = threading.Event()
-    owner_callback_called = False
-    worker_loop: asyncio.AbstractEventLoop | None = None
-
-    async def scenario() -> None:
-        async def job(io_bridge) -> None:
-            nonlocal owner_callback_called, worker_loop
-            worker_loop = asyncio.get_running_loop()
-            started.set()
-            try:
-                # Stand in for an uninterruptible synchronous NanoVectorDB
-                # flush. Cancellation is observed at the next bridge call.
-                time.sleep(0.05)
-
-                def owner_callback() -> None:
-                    nonlocal owner_callback_called
-                    owner_callback_called = True
-
-                await io_bridge.call(owner_callback)
-            finally:
-                stopped.set()
-
-        task = asyncio.create_task(run_in_worker_loop(job))
-        while not started.is_set():
-            await asyncio.sleep(0)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-
-    asyncio.run(scenario())
-
-    assert stopped.is_set()
-    assert worker_loop is not None
-    assert worker_loop.is_closed()
-    assert owner_callback_called is False
+def test_flat_schema_two_candidate_fails_closed_until_published(tmp_path: Path) -> None:
+    version = tmp_path / "version-1"
+    version.mkdir()
+    (version / "kv_store_doc_status.json").write_text(
+        json.dumps({"id": {"status": "processed", "chunks_list": ["c"]}}), encoding="utf-8"
+    )
+    (version / "meta.json").write_text(
+        json.dumps({"provider": "lightrag", "signature": "lightrag", "lightrag_adapter_schema": 2}),
+        encoding="utf-8",
+    )
+    assert list_kb_versions(tmp_path)[0]["ready"] is False
+    payload = json.loads((version / "meta.json").read_text())
+    payload["state"] = "published"
+    (version / "meta.json").write_text(json.dumps(payload), encoding="utf-8")
+    assert list_kb_versions(tmp_path)[0]["ready"] is True
 
 
-def test_indexing_cancellation_cancels_worker_main_task() -> None:
-    started = threading.Event()
-    stopped = threading.Event()
-    worker_loop: asyncio.AbstractEventLoop | None = None
-
-    async def scenario() -> None:
-        async def job(_io_bridge) -> None:
-            nonlocal worker_loop
-            worker_loop = asyncio.get_running_loop()
-            started.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                stopped.set()
-
-        task = asyncio.create_task(run_in_worker_loop(job))
-        while not started.is_set():
-            await asyncio.sleep(0)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, timeout=0.5)
-
-    asyncio.run(scenario())
-
-    assert stopped.is_set()
-    assert worker_loop is not None
-    assert worker_loop.is_closed()
-
-
-def test_indexing_cancellation_escalates_when_worker_suppresses_first_cancel() -> None:
-    started = threading.Event()
-    first_cancel = threading.Event()
-    stopped = threading.Event()
-    worker_loop: asyncio.AbstractEventLoop | None = None
-
-    async def scenario() -> None:
-        async def job(_io_bridge) -> None:
-            nonlocal worker_loop
-            worker_loop = asyncio.get_running_loop()
-            started.set()
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                first_cancel.set()
-                await asyncio.Event().wait()
-            finally:
-                stopped.set()
-
-        task = asyncio.create_task(run_in_worker_loop(job, cancel_grace_seconds=0.01))
-        while not started.is_set():
-            await asyncio.sleep(0)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, timeout=0.5)
-
-    asyncio.run(scenario())
-
-    assert first_cancel.is_set()
-    assert stopped.is_set()
-    assert worker_loop is not None
-    assert worker_loop.is_closed()
-
-
-def test_indexing_failure_forces_queue_shutdown_and_finalizes_storage(
-    tmp_path,
-    monkeypatch,
+def test_schema_two_metadata_without_processed_workspace_output_is_not_ready(
+    tmp_path: Path,
 ) -> None:
-    calls: list[tuple[object, ...]] = []
+    version = tmp_path / "version-1"
+    workspace = version / "workspace"
+    workspace.mkdir(parents=True)
+    (version / "meta.json").write_text(
+        json.dumps(
+            {
+                "provider": "lightrag",
+                "signature": "lightrag",
+                "lightrag_adapter_schema": 2,
+                "state": "published",
+                "workspace": "workspace",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (workspace / "kv_store_doc_status.json").write_text(
+        json.dumps({"id": {"status": "failed", "chunks_list": []}}), encoding="utf-8"
+    )
+    assert list_kb_versions(tmp_path)[0]["ready"] is False
 
-    class _QueueFunc:
-        async def __call__(self, *_args, **_kwargs) -> None:
+
+def test_legacy_flat_metadata_stays_visible_but_requires_reindex(tmp_path: Path) -> None:
+    version = tmp_path / "version-1"
+    version.mkdir()
+    (version / "kv_store_doc_status.json").write_text(
+        json.dumps({"id": {"status": "processed", "chunks_list": ["c"]}}), encoding="utf-8"
+    )
+    (version / "meta.json").write_text(
+        json.dumps({"provider": "lightrag", "signature": "lightrag"}), encoding="utf-8"
+    )
+    assert list_kb_versions(tmp_path)[0]["ready"] is True
+    assert storage.meta_is_native_published(version) is False
+
+
+def test_batch_outcome_only_completes_all_processed() -> None:
+    assert BatchOutcome(requested=1, accepted=1, processed=("a",)).complete is True
+    assert BatchOutcome(requested=2, accepted=1, processed=("a",), missing=("b",)).complete is False
+
+
+def test_reconcile_counts_terminal_rows_and_missing(tmp_path: Path) -> None:
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pipeline._status_no_progress_seconds = 0
+    staged = [types.SimpleNamespace(canonical_name="a.pdf", audit_ledger=None)]
+
+    class Rag:
+        working_dir = str(tmp_path)
+
+        async def aget_docs_by_track_id(self, _track):
+            return {"doc-a": types.SimpleNamespace(file_path="a.pdf", status="processed")}
+
+    outcome = asyncio.run(
+        pipeline._reconcile(Rag(), staged, {"bad.pdf": "parse failed"}, "track", _Bridge(), None)
+    )
+    assert outcome.accepted == 1
+    assert outcome.processed == ("a.pdf",)
+    assert outcome.preflight_failed == {"bad.pdf": "parse failed"}
+    assert outcome.complete is False
+
+
+def test_indexing_initializes_processes_reconciles_and_finalizes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    events: list[object] = []
+    staged = types.SimpleNamespace(canonical_name="doc.pdf", process_options="F", audit_ledger=None)
+
+    class Rag:
+        working_dir = str(tmp_path)
+
+        async def apipeline_process_enqueue_documents(self):
+            events.append("process")
+
+        async def aget_docs_by_track_id(self, track_id):
+            assert track_id == "track-1"
+            return {"doc-id": types.SimpleNamespace(file_path="doc.pdf", status="processed")}
+
+    rag = Rag()
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    monkeypatch.setattr(pipeline, "_stage_documents", lambda *_args: ([staged], {}))
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: rag)
+
+    async def initialize(_rag):
+        events.append("initialize")
+
+    async def enqueue(_rag, documents):
+        assert documents == [staged]
+        events.append("enqueue")
+        return "track-1"
+
+    async def finalize(_rag, *, cancel_pending):
+        events.append(("finalize", cancel_pending))
+
+    monkeypatch.setattr(engine, "initialize", initialize)
+    monkeypatch.setattr(engine, "enqueue", enqueue)
+    monkeypatch.setattr(engine, "finalize", finalize)
+
+    outcome = asyncio.run(pipeline._run_indexing(tmp_path, ["doc.pdf"], None))
+
+    assert outcome.complete is True
+    assert events == ["initialize", "enqueue", "process", ("finalize", False)]
+
+
+def test_partial_failure_is_typed_and_finalizes_with_cancellation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    events: list[object] = []
+    staged = types.SimpleNamespace(canonical_name="bad.pdf", process_options="F", audit_ledger=None)
+
+    class Rag:
+        working_dir = str(tmp_path)
+
+        async def apipeline_process_enqueue_documents(self):
             return None
 
-        async def shutdown(self, *, graceful: bool, timeout: float) -> None:
-            calls.append(("shutdown", graceful, timeout))
+        async def aget_docs_by_track_id(self, _track_id):
+            return {
+                "doc-id": types.SimpleNamespace(
+                    file_path="bad.pdf", status="failed", error_msg="parse failed"
+                )
+            }
 
-    queue_func = _QueueFunc()
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    monkeypatch.setattr(pipeline, "_stage_documents", lambda *_args: ([staged], {}))
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: Rag())
 
-    class _FailingRag:
-        def __init__(self, working_dir) -> None:
-            self.working_dir = Path(working_dir)
-            self.lightrag = types.SimpleNamespace(
-                role_llm_funcs={"extract": queue_func},
-                embedding_func=types.SimpleNamespace(func=queue_func),
-                rerank_model_func=None,
-            )
+    async def no_op(*_args, **_kwargs):
+        return None
 
-        async def insert_content_list(self, **_kwargs) -> None:
-            raise RuntimeError("entity extraction failed")
+    async def enqueue(*_args, **_kwargs):
+        return "track-1"
 
-        async def finalize_storages(self) -> None:
-            calls.append(("finalize",))
+    async def finalize(_rag, *, cancel_pending):
+        events.append(("finalize", cancel_pending))
 
-    monkeypatch.setattr(engine, "build_rag", lambda wd, **_: _FailingRag(wd))
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
-    _force_available(monkeypatch, True)
-    document = tmp_path / "bad.pdf"
-    document.write_bytes(b"%PDF")
+    monkeypatch.setattr(engine, "initialize", no_op)
+    monkeypatch.setattr(engine, "enqueue", enqueue)
+    monkeypatch.setattr(engine, "finalize", finalize)
 
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    with pytest.raises(RuntimeError, match="entity extraction failed"):
-        asyncio.run(pipe.initialize("kb", [str(document)]))
-
-    assert calls == [("shutdown", False, 5.0), ("finalize",)]
+    with pytest.raises(LightRagBatchError) as caught:
+        asyncio.run(pipeline._run_indexing(tmp_path, ["bad.pdf"], None))
+    assert caught.value.outcome.failed == {"bad.pdf": "parse failed"}
+    assert events == [("finalize", True)]
 
 
-def test_initialize_requires_lightrag(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, False)
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "a.pdf"
-    pdf.write_bytes(b"%PDF")
-    with pytest.raises(lr_config.LightRagNotAvailableError):
-        asyncio.run(pipe.initialize("kb", [str(pdf)]))
-
-
-def test_initialize_orchestrates_index_and_uses_blocks(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    inserts = _stub_engine(monkeypatch)
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "hi", "page_idx": 0}])
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "exam.pdf"
-    pdf.write_bytes(b"%PDF")
-
-    ok = asyncio.run(pipe.initialize("kb", [str(pdf)]))
-    assert ok is True
-    assert len(inserts) == 1
-    assert inserts[0]["file"] == "exam.pdf"
-    # blocks from the parse layer are passed through verbatim (multimodal path).
-    assert inserts[0]["blocks"] == [{"type": "text", "text": "hi", "page_idx": 0}]
-    # version dir is marked ready.
-    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
-    assert storage.has_output(root) is True
-
-
-def test_initialize_filters_only_mineru_layout_blocks(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    inserts = _stub_engine(monkeypatch)
-    raw_blocks = [
-        {"type": "header", "text": "chapter", "page_idx": 0},
-        {"type": "text", "text": "body", "page_idx": 0},
-        {"type": "image", "img_path": "/tmp/image.png", "page_idx": 0},  # noqa: S108
-        {"type": "footer", "text": "publisher", "page_idx": 0},
-        {"type": "page_number", "text": "1", "page_idx": 0},
-    ]
-    original = json.loads(json.dumps(raw_blocks))
-    _stub_parse(
-        monkeypatch,
-        blocks=raw_blocks,
-        engine_name="mineru",
-        parser_signature="mineru-signature",
-    )
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "exam.pdf"
-    pdf.write_bytes(b"%PDF")
-
-    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
-
-    assert [item["type"] for item in inserts[0]["blocks"]] == ["text", "image"]
-    assert raw_blocks == original
-    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
-    assert root is not None
-    ledgers = list((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
-    assert len(ledgers) == 1
-    ledger = json.loads(ledgers[0].read_text(encoding="utf-8"))
-    assert ledger["counts"]["raw_total"] == 5
-    assert ledger["counts"]["filtered_total"] == 3
-    assert ledger["counts"]["eligible_multimodal_total"] == 1
-    assert ledger["counts"]["unknown_total"] == 0
-    assert ledger["decision"]["ledger_role"] == "current-index"
-    assert ledger["decision"]["policy_outcome"] == "accepted"
-    attempts = list((tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json"))
-    assert len(attempts) == 1
-    accepted_attempt = json.loads(attempts[0].read_text(encoding="utf-8"))
-    assert accepted_attempt["decision"]["policy_outcome"] == "accepted"
-    assert accepted_attempt["decision"]["attempt_id"] == ledger["decision"]["attempt_id"]
-
-
-def test_initialize_indexes_unknown_mineru_types_and_records_them(tmp_path, monkeypatch) -> None:
-    """A new MinerU block type must not take the whole ingest down.
-
-    The type is unrecognized, not unwanted: index it, record the count so the
-    policy can be extended, and keep the block's own text out of the audit
-    file.
-    """
-    _force_available(monkeypatch, True)
-    inserts = _stub_engine(monkeypatch)
-    _stub_parse(
-        monkeypatch,
-        blocks=[{"type": "future_widget", "text": "raw-block-secret", "page_idx": 0}],
-        engine_name="mineru",
-    )
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "exam.pdf"
-    pdf.write_bytes(b"%PDF")
-
-    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
-
-    assert len(inserts) == 1
-    assert resolve_storage_dir_for_read(tmp_path / "kb", None) is not None
-    attempts = list((tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json"))
-    assert len(attempts) == 1
-    recorded = json.loads(attempts[0].read_text(encoding="utf-8"))
-    assert recorded["counts"]["unknown_by_type"] == {"future_widget": 1}
-    assert recorded["decision"]["ledger_role"] == "attempt"
-    assert recorded["decision"]["policy_outcome"] == "unknown_types"
-    assert "raw-block-secret" not in attempts[0].read_text(encoding="utf-8")
-
-
-def test_add_documents_records_unknown_types_without_blocking_ingest(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    inserts = _stub_engine(monkeypatch)
-    _stub_parse(
-        monkeypatch,
-        blocks=[{"type": "text", "text": "accepted", "page_idx": 0}],
-        engine_name="mineru",
-        parser_signature="accepted-signature",
-    )
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "exam.pdf"
-    pdf.write_bytes(b"%PDF")
-
-    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
-    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
-    assert root is not None
-    current_path = next((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
-    accepted_payload = current_path.read_text(encoding="utf-8")
-
-    _stub_parse(
-        monkeypatch,
-        blocks=[{"type": "future_widget", "text": "later", "page_idx": 0}],
-        engine_name="mineru",
-        parser_signature="unknown-type-signature",
-    )
-    assert asyncio.run(pipe.add_documents("kb", [str(pdf)])) is True
-
-    assert len(inserts) == 2
-    attempts = [
-        json.loads(path.read_text(encoding="utf-8"))
-        for path in (tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json")
-    ]
-    assert len(attempts) == 2
-    recorded = next(
-        item for item in attempts if item["decision"]["policy_outcome"] == "unknown_types"
-    )
-    assert recorded["parser"]["parser_signature"] == "unknown-type-signature"
-    assert recorded["counts"]["unknown_total"] == 1
-
-
-def test_add_documents_insert_failure_keeps_current_accepted_ledger(
-    tmp_path,
-    monkeypatch,
+@pytest.mark.parametrize("failure_stage", ["initialize", "enqueue"])
+def test_pre_acceptance_failure_removes_ingress_and_allows_same_name_retry(
+    tmp_path: Path, monkeypatch, failure_stage: str
 ) -> None:
-    _force_available(monkeypatch, True)
-    _stub_engine(monkeypatch)
-    _stub_parse(
-        monkeypatch,
-        blocks=[{"type": "text", "text": "accepted", "page_idx": 0}],
-        engine_name="mineru",
-        parser_signature="accepted-signature",
-    )
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "exam.pdf"
-    pdf.write_bytes(b"%PDF")
+    source = tmp_path / "source" / "doc.md"
+    source.parent.mkdir()
+    source.write_text("body", encoding="utf-8")
+    working = tmp_path / "version-1"
+    attempt = 0
 
-    assert asyncio.run(pipe.initialize("kb", [str(pdf)])) is True
-    root = resolve_storage_dir_for_read(tmp_path / "kb", None)
-    assert root is not None
-    current_path = next((root / block_policy.LEDGER_DIRNAME).glob("*.json"))
-    accepted_payload = current_path.read_text(encoding="utf-8")
+    class Rag:
+        working_dir = str(working)
 
-    _stub_parse(
-        monkeypatch,
-        blocks=[{"type": "text", "text": "new attempt", "page_idx": 0}],
-        engine_name="mineru",
-        parser_signature="new-signature",
-    )
+        class DocStatus:
+            async def get_docs_by_ids(self, _doc_ids, *, strict):
+                assert strict is True
+                return {}
 
-    async def fail_insert(*_args, **_kwargs) -> None:
-        raise RuntimeError("insert failed")
+        doc_status = DocStatus()
 
-    monkeypatch.setattr(engine, "insert", fail_insert)
-    with pytest.raises(RuntimeError, match="insert failed"):
-        asyncio.run(pipe.add_documents("kb", [str(pdf)]))
+        async def apipeline_process_enqueue_documents(self):
+            return None
 
-    assert current_path.read_text(encoding="utf-8") == accepted_payload
-    attempts = [
-        json.loads(path.read_text(encoding="utf-8"))
-        for path in (tmp_path / "kb" / block_policy.ATTEMPT_LEDGER_DIRNAME).glob("*.json")
-    ]
-    assert len(attempts) == 2
-    latest_attempt = next(
-        item for item in attempts if item["parser"]["parser_signature"] == "new-signature"
-    )
-    assert latest_attempt["decision"]["policy_outcome"] == "accepted"
-    assert latest_attempt["counts"]["unknown_total"] == 0
+        async def aget_docs_by_track_id(self, _track_id):
+            return {"doc-id": types.SimpleNamespace(file_path="doc.md", status="processed")}
 
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
 
-def test_ingest_falls_back_to_markdown_when_no_blocks(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    inserts = _stub_engine(monkeypatch)
-    _stub_parse(monkeypatch, blocks=None, markdown="# only markdown")
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "notes.pdf"
-    pdf.write_bytes(b"%PDF")
-
-    asyncio.run(pipe.initialize("kb", [str(pdf)]))
-    assert inserts[0]["blocks"] == [{"type": "text", "text": "# only markdown", "page_idx": 0}]
-
-
-def test_initialize_no_content_returns_false(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    inserts = _stub_engine(monkeypatch)
-    _stub_parse(monkeypatch, blocks=None, markdown="")  # empty parse
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "blank.pdf"
-    pdf.write_bytes(b"%PDF")
-
-    ok = asyncio.run(pipe.initialize("kb", [str(pdf)]))
-    assert ok is False
-    assert inserts == []
-
-
-def test_initialize_fails_when_lightrag_records_doc_failure(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    monkeypatch.setattr(engine, "build_rag", lambda wd, **_: _FakeRag(wd))
-
-    async def fake_insert(rag, content_list, *, file_name, doc_id):
-        (rag.working_dir / "kv_store_doc_status.json").write_text(
-            json.dumps(
-                {
-                    doc_id: {
-                        "status": "failed",
-                        "file_path": file_name,
-                        "error_msg": "'list' object has no attribute 'size'",
-                        "chunks_list": [],
-                    }
-                }
-            ),
-            encoding="utf-8",
+    def stage(_working, paths):
+        staged = freeze_document(
+            working,
+            Path(paths[0]),
+            ParsedDocument(markdown="body", engine="text_only"),
         )
+        return [staged], {}
 
-    monkeypatch.setattr(engine, "insert", fake_insert)
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "hi", "page_idx": 0}])
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    docx = tmp_path / "bad.docx"
-    docx.write_bytes(b"docx")
+    async def initialize(_rag):
+        if attempt == 0 and failure_stage == "initialize":
+            raise RuntimeError("initialize rejected")
 
-    with pytest.raises(RuntimeError, match="list.*size"):
-        asyncio.run(pipe.initialize("kb", [str(docx)]))
+    async def enqueue(_rag, _staged):
+        if attempt == 0 and failure_stage == "enqueue":
+            raise RuntimeError("enqueue rejected")
+        return "track-1"
 
-    assert resolve_storage_dir_for_read(tmp_path / "kb", None) is None
+    async def finalize(_rag, *, cancel_pending):
+        assert cancel_pending is (attempt == 0)
 
+    monkeypatch.setattr(pipeline, "_stage_documents", stage)
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: Rag())
+    monkeypatch.setattr(engine, "_document_id", lambda name: f"doc-{name}")
+    monkeypatch.setattr(engine, "initialize", initialize)
+    monkeypatch.setattr(engine, "enqueue", enqueue)
+    monkeypatch.setattr(engine, "finalize", finalize)
 
-def test_search_needs_reindex_without_output(tmp_path) -> None:
-    res = asyncio.run(LightRagPipeline(kb_base_dir=str(tmp_path)).search("q", "missing"))
-    assert res["needs_reindex"] is True
-    assert res["provider"] == "lightrag"
+    with pytest.raises(RuntimeError, match=failure_stage):
+        asyncio.run(pipeline._run_indexing(working, [str(source)], None))
+    assert not (pending_root(working) / "doc.md").exists()
+    assert not (bundles_root(working) / "doc.md.bundle").exists()
 
-
-def test_search_not_configured_when_unavailable(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    _stub_engine(monkeypatch)
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "a.pdf"
-    pdf.write_bytes(b"%PDF")
-    asyncio.run(pipe.initialize("kb", [str(pdf)]))
-
-    _force_available(monkeypatch, False)
-    res = asyncio.run(pipe.search("q", "kb"))
-    assert res["error_type"] == "not_configured"
+    attempt = 1
+    outcome = asyncio.run(pipeline._run_indexing(working, [str(source)], None))
+    assert outcome.complete is True
 
 
-def test_search_happy_path_resolves_mode(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    _stub_engine(monkeypatch, answer="GROUNDED")
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "a.pdf"
-    pdf.write_bytes(b"%PDF")
-    asyncio.run(pipe.initialize("kb", [str(pdf)]))
+def test_enqueue_partial_commit_removes_only_confirmed_unaccepted_ingress(
+    tmp_path: Path, monkeypatch
+) -> None:
+    sources = [tmp_path / "source" / name for name in ("accepted.md", "rejected.md")]
+    sources[0].parent.mkdir()
+    for source in sources:
+        source.write_text(source.stem, encoding="utf-8")
+    working = tmp_path / "version-1"
+    status_reads: list[tuple[list[str], bool]] = []
 
-    # Per-KB search_mode is read from kb_config.json next to the store.
-    (tmp_path / "kb_config.json").write_text(
-        json.dumps({"knowledge_bases": {"kb": {"search_mode": "local"}}}), encoding="utf-8"
+    class DocStatus:
+        async def get_docs_by_ids(self, doc_ids, *, strict):
+            status_reads.append((doc_ids, strict))
+            return {doc_ids[0]: types.SimpleNamespace(status="pending")}
+
+    class Rag:
+        working_dir = str(working)
+        doc_status = DocStatus()
+
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+
+    def stage(_working, paths):
+        return [
+            freeze_document(
+                working,
+                Path(path),
+                ParsedDocument(markdown=Path(path).stem, engine="text_only"),
+            )
+            for path in paths
+        ], {}
+
+    async def enqueue(_rag, _staged):
+        raise RuntimeError("doc_status partially committed")
+
+    async def no_op(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(pipeline, "_stage_documents", stage)
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: Rag())
+    monkeypatch.setattr(engine, "_document_id", lambda name: f"doc-{name}")
+    monkeypatch.setattr(engine, "initialize", no_op)
+    monkeypatch.setattr(engine, "enqueue", enqueue)
+    monkeypatch.setattr(engine, "finalize", no_op)
+
+    with pytest.raises(RuntimeError, match="partially committed"):
+        asyncio.run(pipeline._run_indexing(working, [str(path) for path in sources], None))
+
+    assert len(status_reads) == 1
+    assert status_reads[0][1] is True
+    assert (pending_root(working) / "accepted.md").is_file()
+    assert (bundles_root(working) / "accepted.md.bundle").is_dir()
+    assert not (pending_root(working) / "rejected.md").exists()
+    assert not (bundles_root(working) / "rejected.md.bundle").exists()
+
+
+def test_enqueue_status_read_failure_retains_all_ingress(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source" / "doc.md"
+    source.parent.mkdir()
+    source.write_text("body", encoding="utf-8")
+    working = tmp_path / "version-1"
+
+    class DocStatus:
+        async def get_docs_by_ids(self, _doc_ids, *, strict):
+            assert strict is True
+            raise RuntimeError("status unavailable")
+
+    class Rag:
+        working_dir = str(working)
+        doc_status = DocStatus()
+
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+
+    def stage(_working, paths):
+        return [
+            freeze_document(
+                working,
+                Path(paths[0]),
+                ParsedDocument(markdown="body", engine="text_only"),
+            )
+        ], {}
+
+    async def enqueue(_rag, _staged):
+        raise ValueError("enqueue failed")
+
+    async def no_op(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(pipeline, "_stage_documents", stage)
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: Rag())
+    monkeypatch.setattr(engine, "initialize", no_op)
+    monkeypatch.setattr(engine, "enqueue", enqueue)
+    monkeypatch.setattr(engine, "finalize", no_op)
+
+    with pytest.raises(ValueError, match="enqueue failed"):
+        asyncio.run(pipeline._run_indexing(working, [str(source)], None))
+
+    assert (pending_root(working) / "doc.md").is_file()
+    assert (bundles_root(working) / "doc.md.bundle").is_dir()
+
+
+@pytest.mark.parametrize("operation", ["initialize", "add_documents"])
+def test_public_initial_ingestion_retains_uncertain_ingress(
+    tmp_path: Path, monkeypatch, operation: str
+) -> None:
+    source = tmp_path / "source" / "doc.md"
+    source.parent.mkdir()
+    source.write_text("body", encoding="utf-8")
+    staged_working: Path | None = None
+
+    class DocStatus:
+        async def get_docs_by_ids(self, _doc_ids, *, strict):
+            assert strict is True
+            raise RuntimeError("status unavailable")
+
+    class Rag:
+        doc_status = DocStatus()
+
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path / "knowledge-bases"))
+
+    def stage(working, paths):
+        nonlocal staged_working
+        staged_working = working
+        return [
+            freeze_document(
+                working,
+                Path(paths[0]),
+                ParsedDocument(markdown="body", engine="text_only"),
+            )
+        ], {}
+
+    async def enqueue(_rag, _staged):
+        raise ValueError("original enqueue failure")
+
+    async def no_op(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+    monkeypatch.setattr(pipeline, "_stage_documents", stage)
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: Rag())
+    monkeypatch.setattr(engine, "initialize", no_op)
+    monkeypatch.setattr(engine, "enqueue", enqueue)
+    monkeypatch.setattr(engine, "finalize", no_op)
+
+    with pytest.raises(ValueError, match="original enqueue failure"):
+        asyncio.run(getattr(pipeline, operation)("kb", [str(source)]))
+
+    assert staged_working is not None
+    assert (pending_root(staged_working) / "doc.md").is_file()
+    assert (bundles_root(staged_working) / "doc.md.bundle").is_dir()
+
+
+def test_zero_accepted_candidate_cleanup_removes_empty_version(tmp_path: Path) -> None:
+    version = tmp_path / "version-1"
+    pending_root(version).mkdir(parents=True)
+    bundles_root(version).mkdir(parents=True)
+
+    LightRagPipeline(kb_base_dir=str(tmp_path))._remove_zero_accepted_candidate(version)
+
+    assert not version.exists()
+
+
+def test_append_rejects_corrupt_or_unpublished_existing_version(
+    tmp_path: Path, monkeypatch
+) -> None:
+    version = tmp_path / "kb" / "version-1"
+    workspace = version / "workspace"
+    workspace.mkdir(parents=True)
+    (version / "meta.json").write_text(
+        json.dumps(
+            {
+                "provider": "lightrag",
+                "signature": "lightrag",
+                "lightrag_adapter_schema": 2,
+                "parser_bridge_schema": 1,
+                "state": "published",
+                "workspace": "workspace",
+            }
+        ),
+        encoding="utf-8",
     )
-    res = asyncio.run(pipe.search("question?", "kb"))
-    assert res["answer"] == "GROUNDED|local"
-    assert res["mode"] == "local"
-    assert res["provider"] == "lightrag"
-
-
-def test_search_returns_lightrag_provenance_sources(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    _stub_engine(monkeypatch)
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "a.pdf"
-    pdf.write_bytes(b"%PDF")
-    asyncio.run(pipe.initialize("kb", [str(pdf)]))
-
-    async def fake_query_with_sources(rag, question, mode):
-        return "Grounded", [{"title": "a.pdf", "chunk_id": "chunk-1"}]
-
-    monkeypatch.setattr(engine, "query_with_sources", fake_query_with_sources)
-
-    res = asyncio.run(pipe.search("question?", "kb"))
-
-    assert res["answer"] == "Grounded"
-    assert res["sources"] == [{"title": "a.pdf", "chunk_id": "chunk-1"}]
-
-
-def test_explicit_mode_overrides_kb_config(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    _stub_engine(monkeypatch, answer="A")
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "a.pdf"
-    pdf.write_bytes(b"%PDF")
-    asyncio.run(pipe.initialize("kb", [str(pdf)]))
-
-    res = asyncio.run(pipe.search("q", "kb", mode="global"))
-    assert res["mode"] == "global"
-
-
-def test_global_provider_mode_used_when_kb_has_none(tmp_path, monkeypatch) -> None:
-    _force_available(monkeypatch, True)
-    _stub_engine(monkeypatch, answer="A")
-    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
-    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
-    pdf = tmp_path / "a.pdf"
-    pdf.write_bytes(b"%PDF")
-    asyncio.run(pipe.initialize("kb", [str(pdf)]))
-
-    # No per-KB search_mode, but a global default mode set from the engine card.
-    (tmp_path / "kb_config.json").write_text(
-        json.dumps({"defaults": {"provider_modes": {"lightrag": "naive"}}}), encoding="utf-8"
+    (workspace / "kv_store_doc_status.json").write_text(
+        json.dumps({"failed": {"status": "failed", "chunks_list": []}}),
+        encoding="utf-8",
     )
-    res = asyncio.run(pipe.search("q", "kb"))
-    assert res["mode"] == "naive"
+    before = {
+        path.relative_to(version): path.read_bytes()
+        for path in version.rglob("*")
+        if path.is_file()
+    }
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+
+    with pytest.raises(LightRagNeedsReindexError, match="unpublished, or corrupt"):
+        asyncio.run(pipeline.add_documents("kb", [str(tmp_path / "new.md")]))
+
+    assert not (tmp_path / "kb" / "version-2").exists()
+    assert {
+        path.relative_to(version): path.read_bytes()
+        for path in version.rglob("*")
+        if path.is_file()
+    } == before
+
+
+def test_search_failure_is_not_reported_as_empty_success(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "version-1"
+    root.mkdir()
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.pipeline.resolve_storage_dir_for_read",
+        lambda *_args: root,
+    )
+    monkeypatch.setattr(storage, "meta_is_native_published", lambda _root: True)
+    monkeypatch.setattr(pipeline, "_resolve_mode", lambda *_args: "hybrid")
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: object())
+
+    async def no_op(*_args, **_kwargs):
+        return None
+
+    async def fail(*_args, **_kwargs):
+        raise engine.LightRagContractError("retrieval failed")
+
+    monkeypatch.setattr(engine, "initialize", no_op)
+    monkeypatch.setattr(engine, "query_with_sources", fail)
+    monkeypatch.setattr(engine, "finalize", no_op)
+
+    result = asyncio.run(pipeline.search("question", "kb"))
+
+    assert result["content"] == ""
+    assert result["sources"] == []
+    assert result["error_type"] == "retrieval_error"
+
+
+def test_legacy_search_requires_reindex_without_mutating_files(tmp_path: Path) -> None:
+    kb = tmp_path / "kb"
+    version = kb / "version-1"
+    version.mkdir(parents=True)
+    meta = version / "meta.json"
+    meta.write_text(json.dumps({"provider": "lightrag", "signature": "lightrag"}), encoding="utf-8")
+    (version / "kv_store_doc_status.json").write_text(
+        json.dumps({"id": {"status": "processed", "chunks_list": ["c"]}}),
+        encoding="utf-8",
+    )
+    before = {path.name: path.read_bytes() for path in version.iterdir()}
+
+    result = asyncio.run(LightRagPipeline(kb_base_dir=str(tmp_path)).search("q", "kb"))
+
+    assert result["needs_reindex"] is True
+    assert {path.name: path.read_bytes() for path in version.iterdir()} == before

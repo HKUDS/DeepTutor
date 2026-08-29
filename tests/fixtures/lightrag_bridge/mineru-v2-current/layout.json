@@ -1,0 +1,552 @@
+{
+    "pdf_info": [
+        {
+            "preproc_blocks": [
+                {
+                    "score": 0.5515,
+                    "bbox": [
+                        70,
+                        56,
+                        379,
+                        77
+                    ],
+                    "index": 1,
+                    "type": "title",
+                    "lines": [
+                        {
+                            "bbox": [
+                                72,
+                                57,
+                                378,
+                                76
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        72,
+                                        57,
+                                        378,
+                                        76
+                                    ],
+                                    "type": "text",
+                                    "content": "DeepTutor LightRAG Bridge Fixture",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ],
+                    "level": 2
+                },
+                {
+                    "score": 0.9291,
+                    "bbox": [
+                        68,
+                        91,
+                        348,
+                        106
+                    ],
+                    "index": 2,
+                    "type": "text",
+                    "lines": [
+                        {
+                            "bbox": [
+                                72,
+                                93,
+                                346,
+                                104
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        72,
+                                        93,
+                                        346,
+                                        104
+                                    ],
+                                    "type": "text",
+                                    "content": "A short paragraph preserves text and heading hierarchy.",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "score": 0.9417,
+                    "bbox": [
+                        266,
+                        127,
+                        344,
+                        144
+                    ],
+                    "index": 3,
+                    "type": "interline_equation",
+                    "lines": [
+                        {
+                            "bbox": [
+                                266,
+                                127,
+                                344,
+                                144
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        266,
+                                        127,
+                                        344,
+                                        144
+                                    ],
+                                    "type": "interline_equation",
+                                    "content": "E = m c ^ { \\wedge } 2",
+                                    "image_path": "4934193ff23f79d730c0af8148c70efd879bdc73b2f1d49d76e0ef955da28c70.jpg"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "table",
+                    "bbox": [
+                        70,
+                        199,
+                        372,
+                        249
+                    ],
+                    "blocks": [
+                        {
+                            "score": 0.9427,
+                            "bbox": [
+                                69,
+                                171,
+                                235,
+                                186
+                            ],
+                            "index": 4,
+                            "type": "table_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        71,
+                                        172,
+                                        233,
+                                        184
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                71,
+                                                172,
+                                                233,
+                                                184
+                                            ],
+                                            "type": "text",
+                                            "content": "Table 1. Retrieval engine paths",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "score": 0.9627,
+                            "bbox": [
+                                70,
+                                199,
+                                372,
+                                249
+                            ],
+                            "index": 5,
+                            "type": "table_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        70,
+                                        199,
+                                        372,
+                                        249
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                70,
+                                                199,
+                                                372,
+                                                249
+                                            ],
+                                            "type": "table",
+                                            "html": "<table><tr><td>Engine</td><td>Path</td></tr><tr><td>LightRAG</td><td>Native</td></tr></table>",
+                                            "image_path": "c0183ed37ed43baf874f25239395a832d77e43cdd877992b7f3eef0163e5d41b.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "index": 5,
+                    "score": 0.9627
+                },
+                {
+                    "type": "chart",
+                    "bbox": [
+                        102,
+                        306,
+                        403,
+                        441
+                    ],
+                    "blocks": [
+                        {
+                            "score": 0.9352,
+                            "bbox": [
+                                102,
+                                306,
+                                403,
+                                441
+                            ],
+                            "index": 6,
+                            "type": "chart_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        102,
+                                        306,
+                                        403,
+                                        441
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                102,
+                                                306,
+                                                403,
+                                                441
+                                            ],
+                                            "type": "chart",
+                                            "image_path": "f24e98da187ecc134f0b3b1def407fc96edfa0987b84ab2b95a3aa377698255b.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "score": 0.9393,
+                            "bbox": [
+                                69,
+                                460,
+                                209,
+                                474
+                            ],
+                            "index": 7,
+                            "type": "chart_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        71,
+                                        461,
+                                        208,
+                                        472
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                71,
+                                                461,
+                                                208,
+                                                472
+                                            ],
+                                            "type": "text",
+                                            "content": "Figure 1. Synthetic trend chart.",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "index": 6,
+                    "score": 0.9352
+                }
+            ],
+            "page_idx": 0,
+            "page_size": [
+                612,
+                792
+            ],
+            "discarded_blocks": [],
+            "para_blocks": [
+                {
+                    "score": 0.5515,
+                    "bbox": [
+                        70,
+                        56,
+                        379,
+                        77
+                    ],
+                    "index": 1,
+                    "type": "title",
+                    "lines": [
+                        {
+                            "bbox": [
+                                72,
+                                57,
+                                378,
+                                76
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        72,
+                                        57,
+                                        378,
+                                        76
+                                    ],
+                                    "type": "text",
+                                    "content": "DeepTutor LightRAG Bridge Fixture",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ],
+                    "level": 2
+                },
+                {
+                    "score": 0.9291,
+                    "bbox": [
+                        68,
+                        91,
+                        348,
+                        106
+                    ],
+                    "index": 2,
+                    "type": "text",
+                    "lines": [
+                        {
+                            "bbox": [
+                                72,
+                                93,
+                                346,
+                                104
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        72,
+                                        93,
+                                        346,
+                                        104
+                                    ],
+                                    "type": "text",
+                                    "content": "A short paragraph preserves text and heading hierarchy.",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ],
+                    "bbox_fs": [
+                        72,
+                        93,
+                        346,
+                        104
+                    ]
+                },
+                {
+                    "score": 0.9417,
+                    "bbox": [
+                        266,
+                        127,
+                        344,
+                        144
+                    ],
+                    "index": 3,
+                    "type": "interline_equation",
+                    "lines": [
+                        {
+                            "bbox": [
+                                266,
+                                127,
+                                344,
+                                144
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        266,
+                                        127,
+                                        344,
+                                        144
+                                    ],
+                                    "type": "interline_equation",
+                                    "content": "E = m c ^ { \\wedge } 2",
+                                    "image_path": "4934193ff23f79d730c0af8148c70efd879bdc73b2f1d49d76e0ef955da28c70.jpg"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "table",
+                    "bbox": [
+                        70,
+                        199,
+                        372,
+                        249
+                    ],
+                    "blocks": [
+                        {
+                            "score": 0.9427,
+                            "bbox": [
+                                69,
+                                171,
+                                235,
+                                186
+                            ],
+                            "index": 4,
+                            "type": "table_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        71,
+                                        172,
+                                        233,
+                                        184
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                71,
+                                                172,
+                                                233,
+                                                184
+                                            ],
+                                            "type": "text",
+                                            "content": "Table 1. Retrieval engine paths",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "score": 0.9627,
+                            "bbox": [
+                                70,
+                                199,
+                                372,
+                                249
+                            ],
+                            "index": 5,
+                            "type": "table_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        70,
+                                        199,
+                                        372,
+                                        249
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                70,
+                                                199,
+                                                372,
+                                                249
+                                            ],
+                                            "type": "table",
+                                            "html": "<table><tr><td>Engine</td><td>Path</td></tr><tr><td>LightRAG</td><td>Native</td></tr></table>",
+                                            "image_path": "c0183ed37ed43baf874f25239395a832d77e43cdd877992b7f3eef0163e5d41b.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "index": 5,
+                    "score": 0.9627
+                },
+                {
+                    "type": "chart",
+                    "bbox": [
+                        102,
+                        306,
+                        403,
+                        441
+                    ],
+                    "blocks": [
+                        {
+                            "score": 0.9352,
+                            "bbox": [
+                                102,
+                                306,
+                                403,
+                                441
+                            ],
+                            "index": 6,
+                            "type": "chart_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        102,
+                                        306,
+                                        403,
+                                        441
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                102,
+                                                306,
+                                                403,
+                                                441
+                                            ],
+                                            "type": "chart",
+                                            "image_path": "f24e98da187ecc134f0b3b1def407fc96edfa0987b84ab2b95a3aa377698255b.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "score": 0.9393,
+                            "bbox": [
+                                69,
+                                460,
+                                209,
+                                474
+                            ],
+                            "index": 7,
+                            "type": "chart_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        71,
+                                        461,
+                                        208,
+                                        472
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                71,
+                                                461,
+                                                208,
+                                                472
+                                            ],
+                                            "type": "text",
+                                            "content": "Figure 1. Synthetic trend chart.",
+                                            "score": 1.0
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    "index": 6,
+                    "score": 0.9352
+                }
+            ]
+        }
+    ],
+    "_backend": "pipeline",
+    "_version_name": "3.4.4"
+}

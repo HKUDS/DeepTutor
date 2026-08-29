@@ -99,6 +99,29 @@ def test_services_deepseek_v4_flash_disables_thinking_by_default() -> None:
     assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
+def test_openai_binding_deepseek_v4_flash_disables_thinking_by_default() -> None:
+    """#1058: openai binding pointed at DeepSeek must still disable flash thinking."""
+    kwargs = _build_services_kwargs(
+        "openai",
+        None,
+        model="deepseek-v4-flash",
+    )
+
+    assert "reasoning_effort" not in kwargs
+    assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_openai_binding_deepseek_v4_pro_enables_thinking_by_default() -> None:
+    kwargs = _build_services_kwargs(
+        "openai",
+        None,
+        model="deepseek-v4-pro",
+    )
+
+    assert kwargs["reasoning_effort"] == "high"
+    assert kwargs["extra_body"] == {"thinking": {"type": "enabled"}}
+
+
 def test_services_deepseek_v4_pro_enables_thinking_by_default() -> None:
     kwargs = _build_services_kwargs("deepseek", None)
 

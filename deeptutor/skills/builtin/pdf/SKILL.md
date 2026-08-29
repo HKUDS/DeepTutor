@@ -19,8 +19,8 @@ Work PDFs in the sandbox with preinstalled Python libs. Pick the library by task
 - **Fill forms** → `pypdf` (fillable AcroForm fields) or annotation overlay (flat forms).
 - **Create from scratch** → `reportlab`.
 
-Write a short Python snippet and run it via `exec`. Save outputs to the workspace dir.
-After `exec` completes, use the Generated artifacts URL from the tool result in the final answer so the user can download the PDF.
+Write complete Python source and run it via `code_execution`. Save outputs to the workspace dir.
+After execution, refer to the PDF exactly as the Generated artifacts list names it. Use `exec` only for a genuinely shell-only command; never put this source in `python -c` or a heredoc.
 
 ## Extract text and tables (pdfplumber)
 

@@ -77,7 +77,7 @@ export interface LightRagConfig {
   version: number;
   top_k: number;
   response_type: string;
-  /** Files RAG-Anything processes in parallel while indexing. */
+  /** Frozen documents LightRAG parses in parallel while indexing. */
   max_concurrent_files: number;
   /** Concurrent LLM calls LightRAG's internal queue issues. */
   llm_model_max_async: number;

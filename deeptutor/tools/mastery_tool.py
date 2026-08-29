@@ -15,6 +15,7 @@ from deeptutor.capabilities.mastery.tools import (
     MasteryLeaveTool,
     MasteryPathsTool,
     MasteryQuizTool,
+    MasterySkipQuestionTool,
     MasteryStatusTool,
     MasterySwitchTool,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "MasteryLeaveTool",
     "MasteryPathsTool",
     "MasteryQuizTool",
+    "MasterySkipQuestionTool",
     "MasteryStatusTool",
     "MasterySwitchTool",
 ]

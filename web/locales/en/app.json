@@ -2709,7 +2709,7 @@
   "API key configured": "API key configured",
   "GraphRAG package installed": "GraphRAG package installed",
   "Active chat model": "Active chat model",
-  "RAG-Anything package installed": "RAG-Anything package installed",
+  "LightRAG package installed": "LightRAG package installed",
   "Vision model for multimodal": "Vision model for multimodal",
   "Local vector engine — works out of the box. Retrieval uses your active embedding model; install the optional BM25 package to enable hybrid retrieval.": "Local vector engine — works out of the box. Retrieval uses your active embedding model; install the optional BM25 package to enable hybrid retrieval.",
   "Hosted engine: documents are uploaded to PageIndex's servers and the chat agent reads them through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.": "Hosted engine: documents are uploaded to PageIndex's servers and the chat agent reads them through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.",

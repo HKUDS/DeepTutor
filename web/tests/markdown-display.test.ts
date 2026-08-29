@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  decodeEscapedUnicodeForDisplay,
   escapeUnknownHtmlTagsForDisplay,
   hasVisibleMarkdownContent,
   markdownUrlTransform,
@@ -88,6 +89,7 @@ test("normalizeMarkdownForDisplay removes empty details blocks", () => {
 test("normalizeMarkdownForDisplay decodes dense non-ASCII JSON escapes", () => {
   const input = "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d";
   assert.equal(normalizeMarkdownForDisplay(input), "「数制转换」");
+  assert.equal(decodeEscapedUnicodeForDisplay(input), "「数制转换」");
 });
 
 test("decoded unicode cannot reintroduce invisible or bidi controls", () => {

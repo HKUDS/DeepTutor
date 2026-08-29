@@ -2709,7 +2709,7 @@
   "API key configured": "已配置 API 密钥",
   "GraphRAG package installed": "已安装 GraphRAG 依赖包",
   "Active chat model": "已启用对话模型",
-  "RAG-Anything package installed": "已安装 RAG-Anything 依赖包",
+  "LightRAG package installed": "已安装 LightRAG 依赖包",
   "Vision model for multimodal": "用于多模态的视觉模型",
   "Local vector engine — works out of the box. Retrieval uses your active embedding model; install the optional BM25 package to enable hybrid retrieval.": "本地向量引擎，开箱即用。检索使用你当前启用的嵌入模型；可选安装 BM25 包以启用混合检索。",
   "Hosted engine: documents are uploaded to PageIndex's servers and the chat agent reads them through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.": "托管引擎：文档上传到 PageIndex 服务器，聊天 agent 通过 PageIndex MCP 工具阅读文档。需配置 API 密钥；支持 PDF、Office、文本和 Markdown 格式。",

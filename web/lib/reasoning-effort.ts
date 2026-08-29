@@ -129,7 +129,14 @@ export function reasoningEffortOptions(
       : options([], current);
   }
 
-  if (BINARY_THINKING_PROVIDERS.has(provider) || provider === "custom") {
+  if (provider === "custom") {
+    // A user-supplied OpenAI-compatible endpoint may route to any upstream
+    // model, so expose the common cross-gateway levels and let Auto handle
+    // providers without an explicit control.
+    return options(["none", "low", "medium", "high"], current);
+  }
+
+  if (BINARY_THINKING_PROVIDERS.has(provider)) {
     const supported =
       provider === "minimax" ||
       includesAny(modelName, [
@@ -152,7 +159,7 @@ export function reasoningEffortOptions(
     }
   }
 
-  if (OPENAI_PROVIDERS.has(provider) || provider === "custom") {
+  if (OPENAI_PROVIDERS.has(provider)) {
     const isGpt5OrCodex = includesAny(modelName, ["gpt-5", "codex"]);
     if (isGpt5OrCodex) {
       return options(["minimal", "low", "medium", "high", "xhigh"], current);

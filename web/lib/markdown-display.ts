@@ -654,6 +654,18 @@ function decodeEscapedUnicodeRuns(content: string): string {
   return fenced.restore(math.restore(inline.restore(decoded)));
 }
 
+/**
+ * Decode dense ``\\uXXXX`` runs that represent non-ASCII text.
+ *
+ * Shared by Markdown rendering and plain-text surfaces (``ask_user`` card
+ * prompts) so escaped Chinese that leaked through a JSON round-trip is
+ * repaired before it reaches the learner (#973).
+ */
+export function decodeEscapedUnicodeForDisplay(content: string): string {
+  if (!content) return "";
+  return decodeEscapedUnicodeRuns(String(content));
+}
+
 function decodeEscapedUnicodeRun(escaped: string): string {
   try {
     const value = JSON.parse(`"${escaped}"`) as string;

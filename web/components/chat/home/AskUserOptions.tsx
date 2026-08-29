@@ -4,6 +4,7 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { decodeEscapedUnicodeForDisplay } from "@/lib/markdown-display";
 import {
   collectNarrationCallIds,
   shouldAppendEventContent,
@@ -376,6 +377,15 @@ export function leadingTraceEvents(
 }
 
 /**
+ * Decode dense JSON unicode escapes before the card paints learner-facing
+ * copy. Markdown already does this; ask_user prompts are plain text and used
+ * to leak ``\\u300c...`` stems (#973).
+ */
+function displayText(value: string): string {
+  return decodeEscapedUnicodeForDisplay(value);
+}
+
+/**
  * One option: v3 emits ``{label, description}`` objects; v2 payloads
  * stored in older sessions carry plain strings. Both normalise to the
  * object shape.
@@ -383,15 +393,15 @@ export function leadingTraceEvents(
 function normaliseOption(raw: unknown): AskUserOption | null {
   if (raw && typeof raw === "object") {
     const o = raw as Record<string, unknown>;
-    const label = String(o.label ?? "").trim();
+    const label = displayText(String(o.label ?? "").trim());
     if (!label) return null;
     const description =
       typeof o.description === "string" && o.description.trim()
-        ? o.description.trim()
+        ? displayText(o.description.trim())
         : null;
     return { label, description };
   }
-  const label = String(raw ?? "").trim();
+  const label = displayText(String(raw ?? "").trim());
   return label ? { label, description: null } : null;
 }
 
@@ -405,7 +415,7 @@ function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
     for (const item of obj.questions) {
       if (!item || typeof item !== "object") continue;
       const q = item as Record<string, unknown>;
-      const prompt = String(q.prompt ?? q.question ?? "").trim();
+      const prompt = displayText(String(q.prompt ?? q.question ?? "").trim());
       if (!prompt) continue;
       const optionsRaw = Array.isArray(q.options) ? q.options : [];
       questions.push({
@@ -413,7 +423,7 @@ function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
         prompt,
         header:
           typeof q.header === "string" && q.header.trim()
-            ? q.header.trim()
+            ? displayText(q.header.trim())
             : null,
         multi_select: Boolean(q.multi_select ?? q.multiSelect),
         options: optionsRaw
@@ -422,7 +432,7 @@ function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
         allow_free_text: q.allow_free_text === false ? false : true,
         placeholder:
           typeof q.placeholder === "string" && q.placeholder.trim()
-            ? (q.placeholder as string).trim()
+            ? displayText((q.placeholder as string).trim())
             : null,
       });
     }
@@ -430,14 +440,14 @@ function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
     return {
       intro:
         typeof obj.intro === "string" && obj.intro.trim()
-          ? (obj.intro as string).trim()
+          ? displayText((obj.intro as string).trim())
           : null,
       questions,
     };
   }
 
   // Legacy single-question shape from before the multi-question refactor.
-  const prompt = String(obj.question ?? "").trim();
+  const prompt = displayText(String(obj.question ?? "").trim());
   if (!prompt) return null;
   const optionsRaw = Array.isArray(obj.options) ? obj.options : [];
   return {

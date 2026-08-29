@@ -134,6 +134,75 @@ def test_loader_skips_document_when_active_engine_cannot_parse(
     assert "Settings" in caplog.text
 
 
+def test_loader_explains_scanned_pdf_when_parser_yields_images_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    (asset_dir / "page-1.png").write_bytes(b"\x89PNG\r\n")
+
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            "scan.pdf": ParsedDocument(
+                markdown="",
+                engine="pymupdf4llm",
+                asset_dir=asset_dir,
+            )
+        },
+    )
+
+    class _TextOnlyClient:
+        config = type("Config", (), {"binding": "openai", "model": "text-embedding"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return False
+
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyClient())
+
+    with caplog.at_level("WARNING"):
+        documents = asyncio.run(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    assert documents == []
+    assert "pymupdf4llm engine extracted 1 image(s) but no text" in caplog.text
+    assert "scanned PDF" in caplog.text
+    assert "OCR-capable" in caplog.text
+    assert "Settings, Document Parsing" in caplog.text
+
+
+def test_loader_keeps_generic_empty_warning_for_non_pdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    docx_path = tmp_path / "blank.docx"
+    docx_path.write_bytes(b"stub")
+    _install_stub_parse_service(
+        monkeypatch,
+        {"blank.docx": ParsedDocument(markdown="", engine="markitdown")},
+    )
+
+    with caplog.at_level("WARNING"):
+        documents = asyncio.run(LlamaIndexDocumentLoader().load([str(docx_path)]))
+
+    assert documents == []
+    assert caplog.text.count("Skipped empty document: blank.docx") == 1
+    assert "scanned PDF" not in caplog.text
+
+
 def test_loader_indexes_images_extracted_from_parsed_document(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

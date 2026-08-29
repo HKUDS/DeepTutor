@@ -14,6 +14,8 @@ from dataclasses import dataclass
 import re
 from typing import TYPE_CHECKING, Any
 
+from deeptutor.utils.text_display import decode_escaped_unicode_for_display
+
 if TYPE_CHECKING:
     from deeptutor.learning.models import PendingQuestion
 
@@ -270,9 +272,16 @@ def public_pending_question(pending: PendingQuestion) -> PublicPendingQuestion:
     )
     return PublicPendingQuestion(
         question_id=pending.question_id,
-        prompt=pending.prompt,
+        prompt=decode_escaped_unicode_for_display(pending.prompt),
         question_type=pending.question_type,
-        options=options,
+        options=tuple(
+            PublicPendingOption(
+                id=option.id,
+                label=decode_escaped_unicode_for_display(option.label),
+                body=decode_escaped_unicode_for_display(option.body),
+            )
+            for option in options
+        ),
     )
 
 

@@ -9,7 +9,7 @@ today:
 * ``graphrag``            — local knowledge-graph retrieval (microsoft/graphrag);
                             optional dependency, ``pip install 'deeptutor[graphrag]'``.
 * ``lightrag``            — graph + vector retrieval (HKUDS/LightRAG, multimodal
-                            via RAG-Anything); optional dependency,
+                            via the LightRAG native pipeline); optional dependency,
                             ``pip install 'deeptutor[rag-lightrag]'``.
 * ``lightrag-server``     — retrieval offloaded to an external, standalone
                             LightRAG server the user runs. No local index: each

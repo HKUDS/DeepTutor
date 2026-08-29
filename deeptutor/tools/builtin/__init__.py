@@ -340,10 +340,11 @@ class CodeExecutionTool(_PromptHintsMixin, BaseTool):
             name="code_execution",
             description=(
                 "Run a code snippet in an isolated sandbox and return its "
-                "stdout/stderr. Pass complete, ready-to-run source in `code` "
-                "and pick `language` (python, c, or cpp). Use for calculation, "
-                "algorithm checking, and numerical verification — print results "
-                "to stdout. Not a substitute for explaining your reasoning."
+                "stdout/stderr plus any files generated in the workspace. Pass "
+                "complete, ready-to-run source in `code` and pick `language` "
+                "(python, c, or cpp). Use it for calculation, data processing, "
+                "and code-generated deliverables instead of embedding source in "
+                "an exec command. Print concise results to stdout."
             ),
             parameters=[
                 ToolParameter(

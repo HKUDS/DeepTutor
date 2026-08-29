@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from deeptutor.utils.text_display import decode_escaped_unicode_for_display
+
 MAX_QUESTIONS = 4
 MAX_OPTIONS = 8
 MAX_OPTION_CHARS = 120  # option label
@@ -253,8 +255,10 @@ def _coerce_string(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
-        return value
-    return str(value)
+        raw = value
+    else:
+        raw = str(value)
+    return decode_escaped_unicode_for_display(raw)
 
 
 __all__ = [

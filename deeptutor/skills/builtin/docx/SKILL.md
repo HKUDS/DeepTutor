@@ -20,7 +20,7 @@ A `.docx` is a ZIP of XML parts. Body text lives in `word/document.xml`. Two tie
 - **Advanced — raw OOXML via `zipfile`**: only for what python-docx cannot express — tracked changes (redlines), comments, and exact-fidelity edits that must preserve every untouched byte. See [Raw OOXML](#raw-ooxml-advanced).
 
 Work in the current directory (uploaded files land here). Write output to a new filename; don't overwrite the source.
-After `exec` completes, use the Generated artifacts URL from the tool result in the final answer so the user can download the document.
+Run Python through `code_execution`, save output in the current directory, and refer to the document exactly as the Generated artifacts list names it. Use `exec` only for a genuinely shell-only command; never put this source in `python -c` or a heredoc.
 
 ## Read / extract
 

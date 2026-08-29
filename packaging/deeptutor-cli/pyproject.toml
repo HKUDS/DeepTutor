@@ -55,7 +55,7 @@ dependencies = [
     "openpyxl>=3.1.0",
     "python-pptx>=1.0.0",
     "pypdf>=4.0.0",
-    "pdfplumber>=0.11.0,<0.11.8",
+    "pdfplumber>=0.11.0",
     "reportlab>=4.0.0",
     "defusedxml>=0.7.1",
 ]

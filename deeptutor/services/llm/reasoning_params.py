@@ -38,8 +38,13 @@ _MINIMAL_NOT_OFF_PATTERNS: dict[str, tuple[str, ...]] = {
 }
 _CUSTOM_MODEL_THINKING_STYLES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("qwen3", "qwen-3", "qwq", "qwen-plus"), "enable_thinking"),
-    (("deepseek-v4-pro", "deepseek-reasoner"), "thinking_type"),
+    (("deepseek-v4-pro", "deepseek-reasoner", "deepseek-r1"), "thinking_type"),
 )
+# Model substrings that default to thinking off — independent of binding name,
+# so ``LLM_BINDING=openai`` pointed at DeepSeek with deepseek-v4-flash still
+# sends ``thinking: disabled`` and avoids the mid-conversation
+# ``reasoning_content must be passed back`` 400 (#1058).
+_THINKING_DISABLED_BY_DEFAULT_MODELS: tuple[str, ...] = ("deepseek-v4-flash",)
 _THINKING_DISABLED_BY_DEFAULT: tuple[tuple[str, str], ...] = (("deepseek", "deepseek-v4-flash"),)
 
 
@@ -56,11 +61,17 @@ def _custom_thinking_style(model_name: str) -> tuple[str, tuple[str, ...]]:
     for patterns, style in _CUSTOM_MODEL_THINKING_STYLES:
         if _matches(model_name, patterns):
             return style, patterns
+    # Flash needs thinking_type so we can send ``disabled`` by default, but it
+    # must NOT inherit the high-effort patterns used by pro/reasoner.
+    if any(pattern in model_name.lower() for pattern in _THINKING_DISABLED_BY_DEFAULT_MODELS):
+        return "thinking_type", ()
     return "", ()
 
 
 def _disable_thinking_by_default(provider_name: str, model_name: str) -> bool:
     normalized = model_name.strip().lower()
+    if any(pattern in normalized for pattern in _THINKING_DISABLED_BY_DEFAULT_MODELS):
+        return True
     return any(
         provider_name == provider and pattern in normalized
         for provider, pattern in _THINKING_DISABLED_BY_DEFAULT
@@ -110,11 +121,15 @@ def build_openai_compatible_reasoning_kwargs(
         thinking_style = _PROVIDER_THINKING_STYLES.get(provider_name, "")
     if not patterns:
         patterns = _PROVIDER_REASONING_PATTERNS.get(provider_name, ())
-    if provider_name == "custom":
+    # Infer style from the model id when the binding has none of its own —
+    # covers ``custom`` endpoints and ``openai`` bindings aimed at DeepSeek /
+    # Qwen gateways (#1058).
+    if not thinking_style:
         custom_style, custom_patterns = _custom_thinking_style(model_name)
         if custom_style:
             thinking_style = custom_style
-            patterns = custom_patterns
+            if not patterns:
+                patterns = custom_patterns
 
     resolved_effort = reasoning_effort
     if resolved_effort is None:

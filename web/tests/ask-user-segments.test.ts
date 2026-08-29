@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  extractAskUserPayload,
   extractMessageSegments,
   leadingTraceEvents,
 } from "../components/chat/home/AskUserOptions";
 import type { StreamEvent } from "../lib/unified-ws";
+import { decodeEscapedUnicodeForDisplay } from "../lib/markdown-display";
 
 function event(
   type: StreamEvent["type"],
@@ -128,5 +130,47 @@ test("each card gets the rounds that followed it", () => {
   assert.deepEqual(
     segments.map((segment) => segment.kind),
     ["ask_user", "trace", "ask_user", "trace"],
+  );
+});
+
+test("ask_user card prompts decode dense non-ASCII unicode escapes (#973)", () => {
+  const escaped =
+    "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d\\u8fd8\\u6ca1\\u8fc7\\u5173";
+  assert.equal(
+    decodeEscapedUnicodeForDisplay(escaped),
+    "「数制转换」还没过关",
+  );
+
+  const card = extractAskUserPayload([
+    event("tool_result", {
+      tool_call_id: "call-1",
+      tool_metadata: {
+        ask_user: {
+          intro: escaped,
+          questions: [
+            {
+              id: "q1",
+              prompt: escaped,
+              header: "\\u6570\\u5236\\u8f6c\\u6362",
+              options: [
+                {
+                  label: "A",
+                  description: "\\u7ee7\\u7eed\\u7b54\\u9898",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+  ]);
+
+  assert.ok(card);
+  assert.equal(card.payload.intro, "「数制转换」还没过关");
+  assert.equal(card.payload.questions[0].prompt, "「数制转换」还没过关");
+  assert.equal(card.payload.questions[0].header, "数制转换");
+  assert.equal(
+    card.payload.questions[0].options[0].description,
+    "继续答题",
   );
 });

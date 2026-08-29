@@ -14,10 +14,11 @@ requires:
 
 # Excel (.xlsx) workbooks
 
-Work in the workspace dir (where uploads land) by writing short Python run via
-`exec`. Two libraries, both preinstalled — pick by task:
-After `exec` completes, use the Generated artifacts URL from the tool result in
-the final answer so the user can download the workbook.
+Work in the workspace dir (where uploads land) by running complete Python
+source via `code_execution`. Two libraries, both preinstalled — pick by task:
+Refer to the workbook exactly as the Generated artifacts list names it. Use
+`exec` only for a genuinely shell-only command; never put this source in
+`python -c` or a heredoc.
 
 - **pandas** — bulk tabular read/write/analysis. Use for "load this sheet,
   compute, dump a table". Drops all formatting and formulas.

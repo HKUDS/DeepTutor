@@ -41,7 +41,7 @@ import {
 type SourceTab = "knowledge" | "notebooks" | "questions" | "chats";
 
 /**
- * Languages a book can be written in.
+ * Languages a book can be written in, plus the request-driven default.
  *
  * Mirrors `_LANGUAGE_LABELS` in `deeptutor/services/prompt/language.py`, which
  * has always handled all of these — the picker offered only English and
@@ -50,6 +50,7 @@ type SourceTab = "knowledge" | "notebooks" | "questions" | "chats";
  * scans for the word they'd write it in.
  */
 const BOOK_LANGUAGES: Array<{ code: string; label: string }> = [
+  { code: "auto", label: "Auto" },
   { code: "en", label: "English" },
   { code: "zh", label: "简体中文" },
   { code: "zh-tw", label: "繁體中文" },
@@ -103,6 +104,7 @@ export interface BookCreatorProps {
     question_categories: number[];
     question_entries: number[];
     language: string;
+    fallback_language: string;
     depth: BookDepth;
   }) => void | Promise<void>;
   loading?: boolean;
@@ -124,8 +126,7 @@ export default function BookCreator({
   const { t } = useTranslation();
   const { language: appLanguage } = useAppShell();
   const [intent, setIntent] = useState("");
-  const [language, setLanguage] = useState<string>(appLanguage);
-  const languageTouchedRef = useRef(false);
+  const [language, setLanguage] = useState<string>("auto");
   const [depth, setDepth] = useState<BookDepth>("standard");
   const [tab, setTab] = useState<SourceTab>("knowledge");
 
@@ -245,10 +246,6 @@ export default function BookCreator({
     void refreshCategories();
     void refreshSessions();
   }, []);
-
-  useEffect(() => {
-    if (!languageTouchedRef.current) setLanguage(appLanguage);
-  }, [appLanguage]);
 
   // ── selection counts ─────────────────────────────────────────────
   const countSelection = <P extends string | number, C extends string | number>(
@@ -387,6 +384,7 @@ export default function BookCreator({
       question_categories,
       question_entries,
       language,
+      fallback_language: appLanguage,
     });
   };
 
@@ -770,7 +768,6 @@ export default function BookCreator({
                   <select
                     value={language}
                     onChange={(e) => {
-                      languageTouchedRef.current = true;
                       setLanguage(e.target.value);
                     }}
                     className="ml-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"

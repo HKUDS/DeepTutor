@@ -520,6 +520,7 @@ function BookPageInner() {
     question_categories: number[];
     question_entries: number[];
     language: string;
+    fallback_language: string;
     depth: BookDepth;
   }) => {
     setCreating(true);

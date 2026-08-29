@@ -23,6 +23,7 @@ from deeptutor.services.skill.hub import (
     get_hub_provider,
     install_from_hub,
     parse_hub_ref,
+    split_owner_slug,
 )
 from deeptutor.services.skill.service import (
     SkillExistsError,
@@ -176,6 +177,13 @@ def test_origin_recorded_and_dropped_on_delete(tmp_path: Path, svc: SkillService
 
 def test_parse_hub_ref_forms() -> None:
     assert parse_hub_ref("clawhub:my-skill") == ("clawhub", "my-skill", None)
+    assert parse_hub_ref("clawhub:acme/my-skill@1.2.0") == (
+        "clawhub",
+        "acme/my-skill",
+        "1.2.0",
+    )
+    assert split_owner_slug("acme/my-skill") == ("acme", "my-skill")
+    assert split_owner_slug("my-skill") == ("", "my-skill")
     # No prefix resolves to the built-in default hub (EduHub).
     assert parse_hub_ref("my-skill") == ("eduhub", "my-skill", None)
     assert parse_hub_ref("eduhub:my-skill") == ("eduhub", "my-skill", None)
@@ -214,9 +222,16 @@ def test_extract_skill_zip_preserves_dirs_and_blocks_traversal(tmp_path: Path) -
 # ── ClawHubProvider over MockTransport ───────────────────────────────────
 
 
-def _clawhub_client(zip_payload: bytes, *, ok: bool = True) -> httpx.Client:
+def _clawhub_client(
+    zip_payload: bytes,
+    *,
+    ok: bool = True,
+    requests: list[tuple[str, dict[str, str]]] | None = None,
+) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        if requests is not None:
+            requests.append((path, dict(request.url.params)))
         if path == "/api/v1/search":
             return httpx.Response(
                 200,
@@ -224,6 +239,7 @@ def _clawhub_client(zip_payload: bytes, *, ok: bool = True) -> httpx.Client:
                     "results": [
                         {
                             "slug": "demo",
+                            "ownerHandle": "acme",
                             "displayName": "Demo",
                             "summary": "demo summary",
                             "version": "1.2.0",
@@ -245,20 +261,31 @@ def _clawhub_client(zip_payload: bytes, *, ok: bool = True) -> httpx.Client:
 
 def test_clawhub_search_verify_fetch(tmp_path: Path) -> None:
     payload = _zip_bytes({"demo/SKILL.md": "---\nname: demo\ndescription: d\n---\n\nbody\n"})
-    provider = ClawHubProvider(client=_clawhub_client(payload))
+    calls: list[tuple[str, dict[str, str]]] = []
+    provider = ClawHubProvider(client=_clawhub_client(payload, requests=calls))
 
     refs = provider.search("demo")
-    assert refs[0].slug == "demo" and refs[0].version == "1.2.0"
+    assert refs[0].slug == "demo"
+    assert refs[0].owner_handle == "acme"
+    assert refs[0].version == "1.2.0"
 
-    assert provider.verify("demo").status == "ok"
+    assert provider.verify("acme/demo").status == "ok"
 
-    fetched = provider.fetch("demo")
+    fetched = provider.fetch("acme/demo")
     try:
         assert (fetched.root / "SKILL.md").is_file()  # wrapper dir unwrapped
         assert fetched.ref.version == "1.2.0"  # resolved from skill detail
+        assert fetched.ref.slug == "demo"
+        assert fetched.ref.owner_handle == "acme"
     finally:
         fetched.cleanup()
     assert not fetched.cleanup_dir.exists()
+    assert ("ownerHandle", "acme") in calls[1][1].items()
+    assert calls[2] == (
+        "/api/v1/download",
+        {"slug": "demo", "tag": "latest", "ownerHandle": "acme"},
+    )
+    assert calls[3] == ("/api/v1/skills/demo", {"ownerHandle": "acme"})
 
 
 def test_clawhub_verify_states() -> None:
@@ -370,20 +397,31 @@ class _FakeProvider:
         self._pkg = pkg
         self._verdict = verdict
         self.last_cleanup: Path | None = None
+        self.last_verify: str | None = None
+        self.last_fetch: str | None = None
 
     def search(self, query: str, *, limit: int = 10) -> list[HubSkillRef]:
         return []
 
     def verify(self, slug: str, *, version: str | None = None) -> HubVerdict:
+        self.last_verify = slug
         return self._verdict
 
     def fetch(self, slug: str, *, version: str | None = None) -> FetchedSkill:
+        self.last_fetch = slug
+        owner_handle, skill_slug = split_owner_slug(slug)
         tmp = Path(tempfile.mkdtemp(prefix="fakehub-"))
         root = tmp / "pkg"
         shutil.copytree(self._pkg, root)
         self.last_cleanup = tmp
         return FetchedSkill(
-            ref=HubSkillRef(hub=self.name, slug=slug, summary="registry summary", version="0.9.0"),
+            ref=HubSkillRef(
+                hub=self.name,
+                slug=skill_slug,
+                owner_handle=owner_handle,
+                summary="registry summary",
+                version="0.9.0",
+            ),
             root=root,
             cleanup_dir=tmp,
         )
@@ -401,8 +439,26 @@ def test_install_from_hub_happy_path(tmp_path: Path, svc: SkillService) -> None:
         "0.9.0",
         "ok",
     )
+    assert origin["slug"] == "demo"
+    assert "owner_handle" not in origin
     assert origin["installed_at"]
     assert provider.last_cleanup is not None and not provider.last_cleanup.exists()
+
+
+def test_install_from_hub_records_publisher_scope(tmp_path: Path, svc: SkillService) -> None:
+    pkg = _make_package(tmp_path / "pkg", frontmatter="name: demo\ndescription: d")
+    provider = _FakeProvider(pkg, HubVerdict(status="ok"))
+
+    outcome = install_from_hub("fakehub:acme/demo", service=svc, provider=provider)
+
+    assert provider.last_verify == "acme/demo"
+    assert provider.last_fetch == "acme/demo"
+    assert outcome.ref.slug == "demo"
+    assert outcome.ref.owner_handle == "acme"
+    origin = svc.hub_origin("demo")
+    assert origin is not None
+    assert origin["slug"] == "demo"
+    assert origin["owner_handle"] == "acme"
 
 
 def test_install_from_hub_blocks_suspicious_unless_overridden(

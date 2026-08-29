@@ -1,16 +1,9 @@
-"""Bridge DeepTutor's runtime config into LightRAG / RAG-Anything.
-
-LightRAG (HKUDS/LightRAG) is a text knowledge-graph RAG engine; its multimodal
-story is RAG-Anything (HKUDS/RAG-Anything), built on top of LightRAG. The
-``lightrag`` provider uses RAG-Anything so multimodal content (the parse layer's
-``content_list``) becomes graph entities, while text-only documents fall back to
-a plain text insert.
+"""Bridge DeepTutor runtime configuration into the LightRAG 1.5 native SDK.
 
 This module is the decoupling seam: it exposes availability + mode helpers and
-builds the three adapters LightRAG needs from DeepTutor's already-resolved LLM /
-embedding clients. It imports neither RAG-Anything nor LightRAG at module load —
-the adapter builders import ``lightrag.utils`` lazily (only the embedding wrapper
-needs it), and engine construction lives in ``engine.py``.
+builds the three adapters LightRAG needs from DeepTutor's already-resolved LLM,
+vision, and embedding clients. LightRAG imports remain lazy so every other RAG
+provider can import without the optional extra installed.
 
 Decoupling notes:
 * ``llm_model_func`` / ``vision_model_func`` wrap DeepTutor's unified model
@@ -45,7 +38,7 @@ DEFAULT_MODE = "hybrid"
 # Conservative cap for the embedding wrapper when the model doesn't advertise one.
 _DEFAULT_MAX_TOKEN_SIZE = 8192
 
-# Keep retries at the LightRAG adapter boundary so RAG-Anything receives one
+# Keep retries at the LightRAG adapter boundary so the SDK receives one
 # predictable policy for both text and vision calls. Provider retries are disabled
 # on every attempt to prevent the two retry layers from multiplying.
 _ADAPTER_MAX_ATTEMPTS = 3
@@ -59,7 +52,7 @@ _HTTP_STATUS_PATTERN = re.compile(
 
 
 class LightRagNotAvailableError(RuntimeError):
-    """Raised when the optional ``raganything`` dependency is not installed."""
+    """Raised when the optional ``lightrag-hku`` dependency is not installed."""
 
 
 class LightRagNotConfiguredError(RuntimeError):
@@ -138,12 +131,12 @@ async def _run_adapter_with_retry(
 
 
 def is_lightrag_available() -> bool:
-    """True when RAG-Anything (which bundles LightRAG) can be imported.
+    """True when the native LightRAG SDK can be imported.
 
     Opt-in extra: ``pip install 'deeptutor[rag-lightrag]'``. Until installed the
     provider is hidden / blocked in the UI.
     """
-    return importlib.util.find_spec("raganything") is not None
+    return importlib.util.find_spec("lightrag") is not None
 
 
 def normalize_mode(mode: str | None) -> str:
@@ -157,12 +150,7 @@ def normalize_mode(mode: str | None) -> str:
 
 
 def query_kwargs_from_settings() -> dict:
-    """Extra ``aquery`` kwargs (top_k, response_type) from runtime settings.
-
-    Returned as a dict so the engine can pass them through to LightRAG's
-    ``QueryParam`` and gracefully drop them if an older RAG-Anything rejects a
-    kwarg. Empty on any read error.
-    """
+    """``QueryParam`` values from runtime settings."""
     try:
         from deeptutor.services.config import load_lightrag_settings
 
@@ -176,34 +164,18 @@ def query_kwargs_from_settings() -> dict:
 
 
 def indexing_kwargs_from_settings() -> dict:
-    """``RAGAnythingConfig`` batch-processing knobs from runtime settings.
-
-    Only ``max_concurrent_files`` is exposed for now (issue #640); the config
-    object accepts several other batch/context knobs we deliberately leave on
-    RAG-Anything's own defaults. Empty on any read error, so a bad settings
-    file falls back to RAG-Anything's built-in default of 1.
-    """
+    """Native parser-pool knobs from runtime settings."""
     try:
         from deeptutor.services.config import load_lightrag_settings
 
         settings = load_lightrag_settings()
-        return {"max_concurrent_files": int(settings.get("max_concurrent_files", 1))}
+        return {"max_parallel_parse_native": int(settings.get("max_concurrent_files", 1))}
     except Exception:
         return {}
 
 
-def lightrag_kwargs_from_settings() -> dict:
-    """Extra kwargs forwarded to LightRAG's own constructor via RAG-Anything's
-    ``lightrag_kwargs`` passthrough.
-
-    ``llm_model_max_async`` bounds how many concurrent LLM calls LightRAG's
-    internal priority queue issues (covers both query and entity-extraction
-    traffic, since both ride the same wrapped ``llm_model_func``).
-    ``entity_extract_max_gleaning`` controls how many extra extraction passes
-    LightRAG runs per chunk to recover entities/relations the first pass
-    missed. Empty on any read error, so a bad settings file falls back to
-    LightRAG's own built-in defaults.
-    """
+def constructor_kwargs_from_settings() -> dict:
+    """Direct LightRAG constructor knobs from runtime settings."""
     try:
         from deeptutor.services.config import load_lightrag_settings
 
@@ -248,7 +220,7 @@ def build_llm_model_func(*, io_bridge: OwnerLoopBridge | None = None):
 
 
 def build_vision_model_func(*, io_bridge: OwnerLoopBridge | None = None):
-    """Wrap DeepTutor's vision-capable callable for RAG-Anything's image step."""
+    """Map rc2 ``image_inputs`` to DeepTutor's vision callable."""
     from deeptutor.services.llm import get_llm_client
 
     base = get_llm_client().get_vision_model_func()
@@ -257,10 +229,19 @@ def build_vision_model_func(*, io_bridge: OwnerLoopBridge | None = None):
         prompt="",
         system_prompt=None,
         history_messages=None,
-        image_data=None,
+        image_inputs=None,
         messages=None,
         **_ignored,
     ):
+        if not isinstance(image_inputs, list) or len(image_inputs) != 1:
+            raise ValueError("LightRAG vision requests must contain exactly one image input")
+        payload = image_inputs[0]
+        if not isinstance(payload, dict):
+            raise ValueError("LightRAG vision image input must be an object")
+        image_data = payload.get("base64")
+        if not isinstance(image_data, str) or not image_data.strip():
+            raise ValueError("LightRAG vision image input requires a non-empty base64 value")
+
         async def request():
             return await base(
                 prompt or "",
@@ -269,18 +250,22 @@ def build_vision_model_func(*, io_bridge: OwnerLoopBridge | None = None):
                 image_data=image_data,
                 messages=messages,
                 max_retries=0,
-                # Never strip the image and answer anyway. The provider's
-                # stage-2 fallback exists to salvage a text answer from a model
-                # that turns out not to take images, but here the *whole point*
-                # of the call is the image: a description produced without it is
-                # invented, and it would be indexed as fact. Fail the image
-                # instead, and let the caller log and skip it.
                 allow_image_fallback=False,
             )
 
         return await _run_adapter_with_retry(request, io_bridge=io_bridge)
 
     return vision_model_func
+
+
+def vision_model_available() -> bool:
+    """Return whether the active DeepTutor model is explicitly vision-capable."""
+    try:
+        from deeptutor.services.llm import get_llm_client
+
+        return bool(get_llm_client().supports_multimodal_images())
+    except Exception:
+        return False
 
 
 def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
@@ -334,8 +319,9 @@ __all__ = [
     "normalize_mode",
     "query_kwargs_from_settings",
     "indexing_kwargs_from_settings",
-    "lightrag_kwargs_from_settings",
+    "constructor_kwargs_from_settings",
     "build_llm_model_func",
     "build_vision_model_func",
+    "vision_model_available",
     "build_embedding_func",
 ]

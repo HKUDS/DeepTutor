@@ -93,21 +93,37 @@ def register(app: typer.Typer) -> None:
             console.print("[dim]No skills matched.[/]")
             return
         table = Table(title=f"{target}: {query}")
-        table.add_column("Ref", style="bold")
+        table.add_column("Ref", style="bold", overflow="fold")
+        table.add_column("Publisher")
         table.add_column("Version")
         table.add_column("Summary")
         for ref in refs:
+            install_ref = (
+                f"{ref.hub}:{ref.owner_handle}/{ref.slug}"
+                if ref.owner_handle
+                else f"{ref.hub}:{ref.slug}"
+            )
             table.add_row(
-                f"{ref.hub}:{ref.slug}",
+                install_ref,
+                ref.owner_handle or "-",
                 ref.version or "-",
                 ref.summary[:100] or ref.display_name,
             )
         console.print(table)
-        console.print("[dim]Install with: deeptutor skill install <ref>[/]")
+        install_refs = [
+            f"{ref.hub}:{ref.owner_handle}/{ref.slug}"
+            if ref.owner_handle
+            else f"{ref.hub}:{ref.slug}"
+            for ref in refs
+        ]
+        console.print("[dim]Install with:[/] " + ", ".join(install_refs))
 
     @app.command("install")
     def skill_install(
-        ref: str = typer.Argument(..., help="Skill ref: <hub>:<slug>[@version]."),
+        ref: str = typer.Argument(
+            ...,
+            help="Skill ref: <hub>:[<owner>/]<slug>[@version].",
+        ),
         name: str | None = typer.Option(
             None, "--name", help="Install under a different local skill name."
         ),

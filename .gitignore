@@ -26,6 +26,8 @@ deeptutor/services/rag/eg_only_for_analysis/
 *.synctex.gz
 *.pdf
 !demo/*.pdf
+!tests/fixtures/lightrag_bridge/original.pdf
+!tests/fixtures/lightrag_bridge/mineru-v2-current/*_origin.pdf
 
 # ============================================
 # Python Related

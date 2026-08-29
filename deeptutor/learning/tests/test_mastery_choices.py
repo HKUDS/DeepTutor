@@ -255,3 +255,22 @@ async def test_recover_options_from_turn_handles_missing_capability_and_errors()
 
     assert await recover_options_from_turn(_Raising(), "turn_1", "q") == {}
     assert await recover_options_from_turn(_FakeStore([]), "", "q") == {}
+
+
+def test_public_pending_question_decodes_unicode_escapes() -> None:
+    from deeptutor.learning.models import PendingQuestion
+    from deeptutor.learning.pending import public_pending_question
+
+    escaped = "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d"
+    pending = PendingQuestion(
+        question_id="q1",
+        knowledge_point_id="kp1",
+        module_id="m1",
+        prompt=escaped,
+        question_type="choice",
+        expected_answer="A",
+        options=["A: first", "B: second"],
+    )
+    public = public_pending_question(pending)
+    assert public.prompt == "「数制转换」"
+    assert public.to_ask_user_dict()["prompt"] == "「数制转换」"

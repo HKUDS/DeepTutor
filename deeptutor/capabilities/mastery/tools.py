@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -68,6 +69,7 @@ MASTERY_TOOL_NAMES: tuple[str, ...] = (
     "mastery_status",
     "mastery_quiz",
     "mastery_grade",
+    "mastery_skip_question",
     "mastery_assess",
     "mastery_build",
     "mastery_paths",
@@ -77,6 +79,12 @@ MASTERY_TOOL_NAMES: tuple[str, ...] = (
 
 _QUESTION_TYPES = ("choice", "short", "open")
 _ALLOWED_KP_TYPES = {t.value for t in KnowledgeType}
+_BUILD_SHAPE_ERROR = (
+    "mastery_build could not read any objective. Send modules as "
+    '\'modules\': [{"name": "<module>", "knowledge_points": '
+    '[{"name": "<objective>", "type": "memory|procedure|concept|design"}]}] '
+    "— every knowledge point needs a name of at least two characters."
+)
 logger = logging.getLogger(__name__)
 
 
@@ -814,6 +822,51 @@ class MasteryAssessTool(BaseTool):
         return _json_result(payload, meta_key="mastery_assess")
 
 
+class MasterySkipQuestionTool(BaseTool):
+    """Abandon the open question without inventing a graded result."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_skip_question",
+            description=(
+                "Abandon the currently open mastery question without grading "
+                "it. This keeps every attempt and mastery level already earned, "
+                "but gives no credit for the abandoned question. Use it only "
+                "when the learner explicitly asks to skip this question or the "
+                "question is unrecoverably stuck; if mastery_status reports an "
+                "answered interaction, retry mastery_grade first."
+            ),
+            parameters=[],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        path_id = _resolve_path_id(kwargs)
+        if not path_id:
+            return _no_path_result()
+
+        service = _new_service()
+        if _load_path(service, path_id) is None:
+            return _no_built_path_result("mastery_skip_question")
+
+        interaction = service.store.get_active_interaction(path_id)
+        progress, skipped = service.abandon_active_question(path_id)
+        payload = {
+            "status": "skipped" if skipped else "no_pending_question",
+            "skipped": skipped,
+            "path_revision": progress.version,
+            "question_id": interaction.interaction_id if interaction is not None else "",
+            "next": next_objective(progress).to_dict(),
+            "instruction": (
+                "The question was abandoned without an attempt or mastery credit. "
+                "Continue the objective from mastery_status.next and register a "
+                "different question with mastery_quiz."
+                if skipped
+                else "No question was open; follow mastery_status.next."
+            ),
+        }
+        return _json_result(payload, meta_key="mastery_skip_question")
+
+
 class MasteryBuildTool(BaseTool):
     """Create / extend the skill map from objectives the tutor designed."""
 
@@ -892,7 +945,12 @@ class MasteryBuildTool(BaseTool):
             mode = "replace"
 
         service = _new_service()
-        new_modules, error = _parse_modules(kwargs.get("modules"), path_id, 0)
+        new_modules, error = _parse_modules(
+            kwargs.get("modules"),
+            path_id,
+            0,
+            fallback_module_name=str(kwargs.get("path_name") or "").strip()[:200],
+        )
         if error:
             return ToolResult(content=error, success=False)
 
@@ -1069,38 +1127,115 @@ class MasteryLeaveTool(BaseTool):
         )
 
 
+# Ordered by how well each key names the thing for a learner: a real name
+# first, a description only when there is nothing better, the raw id last.
+_KP_NAME_KEYS = ("name", "title", "label", "objective", "topic", "description", "id")
+_MODULE_NAME_KEYS = ("name", "title", "label", "module", "id")
+_KP_LIST_KEYS = ("knowledge_points", "objectives", "points", "items")
+
+
+def _humanized(value: str) -> str:
+    """Turn an identifier-shaped name into a readable one.
+
+    Models that answer with ``{"id": "concept_framework"}`` mean the words,
+    not the key. Only reshape when the value really looks like an ASCII
+    identifier — CJK names carry no separators and must survive untouched.
+    """
+    if " " in value or not value.isascii():
+        return value
+    if "_" not in value and "-" not in value:
+        return value
+    return re.sub(r"[_-]+", " ", value).strip().title()
+
+
+def _display_name(raw: Any, keys: tuple[str, ...]) -> str:
+    """First readable name *raw* offers under *keys*, or ``""``."""
+    if isinstance(raw, str):
+        return _humanized(raw.strip())[:200]
+    if not isinstance(raw, dict):
+        return ""
+    for key in keys:
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            return _humanized(value.strip())[:200]
+    return ""
+
+
+def _raw_knowledge_points(raw: dict[str, Any]) -> list[Any] | None:
+    """The knowledge-point list *raw* declares, or ``None`` if it declares none."""
+    for key in _KP_LIST_KEYS:
+        value = raw.get(key)
+        if isinstance(value, list):
+            return value
+    return None
+
+
+def _normalized_module_tree(
+    raw_modules: Any, fallback_module_name: str
+) -> list[tuple[str, list[Any]]]:
+    """Reduce whatever the model emitted to ``[(module name, knowledge points)]``.
+
+    The tool schema asks for ``[{name, knowledge_points: [{name, type}]}]``, but
+    DeepTutor runs on whatever model the learner brings, and smaller ones
+    routinely answer with ``objectives`` instead of ``modules``, ``title``
+    instead of ``name``, bare strings instead of knowledge-point objects, or a
+    flat objective list with no module layer at all (#1019). Every one of those
+    used to be dropped silently, leaving an empty path and no error the learner
+    could see. Read the meaning instead of rejecting the shape.
+    """
+    if isinstance(raw_modules, dict):
+        for key in ("modules", *_KP_LIST_KEYS):
+            value = raw_modules.get(key)
+            if isinstance(value, list):
+                raw_modules = value
+                break
+    if not isinstance(raw_modules, list):
+        return []
+
+    entries: list[tuple[str, list[Any]]] = []
+    flat: list[Any] = []
+    for raw in raw_modules:
+        nested = _raw_knowledge_points(raw) if isinstance(raw, dict) else None
+        if nested:
+            entries.append((_display_name(raw, _MODULE_NAME_KEYS), nested))
+        elif nested is None:
+            # No knowledge-point list at all: the model flattened the tree and
+            # this entry is itself an objective.
+            flat.append(raw)
+    if flat:
+        entries.append((fallback_module_name, flat))
+    return entries
+
+
 def _parse_modules(
-    raw_modules: Any, path_id: str, offset: int
+    raw_modules: Any, path_id: str, offset: int, fallback_module_name: str = ""
 ) -> tuple[list[LearningModule], str | None]:
     """Validate the model-designed module tree into engine models.
 
     Ids are generated server-side (``<path>_m<i>_kp<j>``) so the model never
     controls storage keys; unknown knowledge types fall back to 'concept'.
     """
-    if not isinstance(raw_modules, list) or not raw_modules:
-        return [], "mastery_build needs a non-empty 'modules' array."
+    entries = _normalized_module_tree(raw_modules, fallback_module_name or "Objectives")
+    if not entries:
+        return [], _BUILD_SHAPE_ERROR
     modules: list[LearningModule] = []
-    for i, raw in enumerate(raw_modules):
-        if not isinstance(raw, dict):
-            continue
-        index = offset + i
-        name = str(raw.get("name") or "").strip()[:200]
-        if not name:
-            continue
+    for i, (raw_name, raw_kps) in enumerate(entries):
+        index = offset + len(modules)
         module_id = f"{path_id}_m{index}"
+        name = raw_name or fallback_module_name or f"Module {index + 1}"
         kps: list[KnowledgePoint] = []
-        for j, raw_kp in enumerate(raw.get("knowledge_points") or []):
-            if not isinstance(raw_kp, dict):
-                continue
-            kp_name = str(raw_kp.get("name") or "").strip()[:200]
+        for raw_kp in raw_kps:
+            kp_name = _display_name(raw_kp, _KP_NAME_KEYS)
             if len(kp_name) < 2:
                 continue
-            kp_type = str(raw_kp.get("type") or "concept").strip().lower()
-            if kp_type not in _ALLOWED_KP_TYPES:
-                kp_type = "concept"
+            kp_type = "concept"
+            if isinstance(raw_kp, dict):
+                kp_type = str(raw_kp.get("type") or "concept").strip().lower()
+                if kp_type not in _ALLOWED_KP_TYPES:
+                    kp_type = "concept"
             kps.append(
                 KnowledgePoint(
-                    id=f"{module_id}_kp{j}",
+                    id=f"{module_id}_kp{len(kps)}",
                     name=kp_name,
                     type=KnowledgeType(kp_type),
                     module_id=module_id,
@@ -1110,7 +1245,7 @@ def _parse_modules(
             continue
         modules.append(LearningModule(id=module_id, name=name, order=index, knowledge_points=kps))
     if not modules:
-        return [], "No valid modules: each module needs a name and at least one knowledge point."
+        return [], _BUILD_SHAPE_ERROR
     return modules, None
 
 
@@ -1118,6 +1253,7 @@ MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     MasteryStatusTool,
     MasteryQuizTool,
     MasteryGradeTool,
+    MasterySkipQuestionTool,
     MasteryAssessTool,
     MasteryBuildTool,
     MasteryPathsTool,
@@ -1135,6 +1271,7 @@ __all__ = [
     "MasteryLeaveTool",
     "MasteryPathsTool",
     "MasteryQuizTool",
+    "MasterySkipQuestionTool",
     "MasteryStatusTool",
     "MasterySwitchTool",
 ]

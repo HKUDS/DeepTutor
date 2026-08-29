@@ -289,13 +289,11 @@ DEFAULT_GRAPHRAG_SETTINGS: dict[str, Any] = {
     "dynamic_community_selection": False,
 }
 
-# LightRAG retrieval + indexing knobs (HKUDS/LightRAG via RAG-Anything). ``top_k``
+# LightRAG retrieval + indexing knobs (HKUDS/LightRAG native SDK). ``top_k``
 # is the number of entities/relations the query pulls; ``response_type`` mirrors
-# GraphRAG's. These ride into ``QueryParam`` via the engine's aquery() call;
-# wiring is defensive (an older RAG-Anything that rejects a kwarg degrades to a
-# mode-only query). ``max_concurrent_files`` maps to RAGAnythingConfig's batch
-# knob; ``llm_model_max_async`` / ``entity_extract_max_gleaning`` ride into
-# LightRAG's own constructor via RAGAnything's ``lightrag_kwargs`` passthrough.
+# GraphRAG's. These ride into ``QueryParam`` and the pinned SDK constructor.
+# ``max_concurrent_files`` sizes the native parser worker pool after DeepTutor
+# has frozen each ParseService result; pre-parsing itself remains serial.
 DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
     "version": 1,
     "top_k": 60,

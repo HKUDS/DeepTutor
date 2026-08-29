@@ -56,6 +56,7 @@ from .agents.spine_synthesizer import SpineSynthesizer
 from .compiler import BookCompiler, CompilerOptions, systemic_failure_reason
 from .event_hub import close_book_bus, get_book_bus
 from .inputs import IdeationContext, build_book_inputs
+from .language import resolve_book_language
 from .models import (
     Block,
     BlockStatus,
@@ -422,12 +423,18 @@ class BookEngine:
         question_categories: list[int] | None = None,
         question_entries: list[int] | None = None,
         language: str = "en",
+        fallback_language: str = "en",
         depth: str = BookDepth.STANDARD.value,
         stream: StreamBus | None = None,
     ) -> tuple[Book, BookProposal]:
         """Capture inputs, run IdeationAgent, persist DRAFT book + proposal."""
         bus = stream or StreamBus()
         bstream = BookStream(bus)
+        language = resolve_book_language(
+            user_intent=user_intent,
+            requested_language=language,
+            fallback_language=fallback_language,
+        )
 
         async with bstream.stage(STAGE_IDEATION):
             await bstream.progress("Capturing inputs…", stage=STAGE_IDEATION)

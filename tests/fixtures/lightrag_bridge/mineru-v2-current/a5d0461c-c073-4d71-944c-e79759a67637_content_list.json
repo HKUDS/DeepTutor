@@ -1,0 +1,70 @@
+[
+    {
+        "type": "text",
+        "text": "DeepTutor LightRAG Bridge Fixture",
+        "text_level": 2,
+        "bbox": [
+            114,
+            70,
+            619,
+            97
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "A short paragraph preserves text and heading hierarchy.",
+        "bbox": [
+            111,
+            114,
+            568,
+            133
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "equation",
+        "img_path": "images/4934193ff23f79d730c0af8148c70efd879bdc73b2f1d49d76e0ef955da28c70.jpg",
+        "text": "$$\nE = m c ^ { \\wedge } 2\n$$",
+        "text_format": "latex",
+        "bbox": [
+            434,
+            160,
+            562,
+            181
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "table",
+        "img_path": "images/c0183ed37ed43baf874f25239395a832d77e43cdd877992b7f3eef0163e5d41b.jpg",
+        "table_caption": [
+            "Table 1. Retrieval engine paths"
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td>Engine</td><td>Path</td></tr><tr><td>LightRAG</td><td>Native</td></tr></table>",
+        "bbox": [
+            114,
+            251,
+            607,
+            314
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "chart",
+        "img_path": "images/f24e98da187ecc134f0b3b1def407fc96edfa0987b84ab2b95a3aa377698255b.jpg",
+        "content": "",
+        "chart_caption": [
+            "Figure 1. Synthetic trend chart."
+        ],
+        "chart_footnote": [],
+        "bbox": [
+            166,
+            386,
+            658,
+            556
+        ],
+        "page_idx": 0
+    }
+]

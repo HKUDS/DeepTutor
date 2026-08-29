@@ -35,12 +35,16 @@ async def _collect_bus_events(bus: StreamBus) -> tuple[list[StreamEvent], asynci
 def _llm_chunk(
     *,
     content: str | None = None,
+    reasoning_content: str | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
     usage: Any = None,
     finish_reason: str | None = None,
     provider_specific_fields: dict[str, Any] | None = None,
 ) -> SimpleNamespace:
-    delta_fields: dict[str, Any] = {"content": content}
+    delta_fields: dict[str, Any] = {
+        "content": content,
+        "reasoning_content": reasoning_content,
+    }
     if tool_calls is not None:
         delta_fields["tool_calls"] = [
             SimpleNamespace(
@@ -531,6 +535,7 @@ async def test_tool_round_replays_responses_reasoning_items(
         [
             [
                 _llm_chunk(
+                    reasoning_content="Search first.",
                     tool_calls=[
                         {
                             "id": "call_1|fc_1",
@@ -562,6 +567,7 @@ async def test_tool_round_replays_responses_reasoning_items(
 
     second_round = client.calls[1]["messages"]
     assistant = next(message for message in second_round if message.get("tool_calls"))
+    assert assistant["reasoning_content"] == "Search first."
     assert assistant["_responses_output_items"] == response_output_items
 
 

@@ -70,17 +70,19 @@ loop:
     That tool-less reply is shown to the user as the answer and ends the
     loop, so write it for the reader: use concise Markdown and clear teaching
     language, do not mention these internal mechanics or repeat your working
-    notes verbatim, and include any artifact URLs (e.g. from exec) you
-    collected. Build the answer on the conversation above — the gathered
+    notes verbatim, and refer to generated artifacts exactly as the tool result
+    lists them. Build the answer on the conversation above — the gathered
     evidence, memory, persona, and attached sources.
 
     If a skill listed in the Skills block matches the task, call read_skill
     before attempting that workflow, then follow the skill instructions.
-    When a skill or request involves scripts or downloadable files (PDFs,
-    images, spreadsheets, archives), save them in the turn workspace and run
-    commands with exec; the exec result lists Generated artifacts with URLs —
-    cite those URLs in the final answer. If an extended tool is listed but
-    not loaded, call load_tools first with the exact tool name.
+    When a skill or request involves Python scripts or downloadable files
+    (PDFs, images, spreadsheets, archives), pass complete source to
+    code_execution and save outputs in the turn workspace. Use exec only for
+    genuinely shell-only commands; never embed Python source in `python -c`
+    or a heredoc. The tool result lists generated artifacts explicitly —
+    without that list, do not claim a file was created. If an extended tool is
+    listed but not loaded, call load_tools first with the exact tool name.
 
     Tool names, parameter names, source ids, knowledge-base names, notebook
     ids, and skill names must be copied verbatim from the prompt blocks or

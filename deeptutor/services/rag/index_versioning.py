@@ -52,10 +52,15 @@ class EmbeddingSignature:
     dimension: int
     base_url: str
     api_version: str
+    role_semantics: str = ""
 
     def hash(self) -> str:
         """Short hex digest used as the stable signature."""
-        canonical = json.dumps(asdict(self), sort_keys=True, ensure_ascii=False)
+        fields = asdict(self)
+        role_semantics = fields.pop("role_semantics")
+        if role_semantics:
+            fields["role_semantics"] = role_semantics
+        canonical = json.dumps(fields, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -113,11 +118,50 @@ def _next_flat_version_dir(kb_dir: Path) -> Path:
     return kb_dir / f"{VERSION_PREFIX}{(max(existing) if existing else 0) + 1}"
 
 
+def _native_lightrag_output_ready(version_dir: Path, meta: dict[str, Any]) -> bool:
+    workspace = str(meta.get("workspace") or "").strip()
+    if workspace:
+        workspace_path = Path(workspace)
+        if workspace_path.is_absolute() or workspace_path.name != workspace:
+            return False
+        status_path = version_dir / workspace / "kv_store_doc_status.json"
+    else:
+        # Transitional/test layouts may still keep the status store flat.
+        status_path = version_dir / "kv_store_doc_status.json"
+    payload = _read_json(status_path)
+    if not payload:
+        return False
+    return any(
+        isinstance(row, dict)
+        and (str(row.get("status") or "").lower() == "processed" or bool(row.get("chunks_list")))
+        for row in payload.values()
+    )
+
+
 def _entry_from_flat_version(version_dir: Path) -> dict[str, Any]:
-    meta = _read_json(version_dir / META_FILENAME) or {}
+    stored_meta = _read_json(version_dir / META_FILENAME)
+    meta = dict(stored_meta or {})
     meta.setdefault("version", version_dir.name)
     meta.setdefault("signature", meta.get("signature") or version_dir.name)
-    meta["ready"] = _is_storage_ready(version_dir)
+    has_provider_output = _is_storage_ready(version_dir)
+    # Legacy flat stores from other providers predate metadata, so their
+    # established readiness rule remains output-based. A native LightRAG
+    # candidate is identifiable before publication by its doc-status/ingress
+    # files and must fail closed until schema-2 metadata is atomically written.
+    is_unpublished_lightrag_candidate = stored_meta is None and (
+        (version_dir / "kv_store_doc_status.json").exists()
+        or (version_dir / "deeptutor_ingress").exists()
+    )
+    ready = has_provider_output and not is_unpublished_lightrag_candidate
+    if stored_meta is not None and stored_meta.get("provider") == "lightrag":
+        adapter_schema = stored_meta.get("lightrag_adapter_schema")
+        if adapter_schema is not None:
+            ready = bool(
+                adapter_schema == 2
+                and stored_meta.get("state") == "published"
+                and _native_lightrag_output_ready(version_dir, stored_meta)
+            )
+    meta["ready"] = ready
     meta["storage_path"] = str(version_dir)
     meta["version_path"] = str(version_dir)
     meta["layout"] = "flat"

@@ -59,6 +59,7 @@ class CreateBookRequest(BaseModel):
     question_categories: list[int] = Field(default_factory=list)
     question_entries: list[int] = Field(default_factory=list)
     language: str = Field(default="en")
+    fallback_language: str = Field(default="en")
     depth: str = Field(default="standard")
 
 
@@ -682,6 +683,7 @@ async def create_book(req: CreateBookRequest) -> dict[str, Any]:
             question_categories=req.question_categories,
             question_entries=req.question_entries,
             language=req.language,
+            fallback_language=req.fallback_language,
             depth=req.depth,
         )
     except Exception as exc:  # noqa: BLE001
@@ -1330,6 +1332,7 @@ async def book_websocket(ws: WebSocket) -> None:
                         ],
                         question_entries=[int(e) for e in (data.get("question_entries") or [])],
                         language=str(data.get("language") or "en"),
+                        fallback_language=str(data.get("fallback_language") or "en"),
                         depth=str(data.get("depth") or "standard"),
                         stream=creation_bus,
                     )

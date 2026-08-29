@@ -103,12 +103,13 @@ def _provider(model: str) -> OpenAICompatProvider:
     )
 
 
-def test_only_supported_deepseek_model_uses_responses_for_native_search() -> None:
+def test_supported_deepseek_models_use_responses_for_native_search() -> None:
     assert _provider("deepseek-v4-flash")._should_use_responses_api(
         "deepseek-v4-flash", None, _TOOLS
     )
-    assert not _provider("deepseek-v4-pro")._should_use_responses_api(
-        "deepseek-v4-pro", None, _TOOLS
+    assert _provider("deepseek-v4-pro")._should_use_responses_api("deepseek-v4-pro", None, _TOOLS)
+    assert not _provider("deepseek-reasoner")._should_use_responses_api(
+        "deepseek-reasoner", None, _TOOLS
     )
     assert not _provider("deepseek-v4-flash")._should_use_responses_api(
         "deepseek-v4-flash", None, None
@@ -125,6 +126,15 @@ def test_native_mapping_is_model_scoped() -> None:
         None,
         None,
     )
+    reasoner_body = _provider("deepseek-reasoner")._build_responses_body(
+        [{"role": "user", "content": "latest news"}],
+        _TOOLS,
+        "deepseek-reasoner",
+        256,
+        0.7,
+        None,
+        None,
+    )
     pro_body = _provider("deepseek-v4-pro")._build_responses_body(
         [{"role": "user", "content": "latest news"}],
         _TOOLS,
@@ -135,10 +145,11 @@ def test_native_mapping_is_model_scoped() -> None:
         None,
     )
     assert flash_body["tools"] == [{"type": "web_search"}]
-    assert pro_body["tools"][0]["type"] == "function"
+    assert pro_body["tools"] == [{"type": "web_search"}]
+    assert reasoner_body["tools"][0]["type"] == "function"
 
 
-def test_agent_client_routes_only_supported_model_through_provider_adapter(monkeypatch) -> None:
+def test_agent_client_routes_supported_models_through_provider_adapter(monkeypatch) -> None:
     sentinel = object()
     monkeypatch.setattr(
         client_module,
@@ -153,14 +164,21 @@ def test_agent_client_routes_only_supported_model_through_provider_adapter(monke
         api_key="k",
         base_url="https://api.deepseek.com",
     )
+    reasoner = LLMClientConfig(
+        binding="deepseek",
+        model="deepseek-reasoner",
+        api_key="k",
+        base_url="https://api.deepseek.com",
+    )
+    assert client_module._build_native_provider_adapter(flash, spec) is sentinel
     pro = LLMClientConfig(
         binding="deepseek",
         model="deepseek-v4-pro",
         api_key="k",
         base_url="https://api.deepseek.com",
     )
-    assert client_module._build_native_provider_adapter(flash, spec) is sentinel
-    assert client_module._build_native_provider_adapter(pro, spec) is None
+    assert client_module._build_native_provider_adapter(pro, spec) is sentinel
+    assert client_module._build_native_provider_adapter(reasoner, spec) is None
 
 
 @pytest.mark.asyncio

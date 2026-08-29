@@ -127,7 +127,7 @@ def _absolutize_img_paths(blocks: list[dict], content_dir: Path) -> list[dict]:
     """Anchor relative ``img_path`` entries at ``content_dir``.
 
     Engines (MinerU especially) emit ``img_path`` values like ``images/x.png``
-    relative to the content-list file. Consumers such as RAG-Anything resolve
+    relative to the content-list file. Consumers such as LightRAG resolve
     them against their own working directory instead, so the images are never
     found (issue #624). The cached JSON stays relative — paths are rewritten
     only on load, keeping the cache dir relocatable.

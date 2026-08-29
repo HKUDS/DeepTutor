@@ -1,0 +1,101 @@
+[
+    [
+        {
+            "type": "title",
+            "content": {
+                "title_content": [
+                    {
+                        "type": "text",
+                        "content": "DeepTutor LightRAG Bridge Fixture"
+                    }
+                ],
+                "level": 2
+            },
+            "bbox": [
+                114,
+                70,
+                619,
+                97
+            ]
+        },
+        {
+            "type": "paragraph",
+            "content": {
+                "paragraph_content": [
+                    {
+                        "type": "text",
+                        "content": "A short paragraph preserves text and heading hierarchy."
+                    }
+                ]
+            },
+            "bbox": [
+                111,
+                114,
+                568,
+                133
+            ]
+        },
+        {
+            "type": "equation_interline",
+            "content": {
+                "math_content": "E = m c ^ { \\wedge } 2",
+                "math_type": "latex",
+                "image_source": {
+                    "path": "images/4934193ff23f79d730c0af8148c70efd879bdc73b2f1d49d76e0ef955da28c70.jpg"
+                }
+            },
+            "bbox": [
+                434,
+                160,
+                562,
+                181
+            ]
+        },
+        {
+            "type": "table",
+            "content": {
+                "image_source": {
+                    "path": "images/c0183ed37ed43baf874f25239395a832d77e43cdd877992b7f3eef0163e5d41b.jpg"
+                },
+                "table_caption": [
+                    {
+                        "type": "text",
+                        "content": "Table 1. Retrieval engine paths"
+                    }
+                ],
+                "table_footnote": [],
+                "html": "<table><tr><td>Engine</td><td>Path</td></tr><tr><td>LightRAG</td><td>Native</td></tr></table>",
+                "table_type": "simple_table",
+                "table_nest_level": 1
+            },
+            "bbox": [
+                114,
+                251,
+                607,
+                314
+            ]
+        },
+        {
+            "type": "chart",
+            "content": {
+                "image_source": {
+                    "path": "images/f24e98da187ecc134f0b3b1def407fc96edfa0987b84ab2b95a3aa377698255b.jpg"
+                },
+                "content": "",
+                "chart_caption": [
+                    {
+                        "type": "text",
+                        "content": "Figure 1. Synthetic trend chart."
+                    }
+                ],
+                "chart_footnote": []
+            },
+            "bbox": [
+                166,
+                386,
+                658,
+                556
+            ]
+        }
+    ]
+]

@@ -170,6 +170,10 @@ jobs:
           pip install -r requirements/partners.txt
           pip install pytest pytest-asyncio
 
+      - name: Install optional LightRAG SDK
+        if: matrix.python-version == '3.12'
+        run: pip install "lightrag-hku==1.5.7rc2"
+
       - name: Create minimal runtime config
         run: |
           mkdir -p data/user/settings

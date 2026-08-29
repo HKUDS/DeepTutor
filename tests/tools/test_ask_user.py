@@ -344,3 +344,16 @@ def test_to_dict_legacy_path_also_emits_v3() -> None:
         {"label": "a", "description": None},
         {"label": "b", "description": None},
     ]
+
+
+def test_prompt_decodes_dense_unicode_escapes() -> None:
+    """Regression for #973: model tool args can carry literal \\uXXXX stems."""
+    escaped = "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d"
+    payload, err = build_ask_user_payload(
+        questions=[{"prompt": escaped, "options": ["A", "B"]}],
+        intro=escaped,
+    )
+    assert err is None
+    assert payload is not None
+    assert payload.intro == "「数制转换」"
+    assert payload.questions[0].prompt == "「数制转换」"

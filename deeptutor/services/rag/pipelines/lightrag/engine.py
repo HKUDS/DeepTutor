@@ -1,23 +1,12 @@
-"""Thin adapter over the RAG-Anything / LightRAG Python API.
-
-This is the ONLY module that imports ``raganything`` / ``lightrag``. Everything
-version-sensitive lives here, so an API shift between releases is a one-file
-fix. All imports are lazy so DeepTutor runs fine without the optional dependency
-installed.
-
-A RAG-Anything instance is built from DeepTutor's LLM/vision/embedding adapters
-(see ``config.py``) over a per-KB ``working_dir``. Documents are inserted as a
-MinerU-style ``content_list`` (produced upstream by the parse layer), so the
-multimodal step never re-parses anything; retrieval delegates to LightRAG's
-native query modes.
-"""
+"""Exact-version adapter over the LightRAG 1.5 native Python SDK."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+import hashlib
+from importlib.metadata import PackageNotFoundError, version
 import inspect
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -26,335 +15,441 @@ from .config import (
     build_embedding_func,
     build_llm_model_func,
     build_vision_model_func,
+    constructor_kwargs_from_settings,
     indexing_kwargs_from_settings,
-    lightrag_kwargs_from_settings,
     normalize_mode,
     query_kwargs_from_settings,
 )
+from .ingress import IngressError, StagedDocument, pending_root
 from .worker import OwnerLoopBridge
 
-logger = logging.getLogger(__name__)
+LIGHTRAG_DISTRIBUTION = "lightrag-hku"
+LIGHTRAG_VERSION = "1.5.7rc2"
+PARSER_ENGINE = "deeptutor"
 
 
-def _accepts(target: Any, name: str) -> bool:
-    """Whether ``target``'s constructor takes a keyword called *name*.
+class LightRagContractError(RuntimeError):
+    """Raised when the pinned SDK returns a shape DeepTutor cannot trust."""
 
-    The settings knobs below ride on RAG-Anything parameters that arrived in
-    different releases — ``lightrag_kwargs`` only exists from ~1.2.5, while the
-    supported range starts at 1.0.1. Asking first keeps an older install
-    working on RAG-Anything's own defaults instead of dying with a TypeError
-    that takes the whole LightRAG engine down. Same defensive posture the query
-    path already takes for ``QueryParam`` kwargs.
-    """
-    import inspect
 
+def installed_version() -> str:
     try:
-        return name in inspect.signature(target).parameters
-    except (TypeError, ValueError):
-        return False
+        return version(LIGHTRAG_DISTRIBUTION)
+    except PackageNotFoundError as exc:
+        raise LightRagContractError(
+            "LightRAG is not installed. Install `deeptutor[rag-lightrag]`."
+        ) from exc
 
 
-def _drop_unsupported(target: Any, kwargs: dict[str, Any], *, what: str) -> dict[str, Any]:
-    supported = {key: value for key, value in kwargs.items() if _accepts(target, key)}
-    for key in kwargs.keys() - supported.keys():
-        logger.warning(
-            "Installed RAG-Anything does not accept %s=%r on %s; leaving it at "
-            "the library default. Upgrade raganything to use this setting.",
-            key,
-            kwargs[key],
-            what,
+def _require_exact_version() -> None:
+    current = installed_version()
+    if current != LIGHTRAG_VERSION:
+        raise LightRagContractError(
+            f"DeepTutor requires {LIGHTRAG_DISTRIBUTION}=={LIGHTRAG_VERSION}; found {current}"
         )
-    return supported
 
 
-def _build_config(config_cls: Any, working_dir: Path) -> Any:
-    knobs = _drop_unsupported(config_cls, indexing_kwargs_from_settings(), what="RAGAnythingConfig")
-    return config_cls(working_dir=str(working_dir), **knobs)
+def _validate_component(value: str, *, label: str) -> str:
+    path = Path(str(value or ""))
+    if path.is_absolute() or ".." in path.parts or path.name != str(value):
+        raise IngressError(f"{label} must be a canonical basename: {value!r}")
+    if not path.name or path.name in {".", ".."}:
+        raise IngressError(f"{label} is empty or invalid")
+    return path.name
 
 
-def _construct(rag_cls: Any, **kwargs: Any) -> Any:
-    extra = lightrag_kwargs_from_settings()
-    if extra and _accepts(rag_cls, "lightrag_kwargs"):
-        kwargs["lightrag_kwargs"] = extra
-    elif extra:
-        logger.warning(
-            "Installed RAG-Anything has no lightrag_kwargs passthrough; %s stay "
-            "at LightRAG's defaults. Upgrade raganything to use these settings.",
-            ", ".join(sorted(extra)),
-        )
-    return rag_cls(**kwargs)
+def _safe_candidate(root: Path, candidate: Path) -> Path | None:
+    if candidate.is_symlink() or not candidate.is_file():
+        return None
+    resolved_root = root.resolve(strict=True)
+    resolved = candidate.resolve(strict=True)
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as exc:
+        raise IngressError(
+            f"LightRAG source resolver escaped version ingress: {candidate}"
+        ) from exc
+    return resolved
 
 
-def build_rag(working_dir: Path, *, io_bridge: OwnerLoopBridge | None = None) -> Any:
-    """Construct a RAG-Anything instance rooted at ``working_dir``.
+def _controlled_class():
+    from lightrag import LightRAG
 
-    Pinned to RAG-Anything's config-based constructor; this is the single spot
-    to touch if its API changes between releases.
-    """
-    from raganything import RAGAnything, RAGAnythingConfig
+    class DeepTutorLightRAG(LightRAG):
+        def _resolve_source_file_for_parser(
+            self,
+            file_path: str,
+            *,
+            source_file: str | None = None,
+            parser_engine: str | None = None,
+        ) -> str:
+            if parser_engine not in (None, PARSER_ENGINE):
+                raise IngressError(
+                    f"Unsupported parser engine for DeepTutor ingress: {parser_engine}"
+                )
+            name = _validate_component(file_path, label="file_path")
+            if source_file is not None:
+                source_name = _validate_component(source_file, label="source_file")
+                if source_name != name:
+                    raise IngressError(
+                        f"LightRAG source hints disagree: {name!r} != {source_name!r}"
+                    )
+            root = pending_root(Path(self.working_dir))
+            root.mkdir(parents=True, exist_ok=True)
+            matches = [
+                resolved
+                for candidate in (root / name, root / "__parsed__" / name)
+                if (resolved := _safe_candidate(root, candidate)) is not None
+            ]
+            if len(matches) != 1:
+                reason = "missing" if not matches else "ambiguous"
+                raise IngressError(f"Version-local LightRAG source is {reason}: {name}")
+            return str(matches[0])
 
-    config = _build_config(RAGAnythingConfig, working_dir)
-    adapter_kwargs = {"io_bridge": io_bridge} if io_bridge is not None else {}
-    funcs = {
-        "llm_model_func": build_llm_model_func(**adapter_kwargs),
-        "vision_model_func": build_vision_model_func(**adapter_kwargs),
-        "embedding_func": build_embedding_func(**adapter_kwargs),
+    return DeepTutorLightRAG
+
+
+_SUFFIXES = frozenset(
+    {
+        "txt",
+        "md",
+        "mdx",
+        "pdf",
+        "doc",
+        "docx",
+        "ppt",
+        "pptx",
+        "xls",
+        "xlsx",
+        "rtf",
+        "odt",
+        "tex",
+        "epub",
+        "html",
+        "htm",
+        "csv",
+        "json",
+        "xml",
+        "yaml",
+        "yml",
+        "log",
+        "conf",
+        "ini",
+        "properties",
+        "sql",
+        "sh",
+        "c",
+        "h",
+        "cpp",
+        "hpp",
+        "py",
+        "java",
+        "js",
+        "ts",
+        "swift",
+        "go",
+        "rb",
+        "php",
+        "css",
+        "scss",
+        "less",
+        "png",
+        "jpg",
+        "jpeg",
+        "webp",
+        "gif",
+        "bmp",
+        "tiff",
     }
-    rag = _construct(RAGAnything, config=config, **funcs)
-    # DeepTutor always feeds RAG-Anything a pre-parsed ``content_list`` (the
-    # parse layer runs upstream via DeepTutor's own ParseService), so
-    # RAG-Anything's bundled document parser is never invoked. Its LightRAG init
-    # nevertheless runs a one-time installation check on its *default* parser
-    # (``mineru``); when MinerU isn't installed that check hard-fails indexing
-    # with "Parser 'mineru' is not properly installed" — even though the user
-    # picked an entirely different parse engine (see issue #594). Marking the
-    # check as already satisfied skips that spurious gate for a parser we don't
-    # use, while leaving the real pre-parsed insert path untouched.
-    rag._parser_installation_checked = True
-    return rag
+)
 
 
-async def insert(rag: Any, content_list: list[dict], *, file_name: str, doc_id: str) -> None:
-    """Insert a pre-parsed ``content_list`` (multimodal-aware, no re-parsing)."""
-    await rag.insert_content_list(
-        content_list=content_list,
-        file_path=file_name,
-        doc_id=doc_id,
+def _register_parser() -> None:
+    from lightrag.parser.registry import ParserSpec, register_parser
+
+    register_parser(
+        ParserSpec(
+            engine_name=PARSER_ENGINE,
+            impl="deeptutor.services.rag.pipelines.lightrag.parser:DeepTutorParser",
+            suffixes=_SUFFIXES,
+            queue_group="native",
+        )
     )
 
 
-def _managed_queue_funcs(lightrag: Any) -> Iterable[Callable[..., Any]]:
-    """Yield each current LightRAG queue wrapper exactly once."""
-    role_funcs = getattr(lightrag, "role_llm_funcs", {})
-    candidates: list[object] = []
-    if isinstance(role_funcs, Mapping):
-        candidates.extend(role_funcs.values())
+def workspace_for(working_dir: Path) -> str:
+    identity = str(Path(working_dir).resolve()).encode("utf-8")
+    return f"deeptutor_{hashlib.sha256(identity).hexdigest()[:16]}"
 
-    embedding = getattr(lightrag, "embedding_func", None)
+
+def build_rag(
+    working_dir: Path,
+    *,
+    io_bridge: OwnerLoopBridge | None = None,
+    enable_vlm: bool = False,
+) -> Any:
+    """Construct one exact-version, version-isolated LightRAG instance."""
+    _require_exact_version()
+    _register_parser()
+    from lightrag.llm_roles import RoleLLMConfig
+
+    adapter_kwargs = {"io_bridge": io_bridge} if io_bridge is not None else {}
+    constructor = {
+        "working_dir": str(Path(working_dir)),
+        "workspace": workspace_for(working_dir),
+        "llm_model_func": build_llm_model_func(**adapter_kwargs),
+        "embedding_func": build_embedding_func(**adapter_kwargs),
+        "auto_manage_storages_states": False,
+        "vlm_process_enable": bool(enable_vlm),
+        **indexing_kwargs_from_settings(),
+        **constructor_kwargs_from_settings(),
+    }
+    if enable_vlm:
+        constructor["role_llm_configs"] = {
+            "vlm": RoleLLMConfig(func=build_vision_model_func(**adapter_kwargs))
+        }
+    return _controlled_class()(**constructor)
+
+
+async def initialize(rag: Any) -> None:
+    result = rag.initialize_storages()
+    if inspect.isawaitable(result):
+        await result
+
+
+async def enqueue(rag: Any, staged: list[StagedDocument]) -> str:
+    if not staged:
+        raise ValueError("Cannot enqueue an empty LightRAG batch")
+    return await rag.apipeline_enqueue_documents(
+        [""] * len(staged),
+        file_paths=[item.canonical_name for item in staged],
+        docs_format="pending_parse",
+        parse_engine=PARSER_ENGINE,
+        process_options=[item.process_options for item in staged],
+        chunk_options=[item.chunk_options for item in staged],
+    )
+
+
+def _document_id(canonical_name: str) -> str:
+    from lightrag.utils import compute_mdhash_id
+    from lightrag.utils_pipeline import (
+        has_known_document_source,
+        normalize_document_file_path,
+    )
+
+    source = normalize_document_file_path(canonical_name)
+    if not has_known_document_source(source):
+        raise LightRagContractError(
+            f"LightRAG cannot derive a stable document ID for {canonical_name!r}"
+        )
+    return compute_mdhash_id(source, prefix="doc-")
+
+
+async def confirmed_unaccepted(rag: Any, staged: list[StagedDocument]) -> list[StagedDocument]:
+    """Return documents whose missing doc_status row was strictly confirmed."""
+    ids_by_name = {item.canonical_name: _document_id(item.canonical_name) for item in staged}
+    rows = await rag.doc_status.get_docs_by_ids(
+        list(ids_by_name.values()),
+        strict=True,
+    )
+    if not isinstance(rows, dict):
+        raise LightRagContractError("doc_status.get_docs_by_ids must return an object")
+    return [item for item in staged if ids_by_name[item.canonical_name] not in rows]
+
+
+def _managed_queue_funcs(rag: Any) -> Iterable[Callable[..., Any]]:
+    role_funcs = getattr(rag, "role_llm_funcs", {})
+    candidates: list[object] = list(role_funcs.values()) if isinstance(role_funcs, Mapping) else []
+    embedding = getattr(rag, "embedding_func", None)
     candidates.append(getattr(embedding, "func", None))
-    candidates.append(getattr(lightrag, "rerank_model_func", None))
-
+    candidates.append(getattr(rag, "rerank_model_func", None))
     seen: set[int] = set()
     for candidate in candidates:
-        if not callable(candidate) or id(candidate) in seen:
-            continue
-        seen.add(id(candidate))
-        yield candidate
+        if callable(candidate) and id(candidate) not in seen:
+            seen.add(id(candidate))
+            yield candidate
 
 
-async def _shutdown_queues(lightrag: Any, *, cancel_pending: bool) -> None:
-    """Bound cleanup of LightRAG's role, embedding, and rerank queues."""
+async def _shutdown_queues(rag: Any, *, cancel_pending: bool) -> None:
     shutdowns: list[Awaitable[Any]] = []
-    for func in _managed_queue_funcs(lightrag):
+    for func in _managed_queue_funcs(rag):
         shutdown = getattr(func, "shutdown", None)
         if callable(shutdown):
             result = shutdown(graceful=not cancel_pending, timeout=5.0)
             if inspect.isawaitable(result):
                 shutdowns.append(result)
-    if not shutdowns:
-        return
-
-    results = await asyncio.gather(*shutdowns, return_exceptions=True)
-    failures = [result for result in results if isinstance(result, BaseException)]
-    if failures:
-        raise RuntimeError(
-            f"Failed to shut down {len(failures)} LightRAG managed queue(s)"
-        ) from failures[0]
+    if shutdowns:
+        results = await asyncio.gather(*shutdowns, return_exceptions=True)
+        failures = [item for item in results if isinstance(item, BaseException)]
+        if failures:
+            raise RuntimeError(
+                f"Failed to shut down {len(failures)} LightRAG queue(s)"
+            ) from failures[0]
 
 
 async def finalize(rag: Any, *, cancel_pending: bool) -> None:
-    """Stop managed work before finalizing RAG-Anything storage resources."""
-    lightrag = getattr(rag, "lightrag", None)
-    if lightrag is not None:
-        await _shutdown_queues(lightrag, cancel_pending=cancel_pending)
-
-    finalizer = getattr(rag, "finalize_storages", None)
-    if not callable(finalizer):
-        return
-    result = finalizer()
+    await _shutdown_queues(rag, cancel_pending=cancel_pending)
+    result = rag.finalize_storages()
     if inspect.isawaitable(result):
         await result
 
 
-async def ensure_ready(rag: Any) -> None:
-    """Ensure RAG-Anything has an initialized LightRAG instance."""
-    if getattr(rag, "lightrag", None) is not None:
-        return
-
-    initializer = getattr(rag, "_ensure_lightrag_initialized", None)
-    if initializer is None:
-        return
-
-    result = await initializer()
-    if isinstance(result, dict) and result.get("success") is False:
-        raise RuntimeError(result.get("error") or "Failed to initialize LightRAG")
+def _string(value: Any, *, label: str) -> str:
+    if not isinstance(value, str):
+        raise LightRagContractError(f"LightRAG query {label} must be a string")
+    return value
 
 
-async def query(rag: Any, question: str, mode: str | None = None) -> str:
-    """Run a LightRAG query and return the synthesized answer string.
+def _records(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    value = data.get(key)
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        raise LightRagContractError(f"LightRAG query data.{key} must be an object array")
+    return value
 
-    Extra knobs (top_k, response_type) from the lightrag.json slice ride into
-    LightRAG's ``QueryParam`` via aquery's ``**kwargs``. Wiring is defensive: an
-    older RAG-Anything that rejects one of these kwargs falls back to a
-    mode-only query rather than failing the search.
-    """
-    resolved = normalize_mode(mode) or DEFAULT_MODE
-    extra = query_kwargs_from_settings()
-    await ensure_ready(rag)
-    try:
-        result = await rag.aquery(question, mode=resolved, **extra)
-    except TypeError:
-        if extra:
-            logger.debug("RAG-Anything rejected extra query kwargs; retrying mode-only.")
-            result = await rag.aquery(question, mode=resolved)
+
+def _query_sources(data: dict[str, Any], metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    references = _records(data, "references")
+    ref_paths = {
+        str(item.get("reference_id")): str(item.get("file_path") or item.get("source") or "")
+        for item in references
+        if item.get("reference_id") is not None
+    }
+    sources: list[dict[str, Any]] = []
+
+    def add(kind: str, record: dict[str, Any], rank: int) -> None:
+        ref = str(record.get("reference_id") or "")
+        path = str(record.get("file_path") or ref_paths.get(ref, ""))
+        if kind == "chunk":
+            stable_id = str(record.get("chunk_id") or "")
+            title = Path(path).name if path else "LightRAG chunk"
+            content = _string(record.get("content", ""), label="chunk content")
+        elif kind == "entity":
+            stable_id = str(record.get("entity_name") or record.get("entity_id") or "")
+            title = stable_id or "LightRAG entity"
+            content = _string(record.get("description", ""), label="entity description")
         else:
-            raise
-    return result if isinstance(result, str) else str(result)
+            src_id = str(record.get("src_id") or "")
+            tgt_id = str(record.get("tgt_id") or "")
+            stable_id = str(record.get("relation_id") or f"{src_id}->{tgt_id}")
+            title = stable_id or "LightRAG relationship"
+            content = _string(record.get("description", ""), label="relationship description")
+        item = {
+            "kind": kind,
+            "title": title,
+            "content": content,
+            "source": path,
+            "page": str(record.get("page") or ""),
+            "reference_id": ref,
+            "rank": rank,
+        }
+        if kind == "chunk":
+            item["chunk_id"] = stable_id
+        elif kind == "entity":
+            item.update(
+                {
+                    "entity_id": stable_id,
+                    "entity_name": str(record.get("entity_name") or ""),
+                    "entity_type": str(record.get("entity_type") or ""),
+                    "source_id": str(record.get("source_id") or ""),
+                }
+            )
+        else:
+            item.update(
+                {
+                    "relation_id": stable_id,
+                    "src_id": str(record.get("src_id") or ""),
+                    "tgt_id": str(record.get("tgt_id") or ""),
+                    "keywords": record.get("keywords"),
+                    "weight": record.get("weight"),
+                    "source_id": str(record.get("source_id") or ""),
+                }
+            )
+        sources.append(item)
+
+    for kind, key in (
+        ("chunk", "chunks"),
+        ("entity", "entities"),
+        ("relationship", "relationships"),
+    ):
+        for record in _records(data, key):
+            add(kind, record, len(sources) + 1)
+    for reference in references:
+        reference_id = str(reference.get("reference_id") or "")
+        path = str(reference.get("file_path") or reference.get("source") or "")
+        sources.append(
+            {
+                "kind": "reference",
+                "title": Path(path).name if path else reference_id or "LightRAG reference",
+                "content": "",
+                "source": path,
+                "page": str(reference.get("page") or ""),
+                "reference_id": reference_id,
+                "rank": len(sources) + 1,
+                "reference": reference,
+            }
+        )
+    sources.append(
+        {
+            "kind": "query_metadata",
+            "title": "LightRAG query metadata",
+            "content": "",
+            "source": "",
+            "page": "",
+            "reference_id": "",
+            "rank": len(sources) + 1,
+            "metadata": metadata,
+        }
+    )
+    return sources
 
 
 async def query_with_sources(
     rag: Any, question: str, mode: str | None = None
 ) -> tuple[str, list[dict[str, Any]]]:
-    """Return a LightRAG answer together with its structured provenance.
+    from lightrag import QueryParam
 
-    ``RAGAnything.aquery`` owns the answer path, including its optional VLM
-    enhancement. LightRAG exposes the records used for retrieval separately via
-    ``aquery_data``. Keeping those calls separate preserves the existing answer
-    behavior while allowing DeepTutor to surface citation metadata.
-    """
-    answer = await query(rag, question, mode)
-    return answer, await query_sources(rag, question, mode)
-
-
-async def query_sources(rag: Any, question: str, mode: str | None = None) -> list[dict[str, Any]]:
-    """Fetch and normalize the structured records used by a LightRAG query.
-
-    ``aquery_data`` was added by LightRAG after some supported RAG-Anything
-    releases. Missing or failed provenance must not turn a successful answer
-    into a failed user request, so older installations gracefully return no
-    citations.
-    """
-    await ensure_ready(rag)
-    lightrag = getattr(rag, "lightrag", None)
-    aquery_data = getattr(lightrag, "aquery_data", None)
-    if not callable(aquery_data):
-        logger.debug("Installed LightRAG has no structured query data API.")
-        return []
-
-    resolved = normalize_mode(mode) or DEFAULT_MODE
-    extra = query_kwargs_from_settings()
-    try:
-        from lightrag import QueryParam
-
-        try:
-            result = await aquery_data(question, param=QueryParam(mode=resolved, **extra))
-        except TypeError:
-            if not extra:
-                raise
-            logger.debug("LightRAG rejected extra provenance query kwargs; retrying mode-only.")
-            result = await aquery_data(question, param=QueryParam(mode=resolved))
-    except Exception as exc:
-        logger.warning("LightRAG provenance lookup failed; omitting citations: %s", exc)
-        return []
-
-    return _query_data_to_sources(result)
-
-
-def _query_data_to_sources(result: Any) -> list[dict[str, Any]]:
-    """Map LightRAG's structured retrieval result to DeepTutor citations."""
+    param = QueryParam(
+        mode=normalize_mode(mode) or DEFAULT_MODE,
+        stream=False,
+        include_references=True,
+        **query_kwargs_from_settings(),
+    )
+    result = await rag.aquery_llm(question, param=param)
     if not isinstance(result, dict):
-        return []
+        raise LightRagContractError("LightRAG query response must be an object")
+    if result.get("status") != "success":
+        message = result.get("message")
+        raise LightRagContractError(
+            str(message).strip()
+            if isinstance(message, str) and message.strip()
+            else "LightRAG retrieval failed"
+        )
+    response = result.get("llm_response")
     data = result.get("data")
-    if not isinstance(data, dict):
-        return []
-
-    reference_paths = {
-        str(record.get("reference_id")): str(record.get("file_path"))
-        for record in data.get("references", [])
-        if isinstance(record, dict) and record.get("reference_id") and record.get("file_path")
-    }
-    sources: list[dict[str, Any]] = []
-
-    def source_path(record: dict[str, Any]) -> str:
-        return str(
-            record.get("file_path") or reference_paths.get(str(record.get("reference_id")), "")
-        )
-
-    def source_title(path: str, fallback: str) -> str:
-        return Path(path).name if path else fallback
-
-    for record in data.get("chunks", []):
-        if not isinstance(record, dict):
-            continue
-        path = source_path(record)
-        content = str(record.get("content") or "")
-        chunk_id = str(record.get("chunk_id") or "")
-        if not (path or content or chunk_id):
-            continue
-        sources.append(
-            {
-                "title": source_title(path, "LightRAG chunk"),
-                "content": content[:200],
-                "source": path,
-                "page": str(record.get("page") or ""),
-                "chunk_id": chunk_id,
-                "reference_id": str(record.get("reference_id") or ""),
-            }
-        )
-
-    for record in data.get("entities", []):
-        if not isinstance(record, dict):
-            continue
-        path = source_path(record)
-        entity_id = str(record.get("entity_name") or record.get("entity_id") or "")
-        description = str(record.get("description") or "")
-        if not (path or entity_id or description):
-            continue
-        sources.append(
-            {
-                "title": entity_id or source_title(path, "LightRAG entity"),
-                "content": description[:200],
-                "source": path,
-                "page": str(record.get("page") or ""),
-                "entity_id": entity_id,
-                "entity_type": str(record.get("entity_type") or ""),
-                "source_id": str(record.get("source_id") or ""),
-                "reference_id": str(record.get("reference_id") or ""),
-            }
-        )
-
-    for record in data.get("relationships", []):
-        if not isinstance(record, dict):
-            continue
-        path = source_path(record)
-        source_id = str(record.get("src_id") or "")
-        target_id = str(record.get("tgt_id") or "")
-        relation_id = str(record.get("relation_id") or f"{source_id}->{target_id}")
-        description = str(record.get("description") or "")
-        if not (path or relation_id or description):
-            continue
-        sources.append(
-            {
-                "title": relation_id or source_title(path, "LightRAG relationship"),
-                "content": description[:200],
-                "source": path,
-                "page": str(record.get("page") or ""),
-                "relation_id": relation_id,
-                "source_entity_id": source_id,
-                "target_entity_id": target_id,
-                "source_id": str(record.get("source_id") or ""),
-                "reference_id": str(record.get("reference_id") or ""),
-            }
-        )
-
-    return sources
+    metadata = result.get("metadata")
+    if (
+        not isinstance(response, dict)
+        or not isinstance(data, dict)
+        or not isinstance(metadata, dict)
+    ):
+        raise LightRagContractError("LightRAG query response is missing structured fields")
+    if response.get("is_streaming") is not False:
+        raise LightRagContractError("LightRAG returned streaming output for a non-streaming query")
+    content = _string(response.get("content"), label="llm_response.content")
+    return content, _query_sources(data, metadata)
 
 
 __all__ = [
+    "LIGHTRAG_DISTRIBUTION",
+    "LIGHTRAG_VERSION",
+    "LightRagContractError",
+    "PARSER_ENGINE",
     "build_rag",
-    "ensure_ready",
+    "confirmed_unaccepted",
+    "enqueue",
     "finalize",
-    "insert",
-    "query",
+    "initialize",
+    "installed_version",
     "query_with_sources",
+    "workspace_for",
 ]

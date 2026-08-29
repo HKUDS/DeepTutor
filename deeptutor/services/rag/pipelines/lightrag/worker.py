@@ -1,6 +1,6 @@
 """Event-loop isolation helpers for local LightRAG indexing.
 
-RAG-Anything's local storage backends perform synchronous graph merging and
+LightRAG's local storage backends perform synchronous graph merging and
 JSON serialization from inside async methods.  Running those methods on the
 service event loop therefore stalls unrelated API and LLM work.  This module
 provides one narrow boundary: run the indexing coroutine on a worker thread's

@@ -1,0 +1,22 @@
+{
+  "artifacts": {
+    "a5d0461c-c073-4d71-944c-e79759a67637_content_list.json": "e8e5bb9c00a6da26d9a7b93abd6938acf3145503ae734cd05831c56bd7e5e842",
+    "a5d0461c-c073-4d71-944c-e79759a67637_content_list_v2.json": "920ef83a39170889d001b75973293fc65b8a7c8ac0b309c807b7d2cdcf199284",
+    "a5d0461c-c073-4d71-944c-e79759a67637_model.json": "9574219a0d6f52303d4d46e15c01d19b02bd49b2674f542eebd729ad29af9e59",
+    "a5d0461c-c073-4d71-944c-e79759a67637_origin.pdf": "bf173e5d24d268a8a5a25766d190d2b01a124394c5e0e33094c08c6a9d8bbbc4",
+    "full.md": "e2861269e39a18874137029375666f79ea75af68d3ccbe490d112d1141368344",
+    "images/4934193ff23f79d730c0af8148c70efd879bdc73b2f1d49d76e0ef955da28c70.jpg": "a4542ec348a798c6a6dba4b89a4ab91d1b23c45b4c50bfaeb8303a4874e1e10d",
+    "images/c0183ed37ed43baf874f25239395a832d77e43cdd877992b7f3eef0163e5d41b.jpg": "18c517e03a9b15f5e7748ab4187dd8cd349018f7582784425a03bb538c146691",
+    "images/f24e98da187ecc134f0b3b1def407fc96edfa0987b84ab2b95a3aa377698255b.jpg": "53eaf9d9acb37f7f885dd51d17f183590da9068d3fd26d9701b885cf4f8fc970",
+    "layout.json": "549cb6fcd708664adb081afa494781a54bea250e1d86acc7776049f2e2c35d63"
+  },
+  "authenticated": true,
+  "capture_schema": 1,
+  "captured_at_utc": "2026-08-28T14:56:16.031586+00:00",
+  "model_version": "pipeline",
+  "service": "https://mineru.net/api/v4",
+  "source": {
+    "path": "../original.pdf",
+    "sha256": "e2abd3404f3a03d90c36feec19786689892434e730841cbdbd2a1a28875f3a80"
+  }
+}
