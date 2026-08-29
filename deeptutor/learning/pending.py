@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 from deeptutor.utils.text_display import decode_escaped_unicode_for_display
 
-
 OPTION_PREFIX_RE = re.compile(r"^\s*([A-Z])\s*[.:：、)）-]\s*(.+)$", re.IGNORECASE | re.DOTALL)
 
 

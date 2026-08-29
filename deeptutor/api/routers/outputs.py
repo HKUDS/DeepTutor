@@ -58,9 +58,9 @@ def _resolve_partner_output(relative_path: str) -> Path | None:
         partner_id = str(partner.get("partner_id") or "").strip()
         if not partner_id:
             continue
-        candidate = get_path_service_for_scope(partner_scope(partner_id)).resolve_public_output_path(
-            relative_path
-        )
+        candidate = get_path_service_for_scope(
+            partner_scope(partner_id)
+        ).resolve_public_output_path(relative_path)
         if candidate is not None:
             matches.append(candidate)
             if len(matches) > 1:
