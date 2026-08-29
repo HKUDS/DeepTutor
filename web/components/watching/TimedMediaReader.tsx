@@ -29,6 +29,7 @@ import {
   createBookFromVideo,
   createTranscriptJob,
   createVideoMark,
+  connectYouTubeSession,
   deleteVideoMark,
   getInvidiousStatus,
   getVideoLearningMaterial,
@@ -36,6 +37,7 @@ import {
   patchVideoMark,
   publishVideoToKb,
   recordWatchProgress,
+  requestSubtitlePrefetch,
   suggestVideoMarks,
   timedMediaStreamUrl,
   timedMediaSubtitleUrl,
@@ -98,6 +100,8 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<WatchTab>("transcript");
   const [jobMessage, setJobMessage] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
+  const [youtubeConnecting, setYoutubeConnecting] = useState(false);
+  const [youtubeMessage, setYoutubeMessage] = useState("");
   const [noteText, setNoteText] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
   const [cueNoteDraft, setCueNoteDraft] = useState<{ cueIndex: number; timeSeconds: number; quote: string } | null>(null);
@@ -308,6 +312,25 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
   const handleVideoSelect = async (videoUrl: string) => {
     setShowInvidiousHome(false);
     await openUrl(videoUrl);
+  };
+
+  const connectYouTubeForSubtitles = async () => {
+    if (!material) return;
+    setYoutubeConnecting(true);
+    setYoutubeMessage(t("Using this Mac's existing Chrome session to retrieve YouTube subtitles."));
+    try {
+      const session = await connectYouTubeSession(material.material_id);
+      if (!session.helper_available) {
+        setYoutubeMessage(t("Chrome or Chromium is required on the Mac running DeepTutor."));
+        return;
+      }
+      await requestSubtitlePrefetch(material.material_id);
+      setYoutubeMessage(t("Preparing subtitles with this Mac's Chrome session."));
+    } catch (caught) {
+      setYoutubeMessage(caught instanceof Error ? caught.message : t("Could not connect YouTube."));
+    } finally {
+      setYoutubeConnecting(false);
+    }
   };
 
   const openInvidiousRenderer = async (
@@ -1027,7 +1050,17 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                 </>
               ) : (
                 <div className="space-y-3 p-2 text-sm text-[var(--muted-foreground)]">
-                  <p>{t("No subtitles are available for this video.")}</p>
+                  <p>{material.transcript.fetch?.status === "fetching" || material.transcript.fetch?.status === "queued" ? t("Preparing YouTube subtitles…") : t("No subtitles are available for this video.")}</p>
+                  <button
+                    type="button"
+                    disabled={youtubeConnecting}
+                    className="inline-flex items-center gap-2 rounded border border-[var(--border)] px-3 py-2 disabled:opacity-50"
+                    onClick={() => void connectYouTubeForSubtitles()}
+                  >
+                    {youtubeConnecting ? <Loader2 size={15} className="animate-spin" /> : <Globe size={15} />}
+                    {t("Connect YouTube")}
+                  </button>
+                  {youtubeMessage && <p>{youtubeMessage}</p>}
                   <button
                     type="button"
                     disabled={Boolean(jobId)}

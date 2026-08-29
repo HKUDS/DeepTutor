@@ -54,6 +54,8 @@ from deeptutor.video_learning.marks import (
 from deeptutor.video_learning.service import (
     _is_local_host,
 )
+from deeptutor.video_learning.subtitle_prefetch import get_subtitle_prefetch_service
+from deeptutor.video_learning.youtube_session import HostChromeSessionStore, chrome_available
 
 router = APIRouter()
 public_router = APIRouter()
@@ -74,6 +76,10 @@ class ResolveRequest(BaseModel):
 
 class TranscriptJobRequest(BaseModel):
     language: str = Field(default="", max_length=32)
+
+
+class YouTubeConnectRequest(BaseModel):
+    material_id: str = Field(default="", max_length=64)
 
 
 class PositionRequest(BaseModel):
@@ -332,11 +338,64 @@ async def get_invidious_home(
 
 # Video learning material endpoints
 
+@router.get("/youtube-session/status")
+async def get_youtube_session_status() -> dict[str, Any]:
+    try:
+        assert_learning_surface("watching")
+        metadata = HostChromeSessionStore.metadata(current_owner_id())
+        helper_available = chrome_available()
+        return {
+            "connection": "connected" if metadata and helper_available else ("error" if metadata else "disconnected"),
+            "helper_available": helper_available,
+            "last_validated_at": str((metadata or {}).get("enabled_at") or "") or None,
+            "last_error_code": "chrome_unavailable" if metadata and not helper_available else None,
+            "next_prefetch_at": None,
+        }
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/youtube-session/connect", status_code=202)
+async def connect_youtube_session(payload: YouTubeConnectRequest) -> dict[str, Any]:
+    try:
+        assert_learning_surface("watching")
+        owner_id = current_owner_id()
+        if payload.material_id:
+            get_timed_media_store().get(payload.material_id)
+        HostChromeSessionStore.enable(owner_id)
+        helper_available = chrome_available()
+        return {
+            "connection": "connected" if helper_available else "error",
+            "helper_available": helper_available,
+            "last_error_code": None if helper_available else "chrome_unavailable",
+            "mode": "host_chrome",
+        }
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.delete("/youtube-session")
+async def disconnect_youtube_session() -> dict[str, bool]:
+    try:
+        assert_learning_surface("watching")
+        HostChromeSessionStore.delete(current_owner_id())
+        return {"ok": True}
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
 @router.post("/resolve")
 async def resolve_video(payload: ResolveRequest) -> dict[str, Any]:
     try:
         assert_learning_surface("watching")
         material = await YouTubeResolver().resolve(payload.url, language=payload.language)
+        if not (material.get("transcript") or {}).get("cues"):
+            fetch = await get_subtitle_prefetch_service().enqueue(
+                current_owner_id(), str(material.get("material_id") or ""), get_timed_media_store()
+            )
+            transcript = material.setdefault("transcript", {})
+            if isinstance(transcript, dict):
+                transcript["fetch"] = fetch
         return _public_material(material)
     except Exception as exc:
         raise _error(exc) from exc
@@ -346,7 +405,11 @@ async def resolve_video(payload: ResolveRequest) -> dict[str, Any]:
 async def get_video_material(material_id: str) -> dict[str, Any]:
     try:
         assert_learning_surface("watching")
-        return _public_material(get_timed_media_store().get(material_id))
+        material = get_timed_media_store().get(material_id)
+        if not (material.get("transcript") or {}).get("cues"):
+            await get_subtitle_prefetch_service().enqueue(current_owner_id(), material_id, get_timed_media_store())
+            material = get_timed_media_store().get(material_id)
+        return _public_material(material)
     except Exception as exc:
         raise _error(exc) from exc
 
@@ -361,6 +424,16 @@ async def get_video_subtitles(material_id: str) -> Response:
             media_type="text/vtt",
             headers={"Cache-Control": "no-store"},
         )
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/materials/{material_id}/subtitle-prefetch", status_code=202)
+async def request_subtitle_prefetch(material_id: str) -> JSONResponse:
+    try:
+        assert_learning_surface("watching")
+        fetch = await get_subtitle_prefetch_service().enqueue(current_owner_id(), material_id, get_timed_media_store(), manual=True)
+        return JSONResponse(status_code=202, content={"fetch": fetch})
     except Exception as exc:
         raise _error(exc) from exc
 

@@ -39,6 +39,7 @@ export interface TimedMediaMaterial {
     language: string;
     source: string;
     cues: TimedCue[];
+    fetch?: { status: string; error_code?: string | null };
   };
   segments: TimedSegment[];
   playback: {
@@ -177,6 +178,24 @@ export async function getVideoLearningMaterial(materialId: string): Promise<Time
   return unwrap(
     await apiFetch(apiUrl(`/api/v1/video-learning/materials/${encodeURIComponent(materialId)}`), {
       cache: "no-store",
+    })
+  );
+}
+
+export async function connectYouTubeSession(materialId = ""): Promise<{ connection: string; helper_available: boolean }> {
+  return unwrap(
+    await apiFetch(apiUrl("/api/v1/video-learning/youtube-session/connect"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ material_id: materialId }),
+    })
+  );
+}
+
+export async function requestSubtitlePrefetch(materialId: string): Promise<void> {
+  await unwrap(
+    await apiFetch(apiUrl(`/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/subtitle-prefetch`), {
+      method: "POST",
     })
   );
 }

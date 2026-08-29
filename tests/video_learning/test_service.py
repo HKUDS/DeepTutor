@@ -1,4 +1,6 @@
 from pathlib import Path
+import sys
+import types
 from typing import Any
 
 import httpx
@@ -10,6 +12,7 @@ from deeptutor.video_learning.service import (
     TimedMediaStore,
     YouTubeResolver,
     build_segments,
+    download_ytdlp_subtitle,
     ensure_remote_material,
     normalize_cues,
     parse_timestamp,
@@ -332,3 +335,35 @@ async def test_resolve_honors_requested_caption_language(tmp_path: Path, monkeyp
     )
     assert material["transcript"]["language"] == "en"
     assert material["transcript"]["cues"][0]["text"] == "English caption."
+
+
+@pytest.mark.asyncio
+async def test_ytdlp_uses_chrome_and_downloads_subtitles_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeDownloader:
+        def __init__(self, options: dict[str, Any]):
+            captured.update(options)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def download(self, _urls: list[str]) -> None:
+            root = Path(captured["paths"]["home"])
+            (root / "subtitle.en.vtt").write_text(
+                "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nChrome caption\n",
+                encoding="utf-8",
+            )
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", types.SimpleNamespace(YoutubeDL=FakeDownloader))
+    cues, language, source = await download_ytdlp_subtitle("dQw4w9WgXcQ")
+
+    assert captured["cookiesfrombrowser"] == ("chrome",)
+    assert captured["skip_download"] is True
+    assert captured["writesubtitles"] is True
+    assert cues == [{"start": 0.0, "end": 1.0, "text": "Chrome caption"}]
+    assert language == "en"
+    assert source == "youtube-chrome"

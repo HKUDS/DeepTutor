@@ -20,6 +20,7 @@ import ipaddress
 import json
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
@@ -716,6 +717,56 @@ def _duration(metadata: dict[str, Any]) -> int:
 def _validate_video_id(video_id: str) -> None:
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id or ""):
         raise TimedMediaError("Invalid YouTube video id.")
+
+
+async def download_ytdlp_subtitle(video_id: str, *, preferred_language: str = "") -> tuple[list[dict[str, Any]], str, str]:
+    """Fetch only captions through yt-dlp and the host Chrome cookie store."""
+    _validate_video_id(video_id)
+    languages = [preferred_language] if preferred_language else []
+    languages.extend(language for language in ("en-orig", "en", "zh-Hans", "zh-CN", "zh") if language not in languages)
+
+    def fetch() -> tuple[list[dict[str, Any]], str, str]:
+        try:
+            import yt_dlp
+        except ImportError:
+            return [], "", "dependency_unavailable"
+        with tempfile.TemporaryDirectory(prefix="deeptutor-youtube-subs-") as directory:
+            root = Path(directory)
+            options = {
+                "quiet": True,
+                "no_warnings": True,
+                "skip_download": True,
+                "noplaylist": True,
+                "ignoreconfig": True,
+                "cachedir": False,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": languages,
+                "subtitlesformat": "vtt",
+                "outtmpl": str(root / "subtitle.%(ext)s"),
+                "paths": {"home": str(root)},
+                "cookiesfrombrowser": ("chrome",),
+            }
+            try:
+                with yt_dlp.YoutubeDL(options) as downloader:
+                    downloader.download([f"https://www.youtube.com/watch?v={video_id}"])
+            except Exception as exc:
+                message = str(exc).lower()
+                if any(marker in message for marker in ("sign in", "cookies", "login", "authentication")):
+                    return [], "", "auth_required"
+                return [], "", "unavailable"
+            for candidate in sorted(root.glob("subtitle.*.vtt")):
+                try:
+                    if candidate.stat().st_size > MAX_TRANSCRIPT_BYTES:
+                        continue
+                    cues = normalize_cues(parse_webvtt(candidate.read_text(encoding="utf-8", errors="replace")))
+                except OSError:
+                    continue
+                if cues:
+                    return cues, candidate.stem.rsplit(".", 1)[-1], "youtube-chrome"
+            return [], "", "unavailable"
+
+    return await asyncio.to_thread(fetch)
 
 
 def _select_caption(captions: list[Any], preferred_language: str = "") -> dict[str, Any] | None:
