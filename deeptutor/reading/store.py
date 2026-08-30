@@ -1,21 +1,22 @@
 """On-disk store for reading materials and their annotations.
 
-Layout, one directory per material::
+Layout, one directory per extracted content::
 
-    <root>/<material_id>/
+    <root>/<content_id>/
         manifest.json        # MaterialManifest
         outline.json         # OutlineEntry rows (document's own, or synthesised)
         units/0001.txt       # one file per locator
         raw/<filename>       # the original bytes, for the faithful viewer
-        annotations.json     # Annotation rows
+        annotations/<material_id>.json
+        positions/<material_id>.json
 
 One file per unit is the point of the layout: ``read_material(locator=12)``
 opens one small file instead of deserialising the whole document, so a 600-page
 PDF costs the same per read as a 3-page one.
 
-``material_id`` is the content hash, which makes re-uploading the same file a
-no-op that lands the user back on their existing annotations instead of a fresh
-empty copy.
+``content_id`` is the content hash, so extracted units and source bytes are
+shared. Catalog ``material_id`` values identify independent titles, annotations,
+and reading positions over that shared content.
 
 Writes go through :func:`_atomic_write` (temp file in the same directory, then
 ``os.replace``) under a per-material re-entrant lock, so a concurrent annotation
@@ -34,6 +35,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import threading
 import time
 from typing import Any, Iterator, Sequence
@@ -53,6 +55,7 @@ from deeptutor.reading.models import (
     TextQuoteSelector,
     UnitReference,
 )
+from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +63,16 @@ MANIFEST_NAME = "manifest.json"
 OUTLINE_NAME = "outline.json"
 ANNOTATIONS_NAME = "annotations.json"
 POSITION_NAME = "position.json"
+ANNOTATIONS_DIR = "annotations"
+POSITIONS_DIR = "positions"
 UNIT_REFS_NAME = "unit_refs.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
 
-# Material ids are content hashes, so this is both an id validator and the
-# traversal guard for every path built from a caller-supplied id.
-_MATERIAL_ID_RE = re.compile(r"^[0-9a-f]{8,64}$")
+# Both content hashes and separately minted catalog ids are path-safe. Content
+# directories themselves remain hashes only.
+_CONTENT_ID_RE = re.compile(r"^[0-9a-f]{8,64}$")
+_MATERIAL_ID_RE = re.compile(r"^(?:[0-9a-f]{8,64}|rm_[0-9a-f]{12})$")
 _ID_LENGTH = 16
 
 # Hard ceiling on how much unit text one tool call may return, so a model asking
@@ -152,12 +158,10 @@ class ReadingStore:
         """
         if self._root_override is not None:
             return self._root_override
-        from deeptutor.services.path_service import PathService
-
-        return PathService.get_instance().get_workspace_feature_dir("reading")
+        return get_path_service().get_workspace_feature_dir("reading")
 
     def _dir(self, material_id: str) -> Path:
-        return self.root / self._validate_id(material_id)
+        return self.root / self._content_id(material_id)
 
     @staticmethod
     def _validate_id(material_id: str) -> str:
@@ -166,17 +170,52 @@ class ReadingStore:
             raise ReadingError(f"invalid material id: {material_id!r}")
         return candidate
 
+    def _catalog_row(self, material_id: str) -> sqlite3.Row | None:
+        db_path = self.root / "_catalog.sqlite3"
+        if not db_path.is_file():
+            return None
+        try:
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                conn.row_factory = sqlite3.Row
+                return conn.execute(
+                    "SELECT * FROM reading_materials WHERE material_id = ?",
+                    (material_id,),
+                ).fetchone()
+        except sqlite3.Error:
+            logger.warning(
+                "Could not resolve reading catalog material %s", material_id, exc_info=True
+            )
+            return None
+
+    def _content_id(self, material_id: str) -> str:
+        resolved_id = self._validate_id(material_id)
+        row = self._catalog_row(resolved_id)
+        content_id = str(row["content_id"] if row else resolved_id).strip().lower()
+        if not _CONTENT_ID_RE.fullmatch(content_id):
+            raise ReadingError(f"invalid content id for material {material_id!r}")
+        return content_id
+
+    def _state_path(self, material_id: str, state_dir: str) -> Path:
+        resolved_id = self._validate_id(material_id)
+        return self._dir(resolved_id) / state_dir / f"{resolved_id}.json"
+
+    def _legacy_state_path(self, material_id: str, filename: str) -> Path | None:
+        resolved_id = self._validate_id(material_id)
+        content_id = self._content_id(resolved_id)
+        return self.root / content_id / filename if resolved_id == content_id else None
+
     @staticmethod
     def _unit_file(material_dir: Path, locator: int) -> Path:
         return material_dir / UNITS_DIR / f"{locator:04d}.txt"
 
     @contextmanager
     def _locked(self, material_id: str) -> Iterator[None]:
+        lock_id = self._content_id(material_id)
         with self._locks_guard:
-            lock = self._locks.get(material_id)
+            lock = self._locks.get(lock_id)
             if lock is None:
                 lock = threading.RLock()
-                self._locks[material_id] = lock
+                self._locks[lock_id] = lock
         with lock:
             yield
 
@@ -229,7 +268,16 @@ class ReadingStore:
                 raw_path = raw_dir / _safe_filename(display_name, fallback=path.name)
                 raw_path.write_bytes(data)
 
-            outline = extraction.outline or synthesise_outline(extraction.units)
+            # A PDF page's first text line is not a table of contents. It is
+            # often a figure caption, running header, or reference entry, so
+            # presenting those labels as document structure is actively
+            # misleading. PDFs either keep their native bookmarks or expose no
+            # outline; the client can still offer an honest page navigator.
+            outline = (
+                extraction.outline
+                if extraction.outline or extraction.render_mode == "pdf"
+                else synthesise_outline(extraction.units)
+            )
             _atomic_write(
                 stage_dir / OUTLINE_NAME,
                 json.dumps([entry.to_dict() for entry in outline], ensure_ascii=False),
@@ -267,15 +315,27 @@ class ReadingStore:
             # legacy upgrades with annotations were rejected above because
             # their old locators cannot be mapped safely to the spine.
             state_names: tuple[str, ...] = (ANNOTATIONS_NAME, POSITION_NAME)
+            state_dirs: tuple[str, ...] = (ANNOTATIONS_DIR, POSITIONS_DIR)
             if existing is not None and existing.render_mode != "epub":
                 # A legacy text-reader position can point past the shorter
                 # source-faithful spine. Annotations are protected above;
-                # the viewport safely resets to chapter one.
+                # the viewport safely resets to chapter one — which has to
+                # drop the per-material viewports too, not just the legacy
+                # file, or the stale locator simply survives in the new path.
                 state_names = (ANNOTATIONS_NAME,)
+                state_dirs = (ANNOTATIONS_DIR,)
             for state_name in state_names:
                 source_state = material_dir / state_name
                 if source_state.is_file():
                     shutil.copy2(source_state, stage_dir / state_name)
+            for state_dir in state_dirs:
+                source_state_dir = material_dir / state_dir
+                if source_state_dir.is_dir():
+                    shutil.copytree(
+                        source_state_dir,
+                        stage_dir / state_dir,
+                        dirs_exist_ok=True,
+                    )
 
             # Install the fully written directory in one swap. If the second
             # rename fails, put the previous material back before surfacing the
@@ -294,6 +354,110 @@ class ReadingStore:
                 shutil.rmtree(backup_dir, ignore_errors=True)
             return manifest
 
+    def ingest_units(
+        self,
+        material_id: str,
+        *,
+        filename: str,
+        units: Sequence[str],
+        unit: str = "section",
+        title: str = "",
+        mime: str = "text/markdown",
+        extractor: str = "pre-extracted",
+        render_mode: str = "text",
+        raw_data: bytes | None = None,
+        outline: Sequence[OutlineEntry] | None = None,
+        unit_refs: Sequence[UnitReference] = (),
+    ) -> MaterialManifest:
+        """Install trusted, already-extracted units (web pages and transcripts).
+
+        The regular :meth:`ingest` path owns local document parsing. URL and
+        media importers already have structured text plus, optionally, playable
+        bytes; this entrypoint gives them the same atomic on-disk contract
+        without creating fake temporary document formats.
+        """
+        material_id = self._validate_id(material_id)
+        content_id = self._content_id(material_id)
+        clean_units = tuple(str(value).strip() for value in units if str(value).strip())
+        if not clean_units:
+            raise ReadingError(f"{filename}: no readable content was extracted")
+        if unit not in {"page", "chapter", "slide", "section", "segment"}:
+            raise ReadingError(f"unsupported reading unit: {unit}")
+        if render_mode not in {"text", "pdf", "epub", "video", "audio"}:
+            raise ReadingError(f"unsupported render mode: {render_mode}")
+        remote_video = render_mode == "video" and extractor.startswith(("youtube-", "bilibili-"))
+        if render_mode != "text" and not raw_data and not remote_video:
+            raise ReadingError(f"{render_mode} materials require playable source bytes")
+
+        display_name = (filename or "material").strip() or "material"
+        with self._locked(material_id):
+            existing = self._load_manifest(content_id)
+            material_dir = self._dir(material_id)
+            stage_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.staging"
+            backup_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.backup"
+            (stage_dir / UNITS_DIR).mkdir(parents=True, exist_ok=True)
+            for index, text in enumerate(clean_units, start=1):
+                self._unit_file(stage_dir, index).write_text(text, encoding="utf-8")
+
+            if raw_data is not None:
+                raw_dir = stage_dir / RAW_DIR
+                raw_dir.mkdir(parents=True, exist_ok=True)
+                (raw_dir / _safe_filename(display_name, fallback="material")).write_bytes(raw_data)
+
+            resolved_outline = tuple(outline or synthesise_outline(clean_units))
+            _atomic_write(
+                stage_dir / OUTLINE_NAME,
+                json.dumps([entry.to_dict() for entry in resolved_outline], ensure_ascii=False),
+            )
+            _atomic_write(
+                stage_dir / UNIT_REFS_NAME,
+                json.dumps([entry.to_dict() for entry in unit_refs], ensure_ascii=False),
+            )
+            manifest = MaterialManifest(
+                material_id=content_id,
+                filename=display_name,
+                unit=unit,  # type: ignore[arg-type]
+                unit_count=len(clean_units),
+                mime=mime,
+                title=(title or Path(display_name).stem).strip(),
+                source_hash=content_id,
+                extractor=extractor,
+                byte_size=len(raw_data or b""),
+                char_count=sum(len(value) for value in clean_units),
+                created_at=existing.created_at if existing else time.time(),
+                has_raw_view=render_mode == "pdf",
+                render_mode=render_mode,  # type: ignore[arg-type]
+            )
+            _atomic_write(
+                stage_dir / MANIFEST_NAME,
+                json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
+            )
+            for state_name in (ANNOTATIONS_NAME, POSITION_NAME):
+                source_state = material_dir / state_name
+                if source_state.is_file():
+                    shutil.copy2(source_state, stage_dir / state_name)
+            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR):
+                source_state_dir = material_dir / state_dir
+                if source_state_dir.is_dir():
+                    shutil.copytree(
+                        source_state_dir,
+                        stage_dir / state_dir,
+                        dirs_exist_ok=True,
+                    )
+            try:
+                if material_dir.exists():
+                    os.replace(material_dir, backup_dir)
+                try:
+                    os.replace(stage_dir, material_dir)
+                except Exception:
+                    if backup_dir.exists() and not material_dir.exists():
+                        os.replace(backup_dir, material_dir)
+                    raise
+            finally:
+                shutil.rmtree(stage_dir, ignore_errors=True)
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            return self.manifest(material_id)
+
     def _is_complete(self, material_id: str, manifest: MaterialManifest) -> bool:
         """Whether a previously ingested material is still fully on disk."""
         material_dir = self._dir(material_id)
@@ -308,11 +472,27 @@ class ReadingStore:
     # -- read -------------------------------------------------------------
 
     def _load_manifest(self, material_id: str) -> MaterialManifest | None:
-        data = _read_json(self._dir(material_id) / MANIFEST_NAME)
+        resolved_id = self._validate_id(material_id)
+        data = _read_json(self._dir(resolved_id) / MANIFEST_NAME)
         if not isinstance(data, dict):
             return None
         manifest = MaterialManifest.from_dict(data)
-        return manifest if manifest.material_id else None
+        if not manifest.material_id:
+            return None
+        row = self._catalog_row(resolved_id)
+        if row is None:
+            return dataclass_replace(manifest, material_id=resolved_id)
+        render_mode = str(row["render_mode"] or manifest.render_mode)
+        return dataclass_replace(
+            manifest,
+            material_id=resolved_id,
+            filename=str(row["filename"] or manifest.filename),
+            title=str(row["title"] or manifest.title),
+            mime=str(row["mime"] or manifest.mime),
+            render_mode=render_mode,  # type: ignore[arg-type]
+            has_raw_view=render_mode == "pdf",
+            created_at=float(row["created_at"] or manifest.created_at),
+        )
 
     def manifest(self, material_id: str) -> MaterialManifest:
         manifest = self._load_manifest(material_id)
@@ -333,7 +513,7 @@ class ReadingStore:
             return []
         found: list[MaterialManifest] = []
         for child in root.iterdir():
-            if not child.is_dir() or not _MATERIAL_ID_RE.match(child.name):
+            if not child.is_dir() or not _CONTENT_ID_RE.fullmatch(child.name):
                 continue
             manifest = self._load_manifest(child.name)
             if manifest is not None:
@@ -392,7 +572,7 @@ class ReadingStore:
         """The material's outline, rebuilt from units if the file is missing."""
         manifest = self.manifest(material_id)
         rows = _read_json(self._dir(material_id) / OUTLINE_NAME)
-        if isinstance(rows, list) and rows:
+        if isinstance(rows, list):
             entries: list[OutlineEntry] = []
             for row in rows:
                 if not isinstance(row, dict):
@@ -408,8 +588,16 @@ class ReadingStore:
                     )
                 except (KeyError, TypeError, ValueError):
                     continue
+            if manifest.render_mode == "pdf":
+                # Migrate legacy PDF imports in place at read time: older
+                # versions persisted one synthesised row per page. Returning
+                # no outline here immediately removes those false contents
+                # without requiring users to re-import their files.
+                return [] if all(entry.synthesised for entry in entries) else entries
             if entries:
                 return entries
+        if manifest.render_mode == "pdf":
+            return []
         units = tuple(
             self.unit_text(material_id, locator) for locator in range(1, manifest.unit_count + 1)
         )
@@ -440,7 +628,11 @@ class ReadingStore:
     def position(self, material_id: str) -> ReadingPosition:
         """Return the last viewport, defaulting to the first locator."""
         self.manifest(material_id)
-        row = _read_json(self._dir(material_id) / POSITION_NAME)
+        state_path = self._state_path(material_id, POSITIONS_DIR)
+        row = _read_json(state_path)
+        if row is None and not state_path.exists():
+            legacy_path = self._legacy_state_path(material_id, POSITION_NAME)
+            row = _read_json(legacy_path) if legacy_path is not None else None
         return ReadingPosition.from_dict(row) if isinstance(row, dict) else ReadingPosition()
 
     def save_position(self, material_id: str, position: ReadingPosition) -> ReadingPosition:
@@ -458,7 +650,7 @@ class ReadingStore:
         stored = dataclass_replace(position, updated_at=time.time())
         with self._locked(material_id):
             _atomic_write(
-                self._dir(material_id) / POSITION_NAME,
+                self._state_path(material_id, POSITIONS_DIR),
                 json.dumps(stored.to_dict(), ensure_ascii=False, indent=2),
             )
         return stored
@@ -473,25 +665,70 @@ class ReadingStore:
                 return candidate
         return None
 
-    def delete(self, material_id: str) -> bool:
+    @contextmanager
+    def staged_delete(self, material_id: str) -> Iterator[bool]:
+        """Stage a recoverable material deletion around catalog cleanup.
+
+        The catalog and content store cannot share one database transaction.
+        Moving the material aside first gives their coordinator a rollback
+        point: if catalog cleanup fails, the content is restored before the
+        error reaches the caller. A successful boundary permanently removes
+        the staged directory and its EPUB pairings.
+        """
+
         material_dir = self._dir(material_id)
         if not material_dir.is_dir():
-            return False
+            yield False
+            return
+        staged_dir = self.root / f".{material_id}.{uuid.uuid4().hex[:8]}.deleting"
         with self._locked(material_id):
-            shutil.rmtree(material_dir, ignore_errors=True)
-        removed = not material_dir.exists()
-        if removed:
-            from deeptutor.reading.epub_bilingual import delete_epub_pairings_for_material
+            os.replace(material_dir, staged_dir)
+            try:
+                yield True
+            except BaseException:
+                os.replace(staged_dir, material_dir)
+                raise
+            else:
+                shutil.rmtree(staged_dir, ignore_errors=True)
+                from deeptutor.reading.epub_bilingual import (
+                    delete_epub_pairings_for_material,
+                )
 
-            delete_epub_pairings_for_material(self, material_id)
-        return removed
+                delete_epub_pairings_for_material(self, material_id)
+
+    def delete(self, material_id: str) -> bool:
+        with self.staged_delete(material_id) as removed:
+            return removed
+
+    def delete_material_state(self, material_id: str, *, content_id: str | None = None) -> None:
+        """Remove only one catalog material's state, preserving shared content."""
+        resolved_id = self._validate_id(material_id)
+        resolved_content = str(content_id or "").strip().lower() or self._content_id(resolved_id)
+        if not _CONTENT_ID_RE.fullmatch(resolved_content):
+            raise ReadingError(f"invalid content id for material {material_id!r}")
+        content_dir = self.root / resolved_content
+        with self._locked(resolved_content):
+            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR):
+                state_path = content_dir / state_dir / f"{resolved_id}.json"
+                state_path.unlink(missing_ok=True)
+                try:
+                    (content_dir / state_dir).rmdir()
+                except OSError:
+                    pass
+        from deeptutor.reading.epub_bilingual import delete_epub_pairings_for_material
+
+        delete_epub_pairings_for_material(self, resolved_id)
 
     # -- annotations ------------------------------------------------------
 
     def annotations(self, material_id: str) -> list[Annotation]:
         """All annotations, ordered by locator then creation time."""
         self.manifest(material_id)
-        rows = _read_json(self._dir(material_id) / ANNOTATIONS_NAME)
+        state_path = self._state_path(material_id, ANNOTATIONS_DIR)
+        rows = _read_json(state_path)
+        if rows is None and not state_path.exists():
+            legacy_path = self._legacy_state_path(material_id, ANNOTATIONS_NAME)
+            rows = _read_json(legacy_path) if legacy_path is not None else None
         if not isinstance(rows, list):
             return []
         parsed = [
@@ -503,7 +740,7 @@ class ReadingStore:
 
     def _write_annotations(self, material_id: str, rows: Sequence[Annotation]) -> None:
         _atomic_write(
-            self._dir(material_id) / ANNOTATIONS_NAME,
+            self._state_path(material_id, ANNOTATIONS_DIR),
             json.dumps([row.to_dict() for row in rows], ensure_ascii=False, indent=2),
         )
 

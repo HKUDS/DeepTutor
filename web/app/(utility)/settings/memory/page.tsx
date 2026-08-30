@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { apiFetch, apiUrl } from "@/lib/api";
+import { EXTENSION_ENDPOINTS } from "@/lib/settings-extensions";
 import {
   SettingRow,
   SettingSection,
@@ -35,24 +36,30 @@ interface MemorySettingsDTO {
 
 export default function MemorySettingsPage() {
   const { t } = useTranslation();
-  const { registerExtension } = useSettings();
+  const { registerExtension, pendingExtensionPayload, draftRevision } =
+    useSettings();
   const [settings, setSettings] = useState<MemorySettingsDTO | null>(null);
   const [serverSnapshot, setServerSnapshot] =
     useState<MemorySettingsDTO | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void apiFetch(apiUrl("/api/v1/memory/settings"))
+    void apiFetch(apiUrl(EXTENSION_ENDPOINTS.memory))
       .then((res) => res.json() as Promise<MemorySettingsDTO>)
       .then((data) => {
         if (cancelled) return;
-        setSettings(data);
+        // A pending edit outlives the page it was made on; the server value is
+        // the baseline dirtiness is measured against either way.
+        const pending = pendingExtensionPayload("memory") as
+          | MemorySettingsDTO
+          | undefined;
+        setSettings(pending ?? data);
         setServerSnapshot(data);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [draftRevision, pendingExtensionPayload]);
 
   const dirty =
     !!settings &&
@@ -68,7 +75,7 @@ export default function MemorySettingsPage() {
   const save = useCallback(async () => {
     const current = settingsRef.current;
     if (!current) return;
-    const res = await apiFetch(apiUrl("/api/v1/memory/settings"), {
+    const res = await apiFetch(apiUrl(EXTENSION_ENDPOINTS.memory), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(current),
@@ -79,9 +86,9 @@ export default function MemorySettingsPage() {
   }, []);
 
   useEffect(() => {
-    registerExtension("memory", { dirty, save });
+    registerExtension("memory", { dirty, save, payload: settings });
     return () => registerExtension("memory", null);
-  }, [dirty, save, registerExtension]);
+  }, [dirty, save, settings, registerExtension]);
 
   function patch<K extends keyof MemorySettingsDTO>(
     key: K,

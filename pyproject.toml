@@ -64,6 +64,7 @@ dependencies = [
     "pdfplumber>=0.11.0",
     "reportlab>=4.0.0",
     "defusedxml>=0.7.1",
+    "youtube-transcript-api>=1.2.0,<2.0.0",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.24.0",
     "websockets>=12.0",
@@ -112,6 +113,7 @@ cli = [
     "pdfplumber>=0.11.0",
     "reportlab>=4.0.0",
     "defusedxml>=0.7.1",
+    "youtube-transcript-api>=1.2.0,<2.0.0",
 ]
 
 # CodeBuddy chat works over HTTP with the login state the IDE plugin / CLI

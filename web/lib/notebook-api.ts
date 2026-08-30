@@ -15,6 +15,7 @@ export type NotebookRecordType =
   | "research"
   | "chat"
   | "co_writer"
+  | "reading"
   | "tutorbot";
 
 export interface NotebookSummary {
@@ -258,6 +259,14 @@ export interface NotebookEntryFilter {
   sort?: "recent" | "oldest";
   limit?: number;
   offset?: number;
+  /**
+   * Restrict to questions produced by one course's conversations.
+   *
+   * Entries carry a session, not a course, so the server resolves this to the
+   * course's sessions. A course with no sessions yet correctly yields nothing
+   * rather than falling back to everything.
+   */
+  course_id?: string;
 }
 
 export async function listNotebookEntries(
@@ -275,6 +284,7 @@ export async function listNotebookEntries(
   if (filter.sort) params.set("sort", filter.sort);
   if (filter.limit !== undefined) params.set("limit", String(filter.limit));
   if (filter.offset !== undefined) params.set("offset", String(filter.offset));
+  if (filter.course_id) params.set("course_id", filter.course_id);
   const query = params.toString();
   const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries${query ? `?${query}` : ""}`),
@@ -446,10 +456,21 @@ export interface QuestionBankStats {
   uncategorized: number;
 }
 
-export async function getQuestionBankStats(): Promise<QuestionBankStats> {
-  const response = await apiFetch(apiUrl("/api/v1/question-notebook/stats"), {
-    cache: "no-store",
-  });
+/**
+ * Counts behind the scope rail.
+ *
+ * Takes the same course scope as the entry list: showing this course's
+ * questions next to whole-library counts would make the rail lie about how
+ * much is there.
+ */
+export async function getQuestionBankStats(
+  courseId = "",
+): Promise<QuestionBankStats> {
+  const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : "";
+  const response = await apiFetch(
+    apiUrl(`/api/v1/question-notebook/stats${query}`),
+    { cache: "no-store" },
+  );
   return expectJson<QuestionBankStats>(response);
 }
 
@@ -468,12 +489,13 @@ export async function removeEntryFromCategory(
 
 // ── Categories ──────────────────────────────────────────────────
 
-export async function listCategories(): Promise<NotebookCategory[]> {
+export async function listCategories(
+  courseId = "",
+): Promise<NotebookCategory[]> {
+  const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : "";
   const response = await apiFetch(
-    apiUrl("/api/v1/question-notebook/categories"),
-    {
-      cache: "no-store",
-    },
+    apiUrl(`/api/v1/question-notebook/categories${query}`),
+    { cache: "no-store" },
   );
   return expectJson<NotebookCategory[]>(response);
 }

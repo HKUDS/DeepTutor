@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import reading
+from deeptutor.reading import ReadingCatalogStore, ReadingError, ReadingStore
 from deeptutor.services.path_service import PathService
 
 pymupdf = pytest.importorskip("pymupdf")
@@ -165,12 +166,32 @@ def test_delete_material_is_idempotent_then_404s(client: TestClient) -> None:
     assert client.delete(f"/api/v1/reading/materials/{material_id}").status_code == 404
 
 
-def test_supported_formats_names_pdf_as_the_faithful_view(client: TestClient) -> None:
+def test_delete_material_restores_content_when_catalog_cleanup_fails(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    material_id = _upload(client)["material_id"]
+
+    def fail_catalog_delete(_self, _material_id: str) -> bool:
+        raise ReadingError("catalog cleanup failed")
+
+    monkeypatch.setattr(ReadingCatalogStore, "delete_material", fail_catalog_delete)
+    response = client.delete(f"/api/v1/reading/materials/{material_id}")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "catalog cleanup failed"
+    assert ReadingStore().manifest(material_id).material_id == material_id
+    assert ReadingCatalogStore().get_material(material_id) is not None
+
+
+def test_supported_formats_names_faithful_documents_and_media(client: TestClient) -> None:
     body = client.get("/api/v1/reading/supported-formats").json()
 
     assert ".pdf" in body["extensions"]
     assert ".epub" in body["extensions"]
-    assert body["raw_view_extensions"] == [".pdf"]
+    assert ".pdf" in body["raw_view_extensions"]
+    assert ".mp4" in body["raw_view_extensions"]
+    assert ".mp3" in body["raw_view_extensions"]
     assert body["max_bytes"] > 0
 
 
@@ -532,3 +553,112 @@ def test_export_rejects_an_unknown_format(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_library_lists_collection_membership_and_totals(client: TestClient) -> None:
+    shared = _upload(client, name="shared.pdf")
+    orphan = _upload(client, name="orphan.pdf", data=_pdf_bytes(["Only page. Alone."]))
+    for title in ("Close reading", "Seminar prep"):
+        created = client.post(
+            "/api/v1/reading/workspaces",
+            json={"title": title, "material_ids": [shared["material_id"]]},
+        )
+        assert created.status_code == 201, created.text
+
+    payload = client.get("/api/v1/reading/library/materials").json()
+    rows = {row["material_id"]: row for row in payload["materials"]}
+
+    assert [row["title"] for row in rows[shared["material_id"]]["collections"]] == [
+        "Close reading",
+        "Seminar prep",
+    ]
+    assert rows[orphan["material_id"]]["collections"] == []
+    assert rows[shared["material_id"]]["size_bytes"] > 0
+    assert rows[shared["material_id"]]["unit_count"] == len(PAGES)
+    assert payload["counts"]["all"] == 2
+    assert payload["counts"]["unassigned"] == 1
+
+    unassigned = client.get(
+        "/api/v1/reading/library/materials", params={"filter": "unassigned"}
+    ).json()
+    assert [row["material_id"] for row in unassigned["materials"]] == [orphan["material_id"]]
+    # Counts describe the library, not the filtered page.
+    assert unassigned["counts"]["all"] == 2
+
+
+def test_duplicate_check_separates_same_content_from_same_name(
+    client: TestClient,
+) -> None:
+    data = _pdf_bytes()
+    material = _upload(client, name="attention.pdf", data=data)
+    client.post(
+        "/api/v1/reading/workspaces",
+        json={"title": "Close reading", "material_ids": [material["material_id"]]},
+    )
+
+    response = client.post(
+        "/api/v1/reading/library/duplicate-check",
+        json={
+            "files": [
+                {
+                    "filename": "attention.pdf",
+                    "content_id": material["material_id"],
+                    "size_bytes": len(data),
+                },
+                {"filename": "attention.pdf", "content_id": "", "mime": "application/pdf"},
+                {"filename": "never-seen.pdf", "content_id": ""},
+            ]
+        },
+    )
+
+    matches = response.json()["matches"]
+    assert [row["kind"] for row in matches] == ["same_content", "same_name"]
+    assert matches[0]["material"]["material_id"] == material["material_id"]
+    assert [row["title"] for row in matches[0]["collections"]] == ["Close reading"]
+
+
+def test_reuse_false_keeps_a_second_copy_with_its_own_annotations(
+    client: TestClient,
+) -> None:
+    data = _pdf_bytes()
+    first = _upload(client, name="attention.pdf", data=data)
+    second = client.post(
+        "/api/v1/reading/materials",
+        params={"reuse": "false"},
+        files={"file": ("attention.pdf", io.BytesIO(data), "application/pdf")},
+    )
+    assert second.status_code == 200, second.text
+    second_id = second.json()["material_id"]
+
+    assert second_id != first["material_id"]
+    client.put(
+        f"/api/v1/reading/materials/{first['material_id']}/annotations",
+        json={"locator": 1, "quote": "Sequence models", "note": "first copy"},
+    )
+
+    assert (
+        len(client.get(f"/api/v1/reading/materials/{first['material_id']}/annotations").json()) == 1
+    )
+    # The second copy shares the extracted text but none of the reading state.
+    assert client.get(f"/api/v1/reading/materials/{second_id}/annotations").json() == []
+    assert client.get(f"/api/v1/reading/materials/{second_id}/units/1").json()["text"]
+
+
+def test_deleting_a_material_reports_where_it_was_used(client: TestClient) -> None:
+    data = _pdf_bytes()
+    first = _upload(client, name="attention.pdf", data=data)
+    second_id = client.post(
+        "/api/v1/reading/materials",
+        params={"reuse": "false"},
+        files={"file": ("attention.pdf", io.BytesIO(data), "application/pdf")},
+    ).json()["material_id"]
+    client.post(
+        "/api/v1/reading/workspaces",
+        json={"title": "Close reading", "material_ids": [first["material_id"]]},
+    )
+
+    removed = client.request("DELETE", f"/api/v1/reading/materials/{first['material_id']}").json()
+
+    assert [row["title"] for row in removed["removed_from"]] == ["Close reading"]
+    # The sibling still reads the same extracted content, so it survives.
+    assert client.get(f"/api/v1/reading/materials/{second_id}/units/1").json()["text"]

@@ -30,6 +30,7 @@ The output is decoupled from the rest of ``turn_runtime``:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import logging
 from typing import Any, Sequence
 
@@ -51,7 +52,7 @@ class SourceEntry:
     """One row in the per-turn Attached Sources manifest."""
 
     sid: str
-    kind: str  # "notebook" | "book" | "history" | "question" | "attachment"
+    kind: str  # notebook | book | history | partner_group | question | attachment
     name: str
     full_text: str
     fresh: bool
@@ -117,6 +118,7 @@ async def build_inventory(
     fresh_book_references: Sequence[dict[str, Any]],
     fresh_history_session_ids: Sequence[Any],
     fresh_question_entry_ids: Sequence[Any],
+    fresh_partner_group_references: Sequence[Any] = (),
     language: str = "en",
 ) -> SourceInventory:
     """Compose the session-cumulative inventory for one chat turn.
@@ -143,6 +145,12 @@ async def build_inventory(
         inv,
         store=store,
         history_session_ids=fresh_history_session_ids,
+        current_turn_ordinal=current_turn_ordinal,
+        language=language,
+    )
+    _add_fresh_partner_groups(
+        inv,
+        references=fresh_partner_group_references,
         current_turn_ordinal=current_turn_ordinal,
         language=language,
     )
@@ -357,6 +365,32 @@ async def _add_fresh_questions(
         )
 
 
+def _add_fresh_partner_groups(
+    inv: SourceInventory,
+    *,
+    references: Sequence[Any],
+    current_turn_ordinal: int,
+    language: str,
+) -> None:
+    for raw in references:
+        ref = _partner_group_reference(raw)
+        if ref is None:
+            continue
+        text, name = _load_partner_group_reference(ref, language=language)
+        if not text:
+            continue
+        inv.add(
+            SourceEntry(
+                sid=_partner_group_source_id(ref),
+                kind="partner_group",
+                name=name,
+                full_text=text,
+                fresh=True,
+                first_seen_turn=current_turn_ordinal,
+            )
+        )
+
+
 # ----- Historical source collection ---------------------------------------
 
 
@@ -495,6 +529,30 @@ async def _collect_from_user_message(
             SourceEntry(
                 sid=sid,
                 kind="history",
+                name=name,
+                full_text=text,
+                fresh=False,
+                first_seen_turn=turn_ordinal,
+            )
+        )
+
+    # Partner Group transcripts are public speaker/content rows only. Their
+    # service resolver applies ownership and the same absolute transcript cap
+    # used by live Group context; persisted private ``events`` never enter it.
+    for raw in snap.get("partnerGroupReferences") or []:
+        ref = _partner_group_reference(raw)
+        if ref is None:
+            continue
+        sid = _partner_group_source_id(ref)
+        if sid in inv:
+            continue
+        text, name = _load_partner_group_reference(ref, language=language)
+        if not text:
+            continue
+        inv.add(
+            SourceEntry(
+                sid=sid,
+                kind="partner_group",
                 name=name,
                 full_text=text,
                 fresh=False,
@@ -761,6 +819,39 @@ def _load_partner_session(ref: str, *, language: str = "en") -> tuple[str, str]:
     first_line = str((opener or {}).get("content", "") or "").strip().splitlines()
     title = (first_line[0][:60].strip() if first_line else "") or partner_name
     return transcript, title
+
+
+def _partner_group_reference(raw: Any) -> dict[str, str] | None:
+    if not isinstance(raw, dict):
+        return None
+    group_id = str(raw.get("group_id") or "").strip()
+    session_key = str(raw.get("session_key") or "").strip()
+    if not group_id or not session_key:
+        return None
+    return {"group_id": group_id[:80], "session_key": session_key[:120]}
+
+
+def _partner_group_source_id(ref: dict[str, str]) -> str:
+    composite = f"{ref['group_id']}\0{ref['session_key']}".encode()
+    return "pg-" + hashlib.sha256(composite).hexdigest()[:20]
+
+
+def _load_partner_group_reference(
+    ref: dict[str, str],
+    *,
+    language: str,
+) -> tuple[str, str]:
+    try:
+        from deeptutor.services.partner_groups import get_partner_group_manager
+
+        return get_partner_group_manager().referenced_transcript(
+            ref["group_id"],
+            ref["session_key"],
+            language=language,
+        )
+    except Exception:
+        logger.debug("Failed to resolve Partner Group reference %r", ref, exc_info=True)
+        return "", ""
 
 
 async def _load_history_session(

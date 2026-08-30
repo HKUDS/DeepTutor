@@ -188,6 +188,84 @@ async def test_build_inventory_fresh_attachments_only() -> None:
 
 
 @pytest.mark.asyncio
+async def test_partner_group_reference_is_a_structured_bounded_source(monkeypatch) -> None:
+    from deeptutor.services import partner_groups as partner_groups_service
+
+    calls: list[tuple[str, str, str]] = []
+
+    class FakeGroups:
+        def referenced_transcript(self, group_id, session_key, *, language):
+            calls.append((group_id, session_key, language))
+            return (
+                "[Partner Group]\nAda: public answer\nBob: another public answer",
+                "Study panel: First question",
+            )
+
+    monkeypatch.setattr(
+        partner_groups_service,
+        "get_partner_group_manager",
+        lambda: FakeGroups(),
+    )
+    inv = await build_inventory(
+        FakeStore(),
+        session_id="home-session",
+        leaf_message_id=None,
+        current_turn_ordinal=1,
+        fresh_attachment_records=[],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+        fresh_partner_group_references=[
+            {"group_id": "study-panel", "session_key": "pg-thread"},
+            {"group_id": "", "session_key": "ignored"},
+        ],
+        language="zh",
+    )
+
+    assert calls == [("study-panel", "pg-thread", "zh")]
+    assert len(inv.entries) == 1
+    assert inv.entries[0].sid.startswith("pg-")
+    assert inv.entries[0].kind == "partner_group"
+    assert inv.entries[0].name == "Study panel: First question"
+    assert "Ada: public answer" in inv.entries[0].full_text
+
+
+def test_partner_group_reference_request_contract_is_normalized_and_snapshotted() -> None:
+    from deeptutor.services.session.turn_runtime import (
+        _partner_group_references,
+        _request_snapshot_metadata,
+    )
+
+    references = _partner_group_references(
+        [
+            {"group_id": " study-panel ", "session_key": " thread-a "},
+            {"group_id": "study-panel", "session_key": "thread-a"},
+            {"group_id": "", "session_key": "ignored"},
+        ]
+    )
+    assert references == [{"group_id": "study-panel", "session_key": "thread-a"}]
+
+    metadata = _request_snapshot_metadata(
+        payload={},
+        content="Use the attached panel",
+        capability="chat",
+        config={},
+        attachments=[],
+        notebook_references=[],
+        history_references=[],
+        partner_group_references=references,
+        question_notebook_references=[],
+        book_references=[],
+        persona="",
+        memory_references=[],
+        llm_selection=None,
+    )
+    assert metadata["request_snapshot"]["partnerGroupReferences"] == references
+
+
+@pytest.mark.asyncio
 async def test_build_inventory_historical_attachment_visible_to_next_turn() -> None:
     """Attachment uploaded in turn 1 must appear as 'previously attached
     (turn 1)' in turn 2's manifest, even though turn 2's payload is empty."""

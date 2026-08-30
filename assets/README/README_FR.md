@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>Extras d'installation optionnels</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>Extras d'installation optionnels</b> — moteurs RAG / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # Moteur LightRAG intégré (SDK pris en charge exact)
+pip install -e ".[graphrag]"        # Moteur GraphRAG de Microsoft
 pip install -e ".[dev]"             # outils de tests/lint
 pip install -e ".[partners]"        # SDKs de canaux IM Partner
 pip install -e ".[matrix]"          # canal Matrix sans E2EE/libolm
@@ -453,6 +455,8 @@ Les bases de connaissances sont les collections de documents derrière le RAG �
 
 En créant une KB, vous choisissez soit de **créer nouvelle** (uploadez des documents et construisez un index frais) soit de **lier une existante** (réutilisez un index construit ailleurs, lu en place sans re-indexation). Une KB peut aussi suivre des **dépôts GitHub** (dépôt, branche, glob) ou des **URL de sites de documentation** (avec une profondeur d'exploration et un nombre de pages limités) ; la synchronisation à la demande compare les empreintes pour détecter les contenus ajoutés, modifiés ou supprimés, afin que la documentation suivie reste à jour sans nouveau téléversement. La re-indexation écrit un nouveau répertoire plat `version-N` et conserve les précédents, donc un index fonctionnel n'est jamais détruit en milieu de reconstruction. Un seul document peut être supprimé même d'une base en état d'**erreur** — retirer un fichier dont l'analyse a échoué sans devoir tout supprimer et reconstruire. L'analyse de documents — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM ou LiteParse — est choisie dans **Paramètres → Base de Connaissances**, avec les téléchargements de modèles locaux désactivés par défaut. Docling peut aussi fonctionner en mode **distant** contre un serveur Docling Serve (aucune installation ni modèle local nécessaire), configuré via **Paramètres → Analyse de Documents** (`mode=remote`, une URL de base de serveur, et une clé API optionnelle) ou les variables d'environnement `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. Tika est distant uniquement et pointe vers un serveur Apache Tika (`TIKA_SERVER_URL`). La CLI reprend le cycle de vie avec `list/info/create/add/search/set-default/delete`, les commandes d'ajout et de suppression de sources, `list-sources` et `sync`.
 
+Le moteur LightRAG intégré s'installe avec `pip install 'deeptutor[rag-lightrag]'`. Cet extra contient le SDK LightRAG pris en charge mais n'installe pas MinerU. Choisissez MinerU indépendamment dans Analyse de Documents et configurez soit son mode cloud soit installez sa CLI locale lorsqu'une analyse structurée des PDF est souhaitée ; le mode texte seul et les autres moteurs d'analyse n'ont pas besoin de MinerU.
+
 </details>
 
 <details>
@@ -496,7 +500,7 @@ Le Memory Graph montre toute la pyramide — la synthèse L3 au centre, L2 dans 
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Hub Settings de DeepTutor" width="900">
 </div>
 
-Settings est le plan de contrôle opérationnel, avec une bande de statut en direct (santé du backend et mémoire résidente en direct sur l'arborescence de processus) et une carte par zone : **Apparence** (thème, langue de l'interface et de sortie du modèle, style des blocs de code), **Réseau** (base d'API, ports, CORS), **Modèles** (LLM, Embedding, Recherche, Texte-à-Parole, Parole-à-Texte, Génération d'Images, Génération de Vidéos), **Base de Connaissances** (moteur d'analyse de documents), **Chat** (outils, paramètres par capacité, limites des pièces jointes), **Partners & Agents** (les sous-agents que vous pouvez consulter depuis un tour), et **Memory** (les budgets du consolidateur).
+Settings est le plan de contrôle opérationnel, avec une bande de statut en direct (santé du backend et mémoire résidente en direct sur l'arborescence de processus) et un navigateur persistant et cherchable qui atteint n'importe quelle page en un clic : **Apparence** (thème, langue de l'interface et de sortie du modèle, style des blocs de code), **Réseau** (base d'API, ports, CORS), **Modèles** (Connexions, LLM, Modèles de tâche, Embedding, Recherche, Texte-à-Parole, Parole-à-Texte, Génération d'Images, Génération de Vidéos), **Base de Connaissances** (moteur d'analyse de documents), **Chat** (outils, paramètres par capacité, suggestions de démarrage, limites des pièces jointes), **Partners & Agents** (les sous-agents que vous pouvez consulter depuis un tour), et **Memory** (les budgets du consolidateur). Une **connexion** détient un identifiant de fournisseur et le reflète dans chaque service que ce fournisseur peut desservir, de sorte qu'une clé est saisie une seule fois plutôt que collée dans cinq pages ; les **modèles de tâche** épinglent un modèle petit et rapide pour le travail que personne n'a demandé — nommer une conversation, écrire les suggestions de démarrage du compositeur — et se résolvent vers le défaut actif quand ils sont laissés vides.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Paramètres d'apparence et thèmes DeepTutor" width="900">
@@ -680,7 +684,10 @@ Parce que DeepTutor parle le format ouvert Agent-Skills, **[ClawHub](https://cla
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+Quand plusieurs éditeurs partagent le même slug, la recherche affiche chaque éditeur et une référence d'installation entièrement qualifiée (`clawhub:<ownerHandle>/<slug>`).
 
 Ajoutez d'autres registres dans `settings/skill_hubs.json` : une entrée `type: "clawhub"` pointe vers n'importe quelle API HTTP compatible (EduHub et ClawHub parlent tous deux ce protocole), `type: "command"` enveloppe n'importe quelle CLI de récupération qu'un registre fournit, et `"default"` choisit le hub utilisé pour les slugs nus. Tous alimentent la même porte d'importation.
 
@@ -703,6 +710,16 @@ Ajoutez d'autres registres dans `settings/skill_hubs.json` : une entrée `type: 
 </p>
 
 ## 🌐 Communauté
+
+### 🔗 Mainteneurs
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 Contact
 

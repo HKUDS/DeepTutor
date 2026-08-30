@@ -1,0 +1,128 @@
+"use client";
+
+/**
+ * The reading companion's composer — the same one the main chat page and
+ * mastery study use, wired through the unified chat context.
+ *
+ * A reading conversation is a chat session like any other, so it gets the
+ * whole composer: attachments, the knowledge-base picker (with real scope
+ * activation, not a reading-local facsimile), the model selector, dictation.
+ * The one thing specific to this surface is grounding: when the learner has
+ * a passage selected, the pending viewport/quote has to reach the backend
+ * before the message does, exactly like the retired bespoke textarea did.
+ */
+
+import { useCallback } from "react";
+
+import StandaloneComposer, {
+  type StandaloneComposerSubmission,
+} from "@/components/chat/home/StandaloneComposer";
+import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { hasPendingAskUser } from "@/lib/ask-user-state";
+import { setReadingViewport } from "@/lib/reading-turn-state";
+
+export function ReadingComposer({
+  placeholder,
+  placeholderCompletion,
+  selection,
+  onSent,
+  linkedSessionIds,
+  prefillInputRef,
+}: {
+  placeholder: string;
+  /** Offered question the composer lets the learner take with Tab. */
+  placeholderCompletion?: string;
+  selection: { quote: string; locator: number } | null;
+  /** Clears the pending-selection banner once the message is on its way. */
+  onSent: () => void;
+  /** Reading-specific "reference these other reading conversations" links. */
+  linkedSessionIds: string[];
+  /** Lets the reader pane drop a quoted selection's focus into the box. */
+  prefillInputRef?: React.MutableRefObject<((text: string) => void) | null>;
+}) {
+  const {
+    state,
+    sendMessage,
+    submitUserReply,
+    cancelStreamingTurn,
+    setKBs,
+    setLLMSelection,
+    setPersonaSelection,
+  } = useUnifiedChat();
+
+  const awaitingUserReply = hasPendingAskUser(
+    state.messages[state.messages.length - 1]?.events,
+  );
+
+  const handleSubmit = useCallback(
+    (submission: StandaloneComposerSubmission) => {
+      // A turn paused on a question: what the user typed is their answer,
+      // not a new message. See page.tsx's handleSend for the same routing.
+      if (awaitingUserReply) {
+        if (submission.content.trim()) {
+          submitUserReply({ text: submission.content });
+        }
+        return;
+      }
+      if (selection) {
+        setReadingViewport({
+          locator: selection.locator,
+          selection: selection.quote,
+        });
+      }
+      // The composer's own "@ reference an earlier session" picker and this
+      // surface's persistent linked-conversations list share one wire slot;
+      // union them rather than letting either silently win.
+      const historyReferences = Array.from(
+        new Set([...linkedSessionIds, ...submission.historyReferences]),
+      );
+      sendMessage(
+        submission.content,
+        submission.attachments,
+        // How many times the companion may consult the selected agent this
+        // turn. Absent when no agent is picked, which is the ordinary case.
+        submission.subagentBudget
+          ? { subagent_consult_budget: submission.subagentBudget }
+          : undefined,
+        submission.notebookReferences,
+        historyReferences,
+        { bookReferences: submission.bookReferences },
+        submission.questionNotebookReferences,
+        submission.persona ?? undefined,
+        submission.memoryReferences,
+      );
+      onSent();
+      window.setTimeout(() => setReadingViewport({ selection: "" }), 0);
+    },
+    [
+      awaitingUserReply,
+      linkedSessionIds,
+      onSent,
+      selection,
+      sendMessage,
+      submitUserReply,
+    ],
+  );
+
+  return (
+    <StandaloneComposer
+      // The active material is named in the header above; a capability chip
+      // here would only repeat it.
+      showCapabilityChip={false}
+      hasMessages={state.messages.length > 0}
+      isStreaming={state.isStreaming}
+      awaitingUserReply={awaitingUserReply}
+      selectedKnowledgeBases={state.knowledgeBases}
+      onKnowledgeBasesChange={setKBs}
+      llmSelection={state.llmSelection}
+      onLLMSelectionChange={setLLMSelection}
+      personaSelection={state.personaSelection}
+      onPersonaSelectionChange={setPersonaSelection}
+      onSubmit={handleSubmit}
+      onCancelStreaming={cancelStreamingTurn}
+      inputPlaceholder={placeholder}
+      inputPlaceholderCompletion={placeholderCompletion}
+      prefillInputRef={prefillInputRef}
+    />
+  );
+}

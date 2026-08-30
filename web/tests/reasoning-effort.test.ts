@@ -120,10 +120,13 @@ test("OpenAI-compatible gateways expose explicit effort levels", () => {
 });
 
 test("Anthropic-compatible aliases follow the Anthropic model rules", () => {
-  assert.deepEqual(
-    values("anthropic-compatible", "claude-sonnet-4-5"),
-    ["", "none", "low", "medium", "high"],
-  );
+  assert.deepEqual(values("anthropic-compatible", "claude-sonnet-4-5"), [
+    "",
+    "none",
+    "low",
+    "medium",
+    "high",
+  ]);
   assert.deepEqual(
     values("anthropic_compatible", "claude-opus-4-6").includes("adaptive"),
     false,

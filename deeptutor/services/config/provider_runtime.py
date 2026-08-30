@@ -728,8 +728,17 @@ def resolve_llm_runtime_config(
     *,
     service: ModelCatalogService | None = None,
     llm_selection: dict[str, Any] | LLMSelection | None = None,
+    service_name: str = "llm",
 ) -> ResolvedLLMConfig:
-    """Resolve active LLM config with TutorBot-style provider matching."""
+    """Resolve active LLM config with TutorBot-style provider matching.
+
+    ``service_name`` selects which catalog service supplies the profile and
+    model. It is ``llm`` for everything the user drives; the ``task`` service
+    is the same shape and stands in for it on the calls DeepTutor makes on its
+    own. The provider pool it falls back to stays the LLM one either way —
+    a task profile that names a bare model still resolves against the
+    credentials configured for chat.
+    """
     catalog_service = service or get_model_catalog_service()
     loaded = _with_personal_llm_profiles(_load_catalog(catalog))
     # Parse the payload once: ``apply_llm_selection_to_catalog`` would otherwise
@@ -738,7 +747,7 @@ def resolve_llm_runtime_config(
     selection = LLMSelection.from_payload(llm_selection)
     loaded = apply_llm_selection_to_catalog(loaded, selection)
 
-    profile, model = _active_profile_and_model(loaded, catalog_service, "llm")
+    profile, model = _active_profile_and_model(loaded, catalog_service, service_name)
     resolved_model = _as_str((model or {}).get("model"))
 
     binding_hint_raw = _as_str((profile or {}).get("binding"))

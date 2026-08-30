@@ -13,6 +13,9 @@ from deeptutor.learning.models import (
     MasteryInteraction,
     PendingQuestion,
     RepetitionState,
+    TopicMetadata,
+    TopicSource,
+    TopicSourceKind,
 )
 from deeptutor.learning.storage import (
     LearningConflictError,
@@ -219,6 +222,88 @@ class TestListAll:
         store.save(LearningProgress(book_id="visible"))
         (tmp_path / ".hidden.json").write_text("{}", encoding="utf-8")
         assert store.list_all() == ["visible"]
+
+
+class TestTopicMetadata:
+    def test_topic_metadata_and_mixed_sources_roundtrip(self, store):
+        store.save(LearningProgress(book_id="path-1", name="Linear Algebra"))
+        metadata = TopicMetadata(
+            path_id="path-1",
+            goal="Understand vectors and linear maps",
+            description="A visual route through first-year linear algebra.",
+            emoji="🧭",
+            map_seed=42,
+        )
+        sources = [
+            TopicSource(
+                id="source-book",
+                kind=TopicSourceKind.BOOK,
+                source_id="book-1",
+                label="Linear Algebra Notes",
+                position=0,
+            ),
+            TopicSource(
+                id="source-kb",
+                kind=TopicSourceKind.KNOWLEDGE_BASE,
+                source_id="kb-1",
+                label="Course KB",
+                position=1,
+                metadata={"engine": "llamaindex"},
+            ),
+        ]
+
+        store.put_topic(metadata, sources)
+
+        topic = store.get_topic("path-1")
+        assert topic is not None
+        assert topic.metadata.goal == "Understand vectors and linear maps"
+        assert topic.metadata.emoji == "🧭"
+        assert [source.kind for source in topic.sources] == [
+            TopicSourceKind.BOOK,
+            TopicSourceKind.KNOWLEDGE_BASE,
+        ]
+        assert topic.sources[1].metadata == {"engine": "llamaindex"}
+        assert store.list_events("path-1")[-1].event_type == "topic.updated"
+
+    def test_existing_path_gets_stable_synthesized_topic_metadata(self, store):
+        store.save(LearningProgress(book_id="legacy-path", name="Legacy"))
+
+        first = store.get_topic("legacy-path")
+        second = store.get_topic("legacy-path")
+
+        assert first is not None and second is not None
+        assert first.metadata.path_id == "legacy-path"
+        assert first.metadata.map_seed == second.metadata.map_seed
+        assert first.sources == []
+
+    def test_topic_snapshots_batch_active_topics_with_counts_and_sources(self, store):
+        for path_id in ("active-path", "archived-path"):
+            store.save(LearningProgress(book_id=path_id, name=path_id))
+        store.put_topic(
+            TopicMetadata(path_id="active-path", goal="Learn"),
+            [
+                TopicSource(
+                    id="source-1",
+                    kind=TopicSourceKind.BOOK,
+                    label="Course book",
+                )
+            ],
+        )
+        store.put_topic(
+            TopicMetadata(path_id="archived-path", status="archived"),
+            [],
+        )
+        store.bind_session("active-path", "session-a")
+        store.bind_session("active-path", "session-b")
+
+        snapshots = store.list_topic_snapshots()
+
+        assert len(snapshots) == 1
+        progress, topic, session_count, active_interaction = snapshots[0]
+        assert progress.book_id == "active-path"
+        assert [source.label for source in topic.sources] == ["Course book"]
+        assert session_count == 2
+        assert active_interaction is None
 
 
 class TestLegacyMigration:

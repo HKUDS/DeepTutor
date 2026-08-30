@@ -331,8 +331,11 @@ export default function PartnerChat({
     let live: { events: StreamEvent[]; content: string } | null = null;
     // Local providers can emit many tokens between animation frames. Publish
     // one immutable snapshot per frame so React never enters an update storm.
-    const { publish, publishNow, cancel: cancelPendingPublish } =
-      createPartnerDraftPublisher(() => live, setDraft);
+    const {
+      publish,
+      publishNow,
+      cancel: cancelPendingPublish,
+    } = createPartnerDraftPublisher(() => live, setDraft);
 
     const handleMessage = (message: MessageEvent) => {
       let data: {

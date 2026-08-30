@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from deeptutor.services.config.model_catalog import SERVICE_NAMES
 from deeptutor.services.config.runtime_settings import (
     RuntimeSettingsService,
     ensure_runtime_settings_files,
@@ -235,15 +236,7 @@ def test_startup_ensure_creates_missing_runtime_jsons_with_defaults(
     assert _read_json(settings_dir / "system.json")["backend_port"] == 8001
     assert _read_json(settings_dir / "auth.json")["enabled"] is False
     assert _read_json(settings_dir / "integrations.json")["pocketbase_url"] == ""
-    assert set(_read_json(settings_dir / "model_catalog.json")["services"]) == {
-        "llm",
-        "embedding",
-        "search",
-        "tts",
-        "stt",
-        "imagegen",
-        "videogen",
-    }
+    assert set(_read_json(settings_dir / "model_catalog.json")["services"]) == set(SERVICE_NAMES)
 
 
 def test_mineru_defaults_and_normalization(tmp_path: Path) -> None:

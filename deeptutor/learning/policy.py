@@ -78,7 +78,7 @@ def gate_threshold(kp_type: KnowledgeType) -> float:
     return QUANTITATIVE_GATE.get(kp_type, 0.9)
 
 
-def is_mastered(progress: LearningProgress, kp: KnowledgePoint) -> bool:
+def is_assessed_mastered(progress: LearningProgress, kp: KnowledgePoint) -> bool:
     """Whether ``kp`` clears its mastery gate.
 
     * MEMORY / PROCEDURE: recency-weighted accuracy ≥ the type's threshold.
@@ -87,6 +87,27 @@ def is_mastered(progress: LearningProgress, kp: KnowledgePoint) -> bool:
     if kp.type in QUALITATIVE_TYPES:
         return bool(progress.qualitative_mastery.get(kp.id, False))
     return progress.mastery_levels.get(kp.id, 0.0) >= gate_threshold(kp.type)
+
+
+def mastery_source(progress: LearningProgress, kp: KnowledgePoint) -> str:
+    """Return ``system`` or ``learner`` provenance for a cleared waypoint."""
+
+    if is_assessed_mastered(progress, kp):
+        return "system"
+    if kp.id in progress.learner_mastery_overrides:
+        return "learner"
+    return ""
+
+
+def is_mastered(progress: LearningProgress, kp: KnowledgePoint) -> bool:
+    """Whether the route may advance past ``kp``.
+
+    The deterministic assessed gate remains available through
+    :func:`is_assessed_mastered`.  An explicit learner claim may advance the
+    route, but every public report exposes that different provenance.
+    """
+
+    return bool(mastery_source(progress, kp))
 
 
 def display_mastery(progress: LearningProgress, kp: KnowledgePoint) -> float:
@@ -144,6 +165,7 @@ class NextStep:
     reason: str = ""
     pending_prompt: str = ""
     pending_question: PublicPendingQuestion | None = None
+    session_id: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -162,6 +184,7 @@ class NextStep:
             "pending_question": (
                 self.pending_question.to_dict() if self.pending_question is not None else None
             ),
+            "session_id": self.session_id,
         }
 
 
@@ -180,7 +203,12 @@ def _gate_kind(kp: KnowledgePoint) -> str:
     return "qualitative" if kp.type in QUALITATIVE_TYPES else "quantitative"
 
 
-def next_objective(progress: LearningProgress, *, now: float | None = None) -> NextStep:
+def next_objective(
+    progress: LearningProgress,
+    *,
+    now: float | None = None,
+    pending_session_id: str = "",
+) -> NextStep:
     """Decide the next thing to work on. Order of precedence:
 
     1. an outstanding posed question (grade it before moving on);
@@ -206,6 +234,7 @@ def next_objective(progress: LearningProgress, *, now: float | None = None) -> N
             reason="A posed question is awaiting the learner's answer; grade it with mastery_grade.",
             pending_prompt=pending.prompt,
             pending_question=public_pending_question(pending),
+            session_id=str(pending_session_id or ""),
         )
 
     due = due_reviews(progress, now=now)
@@ -280,6 +309,12 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
                     "type": kp.type.value,
                     "status": status,
                     "mastery": round(display_mastery(progress, kp), 3),
+                    "mastery_source": mastery_source(progress, kp),
+                    "override_note": (
+                        progress.learner_mastery_overrides[kp.id].note
+                        if kp.id in progress.learner_mastery_overrides
+                        else ""
+                    ),
                 }
             )
         modules_out.append(
@@ -338,6 +373,13 @@ def objective_report(progress: LearningProgress, kp_id: str) -> dict | None:
         "status": objective_status(progress, kp),
         "gate": _gate_kind(kp),
         "mastered": is_mastered(progress, kp),
+        "assessed_mastered": is_assessed_mastered(progress, kp),
+        "mastery_source": mastery_source(progress, kp),
+        "override_note": (
+            progress.learner_mastery_overrides[kp_id].note
+            if kp_id in progress.learner_mastery_overrides
+            else ""
+        ),
         "mastery": round(display_mastery(progress, kp), 3),
         "threshold": round(gate_threshold(kp.type), 3),
         "attempts": attempts,
@@ -374,7 +416,9 @@ __all__ = [
     "QUALITATIVE_TYPES",
     "NextStep",
     "gate_threshold",
+    "is_assessed_mastered",
     "is_mastered",
+    "mastery_source",
     "display_mastery",
     "objective_status",
     "objective_report",

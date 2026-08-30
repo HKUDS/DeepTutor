@@ -15,6 +15,8 @@ export interface ReaderDisplayLine {
   /** The original source line, including Markdown heading markers. */
   text: string;
   heading: ReaderHeading | null;
+  /** Inside (or is a boundary of) a fenced code block — render literally. */
+  fence: boolean;
 }
 
 export function headingAnchor(locator: number, index: number): string {
@@ -47,23 +49,25 @@ export function readerLinesWithHeadings(
   return text.split("\n").map((line) => {
     const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
     if (fenceMatch) {
+      // The fence delimiter line itself is reported as `fence: true` too, so
+      // the renderer never runs Markdown formatting over a stray ``` marker.
       if (!fence) fence = fenceMatch[1];
       else if (line.trim().startsWith(fence)) fence = null;
-      return { text: line, heading: null };
+      return { text: line, heading: null, fence: true };
     }
-    if (fence) return { text: line, heading: null };
+    if (fence) return { text: line, heading: null, fence: true };
 
     const parsed = readerHeadingLine(line);
-    if (!parsed) return { text: line, heading: null };
+    if (!parsed) return { text: line, heading: null, fence: false };
     const expected = headings[headingIndex++];
     if (
       !expected ||
       expected.title !== parsed.title ||
       expected.level !== parsed.level
     ) {
-      return { text: line, heading: null };
+      return { text: line, heading: null, fence: false };
     }
-    return { text: line, heading: expected };
+    return { text: line, heading: expected, fence: false };
   });
 }
 

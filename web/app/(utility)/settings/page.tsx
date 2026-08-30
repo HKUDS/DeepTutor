@@ -1,5 +1,7 @@
-import SettingsHub from "@/components/settings/SettingsHub";
+"use client";
 
-export default function SettingsIndexPage() {
-  return <SettingsHub />;
+import SettingsOverview from "@/components/settings/SettingsOverview";
+
+export default function SettingsPage() {
+  return <SettingsOverview />;
 }

@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 # Mounted together whenever a reading material is open on the turn. Kept here so
 # the mount policy and the registration list cannot drift apart.
 READING_TOOL_NAMES: tuple[str, ...] = (
+    "reading_list_tabs",
+    "reading_switch_tab",
     "material_outline",
     "search_material",
     "read_material",
@@ -54,6 +56,8 @@ READING_TOOL_NAMES: tuple[str, ...] = (
 
 # Private, server-injected kwarg carrying the open material.
 MATERIAL_KWARG = "_material_id"
+WORKSPACE_KWARG = "_reading_workspace_id"
+BINDING_KWARG = "_reading_binding"
 
 _SEARCH_DEFAULT_LIMIT = 8
 _SEARCH_MAX_LIMIT = 20
@@ -67,7 +71,9 @@ class _ReadingToolBase(BaseTool):
 
     @staticmethod
     def _material_id(kwargs: dict[str, Any]) -> str:
-        material_id = str(kwargs.get(MATERIAL_KWARG) or "").strip()
+        binding = kwargs.get(BINDING_KWARG)
+        bound_id = binding.get("material_id") if isinstance(binding, dict) else ""
+        material_id = str(bound_id or kwargs.get(MATERIAL_KWARG) or "").strip()
         if not material_id:
             raise _NoMaterial()
         return material_id
@@ -82,6 +88,12 @@ class _ReadingToolBase(BaseTool):
         return ReadingStore()
 
     @staticmethod
+    def _catalog():
+        from deeptutor.reading import ReadingCatalogStore
+
+        return ReadingCatalogStore()
+
+    @staticmethod
     def _failure(message: str) -> ToolResult:
         return ToolResult(content=message, success=False)
 
@@ -91,11 +103,7 @@ class _NoMaterial(RuntimeError):
 
 
 def _guard(func):
-    """Turn engine errors into readable tool failures instead of turn deaths.
-
-    A model that asked for page 900 of a 12-page document should be told so and
-    given another round, not take the whole turn down with it.
-    """
+    """Turn engine errors into readable tool failures instead of turn deaths."""
 
     async def wrapper(self: _ReadingToolBase, **kwargs: Any) -> ToolResult:
         from deeptutor.reading import ReadingError
@@ -113,6 +121,102 @@ def _guard(func):
             return self._failure("The reader could not complete that request.")
 
     return wrapper
+
+
+class ReadingListTabsTool(_ReadingToolBase):
+    """Expose source identities without placing every source body in context."""
+
+    name = "reading_list_tabs"
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name=self.name,
+            description=(
+                "List the material tabs on the current reading table. Returns only "
+                "identity, source type and processing status—never document bodies. "
+                "Use this before comparing sources or switching to another material."
+            ),
+            parameters=[],
+        )
+
+    @_guard
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        workspace_id = str(kwargs.get(WORKSPACE_KWARG) or "").strip()
+        if not workspace_id:
+            return self._failure("No reading workspace is open.")
+        workspace = await asyncio.to_thread(self._catalog().get_workspace, workspace_id)
+        if workspace is None:
+            return self._failure("The reading workspace is unavailable.")
+        lines = [f"Reading table “{workspace.title}” has {len(workspace.tabs)} material(s):"]
+        tabs: list[dict[str, Any]] = []
+        for tab in workspace.tabs:
+            material = tab.material
+            active = material.material_id == workspace.active_material_id
+            lines.append(
+                f"- {'ACTIVE — ' if active else ''}{material.title} "
+                f"[{material.source_kind.value}; {material.status.value}; id={material.material_id}]"
+            )
+            tabs.append(
+                {
+                    "material_id": material.material_id,
+                    "title": material.title,
+                    "source_kind": material.source_kind.value,
+                    "status": material.status.value,
+                    "active": active,
+                }
+            )
+        return ToolResult(
+            content="\n".join(lines),
+            metadata={"workspace_id": workspace_id, "tabs": tabs},
+        )
+
+
+class ReadingSwitchTabTool(_ReadingToolBase):
+    """Rebind this turn and the visible reader to one workspace material."""
+
+    name = "reading_switch_tab"
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name=self.name,
+            description=(
+                "Switch the active reading tab before using outline/search/read tools on "
+                "another workspace material. The material must come from reading_list_tabs."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="material_id",
+                    type="string",
+                    description="The exact material id returned by reading_list_tabs.",
+                )
+            ],
+        )
+
+    @_guard
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        workspace_id = str(kwargs.get(WORKSPACE_KWARG) or "").strip()
+        material_id = str(kwargs.get("material_id") or "").strip()
+        if not workspace_id:
+            return self._failure("No reading workspace is open.")
+        if not material_id:
+            return self._failure("reading_switch_tab needs a material id.")
+        workspace = await asyncio.to_thread(
+            self._catalog().set_active_material, workspace_id, material_id
+        )
+        binding = kwargs.get(BINDING_KWARG)
+        if isinstance(binding, dict):
+            binding["material_id"] = material_id
+        material = next(
+            tab.material for tab in workspace.tabs if tab.material.material_id == material_id
+        )
+        return ToolResult(
+            content=f"Switched the reading tools to “{material.title}”.",
+            metadata={
+                "workspace_id": workspace_id,
+                "material_id": material_id,
+                "reader_action": "switch_tab",
+            },
+        )
 
 
 class MaterialOutlineTool(_ReadingToolBase):
@@ -204,8 +308,18 @@ class SearchMaterialTool(_ReadingToolBase):
             f'{len(result.hits)} match(es) for "{query}"'
             f"{' (loose term match — verify before citing)' if result.mode == 'terms' else ''}:"
         ]
+        refs = {
+            row.locator: row
+            for row in (
+                await asyncio.to_thread(store.unit_references, material_id)
+                if manifest.render_mode in {"video", "audio"}
+                else []
+            )
+        }
         for hit in result.hits:
-            lines.append(f"- {unit} {hit.locator}: {hit.snippet}")
+            timestamp = refs.get(hit.locator)
+            timed_label = f" [{timestamp.title}]" if timestamp and timestamp.title else ""
+            lines.append(f"- {unit} {hit.locator}{timed_label}: {hit.snippet}")
         if result.truncated:
             lines.append("… more matches exist; narrow the query or raise the limit.")
         # Next-step guidance sits in the tool output, not only in the system
@@ -288,13 +402,32 @@ class ReadMaterialTool(_ReadingToolBase):
                 ),
                 metadata={"material_id": material_id, "locators": list(rendered.locators)},
             )
+        refs = {
+            row.locator: row
+            for row in (
+                await asyncio.to_thread(store.unit_references, material_id)
+                if manifest.render_mode in {"video", "audio"}
+                else []
+            )
+        }
+        timing = ""
+        if refs:
+            timing = "\n\nTimestamp map:\n" + "\n".join(
+                f"- {manifest.unit} {locator}: [{refs[locator].title}]"
+                for locator in rendered.locators
+                if locator in refs and refs[locator].title
+            )
         followup = (
             "\n\n→ Now call reader_goto with the verbatim sentence you are "
             "about to cite, so the user sees it highlighted, and cite it in "
-            "prose as [p.N]."
+            + (
+                "prose with the exact [MM:SS] or [H:MM:SS] timestamp above."
+                if refs
+                else "prose as [p.N]."
+            )
         )
         return ToolResult(
-            content=rendered.text + followup,
+            content=rendered.text + timing + followup,
             sources=[
                 {
                     "type": "reading",
@@ -553,6 +686,8 @@ def _ellipsis(text: str, limit: int) -> str:
 
 
 READING_TOOL_TYPES: tuple[type[BaseTool], ...] = (
+    ReadingListTabsTool,
+    ReadingSwitchTabTool,
     MaterialOutlineTool,
     SearchMaterialTool,
     ReadMaterialTool,
@@ -563,11 +698,15 @@ READING_TOOL_TYPES: tuple[type[BaseTool], ...] = (
 
 __all__ = [
     "MATERIAL_KWARG",
+    "BINDING_KWARG",
     "READING_TOOL_NAMES",
     "READING_TOOL_TYPES",
     "MaterialOutlineTool",
+    "ReadingListTabsTool",
+    "ReadingSwitchTabTool",
     "ReadMaterialTool",
     "ReaderAnnotateTool",
     "ReaderGotoTool",
     "SearchMaterialTool",
+    "WORKSPACE_KWARG",
 ]

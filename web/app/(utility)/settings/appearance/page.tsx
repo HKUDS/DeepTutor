@@ -133,7 +133,7 @@ export default function AppearanceSettingsPage() {
           "Pick the colour palette and interface style. Each tile previews the theme it applies.",
         )}
       >
-        <div className="py-4">
+        <div className="py-3.5">
           {/* Order is intentional: Default (pure-white neutral, the default
               selection; theme id "snow" kept for stored preferences) →
               warm-light Cream → warm-dark Dark → cool-dark Glass. */}
@@ -169,7 +169,7 @@ export default function AppearanceSettingsPage() {
           "Choose how code snippets look across the app. Changes apply immediately to saved and streamed responses.",
         )}
       >
-        <div className="border-t border-[var(--border)]/50 px-1 py-4 first:border-t-0">
+        <div className="border-t border-[var(--border)]/50 py-3.5 first:border-t-0">
           <div className="text-[13.5px] font-medium text-[var(--foreground)]">
             {t("Preview")}
           </div>

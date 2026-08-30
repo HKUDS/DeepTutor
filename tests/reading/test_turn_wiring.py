@@ -9,10 +9,16 @@ loses its grounding and the answer quietly gets worse.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from deeptutor.reading.catalog_store import ReadingCatalogStore
+from deeptutor.services.path_service import PathService
+from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import (
     READING_SELECTION_MAX_CHARS,
+    TurnRuntimeManager,
     _reading_material_id,
     _reading_viewport,
     _request_snapshot_metadata,
@@ -105,6 +111,7 @@ def _snapshot(payload: dict) -> dict:
         book_references=[],
         persona="",
         memory_references=[],
+        partner_group_references=[],
         llm_selection=None,
     )
     return metadata["request_snapshot"]
@@ -123,3 +130,37 @@ def test_a_plain_chat_turn_carries_no_reading_key() -> None:
 
 def test_a_bogus_id_is_not_persisted() -> None:
     assert "readingMaterialId" not in _snapshot({"reading_material_id": "../../etc"})
+
+
+@pytest.mark.asyncio
+async def test_empty_workspace_starts_in_no_material_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
+    PathService.reset_instance()
+    try:
+        workspace = ReadingCatalogStore().create_workspace("Empty reading workspace")
+        runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "turns.sqlite3"))
+
+        async def _noop_run_turn(_execution) -> None:
+            return None
+
+        monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+        _session, turn = await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "capability": "immersive_reading",
+                "reading_workspace_id": workspace.workspace_id,
+                "content": "What can I read here?",
+                "tools": [],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+            }
+        )
+
+        assert runtime._executions[turn["id"]].payload["reading_material_id"] == ""
+    finally:
+        PathService.reset_instance()

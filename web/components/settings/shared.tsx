@@ -121,7 +121,7 @@ export function SettingRow({
   control: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-6 border-t border-[var(--border)]/50 px-1 py-4 first:border-t-0">
+    <div className="flex items-start justify-between gap-6 border-t border-[var(--border)]/50 py-3.5 first:border-t-0">
       <div className="min-w-0 flex-1">
         <div className="text-[13.5px] font-medium text-[var(--foreground)]">
           {title}
@@ -148,8 +148,8 @@ export function SettingSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-10">
-      <header className="mb-3">
+    <section className="mb-8">
+      <header className="mb-2">
         <h2 className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
           {title}
         </h2>
@@ -159,9 +159,13 @@ export function SettingSection({
           </p>
         )}
       </header>
-      <div className="rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40 px-5">
-        {children}
-      </div>
+      {/* A rule, not a box. The app divides with hairlines and whitespace —
+          a bordered, tinted panel around rows that already separate
+          themselves with hairlines was dividing the same content twice. The
+          top rule is what tells a section where it starts, and it has to live
+          here rather than on the first row because sections also hold custom
+          content (theme tiles, previews) that draws no rule of its own. */}
+      <div className="border-t border-[var(--border)]/60">{children}</div>
     </section>
   );
 }

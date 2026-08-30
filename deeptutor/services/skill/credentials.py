@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from deeptutor.services.path_service import get_path_service
+from deeptutor.utils.secret_files import write_secret_text
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +78,7 @@ def store_token(
         tokens = {}
         data["tokens"] = tokens
     tokens[hub] = {"token": token, "login": login, "name": name}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+    write_secret_text(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
 def clear_token(hub: str) -> bool:

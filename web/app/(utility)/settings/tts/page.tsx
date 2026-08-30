@@ -10,7 +10,7 @@ function AutoplayToggle() {
   const { t } = useTranslation();
   const { value, setValue, loading } = useVoiceAutoplayPreference();
   return (
-    <div className="flex items-start justify-between gap-6 rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40 px-5 py-4">
+    <div className="flex items-start justify-between gap-6 border-y border-[var(--border)]/50 py-3.5">
       <div className="min-w-0 flex-1">
         <div className="text-[13.5px] font-medium text-[var(--foreground)]">
           {t("Auto-play replies")}

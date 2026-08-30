@@ -29,7 +29,7 @@ import logging
 import re
 import socket
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse, urlsplit
 
 import httpx
 
@@ -40,6 +40,7 @@ MAX_RESPONSE_BYTES = 4 * 1024 * 1024  # 4 MB — safety cap on raw download
 DEFAULT_TIMEOUT_S = 15.0
 DEFAULT_USER_AGENT = "DeepTutor/1.0 (+https://hkuds.dev/deeptutor)"
 ALLOWED_SCHEMES = {"http", "https"}
+MAX_REDIRECTS = 5
 
 # Cheap inline HTML → text. Good enough for blog / docs / arxiv abstract
 # pages. For JS-heavy SPAs the tool will return the bare HTML scaffold —
@@ -98,29 +99,45 @@ async def fetch_url_as_markdown(
     if not host:
         return FetchOutcome(ok=False, error="URL is missing a host.")
     validator = host_validator or _is_disallowed_host
-    if validator(host):
-        return FetchOutcome(
-            ok=False,
-            error=f"Refusing to fetch private/loopback host: {host}.",
-        )
 
     factory = client_factory or _default_client_factory
+    current_url = url_clean
     try:
         async with factory(timeout=timeout_s, user_agent=user_agent) as client:
-            try:
+            # Redirects are followed by hand so that every hop is validated
+            # *before* it is contacted. `follow_redirects=True` only lets us
+            # inspect the final URL, by which point the client has already
+            # connected to each intermediate host.
+            for hop in range(MAX_REDIRECTS + 1):
+                current = urlsplit(current_url)
+                current_host = (current.hostname or "").strip()
+                if current.scheme.lower() not in ALLOWED_SCHEMES or not current_host:
+                    return FetchOutcome(ok=False, error="Redirect target is not a valid HTTP URL.")
+                if validator(current_host):
+                    return FetchOutcome(
+                        ok=False,
+                        error=(
+                            f"Redirect to private/loopback host blocked: {current_host}."
+                            if hop
+                            else f"Refusing to fetch private/loopback host: {current_host}."
+                        ),
+                    )
                 async with client.stream(
                     "GET",
-                    url_clean,
-                    headers={"User-Agent": user_agent, "Accept": "text/html,*/*;q=0.5"},
-                    follow_redirects=True,
+                    current_url,
+                    headers={
+                        "User-Agent": user_agent,
+                        "Accept": "text/html,*/*;q=0.5",
+                    },
+                    follow_redirects=False,
                 ) as response:
-                    final_url = str(response.url)
-                    final_host = (urlparse(final_url).hostname or "").strip()
-                    if final_host and validator(final_host):
-                        return FetchOutcome(
-                            ok=False,
-                            error=f"Redirect to private/loopback host blocked: {final_host}.",
-                        )
+                    location = response.headers.get("location", "")
+                    if response.status_code in {301, 302, 303, 307, 308} and location:
+                        if hop >= MAX_REDIRECTS:
+                            return FetchOutcome(ok=False, error="Too many HTTP redirects.")
+                        current_url = urljoin(current_url, location)
+                        continue
+                    final_url = str(response.url) or current_url
                     if response.status_code >= 400:
                         return FetchOutcome(
                             ok=False,
@@ -128,8 +145,11 @@ async def fetch_url_as_markdown(
                             error=f"HTTP {response.status_code} from {final_url}.",
                         )
                     raw = await _bounded_read(response, MAX_RESPONSE_BYTES)
-            except httpx.HTTPError as exc:
-                return FetchOutcome(ok=False, error=f"Network error: {exc}")
+                    break
+            else:  # pragma: no cover — the loop returns at its redirect limit
+                return FetchOutcome(ok=False, error="Too many HTTP redirects.")
+    except httpx.HTTPError as exc:
+        return FetchOutcome(ok=False, error=f"Network error: {exc}")
     except Exception as exc:  # pragma: no cover — defensive
         return FetchOutcome(ok=False, error=f"Unexpected fetch failure: {exc}")
 
@@ -158,37 +178,41 @@ def _is_disallowed_host(host: str) -> bool:
     """Block hosts that resolve to private / loopback / link-local IPs.
 
     Handles both raw IP literals (``127.0.0.1`` / ``[::1]``) and DNS
-    names (resolves them once via ``socket.getaddrinfo`` and checks ALL
-    returned addresses). DNS failures are treated as disallowed to fail
-    closed when in doubt.
+    names. A hostname is permitted when DNS gives at least one public address:
+    rejecting it because *some* record is unroutable blocks ordinary sites —
+    ``en.wikipedia.org`` resolves to a Teredo-range IPv6 address that
+    ``ipaddress`` reports as private, and an all-addresses rule made every
+    Wikipedia import fail. DNS failures are treated as disallowed to fail
+    closed.
+
+    The connection is then made by hostname, not by the validated address.
+    Pinning the address would defeat TLS certificate verification, and behind
+    an HTTP proxy it breaks outright — there the proxy, not this process, does
+    the name resolution that actually decides the destination.
     """
+
     candidate = host.strip("[]")
-    # Direct IP literal check
     try:
-        ip = ipaddress.ip_address(candidate)
-        return _is_disallowed_ip(ip)
+        return _is_disallowed_ip(ipaddress.ip_address(candidate))
     except ValueError:
         pass
-    # Common loopback / metadata hostnames before DNS even tries.
     lower = candidate.lower()
     if lower in {"localhost", "ip6-localhost", "ip6-loopback"}:
         return True
     if lower.endswith(".local"):
         return True
-    # Resolve once; treat resolution failure as "disallowed" so a typo
-    # plus an unlucky stub doesn't accidentally hit a private network.
     try:
         infos = socket.getaddrinfo(candidate, None)
     except OSError:
         return True
     for info in infos:
-        addr = info[4][0]
         try:
-            if _is_disallowed_ip(ipaddress.ip_address(addr)):
-                return True
+            ip = ipaddress.ip_address(info[4][0])
         except ValueError:
             continue
-    return False
+        if not _is_disallowed_ip(ip):
+            return False
+    return True
 
 
 def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -230,6 +254,18 @@ def _extract_readable(html_or_text: str) -> tuple[str, str]:
     """
     title = ""
     if "<" in html_or_text and ">" in html_or_text:
+        # Immersive Reading needs article structure rather than a page-wide
+        # text dump. Reuse the product's mature documentation/article extractor
+        # when lxml is available; the regex path below remains a lean-install
+        # fallback for malformed pages or environments without that dependency.
+        try:
+            from deeptutor.services.web_source.html_extractor import (
+                extract_article_markdown,
+            )
+
+            return extract_article_markdown(html_or_text)
+        except Exception:
+            logger.debug("structured HTML extraction failed; using text fallback", exc_info=True)
         title_match = _TITLE_RE.search(html_or_text)
         if title_match:
             title = re.sub(r"\s+", " ", title_match.group(1)).strip()

@@ -11,6 +11,7 @@ import {
   stripArtifactAnnotations,
 } from "@/lib/markdown-display";
 import { linkifyLocatorCitations } from "@/lib/reading-citations";
+import { linkifyMediaTimestamps } from "@/lib/reading-media-citations";
 import { parseModelThinkingSegments } from "@/lib/think-segments";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 
@@ -41,11 +42,13 @@ function AssistantResponseImpl({
   const { material } = useReading();
   const citedContent = useMemo(
     () =>
-      material
-        ? linkifyLocatorCitations(displayContent, {
-            maxLocator: material.unit_count,
-          })
-        : displayContent,
+      material?.unit === "segment"
+        ? linkifyMediaTimestamps(displayContent)
+        : material
+          ? linkifyLocatorCitations(displayContent, {
+              maxLocator: material.unit_count,
+            })
+          : displayContent,
     [displayContent, material],
   );
   const segments = useMemo(

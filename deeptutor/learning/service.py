@@ -10,6 +10,7 @@ from deeptutor.learning.mastery import compute_mastery
 from deeptutor.learning.models import (
     ErrorRecord,
     InteractionStatus,
+    LearnerMasteryOverride,
     LearningModule,
     LearningProgress,
     LearningStage,
@@ -17,6 +18,8 @@ from deeptutor.learning.models import (
     PendingQuestion,
     QuizAttempt,
     RetryAttempt,
+    TopicMetadata,
+    TopicSource,
 )
 from deeptutor.learning.storage import LearningStore
 
@@ -84,6 +87,9 @@ class LearningService:
         for key in list(progress.repetition_states.keys()):
             if key not in new_kp_ids:
                 del progress.repetition_states[key]
+        for key in list(progress.learner_mastery_overrides.keys()):
+            if key not in new_kp_ids:
+                del progress.learner_mastery_overrides[key]
         progress.error_records = [
             r for r in progress.error_records if r.knowledge_point_id in new_kp_ids
         ]
@@ -668,12 +674,61 @@ class LearningService:
                     tx.progress.current_module_id = applied_modules[0].id
                     tx.progress.current_kp_index = 0
             else:
+                current_kp_id = ""
+                for current_module in tx.progress.modules:
+                    if current_module.id != tx.progress.current_module_id:
+                        continue
+                    if 0 <= tx.progress.current_kp_index < len(current_module.knowledge_points):
+                        current_kp_id = current_module.knowledge_points[
+                            tx.progress.current_kp_index
+                        ].id
+                    break
+                pending_kp_id = (
+                    tx.progress.pending_question.knowledge_point_id
+                    if tx.progress.pending_question is not None
+                    else ""
+                )
+                active_interaction = tx.active_interaction()
+                active_kp_id = (
+                    active_interaction.question.knowledge_point_id
+                    if active_interaction is not None
+                    else ""
+                )
+
                 self.replace_modules(tx.progress, applied_modules)
-                tx.progress.pending_question = None
-                tx.abandon_active_interactions()
-                if applied_modules:
+                objective_locations = {
+                    kp.id: (module.id, kp_index)
+                    for module in applied_modules
+                    for kp_index, kp in enumerate(module.knowledge_points)
+                }
+
+                if current_kp_id in objective_locations:
+                    (
+                        tx.progress.current_module_id,
+                        tx.progress.current_kp_index,
+                    ) = objective_locations[current_kp_id]
+                elif applied_modules:
                     tx.progress.current_module_id = applied_modules[0].id
                     tx.progress.current_kp_index = 0
+                else:
+                    tx.progress.current_module_id = ""
+                    tx.progress.current_kp_index = 0
+
+                if tx.progress.pending_question is not None:
+                    if pending_kp_id not in objective_locations:
+                        tx.progress.pending_question = None
+                    else:
+                        pending_module_id, _ = objective_locations[pending_kp_id]
+                        tx.progress.pending_question.module_id = pending_module_id
+
+                if active_interaction is not None:
+                    if active_kp_id not in objective_locations:
+                        tx.abandon_active_interactions()
+                    else:
+                        active_module_id, _ = objective_locations[active_kp_id]
+                        if active_interaction.question.module_id != active_module_id:
+                            active_interaction.question.module_id = active_module_id
+                            tx.put_interaction(active_interaction)
             tx.touch()
             tx.emit(
                 event_type,
@@ -689,6 +744,41 @@ class LearningService:
             )
 
         progress, _ = self._store.mutate(book_id, replace, create=True)
+        return progress
+
+    def create_topic(
+        self,
+        book_id: str,
+        *,
+        name: str,
+        modules: list[LearningModule],
+        metadata: TopicMetadata,
+        sources: list[TopicSource],
+    ) -> LearningProgress:
+        """Create a confirmed topic, sources, and route in one transaction."""
+
+        if self._store.exists(book_id):
+            raise ValueError(f"Mastery topic {book_id!r} already exists")
+
+        def create(tx):
+            tx.progress.name = str(name or "").strip()[:_MAX_PATH_NAME_LEN]
+            self.replace_modules(tx.progress, [module.model_copy(deep=True) for module in modules])
+            tx.progress.current_module_id = modules[0].id if modules else ""
+            tx.progress.current_kp_index = 0
+            tx.put_topic(metadata, sources)
+            tx.touch()
+            tx.emit(
+                "topic.created",
+                {
+                    "module_count": len(modules),
+                    "knowledge_point_count": sum(
+                        len(module.knowledge_points) for module in modules
+                    ),
+                    "source_count": len(sources),
+                },
+            )
+
+        progress, _ = self._store.mutate(book_id, create, create=True)
         return progress
 
     def rename_path(self, book_id: str, name: str) -> LearningProgress:
@@ -753,6 +843,7 @@ class LearningService:
             progress.error_records = []
             progress.repetition_states = {}
             progress.review_queue = []
+            progress.learner_mastery_overrides = {}
             progress.pending_question = None
             progress.feynman_retries = {}
             progress.feynman_explanations = {}
@@ -766,6 +857,42 @@ class LearningService:
             tx.emit("path.reset", {})
 
         progress, _ = self._store.mutate(book_id, reset)
+        return progress
+
+    def set_learner_mastery_override(
+        self,
+        book_id: str,
+        kp_id: str,
+        *,
+        mastered: bool,
+        note: str = "",
+    ) -> LearningProgress:
+        """Set or clear an explicit learner claim without changing evidence."""
+
+        def update(tx):
+            from deeptutor.learning.policy import find_knowledge_point
+
+            kp, _, _ = find_knowledge_point(tx.progress, kp_id)
+            if kp is None:
+                raise MasteryInteractionError(f"Unknown objective {kp_id!r}")
+            if mastered:
+                tx.progress.learner_mastery_overrides[kp_id] = LearnerMasteryOverride(
+                    knowledge_point_id=kp_id,
+                    note=str(note or "").strip()[:500],
+                )
+                event_type = "mastery.overridden"
+            else:
+                if kp_id not in tx.progress.learner_mastery_overrides:
+                    return
+                tx.progress.learner_mastery_overrides.pop(kp_id, None)
+                event_type = "mastery.override_cleared"
+            tx.touch()
+            tx.emit(
+                event_type,
+                {"knowledge_point_id": kp_id, "mastered": bool(mastered)},
+            )
+
+        progress, _ = self._store.mutate(book_id, update)
         return progress
 
     def record_qualitative(

@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, BookOpen, CheckCircle2, Loader2, Save } from "lucide-react";
+import {
+  AlertCircle,
+  BookOpen,
+  CheckCircle2,
+  Loader2,
+  Save,
+} from "lucide-react";
 import {
   fetchAdminBooks,
   fetchBookPermission,
   saveBookPermission,
 } from "../api";
-import type {
-  AdminBook,
-  BookPermission,
-  BookPermissionLevel,
-} from "../types";
+import type { AdminBook, BookPermission, BookPermissionLevel } from "../types";
 
 const EMPTY: BookPermission = { create: true, default: "none", books: {} };
 
@@ -33,7 +35,9 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
         setPermission(next);
         setSaved(JSON.stringify(next));
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : String(err)),
+      )
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -74,7 +78,8 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 border-t border-[var(--border)] px-5 py-4 text-xs text-[var(--muted-foreground)]">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading book permissions…
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading book
+        permissions…
       </div>
     );
   }
@@ -87,7 +92,8 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
             <BookOpen className="h-4 w-4" /> Book access
           </h3>
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-            Shared deletion is never delegated. Reading progress and notes stay private per user.
+            Shared deletion is never delegated. Reading progress and notes stay
+            private per user.
           </p>
         </div>
         <button
@@ -96,7 +102,11 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
           disabled={!dirty || saving}
           className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-40"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {saving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Save className="h-3.5 w-3.5" />
+          )}
           Save
         </button>
       </div>
@@ -108,7 +118,10 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
             checked={permission.create}
             onChange={(event) => {
               setSavedNow(false);
-              setPermission((current) => ({ ...current, create: event.target.checked }));
+              setPermission((current) => ({
+                ...current,
+                create: event.target.checked,
+              }));
             }}
           />
           May create personal books
@@ -139,11 +152,21 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
           </p>
         ) : (
           books.map((book) => (
-            <label key={book.book_id} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)]/60 px-3 py-2 text-xs">
-              <span className="min-w-0 truncate" title={book.title}>{book.title || book.book_id}</span>
+            <label
+              key={book.book_id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)]/60 px-3 py-2 text-xs"
+            >
+              <span className="min-w-0 truncate" title={book.title}>
+                {book.title || book.book_id}
+              </span>
               <select
                 value={permission.books[book.book_id] ?? permission.default}
-                onChange={(event) => setLevel(book.book_id, event.target.value as BookPermissionLevel)}
+                onChange={(event) =>
+                  setLevel(
+                    book.book_id,
+                    event.target.value as BookPermissionLevel,
+                  )
+                }
                 className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1"
               >
                 <option value="none">No access</option>
@@ -156,11 +179,19 @@ export function BookPermissionEditor({ userId }: { userId: string }) {
       </div>
 
       {error ? (
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-red-600"><AlertCircle className="h-3.5 w-3.5" />{error}</p>
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-red-600">
+          <AlertCircle className="h-3.5 w-3.5" />
+          {error}
+        </p>
       ) : savedNow ? (
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />Saved</p>
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-600">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Saved
+        </p>
       ) : dirty ? (
-        <p className="mt-3 text-xs text-amber-600">Unsaved book permission changes</p>
+        <p className="mt-3 text-xs text-amber-600">
+          Unsaved book permission changes
+        </p>
       ) : null}
     </section>
   );

@@ -50,14 +50,16 @@
 
 ### 📦 Releases
 
+> **[2026.8.30]** [v1.6.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.1) — One vendor key linked to every service it serves, a task model for background work, Settings as a searchable navigator, a sidebar you arrange, and first-party **LightRAG**.
+
 > **[2026.8.27]** [v1.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0) — Faithful EPUB reading and annotations, Courses with Little Tutor and Ask Questions, bounded web-source sync, shared Books with private learning state, and Serply/native search.
 
 > **[2026.8.25]** [v1.5.17](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.17) — Partners each member owns with private conversations and linkable chat accounts, GitHub repos as a knowledge source, **Antigravity CLI**, browser WeChat QR login, and `deeptutor doctor`.
 
-> **[2026.8.22]** [v1.5.16](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.16) — **MarginNote 4** libraries you connect and its add-on fills, Book pages that turn again, and tool-call ids, embeddings and temperature limits that stop breaking behind a gateway.
-
 <details>
 <summary><b>Past releases (more than 1 week ago)</b></summary>
+
+> **[2026.8.22]** [v1.5.16](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.16) — **MarginNote 4** libraries you connect and its add-on fills, Book pages that turn again, and tool-call ids, embeddings and temperature limits that stop breaking behind a gateway.
 
 > **[2026.8.20]** [v1.5.15](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.15) — **PageIndex OSS** you host yourself with reasoning retrieval, a question bank you can finally file into, third-party tool/capability plugins, and **Apache Tika** parsing.
 
@@ -195,7 +197,7 @@
 
 </details>
 
-> ✨ **v1.6.0 is live.** `pip install -U deeptutor` picks up the latest stable release.
+> ✨ **v1.6.1 is live.** `pip install -U deeptutor` picks up the latest stable release.
 
 ### 📰 News
 
@@ -649,7 +651,7 @@ The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in t
 <img src="assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings is the operational control plane, with a live status strip (backend health and resident memory across the process tree) and one card per area: **Appearance** (theme, interface and model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, attachment caps), **Partners & Agents** (the subagents you can consult from a turn), and **Memory** (the consolidator's budgets).
+Settings is the operational control plane, with a live status strip (backend health and resident memory across the process tree) and a persistent, searchable navigator that reaches any page in one click: **Appearance** (theme, interface and model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, starting points, attachment caps), **Partners & Agents** (the subagents you can consult from a turn), and **Memory** (the consolidator's budgets). A **connection** holds one vendor credential and mirrors it into every service that vendor can serve, so a key is entered once rather than pasted into five pages; **task models** pin a small, fast model for the work nobody asked for — naming a conversation, writing the composer's starting points — and resolve to the active default when left empty.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -860,6 +862,16 @@ Add more registries in `settings/skill_hubs.json`: a `type: "clawhub"` entry poi
 </p>
 
 ## 🌐 Community
+
+### 🔗 Maintainers
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 Contact
 

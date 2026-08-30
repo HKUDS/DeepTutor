@@ -43,8 +43,9 @@ class _Record:
 
 
 class _Result:
-    def __init__(self, items: list[_Record]) -> None:
+    def __init__(self, items: list[_Record], total_items: int) -> None:
         self.items = items
+        self.total_items = total_items
 
 
 class _Collection:
@@ -72,8 +73,15 @@ class _Collection:
 
     def get_list(self, page: int, per_page: int, query_params: dict | None = None) -> _Result:
         matched = self.get_full_list(query_params)
+        sort = str((query_params or {}).get("sort") or "")
+        if sort:
+            field = sort.lstrip("-")
+            matched.sort(
+                key=lambda record: getattr(record, field, 0),
+                reverse=sort.startswith("-"),
+            )
         start = (page - 1) * per_page
-        return _Result(matched[start : start + per_page])
+        return _Result(matched[start : start + per_page], len(matched))
 
     def update(self, pb_id: str, data: dict) -> _Record:
         record = next(r for r in self._rows if r.id == pb_id)
@@ -125,6 +133,19 @@ async def test_list_sessions_only_returns_own(fake_pb) -> None:
     with as_user("alice"):
         alice_sessions = await store.list_sessions()
     assert {s["session_id"] for s in alice_sessions} == {"s_a1", "s_a2"}
+
+
+async def test_session_summaries_count_messages_without_loading_transcripts(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        session = await store.create_session(title="summary", session_id="s_summary")
+        await store.add_message(session["id"], "user", "first")
+        await store.add_message(session["id"], "assistant", "latest")
+
+        [summary] = await store.get_session_summaries([session["id"]])
+
+    assert summary["message_count"] == 2
+    assert summary["last_message"] == "latest"
 
 
 async def test_get_session_404s_for_other_user(fake_pb) -> None:

@@ -13,6 +13,7 @@ from deeptutor.agents.chat.agent_loop import InlineThinkFilter
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.explore_context import explorer as explorer_mod
 from deeptutor.capabilities.mastery import MASTERY_TOOL_NAMES
+from deeptutor.capabilities.partner_group.tools import InvokeOtherTool
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.stream_bus import StreamBus
@@ -569,6 +570,119 @@ async def test_tool_round_replays_responses_reasoning_items(
     assistant = next(message for message in second_round if message.get("tool_calls"))
     assert assistant["reasoning_content"] == "Search first."
     assert assistant["_responses_output_items"] == response_output_items
+
+
+@pytest.mark.asyncio
+async def test_partner_group_answer_plus_invoke_finishes_in_one_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model may combine its formal answer and proposal despite the prompt.
+
+    The answer is accepted before dispatch and the proposal terminates the
+    private protocol, so the model never gets a chance to rewrite the answer.
+    """
+
+    class _InvokeRegistry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            return [InvokeOtherTool().get_definition().to_openai_schema()]
+
+        async def execute(self, name: str, **kwargs):
+            kwargs.pop("event_sink", None)
+            self.executed.append({"name": name, "kwargs": kwargs})
+            return await InvokeOtherTool().execute(**kwargs)
+
+    registry = _InvokeRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content="The formal answer."),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "invoke-1",
+                            "name": "invoke_other",
+                            "arguments": json.dumps(
+                                {
+                                    "target_partner_id": "bob",
+                                    "question": "Which premise should we test?",
+                                }
+                            ),
+                        }
+                    ]
+                ),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["invoke_other"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        session_id="group:ada:test",
+        user_message="Discuss this",
+        metadata={
+            "source": "partner",
+            "partner_group": {
+                "group_id": "panel",
+                "name": "Panel",
+                "self_id": "ada",
+                "allow_invoke_other": True,
+                "members": [
+                    {"partner_id": "ada", "name": "Ada"},
+                    {"partner_id": "bob", "name": "Bob"},
+                ],
+            },
+        },
+    )
+
+    events = await _run(pipeline, context)
+
+    assert client.call_count == 1
+    assert _contents(events) == ["The formal answer."]
+    assert _result(events).metadata["response"] == "The formal answer."
+    assert context.metadata["_partner_group_invocation_proposal"] == {
+        "target_partner_id": "bob",
+        "target_partner_name": "Bob",
+        "question": "Which premise should we test?",
+    }
+
+
+@pytest.mark.asyncio
+async def test_invoked_group_reply_strips_dangling_peer_question_in_one_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dangling = (
+        "The complete invoked answer.\n\n---\n\n**想请教一下 @ada：**\n你还会建议用户做什么？"
+    )
+    client = _ScriptedChatClient([[_llm_chunk(content=dangling)]])
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        session_id="group:bob:invoked",
+        user_message="Ada asks you directly in the Group: answer this",
+        metadata={
+            "source": "partner",
+            "partner_group": {
+                "group_id": "panel",
+                "name": "Panel",
+                "self_id": "bob",
+                "allow_invoke_other": False,
+                "members": [
+                    {"partner_id": "ada", "name": "Ada"},
+                    {"partner_id": "bob", "name": "Bob"},
+                ],
+            },
+        },
+    )
+
+    events = await _run(pipeline, context)
+
+    assert client.call_count == 1
+    assert _contents(events) == ["The complete invoked answer."]
+    assert _result(events).metadata["response"] == "The complete invoked answer."
+    assert "_partner_group_invocation_proposal" not in context.metadata
 
 
 @pytest.mark.asyncio

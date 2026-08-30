@@ -556,16 +556,20 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
 
     try:
         from deeptutor.services.llm import complete
+        from deeptutor.services.model_selection.tasks import task_llm_scope
 
-        raw = await asyncio.wait_for(
-            complete(
-                prompt=user_prompt,
-                system_prompt=_SYSTEM_ZH if zh else _SYSTEM_EN,
-                temperature=0.8,  # suggestions may vary; these are not facts
-                max_tokens=500,
-            ),
-            timeout=_LLM_TIMEOUT,
-        )
+        # Runs on the task model when one is configured, and on the active
+        # default otherwise — which is what this always did.
+        with task_llm_scope():
+            raw = await asyncio.wait_for(
+                complete(
+                    prompt=user_prompt,
+                    system_prompt=_SYSTEM_ZH if zh else _SYSTEM_EN,
+                    temperature=0.8,  # suggestions may vary; these are not facts
+                    max_tokens=500,
+                ),
+                timeout=_LLM_TIMEOUT,
+            )
     except asyncio.TimeoutError:
         logger.debug("suggestions LLM call timed out")
         return empty

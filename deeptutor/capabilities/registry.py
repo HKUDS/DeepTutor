@@ -8,11 +8,14 @@ import logging
 from typing import Any
 
 from deeptutor.capabilities.ask_questions import AskQuestionsLoopCapability
+from deeptutor.capabilities.course_study import CourseStudyLoopCapability
 from deeptutor.capabilities.explore_context import ExploreContextCapability
 from deeptutor.capabilities.ima import ImaCapability
 from deeptutor.capabilities.marginnote4 import MarginNoteCapability
 from deeptutor.capabilities.mastery import MasteryLoopCapability
 from deeptutor.capabilities.obsidian import ObsidianCapability
+from deeptutor.capabilities.partner_authoring import PartnerAuthoringCapability
+from deeptutor.capabilities.partner_group import PartnerGroupCapability
 from deeptutor.capabilities.protocol import LoopCapability
 from deeptutor.capabilities.reading import ReadingCapability
 from deeptutor.capabilities.setup import SetupCapability
@@ -40,12 +43,22 @@ LOOP_CAPABILITIES: tuple[LoopCapability, ...] = (
     # capability's own store, so chat keeps its whole surface (web search, code,
     # rag over other KBs) while gaining the five reading tools on top.
     ReadingCapability(),
+    # Additive: Course Study retains chat's RAG/web/code surface while adding
+    # state sensing and closed-set hand-offs. Its strict mode + course-id gate
+    # keeps these tools out of every other mode.
+    CourseStudyLoopCapability(),
     ExploreContextCapability(),
     # Additive as well: configuring the app is something the user asks for in
     # the middle of other work, so the turn keeps its normal surface. Activation
     # is gated on objective signals, not on the model's sense of relevance —
     # see ``capabilities/setup/binding.py``.
     SetupCapability(),
+    # Additive: a natural-language request becomes a reviewable Partner draft;
+    # the actual create remains behind an explicit user confirmation in the UI.
+    PartnerAuthoringCapability(),
+    # Additive and Group-only: saves the Partner's complete answer first, then
+    # permits one user-approved proposal to ask exactly one peer.
+    PartnerGroupCapability(),
 )
 
 

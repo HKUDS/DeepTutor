@@ -43,7 +43,7 @@ class SessionOrganizationRequest(BaseModel):
 
     course_id: str | None = None
     parent_session_id: str | None = None
-    session_kind: Literal["chat", "selection_tutor"] | None = None
+    session_kind: Literal["chat", "selection_tutor", "immersive_reading"] | None = None
     pinned: bool | None = None
     archived: bool | None = None
 
@@ -154,6 +154,14 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     _truncate_oversized_events(session.get("messages", []))
     return session
+
+
+@router.get("/{session_id}/ask-hint")
+async def get_session_ask_hint(session_id: str) -> dict[str, Any]:
+    """One line the user is likely to type next, for the home composer placeholder."""
+    from deeptutor.services.chat_hints import get_ask_hint
+
+    return await get_ask_hint(session_id)
 
 
 @router.patch("/{session_id}")

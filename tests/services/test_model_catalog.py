@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 
-from deeptutor.services.config.model_catalog import ModelCatalogService
+from deeptutor.services.config.model_catalog import SERVICE_NAMES, ModelCatalogService
 
 
 def test_load_creates_empty_catalog_without_dotenv_hydration(tmp_path: Path):
@@ -105,15 +105,9 @@ def test_load_recovers_invalid_catalog_with_defaults(tmp_path: Path):
 
     catalog = ModelCatalogService(path=catalog_path).load()
 
-    expected_services = {
-        "llm",
-        "embedding",
-        "search",
-        "tts",
-        "stt",
-        "imagegen",
-        "videogen",
-    }
+    # Derived rather than re-listed: a new service should not need this test
+    # edited to keep passing, only the one that describes it.
+    expected_services = set(SERVICE_NAMES)
     assert set(catalog["services"]) == expected_services
     saved = json.loads(catalog_path.read_text(encoding="utf-8"))
     assert set(saved["services"]) == expected_services

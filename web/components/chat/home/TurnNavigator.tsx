@@ -309,13 +309,19 @@ export function TurnNavigator({
               >
                 <span
                   className={`h-[2px] rounded-full transition-[width,opacity,background-color] duration-[240ms] ease-out motion-reduce:transition-none ${
-                    isHovered
-                      ? "bg-[var(--foreground)] opacity-100"
-                      : isActive
-                        ? "bg-[var(--foreground)] opacity-80"
+                    entry.tone === "peer"
+                      ? isHovered || isActive
+                        ? "bg-[var(--primary)] opacity-100"
                         : hot
-                          ? "bg-[var(--muted-foreground)] opacity-55"
-                          : "bg-[var(--muted-foreground)] opacity-25"
+                          ? "bg-[var(--primary)] opacity-70"
+                          : "bg-[var(--primary)] opacity-40"
+                      : isHovered
+                        ? "bg-[var(--foreground)] opacity-100"
+                        : isActive
+                          ? "bg-[var(--foreground)] opacity-80"
+                          : hot
+                            ? "bg-[var(--muted-foreground)] opacity-55"
+                            : "bg-[var(--muted-foreground)] opacity-25"
                   }`}
                   style={{
                     width: tickWidth(entry.weight, hot, isActive || isHovered),
@@ -347,7 +353,17 @@ export function TurnNavigator({
                 <span className="tabular-nums">
                   {hovered.ordinal}/{entries.length}
                 </span>
-                {hovered.capability && hovered.capability !== "chat" ? (
+                {hovered.badge ? (
+                  <span
+                    className={`truncate normal-case tracking-normal ${
+                      hovered.tone === "peer"
+                        ? "text-[var(--primary)]"
+                        : "opacity-80"
+                    }`}
+                  >
+                    {hovered.badge}
+                  </span>
+                ) : hovered.capability && hovered.capability !== "chat" ? (
                   <span className="truncate normal-case tracking-normal opacity-80">
                     {t(getModeBadgeLabel(hovered.capability))}
                   </span>

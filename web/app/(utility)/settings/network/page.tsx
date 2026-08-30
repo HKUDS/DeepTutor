@@ -102,7 +102,8 @@ function DetailTile({
  */
 function ChatResponseTimeoutSection() {
   const { t } = useTranslation();
-  const { registerExtension } = useSettings();
+  const { registerExtension, pendingExtensionPayload, draftRevision } =
+    useSettings();
   const [seconds, setSeconds] = useState<number>(
     DEFAULT_CHAT_RESPONSE_TIMEOUT_SECONDS,
   );
@@ -163,9 +164,13 @@ function ChatResponseTimeoutSection() {
   }, [t]);
 
   useEffect(() => {
-    registerExtension("chat-timeout", { dirty, save });
+    registerExtension("chat-timeout", {
+      dirty,
+      save,
+      payload: { chat_response_timeout: seconds },
+    });
     return () => registerExtension("chat-timeout", null);
-  }, [dirty, save, registerExtension]);
+  }, [dirty, save, seconds, registerExtension]);
 
   return (
     <SettingSection
@@ -205,7 +210,8 @@ function ChatResponseTimeoutSection() {
 
 export default function NetworkSettingsPage() {
   const { t } = useTranslation();
-  const { registerExtension } = useSettings();
+  const { registerExtension, pendingExtensionPayload, draftRevision } =
+    useSettings();
   const apiBasePlaceholder = "https://api.example.com";
   const corsPlaceholder = "https://learn.example.com\nhttp://10.0.0.5:3782";
   const [payload, setPayload] = useState<NetworkSettingsPayload | null>(null);
@@ -234,8 +240,12 @@ export default function NetworkSettingsPage() {
         if (cancelled) return;
         const next = data as NetworkSettingsPayload;
         setPayload(next);
-        setDraft(normalizeDraft(next));
-        setCorsText((next.settings.cors_origins || []).join("\n"));
+        const pending = pendingExtensionPayload("network") as
+          | NetworkSettings
+          | undefined;
+        const resolved = pending ?? normalizeDraft(next);
+        setDraft(resolved);
+        setCorsText((resolved.cors_origins || []).join("\n"));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -248,7 +258,7 @@ export default function NetworkSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [draftRevision, pendingExtensionPayload, t]);
 
   const dirty = useMemo(() => {
     if (!payload || !draft) return false;
@@ -301,9 +311,9 @@ export default function NetworkSettingsPage() {
   }, [t]);
 
   useEffect(() => {
-    registerExtension("network", { dirty, save });
+    registerExtension("network", { dirty, save, payload: draft });
     return () => registerExtension("network", null);
-  }, [dirty, save, registerExtension]);
+  }, [dirty, draft, save, registerExtension]);
 
   return (
     <div data-tour="tour-network">

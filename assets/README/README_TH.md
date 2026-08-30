@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>ส่วนเสริมการติดตั้ง</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>ส่วนเสริมการติดตั้ง</b> — เอ็นจิน RAG / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # เอ็นจิน LightRAG ในตัว (SDK เวอร์ชันที่รองรับตรงตัว)
+pip install -e ".[graphrag]"        # เอ็นจิน Microsoft GraphRAG
 pip install -e ".[dev]"             # เครื่องมือ tests/lint
 pip install -e ".[partners]"        # SDKs ช่องทาง IM ของ Partners
 pip install -e ".[matrix]"          # ช่องทาง Matrix โดยไม่มี E2EE/libolm
@@ -431,6 +433,8 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 
 เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) KB ยังสามารถติดตาม **GitHub repositories** (repo, branch, glob) หรือ **URL ของเว็บไซต์เอกสาร** (จำกัดความลึกในการ crawl และจำนวนหน้า) ได้; การ sync ตามต้องการจะเปรียบเทียบ hash ของเนื้อหาที่เพิ่ม เปลี่ยนแปลง และลบ เพื่อให้เอกสารที่ติดตามทันสมัยอยู่เสมอโดยไม่ต้องอัพโหลดใหม่ การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ สามารถลบเอกสารหนึ่งรายการได้แม้ KB จะอยู่ในสถานะ **error** — ตัดไฟล์ที่แยกวิเคราะห์ไม่สำเร็จออกโดยไม่ต้องลบและสร้างใหม่ทั้งหมด การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` Tika ทำงานในโหมด remote เท่านั้นและชี้ไปยังเซิร์ฟเวอร์ Apache Tika (`TIKA_SERVER_URL`) CLI ครอบคลุม lifecycle ด้วย `list/info/create/add/search/set-default/delete`, คำสั่งเพิ่ม/ลบ source, `list-sources` และ `sync`
 
+เอ็นจิน LightRAG ในตัวติดตั้งด้วย `pip install 'deeptutor[rag-lightrag]'` ส่วนเสริมนั้นมี SDK LightRAG ที่รองรับอยู่ แต่ไม่ได้ติดตั้ง MinerU เลือก MinerU แยกต่างหากใน Document Parsing แล้วกำหนดค่าโหมด cloud ของมันหรือติดตั้ง local CLI ของมันเมื่อต้องการการแยกวิเคราะห์ PDF แบบมีโครงสร้าง; Text-only และเอ็นจินแยกวิเคราะห์อื่น ๆ ไม่จำเป็นต้องใช้ MinerU
+
 </details>
 
 <details>
@@ -474,7 +478,7 @@ Memory Graph แสดงพีระมิดทั้งหมด — กา�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings คือ control plane การดำเนินงาน พร้อม live status strip (สถานะ Backend และ resident memory ที่ใช้งานอยู่ทั่วทั้ง process tree) และหนึ่งการ์ดต่อพื้นที่: **Appearance** (ธีม, ภาษา UI และภาษา output ของ model, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (เครื่องมือ, พารามิเตอร์ต่อความสามารถ, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (subagents ที่คุณปรึกษาได้จาก turn) และ **Memory** (งบประมาณของ consolidator)
+Settings คือ control plane การดำเนินงาน พร้อม live status strip (สถานะ Backend และ resident memory ที่ใช้งานอยู่ทั่วทั้ง process tree) และตัวนำทางแบบค้นหาได้ที่คงอยู่ตลอด เข้าถึงหน้าใดก็ได้ในคลิกเดียว: **Appearance** (ธีม, ภาษา UI และภาษา output ของ model, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (เครื่องมือ, พารามิเตอร์ต่อความสามารถ, จุดเริ่มต้น, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (subagents ที่คุณปรึกษาได้จาก turn) และ **Memory** (งบประมาณของ consolidator) **connection** หนึ่งรายการเก็บ credential ของ vendor เดียวและ mirror มันเข้าสู่ทุกบริการที่ vendor นั้นให้บริการได้ ดังนั้นคุณกรอก key เพียงครั้งเดียวแทนที่จะต้องวางซ้ำในห้าหน้า; **task models** ปักหมุด model ที่เล็กและเร็วสำหรับงานที่ไม่มีใครร้องขอ — ตั้งชื่อบทสนทนา, เขียนจุดเริ่มต้นของ composer — และจะ resolve กลับไปเป็นค่าเริ่มต้นที่ใช้งานอยู่เมื่อปล่อยว่างไว้
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -658,7 +662,10 @@ EduHub ยังเป็น registry แบบ standalone ที่เข้า
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+เมื่อผู้เผยแพร่หลายรายใช้ slug เดียวกัน ผลการค้นหาจะแสดงผู้เผยแพร่แต่ละรายพร้อม install ref แบบเต็มขอบเขต (`clawhub:<ownerHandle>/<slug>`)
 
 เพิ่ม registries เพิ่มเติมใน `settings/skill_hubs.json`: entry `type: "clawhub"` ชี้ไปที่ HTTP API ที่เข้ากันได้ใด ๆ (ทั้ง EduHub และ ClawHub พูด API นี้), `type: "command"` ห่อ CLI ที่ registry ส่งมา และ `"default"` เลือกฮับที่ใช้สำหรับ slugs เปล่า ทั้งหมดนี้ป้อนข้อมูลผ่านประตูนำเข้าเดียวกัน
 
@@ -681,6 +688,16 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 </p>
 
 ## 🌐 ชุมชน
+
+### 🔗 ผู้ดูแลโปรเจกต์
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 ติดต่อ
 

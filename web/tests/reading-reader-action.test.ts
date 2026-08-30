@@ -49,6 +49,19 @@ test("reads an annotate, carrying the stored row", () => {
   );
 });
 
+test("reads an agent-requested workspace tab switch", () => {
+  const action = readerActionFrom(
+    realEvent({
+      reader_action: "switch_tab",
+      material_id: "d138eacaad029843",
+    }),
+  );
+  assert.deepEqual(action, {
+    reader_action: "switch_tab",
+    material_id: "d138eacaad029843",
+  });
+});
+
 test("still accepts a flat payload, for events emitted directly", () => {
   const action = readerActionFrom({
     type: "tool_result",

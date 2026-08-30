@@ -42,6 +42,7 @@ from deeptutor.services.partners.channel_onboarding import (
     ChannelOnboardingError,
     get_channel_onboarding_manager,
 )
+from deeptutor.services.partners.drafts import PartnerDraftStore
 from deeptutor.services.partners.manager import (
     LEGACY_GLOBAL_DELIVERY_KEYS,
     PartnerConfig,
@@ -93,6 +94,8 @@ _MANAGEABLE = [Depends(manageable_partner)]
 # not async-safe under concurrent connections).
 _start_locks: dict[str, asyncio.Lock] = {}
 _start_locks_mutex = asyncio.Lock()
+_draft_confirm_locks: dict[tuple[str, str], asyncio.Lock] = {}
+_draft_confirm_locks_mutex = asyncio.Lock()
 
 
 async def _get_start_lock(partner_id: str) -> asyncio.Lock:
@@ -101,6 +104,16 @@ async def _get_start_lock(partner_id: str) -> asyncio.Lock:
         if lock is None:
             lock = asyncio.Lock()
             _start_locks[partner_id] = lock
+        return lock
+
+
+async def _get_draft_confirm_lock(draft_id: str) -> asyncio.Lock:
+    key = (get_current_user().id, draft_id)
+    async with _draft_confirm_locks_mutex:
+        lock = _draft_confirm_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _draft_confirm_locks[key] = lock
         return lock
 
 
@@ -171,6 +184,18 @@ class CreatePartnerRequest(BaseModel):
     # default); ``null`` is the deliberate opt-in to every configured MCP tool.
     mcp_tools: list[str] | None = []
     assets: AssetSpec | None = None
+    start: bool = True
+
+
+class ConfirmPartnerDraftRequest(BaseModel):
+    """Editable fields accepted by the explicit draft-confirmation step."""
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    soul: str | None = None
+    language: str | None = None
+    emoji: str | None = None
+    color: str | None = None
     start: bool = True
 
 
@@ -598,6 +623,11 @@ async def create_partner(payload: CreatePartnerRequest):
     resolved against the creator's own permissions (see ``provision_assets``),
     so this hands nobody access they did not already have.
     """
+    return await _create_partner(payload)
+
+
+async def _create_partner(payload: CreatePartnerRequest) -> dict[str, Any]:
+    """Validated creation transaction shared by the wizard and chat drafts."""
     mgr = get_partner_manager()
     partner_id = slugify_partner_id(payload.partner_id or payload.name)
     if mgr.partner_exists(partner_id):
@@ -653,6 +683,72 @@ async def create_partner(payload: CreatePartnerRequest):
         result = _stopped_partner_dict(partner_id, config)
 
     result["provisioning"] = provisioning
+    return result
+
+
+@router.get("/drafts/{draft_id}")
+async def get_partner_draft(draft_id: str):
+    """Reload one pending/created draft for the authenticated user."""
+    try:
+        draft = PartnerDraftStore().get(draft_id)
+    except ValueError:
+        draft = None
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Partner draft not found")
+    return draft.to_dict()
+
+
+@router.post("/drafts/{draft_id}/confirm")
+async def confirm_partner_draft(
+    draft_id: str,
+    payload: ConfirmPartnerDraftRequest,
+):
+    """Promote a reviewable Chat draft into a real Partner exactly once."""
+    lock = await _get_draft_confirm_lock(draft_id)
+    async with lock:
+        return await _confirm_partner_draft(draft_id, payload)
+
+
+async def _confirm_partner_draft(
+    draft_id: str,
+    payload: ConfirmPartnerDraftRequest,
+) -> dict[str, Any]:
+    store = PartnerDraftStore()
+    try:
+        draft = store.get(draft_id)
+    except ValueError:
+        draft = None
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Partner draft not found")
+
+    if draft.status == "created" and draft.created_partner_id:
+        cfg = get_partner_manager().load_config(draft.created_partner_id)
+        if cfg is not None:
+            result = _stopped_partner_dict(draft.created_partner_id, cfg)
+            instance = get_partner_manager().get_partner(draft.created_partner_id)
+            if instance is not None:
+                result = instance.to_dict(mask_secrets=True)
+            result["draft_id"] = draft.draft_id
+            result["already_created"] = True
+            return result
+
+    data = payload.model_dump(exclude_none=True)
+    create_payload = CreatePartnerRequest(
+        name=str(data.get("name", draft.name)),
+        description=str(data.get("description", draft.description)),
+        soul=SoulSpec(source="custom", content=str(data.get("soul", draft.soul))),
+        language=str(data.get("language", draft.language)),
+        emoji=str(data.get("emoji", draft.emoji)),
+        color=str(data.get("color", draft.color)),
+        enabled_tools=draft.enabled_tools,
+        builtin_tools=draft.builtin_tools,
+        mcp_tools=draft.mcp_tools,
+        start=bool(data.get("start", True)),
+    )
+    result = await _create_partner(create_payload)
+    store.mark_created(draft, str(result["partner_id"]))
+    result["draft_id"] = draft.draft_id
+    result["already_created"] = False
     return result
 
 

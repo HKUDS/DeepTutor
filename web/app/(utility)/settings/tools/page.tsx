@@ -252,7 +252,7 @@ export default function ToolsSettingsPage() {
                     {list.length}
                   </span>
                 </header>
-                <div className="overflow-hidden rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40">
+                <div className="border-t border-[var(--border)]/60">
                   {list.map((tool, idx) => {
                     const isOpen = expanded.has(tool.name);
                     const hints = tool.hints[language];

@@ -21,8 +21,8 @@ from typing import Any, Literal
 
 # What one locator addresses, per source format. Purely presentational for the
 # model and the UI ("page 12" vs "chapter 3"); the addressing is identical.
-UnitKind = Literal["page", "chapter", "slide", "section"]
-RenderMode = Literal["text", "pdf", "epub"]
+UnitKind = Literal["page", "chapter", "slide", "section", "segment"]
+RenderMode = Literal["text", "pdf", "epub", "video", "audio"]
 
 AnnotationKind = Literal["highlight", "underline", "note"]
 TextSelectorType = Literal["TextQuoteSelector", "TextPositionSelector"]
@@ -228,12 +228,12 @@ class MaterialManifest:
     def from_dict(cls, data: dict[str, Any]) -> "MaterialManifest":
         unit = str(data.get("unit") or "page")
         render_mode = str(data.get("render_mode") or "")
-        if render_mode not in ("text", "pdf", "epub"):
+        if render_mode not in ("text", "pdf", "epub", "video", "audio"):
             render_mode = "pdf" if data.get("has_raw_view") else "text"
         return cls(
             material_id=str(data.get("material_id") or ""),
             filename=str(data.get("filename") or ""),
-            unit=unit if unit in ("page", "chapter", "slide", "section") else "page",  # type: ignore[arg-type]
+            unit=(unit if unit in ("page", "chapter", "slide", "section", "segment") else "page"),  # type: ignore[arg-type]
             unit_count=int(data.get("unit_count") or 0),
             mime=str(data.get("mime") or ""),
             title=str(data.get("title") or ""),

@@ -6,16 +6,17 @@ import {
   readChatLaunchIntent,
 } from "../lib/chat-launch-intent";
 
-test("continuing a mastery path opens a fresh associated chat", () => {
+test("continuing a mastery path opens its dedicated topic surface", () => {
   assert.equal(
     newMasteryPathChatUrl("calculus/path 1"),
-    "/home?capability=mastery_path&mastery_path_id=calculus%2Fpath+1",
+    "/mastery/calculus%2Fpath%201",
   );
 });
 
-test("the mastery continue URL round-trips into a launch intent", () => {
-  const url = newMasteryPathChatUrl("calculus/path 1");
-  const intent = readChatLaunchIntent(url.slice(url.indexOf("?")));
+test("legacy mastery chat links still parse for forwarding", () => {
+  const intent = readChatLaunchIntent(
+    "?capability=mastery_path&mastery_path_id=calculus%2Fpath+1",
+  );
   assert.equal(intent.capability, "mastery_path");
   assert.equal(intent.masteryPathId, "calculus/path 1");
   assert.deepEqual(intent.tools, []);

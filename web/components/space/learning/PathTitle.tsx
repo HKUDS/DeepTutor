@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Pencil, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 
 import type { Translate } from "./format";
@@ -24,25 +25,32 @@ import type { Translate } from "./format";
  * editor the learner never changed.
  */
 export function PathTitle({
-  name,
+  displayName,
+  storedName,
   onRename,
-  tr,
 }: {
-  name: string;
+  /** What the learner sees — may be derived when the path has no name yet. */
+  displayName: string;
+  /**
+   * What is actually stored, which is what the editor opens with. Seeding the
+   * field with a derived label would let "save" pin that placeholder as the
+   * real name and quietly cost the path its fallback.
+   */
+  storedName: string;
   /** Resolves once the new name is committed; may reject. */
   onRename: (name: string) => Promise<void>;
-  tr: Translate;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(name);
+  const [draft, setDraft] = useState(storedName);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Reopen on a different path (or after a rename lands) with that path's name,
   // never with whatever was half-typed for the previous one.
   useEffect(() => {
-    if (!editing) setDraft(name);
-  }, [name, editing]);
+    if (!editing) setDraft(storedName);
+  }, [storedName, editing]);
 
   useEffect(() => {
     if (editing) inputRef.current?.select();
@@ -51,7 +59,7 @@ export function PathTitle({
   const commit = async () => {
     if (saving) return;
     const next = draft.trim();
-    if (next === name.trim()) {
+    if (next === storedName.trim()) {
       setEditing(false);
       return;
     }
@@ -68,31 +76,33 @@ export function PathTitle({
   };
 
   const cancel = () => {
-    setDraft(name);
+    setDraft(storedName);
     setEditing(false);
   };
 
+  const TITLE_TYPE =
+    "font-serif text-[22px] font-semibold tracking-[-0.01em] text-[var(--foreground)]";
+
   if (!editing) {
     return (
-      <div className="flex min-w-0 items-center gap-1.5">
-        <h2 className="truncate text-sm font-semibold text-[var(--foreground)]">
-          {name}
-        </h2>
+      <div className="flex min-w-0 items-center gap-2">
+        <h1 className={`truncate ${TITLE_TYPE}`}>{displayName}</h1>
         {/* Always present, like the reset/delete controls beside it. A
             hover-revealed affordance does not exist on a touch screen. */}
         <button
           onClick={() => setEditing(true)}
-          title={tr("重命名", "Rename")}
-          className="shrink-0 cursor-pointer rounded p-1 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+          title={t("Rename")}
+          aria-label={t("Rename")}
+          className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
         >
-          <Pencil className="h-3 w-3" />
+          <Pencil className="h-4 w-4" />
         </button>
       </div>
     );
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
+    <div className="flex min-w-0 items-center gap-2">
       <input
         ref={inputRef}
         value={draft}
@@ -104,11 +114,12 @@ export function PathTitle({
           if (event.key === "Escape") cancel();
         }}
         onBlur={() => {
-          if (draft.trim() === name.trim()) setEditing(false);
+          if (draft.trim() === storedName.trim()) setEditing(false);
         }}
         maxLength={200}
-        placeholder={tr("这条路叫什么？", "What is this path called?")}
-        className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)] disabled:opacity-60"
+        aria-label={t("Topic name")}
+        placeholder={t("What is this path called?")}
+        className={`min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1 outline-none focus:border-[var(--primary)] disabled:opacity-60 ${TITLE_TYPE}`}
       />
       {/* mousedown, not click: blur fires first and would commit-then-cancel. */}
       <button
@@ -116,20 +127,22 @@ export function PathTitle({
           event.preventDefault();
           void commit();
         }}
-        title={tr("保存", "Save")}
-        className="shrink-0 cursor-pointer rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+        title={t("Save")}
+        aria-label={t("Save")}
+        className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
       >
-        <Check className="h-3.5 w-3.5" />
+        <Check className="h-4 w-4" />
       </button>
       <button
         onMouseDown={(event) => {
           event.preventDefault();
           cancel();
         }}
-        title={tr("取消", "Cancel")}
-        className="shrink-0 cursor-pointer rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+        title={t("Cancel")}
+        aria-label={t("Cancel")}
+        className="shrink-0 cursor-pointer rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
       >
-        <X className="h-3.5 w-3.5" />
+        <X className="h-4 w-4" />
       </button>
     </div>
   );

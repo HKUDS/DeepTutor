@@ -199,7 +199,7 @@ export default function SessionList({
                 sessionId={session.session_id}
                 running={session.status === "running"}
                 className={
-                  session.status === "running" ? "text-blue-500" : "opacity-70"
+                  session.status === "running" ? "opacity-100" : "opacity-80"
                 }
               />
               {isEditing ? (

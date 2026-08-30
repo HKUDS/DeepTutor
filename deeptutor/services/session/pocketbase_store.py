@@ -248,10 +248,70 @@ class PocketBaseSessionStore:
 
         try:
             result = await asyncio.to_thread(_list)
+            # Reading conversations are listed like any other: the sidebar
+            # groups them under their collection and a click returns to the
+            # reader. See the note on ``_WHERE_NATIVE`` in the SQLite store.
             return [self._session_record_to_dict(r) for r in result.items]
         except Exception as exc:
             logger.warning(f"list_sessions failed: {exc}")
             return []
+
+    async def get_session_summaries(
+        self,
+        session_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        """Return bounded metadata without loading complete chat transcripts."""
+
+        async def summarize(session_id: str) -> dict[str, Any] | None:
+            session = await self.get_session(session_id)
+            if session is None:
+                return None
+            message_summary, active_turn = await asyncio.gather(
+                self._get_message_summary(session_id),
+                self.get_active_turn(session_id),
+            )
+            session.update(message_summary)
+            if active_turn is not None:
+                session["status"] = active_turn.get("status") or "running"
+                session["active_turn_id"] = active_turn.get("id") or ""
+            return session
+
+        summaries = await asyncio.gather(
+            *(summarize(session_id) for session_id in dict.fromkeys(session_ids))
+        )
+        return [summary for summary in summaries if summary is not None]
+
+    async def _get_message_summary(self, session_id: str) -> dict[str, Any]:
+        """Fetch one preview row plus PocketBase's aggregate count."""
+
+        sid = _validate_id(session_id, "session_id")
+
+        def _get() -> dict[str, Any]:
+            result = (
+                _pb()
+                .collection("messages")
+                .get_list(
+                    1,
+                    1,
+                    query_params={
+                        "filter": f'session_id="{sid}" && role!="system"',
+                        "sort": "-msg_created_at",
+                    },
+                )
+            )
+            total = getattr(result, "total_items", getattr(result, "totalItems", None))
+            items = list(getattr(result, "items", ()) or ())
+            preview = self._message_record_to_dict(items[0]) if items else None
+            return {
+                "message_count": max(0, int(total if total is not None else len(items))),
+                "last_message": str((preview or {}).get("content") or ""),
+            }
+
+        try:
+            return await asyncio.to_thread(_get)
+        except Exception as exc:
+            logger.warning(f"get message summary failed: {exc}")
+            return {"message_count": 0, "last_message": ""}
 
     async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool:
         sid = _validate_id(session_id, "session_id")

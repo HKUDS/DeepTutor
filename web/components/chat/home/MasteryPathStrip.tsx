@@ -75,7 +75,7 @@ export default function MasteryPathStrip({ pathId }: { pathId: string }) {
             }`}
       </span>
       <Link
-        href="/space/learning"
+        href="/mastery"
         className="shrink-0 text-[var(--primary)] hover:underline"
       >
         {tr("查看地图", "Map")}

@@ -76,6 +76,56 @@ def _make_items(*specs):
     return items
 
 
+def test_get_session_summaries_batches_counts_and_latest_visible_message(
+    store: SQLiteSessionStore,
+) -> None:
+    first = asyncio.run(store.create_session(title="First", session_id="session-1"))
+    second = asyncio.run(store.create_session(title="Second", session_id="session-2"))
+    asyncio.run(store.add_message(first["id"], "system", "private setup"))
+    asyncio.run(store.add_message(first["id"], "user", "First question"))
+    asyncio.run(store.add_message(first["id"], "assistant", "Latest answer"))
+    asyncio.run(store.add_message(second["id"], "system", "system only"))
+
+    summaries = asyncio.run(store.get_session_summaries([first["id"], second["id"], first["id"]]))
+    by_id = {summary["session_id"]: summary for summary in summaries}
+
+    assert by_id[first["id"]]["message_count"] == 2
+    assert by_id[first["id"]]["last_message"] == "Latest answer"
+    assert by_id[second["id"]]["message_count"] == 0
+    assert by_id[second["id"]]["last_message"] == ""
+
+
+def test_generic_history_lists_immersive_reading_sessions_with_their_collection(
+    store: SQLiteSessionStore,
+) -> None:
+    """Reading conversations are listed, carrying where they belong.
+
+    They used to be filtered out of history entirely, which left a learner no
+    route back to one except by reopening its collection. They are listed now,
+    and the sidebar files them under their collection — which only works if
+    both routing signals survive the summary, so assert on those rather than
+    merely on the row being present.
+    """
+    chat = asyncio.run(store.create_session(title="Regular chat"))
+    reading = asyncio.run(store.create_session(title="Reading conversation"))
+    asyncio.run(
+        store.update_session_preferences(
+            reading["id"],
+            {
+                "session_kind": "immersive_reading",
+                "reading_workspace_id": "rw_private",
+            },
+        )
+    )
+
+    listed = asyncio.run(store.list_sessions())
+
+    assert {row["id"] for row in listed} == {chat["id"], reading["id"]}
+    row = next(row for row in listed if row["id"] == reading["id"])
+    assert row["preferences"]["session_kind"] == "immersive_reading"
+    assert row["preferences"]["reading_workspace_id"] == "rw_private"
+
+
 # ── Notebook entries ──────────────────────────────────────────────
 
 
@@ -87,6 +137,44 @@ def test_upsert_notebook_entries_persists_all(store: SQLiteSessionStore) -> None
     result = asyncio.run(store.list_notebook_entries())
     assert result["total"] == 3
     assert all(e["session_title"] == "Test" for e in result["items"])
+
+
+def test_list_notebook_entries_intersects_session_filters(
+    store: SQLiteSessionStore,
+) -> None:
+    session_a = asyncio.run(store.create_session(session_id="session-a"))
+    session_b = asyncio.run(store.create_session(session_id="session-b"))
+    asyncio.run(
+        store.upsert_notebook_entries(
+            session_a["id"],
+            _make_items(("a1", "A question?", False)),
+        )
+    )
+    asyncio.run(
+        store.upsert_notebook_entries(
+            session_b["id"],
+            _make_items(("b1", "B question?", True)),
+        )
+    )
+
+    overlap = asyncio.run(
+        store.list_notebook_entries(
+            session_id=session_a["id"],
+            session_ids=[session_a["id"], session_b["id"]],
+        )
+    )
+    disjoint = asyncio.run(
+        store.list_notebook_entries(
+            session_id=session_a["id"],
+            session_ids=[session_b["id"]],
+        )
+    )
+    empty = asyncio.run(store.list_notebook_entries(session_ids=[]))
+
+    assert overlap["total"] == 1
+    assert [item["question_id"] for item in overlap["items"]] == ["a1"]
+    assert disjoint == {"items": [], "total": 0}
+    assert empty == {"items": [], "total": 0}
 
 
 def test_upsert_notebook_entries_updates_on_conflict(store: SQLiteSessionStore) -> None:

@@ -13,8 +13,14 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./*"] },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    },
     "types": ["node"]
   },
   "include": [
@@ -24,7 +30,15 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     ".next-deeptutor/types/**/*.ts",
-    ".next-deeptutor/dev/types/**/*.ts"
+    ".next-deeptutor/dev/types/**/*.ts",
+    ".next-verify-84/types/**/*.ts",
+    ".next-verify-84/dev/types/**/*.ts",
+    ".next-reading/types/**/*.ts",
+    ".next-reading/dev/types/**/*.ts",
+    ".next-sidebar-dev/types/**/*.ts",
+    ".next-sidebar-dev/dev/types/**/*.ts",
+    ".next-sidebar/types/**/*.ts",
+    ".next-sidebar/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

@@ -3,16 +3,13 @@
 import { useMemo } from "react";
 import { Bot, Sparkles, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AnnotationItem, UnitKind } from "@/lib/reading-api";
+import {
+  ANNOTATION_SWATCH,
+  type AnnotationColor,
+  type AnnotationItem,
+  type UnitKind,
+} from "@/lib/reading-api";
 import { unitLabel } from "./TextUnitView";
-
-const SWATCH: Record<string, string> = {
-  yellow: "#facd5a",
-  green: "#8cdb94",
-  blue: "#7ac0fa",
-  pink: "#faa1c7",
-  purple: "#c7aefa",
-};
 
 export interface AnnotationListProps {
   annotations: AnnotationItem[];
@@ -92,7 +89,10 @@ export function AnnotationList({
                     aria-hidden
                     className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full"
                     style={{
-                      background: SWATCH[annotation.color] ?? SWATCH.yellow,
+                      background:
+                        ANNOTATION_SWATCH[
+                          annotation.color as AnnotationColor
+                        ] ?? ANNOTATION_SWATCH.yellow,
                     }}
                   />
                   {annotation.quote && (

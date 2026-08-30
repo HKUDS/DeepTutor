@@ -8,15 +8,11 @@ import {
   Underline,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ANNOTATION_COLORS, type AnnotationColor } from "@/lib/reading-api";
-
-const SWATCH: Record<AnnotationColor, string> = {
-  yellow: "#facd5a",
-  green: "#8cdb94",
-  blue: "#7ac0fa",
-  pink: "#faa1c7",
-  purple: "#c7aefa",
-};
+import {
+  ANNOTATION_COLORS,
+  ANNOTATION_SWATCH,
+  type AnnotationColor,
+} from "@/lib/reading-api";
 
 export interface AnnotationPopoverProps {
   /** Viewport coordinates of the selection's end. */
@@ -118,7 +114,7 @@ export function AnnotationPopover({
                   ? "border-[var(--foreground)] scale-110"
                   : "border-black/10 hover:scale-105"
               }`}
-              style={{ background: SWATCH[swatch] }}
+              style={{ background: ANNOTATION_SWATCH[swatch] }}
             />
           ))}
         </div>

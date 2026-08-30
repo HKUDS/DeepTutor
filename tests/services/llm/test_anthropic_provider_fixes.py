@@ -62,6 +62,11 @@ def test_temperature_kept_for_models_that_accept_it() -> None:
     provider = _provider()
     # Opus 4.6 / Sonnet 4.6 still accept temperature — omitting it there
     # would silently drop the user's configured setting.
+    #
+    # anthropic-sdk-python >= 1.0 dropped `temperature` from the explicit
+    # signature of `messages.create()` / `messages.stream()`; we tunnel it
+    # through `extra_body` so it still reaches the Anthropic API as a
+    # top-level request field. See test_temperature_is_routed_via_extra_body.
     for model in (
         "claude-opus-4-6",
         "claude-sonnet-4-6",
@@ -69,7 +74,37 @@ def test_temperature_kept_for_models_that_accept_it() -> None:
         "claude-haiku-4-5-20251001",
         "claude-opus-4-1",
     ):
-        assert "temperature" in _kwargs(provider, model), model
+        kw = _kwargs(provider, model)
+        assert "temperature" not in kw, model
+        assert kw.get("extra_body", {}).get("temperature") == 0.7, model
+
+
+def test_temperature_is_routed_via_extra_body() -> None:
+    """SDK >= 1.0 rejects ``temperature`` as a top-level kwarg.
+
+    AnthropicProvider must therefore place it under ``extra_body`` instead,
+    so the Anthropic API still receives it as a request-level field.
+    """
+    provider = _provider()
+    kw = _kwargs(provider, "claude-sonnet-4-6")
+    # No `temperature` at the top level — that's what the SDK rejects.
+    assert "temperature" not in kw
+    # But it lives in extra_body so the wire payload still carries it.
+    assert kw["extra_body"]["temperature"] == 0.7
+
+
+def test_temperature_is_routed_via_extra_body_for_thinking_models() -> None:
+    """Older model families force ``temperature=1.0`` for extended thinking.
+
+    anthropic-sdk-python >= 1.0 dropped ``temperature`` from the explicit
+    signature of ``messages.create`` / ``messages.stream``; we tunnel it
+    through ``extra_body`` so the Anthropic API still receives it as a
+    top-level request field.
+    """
+    provider = _provider()
+    kwargs = _kwargs_with_effort(provider, "claude-opus-4-6", "high")
+    assert "temperature" not in kwargs
+    assert kwargs["extra_body"]["temperature"] == 1.0
 
 
 def _count_cache_control(system: Any, messages: list[dict[str, Any]], tools: list) -> int:
@@ -138,7 +173,8 @@ def test_older_models_keep_budget_tokens_thinking() -> None:
     kwargs = _kwargs_with_effort(provider, "claude-opus-4-6", "high")
     assert kwargs["thinking"]["type"] == "enabled"
     assert kwargs["thinking"]["budget_tokens"] >= 8192
-    assert kwargs["temperature"] == 1.0
+    assert "temperature" not in kwargs  # SDK 1.x: must live in extra_body
+    assert kwargs["extra_body"]["temperature"] == 1.0
 
 
 def test_older_models_omit_thinking_for_off_sentinels() -> None:
@@ -148,7 +184,8 @@ def test_older_models_omit_thinking_for_off_sentinels() -> None:
     for effort in ("none", "minimal", "minimum"):
         kwargs = _kwargs_with_effort(provider, "claude-opus-4-6", effort)
         assert "thinking" not in kwargs, effort
-        assert kwargs["temperature"] == 0.7, effort
+        assert "temperature" not in kwargs, effort
+        assert kwargs["extra_body"]["temperature"] == 0.7, effort
 
 
 def test_older_models_translate_adaptive_into_budget_thinking() -> None:
@@ -157,7 +194,8 @@ def test_older_models_translate_adaptive_into_budget_thinking() -> None:
     provider = _provider()
     kwargs = _kwargs_with_effort(provider, "claude-sonnet-4-5", "adaptive")
     assert kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4096}
-    assert kwargs["temperature"] == 1.0
+    assert "temperature" not in kwargs  # SDK 1.x: must live in extra_body
+    assert kwargs["extra_body"]["temperature"] == 1.0
 
 
 def test_off_sentinels_leave_tool_choice_to_the_caller() -> None:

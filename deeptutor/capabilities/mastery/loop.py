@@ -141,12 +141,27 @@ def _bind_pending_ask_user_args(kwargs: dict[str, Any], path_id: str) -> dict[st
 class MasteryLoopCapability:
     """Turn-scoped integration for mastery-path tutoring.
 
-    Reuses the full chat tool surface (rag / read_source / ask_user / … under
-    the same user toggles as chat) and adds the mastery engine tools on top.
+    Reuses the full chat tool surface (rag / ask_user / … under the same user
+    toggles as chat) and adds the mastery engine tools on top, plus its own
+    ``read_source`` mount.
+
+    ``read_source`` is owned here rather than left to chat's
+    ``explore_context`` pre-pass on purpose: a topic's materials (see
+    :mod:`deeptutor.learning.topic_materials`) are announced every turn as a
+    plain-text manifest (``context.source_manifest``) — "here is what's
+    attached" — but never force a read. The forced, bounded investigation
+    explore_context runs before the model's first token is right for chat
+    (where a referenced transcript must be read once, objectively, before
+    answering) and wrong for tutoring, where the model should decide *itself*,
+    knowledge point by knowledge point, whether the source text is worth
+    reading this turn. Mounting ``read_source`` directly on the answer loop —
+    fed from ``mastery_topic_source_index`` rather than the ``source_index``
+    key explore_context watches — gives the tutor that choice without forcing
+    it.
     """
 
     name = "mastery"
-    owned_tools = MASTERY_TOOL_NAMES
+    owned_tools = (*MASTERY_TOOL_NAMES, "read_source")
     # Declared to the dispatcher so a switch that shares a round with a write
     # runs first and the write lands on the path the model switched *to*. Every
     # call in a round is bound before any of them runs, so without this a
@@ -184,6 +199,13 @@ class MasteryLoopCapability:
             # Strip hints last, so a card rebound from persisted state is
             # cleaned too — the persisted options were model-authored as well.
             return _strip_answer_hints(_bind_pending_ask_user_args(kwargs, path_id))
+        if tool_name == "read_source":
+            # Deliberately a different key from chat's ``source_index``: that
+            # one wakes the explore_context pre-pass (see the class docstring).
+            # The tutor calls this tool on its own schedule instead.
+            updated = dict(kwargs)
+            updated["source_index"] = context.metadata.get("mastery_topic_source_index") or {}
+            return updated
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":

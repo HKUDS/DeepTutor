@@ -21,6 +21,7 @@ import {
   listKnowledgeBases,
   type KnowledgeBaseSummary,
 } from "@/lib/knowledge-api";
+import { SUBAGENT_KB_TYPE } from "@/lib/knowledge-helpers";
 import {
   getNotebook,
   listCategories,
@@ -202,7 +203,8 @@ export default function BookCreator({
   const refreshKbs = async () => {
     setKbsLoading(true);
     try {
-      setKbs(await listKnowledgeBases({ force: true }));
+      const all = await listKnowledgeBases({ force: true });
+      setKbs(all.filter((kb) => kb.metadata?.type !== SUBAGENT_KB_TYPE));
     } catch {
       setKbs([]);
     } finally {

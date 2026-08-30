@@ -134,6 +134,20 @@ def test_pdf_outline_drops_bookmarks_pointing_outside_the_page_range(tmp_path: P
     assert all(1 <= e.locator <= len(extraction.units) for e in extraction.outline)
 
 
+def test_pdf_without_bookmarks_does_not_invent_contents(tmp_path: Path) -> None:
+    path = _write_pdf(
+        tmp_path / "plain.pdf",
+        ["Figure 1: this is page content, not a document heading.", "References"],
+    )
+
+    extraction = extract_material(path)
+    assert extraction.outline == ()
+
+    reading_store = ReadingStore(root=tmp_path / "plain-materials")
+    manifest = reading_store.ingest(path)
+    assert reading_store.outline(manifest.material_id) == []
+
+
 def test_text_file_is_cut_into_sections_on_paragraph_boundaries(tmp_path: Path) -> None:
     paragraph = "Dense prose about attention mechanisms. " * 30  # ~1.2k chars
     path = tmp_path / "notes.md"
@@ -907,3 +921,49 @@ def test_pdf_export_is_refused_for_a_text_only_material(
 
     with pytest.raises(ReadingError):
         export_material(store, manifest.material_id, fmt="pdf")
+
+
+def test_state_written_before_the_split_is_still_read(store: ReadingStore, pdf_path: Path) -> None:
+    """Annotations and viewports predate per-material state directories.
+
+    They live beside the content as `annotations.json` / `position.json`, keyed
+    by a material id that equalled the content hash. Those files must keep
+    resolving, or every annotation a user made before the split disappears.
+    """
+    manifest = store.ingest(pdf_path)
+    material_dir = store.root / manifest.material_id
+    legacy_annotation = {
+        "annotation_id": "legacy-1",
+        "locator": 2,
+        "quote": "scaled dot-product",
+        "note": "written by the old reader",
+        "color": "yellow",
+        "kind": "highlight",
+    }
+    (material_dir / "annotations.json").write_text(
+        json.dumps([legacy_annotation]), encoding="utf-8"
+    )
+    (material_dir / "position.json").write_text(
+        json.dumps({"locator": 3, "source_anchor": "", "percentage": 0.0}),
+        encoding="utf-8",
+    )
+
+    assert [row.note for row in store.annotations(manifest.material_id)] == [
+        "written by the old reader"
+    ]
+    assert store.position(manifest.material_id).locator == 3
+
+    # A write moves the material onto the per-material path without losing the
+    # rows that were only in the legacy file.
+    store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="new-1",
+            locator=1,
+            quote="sequence models",
+            note="written after the split",
+        ),
+    )
+
+    notes = sorted(row.note for row in store.annotations(manifest.material_id))
+    assert notes == ["written after the split", "written by the old reader"]

@@ -55,6 +55,7 @@ pypdf>=4.0.0
 pdfplumber>=0.11.0
 reportlab>=4.0.0
 defusedxml>=0.7.1
+youtube-transcript-api>=1.2.0,<2.0.0
 
 # --- Web search ---
 ddgs>=9.9.1

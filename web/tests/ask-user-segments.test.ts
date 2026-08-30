@@ -136,10 +136,7 @@ test("each card gets the rounds that followed it", () => {
 test("ask_user card prompts decode dense non-ASCII unicode escapes (#973)", () => {
   const escaped =
     "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d\\u8fd8\\u6ca1\\u8fc7\\u5173";
-  assert.equal(
-    decodeEscapedUnicodeForDisplay(escaped),
-    "「数制转换」还没过关",
-  );
+  assert.equal(decodeEscapedUnicodeForDisplay(escaped), "「数制转换」还没过关");
 
   const card = extractAskUserPayload([
     event("tool_result", {
@@ -169,8 +166,5 @@ test("ask_user card prompts decode dense non-ASCII unicode escapes (#973)", () =
   assert.equal(card.payload.intro, "「数制转换」还没过关");
   assert.equal(card.payload.questions[0].prompt, "「数制转换」还没过关");
   assert.equal(card.payload.questions[0].header, "数制转换");
-  assert.equal(
-    card.payload.questions[0].options[0].description,
-    "继续答题",
-  );
+  assert.equal(card.payload.questions[0].options[0].description, "继续答题");
 });

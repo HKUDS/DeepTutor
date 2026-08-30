@@ -249,6 +249,63 @@ class MasteryPathLease(BaseModel):
     acquired_at: float = Field(default_factory=time.time)
 
 
+class TopicSourceKind(str, Enum):
+    GOAL = "goal"
+    BOOK = "book"
+    NOTEBOOK = "notebook"
+    KNOWLEDGE_BASE = "knowledge_base"
+    FILE = "file"
+    CHAT = "chat"
+
+
+class TopicSource(BaseModel):
+    """One ordered source selected while designing a learning topic."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    kind: TopicSourceKind
+    source_id: str = ""
+    label: str
+    excerpt: str = ""
+    position: int = 0
+    available: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: float = Field(default_factory=time.time)
+
+
+class TopicMetadata(BaseModel):
+    """Product-level identity around the deterministic learning aggregate."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    path_id: str
+    goal: str = ""
+    description: str = ""
+    emoji: str = "🧭"
+    map_seed: int = 0
+    status: Literal["active", "archived"] = "active"
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class MasteryTopic(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    metadata: TopicMetadata
+    sources: list[TopicSource] = Field(default_factory=list)
+
+
+class LearnerMasteryOverride(BaseModel):
+    """Explicit learner claim that bypasses, but never impersonates, evidence."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    knowledge_point_id: str
+    note: str = ""
+    created_at: float = Field(default_factory=time.time)
+
+
 class LearningProgress(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -273,6 +330,10 @@ class LearningProgress(BaseModel):
     error_records: list[ErrorRecord] = Field(default_factory=list)
     repetition_states: dict[str, RepetitionState] = Field(default_factory=dict)
     review_queue: list[ReviewTask] = Field(default_factory=list)
+    # A learner may explicitly claim prior mastery.  Policy exposes this as a
+    # separate provenance (``mastery_source=learner``); assessed mastery and
+    # its evidence remain untouched and can take over later.
+    learner_mastery_overrides: dict[str, LearnerMasteryOverride] = Field(default_factory=dict)
     # A single outstanding question; grading reads its expected answer so the
     # model never has to recall it across turns.
     pending_question: PendingQuestion | None = None
@@ -302,5 +363,10 @@ __all__ = [
     "MasteryInteraction",
     "MasteryEvent",
     "MasteryPathLease",
+    "TopicSourceKind",
+    "TopicSource",
+    "TopicMetadata",
+    "MasteryTopic",
+    "LearnerMasteryOverride",
     "LearningProgress",
 ]

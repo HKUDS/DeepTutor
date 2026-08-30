@@ -25,6 +25,7 @@ class TurnRequest:
     config: dict[str, Any] = field(default_factory=dict)
     notebook_references: list[dict[str, Any]] = field(default_factory=list)
     history_references: list[str] = field(default_factory=list)
+    partner_group_references: list[dict[str, str]] = field(default_factory=list)
     attachments: list[dict[str, Any]] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
 
@@ -39,6 +40,7 @@ class TurnRequest:
             "config": dict(self.config),
             "notebook_references": list(self.notebook_references),
             "history_references": list(self.history_references),
+            "partner_group_references": list(self.partner_group_references),
             "attachments": list(self.attachments),
             "skills": list(self.skills),
         }
@@ -129,6 +131,7 @@ class DeepTutorApp:
                 "language": request.language,
                 "notebook_references": request.notebook_references,
                 "history_references": request.history_references,
+                "partner_group_references": request.partner_group_references,
             },
         )
         return session, turn

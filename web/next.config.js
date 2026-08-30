@@ -120,6 +120,24 @@ const nextConfig = {
     proxyTimeout: 30 * 60 * 1000,
   },
 
+  // Mastery Path moved out of the Space hub to its own top-level route.
+  // Bookmarks, links pasted into a chat, and the browser history of anyone
+  // who used the feature before the move all still point at the old path.
+  async redirects() {
+    return [
+      {
+        source: "/space/learning",
+        destination: "/mastery",
+        permanent: false,
+      },
+      {
+        source: "/space/learning/:path*",
+        destination: "/mastery/:path*",
+        permanent: false,
+      },
+    ];
+  },
+
   // Move dev indicator to bottom-right corner
   devIndicators: {
     position: "bottom-right",

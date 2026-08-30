@@ -10,7 +10,9 @@ import {
   Database,
   FileScan,
   Image as ImageIcon,
+  KeyRound,
   Library,
+  ListChecks,
   MessagesSquare,
   Mic,
   Network,
@@ -77,8 +79,19 @@ export interface SettingsCategory {
 
 const MODEL_CHILDREN: SettingsLeaf[] = [
   {
+    key: "connections",
+    href: "/settings/models#connections",
+    label: { zh: "连接", en: "Connections" },
+    blurb: {
+      zh: "一份凭据供给多个服务。",
+      en: "One credential, supplying several services.",
+    },
+    icon: KeyRound,
+    tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  },
+  {
     key: "llm",
-    href: "/settings/llm",
+    href: "/settings/models#llm",
     label: { zh: "LLM", en: "LLM" },
     blurb: {
       zh: "语言模型供应商与当前档位。",
@@ -89,8 +102,19 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
     service: "llm",
   },
   {
+    key: "task-models",
+    href: "/settings/models#task-models",
+    label: { zh: "任务模型", en: "Task models" },
+    blurb: {
+      zh: "DeepTutor 自己发起的调用使用的模型。",
+      en: "The model behind the calls DeepTutor makes on its own.",
+    },
+    icon: ListChecks,
+    tile: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+  },
+  {
     key: "embedding",
-    href: "/settings/embedding",
+    href: "/settings/models#embedding",
     label: { zh: "嵌入模型", en: "Embedding" },
     blurb: {
       zh: "向量模型供应商与维度。",
@@ -102,7 +126,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "search",
-    href: "/settings/search",
+    href: "/settings/models#search",
     label: { zh: "搜索", en: "Search" },
     blurb: { zh: "联网搜索供应商。", en: "Web search providers." },
     icon: Search,
@@ -111,7 +135,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "tts",
-    href: "/settings/tts",
+    href: "/settings/models#tts",
     label: { zh: "语音合成", en: "Text-to-Speech" },
     blurb: {
       zh: "朗读助手回复的 TTS 供应商。",
@@ -123,7 +147,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "stt",
-    href: "/settings/stt",
+    href: "/settings/models#stt",
     label: { zh: "语音识别", en: "Speech-to-Text" },
     blurb: {
       zh: "转写麦克风录音的 STT 供应商。",
@@ -135,7 +159,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "imagegen",
-    href: "/settings/image",
+    href: "/settings/models#imagegen",
     label: { zh: "文生图", en: "Image Generation" },
     blurb: {
       zh: "chat imagegen 工具使用的文生图模型。",
@@ -147,7 +171,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "videogen",
-    href: "/settings/video",
+    href: "/settings/models#videogen",
     label: { zh: "文生视频", en: "Video Generation" },
     blurb: {
       zh: "chat videogen 工具使用的文生视频模型。",
@@ -162,7 +186,7 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
 const CHAT_CHILDREN: SettingsLeaf[] = [
   {
     key: "tools",
-    href: "/settings/tools",
+    href: "/settings/chat#tools",
     label: { zh: "工具", en: "Tools" },
     blurb: {
       zh: "对话智能体可调用的内置工具。",
@@ -173,7 +197,7 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "capabilities",
-    href: "/settings/capabilities",
+    href: "/settings/chat#capabilities",
     label: { zh: "能力", en: "Capabilities" },
     blurb: {
       zh: "各能力的 LLM 参数与运行时旋钮。",
@@ -184,7 +208,7 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "starters",
-    href: "/settings/starters",
+    href: "/settings/chat#starters",
     label: { zh: "起始建议", en: "Starting points" },
     blurb: {
       zh: "主页输入框下方那三行引导的素材范围。",
@@ -195,7 +219,7 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "attachments",
-    href: "/settings/attachments",
+    href: "/settings/chat#attachments",
     label: { zh: "附件", en: "Attachments" },
     blurb: {
       zh: "聊天附件的大小上限与文本提取预算。",
@@ -210,7 +234,7 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
 const AGENT_CHILDREN: SettingsLeaf[] = [
   {
     key: "agent-claude-code",
-    href: "/settings/agents/claude-code",
+    href: "/settings/agents#agent-claude-code",
     label: { zh: "Claude Code", en: "Claude Code" },
     blurb: {
       zh: "DeepTutor 调用本机 Claude Code 时的模型、推理强度与运行参数。",
@@ -223,7 +247,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "agent-codex",
-    href: "/settings/agents/codex",
+    href: "/settings/agents#agent-codex",
     label: { zh: "Codex", en: "Codex" },
     blurb: {
       zh: "DeepTutor 调用本机 Codex 时的模型、推理强度与运行参数。",
@@ -235,7 +259,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "agent-gemini",
-    href: "/settings/agents/gemini",
+    href: "/settings/agents#agent-gemini",
     label: { zh: "Gemini CLI", en: "Gemini CLI" },
     blurb: {
       zh: "DeepTutor 调用本机 Gemini CLI 时的模型与运行参数。",
@@ -246,8 +270,23 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
     adminOnly: true,
   },
   {
+    // Supported everywhere else — backend kind, icon, label, its own settings
+    // page — but missing from this list, so the page was reachable only by
+    // typing the URL. Gemini CLI is retired and this is what replaced it.
+    key: "agent-antigravity",
+    href: "/settings/agents#agent-antigravity",
+    label: { zh: "Antigravity CLI", en: "Antigravity CLI" },
+    blurb: {
+      zh: "DeepTutor 调用本机 Antigravity CLI 时的模型与运行参数。",
+      en: "Model and run params for the local Antigravity CLI.",
+    },
+    icon: GeminiGlyph as unknown as LucideIcon,
+    tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+    adminOnly: true,
+  },
+  {
     key: "agent-kimi",
-    href: "/settings/agents/kimi",
+    href: "/settings/agents#agent-kimi",
     label: { zh: "Kimi CLI", en: "Kimi CLI" },
     blurb: {
       zh: "DeepTutor 调用本机 Kimi CLI 时的模型与运行参数。",
@@ -259,7 +298,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "agent-opencode",
-    href: "/settings/agents/opencode",
+    href: "/settings/agents#agent-opencode",
     label: { zh: "opencode", en: "opencode" },
     blurb: {
       zh: "DeepTutor 调用本机 opencode 时的模型、推理强度与运行参数。",
@@ -271,7 +310,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
   },
   {
     key: "agent-mimo",
-    href: "/settings/agents/mimo",
+    href: "/settings/agents#agent-mimo",
     label: { zh: "MiMo Code", en: "MiMo Code" },
     blurb: {
       zh: "DeepTutor 调用本机 MiMo Code 时的模型、推理强度与运行参数。",
@@ -356,43 +395,60 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
 export const SETTINGS_HUB_HREF = "/settings";
 const HUB_LABEL: Lang = { zh: "设置", en: "Settings" };
 
-/** Routes that are pure navigation (hub + sub-hubs) — no Save/Apply toolbar. */
-const NAV_ONLY_ROUTES = new Set<string>([
-  SETTINGS_HUB_HREF,
-  ...SETTINGS_CATEGORIES.filter((c) => c.children).map((c) => c.href),
-]);
+/** Routes that are pure navigation (the hub) — no Save/Apply toolbar. */
+const NAV_ONLY_ROUTES = new Set<string>([SETTINGS_HUB_HREF]);
 
 export function isNavOnlyRoute(pathname: string): boolean {
   return NAV_ONLY_ROUTES.has(pathname);
 }
 
+/**
+ * Categories rendered as one continuously-scrolling page (Models, Chat,
+ * Partners & Agents) rather than a route per leaf. Their children's `href`
+ * points at `${category.href}#${leaf.key}` — a same-page anchor, not a route
+ * change — so switching between them never remounts the page.
+ */
+export const MERGED_CATEGORY_HREFS = new Set(
+  SETTINGS_CATEGORIES.filter((c) => c.children).map((c) => c.href),
+);
+
 // The on-disk file (under data/user/settings/) each leaf module persists to.
 // Surfaced in the toolbar status line so every page says where its parameters
-// live, without duplicating the string on each page.
+// live, without duplicating the string on each page. Singleton pages (no
+// merged category) are keyed by pathname; leaves inside a merged category
+// page share one pathname, so those are keyed by `leaf.key` instead and
+// looked up via the currently scrolled-to section (see `storagePathFor`).
 const STORAGE_PATHS: Record<string, string> = {
   "/settings/appearance": "data/user/settings/interface.json",
   "/settings/network": "data/user/settings/system.json",
-  "/settings/llm": "data/user/settings/model_catalog.json",
-  "/settings/embedding": "data/user/settings/model_catalog.json",
-  "/settings/search": "data/user/settings/model_catalog.json",
-  "/settings/tts": "data/user/settings/model_catalog.json",
-  "/settings/stt": "data/user/settings/model_catalog.json",
-  "/settings/image": "data/user/settings/model_catalog.json",
-  "/settings/video": "data/user/settings/model_catalog.json",
   "/settings/document-parsing": "data/user/settings/document_parsing.json",
-  "/settings/tools": "data/user/settings/interface.json",
-  "/settings/attachments": "data/user/settings/system.json",
-  "/settings/capabilities": "data/user/settings/main.yaml · agents.yaml",
   "/settings/memory": "data/user/settings/main.yaml",
-  "/settings/agents/claude-code": "data/user/settings/subagent.json",
-  "/settings/agents/codex": "data/user/settings/subagent.json",
-  "/settings/agents/gemini": "data/user/settings/subagent.json",
-  "/settings/agents/kimi": "data/user/settings/subagent.json",
-  "/settings/agents/opencode": "data/user/settings/subagent.json",
-  "/settings/agents/mimo": "data/user/settings/subagent.json",
+  llm: "data/user/settings/model_catalog.json",
+  embedding: "data/user/settings/model_catalog.json",
+  search: "data/user/settings/model_catalog.json",
+  tts: "data/user/settings/model_catalog.json",
+  stt: "data/user/settings/model_catalog.json",
+  imagegen: "data/user/settings/model_catalog.json",
+  videogen: "data/user/settings/model_catalog.json",
+  tools: "data/user/settings/interface.json",
+  attachments: "data/user/settings/system.json",
+  capabilities: "data/user/settings/main.yaml · agents.yaml",
+  "agent-claude-code": "data/user/settings/subagent.json",
+  "agent-codex": "data/user/settings/subagent.json",
+  "agent-gemini": "data/user/settings/subagent.json",
+  "agent-antigravity": "data/user/settings/subagent.json",
+  "agent-kimi": "data/user/settings/subagent.json",
+  "agent-opencode": "data/user/settings/subagent.json",
+  "agent-mimo": "data/user/settings/subagent.json",
 };
 
-export function storagePathFor(pathname: string): string | null {
+export function storagePathFor(
+  pathname: string,
+  activeSection?: string | null,
+): string | null {
+  if (MERGED_CATEGORY_HREFS.has(pathname)) {
+    return activeSection ? (STORAGE_PATHS[activeSection] ?? null) : null;
+  }
   return STORAGE_PATHS[pathname] ?? null;
 }
 

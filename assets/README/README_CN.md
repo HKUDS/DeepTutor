@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>可选安装额外依赖</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>可选安装额外依赖</b> — RAG 引擎 / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # 内置 LightRAG 引擎（精确匹配受支持的 SDK 版本）
+pip install -e ".[graphrag]"        # Microsoft GraphRAG 引擎
 pip install -e ".[dev]"             # 测试/代码检查工具
 pip install -e ".[partners]"        # Partner IM 渠道 SDK
 pip install -e ".[matrix]"          # Matrix 渠道（不含 E2EE/libolm）
@@ -431,6 +433,8 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 
 创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。知识库还可以追踪 **GitHub 仓库**（仓库、分支和 glob 匹配模式）或**文档站点 URL**（限制爬取深度和页面数量）；按需同步时会通过内容哈希差异识别新增、变更和移除的内容，让你关注的文档保持最新，无需重新上传。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向 Apache Tika 服务器（`TIKA_SERVER_URL`）。CLI 通过 `list/info/create/add/search/set-default/delete`、来源添加/移除命令、`list-sources` 和 `sync` 管理完整生命周期。
 
+内置的 LightRAG 引擎通过 `pip install 'deeptutor[rag-lightrag]'` 安装。该额外依赖包含受支持的 LightRAG SDK，但不会安装 MinerU。如需结构化 PDF 解析，请在文档解析中单独选择 MinerU，并配置其云端模式或安装其本地 CLI；纯文本及其他解析引擎均不需要 MinerU。
+
 </details>
 
 <details>
@@ -474,7 +478,7 @@ Memory Graph 展示整个金字塔 — L3 综合位于中心，L2 在中间圆�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor 设置中心" width="900">
 </div>
 
-Settings 是操作控制面板，带有实时状态条（后端健康状况与整个进程树的常驻内存占用）和每个区域的配置卡：**外观**（主题、UI 语言与模型输出语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（LLM、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（工具、每个能力的参数、附件上限）、**Partners 与智能体**（可在对话轮次中调用的子智能体），以及**记忆**（整合器预算）。
+Settings 是操作控制面板，带有实时状态条（后端健康状况与整个进程树的常驻内存占用）和一个常驻的可搜索导航栏，一键直达任意页面：**外观**（主题、UI 语言与模型输出语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（Connections 连接、LLM、任务模型、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（工具、每个能力的参数、起始建议、附件上限）、**Partners 与智能体**（可在对话轮次中调用的子智能体），以及**记忆**（整合器预算）。**连接**保存一份厂商凭证，并将其镜像到该厂商可服务的每一处 — 一把密钥只需录入一次，无需在五个页面里分别粘贴；**任务模型**为那些没人特意关心的后台工作（比如给会话命名、撰写输入框的起始建议）指定一个小而快的模型，留空时则回退到当前的默认模型。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外观设置与主题" width="900">
@@ -658,7 +662,10 @@ EduHub 也是一个独立的、ClawHub 兼容的注册表，因此非 DeepTutor 
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+当多个发布者共用同一个 slug 时，搜索结果会列出每个发布者及其完整限定的安装引用（`clawhub:<ownerHandle>/<slug>`）。
 
 在 `settings/skill_hubs.json` 中添加更多注册表：`type: "clawhub"` 条目指向任何兼容的 HTTP API（EduHub 和 ClawHub 都支持），`type: "command"` 包装注册表自带的任何获取 CLI，`"default"` 选择用于裸 slug 的 Hub。所有这些来源都经过同一个导入安全门。
 
@@ -681,6 +688,16 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 </p>
 
 ## 🌐 社区
+
+### 🔗 维护者
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 联系方式
 

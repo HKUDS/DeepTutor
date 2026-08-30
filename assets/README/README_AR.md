@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>إضافات التثبيت الاختيارية</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>إضافات التثبيت الاختيارية</b> — محركات RAG / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # محرك LightRAG المدمج (SDK المدعوم بدقة)
+pip install -e ".[graphrag]"        # محرك GraphRAG من Microsoft
 pip install -e ".[dev]"             # أدوات الاختبار/الفحص
 pip install -e ".[partners]"        # SDK قنوات شركاء IM
 pip install -e ".[matrix]"          # قناة Matrix بدون E2EE/libolm
@@ -431,6 +433,8 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 
 عند إنشاء قاعدة معرفة، إما أن **تنشئ جديدة** (تحميل مستندات وبناء فهرس جديد) أو **تربط موجودة** (إعادة استخدام فهرس مبني في مكان آخر، قراءة في مكانه بدون إعادة فهرسة). يمكن لقاعدة المعرفة أيضاً تتبُّع **مستودعات GitHub** (المستودع والفرع ونمط glob) أو **عناوين URL لمواقع التوثيق** (مع حدود لعمق الزحف وعدد الصفحات)؛ وعند المزامنة حسب الطلب، تقارن تجزئات المحتوى لتحديد ما أُضيف أو تغيّر أو أُزيل، كي تبقى الوثائق التي تتابعها محدَّثة دون إعادة رفع. تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. تحليل المستندات — نص فقط أو MinerU أو Docling أو Tika أو markitdown أو PyMuPDF4LLM أو LiteParse — يُختار في **الإعدادات ← قاعدة المعرفة**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. يمكن لـ Docling أيضاً العمل في وضع **بعيد** مقابل خادم Docling Serve (بلا حاجة إلى تثبيت محلي أو نماذج)، يُهيَّأ عبر **الإعدادات ← تحليل المستندات** (`mode=remote`، وعنوان URL أساسي للخادم، ومفتاح API اختياري) أو متغيرات البيئة `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. أما Tika فهو بعيد فقط ويشير إلى خادم Apache Tika (`TIKA_SERVER_URL`). تعكس واجهة CLI دورة الحياة عبر `list/info/create/add/search/set-default/delete`، وأوامر إضافة المصادر وإزالتها، و`list-sources`، و`sync`.
 
+يُثبَّت محرك LightRAG المدمج عبر `pip install 'deeptutor[rag-lightrag]'`. تحتوي هذه الإضافة على SDK الخاص بـ LightRAG المدعوم لكنها لا تُثبِّت MinerU. اختر MinerU بشكل مستقل في تحليل المستندات، وإما هيّئ وضعه السحابي أو ثبّت واجهة سطر أوامره المحلية عند الحاجة إلى تحليل PDF منظَّم؛ محركات التحليل الأخرى ووضع النص فقط لا تتطلب MinerU.
+
 </details>
 
 <details>
@@ -474,7 +478,7 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="مركز إعدادات DeepTutor" width="900">
 </div>
 
-الإعدادات هي لوحة التحكم التشغيلية، مع شريط حالة مباشر (سلامة الخلفية والذاكرة المقيمة عبر شجرة العمليات) وبطاقة واحدة لكل منطقة: **المظهر** (الثيمة، ولغة واجهة المستخدم ولغة مخرجات النموذج، وتنسيق كتل الرمز)، **الشبكة** (قاعدة API والمنافذ وCORS)، **النماذج** (LLM والتضمين والبحث وتحويل النص إلى كلام وتحويل الكلام إلى نص وتوليد الصور وتوليد الفيديو)، **قاعدة المعرفة** (محرك تحليل المستندات)، **Chat** (الأدوات والمعاملات لكل قدرة، وحدود المرفقات)، **الشركاء والوكلاء** (الوكلاء الفرعيون الذين يمكنك استشارتهم من دور)، و**الذاكرة** (ميزانيات الموحّد).
+الإعدادات هي لوحة التحكم التشغيلية، مع شريط حالة مباشر (سلامة الخلفية والذاكرة المقيمة عبر شجرة العمليات) وشريط تنقّل دائم وقابل للبحث يصل إلى أي صفحة بنقرة واحدة: **المظهر** (الثيمة، ولغة واجهة المستخدم ولغة مخرجات النموذج، وتنسيق كتل الرمز)، **الشبكة** (قاعدة API والمنافذ وCORS)، **النماذج** (الاتصالات، وLLM، ونماذج المهام، والتضمين، والبحث، وتحويل النص إلى كلام، وتحويل الكلام إلى نص، وتوليد الصور، وتوليد الفيديو)، **قاعدة المعرفة** (محرك تحليل المستندات)، **Chat** (الأدوات، والمعاملات لكل قدرة، ونقاط الانطلاق، وحدود المرفقات)، **الشركاء والوكلاء** (الوكلاء الفرعيون الذين يمكنك استشارتهم من دور)، و**الذاكرة** (ميزانيات الموحّد). يحتفظ **الاتصال** ببيانات اعتماد مزود واحد وينسخها إلى كل خدمة يمكن لذلك المزود خدمتها، لذا يُدخَل المفتاح مرة واحدة بدلاً من لصقه في خمس صفحات؛ تُثبِّت **نماذج المهام** نموذجاً صغيراً وسريعاً للأعمال التي لم يطلبها أحد — تسمية محادثة، أو كتابة نقاط الانطلاق في شريط المؤلف — وتُحلّ إلى الافتراضي النشط عند تركها فارغة.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="إعدادات المظهر والثيمات في DeepTutor" width="900">
@@ -658,7 +662,10 @@ EduHub هو أيضاً سجل مستقل متوافق مع ClawHub، لذا ال
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+عندما يشترك عدة ناشرين في نفس الـ slug، يعرض البحث كل ناشر ومرجع تثبيت كامل النطاق (`clawhub:<ownerHandle>/<slug>`).
 
 أضف المزيد من السجلات في `settings/skill_hubs.json`: إدخال `type: "clawhub"` يشير إلى أي HTTP API متوافق (EduHub وClawHub يتحدثانه كلاهما)، `type: "command"` يلفّ أي CLI جلب يشحنه السجل، و`"default"` يختار المركز المستخدم للـ slugs المجردة. كلها تُغذّي نفس بوابة الاستيراد.
 
@@ -681,6 +688,16 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 </p>
 
 ## 🌐 المجتمع
+
+### 🔗 المشرفون
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 التواصل
 

@@ -8,10 +8,13 @@ import logging
 import sys
 from typing import Any
 
+from deeptutor.capabilities.course_study import COURSE_STUDY_TOOL_TYPES
 from deeptutor.capabilities.ima import IMA_TOOL_TYPES
 from deeptutor.capabilities.marginnote4 import MARGINNOTE_TOOL_TYPES
 from deeptutor.capabilities.mastery import MASTERY_TOOL_TYPES
 from deeptutor.capabilities.obsidian import OBSIDIAN_TOOL_TYPES
+from deeptutor.capabilities.partner_authoring import PARTNER_AUTHORING_TOOL_TYPES
+from deeptutor.capabilities.partner_group import PARTNER_GROUP_TOOL_TYPES
 from deeptutor.capabilities.reading import READING_TOOL_TYPES
 from deeptutor.capabilities.setup import SETUP_TOOL_TYPES
 from deeptutor.capabilities.solve import SOLVE_TOOL_TYPES
@@ -1759,6 +1762,16 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     # Self-configuration tools — globally registered; the setup capability
     # mounts them (additively) on a turn that is actually about configuration.
     *SETUP_TOOL_TYPES,
+    # Chat-native Partner profile drafting. The capability gates this tool to
+    # actual authoring requests; confirmation is handled by the Partner API.
+    *PARTNER_AUTHORING_TOOL_TYPES,
+    # Group-only Partner collaboration. The capability finish guard makes this
+    # a post-answer proposal; execution remains behind explicit user approval.
+    *PARTNER_GROUP_TOOL_TYPES,
+    # Course Study tools — globally registered; the course capability mounts
+    # them (additively) and binds the active course server-side, so they are
+    # inert on a turn that belongs to no course.
+    *COURSE_STUDY_TOOL_TYPES,
     # Partner-only memory + history tools. Globally registered so schemas/API
     # stay stable, but never mounted in product chat: the partner runtime
     # force-mounts them (and suppresses chat's read_memory/write_memory) on

@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>वैकल्पिक install extras</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>वैकल्पिक install extras</b> — RAG engines / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # Built-in LightRAG engine (सटीक समर्थित SDK)
+pip install -e ".[graphrag]"        # Microsoft GraphRAG engine
 pip install -e ".[dev]"             # tests/lint tools
 pip install -e ".[partners]"        # Partner IM channel SDKs
 pip install -e ".[matrix]"          # E2EE/libolm के बिना Matrix channel
@@ -431,6 +433,8 @@ Knowledge bases RAG के पीछे document collections हैं — व�
 
 KB बनाते समय, आप either **नया create** करते हैं (documents upload करें और fresh index build करें) या **existing link** करते हैं (कहीं और बना index reuse करें, re-index के बिना in-place पढ़ें)। एक KB **GitHub repositories** (repo, branch, glob) या **documentation-site URLs** (सीमित crawl depth और page count) को भी track कर सकती है; on-demand sync added, changed, और removed content का hash-diff करती है, इसलिए जो documentation आप follow करते हैं वह re-upload किए बिना current बनी रहती है। Re-indexing एक नई flat `version-N` directory लिखता है और prior ones रखता है, इसलिए एक working index rebuild के दौरान कभी destroy नहीं होता। एक single document को **error**-state base से भी remove किया जा सकता है — पूरी delete-and-rebuild के बिना parse होने में failed हुई file को drop करना। Document parsing — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM, या LiteParse — **Settings → Knowledge Base** में choose किया जाता है, local model downloads default रूप से off हैं। Docling को **remote** mode में भी एक Docling Serve server के विरुद्ध चलाया जा सकता है (कोई local install या models की जरूरत नहीं), जिसे **Settings → Document Parsing** (`mode=remote`, एक server base URL, और एक optional API key) या `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables के जरिए configure किया जाता है। Tika remote-only है और एक Apache Tika server (`TIKA_SERVER_URL`) पर point करता है। CLI lifecycle को `list/info/create/add/search/set-default/delete`, source add/remove commands, `list-sources`, और `sync` से mirror करता है।
 
+Built-in LightRAG engine `pip install 'deeptutor[rag-lightrag]'` से install होता है। उस extra में supported LightRAG SDK शामिल है लेकिन यह MinerU install नहीं करता। जब structured PDF parsing चाहिए हो, तो Document Parsing में MinerU को स्वतंत्र रूप से चुनें और या तो इसका cloud mode configure करें या इसका local CLI install करें; text-only और बाकी parsing engines को MinerU की जरूरत नहीं होती।
+
 </details>
 
 <details>
@@ -474,7 +478,7 @@ Memory Graph पूरा pyramid दिखाता है — L3 synthesis cen
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings operational control plane है, एक live status strip (Backend health और पूरे process tree में resident memory) और प्रत्येक area के लिए एक card के साथ: **Appearance** (theme, UI और model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, attachment caps), **Partners & Agents** (वे subagents जिन्हें आप turn से consult कर सकते हैं), और **Memory** (consolidator के budgets)।
+Settings operational control plane है, एक live status strip (Backend health और पूरे process tree में resident memory) और एक persistent, searchable navigator के साथ जो एक ही क्लिक में किसी भी page तक पहुंचाता है: **Appearance** (theme, UI और model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, starting points, attachment caps), **Partners & Agents** (वे subagents जिन्हें आप turn से consult कर सकते हैं), और **Memory** (consolidator के budgets)। एक **connection** एक vendor credential रखती है और उसे हर उस service में mirror करती है जिसे वह vendor serve कर सकता है, इसलिए एक key पांच pages में paste करने की बजाय एक बार enter की जाती है; **task models** उस काम के लिए एक छोटा, तेज़ model pin करते हैं जो किसी ने नहीं मांगा — किसी conversation को नाम देना, composer के starting points लिखना — और खाली छोड़े जाने पर active default पर resolve हो जाते हैं।
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -658,7 +662,10 @@ Multi-user deployments में, imports caller की अपनी skill libra
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+जब कई publishers same slug share करते हैं, तो search हर publisher को और एक fully scoped install ref (`clawhub:<ownerHandle>/<slug>`) दिखाता है।
 
 `settings/skill_hubs.json` में और registries add करें: एक `type: "clawhub"` entry किसी भी compatible HTTP API पर point करती है (EduHub और ClawHub दोनों इसे बोलते हैं), `type: "command"` जो fetch CLI एक registry ship करती है उसे wrap करता है, और `"default"` bare slugs के लिए उपयोग होने वाला hub choose करता है। सभी same import gate feed करते हैं।
 
@@ -681,6 +688,16 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 </p>
 
 ## 🌐 समुदाय
+
+### 🔗 मेंटेनर्स
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 संपर्क
 

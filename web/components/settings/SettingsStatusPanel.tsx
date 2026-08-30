@@ -27,7 +27,7 @@ export default function SettingsStatusPanel() {
   return (
     <section
       data-tour="tour-status"
-      className="flex flex-wrap items-center gap-x-5 gap-y-2.5 rounded-2xl border border-[var(--border)]/70 bg-[var(--card)]/50 px-5 py-3.5"
+      className="flex flex-wrap items-center gap-x-5 gap-y-2.5 border-y border-[var(--border)]/60 py-2.5"
     >
       <div className="flex items-center gap-2.5">
         <span

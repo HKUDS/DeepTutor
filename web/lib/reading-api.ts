@@ -8,10 +8,10 @@ import { apiFetch, apiUrl } from "@/lib/api";
 // unit word is carried on the material so the UI can say "page 12" or
 // "chapter 3" without ever branching on the file type itself.
 
-export type UnitKind = "page" | "chapter" | "slide" | "section";
+export type UnitKind = "page" | "chapter" | "slide" | "section" | "segment";
 export type AnnotationKind = "highlight" | "underline" | "note";
 export type ExportFormat = "auto" | "pdf" | "markdown";
-export type RenderMode = "text" | "pdf" | "epub";
+export type RenderMode = "text" | "pdf" | "epub" | "video" | "audio";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -22,6 +22,21 @@ export const ANNOTATION_COLORS = [
   "purple",
 ] as const;
 export type AnnotationColor = (typeof ANNOTATION_COLORS)[number];
+
+/**
+ * Swatch for each highlight colour.
+ *
+ * Deliberately literal rather than themed: a highlight is content — it is
+ * written into the exported PDF and has to look the same everywhere the
+ * annotation is read back.
+ */
+export const ANNOTATION_SWATCH: Record<AnnotationColor, string> = {
+  yellow: "#facd5a",
+  green: "#8cdb94",
+  blue: "#7ac0fa",
+  pink: "#faa1c7",
+  purple: "#c7aefa",
+};
 
 export interface MaterialInfo {
   material_id: string;
@@ -36,6 +51,7 @@ export interface MaterialInfo {
   /** True when the original bytes can be rendered faithfully (PDF today). */
   has_raw_view: boolean;
   render_mode: RenderMode;
+  extractor: string;
   annotation_count: number;
 }
 
@@ -177,11 +193,21 @@ export async function listMaterials(): Promise<MaterialInfo[]> {
   );
 }
 
-export async function uploadMaterial(file: File): Promise<MaterialDetail> {
+export async function uploadMaterial(
+  file: File,
+  options?: { reuse?: boolean },
+): Promise<MaterialDetail> {
   const form = new FormData();
   form.append("file", file, file.name);
+  // reuse=false asks the server to mint a separate material for content it
+  // already holds, so a second copy carries its own annotations instead of
+  // silently collapsing onto the first upload.
+  const query = options?.reuse === false ? "?reuse=false" : "";
   return unwrap(
-    await apiFetch(apiUrl(`${BASE}/materials`), { method: "POST", body: form }),
+    await apiFetch(apiUrl(`${BASE}/materials${query}`), {
+      method: "POST",
+      body: form,
+    }),
   );
 }
 

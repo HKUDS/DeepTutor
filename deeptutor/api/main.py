@@ -375,6 +375,7 @@ from deeptutor.api.routers import (
     memory,
     notebook,
     outputs,
+    partner_groups,
     partners,
     personas,
     plugins_api,
@@ -534,6 +535,12 @@ app.include_router(
 # express.
 app.include_router(
     partners.router, prefix="/api/v1/partners", tags=["partners"], dependencies=_auth
+)
+app.include_router(
+    partner_groups.router,
+    prefix="/api/v1/partner-groups",
+    tags=["partner-groups"],
+    dependencies=_auth,
 )
 app.include_router(
     attachments.router,

@@ -10,4 +10,5 @@ BUILTIN_CAPABILITY_CLASSES: dict[str, str] = {
     "visualize": "deeptutor.agents.visualize.capability:VisualizeCapability",
     "mastery_path": "deeptutor.capabilities.mastery.capability:MasteryPathCapability",
     "immersive_reading": "deeptutor.capabilities.reading.mode:ImmersiveReadingCapability",
+    "course_study": "deeptutor.capabilities.course_study.mode:CourseStudyCapability",
 }

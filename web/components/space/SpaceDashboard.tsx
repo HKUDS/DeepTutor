@@ -26,7 +26,6 @@ import { listNotebooks, listNotebookEntries } from "@/lib/notebook-api";
 import { listPersonas } from "@/lib/personas-api";
 import { listSkills } from "@/lib/skills-api";
 import { fetchAllProgress } from "@/lib/learning-api";
-import CoursesShelf from "@/components/courses/CoursesShelf";
 
 /**
  * Learning Space dashboard — the hub of `/space`.
@@ -135,7 +134,7 @@ const GROUPS: DashboardGroup[] = [
     items: [
       {
         key: "mastery_path",
-        href: "/space/learning",
+        href: "/mastery",
         icon: GraduationCap,
         title: { zh: "精通之路", en: "Mastery Path" },
         blurb: {
@@ -305,8 +304,6 @@ export default function SpaceDashboard() {
           })}
         </p>
       </header>
-
-      <CoursesShelf />
 
       <div className="space-y-9">
         {groups.map((group) => (

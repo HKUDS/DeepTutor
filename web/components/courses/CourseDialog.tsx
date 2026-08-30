@@ -14,8 +14,24 @@ interface CourseDialogProps {
     name: string;
     description: string;
     color: string;
+    default_capability: string;
+    default_persona: string;
   }) => Promise<void>;
 }
+
+/**
+ * Modes a course may open its conversations in.
+ *
+ * Not every capability: a course sets the *starting posture* for studying this
+ * subject, and "start every conversation in Visualize" is not a posture anyone
+ * holds. The learner can still switch to anything once inside.
+ */
+const DEFAULT_CAPABILITIES: { value: string; label: string }[] = [
+  { value: "", label: "Chat" },
+  { value: "course_study", label: "Course Study" },
+  { value: "deep_solve", label: "Guided Solving" },
+  { value: "deep_question", label: "Quiz" },
+];
 
 export default function CourseDialog({
   open,
@@ -27,6 +43,8 @@ export default function CourseDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(DEFAULT_COURSE_COLORS[0]);
+  const [defaultCapability, setDefaultCapability] = useState("");
+  const [defaultPersona, setDefaultPersona] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -35,6 +53,8 @@ export default function CourseDialog({
     setName(course?.name ?? "");
     setDescription(course?.description ?? "");
     setColor(course?.color ?? DEFAULT_COURSE_COLORS[0]);
+    setDefaultCapability(course?.default_capability ?? "");
+    setDefaultPersona(course?.default_persona ?? "");
     setError("");
   }, [course, open]);
 
@@ -45,7 +65,13 @@ export default function CourseDialog({
     setBusy(true);
     setError("");
     try {
-      await onSave({ name: cleanName, description: description.trim(), color });
+      await onSave({
+        name: cleanName,
+        description: description.trim(),
+        color,
+        default_capability: defaultCapability,
+        default_persona: defaultPersona.trim(),
+      });
       onClose();
     } catch (reason) {
       setError(
@@ -118,6 +144,51 @@ export default function CourseDialog({
               />
             ))}
           </div>
+        </fieldset>
+
+        {/* What a new conversation in this course inherits. Stored on the
+            course and applied by the composer when one opens here, so a subject
+            that is always studied one way does not have to be set up by hand
+            every time. */}
+        <fieldset className="border-t border-[var(--border)]/70 pt-4">
+          <legend className="pr-2 text-[12px] font-medium text-[var(--foreground)]">
+            {t("How conversations here start")}
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-[11.5px] text-[var(--muted-foreground)]">
+                {t("Mode")}
+              </span>
+              <select
+                value={defaultCapability}
+                onChange={(event) => setDefaultCapability(event.target.value)}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] outline-none transition-colors focus:border-[var(--ring)]"
+              >
+                {DEFAULT_CAPABILITIES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.label)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[11.5px] text-[var(--muted-foreground)]">
+                {t("Persona")}
+              </span>
+              <input
+                value={defaultPersona}
+                maxLength={80}
+                onChange={(event) => setDefaultPersona(event.target.value)}
+                placeholder={t("Default")}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] outline-none transition-colors focus:border-[var(--ring)]"
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+            {t(
+              "Applied when a conversation opens from this course, along with its knowledge bases. You can change any of it once inside.",
+            )}
+          </p>
         </fieldset>
 
         {error ? (

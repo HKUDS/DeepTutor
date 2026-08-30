@@ -1,6 +1,40 @@
 /** Shared presentation helpers for the Mastery Path dashboard. */
 
-export type Translate = (cn: string, en: string) => string;
+/** The `t` from `useTranslation()`, narrowed to what these helpers need. */
+export type Translate = (key: string) => string;
+
+const KNOWLEDGE_TYPE_LABELS: Record<string, string> = {
+  concept: "Concept",
+  memory: "Memory",
+  procedure: "Procedure",
+  design: "Design",
+};
+
+export function knowledgeTypeLabel(type: string, t: Translate): string {
+  const label = KNOWLEDGE_TYPE_LABELS[type];
+  return label ? t(label) : type;
+}
+
+/**
+ * Older paths did not require a human-readable title and sometimes stored the
+ * generated path id as the name. Keep a short trace suffix without exposing a
+ * database-shaped identifier as the primary label.
+ */
+export function topicDisplayName(
+  topic: { name: string; path_id: string },
+  t: Translate,
+): string {
+  const name = topic.name.trim();
+  if (
+    name &&
+    name !== topic.path_id &&
+    !/^unified_\d+_[a-z0-9]+$/i.test(name)
+  ) {
+    return name;
+  }
+  const suffix = topic.path_id.split("_").at(-1)?.slice(-4) || "map";
+  return `${t("Exploration trail")} · ${suffix}`;
+}
 
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;

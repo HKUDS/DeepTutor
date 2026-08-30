@@ -22,8 +22,9 @@ from pathlib import Path
 import shutil
 import tempfile
 from typing import Any, Literal
+import uuid
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile
 from fastapi.params import File
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, model_validator
@@ -31,13 +32,21 @@ from pydantic import BaseModel, Field, model_validator
 from deeptutor.reading import (
     ANNOTATION_COLORS,
     Annotation,
+    IngestionStatus,
     MaterialNotFound,
+    ReadingCatalogStore,
     ReadingError,
     ReadingPosition,
     ReadingStore,
     ReadingUpgradeConflict,
+    SourceKind,
     export_material,
     render_outline,
+)
+from deeptutor.reading.ingestion import ReadingIngestionService, url_material_id
+from deeptutor.reading.knowledge_capture import (
+    organize_workspace_notes,
+    send_workspace_to_notebook,
 )
 from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS
 from deeptutor.utils.document_validator import DocumentValidator
@@ -50,10 +59,47 @@ router = APIRouter()
 # passes here cannot then be rejected deeper in with a less helpful message.
 MAX_MATERIAL_BYTES = DocumentValidator.MAX_FILE_SIZE
 _UPLOAD_CHUNK = 1024 * 1024
+_MEDIA_EXTENSIONS = {
+    ".mp4",
+    ".mov",
+    ".mkv",
+    ".webm",
+    ".m4v",
+    ".mp3",
+    ".m4a",
+    ".wav",
+    ".aac",
+    ".ogg",
+    ".flac",
+}
 
 
 def _store() -> ReadingStore:
     return ReadingStore()
+
+
+def _catalog() -> ReadingCatalogStore:
+    return ReadingCatalogStore()
+
+
+def _ingestion() -> ReadingIngestionService:
+    catalog = _catalog()
+    return ReadingIngestionService(ReadingStore(catalog.root), catalog)
+
+
+def _new_material_id() -> str:
+    return f"rm_{uuid.uuid4().hex[:12]}"
+
+
+def _content_facts(store: ReadingStore, record: Any) -> tuple[int, int]:
+    """Stored size and extracted unit count, or zeros while still processing."""
+    if getattr(record.status, "value", record.status) != "ready":
+        return 0, 0
+    try:
+        manifest = store.manifest(record.material_id)
+    except Exception:  # noqa: BLE001 - a missing manifest is a zero, not a 500
+        return 0, 0
+    return int(manifest.byte_size), int(manifest.unit_count)
 
 
 def _http_error(exc: Exception) -> HTTPException:
@@ -87,7 +133,8 @@ class MaterialInfo(BaseModel):
     char_count: int = 0
     created_at: float = 0.0
     has_raw_view: bool = False
-    render_mode: Literal["text", "pdf", "epub"] = "text"
+    render_mode: Literal["text", "pdf", "epub", "video", "audio"] = "text"
+    extractor: str = ""
     annotation_count: int = 0
 
 
@@ -199,7 +246,546 @@ class EpubPairingRequest(BaseModel):
     chinese_material_id: str
 
 
+class UrlImportRequest(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=50)
+    workspace_id: str = ""
+    workspace_title: str = ""
+
+
+class WorkspaceCreateRequest(BaseModel):
+    title: str = Field(default="Untitled collection", max_length=300)
+    description: str = Field(default="", max_length=2000)
+    material_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class WorkspaceUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class WorkspaceMaterialRequest(BaseModel):
+    material_id: str
+    make_active: bool = False
+
+
+class WorkspaceReorderRequest(BaseModel):
+    material_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class ReadingSessionCreateRequest(BaseModel):
+    title: str = Field(default="New reading conversation", max_length=100)
+    active_material_id: str = ""
+
+
+class ReadingSessionRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+
+
+class ReadingSessionLinkRequest(BaseModel):
+    target_session_id: str
+
+
+class DuplicateFileQuery(BaseModel):
+    filename: str = Field(default="", max_length=512)
+    # sha256(bytes)[:16], computed by the browser with the store's algorithm.
+    content_id: str = Field(default="", max_length=64)
+    size_bytes: int = 0
+    mime: str = Field(default="", max_length=128)
+
+
+class DuplicateCheckRequest(BaseModel):
+    files: list[DuplicateFileQuery] = Field(default_factory=list, max_length=50)
+    urls: list[str] = Field(default_factory=list, max_length=50)
+
+
+class OrganizeNotesRequest(BaseModel):
+    material_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class NotebookCaptureRequest(OrganizeNotesRequest):
+    notebook_ids: list[str] = Field(min_length=1, max_length=20)
+    title: str = Field(default="", max_length=300)
+    summary: str = Field(default="", max_length=1000)
+
+
 # === Routes ===================================================================
+
+
+@router.get("/library/materials")
+async def list_library_materials(
+    search: str = Query(default="", max_length=200),
+    status: Literal["queued", "processing", "ready", "failed"] | None = None,
+    library_filter: Literal["all", "unassigned", "processing", "failed"] = Query(
+        default="all", alias="filter"
+    ),
+) -> dict[str, Any]:
+    """Every material the owner has, with the collections holding each one.
+
+    Membership travels with the row because the library view exists to answer
+    "where is this used, and what did I upload that is used nowhere" — a
+    question the client cannot ask one material at a time.
+    """
+    catalog = _catalog()
+    store = _store()
+    try:
+        for manifest in store.list_materials():
+            if catalog.get_material(manifest.material_id) is None:
+                catalog.register_manifest(manifest)
+        rows = catalog.list_materials(search=search, status=status, library_filter=library_filter)
+        membership = catalog.collections_for_materials([row.material_id for row in rows])
+        materials: list[dict[str, Any]] = []
+        for row in rows:
+            payload = row.to_dict()
+            payload["collections"] = membership.get(row.material_id, [])
+            size_bytes, unit_count = _content_facts(store, row)
+            payload["size_bytes"] = size_bytes
+            payload["unit_count"] = unit_count
+            materials.append(payload)
+        # Counts describe the whole library, not the filtered page, so the
+        # filter chips can show what they would reveal before being clicked.
+        return {"materials": materials, "counts": catalog.library_counts()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/library/duplicate-check")
+async def duplicate_check(payload: DuplicateCheckRequest) -> dict[str, Any]:
+    """Say what the library already holds, before anything is uploaded.
+
+    Identical bytes are answered from the content id the browser computed;
+    a same-name-different-content upload is the genuinely ambiguous case and
+    is reported separately so the client can ask instead of guessing.
+    """
+    catalog = _catalog()
+    store = _store()
+
+    def described(record: Any) -> dict[str, Any]:
+        """The match, with the facts that let a user tell two copies apart."""
+        payload_row = record.to_dict()
+        size_bytes, unit_count = _content_facts(store, record)
+        payload_row["size_bytes"] = size_bytes
+        payload_row["unit_count"] = unit_count
+        return payload_row
+
+    try:
+        matches: list[dict[str, Any]] = []
+        for item in payload.files:
+            kind = "same_content"
+            record = catalog.find_material_by_content(item.content_id) if item.content_id else None
+            if record is None and item.filename:
+                record = catalog.find_ready_material_by_filename(item.filename, mime=item.mime)
+                kind = "same_name"
+            if record is None:
+                continue
+            matches.append(
+                {
+                    "query": {"filename": item.filename, "url": ""},
+                    "kind": kind,
+                    "material": described(record),
+                    "collections": catalog.collections_for_material(record.material_id),
+                }
+            )
+        for url in payload.urls:
+            try:
+                material_id = url_material_id(url)
+            except Exception:  # noqa: BLE001 - a malformed URL is simply not a match
+                continue
+            record = catalog.get_material(material_id)
+            if record is None:
+                continue
+            matches.append(
+                {
+                    "query": {"filename": "", "url": url},
+                    "kind": "same_content",
+                    "material": described(record),
+                    "collections": catalog.collections_for_material(record.material_id),
+                }
+            )
+        return {"matches": matches}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/library/import-urls", status_code=202)
+async def import_urls(
+    payload: UrlImportRequest, background_tasks: BackgroundTasks
+) -> dict[str, Any]:
+    """Queue safe webpage, YouTube, or Bilibili imports into a workspace."""
+    service = _ingestion()
+    try:
+        materials = [service.queue_url(url) for url in payload.urls]
+        workspace_id = payload.workspace_id.strip()
+        if workspace_id:
+            for material in materials:
+                service.catalog.add_material(workspace_id, material.material_id)
+            workspace = service.catalog.get_workspace(workspace_id)
+        else:
+            # Naming the collection after its first material is what keeps a
+            # library from filling up with rows all called "Imported reading".
+            workspace = service.catalog.create_workspace(
+                payload.workspace_title
+                or (materials[0].title if materials else "Reading collection"),
+                [row.material_id for row in materials],
+            )
+        for material in materials:
+            background_tasks.add_task(service.process_url, material.material_id)
+        return {
+            "materials": [row.to_dict() for row in materials],
+            "workspace": workspace.to_dict() if workspace else None,
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/materials/{material_id}/retry", status_code=202)
+async def retry_import(material_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    service = _ingestion()
+    try:
+        material = service.catalog.get_material(material_id)
+        if material is None:
+            raise MaterialNotFound(f"material {material_id!r} not found")
+        service.catalog.update_material_status(material_id, "queued", progress=0)
+        background_tasks.add_task(service.retry, material_id)
+        return {"material": service.catalog.get_material(material_id).to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/workspaces")
+async def list_workspaces(
+    search: str = Query(default="", max_length=200),
+) -> dict[str, Any]:
+    try:
+        rows = _catalog().list_workspaces(search=search)
+        return {"workspaces": [row.to_dict() for row in rows]}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/workspaces/index")
+async def list_workspace_index() -> dict[str, Any]:
+    """Just enough to *name* a collection: id and title.
+
+    The sidebar groups reading conversations under their collection and
+    refreshes on every stream end. ``/workspaces`` answers with each
+    collection's whole tab list — every material, its cover, its unit
+    count — none of which a group heading renders.
+
+    Declared above ``/workspaces/{workspace_id}``: that route matches any
+    single segment, so a literal path below it would never be reached.
+    """
+    try:
+        return {
+            "collections": [
+                {"workspace_id": row.workspace_id, "title": row.title}
+                for row in _catalog().list_workspaces()
+            ]
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/workspaces", status_code=201)
+async def create_workspace(payload: WorkspaceCreateRequest) -> dict[str, Any]:
+    try:
+        row = _catalog().create_workspace(
+            payload.title,
+            payload.material_ids,
+            description=payload.description,
+        )
+        return {"workspace": row.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/workspaces/{workspace_id}")
+async def get_workspace(workspace_id: str) -> dict[str, Any]:
+    try:
+        catalog = _catalog()
+        row = catalog.get_workspace(workspace_id)
+        if row is None:
+            raise MaterialNotFound(f"reading workspace {workspace_id!r} not found")
+        return {
+            "workspace": row.to_dict(),
+            "sessions": [session.to_dict() for session in catalog.list_sessions(workspace_id)],
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/workspaces/{workspace_id}/ask-hint")
+async def get_workspace_ask_hint(
+    workspace_id: str,
+    session_id: str = "",
+    locator: int | None = None,
+    selection: str = "",
+) -> dict[str, Any]:
+    """One question the learner could ask about their current reading context."""
+    from deeptutor.services.reading_hints import get_ask_hint
+
+    return await get_ask_hint(workspace_id, session_id, locator, selection)
+
+
+@router.get("/workspaces/{workspace_id}/openers")
+async def get_workspace_openers(
+    workspace_id: str,
+    locator: int | None = None,
+) -> dict[str, Any]:
+    """Three things a learner could open this material with.
+
+    An empty list means the panel keeps its own generic suggestions — this is
+    a nicety, never a dependency.
+    """
+    from deeptutor.services.reading_hints import get_openers
+
+    return await get_openers(workspace_id, locator)
+
+
+@router.patch("/workspaces/{workspace_id}")
+async def update_workspace(workspace_id: str, payload: WorkspaceUpdateRequest) -> dict[str, Any]:
+    try:
+        row = _catalog().update_workspace(
+            workspace_id,
+            title=payload.title,
+            description=payload.description,
+        )
+        return {"workspace": row.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/workspaces/{workspace_id}")
+async def delete_workspace(workspace_id: str) -> dict[str, Any]:
+    from deeptutor.services.session import get_session_store
+
+    try:
+        catalog = _catalog()
+        sessions = catalog.list_sessions(workspace_id)
+        if not catalog.delete_workspace(workspace_id):
+            raise MaterialNotFound(f"reading workspace {workspace_id!r} not found")
+        session_store = get_session_store()
+        for session in sessions:
+            await session_store.delete_session(session.session_id)
+        return {"status": "ok", "workspace_id": workspace_id}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/workspaces/{workspace_id}/materials")
+async def add_workspace_material(
+    workspace_id: str, payload: WorkspaceMaterialRequest
+) -> dict[str, Any]:
+    try:
+        row = _catalog().add_material(
+            workspace_id, payload.material_id, make_active=payload.make_active
+        )
+        return {"workspace": row.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.put("/workspaces/{workspace_id}/materials/order")
+async def reorder_workspace_materials(
+    workspace_id: str, payload: WorkspaceReorderRequest
+) -> dict[str, Any]:
+    try:
+        row = _catalog().reorder_materials(workspace_id, payload.material_ids)
+        return {"workspace": row.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.put("/workspaces/{workspace_id}/materials/{material_id}/active")
+async def activate_workspace_material(workspace_id: str, material_id: str) -> dict[str, Any]:
+    try:
+        row = _catalog().set_active_material(workspace_id, material_id)
+        return {"workspace": row.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/workspaces/{workspace_id}/materials/{material_id}")
+async def remove_workspace_material(workspace_id: str, material_id: str) -> dict[str, Any]:
+    try:
+        row = _catalog().remove_material(workspace_id, material_id)
+        return {"workspace": row.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/workspaces/{workspace_id}/sessions")
+async def list_reading_sessions(workspace_id: str) -> dict[str, Any]:
+    from deeptutor.services.session import get_session_store
+
+    try:
+        catalog = _catalog()
+        rows = catalog.list_sessions(workspace_id)
+        # The catalog stores the title a conversation was attached with, which
+        # is the placeholder every conversation starts life as: the real name
+        # is written by the title model *after* that first turn finishes, into
+        # the session store. Read it from there so the reader sees the same
+        # name the sidebar does instead of a list of "New conversation".
+        titles: dict[str, str] = {}
+        try:
+            summaries = await get_session_store().get_session_summaries(
+                [row.session_id for row in rows]
+            )
+            titles = {
+                str(summary.get("session_id") or summary.get("id") or ""): str(
+                    summary.get("title") or ""
+                )
+                for summary in summaries
+            }
+        except Exception:
+            logger.debug("reading sessions: live titles unavailable", exc_info=True)
+        return {
+            "sessions": [
+                row.to_dict()
+                | {
+                    "title": titles.get(row.session_id) or row.title,
+                    "linked_session_ids": catalog.list_session_links(workspace_id, row.session_id),
+                }
+                for row in rows
+            ]
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/workspaces/{workspace_id}/sessions", status_code=201)
+async def create_reading_session(
+    workspace_id: str, payload: ReadingSessionCreateRequest
+) -> dict[str, Any]:
+    from deeptutor.services.session import get_session_store
+
+    catalog = _catalog()
+    try:
+        workspace = catalog.get_workspace(workspace_id)
+        if workspace is None:
+            raise MaterialNotFound(f"reading workspace {workspace_id!r} not found")
+        active_material_id = payload.active_material_id or workspace.active_material_id
+        if active_material_id and active_material_id not in {
+            tab.material.material_id for tab in workspace.tabs
+        }:
+            raise ReadingError("active material does not belong to this reading workspace")
+        session_store = get_session_store()
+        session = await session_store.create_session(title=payload.title)
+        await session_store.update_session_preferences(
+            session["id"],
+            {
+                "capability": "immersive_reading",
+                "session_kind": "immersive_reading",
+                "reading_workspace_id": workspace_id,
+                "reading_material_id": active_material_id or "",
+            },
+        )
+        reading_session = catalog.attach_session(
+            workspace_id,
+            session["id"],
+            title=payload.title,
+            active_material_id=active_material_id,
+        )
+        return {"session": reading_session.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.patch("/workspaces/{workspace_id}/sessions/{session_id}")
+async def rename_reading_session(
+    workspace_id: str, session_id: str, payload: ReadingSessionRenameRequest
+) -> dict[str, Any]:
+    from deeptutor.services.session import get_session_store
+
+    try:
+        catalog = _catalog()
+        row = catalog.rename_session(workspace_id, session_id, payload.title)
+        await get_session_store().update_session_title(session_id, payload.title)
+        return {"session": row.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/workspaces/{workspace_id}/sessions/{session_id}")
+async def delete_reading_session(workspace_id: str, session_id: str) -> dict[str, Any]:
+    from deeptutor.services.session import get_session_store
+
+    try:
+        catalog = _catalog()
+        if not catalog.detach_session(workspace_id, session_id):
+            raise MaterialNotFound("reading session not found")
+        await get_session_store().delete_session(session_id)
+        return {"status": "ok", "session_id": session_id}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/workspaces/{workspace_id}/sessions/{session_id}/links")
+async def link_reading_session(
+    workspace_id: str, session_id: str, payload: ReadingSessionLinkRequest
+) -> dict[str, Any]:
+    try:
+        catalog = _catalog()
+        catalog.link_session(workspace_id, session_id, payload.target_session_id)
+        return {
+            "session_id": session_id,
+            "linked_session_ids": catalog.list_session_links(workspace_id, session_id),
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/workspaces/{workspace_id}/sessions/{session_id}/links/{target_session_id}")
+async def unlink_reading_session(
+    workspace_id: str, session_id: str, target_session_id: str
+) -> dict[str, Any]:
+    try:
+        catalog = _catalog()
+        catalog.unlink_session(workspace_id, session_id, target_session_id)
+        return {
+            "session_id": session_id,
+            "linked_session_ids": catalog.list_session_links(workspace_id, session_id),
+        }
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/workspaces/{workspace_id}/notes/organize")
+async def organize_reading_notes(
+    workspace_id: str, payload: OrganizeNotesRequest
+) -> dict[str, Any]:
+    try:
+        catalog = _catalog()
+        notes = await asyncio.to_thread(
+            organize_workspace_notes,
+            workspace_id,
+            material_ids=payload.material_ids,
+            catalog=catalog,
+            reading_store=ReadingStore(catalog.root),
+        )
+        return {"notes": notes.to_dict()}
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/workspaces/{workspace_id}/notebook")
+async def capture_reading_to_notebook(
+    workspace_id: str, payload: NotebookCaptureRequest
+) -> dict[str, Any]:
+    try:
+        catalog = _catalog()
+        result = await asyncio.to_thread(
+            send_workspace_to_notebook,
+            workspace_id,
+            payload.notebook_ids,
+            material_ids=payload.material_ids,
+            title=payload.title,
+            summary=payload.summary,
+            catalog=catalog,
+            reading_store=ReadingStore(catalog.root),
+        )
+        return {"success": True, **result}
+    except Exception as exc:
+        raise _http_error(exc) from exc
 
 
 @router.get("/supported-formats", response_model=SupportedFormats)
@@ -209,9 +795,9 @@ async def supported_formats() -> SupportedFormats:
     from deeptutor.utils.document_extractor import SUPPORTED_DOC_EXTENSIONS
 
     return SupportedFormats(
-        extensions=sorted(SUPPORTED_DOC_EXTENSIONS),
+        extensions=sorted(set(SUPPORTED_DOC_EXTENSIONS) | _MEDIA_EXTENSIONS),
         max_bytes=MAX_MATERIAL_BYTES,
-        raw_view_extensions=sorted(RAW_VIEW_EXTENSIONS),
+        raw_view_extensions=sorted(set(RAW_VIEW_EXTENSIONS) | _MEDIA_EXTENSIONS),
     )
 
 
@@ -225,7 +811,10 @@ async def list_materials() -> list[MaterialInfo]:
 
 
 @router.post("/materials", response_model=MaterialDetail)
-async def upload_material(file: UploadFile = File(...)) -> MaterialDetail:  # noqa: B008
+async def upload_material(
+    file: UploadFile = File(...),  # noqa: B008
+    reuse: bool = Query(default=True),
+) -> MaterialDetail:
     """Ingest an uploaded document and return it ready to read.
 
     The upload is streamed to a temp file with a running size check, so an
@@ -255,8 +844,31 @@ async def upload_material(file: UploadFile = File(...)) -> MaterialDetail:  # no
             raise HTTPException(status_code=400, detail=f"{filename} is empty.")
 
         store = _store()
-        manifest = store.ingest(tmp_path, filename=filename)
-        return _detail(store, manifest)
+        if Path(filename).suffix.lower() in _MEDIA_EXTENSIONS:
+            record = await ReadingIngestionService(store, _catalog()).import_media(
+                tmp_path, filename=filename
+            )
+            manifest = store.manifest(record.material_id)
+        else:
+            manifest = store.ingest(tmp_path, filename=filename)
+            catalog = _catalog()
+            if reuse or catalog.get_material(manifest.material_id) is None:
+                catalog.register_manifest(manifest)
+                return _detail(store, manifest)
+            # A separate material over the same extracted content: the bytes
+            # are stored once, while annotations and reading position are kept
+            # apart because the user asked for a second, independent copy.
+            record = catalog.upsert_material(
+                content_id=manifest.material_id,
+                material_id=_new_material_id(),
+                filename=manifest.filename,
+                title=manifest.title,
+                source_kind=SourceKind.FILE,
+                mime=manifest.mime,
+                render_mode=manifest.render_mode,
+                status=IngestionStatus.READY,
+            )
+            return _detail(store, store.manifest(record.material_id))
     except HTTPException:
         raise
     except Exception as exc:
@@ -323,13 +935,31 @@ async def remove_epub_pairing(pairing_id: str) -> dict[str, Any]:
 @router.delete("/materials/{material_id}")
 async def delete_material(material_id: str) -> dict[str, Any]:
     store = _store()
+    catalog = _catalog()
+    record = catalog.get_material(material_id)
+    removed_from = catalog.collections_for_material(material_id) if record else []
     try:
-        removed = store.delete(material_id)
+        shared = record is not None and catalog.count_materials_for_content(record.content_id) > 1
+        if shared and record is not None:
+            # A sibling material still reads this content: drop this row and
+            # only the annotations that belong to it.
+            store.delete_material_state(material_id, content_id=record.content_id)
+            removed = catalog.delete_material(material_id)
+        else:
+            with store.staged_delete(material_id) as staged:
+                if staged:
+                    catalog.delete_material(material_id)
+            removed = staged or bool(record and catalog.delete_material(material_id))
     except Exception as exc:
         raise _http_error(exc) from exc
     if not removed:
         raise HTTPException(status_code=404, detail=f"material {material_id!r} not found")
-    return {"status": "ok", "material_id": material_id}
+    return {
+        "status": "ok",
+        "deleted": True,
+        "material_id": material_id,
+        "removed_from": removed_from,
+    }
 
 
 @router.get("/materials/{material_id}/units/{locator}", response_model=UnitText)

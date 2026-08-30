@@ -39,7 +39,18 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 export const DEFAULT_SCOPE: BankScope = { kind: "all" };
 
-function scopeToFilter(scope: BankScope, search: string, sort: BankSort) {
+/**
+ * A course narrows *which questions exist* for this visit; a scope narrows
+ * which of those to show. They are separate axes on purpose — the course comes
+ * from the URL and stays put while the learner clicks through wrong / bookmarked
+ * / a category inside it.
+ */
+function scopeToFilter(
+  scope: BankScope,
+  search: string,
+  sort: BankSort,
+  courseId: string,
+) {
   return {
     category_id: scope.kind === "category" ? scope.categoryId : undefined,
     uncategorized: scope.kind === "uncategorized" || undefined,
@@ -48,6 +59,7 @@ function scopeToFilter(scope: BankScope, search: string, sort: BankSort) {
     search: search || undefined,
     sort,
     limit: PAGE_SIZE,
+    course_id: courseId || undefined,
   };
 }
 
@@ -106,7 +118,10 @@ const EMPTY_STATS: QuestionBankStats = {
  *  - a re-fetch never blanks the list — `refreshing` dims it instead, so
  *    filing a question does not make the page jump.
  */
-export function useQuestionBank(): QuestionBankController {
+export function useQuestionBank(
+  options: { courseId?: string } = {},
+): QuestionBankController {
+  const courseId = options.courseId ?? "";
   const [items, setItems] = useState<NotebookEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState<NotebookCategory[]>([]);
@@ -142,7 +157,7 @@ export function useQuestionBank(): QuestionBankController {
     setError(null);
     try {
       const response = await listNotebookEntries(
-        scopeToFilter(scope, search, sort),
+        scopeToFilter(scope, search, sort, courseId),
       );
       if (seq !== requestSeq.current) return;
       setItems(response.items);
@@ -166,17 +181,17 @@ export function useQuestionBank(): QuestionBankController {
         setRefreshing(false);
       }
     }
-  }, [scope, search, sort]);
+  }, [courseId, scope, search, sort]);
 
   const loadMeta = useCallback(async () => {
     const [nextCategories, nextStats] = await Promise.allSettled([
-      listCategories(),
-      getQuestionBankStats(),
+      listCategories(courseId),
+      getQuestionBankStats(courseId),
     ]);
     if (nextCategories.status === "fulfilled")
       setCategories(nextCategories.value);
     if (nextStats.status === "fulfilled") setStats(nextStats.value);
-  }, []);
+  }, [courseId]);
 
   useEffect(() => {
     void loadEntries();

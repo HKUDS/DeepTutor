@@ -731,6 +731,53 @@ class AgenticChatPipeline:
                 return content
         return ""
 
+    def _capability_tool_round_output_policy(
+        self,
+        context: UnifiedContext,
+        final_text: str,
+        tool_names: tuple[str, ...],
+    ) -> str:
+        """Let a finish-guard capability classify a tool round's prose."""
+        for cap in self._active_loop_capabilities(context):
+            hook = getattr(cap, "tool_round_output_policy", None)
+            if not callable(hook):
+                continue
+            try:
+                policy = str(hook(context, final_text, tool_names) or "").strip()
+            except Exception:
+                logger.warning(
+                    "tool-round policy failed for capability %s",
+                    getattr(cap, "name", "?"),
+                    exc_info=True,
+                )
+                continue
+            if policy in {"publish", "discard"}:
+                return policy
+        return ""
+
+    def _capability_final_text_override(
+        self,
+        context: UnifiedContext,
+        final_text: str,
+    ) -> str | None:
+        """Return a capability-owned canonical answer after private protocol work."""
+        for cap in self._active_loop_capabilities(context):
+            hook = getattr(cap, "final_text_override", None)
+            if not callable(hook):
+                continue
+            try:
+                override = hook(context, final_text)
+            except Exception:
+                logger.warning(
+                    "final-text override failed for capability %s",
+                    getattr(cap, "name", "?"),
+                    exc_info=True,
+                )
+                continue
+            if override is not None:
+                return str(override).strip()
+        return None
+
     def _has_capability_finish_guard(self, context: UnifiedContext) -> bool:
         """Whether a capability may need to inspect a tool-less finish first."""
         return any(

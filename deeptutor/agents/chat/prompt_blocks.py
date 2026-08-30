@@ -78,6 +78,16 @@ class ChatPromptAssembler:
         blocks.extend(capability_blocks or [])
         if context.sidebar_context:
             blocks.append(PromptBlock("sidebar_tutor_context", context.sidebar_context))
+        # A conversation that belongs to a course carries that course's
+        # conventions in every mode, not only Course Study. The course page
+        # states plainly that each of its conversations begins knowing them, and
+        # a learner who wrote "always use C, we follow POSIX" does not mean it
+        # only while the orchestrator is selected — they mean it for this
+        # subject. Course Study's own richer state summary arrives as a
+        # capability block above; this is the floor that applies everywhere.
+        course_conventions = str((context.metadata or {}).get("course_conventions") or "")
+        if course_conventions:
+            blocks.append(PromptBlock("course_conventions", course_conventions))
         if context.persona_context:
             blocks.append(PromptBlock("persona_style", context.persona_context))
         partner_policy = self._partner_turn_policy(context)

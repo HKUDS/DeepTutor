@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import re
+import socket
+
 import pytest
 
 from deeptutor.tools.web_fetch import (
@@ -11,6 +15,8 @@ from deeptutor.tools.web_fetch import (
     _is_disallowed_host,
     fetch_url_as_markdown,
 )
+
+_ARTICLE_FIXTURE = Path(__file__).parents[1] / "fixtures" / "web" / "vector_article.html"
 
 # ---------------------------------------------------------------------------
 # Host validation
@@ -42,6 +48,47 @@ def test_is_disallowed_host_allows_public_hostname() -> None:
     pytest.skip("public DNS check skipped; relies on injectable validator in tests")
 
 
+def _dns_rows(*addresses: str) -> list[tuple]:
+    return [
+        (
+            socket.AF_INET6 if ":" in address else socket.AF_INET,
+            socket.SOCK_STREAM,
+            socket.IPPROTO_TCP,
+            "",
+            (address, 0, 0, 0) if ":" in address else (address, 0),
+        )
+        for address in addresses
+    ]
+
+
+def test_mixed_public_and_private_dns_answers_are_allowed(monkeypatch) -> None:
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda _host, _port: _dns_rows("2001::1", "93.184.216.34"),
+    )
+
+    assert _is_disallowed_host("mixed.example") is False
+
+
+def test_all_unsafe_dns_answers_are_blocked(monkeypatch) -> None:
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda _host, _port: _dns_rows("127.0.0.1", "169.254.169.254", "2001::1"),
+    )
+
+    assert _is_disallowed_host("unsafe.example") is True
+
+
+@pytest.mark.parametrize(
+    ("host", "disallowed"),
+    [("8.8.8.8", False), ("127.0.0.1", True), ("169.254.169.254", True), ("::1", True)],
+)
+def test_ip_literal_validation_is_unchanged(host: str, disallowed: bool) -> None:
+    assert _is_disallowed_host(host) is disallowed
+
+
 # ---------------------------------------------------------------------------
 # HTML readability extraction
 # ---------------------------------------------------------------------------
@@ -59,6 +106,39 @@ def test_extract_readable_strips_scripts_and_styles() -> None:
     assert "color:red" not in body
     # Title is prepended as h1 markdown
     assert body.startswith("# Hello")
+
+
+def test_extract_readable_prefers_article_over_navigation_chrome() -> None:
+    html = """
+    <html><head><title>Research note</title></head><body>
+      <nav>Home Products Pricing</nav>
+      <main><article><h1>Reward models</h1><p>Pairwise comparisons.</p></article></main>
+      <footer>Legal sitemap</footer>
+    </body></html>
+    """
+    title, body = _extract_readable(html)
+    assert title == "Research note"
+    assert "Reward models" in body
+    assert "Pairwise comparisons" in body
+    assert "Products Pricing" not in body
+    assert "Legal sitemap" not in body
+
+
+def test_extract_readable_keeps_fixture_heading_hierarchy_without_page_chrome() -> None:
+    title, body = _extract_readable(_ARTICLE_FIXTURE.read_text(encoding="utf-8"))
+
+    assert title == "Transformer (deep learning)"
+    assert re.findall(r"^#{1,6} .+$", body, re.MULTILINE) == [
+        "# Transformer (deep learning)",
+        "## History",
+        "### Predecessors",
+        "## Applications",
+    ]
+    assert "Jump to content" not in body
+    assert "Toggle History subsection" not in body
+    assert "Privacy policy" not in body
+    assert "navigation footer" not in body
+    assert "Vector/Parsoid" not in body
 
 
 def test_extract_readable_passes_through_plain_text() -> None:
@@ -81,12 +161,13 @@ class _StubResponse:
         status: int = 200,
         url: str = "https://example.com/p",
         encoding: str = "utf-8",
+        headers: dict[str, str] | None = None,
     ) -> None:
         self._body = body
         self.status_code = status
         self.url = url
         self.encoding = encoding
-        self.headers = {"content-type": "text/html; charset=utf-8"}
+        self.headers = headers or {"content-type": "text/html; charset=utf-8"}
 
     async def aiter_bytes(self):
         yield self._body
@@ -99,6 +180,7 @@ class _StubResponse:
 class _StubAsyncClient:
     def __init__(self, response: _StubResponse) -> None:
         self._response = response
+        self.requests = []
 
     async def __aenter__(self):
         return self
@@ -106,7 +188,8 @@ class _StubAsyncClient:
     async def __aexit__(self, exc_type, exc, tb):
         return False
 
-    def stream(self, _method, _url, **_kwargs):
+    def stream(self, method, url, **kwargs):
+        self.requests.append((method, url, kwargs))
         outer = self
 
         class _Ctx:
@@ -155,6 +238,61 @@ async def test_fetch_extracts_html_via_stubbed_client() -> None:
     assert outcome.ok is True
     assert outcome.title == "T"
     assert "x" in outcome.markdown
+
+
+@pytest.mark.asyncio
+async def test_default_fetch_connects_by_hostname_not_by_address(
+    monkeypatch,
+) -> None:
+    """The request must keep the hostname, even though DNS was checked.
+
+    Substituting the validated IP into the URL would break TLS certificate
+    verification, and behind an HTTP proxy it fails outright — there the proxy
+    resolves the name, so an address chosen here is not the one connected to.
+    """
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda _host, _port: _dns_rows("2001::1", "93.184.216.34"),
+    )
+    client = _StubAsyncClient(_StubResponse())
+
+    outcome = await fetch_url_as_markdown(
+        "https://example.com/p",
+        client_factory=lambda **_kwargs: client,
+    )
+
+    assert outcome.ok is True
+    _method, request_url, kwargs = client.requests[0]
+    assert request_url == "https://example.com/p"
+    assert "Host" not in kwargs["headers"]
+    # Redirects are followed by hand so each hop is validated before it is
+    # contacted; letting the client follow them would skip that check.
+    assert kwargs["follow_redirects"] is False
+
+
+@pytest.mark.asyncio
+async def test_default_fetch_revalidates_redirect_before_connecting(monkeypatch) -> None:
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda _host, _port: _dns_rows("93.184.216.34"),
+    )
+    client = _StubAsyncClient(
+        _StubResponse(
+            status=302,
+            headers={"location": "http://127.0.0.1/private"},
+        )
+    )
+
+    outcome = await fetch_url_as_markdown(
+        "https://example.com/p",
+        client_factory=lambda **_kwargs: client,
+    )
+
+    assert outcome.ok is False
+    assert "Redirect to private/loopback host blocked" in outcome.error
+    assert len(client.requests) == 1
 
 
 @pytest.mark.asyncio

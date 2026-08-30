@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>オプションインストールエクストラ</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>オプションインストールエクストラ</b> — RAGエンジン / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # 組み込みLightRAGエンジン（サポート対象の正確なSDK）
+pip install -e ".[graphrag]"        # Microsoft GraphRAGエンジン
 pip install -e ".[dev]"             # テスト/lintツール
 pip install -e ".[partners]"        # Partner IMチャンネルSDK
 pip install -e ".[matrix]"          # MatrixチャンネルE2EE/libolmなし
@@ -431,6 +433,8 @@ Bookは選択したソースをインタラクティブな**生きている本**
 
 KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。KBは**GitHubリポジトリ**（リポジトリ、ブランチ、glob）または**ドキュメントサイトのURL**（クロール深度とページ数に上限あり）も追跡できます。オンデマンド同期ではコンテンツのハッシュ差分から追加・変更・削除を検出するため、フォローしているドキュメントを再アップロードなしで最新の状態に保てます。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。Tikaはリモート専用で、Apache Tikaサーバー（`TIKA_SERVER_URL`）を指定します。CLIは`list/info/create/add/search/set-default/delete`、ソースの追加/削除コマンド、`list-sources`、`sync`でライフサイクルをミラーします。
 
+組み込みLightRAGエンジンは`pip install 'deeptutor[rag-lightrag]'`でインストールします。このエクストラにはサポート対象のLightRAG SDKが含まれますが、MinerUはインストールしません。構造化されたPDF解析が必要な場合は、Document Parsingで独立してMinerUを選択し、クラウドモードを設定するかローカルCLIをインストールしてください。テキストのみおよびその他の解析エンジンはMinerUを必要としません。
+
 </details>
 
 <details>
@@ -474,7 +478,7 @@ Memory Graphはピラミッド全体を表示します — L3合成が中心、L
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settingsハブ" width="900">
 </div>
 
-Settingsはオペレーションコントロールプレーンで、ライブステータスストリップ（バックエンドの健全性とプロセスツリー全体の常駐メモリ使用量）とエリアごとのカードがあります：**外観**（テーマ、UI言語とモデル出力言語、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**モデル**（LLM、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（ツール、機能パラメーター、添付ファイル上限）、**Partners & Agents**（ターンから相談できるサブエージェント）、**Memory**（コンソリデーターのバジェット）。
+Settingsはオペレーションコントロールプレーンで、ライブステータスストリップ（バックエンドの健全性とプロセスツリー全体の常駐メモリ使用量）と、どのページにもワンクリックで到達できる常駐の検索可能なナビゲーターがあります：**外観**（テーマ、UI言語とモデル出力言語、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**モデル**（接続、LLM、タスクモデル、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（ツール、機能パラメーター、スターティングポイント、添付ファイル上限）、**Partners & Agents**（ターンから相談できるサブエージェント）、**Memory**（コンソリデーターのバジェット）。**接続**は1つのベンダー認証情報を保持し、そのベンダーが提供できるすべてのサービスにミラーするため、キーを5つのページに貼り付けるのではなく1回だけ入力すれば済みます。**タスクモデル**は誰も明示的に依頼していない作業 — 会話への命名、コンポーザーのスターティングポイントの生成 — のために小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトに解決されます。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor外観設定とテーマ" width="900">
@@ -658,7 +662,10 @@ DeepTutorはオープンなAgent-Skillsフォーマットに対応している�
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+複数の公開者が同じスラッグを共有している場合、検索結果には各公開者と完全にスコープ付けされたインストール参照（`clawhub:<ownerHandle>/<slug>`）が表示されます。
 
 `settings/skill_hubs.json`にさらにレジストリを追加できます：`type: "clawhub"`エントリは互換性のあるHTTP APIを指し（EduHubとClawHubはどちらもそれを話します）、`type: "command"`はレジストリが配布するフェッチCLIをラップし、`"default"`はベアスラッグに使用するハブを選択します。すべて同じインポートゲートを通過します。
 
@@ -681,6 +688,16 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 </p>
 
 ## 🌐 コミュニティ
+
+### 🔗 メンテナー
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 連絡先
 

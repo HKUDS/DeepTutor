@@ -148,7 +148,7 @@ test("resolveKnowledgeIndexFailure routes embedding configuration failures to em
   );
 
   assert.equal(endpointFailure?.requiresModelChange, true);
-  assert.equal(endpointFailure?.settingsHref, "/settings/embedding");
+  assert.equal(endpointFailure?.settingsHref, "/settings/models#embedding");
 });
 
 test("taskFailureMessage keeps trace details out of the primary error", () => {

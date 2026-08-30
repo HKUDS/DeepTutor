@@ -7,6 +7,7 @@ import {
   resetReadingTurnState,
   setReadingMaterial,
   setReadingViewport,
+  setReadingWorkspace,
 } from "../lib/reading-turn-state";
 
 test.beforeEach(() => resetReadingTurnState());
@@ -72,9 +73,31 @@ test("closing the document clears its viewport too", () => {
 
   assert.deepEqual(readingTurnFields(READING_CAPABILITY), {});
   assert.deepEqual(getReadingTurnState(), {
+    workspaceId: null,
     materialId: null,
     locator: 0,
     selection: "",
+    timeSeconds: null,
+  });
+});
+
+test("carries the private workspace and clears it independently", () => {
+  setReadingWorkspace("workspace_123");
+  setReadingMaterial("d138eacaad029843");
+
+  assert.deepEqual(readingTurnFields(READING_CAPABILITY), {
+    reading_workspace_id: "workspace_123",
+    reading_material_id: "d138eacaad029843",
+  });
+
+  setReadingWorkspace(null);
+  assert.deepEqual(readingTurnFields(READING_CAPABILITY), {});
+  assert.deepEqual(getReadingTurnState(), {
+    workspaceId: null,
+    materialId: null,
+    locator: 0,
+    selection: "",
+    timeSeconds: null,
   });
 });
 
@@ -96,5 +119,20 @@ test("nonsense viewport values are ignored", () => {
   assert.equal(
     readingTurnFields(READING_CAPABILITY).reading_viewport?.locator,
     2,
+  );
+});
+
+test("carries precise media time, including the beginning", () => {
+  setReadingMaterial("d138eacaad029843");
+  setReadingViewport({ locator: 2, timeSeconds: 62.5 });
+  assert.deepEqual(readingTurnFields(READING_CAPABILITY).reading_viewport, {
+    locator: 2,
+    time_seconds: 62.5,
+  });
+
+  setReadingViewport({ timeSeconds: 0 });
+  assert.equal(
+    readingTurnFields(READING_CAPABILITY).reading_viewport?.time_seconds,
+    0,
   );
 });

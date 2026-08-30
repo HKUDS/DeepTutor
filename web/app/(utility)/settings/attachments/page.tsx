@@ -12,6 +12,7 @@ import {
 } from "@/components/settings/shared";
 import { useSettings } from "@/components/settings/SettingsContext";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { EXTENSION_ENDPOINTS } from "@/lib/settings-extensions";
 
 type AttachmentSettings = {
   max_file_mb: number;
@@ -45,7 +46,8 @@ function normalizeDraft(
 
 export default function AttachmentSettingsPage() {
   const { t } = useTranslation();
-  const { registerExtension } = useSettings();
+  const { registerExtension, pendingExtensionPayload, draftRevision } =
+    useSettings();
   const [payload, setPayload] = useState<AttachmentSettingsPayload | null>(
     null,
   );
@@ -60,7 +62,7 @@ export default function AttachmentSettingsPage() {
       setError(null);
       try {
         const response = await apiFetch(
-          apiUrl("/api/v1/settings/chat-attachments"),
+          apiUrl(EXTENSION_ENDPOINTS["chat-attachments"]),
         );
         const data = (await response.json().catch(() => ({}))) as
           | AttachmentSettingsPayload
@@ -75,7 +77,10 @@ export default function AttachmentSettingsPage() {
         if (cancelled) return;
         const next = data as AttachmentSettingsPayload;
         setPayload(next);
-        setDraft(normalizeDraft(next));
+        const pending = pendingExtensionPayload("chat-attachments") as
+          | AttachmentSettings
+          | undefined;
+        setDraft(pending ?? normalizeDraft(next));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -88,7 +93,7 @@ export default function AttachmentSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [draftRevision, pendingExtensionPayload, t]);
 
   const dirty = useMemo(() => {
     if (!payload || !draft) return false;
@@ -110,7 +115,7 @@ export default function AttachmentSettingsPage() {
     setError(null);
     try {
       const response = await apiFetch(
-        apiUrl("/api/v1/settings/chat-attachments"),
+        apiUrl(EXTENSION_ENDPOINTS["chat-attachments"]),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -136,9 +141,9 @@ export default function AttachmentSettingsPage() {
   }, [t]);
 
   useEffect(() => {
-    registerExtension("chat-attachments", { dirty, save });
+    registerExtension("chat-attachments", { dirty, save, payload: draft });
     return () => registerExtension("chat-attachments", null);
-  }, [dirty, save, registerExtension]);
+  }, [dirty, draft, save, registerExtension]);
 
   const setField = (field: keyof AttachmentSettings) => (value: number) =>
     setDraft((current) => (current ? { ...current, [field]: value } : current));

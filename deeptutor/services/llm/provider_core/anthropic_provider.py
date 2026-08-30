@@ -412,9 +412,9 @@ class AnthropicProvider(LLMProvider):
             budget = budget_map.get(effort, 4096)
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
             kwargs["max_tokens"] = max(max_tokens, budget + 4096)
-            kwargs["temperature"] = 1.0
+            kwargs.setdefault("extra_body", {})["temperature"] = 1.0
         elif not effort_based:
-            kwargs["temperature"] = temperature
+            kwargs.setdefault("extra_body", {})["temperature"] = temperature
 
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools

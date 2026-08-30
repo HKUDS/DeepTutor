@@ -324,14 +324,14 @@ function ReadinessNotice({ readiness }: { readiness?: Readiness }) {
   if (!readiness) return null;
   if (readiness.ready) {
     return (
-      <div className="flex items-center gap-1.5 px-1 py-4 text-[12px] text-emerald-600 dark:text-emerald-400">
+      <div className="flex items-center gap-1.5 py-3.5 text-[12px] text-emerald-600 dark:text-emerald-400">
         <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
         {t("Ready to parse.")}
       </div>
     );
   }
   return (
-    <div className="px-1 py-4">
+    <div className="py-3.5">
       <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[12px] leading-relaxed text-amber-700 dark:text-amber-300">
         <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0">{readiness.message}</span>

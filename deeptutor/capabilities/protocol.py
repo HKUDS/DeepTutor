@@ -90,6 +90,12 @@ class LoopCapability(Protocol):
     instruction when that round must not finalize the turn. The answer loop
     gives the model one additional round with tools still mounted; capability
     implementations are responsible for keeping the check narrow and bounded.
+
+    A finish-guard capability whose private decision may share a round with a
+    tool call MAY additionally define ``tool_round_output_policy(context,
+    final_text, tool_names)`` (``"publish"`` / ``"discard"``) and
+    ``final_text_override(context, final_text)``. These hooks let it preserve a
+    previously accepted public answer while keeping protocol-only prose private.
     """
 
     name: str

@@ -453,6 +453,20 @@ class AgentLoop:
                         metadata={"trace_kind": "warning"},
                     )
                     return LoopOutcome(final_text="", completed=False)
+                final_override = self.pipeline._capability_final_text_override(
+                    self.context, final_text
+                )
+                if final_override is not None:
+                    await self._discard_deferred_output(result)
+                    if not self.context.metadata.get("_capability_answer_published"):
+                        await self.pipeline._emit_protocol_fallback_final_response(
+                            self.stream, final_override
+                        )
+                        self.context.metadata["_capability_answer_published"] = True
+                    return await self._finalize_finish(
+                        final_override,
+                        continued_answer_parts=continued_answer_parts,
+                    )
                 await self._release_deferred_output(result)
                 # Finish: the text streamed live this round IS the answer.
                 return await self._finalize_finish(
@@ -461,7 +475,18 @@ class AgentLoop:
                     continued_answer_parts=continued_answer_parts,
                 )
 
-            await self._release_deferred_output(result)
+            tool_names = tuple(str(call.get("name") or "") for call in result.tool_calls)
+            output_policy = self.pipeline._capability_tool_round_output_policy(
+                self.context,
+                self._clean(result.text),
+                tool_names,
+            )
+            if output_policy == "discard":
+                await self._discard_deferred_output(result)
+            else:
+                if output_policy == "publish" and result.deferred_completion_metadata is not None:
+                    result.deferred_completion_metadata["answer_visible"] = True
+                await self._release_deferred_output(result)
             assistant = assistant_message_with_tool_calls(
                 result.text,
                 result.tool_calls,
@@ -500,6 +525,18 @@ class AgentLoop:
                 dispatch=dispatch,
                 checkpoint_boundary=checkpoint_boundary,
             )
+
+            final_override = self.pipeline._capability_final_text_override(self.context, "")
+            if final_override is not None:
+                if not self.context.metadata.get("_capability_answer_published"):
+                    await self.pipeline._emit_protocol_fallback_final_response(
+                        self.stream, final_override
+                    )
+                    self.context.metadata["_capability_answer_published"] = True
+                return await self._finalize_finish(
+                    final_override,
+                    continued_answer_parts=continued_answer_parts,
+                )
 
             if dispatch.terminate:
                 payload = dispatch.terminate_payload or {}

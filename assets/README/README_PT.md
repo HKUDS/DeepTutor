@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>Extras de instalação opcionais</b> — dev / partners / matrix / math-animator</summary>
+<summary><b>Extras de instalação opcionais</b> — motores RAG / dev / partners / matrix / math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # Motor LightRAG integrado (SDK suportado exato)
+pip install -e ".[graphrag]"        # Motor GraphRAG da Microsoft
 pip install -e ".[dev]"             # ferramentas de testes/lint
 pip install -e ".[partners]"        # SDKs de canais IM de Partners
 pip install -e ".[matrix]"          # canal Matrix sem E2EE/libolm
@@ -443,6 +445,8 @@ As bases de conhecimento são as coleções de documentos por trás do RAG — f
 
 Ao criar uma KB, pode **criar nova** (carregar documentos e construir um índice novo) ou **vincular existente** (reutilizar um índice construído noutro lugar, ler no lugar sem reindexação). Uma KB também pode rastrear **repositórios GitHub** (repositório, branch, glob) ou **URLs de sites de documentação** (com profundidade de rastreio e número de páginas limitados); a sincronização a pedido compara hashes para detetar conteúdo adicionado, alterado ou removido, para que a documentação que segue se mantenha atual sem reenvio. A reindexação escreve um novo diretório plano `version-N` e mantém os anteriores, pelo que um índice funcional nunca é destruído a meio de uma reconstrução. Um único documento pode ser removido mesmo de uma base em estado de **erro** — descartando um ficheiro que falhou a análise sem uma eliminação e reconstrução completas. A análise de documentos — Somente Texto, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM ou LiteParse — é escolhida em **Settings → Knowledge Base**, com downloads de modelos locais desativados por predefinição. O Docling também pode correr em modo **remoto** contra um servidor Docling Serve (sem necessidade de instalação local nem de modelos), configurado através de **Settings → Document Parsing** (`mode=remote`, um URL base do servidor e uma chave API opcional) ou das variáveis de ambiente `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. O Tika é apenas remoto e aponta para um servidor Apache Tika (`TIKA_SERVER_URL`). A CLI espelha o ciclo de vida com `list/info/create/add/search/set-default/delete`, comandos para adicionar ou remover fontes, `list-sources` e `sync`.
 
+O motor LightRAG integrado é instalado com `pip install 'deeptutor[rag-lightrag]'`. Esse extra contém o SDK LightRAG suportado, mas não instala o MinerU. Escolha o MinerU de forma independente em Document Parsing e configure o seu modo cloud ou instale a sua CLI local quando quiser análise estruturada de PDF; o motor Somente Texto e os restantes motores de análise não requerem o MinerU.
+
 </details>
 
 <details>
@@ -486,7 +490,7 @@ O Memory Graph mostra toda a pirâmide — síntese L3 no centro, L2 no anel do 
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Hub de configurações DeepTutor" width="900">
 </div>
 
-Configurações é o plano de controlo operacional, com uma faixa de estado em tempo real (saúde do backend e memória residente em toda a árvore de processos) e um cartão por área: **Aparência** (tema, idioma da UI e de saída do modelo, estilo de blocos de código), **Rede** (base de API, portas, CORS), **Modelos** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Geração de Imagem, Geração de Vídeo), **Base de Conhecimento** (motor de análise de documentos), **Chat** (ferramentas, parâmetros por capacidade, limites de anexos), **Partners e Agentes** (os subagentes que pode consultar a partir de um turno) e **Memória** (os orçamentos do consolidador).
+Configurações é o plano de controlo operacional, com uma faixa de estado em tempo real (saúde do backend e memória residente em toda a árvore de processos) e um navegador persistente e pesquisável que alcança qualquer página com um clique: **Aparência** (tema, idioma da UI e de saída do modelo, estilo de blocos de código), **Rede** (base de API, portas, CORS), **Modelos** (Conexões, LLM, Modelos de tarefa, Embedding, Search, Text-to-Speech, Speech-to-Text, Geração de Imagem, Geração de Vídeo), **Base de Conhecimento** (motor de análise de documentos), **Chat** (ferramentas, parâmetros por capacidade, pontos de partida, limites de anexos), **Partners e Agentes** (os subagentes que pode consultar a partir de um turno) e **Memória** (os orçamentos do consolidador). Uma **conexão** guarda uma credencial de fornecedor e espelha-a em todos os serviços que esse fornecedor pode servir, para que uma chave seja introduzida uma única vez em vez de ser colada em cinco páginas; os **modelos de tarefa** fixam um modelo pequeno e rápido para o trabalho que ninguém pediu — nomear uma conversa, escrever os pontos de partida do compositor — e resolvem para a predefinição ativa quando deixados em branco.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Configurações de aparência e temas DeepTutor" width="900">
@@ -670,7 +674,10 @@ Como o DeepTutor fala o formato aberto Agent-Skills, o **[ClawHub](https://clawh
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+Quando vários publicadores partilham o mesmo slug, a pesquisa mostra cada publicador e uma referência de instalação totalmente qualificada (`clawhub:<ownerHandle>/<slug>`).
 
 Adicione mais registos em `settings/skill_hubs.json`: uma entrada `type: "clawhub"` aponta para qualquer API HTTP compatível (EduHub e ClawHub falam ambos), `type: "command"` envolve qualquer CLI de busca que um registo forneça, e `"default"` escolhe o hub usado para slugs simples. Todos eles alimentam a mesma porta de importação.
 
@@ -693,6 +700,16 @@ Adicione mais registos em `settings/skill_hubs.json`: uma entrada `type: "clawhu
 </p>
 
 ## 🌐 Comunidade
+
+### 🔗 Mantenedores
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 Contacto
 

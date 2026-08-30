@@ -117,6 +117,28 @@ def test_ask_user_is_untouched_without_pending_question(tmp_path, monkeypatch):
     assert MasteryLoopCapability().augment_kwargs("ask_user", authored, _context()) == authored
 
 
+def test_read_source_is_owned_and_reads_the_topic_index_on_demand():
+    """The tutor may call read_source itself; it must never see chat's index.
+
+    ``read_source`` has to be mounted directly (not left to chat's
+    explore_context pre-pass) so the model decides when to read a topic
+    material instead of every material being force-read up front. Wiring it
+    from ``source_index`` instead of ``mastery_topic_source_index`` would
+    silently re-couple mastery to whatever a plain chat turn attached.
+    """
+    assert "read_source" in MasteryLoopCapability.owned_tools
+
+    context = _context()
+    context.metadata["source_index"] = {"nb-other": "unrelated chat attachment"}
+    context.metadata["mastery_topic_source_index"] = {"bk-path-1-ch1": "chapter one text"}
+
+    kwargs = MasteryLoopCapability().augment_kwargs(
+        "read_source", {"source_id": "bk-path-1-ch1"}, context
+    )
+
+    assert kwargs["source_index"] == {"bk-path-1-ch1": "chapter one text"}
+
+
 @pytest.mark.asyncio
 async def test_pause_and_resume_hooks_persist_interaction_boundaries(tmp_path, monkeypatch):
     _use_store_root(monkeypatch, tmp_path)

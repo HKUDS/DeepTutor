@@ -77,6 +77,8 @@ export interface StartTurnMessage {
   }[];
   /** Persistent mastery state to use independently of this chat session. */
   mastery_path_id?: string;
+  /** Private Immersive Reading workspace that owns this turn/session. */
+  reading_workspace_id?: string;
   /** Immersive reading: the document open in the reader pane, if any. Its
    *  presence is what activates the reading capability for the turn. */
   reading_material_id?: string;

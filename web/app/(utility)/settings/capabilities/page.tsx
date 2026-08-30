@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { apiFetch, apiUrl } from "@/lib/api";
+import { EXTENSION_ENDPOINTS } from "@/lib/settings-extensions";
 import {
   SettingRow,
   SettingSection,
@@ -84,7 +85,8 @@ function isValidCapabilitiesDTO(
 
 export default function CapabilitiesSettingsPage() {
   const { t } = useTranslation();
-  const { registerExtension } = useSettings();
+  const { registerExtension, pendingExtensionPayload, draftRevision } =
+    useSettings();
   const [settings, setSettings] = useState<CapabilitiesSettingsDTO | null>(
     null,
   );
@@ -94,7 +96,7 @@ export default function CapabilitiesSettingsPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await apiFetch(apiUrl("/api/v1/capabilities/settings"));
+      const res = await apiFetch(apiUrl(EXTENSION_ENDPOINTS.capabilities));
       if (!res.ok) {
         setLoadError(
           t(
@@ -113,7 +115,10 @@ export default function CapabilitiesSettingsPage() {
         );
         return;
       }
-      setSettings(data);
+      const pending = pendingExtensionPayload("capabilities") as
+        | CapabilitiesSettingsDTO
+        | undefined;
+      setSettings(pending ?? data);
       setServerSnapshot(data);
       setLoadError(null);
     } catch (err) {
@@ -123,14 +128,15 @@ export default function CapabilitiesSettingsPage() {
           : t("Failed to load capability settings."),
       );
     }
-  }, [t]);
+  }, [pendingExtensionPayload, t]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+    // Re-read when a draft is discarded so the page drops its stale copy.
+  }, [draftRevision, load]);
 
   const dirty =
     !!settings &&
@@ -144,7 +150,7 @@ export default function CapabilitiesSettingsPage() {
   const save = useCallback(async () => {
     const current = settingsRef.current;
     if (!current) return;
-    const res = await apiFetch(apiUrl("/api/v1/capabilities/settings"), {
+    const res = await apiFetch(apiUrl(EXTENSION_ENDPOINTS.capabilities), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(current),
@@ -165,9 +171,9 @@ export default function CapabilitiesSettingsPage() {
   }, [t]);
 
   useEffect(() => {
-    registerExtension("capabilities", { dirty, save });
+    registerExtension("capabilities", { dirty, save, payload: settings });
     return () => registerExtension("capabilities", null);
-  }, [dirty, save, registerExtension]);
+  }, [dirty, save, settings, registerExtension]);
 
   function patchChat<K extends keyof ChatBlock>(key: K, value: ChatBlock[K]) {
     if (!settings) return;

@@ -423,6 +423,30 @@ async def test_mastery_path_allows_only_one_live_turn_across_sessions(
 
 
 @pytest.mark.asyncio
+async def test_mastery_turn_rejects_session_from_an_unrelated_topic(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _isolate_learning_store(monkeypatch, tmp_path)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    await store.update_session_preferences(
+        session["id"],
+        {"mastery_path_id": "topic-a"},
+    )
+    LearningStore().bind_session("topic-a", session["id"])
+
+    with pytest.raises(RuntimeError, match="mastery_session_topic_mismatch"):
+        await runtime.start_turn(_mastery_payload(session["id"], "topic-b"))
+
+    detail = await store.get_session(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["mastery_path_id"] == "topic-a"
+    assert await store.get_active_turn(session["id"]) is None
+    assert LearningStore().list_paths_for_session(session["id"])[0]["path_id"] == "topic-a"
+
+
+@pytest.mark.asyncio
 async def test_mastery_turn_takes_over_a_path_parked_on_ask_user(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

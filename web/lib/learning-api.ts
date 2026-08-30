@@ -66,6 +66,8 @@ export interface MapKnowledgePoint {
   type: string;
   status: ObjectiveStatus;
   mastery: number;
+  mastery_source: "system" | "learner" | "";
+  override_note: string;
 }
 
 export interface MapModule {
@@ -98,6 +100,8 @@ export interface NextStep {
   reason: string;
   /** The outstanding question's text, when `action` is `answer_pending`. */
   pending_prompt: string;
+  /** Session that owns an outstanding question; empty for non-pending steps. */
+  session_id: string;
 }
 
 export interface MasteryMapResult {
@@ -200,6 +204,9 @@ export interface ObjectiveReport {
   status: ObjectiveStatus;
   gate: "quantitative" | "qualitative";
   mastered: boolean;
+  assessed_mastered: boolean;
+  mastery_source: "system" | "learner" | "";
+  override_note: string;
   mastery: number;
   threshold: number;
   attempts: ObjectiveAttempt[];
@@ -311,4 +318,269 @@ export async function generateModulesFromNotebook(
   if (!res.ok)
     throw new Error(`Failed to generate modules from notebook: ${res.status}`);
   return res.json();
+}
+
+// ── Mastery Path V2 product surface ──────────────────────────────────────
+
+export type TopicSourceKind =
+  | "goal"
+  | "book"
+  | "notebook"
+  | "knowledge_base"
+  | "file"
+  | "chat";
+
+export interface TopicSource {
+  id: string;
+  kind: TopicSourceKind;
+  source_id: string;
+  label: string;
+  excerpt: string;
+  position: number;
+  available: boolean;
+  metadata: Record<string, unknown>;
+  created_at: number;
+}
+
+export interface TopicSourceInput {
+  id?: string;
+  kind: TopicSourceKind;
+  source_id?: string;
+  label: string;
+  excerpt?: string;
+  available?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TopicMetadata {
+  path_id: string;
+  goal: string;
+  description: string;
+  emoji: string;
+  map_seed: number;
+  status: "active" | "archived";
+  created_at: number;
+  updated_at: number;
+}
+
+export interface TopicReview {
+  id: string;
+  knowledge_point_id: string;
+  knowledge_point_name: string;
+  knowledge_type: string;
+  due_at: number;
+  priority: number;
+  due: boolean;
+}
+
+export interface MasteryTopic {
+  path_id: string;
+  name: string;
+  metadata: TopicMetadata;
+  sources: TopicSource[];
+  path_revision: number;
+  next: NextStep;
+  map: MasteryMap;
+  reviews: TopicReview[];
+  session_count: number;
+  updated_at: number;
+}
+
+export interface TopicDraft {
+  description: string;
+  modules: ModuleInit[];
+  /** Server-hydrated source states (for example KB retrieval availability). */
+  sources?: TopicSourceInput[];
+}
+
+export interface GenerateTopicInput {
+  name: string;
+  goal: string;
+  sources: TopicSourceInput[];
+}
+
+export interface CreateTopicInput extends GenerateTopicInput {
+  description?: string;
+  emoji?: string;
+  modules: ModuleInit[];
+}
+
+export interface TopicSession {
+  session_id: string;
+  title: string;
+  created_at: number;
+  updated_at: number;
+  status: string;
+  active_turn_id: string;
+  message_count: number;
+  last_message: string;
+  pinned: boolean;
+  archived: boolean;
+  has_pending_question: boolean;
+}
+
+async function masteryJson<T>(
+  path: string,
+  init?: RequestInit,
+  action = "load mastery data",
+): Promise<T> {
+  const res = await apiFetch(apiUrl(path), init);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const payload = (await res.json()) as { detail?: string };
+      detail = payload.detail ? `: ${payload.detail}` : "";
+    } catch {
+      // The status remains actionable when an upstream proxy returns HTML.
+    }
+    throw new Error(`Failed to ${action} (${res.status})${detail}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function fetchMasteryTopics(
+  init?: RequestInit,
+): Promise<MasteryTopic[]> {
+  const result = await masteryJson<{ topics: MasteryTopic[] }>(
+    "/api/v1/learning/topics",
+    init,
+    "load topics",
+  );
+  if (!Array.isArray(result.topics)) {
+    throw new Error(
+      "Failed to load topics: the server returned an invalid response",
+    );
+  }
+  return result.topics;
+}
+
+/** Just enough to name a topic. See ``fetchMasteryTopicIndex``. */
+export interface MasteryTopicLabel {
+  path_id: string;
+  name: string;
+  emoji: string;
+}
+
+/**
+ * The id → name map, without each topic's knowledge map and source excerpts.
+ *
+ * The sidebar groups study conversations under their topic and reloads on
+ * every stream end, so it wants the labels and nothing else; `fetchMasteryTopics`
+ * would ship kilobytes per topic to render a header.
+ */
+export async function fetchMasteryTopicIndex(
+  init?: RequestInit,
+): Promise<MasteryTopicLabel[]> {
+  const result = await masteryJson<{ topics: MasteryTopicLabel[] }>(
+    "/api/v1/learning/topics/index",
+    init,
+    "load topic index",
+  );
+  return Array.isArray(result.topics) ? result.topics : [];
+}
+
+/** One question the learner could ask here — "" when there is none to offer. */
+export async function fetchMasteryAskHint(
+  pathId: string,
+  sessionId: string,
+  init?: RequestInit,
+): Promise<string> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  const result = await masteryJson<{ hint?: string }>(
+    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/ask-hint${query}`,
+    init,
+    "load ask hint",
+  );
+  return typeof result.hint === "string" ? result.hint : "";
+}
+
+export function fetchMasteryTopic(
+  pathId: string,
+  init?: RequestInit,
+): Promise<MasteryTopic> {
+  return masteryJson(
+    `/api/v1/learning/topics/${encodeURIComponent(pathId)}`,
+    init,
+    "load topic",
+  );
+}
+
+export function generateMasteryTopicDraft(
+  input: GenerateTopicInput,
+): Promise<TopicDraft> {
+  return masteryJson(
+    "/api/v1/learning/topics/draft",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    "generate learning route",
+  );
+}
+
+export function createMasteryTopic(
+  input: CreateTopicInput,
+): Promise<MasteryTopic> {
+  return masteryJson(
+    "/api/v1/learning/topics",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    "create topic",
+  );
+}
+
+export function updateMasteryTopicMap(
+  pathId: string,
+  modules: ModuleInit[],
+): Promise<MasteryTopic> {
+  return masteryJson(
+    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/map`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modules }),
+    },
+    "update route",
+  );
+}
+
+export function setMasteryObjectiveOverride(
+  pathId: string,
+  objectiveId: string,
+  mastered: boolean,
+  note = "",
+): Promise<{ status: string; path_revision: number; map: MasteryMap }> {
+  return masteryJson(
+    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/objectives/${encodeURIComponent(objectiveId)}/override`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mastered, note }),
+    },
+    mastered ? "mark objective mastered" : "restore objective assessment",
+  );
+}
+
+export async function fetchMasteryTopicSessions(
+  pathId: string,
+  init?: RequestInit,
+): Promise<TopicSession[]> {
+  const result = await masteryJson<{
+    path_id: string;
+    sessions: TopicSession[];
+  }>(
+    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/sessions`,
+    init,
+    "load topic sessions",
+  );
+  if (!Array.isArray(result.sessions)) {
+    throw new Error(
+      "Failed to load topic sessions: the server returned an invalid response",
+    );
+  }
+  return result.sessions;
 }

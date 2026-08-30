@@ -20,6 +20,7 @@ from typing import Any, Awaitable, Callable
 
 import yaml
 
+from deeptutor.core.stream import StreamEventType
 from deeptutor.multi_user.models import CurrentUser
 from deeptutor.partners.config.paths import (
     get_data_dir,
@@ -264,6 +265,15 @@ class LiveTurn:
         if not self.done:
             self.subscribers.add(queue)
         return queue
+
+
+@dataclass(slots=True)
+class PartnerGroupTurnResponse:
+    """Private execution result returned only to the Group orchestrator."""
+
+    content: str
+    events: list[dict[str, Any]] = field(default_factory=list)
+    invocation: dict[str, Any] | None = None
 
 
 @dataclass
@@ -870,6 +880,80 @@ class PartnerManager:
             actor=get_current_user_or_none(),
         )
         return await instance.runner.process_message(msg, on_event=on_event)
+
+    async def send_group_message(
+        self,
+        partner_id: str,
+        content: str,
+        *,
+        session_key: str,
+        group_id: str,
+        group_name: str,
+        group_members: list[dict[str, str]],
+        public_context: str,
+        actor: "CurrentUser | None",
+        allow_invoke_other: bool = True,
+        on_event: Callable[[Any], Awaitable[None]] | None = None,
+    ) -> PartnerGroupTurnResponse:
+        """Run a private Partner turn over a Group's public snapshot.
+
+        The Group owner may observe the same StreamEvents as single-Partner
+        chat, but they remain attached to this speaker and are never inserted
+        into public Group context. Ordinary Partner session messages are not
+        persisted. ``invoke_other`` metadata is only a proposal; the Group
+        orchestrator owns approval and any later turn.
+        """
+        instance = self._partners.get(partner_id)
+        if not instance or not instance.running or not instance.runner:
+            raise RuntimeError(f"Partner '{partner_id}' is not running")
+
+        from deeptutor.partners.bus.events import InboundMessage
+        from deeptutor.services.partners.runtime import PartnerTurnOptions
+
+        msg = InboundMessage(
+            channel="web_group",
+            sender_id="web",
+            chat_id=session_key,
+            content=content,
+            session_key_override=session_key,
+            actor=actor,
+            metadata={"partner_group": group_name},
+        )
+        events: list[dict[str, Any]] = []
+        invocation: dict[str, Any] | None = None
+
+        async def capture(event: Any) -> None:
+            nonlocal invocation
+            if event.type not in {StreamEventType.DONE, StreamEventType.SESSION}:
+                payload = event.to_dict()
+                events.append(payload)
+                tool_metadata = (payload.get("metadata") or {}).get("tool_metadata")
+                candidate = (
+                    tool_metadata.get("partner_invocation")
+                    if isinstance(tool_metadata, dict)
+                    else None
+                )
+                if isinstance(candidate, dict):
+                    invocation = dict(candidate)
+            if on_event is not None:
+                await on_event(event)
+
+        content = await instance.runner.process_message(
+            msg,
+            on_event=capture,
+            options=PartnerTurnOptions(
+                conversation_history=[],
+                shared_context=public_context,
+                group_id=group_id,
+                group_name=group_name,
+                group_members=tuple(dict(member) for member in group_members),
+                allow_invoke_other=allow_invoke_other,
+                persist=False,
+                allow_commands=False,
+                capture_events=False,
+            ),
+        )
+        return PartnerGroupTurnResponse(content=content, events=events, invocation=invocation)
 
     # ── Live web turns (refresh-survivable streaming) ─────────────
 

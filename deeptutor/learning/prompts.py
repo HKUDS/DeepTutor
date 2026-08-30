@@ -58,6 +58,32 @@ def notebook_generation_prompts(language: str, records_json: str) -> tuple[str, 
     return system_prompt, user_template.format(records_json=records_json)
 
 
+def topic_generation_prompts(
+    language: str,
+    *,
+    name: str,
+    goal: str,
+    sources_json: str,
+) -> tuple[str, str]:
+    prompts = get_learning_prompts(language)
+    system_prompt = _get_nested(
+        prompts,
+        "topic.system",
+        "You design coherent mastery-learning routes and return JSON only.",
+    )
+    user_template = _get_nested(
+        prompts,
+        "topic.user",
+        "Design a route for {name}: {goal}. Sources: {sources_json}",
+    )
+    system_prompt = append_language_directive(system_prompt, parse_language(language))
+    return system_prompt, user_template.format(
+        name=name,
+        goal=goal,
+        sources_json=sources_json,
+    )
+
+
 def default_module_name(language: str, index: int) -> str:
     template = prompt_text(language, "notebook.default_module_name", "模块 {index}")
     return template.format(index=index)
@@ -98,4 +124,5 @@ __all__ = [
     "get_learning_prompts",
     "notebook_generation_prompts",
     "prompt_text",
+    "topic_generation_prompts",
 ]

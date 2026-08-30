@@ -26,12 +26,15 @@ import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setModelReasoningEffort } from "@/lib/reasoning-effort";
+import { applyExtensionPayload } from "@/lib/settings-extensions";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 
 // ─── Domain types ─────────────────────────────────────────────────────────
 
 export type ServiceName =
   | "llm"
+  /** Same shape as `llm`; stands in for it on the calls DeepTutor makes itself. */
+  | "task"
   | "embedding"
   | "search"
   | "tts"
@@ -92,6 +95,8 @@ export type CatalogProfile = {
   extra_headers?: Record<string, string> | string;
   proxy?: string;
   max_results?: number;
+  /** Set when this profile's credentials come from a catalog connection. */
+  connection_id?: string;
   models: CatalogModel[];
 };
 
@@ -101,10 +106,56 @@ export type CatalogService = {
   profiles: CatalogProfile[];
 };
 
+/**
+ * One vendor credential, typed once and mirrored into every service profile
+ * that links to it. The backend does the mirroring on save, so a linked
+ * profile still stores its own resolved credentials — linking changes where
+ * they were typed, not how they resolve.
+ */
+export type CatalogConnection = {
+  id: string;
+  name: string;
+  provider: string;
+  api_key: string;
+  /** Optional endpoint override; blank means each service's own default. */
+  base_url: string;
+  api_version: string;
+  extra_headers?: Record<string, string> | string;
+};
+
+/** Per-service prefills a connection's provider can supply, from the backend. */
+export type ConnectionTargetService = {
+  provider: string;
+  base_url: string;
+  default_model: string;
+  default_dim?: string;
+  default_voice?: string;
+};
+
+export type ConnectionTarget = {
+  provider: string;
+  label: string;
+  default_base_url: string;
+  services: Partial<Record<ServiceName, ConnectionTargetService>>;
+};
+
+/** Services a connection can supply, in the order the UI lists them. */
+export const CONNECTABLE_SERVICES: ServiceName[] = [
+  "llm",
+  "task",
+  "embedding",
+  "tts",
+  "stt",
+  "imagegen",
+  "videogen",
+];
+
 export type Catalog = {
   version: number;
+  connections?: CatalogConnection[];
   services: {
     llm: CatalogService;
+    task: CatalogService;
     embedding: CatalogService;
     search: CatalogService;
     tts: CatalogService;
@@ -210,10 +261,27 @@ export type ServiceReadiness =
   | "passed"
   | "failed";
 
+/**
+ * Where the current settings state lives.
+ *   clean   — identical to what is applied
+ *   unsaved — edited, not written anywhere yet
+ *   saved   — written to the draft store, not applied
+ */
+export type DraftState = "clean" | "unsaved" | "saved";
+
+/** What the server holds as unapplied. `catalog` comes back redacted. */
+export type StoredDraft = {
+  version: number;
+  updated_at: string;
+  catalog: Catalog | null;
+  extensions: Record<string, unknown>;
+};
+
 type SettingsPayload = {
   ui: UiSettings;
   catalog?: Catalog;
   providers?: Record<ServiceName, ProviderOption[]>;
+  connection_targets?: ConnectionTarget[];
 };
 
 const DIAGNOSTICS_RESULTS_KEY = "deeptutor.settings.diagnosticsResults.v1";
@@ -232,11 +300,10 @@ export type TourStep = {
   descKey: string;
 };
 
-// Tour step order broadly follows the category order in
-// ``web/lib/settings-nav.ts`` so the guided walk moves through the hub's
-// sections top to bottom. Each step names the route it lives on (the Status
-// step targets the resident module on the hub itself); the overlay resolves
-// the ``data-tour`` target after the page renders.
+// The walk now runs down the settings navigator, which is on screen for
+// every route, so each step points at the first row of a group rather than
+// at a hub block that no longer exists. The overlay resolves the
+// ``data-tour`` target after the page renders.
 export const TOUR_STEPS: TourStep[] = [
   {
     target: "tour-status",
@@ -245,37 +312,37 @@ export const TOUR_STEPS: TourStep[] = [
     descKey: "settingsTour.status.desc",
   },
   {
-    target: "tour-cat-appearance",
+    target: "tour-nav-appearance",
     route: "/settings",
     titleKey: "settingsTour.appearance.title",
     descKey: "settingsTour.appearance.desc",
   },
   {
-    target: "tour-cat-network",
+    target: "tour-nav-network",
     route: "/settings",
     titleKey: "settingsTour.network.title",
     descKey: "settingsTour.network.desc",
   },
   {
-    target: "tour-cat-models",
+    target: "tour-nav-models",
     route: "/settings",
     titleKey: "settingsTour.models.title",
     descKey: "settingsTour.models.desc",
   },
   {
-    target: "tour-cat-knowledge",
+    target: "tour-nav-knowledge",
     route: "/settings",
     titleKey: "settingsTour.knowledge.title",
     descKey: "settingsTour.knowledge.desc",
   },
   {
-    target: "tour-cat-chat",
+    target: "tour-nav-chat",
     route: "/settings",
     titleKey: "settingsTour.chat.title",
     descKey: "settingsTour.chat.desc",
   },
   {
-    target: "tour-cat-memory",
+    target: "tour-nav-memory",
     route: "/settings",
     titleKey: "settingsTour.memory.title",
     descKey: "settingsTour.memory.desc",
@@ -306,8 +373,10 @@ function prefillsDefaultModel(service: ServiceName): boolean {
 export function defaultCatalog(): Catalog {
   return {
     version: 1,
+    connections: [],
     services: {
       llm: { active_profile_id: null, active_model_id: null, profiles: [] },
+      task: { active_profile_id: null, active_model_id: null, profiles: [] },
       embedding: {
         active_profile_id: null,
         active_model_id: null,
@@ -443,6 +512,13 @@ function readStoredDiagnosticsResults(): Partial<
 export interface SettingsExtension {
   dirty: boolean;
   save: () => Promise<void>;
+  /**
+   * The page's current editable state. Retained by the provider after the
+   * page unmounts, so navigating away from a half-edited settings page no
+   * longer throws the edit away, and stored in the draft so it survives a
+   * reload. Pages that omit it keep the old (lossy) behaviour.
+   */
+  payload?: unknown;
 }
 
 type SettingsContextValue = {
@@ -478,34 +554,83 @@ type SettingsContextValue = {
   // Catalog mutation
   mutateCatalog: (mutator: (next: Catalog) => void) => void;
   addProfile: (service: ServiceName) => void;
-  removeActiveProfile: (service: ServiceName) => void;
-  addModel: (service: ServiceName) => void;
-  removeActiveModel: (service: ServiceName) => void;
+  /** Omitting the id targets whatever is in use — the historical meaning. */
+  removeActiveProfile: (service: ServiceName, profileId?: string) => void;
+  addModel: (service: ServiceName, profileId?: string) => void;
+  removeActiveModel: (
+    service: ServiceName,
+    profileId?: string,
+    modelId?: string,
+  ) => void;
   updateProfileField: (
     service: ServiceName,
     field: keyof CatalogProfile,
     value: string,
+    profileId?: string,
   ) => void;
   updateModelField: (
     service: ServiceName,
     field: keyof CatalogModel,
     value: string,
+    profileId?: string,
+    modelId?: string,
   ) => void;
   updateModelBoolField: (
     service: ServiceName,
     field: keyof CatalogModel,
     value: boolean,
+    profileId?: string,
+    modelId?: string,
   ) => void;
-  updateContextWindowField: (value: string) => void;
-  updateReasoningEffort: (value: string) => void;
+  updateContextWindowField: (
+    value: string,
+    profileId?: string,
+    modelId?: string,
+  ) => void;
+  updateReasoningEffort: (
+    value: string,
+    profileId?: string,
+    modelId?: string,
+  ) => void;
+
+  // Connections + task models
+  connectionTargets: ConnectionTarget[];
+  connectionTarget: (provider: string) => ConnectionTarget | null;
+  addConnection: (input: {
+    provider: string;
+    name: string;
+    api_key: string;
+    base_url: string;
+  }) => CatalogConnection;
+  updateConnectionField: (
+    id: string,
+    field: keyof CatalogConnection,
+    value: string,
+  ) => void;
+  removeConnection: (id: string) => void;
+  unlinkProfile: (service: ServiceName, profileId: string) => void;
+  linkConnectionToServices: (
+    connection: Pick<
+      CatalogConnection,
+      "id" | "provider" | "name" | "api_key" | "base_url"
+    >,
+    requests: { service: ServiceName; model: string }[],
+  ) => { created: ServiceName[]; activated: ServiceName[] };
   llmContextDetection: LlmContextWindowDetection | null;
   applyDetectedContextWindow: () => void;
 
   // Save / apply
   saving: boolean;
   applying: boolean;
-  saveCatalog: () => Promise<void>;
+  saveDraft: () => Promise<void>;
   applyCatalog: () => Promise<void>;
+  discardDraft: () => Promise<void>;
+  /** A draft parked on the server, waiting to be applied. */
+  storedDraft: StoredDraft | null;
+  draftState: DraftState;
+  /** Bumped when a draft is discarded so pages re-read from the server. */
+  draftRevision: number;
+  pendingExtensionPayload: (key: string) => unknown;
 
   // Sub-page extension hooks. Sub-routes (e.g. /settings/memory) that own
   // state outside the catalog register a "dirty + save" pair so the global
@@ -529,6 +654,12 @@ type SettingsContextValue = {
   advanceTour: () => void;
   goBackTour: () => void;
   skipTour: () => void;
+
+  // Which leaf is on screen inside a merged category page (models / chat /
+  // agents). Null outside of one — the nav falls back to plain pathname
+  // matching for every other route.
+  activeSection: string | null;
+  setActiveSection: (key: string | null) => void;
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -570,6 +701,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     Record<ServiceName, ProviderOption[]>
   >({
     llm: [],
+    task: [],
     embedding: [],
     search: [],
     tts: [],
@@ -577,6 +709,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     imagegen: [],
     videogen: [],
   });
+  const [connectionTargets, setConnectionTargets] = useState<
+    ConnectionTarget[]
+  >([]);
+  const [storedDraft, setStoredDraft] = useState<StoredDraft | null>(null);
+  // Signature of the envelope as last written to the draft store.
+  const [savedSignature, setSavedSignature] = useState<string | null>(null);
+  const [draftRevision, setDraftRevision] = useState(0);
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -593,37 +732,62 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [embeddingCapabilities, setEmbeddingCapabilities] =
     useState<EmbeddingCapabilities | null>(null);
   const [tourStepIndex, setTourStepIndex] = useState(-1);
+  const [activeSection, setActiveSection] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   // Extensions register their latest dirty/save on each render. Keep the
   // derived dirty state explicit instead of using an indirect version counter.
   const extensionsRef = useRef<Map<string, SettingsExtension>>(new Map());
-  const [hasDirtyExtension, setHasDirtyExtension] = useState(false);
+  // Pending edits from settings pages that keep state outside the catalog,
+  // kept here rather than in the pages themselves. A page unmounts on every
+  // navigation inside Settings; holding its unsaved payload at the provider
+  // is what makes leaving the page non-destructive.
+  const pendingRef = useRef<Map<string, unknown>>(new Map());
+  // A signature of the pending payloads rather than just their keys: the
+  // toolbar has to notice the second edit to the same field, not only the
+  // first, or "Draft saved" would keep showing after further typing.
+  const [pendingSignature, setPendingSignature] = useState("{}");
+  const syncPendingKeys = useCallback(() => {
+    const entries = Array.from(pendingRef.current.entries()).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    const next = JSON.stringify(Object.fromEntries(entries));
+    setPendingSignature((current) => (current === next ? current : next));
+  }, []);
+
   const registerExtension = useCallback(
     (key: string, ext: SettingsExtension | null) => {
       const map = extensionsRef.current;
-      const prev = map.get(key);
       if (ext === null) {
-        if (prev === undefined) return;
+        // Deregistration means "this page left the screen", never "discard
+        // what was typed" — the pending payload deliberately outlives it.
         map.delete(key);
-        setHasDirtyExtension(
-          Array.from(map.values()).some((extension) => extension.dirty),
-        );
-        return;
-      }
-      if (prev && prev.dirty === ext.dirty && prev.save === ext.save) {
         return;
       }
       map.set(key, ext);
-      // Only recompute the dirty summary when dirty flips — save fn changes
-      // every render are common and should not re-render the toolbar.
-      if (prev?.dirty !== ext.dirty) {
-        setHasDirtyExtension(
-          Array.from(map.values()).some((extension) => extension.dirty),
-        );
+      if (ext.dirty) {
+        if (ext.payload !== undefined) pendingRef.current.set(key, ext.payload);
+      } else if (ext.payload != null) {
+        // Clean *and* loaded means the user reverted, so the pending edit goes.
+        // A null payload means the page is still fetching and has nothing to
+        // say yet — dropping the pending edit there would delete it during the
+        // very remount it is supposed to survive.
+        pendingRef.current.delete(key);
       }
+      syncPendingKeys();
     },
+    [syncPendingKeys],
+  );
+
+  /** A payload this page left behind earlier in the session, if any. */
+  const pendingExtensionPayload = useCallback(
+    (key: string) => pendingRef.current.get(key),
     [],
   );
+
+  const clearPending = useCallback(() => {
+    pendingRef.current.clear();
+    syncPendingKeys();
+  }, [syncPendingKeys]);
 
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -655,6 +819,37 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // them up, so no separate copy needs seeding here.
       syncLoadedCodeBlockSettingsToAppShell(payload.ui);
       if (payload.providers) setProviders(payload.providers);
+      if (payload.connection_targets)
+        setConnectionTargets(payload.connection_targets);
+
+      // A draft parked in an earlier session takes over the editable copy —
+      // otherwise "Save Draft" would look like it had done nothing at all.
+      try {
+        const draftResponse = await apiFetch(apiUrl("/api/v1/settings/draft"));
+        if (draftResponse.ok) {
+          const stored = (await draftResponse.json()) as {
+            draft: StoredDraft | null;
+          };
+          if (stored.draft) {
+            setStoredDraft(stored.draft);
+            if (stored.draft.catalog)
+              setDraft(cloneCatalog(stored.draft.catalog));
+            for (const [key, value] of Object.entries(
+              stored.draft.extensions ?? {},
+            )) {
+              pendingRef.current.set(key, value);
+            }
+            syncPendingKeys();
+            // Pages fetch their own state in parallel with this and may have
+            // already read an empty pending map. Bumping the revision re-runs
+            // their load effect now that the draft is actually here.
+            setDraftRevision((value) => value + 1);
+          }
+        }
+      } catch {
+        // No draft is the normal case and a failed read must not block the
+        // page; the live settings above are already in hand.
+      }
       settingsLoaded = true;
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -685,14 +880,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         );
       }
     }
-  }, [t]);
+  }, [syncPendingKeys, t]);
 
   // Load settings + status once on mount. Subsequent navigations between
   // settings sub-pages share this state via the layout-level provider.
   // Code-block switch hydration lives in AppShellContext (the single source),
   // so no separate post-mount re-read is needed here.
+  //
+  // Guarded because `loadSettings` closes over `t`, whose identity changes
+  // once i18n resolves: without this the load ran a second time a moment
+  // after mount and re-cloned `draft` from the server, silently discarding
+  // anything edited in between. `reloadSettings` is the deliberate way to
+  // re-read.
+  const loadedOnce = useRef(false);
   useEffect(() => {
-    loadSettings();
+    if (!loadedOnce.current) {
+      loadedOnce.current = true;
+      loadSettings();
+    }
     return () => {
       if (eventSourceRef.current) eventSourceRef.current.close();
     };
@@ -841,15 +1046,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const removeActiveProfile = useCallback(
-    (service: ServiceName) => {
+    (service: ServiceName, profileId?: string) => {
       mutateCatalog((next) => {
         const target = next.services[service];
+        const doomed = profileId ?? target.active_profile_id;
         target.profiles = target.profiles.filter(
-          (profile) => profile.id !== target.active_profile_id,
+          (profile) => profile.id !== doomed,
         );
-        target.active_profile_id = target.profiles[0]?.id ?? null;
-        if (service !== "search") {
-          target.active_model_id = target.profiles[0]?.models?.[0]?.id ?? null;
+        // Deleting a profile that was not in use leaves the selection alone.
+        if (target.active_profile_id === doomed) {
+          target.active_profile_id = target.profiles[0]?.id ?? null;
+          if (service !== "search") {
+            target.active_model_id =
+              target.profiles[0]?.models?.[0]?.id ?? null;
+          }
         }
       });
     },
@@ -857,14 +1067,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const addModel = useCallback(
-    (service: ServiceName) => {
+    (service: ServiceName, profileId?: string) => {
       if (service === "search") return;
       mutateCatalog((next) => {
         const target = next.services[service];
-        const profile =
-          target.profiles.find(
-            (item) => item.id === target.active_profile_id,
-          ) ?? null;
+        const profile = profileId
+          ? (target.profiles.find((item) => item.id === profileId) ?? null)
+          : (target.profiles.find(
+              (item) => item.id === target.active_profile_id,
+            ) ?? null);
         if (!profile) return;
         const providerOption = (providers[service] || []).find(
           (p) => p.value === profile.binding,
@@ -890,71 +1101,317 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               }
             : {}),
         });
-        target.active_model_id = modelId;
+        // A model added to the profile in use becomes the one in use; adding
+        // to any other profile must not move what chat resolves.
+        if (profile.id === target.active_profile_id) {
+          target.active_model_id = modelId;
+        }
       });
     },
     [embeddingDefaultDim, language, mutateCatalog, providers],
   );
 
-  const removeActiveModel = useCallback(
-    (service: ServiceName) => {
-      if (service === "search") return;
+  // ─── Connections ─────────────────────────────────────────────────────────
+  //
+  // A connection holds the credential; linking creates one ordinary profile
+  // per service that points back at it. The backend mirrors the credential
+  // down on save, so everything downstream keeps reading self-contained
+  // profiles — nothing about how a profile resolves changes by being linked.
+
+  const connectionTarget = useCallback(
+    (provider: string) =>
+      connectionTargets.find((target) => target.provider === provider) ?? null,
+    [connectionTargets],
+  );
+
+  const addConnection = useCallback(
+    (input: {
+      provider: string;
+      name: string;
+      api_key: string;
+      base_url: string;
+    }) => {
+      const connection: CatalogConnection = {
+        id: `conn-${Date.now().toString(36)}${Math.random()
+          .toString(36)
+          .slice(2, 6)}`,
+        name: input.name.trim() || input.provider,
+        provider: input.provider,
+        api_key: input.api_key,
+        base_url: input.base_url.trim(),
+        api_version: "",
+        extra_headers: {},
+      };
       mutateCatalog((next) => {
-        const target = next.services[service];
-        const profile =
-          target.profiles.find(
-            (item) => item.id === target.active_profile_id,
-          ) ?? null;
-        if (!profile) return;
-        profile.models = profile.models.filter(
-          (item) => item.id !== target.active_model_id,
+        next.connections = [...(next.connections ?? []), { ...connection }];
+      });
+      // Returned whole because the caller links services in the same click,
+      // before the draft carrying it has been committed.
+      return connection;
+    },
+    [mutateCatalog],
+  );
+
+  const updateConnectionField = useCallback(
+    (id: string, field: keyof CatalogConnection, value: string) => {
+      mutateCatalog((next) => {
+        const connection = (next.connections ?? []).find(
+          (item) => item.id === id,
         );
-        target.active_model_id = profile.models[0]?.id ?? null;
+        if (connection) (connection as Record<string, unknown>)[field] = value;
       });
     },
     [mutateCatalog],
   );
 
-  const updateProfileField = useCallback(
-    (service: ServiceName, field: keyof CatalogProfile, value: string) => {
+  /**
+   * Drop a connection. Profiles it fed keep the credentials already mirrored
+   * into them — deleting the place a key was typed must not silently break
+   * six working services.
+   */
+  const removeConnection = useCallback(
+    (id: string) => {
       mutateCatalog((next) => {
-        const profile = getActiveProfile(next, service);
+        next.connections = (next.connections ?? []).filter(
+          (item) => item.id !== id,
+        );
+        for (const service of CONNECTABLE_SERVICES) {
+          for (const profile of next.services[service].profiles) {
+            if (profile.connection_id === id) delete profile.connection_id;
+          }
+        }
+      });
+    },
+    [mutateCatalog],
+  );
+
+  const unlinkProfile = useCallback(
+    (service: ServiceName, profileId: string) => {
+      mutateCatalog((next) => {
+        const profile = next.services[service].profiles.find(
+          (item) => item.id === profileId,
+        );
+        if (profile) delete profile.connection_id;
+      });
+    },
+    [mutateCatalog],
+  );
+
+  /**
+   * Create one linked profile per requested service.
+   *
+   * The plan — ids, which services get one, which of those become active — is
+   * computed here rather than inside the catalog mutator: a mutator is a React
+   * updater, so it runs during render (twice under StrictMode) and anything it
+   * reports back would be both late and doubled.
+   *
+   * A new profile becomes the active one only for services that had none. A
+   * user who already has a working LLM must not find their chat model swapped
+   * out because they pasted a key for image generation, so what did and did
+   * not become active is returned for the caller to say out loud.
+   */
+  const linkConnectionToServices = useCallback(
+    (
+      connection: Pick<
+        CatalogConnection,
+        "id" | "provider" | "name" | "api_key" | "base_url"
+      >,
+      requests: { service: ServiceName; model: string }[],
+    ) => {
+      const target = connectionTargets.find(
+        (item) => item.provider === connection.provider,
+      );
+      const stamp = `${Date.now().toString(36)}${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
+      const base = connection.base_url.trim().replace(/\/+$/, "");
+      const plan = requests.flatMap((request, index) => {
+        const spec = target?.services[request.service];
+        if (!spec) return [];
+        return [
+          {
+            service: request.service,
+            spec,
+            profileId: `${request.service}-profile-${stamp}${index}`,
+            modelId: `${request.service}-model-${stamp}${index}`,
+            model: request.model || spec.default_model || "",
+            // Mirrored from the connection on save; seeded here so the draft
+            // shows the same values the server will store.
+            baseUrl: base
+              ? request.service === "embedding"
+                ? `${base}/embeddings`
+                : base
+              : spec.base_url,
+            activate: draft.services[request.service].profiles.length === 0,
+          },
+        ];
+      });
+
+      mutateCatalog((next) => {
+        for (const item of plan) {
+          const bucket = next.services[item.service];
+          bucket.profiles.push({
+            id: item.profileId,
+            name: connection.name,
+            connection_id: connection.id,
+            binding: item.spec.provider,
+            base_url: item.baseUrl,
+            api_key: connection.api_key,
+            api_version: "",
+            extra_headers: {},
+            models: [
+              {
+                id: item.modelId,
+                name: item.model || item.spec.provider,
+                model: item.model,
+                ...(item.service === "embedding"
+                  ? {
+                      dimension: item.spec.default_dim || "",
+                      send_dimensions: true,
+                    }
+                  : {}),
+                ...(item.service === "tts"
+                  ? {
+                      voice: item.spec.default_voice || "",
+                      response_format: "mp3",
+                    }
+                  : {}),
+              },
+            ],
+          });
+          if (item.activate) {
+            bucket.active_profile_id = item.profileId;
+            bucket.active_model_id = item.modelId;
+          }
+        }
+      });
+
+      return {
+        created: plan.map((item) => item.service),
+        activated: plan
+          .filter((item) => item.activate)
+          .map((item) => item.service),
+      };
+    },
+    [connectionTargets, draft, mutateCatalog],
+  );
+
+  const removeActiveModel = useCallback(
+    (service: ServiceName, profileId?: string, modelId?: string) => {
+      if (service === "search") return;
+      mutateCatalog((next) => {
+        const target = next.services[service];
+        const profile = profileId
+          ? (target.profiles.find((item) => item.id === profileId) ?? null)
+          : (target.profiles.find(
+              (item) => item.id === target.active_profile_id,
+            ) ?? null);
+        if (!profile) return;
+        const doomed = modelId ?? target.active_model_id;
+        profile.models = profile.models.filter((item) => item.id !== doomed);
+        if (target.active_model_id === doomed) {
+          target.active_model_id =
+            profile.id === target.active_profile_id
+              ? (profile.models[0]?.id ?? null)
+              : target.active_model_id;
+        }
+      });
+    },
+    [mutateCatalog],
+  );
+
+  /**
+   * Which profile/model an edit lands on.
+   *
+   * Everything here used to write to whatever was *active*, because selecting
+   * a profile and putting it into use were the same act. The model pages now
+   * let you open a profile without adopting it, so an edit has to name its
+   * target — omitting it keeps the old meaning, so no existing caller changes.
+   */
+  const targetProfile = useCallback(
+    (next: Catalog, service: ServiceName, profileId?: string) =>
+      profileId
+        ? (next.services[service].profiles.find(
+            (item) => item.id === profileId,
+          ) ?? null)
+        : getActiveProfile(next, service),
+    [],
+  );
+
+  const targetModel = useCallback(
+    (
+      next: Catalog,
+      service: ServiceName,
+      profileId?: string,
+      modelId?: string,
+    ) => {
+      if (!profileId && !modelId) return getActiveModel(next, service);
+      const profile = targetProfile(next, service, profileId);
+      if (!profile) return null;
+      return modelId
+        ? (profile.models.find((item) => item.id === modelId) ?? null)
+        : (profile.models[0] ?? null);
+    },
+    [targetProfile],
+  );
+
+  const updateProfileField = useCallback(
+    (
+      service: ServiceName,
+      field: keyof CatalogProfile,
+      value: string,
+      profileId?: string,
+    ) => {
+      mutateCatalog((next) => {
+        const profile = targetProfile(next, service, profileId);
         if (!profile) return;
         (profile[field] as string | undefined) = value;
       });
     },
-    [mutateCatalog],
+    [mutateCatalog, targetProfile],
   );
 
   const updateModelField = useCallback(
-    (service: ServiceName, field: keyof CatalogModel, value: string) => {
+    (
+      service: ServiceName,
+      field: keyof CatalogModel,
+      value: string,
+      profileId?: string,
+      modelId?: string,
+    ) => {
       if (service === "search") return;
       mutateCatalog((next) => {
-        const model = getActiveModel(next, service);
+        const model = targetModel(next, service, profileId, modelId);
         if (!model) return;
         (model[field] as string | undefined) = value;
       });
     },
-    [mutateCatalog],
+    [mutateCatalog, targetModel],
   );
 
   const updateModelBoolField = useCallback(
-    (service: ServiceName, field: keyof CatalogModel, value: boolean) => {
+    (
+      service: ServiceName,
+      field: keyof CatalogModel,
+      value: boolean,
+      profileId?: string,
+      modelId?: string,
+    ) => {
       if (service === "search") return;
       mutateCatalog((next) => {
-        const model = getActiveModel(next, service);
+        const model = targetModel(next, service, profileId, modelId);
         if (!model) return;
         (model[field] as boolean | undefined) = value;
       });
     },
-    [mutateCatalog],
+    [mutateCatalog, targetModel],
   );
 
   const updateContextWindowField = useCallback(
-    (value: string) => {
+    (value: string, profileId?: string, modelId?: string) => {
       const normalized = value.replace(/[^\d]/g, "");
       mutateCatalog((next) => {
-        const model = getActiveModel(next, "llm");
+        const model = targetModel(next, "llm", profileId, modelId);
         if (!model) return;
         if (normalized) {
           model.context_window = normalized;
@@ -967,18 +1424,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         }
       });
     },
-    [mutateCatalog],
+    [mutateCatalog, targetModel],
   );
 
   const updateReasoningEffort = useCallback(
-    (value: string) => {
+    (value: string, profileId?: string, modelId?: string) => {
       mutateCatalog((next) => {
-        const model = getActiveModel(next, "llm");
+        const model = targetModel(next, "llm", profileId, modelId);
         if (!model) return;
         setModelReasoningEffort(model, value);
       });
     },
-    [mutateCatalog],
+    [mutateCatalog, targetModel],
   );
 
   const applyDetectedContextWindow = useCallback(() => {
@@ -1005,43 +1462,75 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [llmContextDetection, mutateCatalog, t]);
 
   // ── Save / Apply ────────────────────────────────────────────────────────
-  const saveCatalog = useCallback(async () => {
-    if (!catalogEditable) return;
+  /** The envelope the draft endpoint stores: catalog plus every pending page. */
+  const draftEnvelope = useCallback(
+    () => ({
+      catalog: catalogEditable ? draft : null,
+      extensions: Object.fromEntries(pendingRef.current.entries()),
+    }),
+    [catalogEditable, draft],
+  );
+
+  /**
+   * Save Draft — write everything unsaved to the draft store and stop there.
+   *
+   * Nothing here reaches the files the runtime resolves against, which is the
+   * entire difference from Apply. It covers the pages that keep state outside
+   * the catalog too; previously this button only ever wrote the catalog and
+   * reported success for edits it had not touched.
+   */
+  const saveDraft = useCallback(async () => {
     setSaving(true);
+    const signature = envelopeSignatureRef.current;
     try {
-      const response = await apiFetch(apiUrl("/api/v1/settings/catalog"), {
+      const response = await apiFetch(apiUrl("/api/v1/settings/draft"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ catalog: draft }),
+        body: JSON.stringify(draftEnvelope()),
       });
-      const payload = await response.json();
-      setCatalog(payload.catalog);
-      setDraft(cloneCatalog(payload.catalog));
-      // The model list the chat composer shows is derived from this catalog.
-      invalidateLLMOptionsCache();
-      setToast(t("Draft saved"));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = (await response.json()) as { draft: StoredDraft | null };
+      setStoredDraft(payload.draft ?? null);
+      setSavedSignature(signature);
+      setToast(t("Draft saved — not applied yet"));
+    } catch (err) {
+      setToast(
+        t("Could not save the draft: {{message}}", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
     } finally {
       setSaving(false);
     }
-  }, [catalogEditable, draft, t]);
+  }, [draftEnvelope, t]);
 
+  /** Apply — move everything into the live files and clear the draft. */
   const applyCatalog = useCallback(async () => {
     setApplying(true);
     try {
-      // Flush extensions (e.g. /settings/memory) first so their saved
-      // state is visible to any backend side-effects in /apply below.
-      const exts = Array.from(extensionsRef.current.values()).filter(
-        (e) => e.dirty,
-      );
-      await Promise.all(exts.map((e) => e.save()));
+      // Park the current state server-side first so Apply promotes exactly
+      // what is on screen, and so credentials typed into a draft never have
+      // to round-trip through the browser as placeholders.
+      await apiFetch(apiUrl("/api/v1/settings/draft"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draftEnvelope()),
+      });
 
-      // The catalog apply is only meaningful when editable; an extension-
-      // only flush should still produce a success toast.
+      // Pages still on screen save themselves — they refresh their own local
+      // state and surface their own errors. Everything else pending is
+      // written straight to the endpoint that owns it.
+      const mounted = extensionsRef.current;
+      for (const [key, payload] of pendingRef.current.entries()) {
+        const ext = mounted.get(key);
+        if (ext?.dirty) await ext.save();
+        else await applyExtensionPayload(key, payload);
+      }
+
       if (catalogEditable) {
         const response = await apiFetch(apiUrl("/api/v1/settings/apply"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ catalog: draft }),
         });
         const payload = await response.json();
         setCatalog(payload.catalog);
@@ -1049,12 +1538,40 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         invalidateLLMOptionsCache();
         const statusResponse = await apiFetch(apiUrl("/api/v1/system/status"));
         setStatus((await statusResponse.json()) as SystemStatus);
+      } else {
+        await apiFetch(apiUrl("/api/v1/settings/draft"), { method: "DELETE" });
       }
-      setToast(t("All changes saved"));
+      clearPending();
+      setStoredDraft(null);
+      setSavedSignature(null);
+      setToast(t("Applied"));
+    } catch (err) {
+      setToast(
+        t("Could not apply: {{message}}", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
     } finally {
       setApplying(false);
     }
-  }, [catalogEditable, draft, t]);
+  }, [catalogEditable, clearPending, draftEnvelope, t]);
+
+  /** Throw the draft away and go back to what is actually live. */
+  const discardDraft = useCallback(async () => {
+    setApplying(true);
+    try {
+      await apiFetch(apiUrl("/api/v1/settings/draft"), { method: "DELETE" });
+      clearPending();
+      setStoredDraft(null);
+      setSavedSignature(null);
+      setDraft(cloneCatalog(catalog));
+      setToast(t("Draft discarded"));
+      // Pages holding their own copy of a discarded payload have to re-read.
+      setDraftRevision((value) => value + 1);
+    } finally {
+      setApplying(false);
+    }
+  }, [catalog, clearPending, t]);
 
   // ── Diagnostics ─────────────────────────────────────────────────────────
   // Reset capability snapshot when switching embedding profile/model so a
@@ -1268,13 +1785,50 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [tourStepIndex, router]);
 
   // ── Derived ─────────────────────────────────────────────────────────────
-  const hasUnsavedChanges = useMemo(() => {
-    return (
-      hasDirtyExtension ||
+  // What the current screen state would be persisted as. Compared against the
+  // last thing actually written so the toolbar can tell "not saved anywhere"
+  // apart from "saved as a draft, not applied".
+  const envelopeSignature = useMemo(
+    () =>
+      JSON.stringify({
+        catalog: catalogEditable ? draft : null,
+        extensions: pendingSignature,
+      }),
+    [catalogEditable, draft, pendingSignature],
+  );
+
+  const differsFromLive = useMemo(
+    () =>
+      pendingSignature !== "{}" ||
       (catalogEditable === true &&
-        JSON.stringify(catalog) !== JSON.stringify(draft))
-    );
-  }, [catalog, catalogEditable, draft, hasDirtyExtension]);
+        JSON.stringify(catalog) !== JSON.stringify(draft)),
+    [catalog, catalogEditable, draft, pendingSignature],
+  );
+
+  const envelopeSignatureRef = useRef(envelopeSignature);
+  envelopeSignatureRef.current = envelopeSignature;
+
+  const draftState: DraftState = !differsFromLive
+    ? "clean"
+    : envelopeSignature === savedSignature
+      ? "saved"
+      : "unsaved";
+
+  const hasUnsavedChanges = draftState === "unsaved";
+
+  // Moving between settings pages keeps unsaved edits (they live on the
+  // provider), but closing or reloading the tab cannot — that is the moment
+  // the work would disappear, so warn there. Only for edits with nowhere to
+  // fall back to: once saved as a draft the server already has them.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedChanges]);
 
   const settingsLoading = catalogEditable === null;
 
@@ -1313,12 +1867,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateModelBoolField,
       updateContextWindowField,
       updateReasoningEffort,
+      connectionTargets,
+      connectionTarget,
+      addConnection,
+      updateConnectionField,
+      removeConnection,
+      unlinkProfile,
+      linkConnectionToServices,
       llmContextDetection,
       applyDetectedContextWindow,
       saving,
       applying,
-      saveCatalog,
+      saveDraft,
       applyCatalog,
+      discardDraft,
+      storedDraft,
+      draftState,
+      draftRevision,
+      pendingExtensionPayload,
       registerExtension,
       logs,
       testRunning,
@@ -1331,13 +1897,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       advanceTour,
       goBackTour,
       skipTour,
+      activeSection,
+      setActiveSection,
     }),
     [
+      activeSection,
       addModel,
       addProfile,
       applyDetectedContextWindow,
       applyCatalog,
       applying,
+      draftState,
+      storedDraft,
+      draftRevision,
+      pendingExtensionPayload,
+      discardDraft,
       catalog,
       catalogEditable,
       codeBlockShowLineNumbers,
@@ -1353,13 +1927,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       llmContextDetection,
       logs,
       mutateCatalog,
+      connectionTargets,
+      connectionTarget,
+      addConnection,
+      updateConnectionField,
+      removeConnection,
+      unlinkProfile,
+      linkConnectionToServices,
       providers,
       registerExtension,
       removeActiveModel,
       removeActiveProfile,
       runDetailedTest,
-      saveCatalog,
+      saveDraft,
       saving,
+      setActiveSection,
       settingsError,
       loadSettings,
       settingsLoading,

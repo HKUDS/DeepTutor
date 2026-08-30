@@ -84,6 +84,8 @@ node_modules/
 .next/
 web/.next/
 web/.next-deeptutor/
+# Custom distDir builds (DEEPTUTOR_NEXT_DIST_DIR / parallel dev servers)
+web/.next-*/
 out/
 web/out/
 .vercel/

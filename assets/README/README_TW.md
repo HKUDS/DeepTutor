@@ -128,9 +128,11 @@ python -m pip install --upgrade pip
 </details>
 
 <details>
-<summary><b>選用的額外安裝項目</b> — dev／partners／matrix／math-animator</summary>
+<summary><b>選用的額外安裝項目</b> — RAG 引擎／dev／partners／matrix／math-animator</summary>
 
 ```bash
+pip install -e ".[rag-lightrag]"    # 內建 LightRAG 引擎（明確支援的 SDK 版本）
+pip install -e ".[graphrag]"        # Microsoft GraphRAG 引擎
 pip install -e ".[dev]"             # tests/lint tools
 pip install -e ".[partners]"        # Partner IM channel SDKs
 pip install -e ".[matrix]"          # Matrix channel without E2EE/libolm
@@ -431,6 +433,8 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 
 建立知識庫時，可以選擇**建立新的知識庫**（上傳文件並建立全新索引），或**連結現有知識庫**（重複使用在其他位置建立的索引、就地讀取且不重新建立索引）。知識庫也可以追蹤 **GitHub repositories**（repo、branch、glob）或**文件網站 URL**（限制爬取深度與頁面數量）；依需求同步時會以內容雜湊差異識別新增、變更與移除的內容，因此你所追蹤的文件能保持最新，無須重新上傳。重新建立索引時，系統會寫入新的扁平 `version-N` 目錄並保留先前版本，因此可用索引不會在重建途中遭到破壞。即使知識庫處於 **error** 狀態，也能移除單一文件；可直接刪除解析失敗的檔案，無須刪除並重建全部內容。文件解析方式（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse）可在 **Settings → Knowledge Base** 選擇，預設不下載本機模型。Docling 也可以在**遠端（remote）**模式下運作，改連線至 Docling Serve 伺服器（無須本機安裝或下載模型），可透過 **Settings → Document Parsing**（設定 `mode=remote`、伺服器基礎 URL 與選用的 API 金鑰）或 `DOCLING_MODE`／`DOCLING_API_BASE_URL`／`DOCLING_API_TOKEN` 環境變數進行設定。Tika 僅支援遠端模式，會連線至 Apache Tika 伺服器（`TIKA_SERVER_URL`）。CLI 也提供對應的完整生命週期指令：`list/info/create/add/search/set-default/delete`、來源新增／移除指令、`list-sources` 與 `sync`。
 
+內建的 LightRAG 引擎可透過 `pip install 'deeptutor[rag-lightrag]'` 安裝；此額外套件包含明確支援的 LightRAG SDK，但不會安裝 MinerU。若需要結構化 PDF 解析，請在 Document Parsing 中另行選擇 MinerU，並設定其雲端模式，或安裝其本機 CLI；Text-only 與其他解析引擎則不需要 MinerU。
+
 </details>
 
 <details>
@@ -474,7 +478,7 @@ Memory Graph 會呈現完整金字塔：L3 綜整位於中央、L2 位於中圈�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settings 中心" width="900">
 </div>
 
-Settings 是操作控制中心，提供即時狀態列（後端健康狀況，以及整個處理程序樹的常駐記憶體），各領域則各有一張卡片：**Appearance**（主題、介面與模型輸出語言、程式碼區塊樣式）、**Network**（API base、連接埠、CORS）、**Models**（LLM、Embedding、Search、Text-to-Speech、Speech-to-Text、Image Generation、Video Generation）、**Knowledge Base**（文件解析引擎）、**Chat**（工具、各能力參數、附件上限）、**Partners & Agents**（可在回合中諮詢的子代理程式），以及 **Memory**（綜整器預算）。
+Settings 是操作控制中心，提供即時狀態列（後端健康狀況，以及整個處理程序樹的常駐記憶體），並附有常駐顯示、可搜尋的導覽選單，一鍵即可抵達任何頁面：**Appearance**（主題、介面與模型輸出語言、程式碼區塊樣式）、**Network**（API base、連接埠、CORS）、**Models**（連線、LLM、任務模型、Embedding、Search、Text-to-Speech、Speech-to-Text、Image Generation、Video Generation）、**Knowledge Base**（文件解析引擎）、**Chat**（工具、各能力參數、起始提示、附件上限）、**Partners & Agents**（可在回合中諮詢的子代理程式），以及 **Memory**（綜整器預算）。**連線**會保存單一供應商憑證，並鏡射至該供應商可提供的每項服務，因此 API key 只需輸入一次，無須分別貼到五個不同頁面；**任務模型**會為那些沒人特別要求的工作 — 例如替對話命名、撰寫輸入框的起始提示 — 指定一個小巧、快速的模型，若留空則會回退至目前使用中的預設模型。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外觀設定與主題" width="900">
@@ -658,7 +662,10 @@ EduHub 也是獨立且相容於 ClawHub 的 registry，因此不是 DeepTutor �
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
 deeptutor skill install clawhub:git-release-notes@1.0.1
+deeptutor skill install clawhub:udiedrichsen/stock-analysis
 ```
+
+當多位發布者共用相同的 slug 時，搜尋結果會列出各發布者，並附上完整範圍的安裝參照（`clawhub:<ownerHandle>/<slug>`）。
 
 可在 `settings/skill_hubs.json` 加入更多 registry：`type: "clawhub"` 項目指向任何相容的 HTTP API（EduHub 與 ClawHub 皆支援）；`type: "command"` 可包裝 registry 提供的任何擷取 CLI；`"default"` 則指定只輸入 slug 時使用的 hub。它們都會通過相同的匯入閘道。
 
@@ -681,6 +688,16 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 </p>
 
 ## 🌐 社群
+
+### 🔗 維護者
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/pancacake"><img src="https://avatars.githubusercontent.com/u/150592536?v=4&s=80" width="80" height="80" alt="Bingxi Zhao"><br><strong>Bingxi Zhao</strong></a></td>
+    <td align="center"><a href="https://github.com/TyrionH-is-coding"><img src="https://avatars.githubusercontent.com/u/275607548?v=4&s=80" width="80" height="80" alt="Xingyu Hou"><br><strong>Xingyu Hou</strong></a></td>
+    <td align="center"><a href="https://github.com/zzhtx258"><img src="https://avatars.githubusercontent.com/u/175302980?v=4&s=80" width="80" height="80" alt="Jiahao Zhang"><br><strong>Jiahao Zhang</strong></a></td>
+  </tr>
+</table>
 
 ### 📮 聯絡方式
 

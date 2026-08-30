@@ -216,6 +216,18 @@ export const formatKnowledgeTimestamp = (value?: string): string | null => {
 export const MARGINNOTE4_KB_TYPE = "marginnote4";
 
 /**
+ * A connected subagent (partner or local CLI), reachable live via
+ * `consult_subagent`. It owns no documents and nothing to retrieve, so any
+ * picker that feeds static context into a generation step (Mastery topic
+ * sources, Book sources) must exclude it — unlike the chat composer's
+ * "attach knowledge" picker, where surfacing it is the point.
+ */
+export const SUBAGENT_KB_TYPE = "subagent";
+
+export const isSubagentKb = (kb: KnowledgeBase): boolean =>
+  kb.metadata?.type === SUBAGENT_KB_TYPE;
+
+/**
  * A connected MarginNote 4 library.
  *
  * It owns no documents and no index: the Add-on pushes objects into its own
@@ -311,7 +323,7 @@ export const resolveKnowledgeIndexFailure = (
     retryable: progress?.retryable ?? storedProgress?.retryable,
     requiresModelChange: requiresEmbeddingChange || requiresCompletionChange,
     settingsHref: requiresEmbeddingChange
-      ? "/settings/embedding"
+      ? "/settings/models#embedding"
       : requiresCompletionChange
         ? "/settings/models"
         : undefined,

@@ -12,6 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 from deeptutor.services.file_io import atomic_write_text
+from deeptutor.utils.secret_files import write_secret_text
 
 from .book_permission import (
     BookPermission,
@@ -121,12 +122,7 @@ def _migrate_secret() -> None:
     try:
         secret = LEGACY_SECRET_FILE.read_text(encoding="utf-8").strip()
         if secret:
-            SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
-            SECRET_FILE.write_text(secret, encoding="utf-8")
-            try:
-                SECRET_FILE.chmod(0o600)
-            except OSError:
-                pass
+            write_secret_text(SECRET_FILE, secret)
             logger.info("Migrated auth secret from %s to %s", LEGACY_SECRET_FILE, SECRET_FILE)
     except Exception as exc:
         logger.warning("Failed to migrate legacy auth secret: %s", exc)
@@ -416,13 +412,8 @@ def load_or_create_auth_secret() -> str:
             existing = SECRET_FILE.read_text(encoding="utf-8").strip()
             if existing:
                 return existing
-        SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
         generated = secrets.token_hex(32)
-        SECRET_FILE.write_text(generated, encoding="utf-8")
-        try:
-            SECRET_FILE.chmod(0o600)
-        except OSError:
-            pass
+        write_secret_text(SECRET_FILE, generated)
         logger.warning(
             "Auth is enabled and no auth_secret file exists. Generated a stable local secret at %s.",
             SECRET_FILE,

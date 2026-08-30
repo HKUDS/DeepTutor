@@ -3,26 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-import { useAppShell } from "@/context/AppShellContext";
 import {
-  BookOpen,
-  BookText,
-  Bot,
-  Brain,
-  ChevronDown,
-  Github,
-  HeartHandshake,
-  House,
-  LayoutGrid,
-  Library,
-  Lock,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PenLine,
-  Settings,
-  type LucideIcon,
-} from "lucide-react";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useAppShell } from "@/context/AppShellContext";
+import { BookText, Github, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import OrganizedSessionList from "@/components/courses/OrganizedSessionList";
 import SessionList from "@/components/SessionList";
@@ -33,91 +22,20 @@ import type {
   SessionOrganizationPatch,
   SessionSummary,
 } from "@/lib/session-api";
+import type { MasteryTopicLabel } from "@/lib/learning-api";
+import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
+import { masteryPathIdOf, readingWorkspaceIdOf } from "@/lib/mastery-session";
 import type { StudyCourse } from "@/lib/courses-api";
-import { Tooltip } from "@/components/ui/Tooltip";
-import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
-import type { Capability } from "@/lib/capability-routes";
+import { SidebarNav } from "@/components/sidebar/SidebarNav";
+import { SECONDARY_NAV, isNavActive } from "@/components/sidebar/nav-entries";
+import {
+  mergeManualOrder,
+  readSessionOrder,
+  writeSessionOrder,
+} from "@/lib/sidebar-layout";
 
-interface NavEntry {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  tooltipKey?: string;
-  /** Model capability this feature needs; locked when the user lacks it. */
-  requires?: Capability;
-}
-
-const PRIMARY_NAV: NavEntry[] = [
-  {
-    href: "/home",
-    label: "Home",
-    icon: House,
-    tooltipKey: "Home tooltip",
-    requires: "llm",
-  },
-  {
-    href: "/partners",
-    label: "Partners",
-    icon: HeartHandshake,
-    tooltipKey: "Partners tooltip",
-    requires: "llm",
-  },
-  {
-    // My Agents is its own top-level feature (pulled out of the Learning
-    // Space): connect a live local Claude Code / Codex to consult in chat,
-    // and manage imported agent conversations. Ungated — managing connections
-    // and imports needs no per-user model grant.
-    href: "/agents",
-    label: "My Agents",
-    icon: Bot,
-    tooltipKey: "Agents tooltip",
-  },
-  {
-    href: "/co-writer",
-    label: "Co-Writer",
-    icon: PenLine,
-    tooltipKey: "Co-Writer tooltip",
-    requires: "llm",
-  },
-  {
-    href: "/book",
-    label: "Book",
-    icon: Library,
-    tooltipKey: "Book tooltip",
-    requires: "llm",
-  },
-  {
-    href: "/space",
-    label: "Learning Space",
-    icon: LayoutGrid,
-    tooltipKey: "Space tooltip",
-  },
-];
-
-const SECONDARY_NAV: NavEntry[] = [
-  {
-    // Memory is its own top-level console (pulled out of the Learning Space):
-    // a place to inspect and curate the tutor's long-term memory, not a daily
-    // workspace. Never gated — memory has no per-user model requirement.
-    href: "/memory",
-    label: "Memory",
-    icon: Brain,
-    tooltipKey: "Memory tooltip",
-  },
-  {
-    // Knowledge Center sits just above Settings: it's a console for managing
-    // KBs and retrieval engines, not a daily workspace. Never gated — embedding
-    // / search are shared admin infrastructure, no per-user model grant needed.
-    href: "/knowledge",
-    label: "Knowledge Center",
-    icon: BookOpen,
-    tooltipKey: "Knowledge tooltip",
-  },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
 const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
 const DOCS_URL = "https://deeptutor.info/";
-const RECENTS_COLLAPSED_KEY = "deeptutor.sidebar.recentsCollapsed";
 
 interface SidebarShellProps {
   sessions?: SessionSummary[];
@@ -130,6 +48,10 @@ interface SidebarShellProps {
   onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
   onDeleteSession?: (sessionId: string) => void | Promise<void>;
   courses?: StudyCourse[];
+  /** Topic labels for grouping mastery study conversations under their path. */
+  masteryTopics?: MasteryTopicLabel[];
+  /** Collection labels for grouping reading conversations under their shelf. */
+  readingCollections?: ReadingCollectionLabel[];
   onOrganizeSession?: (
     sessionId: string,
     patch: SessionOrganizationPatch,
@@ -151,17 +73,18 @@ export function SidebarShell({
   onSelectSession,
   onRenameSession,
   onDeleteSession,
-  courses = [],
+  masteryTopics = [],
+  readingCollections = [],
   onOrganizeSession,
   footerSlot,
 }: SidebarShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useTranslation();
-  const { has } = useCapabilityAccess();
   const { sidebarCollapsed, setSidebarCollapsed: setCollapsed } = useAppShell();
   const { isMobile } = useDevice();
   const drawer = useSidebarDrawer();
+  const recentsScrollRef = useRef<HTMLDivElement>(null);
 
   // Inside the mobile drawer the icon-only rail is pointless — the panel is
   // already hidden when you don't want it, so it always opens fully expanded
@@ -175,31 +98,34 @@ export function SidebarShell({
     drawer?.close();
   };
 
-  const navLocked = (item: NavEntry) =>
-    item.requires ? !has(item.requires) : false;
-  const lockedTooltip = t("Locked — contact your administrator to get access.");
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(collapsed) : footerSlot;
-  const [recentsCollapsed, setRecentsCollapsed] = useState(false);
+  // The order the learner dragged the chat history into. Like the collapse
+  // preference above it is a per-machine view state, hydrated after mount.
+  const [sessionOrder, setSessionOrder] = useState<string[]>([]);
+  const sessionOrderRef = useRef<string[]>([]);
 
-  // Hydrate Recents collapse from localStorage after first render to stay SSR-safe.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const stored = readSessionOrder();
+    sessionOrderRef.current = stored;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRecentsCollapsed(
-      window.localStorage.getItem(RECENTS_COLLAPSED_KEY) === "1",
-    );
+    setSessionOrder(stored);
   }, []);
 
-  const toggleRecents = () => {
-    setRecentsCollapsed((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(RECENTS_COLLAPSED_KEY, next ? "1" : "0");
-      }
-      return next;
-    });
-  };
+  // A drag only ever speaks for the rows on screen, so it is merged into the
+  // stored order rather than replacing it.
+  const handleReorderSessions = useCallback((nextIds: string[]) => {
+    const merged = mergeManualOrder(sessionOrderRef.current, nextIds);
+    sessionOrderRef.current = merged;
+    setSessionOrder(merged);
+    writeSessionOrder(merged);
+  }, []);
+
+  const handleResetSessionOrder = useCallback(() => {
+    sessionOrderRef.current = [];
+    setSessionOrder([]);
+    writeSessionOrder([]);
+  }, []);
 
   const handleHomeClick = (event: React.MouseEvent) => {
     // Always reset to a fresh session (mirrors the old "New Chat" affordance);
@@ -213,13 +139,27 @@ export function SidebarShell({
     router.push("/home");
   };
 
-  const recentSessions = sessions
-    .filter(
-      (session) =>
-        !session.preferences?.archived &&
-        !session.preferences?.parent_session_id,
-    )
-    .slice(0, 8);
+  // The Chat group shows the last 8 home conversations. Grouped ones are
+  // exempt from that cut: a topic heading that says "4" while listing two of
+  // them is worse than a slightly longer list, and the groups collapse anyway.
+  const visibleSessions = sessions.filter(
+    (session) =>
+      !session.preferences?.archived && !session.preferences?.parent_session_id,
+  );
+  // Which conversations make the window is recency's call; the hand-arranged
+  // order (applied inside the list) decides how the ones that made it are
+  // stacked. Ordering before the cut instead would let an old arrangement keep
+  // newer chats out of the sidebar entirely.
+  // Grouped conversations are exempt from the cut — a heading that says "4"
+  // while listing two of them is worse than a slightly longer list, and the
+  // groups collapse anyway. Reading conversations group the same way study
+  // ones do, so they are exempt on the same terms.
+  const isGrouped = (session: SessionSummary) =>
+    Boolean(masteryPathIdOf(session)) || Boolean(readingWorkspaceIdOf(session));
+  const recentSessions = [
+    ...visibleSessions.filter((session) => !isGrouped(session)).slice(0, 8),
+    ...visibleSessions.filter(isGrouped),
+  ];
 
   /* ---- Collapsed state ---- */
   if (collapsed) {
@@ -249,62 +189,12 @@ export function SidebarShell({
           </button>
         </div>
 
-        {/* Primary nav */}
-        <nav className="mt-1 flex w-full flex-col items-center gap-1 px-1.5">
-          {PRIMARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
-            const locked = navLocked(item);
-            const description = locked
-              ? lockedTooltip
-              : item.tooltipKey
-                ? t(item.tooltipKey)
-                : undefined;
-            if (locked) {
-              return (
-                <Tooltip
-                  key={item.href}
-                  label={t(item.label)}
-                  description={description}
-                  side="right"
-                >
-                  <div
-                    aria-label={`${t(item.label)} — ${lockedTooltip}`}
-                    aria-disabled
-                    className="relative flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-xl text-[var(--muted-foreground)]/40"
-                  >
-                    <item.icon size={18} strokeWidth={1.6} />
-                    <Lock
-                      size={10}
-                      strokeWidth={2}
-                      className="absolute bottom-1 right-1 text-[var(--muted-foreground)]/70"
-                    />
-                  </div>
-                </Tooltip>
-              );
-            }
-            return (
-              <Tooltip
-                key={item.href}
-                label={t(item.label)}
-                description={description}
-                side="right"
-              >
-                <Link
-                  href={item.href}
-                  onClick={item.href === "/home" ? handleHomeClick : undefined}
-                  aria-label={t(item.label)}
-                  className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
-                    active
-                      ? "bg-[var(--accent)] text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--foreground)]/85 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-                </Link>
-              </Tooltip>
-            );
-          })}
-        </nav>
+        {/* Primary nav — order and folding are the learner's, see SidebarNav */}
+        <SidebarNav
+          collapsed
+          onHomeClick={handleHomeClick}
+          onNavigate={closeDrawerOnNav}
+        />
 
         <div className="flex-1" />
 
@@ -312,7 +202,7 @@ export function SidebarShell({
         <div className="flex w-full flex-col items-center gap-1 px-1.5">
           <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
           {SECONDARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
+            const active = isNavActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
@@ -389,135 +279,78 @@ export function SidebarShell({
       </div>
 
       {/* Primary nav */}
-      <nav className="px-2 pt-1">
-        <div className="space-y-px">
-          {PRIMARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
-            const locked = navLocked(item);
-            if (locked) {
-              return (
-                <Tooltip
-                  key={item.href}
-                  label={t(item.label)}
-                  description={lockedTooltip}
-                  side="right"
-                >
-                  <div
-                    aria-label={`${t(item.label)} — ${lockedTooltip}`}
-                    aria-disabled
-                    className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)]/40"
-                  >
-                    <item.icon size={16} strokeWidth={1.5} />
-                    <span>{t(item.label)}</span>
-                    <Lock size={13} strokeWidth={1.8} className="ml-auto" />
-                  </div>
-                </Tooltip>
-              );
-            }
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={
-                  item.href === "/home" ? handleHomeClick : closeDrawerOnNav
-                }
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
-                  active
-                    ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
-                    : "text-[var(--foreground)]/85 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
-                }`}
-              >
-                <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
-                <span>{t(item.label)}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <SidebarNav
+        collapsed={false}
+        onHomeClick={handleHomeClick}
+        onNavigate={closeDrawerOnNav}
+      />
 
       {/* Chat history — its own region below the nav, takes remaining height */}
       {showSessions && onSelectSession && onRenameSession && onDeleteSession ? (
-        <section
-          className={`mt-4 flex min-h-0 flex-col ${
-            recentsCollapsed ? "" : "flex-1"
-          }`}
-        >
-          <button
-            type="button"
-            onClick={toggleRecents}
-            className="group/recents mx-2 flex items-center justify-between rounded-md px-2 py-1 text-left text-[11.5px] font-normal text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--muted-foreground)]"
-            aria-expanded={!recentsCollapsed}
-            aria-label={
-              recentsCollapsed
-                ? (t("Show recents") as string)
-                : (t("Hide recents") as string)
-            }
+        <section className="mt-3 flex min-h-0 flex-1 flex-col">
+          <div
+            ref={recentsScrollRef}
+            className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-0.5"
           >
-            <span>{t("Recents")}</span>
-            <ChevronDown
-              size={13}
-              strokeWidth={1.7}
-              className={`transition-all duration-200 ${
-                recentsCollapsed
-                  ? "-rotate-90 opacity-60"
-                  : "rotate-0 opacity-0 group-hover/recents:opacity-60"
-              }`}
-            />
-          </button>
-          {!recentsCollapsed && (
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-0.5">
-              {loadingSessions ? (
-                <SessionList
-                  sessions={[]}
-                  activeSessionId={activeSessionId}
-                  loading
-                  onSelect={onSelectSession}
-                  onRename={onRenameSession}
-                  onDelete={onDeleteSession}
-                  compact
-                />
-              ) : onOrganizeSession ? (
-                <OrganizedSessionList
-                  sessions={recentSessions}
-                  courses={courses}
-                  activeSessionId={activeSessionId}
-                  onSelect={(sessionId) => {
-                    drawer?.close();
-                    return onSelectSession(sessionId);
-                  }}
-                  onRename={onRenameSession}
-                  onDelete={onDeleteSession}
-                  onOrganize={onOrganizeSession}
-                />
-              ) : (
-                <SessionList
-                  sessions={recentSessions}
-                  activeSessionId={activeSessionId}
-                  onSelect={(sessionId) => {
-                    drawer?.close();
-                    return onSelectSession(sessionId);
-                  }}
-                  onRename={onRenameSession}
-                  onDelete={onDeleteSession}
-                  compact
-                />
-              )}
-            </div>
-          )}
+            {loadingSessions ? (
+              <SessionList
+                sessions={[]}
+                activeSessionId={activeSessionId}
+                loading
+                onSelect={onSelectSession}
+                onRename={onRenameSession}
+                onDelete={onDeleteSession}
+                compact
+              />
+            ) : onOrganizeSession ? (
+              <OrganizedSessionList
+                sessions={recentSessions}
+                // Course grouping temporarily hidden pending further product
+                // work; passing [] keeps the list flat without touching the
+                // course data callers still fetch.
+                courses={[]}
+                masteryTopics={masteryTopics}
+                readingCollections={readingCollections}
+                activeSessionId={activeSessionId}
+                manualOrder={sessionOrder}
+                onReorder={handleReorderSessions}
+                onResetOrder={handleResetSessionOrder}
+                scrollRef={recentsScrollRef}
+                onSelect={(sessionId) => {
+                  drawer?.close();
+                  return onSelectSession(sessionId);
+                }}
+                onRename={onRenameSession}
+                onDelete={onDeleteSession}
+                onOrganize={onOrganizeSession}
+              />
+            ) : (
+              <SessionList
+                sessions={recentSessions}
+                activeSessionId={activeSessionId}
+                onSelect={(sessionId) => {
+                  drawer?.close();
+                  return onSelectSession(sessionId);
+                }}
+                onRename={onRenameSession}
+                onDelete={onDeleteSession}
+                compact
+              />
+            )}
+          </div>
         </section>
       ) : null}
 
-      {/* When recents is collapsed or unavailable, fill the gap above the footer. */}
+      {/* With no session list at all, fill the gap above the footer. */}
       {(!showSessions ||
         !onSelectSession ||
         !onRenameSession ||
-        !onDeleteSession ||
-        recentsCollapsed) && <div className="flex-1" />}
+        !onDeleteSession) && <div className="flex-1" />}
 
       {/* Secondary nav + footer */}
       <div className="border-t border-[var(--border)]/40 px-2 py-2">
         {SECONDARY_NAV.map((item) => {
-          const active = pathname.startsWith(item.href);
+          const active = isNavActive(pathname, item.href);
           return (
             <Link
               key={item.href}

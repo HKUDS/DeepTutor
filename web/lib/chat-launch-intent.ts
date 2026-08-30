@@ -1,11 +1,9 @@
 /**
  * The `/home` launch-URL contract — both ends in one place.
  *
- * Other surfaces (the Mastery Path dashboard, capability shortcuts) open a
- * chat by navigating to `/home` with query parameters that say how the
- * composer should be set up before the learner types anything. Building and
- * reading that URL are two halves of one contract, so they live together and
- * are covered by a round-trip test.
+ * Capability shortcuts can open `/home` with query parameters that set up the
+ * composer before the learner types. Mastery Path formerly used this contract;
+ * its parser remains for forwarding old links to the dedicated product.
  *
  * Parsing is deliberately dependency-free: tool names are returned verbatim
  * and validated by the caller against its own tool registry.
@@ -39,11 +37,7 @@ export function readChatLaunchIntent(search: string): ChatLaunchIntent {
   };
 }
 
-/** Build a fresh chat URL associated with existing persistent mastery state. */
+/** Open a topic on the dedicated Mastery Path product surface. */
 export function newMasteryPathChatUrl(masteryPathId: string): string {
-  const params = new URLSearchParams({
-    capability: "mastery_path",
-    mastery_path_id: masteryPathId,
-  });
-  return `/home?${params.toString()}`;
+  return `/mastery/${encodeURIComponent(masteryPathId)}`;
 }

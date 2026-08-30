@@ -27,14 +27,11 @@ import {
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
 import { EpubDocumentView } from "./EpubDocumentView";
-import { MaterialPicker } from "./MaterialPicker";
-import { ReaderOutline } from "./ReaderOutline";
 import {
   PdfDocumentView,
   type JumpRequest,
   type SelectionPayload,
 } from "./PdfDocumentView";
-import { ReaderResizeHandle } from "./ReaderResizeHandle";
 import { ReadingExtensionBar } from "./ReadingExtensionBar";
 import { TextUnitView, unitLabel } from "./TextUnitView";
 import type { ReaderHeading } from "@/lib/reading-outline";
@@ -45,10 +42,23 @@ const AUTO_JUMP_KEY = "dt.reader.autoJump";
 
 export interface ReaderPaneProps {
   onClose: () => void;
+  /** User-owned navigation from the workspace's source outline. */
+  externalJump?: JumpRequest | null;
+  /**
+   * Headings the text view discovers in the open unit. Only the rendered
+   * document knows them, but the workspace navigator is where the reader
+   * looks for structure — so they are reported up rather than shown here.
+   */
+  onHeadingsChange?: (headings: ReaderHeading[]) => void;
+  onActiveHeadingChange?: (headingId: string | null) => void;
+  /** Heading the navigator asked to scroll to. */
+  headingJump?: { id: string; nonce: number } | null;
 }
 
 /**
- * The reading pane: document on the left of the chat, with its own annotations.
+ * The document surface of the Reading workspace, with its own annotations.
+ * Source navigation, tabs and the outline are owned by the workspace shell —
+ * this component renders one open document and everything anchored to it.
  *
  * Two behaviours are worth calling out because they were explicit product
  * decisions rather than defaults:
@@ -64,7 +74,13 @@ export interface ReaderPaneProps {
  *   write removes it again and surfaces the error. Waiting for a round trip
  *   before showing ink makes highlighting feel broken.
  */
-export function ReaderPane({ onClose }: ReaderPaneProps) {
+export function ReaderPane({
+  onClose,
+  externalJump = null,
+  onHeadingsChange,
+  onActiveHeadingChange,
+  headingJump = null,
+}: ReaderPaneProps) {
   const { t } = useTranslation();
   // Document + annotations live in the provider (workspace layout), so they
   // survive the remount that sending the first message causes.
@@ -93,21 +109,10 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
   // a layout bug rather than an affordance. An explicit true/false means the
   // user decided, and that wins from then on.
   const [annotationPanel, setAnnotationPanel] = useState<boolean | null>(null);
-  const [showOutline, setShowOutline] = useState(false);
-  const [outlineUserChoice, setOutlineUserChoice] = useState<boolean | null>(
-    null,
-  );
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
-  const [pageHeadings, setPageHeadings] = useState<ReaderHeading[]>([]);
-  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
-  const [headingJump, setHeadingJump] = useState<{
-    id: string;
-    nonce: number;
-  } | null>(null);
   const nonceRef = useRef(0);
-  const headingNonceRef = useRef(0);
 
   // -- persisted auto-jump preference --------------------------------------
 
@@ -119,63 +124,6 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
       // Private mode / storage disabled — keep the default.
     }
   }, []);
-
-  useEffect(() => {
-    if (!material) {
-      setShowOutline(false);
-      setOutlineUserChoice(null);
-      setPageHeadings([]);
-      setActiveHeadingId(null);
-      setHeadingJump(null);
-      return;
-    }
-    try {
-      const stored = window.localStorage.getItem(
-        `dt.reader.outline.${material.material_id}`,
-      );
-      setOutlineUserChoice(stored === null ? null : stored === "open");
-    } catch {
-      setOutlineUserChoice(null);
-    }
-  }, [material]);
-
-  useEffect(() => {
-    if (!material || outlineUserChoice !== null) return;
-    const desktop = window.matchMedia("(min-width: 768px)").matches;
-    setShowOutline(
-      desktop &&
-        ((material.outline?.length ?? 0) >= 8 || pageHeadings.length >= 3),
-    );
-  }, [material, outlineUserChoice, pageHeadings.length]);
-
-  const toggleOutline = useCallback(() => {
-    setShowOutline((current) => {
-      const next = !current;
-      setOutlineUserChoice(next);
-      if (material) {
-        try {
-          window.localStorage.setItem(
-            `dt.reader.outline.${material.material_id}`,
-            next ? "open" : "closed",
-          );
-        } catch {
-          // Storage can be unavailable in private mode; the choice still works here.
-        }
-      }
-      return next;
-    });
-  }, [material]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
-        event.preventDefault();
-        toggleOutline();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleOutline]);
 
   const toggleAutoJump = useCallback(() => {
     setAutoJump((current) => {
@@ -209,6 +157,11 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
     nonceRef.current += 1;
     setJump({ locator, quote, nonce: nonceRef.current });
   }, []);
+
+  useEffect(() => {
+    if (!externalJump) return;
+    requestJump(externalJump.locator, externalJump.quote);
+  }, [externalJump, requestJump]);
 
   useEffect(() => {
     const onReaderAction = (event: Event) => {
@@ -384,34 +337,10 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
   const unitWord = material ? t(unitLabel(material.unit)) : "";
-  const outlineRows = useMemo(
-    () =>
-      (material?.outline ?? []).filter((row) => row.title.trim().length > 0),
-    [material],
-  );
-  const hasContents = outlineRows.length > 0 || pageHeadings.length > 0;
 
   return (
     <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
-      <ReaderResizeHandle />
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
-        {material && hasContents && (
-          <button
-            type="button"
-            title={t("Contents")}
-            aria-label={t("Contents")}
-            aria-pressed={showOutline}
-            onClick={toggleOutline}
-            className={`mr-1 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium transition ${
-              showOutline
-                ? "bg-[var(--primary)]/12 text-[var(--primary)]"
-                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            }`}
-          >
-            <List size={14} />
-            <span className="hidden sm:inline">{t("Contents")}</span>
-          </button>
-        )}
         <FileText
           size={14}
           className="shrink-0 text-[var(--muted-foreground)]"
@@ -456,15 +385,7 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               // trigger too keeps it from being a button that does nothing.
               className="hidden lg:inline-flex"
             />
-            <HeaderButton
-              icon={X}
-              label={t("Close document")}
-              onClick={closeMaterial}
-            />
           </>
-        )}
-        {!material && (
-          <HeaderButton icon={X} label={t("Close reader")} onClick={onClose} />
         )}
       </header>
 
@@ -497,27 +418,6 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
       )}
 
       <div className="relative flex min-h-0 flex-1">
-        {showOutline && material && hasContents && (
-          <ReaderOutline
-            rows={outlineRows}
-            pageHeadings={pageHeadings}
-            activeHeadingId={activeHeadingId}
-            currentLocator={currentLocator}
-            onNavigate={(locator) => {
-              requestJump(locator);
-              if (!window.matchMedia("(min-width: 768px)").matches)
-                setShowOutline(false);
-            }}
-            onNavigateHeading={(heading) => {
-              headingNonceRef.current += 1;
-              setHeadingJump({
-                id: heading.id,
-                nonce: headingNonceRef.current,
-              });
-            }}
-            onClose={() => setShowOutline(false)}
-          />
-        )}
         <div className="min-w-0 flex-1">
           {loadingMaterial ? (
             <div className="flex h-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -525,9 +425,18 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
               {t("Opening document…")}
             </div>
           ) : !material ? (
-            <MaterialPicker
-              onOpen={(candidate) => void openMaterial(candidate)}
-            />
+            <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
+              <p className="text-[12.5px] text-[var(--muted-foreground)]">
+                {t("This document could not be opened.")}
+              </p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-[11.5px] font-medium text-[var(--primary)] underline-offset-2 hover:underline"
+              >
+                {t("Back to the library")}
+              </button>
+            </div>
           ) : material.render_mode === "epub" ? (
             <EpubDocumentView
               materialId={material.material_id}
@@ -569,8 +478,8 @@ export function ReaderPane({ onClose }: ReaderPaneProps) {
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
-              onHeadingsChange={setPageHeadings}
-              onActiveHeadingChange={setActiveHeadingId}
+              onHeadingsChange={onHeadingsChange}
+              onActiveHeadingChange={onActiveHeadingChange}
               headingJump={headingJump}
             />
           )}

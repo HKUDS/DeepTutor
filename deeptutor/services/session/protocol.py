@@ -73,6 +73,11 @@ class SessionStoreProtocol(Protocol):
         offset: int = 0,
     ) -> list[dict[str, Any]]: ...
 
+    async def get_session_summaries(
+        self,
+        session_ids: list[str],
+    ) -> list[dict[str, Any]]: ...
+
     async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int) -> bool: ...
 
     async def update_session_preferences(

@@ -39,8 +39,22 @@ def isolated_root(tmp_path, monkeypatch) -> Path:
 @pytest.fixture
 def client(isolated_root, monkeypatch) -> TestClient:
     import deeptutor.api.routers.partners as partners_router_mod
+    from deeptutor.multi_user.context import reset_current_user, set_current_user
+    from deeptutor.multi_user.models import CurrentUser, UserScope
     from deeptutor.services.partners.manager import PartnerManager
 
+    token = set_current_user(
+        CurrentUser(
+            id="test-admin",
+            username="test-admin",
+            role="admin",
+            scope=UserScope(
+                kind="admin",
+                user_id="test-admin",
+                root=isolated_root,
+            ),
+        )
+    )
     # Fresh manager per test so the module-level singleton can't leak
     # tmp-path state across tests.
     mgr = PartnerManager()
@@ -49,7 +63,10 @@ def client(isolated_root, monkeypatch) -> TestClient:
 
     app = FastAPI()
     app.include_router(partners_router_mod.router, prefix="/api/v1/partners")
-    return TestClient(app)
+    try:
+        yield TestClient(app)
+    finally:
+        reset_current_user(token)
 
 
 def _create(client: TestClient, **overrides):
@@ -87,6 +104,38 @@ class TestCreate:
         assert client.get("/api/v1/partners/ada").json()["mcp_tools"] == []
         assert _create(client, partner_id="bob", name="Bob", mcp_tools=None).status_code == 200
         assert client.get("/api/v1/partners/bob").json()["mcp_tools"] is None
+
+    def test_chat_draft_confirmation_uses_the_same_creation_transaction(self, client):
+        from deeptutor.services.partners.drafts import PartnerDraftStore
+
+        draft = PartnerDraftStore().create(
+            {
+                "name": "Draft Ada",
+                "description": "draft description",
+                "soul": "# Soul\nDraft soul",
+                "language": "en",
+                "emoji": "📐",
+                "color": "#3366aa",
+            }
+        )
+        response = client.post(
+            f"/api/v1/partners/drafts/{draft.draft_id}/confirm",
+            json={"name": "Confirmed Ada", "start": False},
+        )
+        assert response.status_code == 200
+        assert response.json()["name"] == "Confirmed Ada"
+        partner_id = response.json()["partner_id"]
+        assert client.get(f"/api/v1/partners/{partner_id}/soul").json()["content"] == (
+            "# Soul\nDraft soul"
+        )
+
+        repeated = client.post(
+            f"/api/v1/partners/drafts/{draft.draft_id}/confirm",
+            json={"start": False},
+        )
+        assert repeated.status_code == 200
+        assert repeated.json()["partner_id"] == partner_id
+        assert repeated.json()["already_created"] is True
 
 
 class TestChannelOnboarding:

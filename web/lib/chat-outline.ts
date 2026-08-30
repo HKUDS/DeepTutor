@@ -37,6 +37,16 @@ export interface ChatOutlineEntry {
   capability?: string;
   /** 0..1, question length relative to the longest one in this session. */
   weight: number;
+  /**
+   * Who spoke. Product chat only ever has the user asking, so this is
+   * optional and defaults to ``"user"``. A Partner Group also puts an
+   * approved Partner-to-Partner question on the rail, and colours it
+   * differently so the rhythm of the discussion — where you spoke, where
+   * they spoke to each other — is readable at a glance.
+   */
+  tone?: "user" | "peer";
+  /** Small label above the hover preview (Group: who asked whom). */
+  badge?: string;
 }
 
 /**

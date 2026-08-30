@@ -29,18 +29,62 @@ _STRIP_TAGS = (
     "select",
 )
 
-# CSS-ish selectors (via XPath) to find the main content in priority order.
-# Docusaurus, MkDocs, GitBook, ReadTheDocs, generic.
+# CSS-ish selectors (via XPath) that nominate possible article roots.  They are
+# scored rather than treated as a first-match list: pages commonly contain an
+# ``article`` teaser before their real ``main``, while article bodies are often
+# nested inside a broader semantic container.
 _CONTENT_XPATHS = [
+    "//*[@itemprop='articleBody']",
     "//article",
     "//div[contains(@class, 'sl-markdown')]",
     "//div[contains(@class, 'theme-doc-markdown')]",
     "//div[contains(@class, 'markdown-body')]",
     "//div[contains(@class, 'md-content')]",
-    "//div[@role='main']",
+    "//*[@role='main']",
     "//main",
+    "//*[@id='main-content']",
     "//div[contains(@class, 'content')]",
 ]
+
+# Exact class/id components that normally identify navigation or page chrome.
+# Splitting names on punctuation is deliberate: a raw substring check for
+# ``header``/``toc`` also matches unrelated implementation names and can detach
+# the article itself before content selection has a chance to see it.
+_CHROME_NAME_PARTS = frozenset(
+    {
+        "backtotop",
+        "breadcrumb",
+        "breadcrumbs",
+        "editsection",
+        "editthispage",
+        "footer",
+        "lastupdated",
+        "leftsidebar",
+        "menu",
+        "mobileheader",
+        "navbar",
+        "navbox",
+        "navigation",
+        "pagination",
+        "printfooter",
+        "rightsidebar",
+        "search",
+        "share",
+        "sharing",
+        "sidebar",
+        "siteheader",
+        "skiptocontent",
+        "skiplink",
+        "social",
+        "socialicons",
+        "sronly",
+        "tableofcontents",
+        "themetoggle",
+        "toc",
+        "toolbar",
+    }
+)
+_CHROME_ROLES = frozenset({"banner", "complementary", "contentinfo", "navigation", "search"})
 
 
 # ── Navigation extraction ────────────────────────────────────────────
@@ -118,7 +162,9 @@ def extract_navigation(raw_html: str, base_url: str) -> list[dict]:
     def _walk(el, depth: int):
         """Recursively walk sidebar DOM, emitting links with depth info."""
         for child in el:
-            tag = (child.tag or "").lower()
+            tag = _tag_name(child)
+            if not tag:
+                continue
 
             # Anchor: emit a navigation entry.
             if tag == "a":
@@ -209,6 +255,67 @@ def extract_headings(markdown: str) -> list[dict]:
     return headings
 
 
+def _tag_name(el) -> str:
+    """Return a lower-case HTML tag, or ``""`` for comments/PI nodes.
+
+    lxml represents comments with a callable sentinel in ``node.tag``.  Treating
+    it as a string raises during conversion; callers then fell back to a regex
+    text dump that flattened every heading and retained the whole page chrome.
+    """
+    tag = getattr(el, "tag", "")
+    return tag.lower() if isinstance(tag, str) else ""
+
+
+def _content_score(el) -> tuple[int, int, int]:
+    """Rank a possible article root by prose, structure, then total text."""
+    paragraphs = el.xpath(".//p")
+    prose_chars = sum(len(re.sub(r"\s+", " ", row.text_content()).strip()) for row in paragraphs)
+    heading_count = len(el.xpath(".//h1 | .//h2 | .//h3 | .//h4 | .//h5 | .//h6"))
+    text_chars = len(re.sub(r"\s+", " ", el.text_content()).strip())
+    # Paragraph prose is a stronger article signal than a link-heavy menu.  A
+    # heading bonus keeps documentation pages useful even when their content is
+    # mostly lists and code rather than conventional paragraphs.
+    return (prose_chars * 4 + heading_count * 400 + text_chars, prose_chars, heading_count)
+
+
+def _select_content_element(tree):
+    """Choose the strongest semantic/content candidate from the document."""
+    candidates = []
+    seen: set[int] = set()
+    for xpath in _CONTENT_XPATHS:
+        for el in tree.xpath(xpath):
+            identity = id(el)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            candidates.append(el)
+    if candidates:
+        return max(candidates, key=_content_score)
+    body = tree.xpath("//body")
+    return body[0] if body else tree
+
+
+def _looks_like_chrome(el) -> bool:
+    """Whether an element is labelled as navigation or surrounding chrome."""
+    role = str(el.get("role") or "").strip().lower()
+    if role in _CHROME_ROLES:
+        return True
+    names = f"{el.get('class') or ''} {el.get('id') or ''}".lower()
+    parts = set(re.findall(r"[a-z0-9]+", names))
+    # Keep both components (``sidebar`` in ``docs-sidebar``) and collapsed CSS
+    # names (``backtotop`` in ``back-to-top``).  Exact matching at both levels
+    # avoids the destructive false positives caused by raw substring checks.
+    parts.update(re.sub(r"[^a-z0-9]", "", name) for name in names.split())
+    return bool(parts & _CHROME_NAME_PARTS)
+
+
+def _remove_element(el) -> None:
+    """Detach an lxml element when it still has a parent."""
+    parent = el.getparent()
+    if parent is not None:
+        parent.remove(el)
+
+
 def extract_article_markdown(raw_html: str) -> tuple[str, str]:
     """Extract ``(title, markdown)`` from a doc-site HTML page.
 
@@ -238,58 +345,25 @@ def extract_article_markdown(raw_html: str) -> tuple[str, str]:
         # Strip site suffix like " | DeepTutor"
         title = re.sub(r"\s*[|｜]\s*[^|]+$", "", title).strip()
 
-    # Remove boilerplate elements
+    # Select before pruning.  Cleanup selectors are necessarily heuristic, and
+    # mutating the whole document first can detach the only useful root because
+    # a framework happened to use a chrome-like word in an ancestor class.
+    content_el = _select_content_element(tree)
+
+    # Remove boilerplate elements within the selected article only.  Site-wide
+    # navigation is normally outside this root; these rules handle embedded
+    # tables of contents, sharing toolbars, and footer/navigation widgets.
     for tag in _STRIP_TAGS:
-        for el in tree.xpath(f"//{tag}"):
-            parent = el.getparent()
-            if parent is not None:
-                parent.remove(el)
+        for el in content_el.xpath(f".//{tag}"):
+            _remove_element(el)
 
     # Remove aria-hidden elements (decorative, screen-reader text)
-    for el in tree.xpath("//*[@aria-hidden='true']"):
-        parent = el.getparent()
-        if parent is not None:
-            parent.remove(el)
+    for el in content_el.xpath(".//*[@aria-hidden='true']"):
+        _remove_element(el)
 
-    # Also remove elements with common nav/chrome classes
-    for cls_kw in [
-        "navbar",
-        "sidebar",
-        "toc",
-        "breadcrumb",
-        "pagination",
-        "menu",
-        "search",
-        "theme-toggle",
-        "skip-to-content",
-        "back-to-top",
-        "edit-this-page",
-        "last-updated",
-        "sr-only",
-        "sl-anchor-link",
-        "sl-toc",
-        "social-icons",
-        "header",
-        "mobile-header",
-        "right-sidebar",
-        "left-sidebar",
-    ]:
-        for el in tree.xpath(f"//*[contains(@class, '{cls_kw}')]"):
-            parent = el.getparent()
-            if parent is not None:
-                parent.remove(el)
-
-    # Find the main content container
-    content_el = None
-    for xp in _CONTENT_XPATHS:
-        found = tree.xpath(xp)
-        if found:
-            content_el = found[0]
-            break
-
-    if content_el is None:
-        body = tree.xpath("//body")
-        content_el = body[0] if body else tree
+    for el in content_el.xpath(".//*"):
+        if _looks_like_chrome(el):
+            _remove_element(el)
 
     # Convert to markdown
     md = _element_to_markdown(content_el)
@@ -330,7 +404,10 @@ def _pre_to_text(el) -> str:
     if el.text:
         parts.append(el.text)
     for node in el.iter():
-        if node.tag == "br":
+        tag = _tag_name(node)
+        if not tag:
+            continue
+        if tag == "br":
             parts.append("\n")
         elif node.text:
             parts.append(node.text)
@@ -355,7 +432,13 @@ def _element_to_markdown(el) -> str:
         parts.append(el.text)
 
     for child in el:
-        tag = (child.tag or "").lower()
+        tag = _tag_name(child)
+        if not tag:
+            # Comments and processing instructions are metadata, not readable
+            # prose. Their tail can contain real text and must still survive.
+            if child.tail:
+                parts.append(child.tail)
+            continue
         if tag in _STRIP_TAGS:
             # Still need to preserve the tail of a stripped element.
             if child.tail:
@@ -444,7 +527,7 @@ def _list_to_markdown(el, ordered: bool = False) -> str:
     lines: list[str] = []
     idx = 0
     for child in el:
-        if (child.tag or "").lower() == "li":
+        if _tag_name(child) == "li":
             idx += 1
             prefix = f"{idx}. " if ordered else "- "
             text = _element_to_markdown(child).strip()
@@ -476,9 +559,10 @@ def _clean_markdown(md: str) -> str:
     """Normalize whitespace, collapse excessive blank lines."""
     # Decode HTML entities that survived
     md = _html.unescape(md)
-    # Collapse 3+ blank lines to 2
-    md = re.sub(r"\n{3,}", "\n\n", md)
-    # Remove leading/trailing whitespace on lines
+    # Remove line-end indentation before collapsing blank lines. Pretty-printed
+    # HTML leaves spaces on otherwise empty lines, which would hide them from a
+    # newline-only regex and produce a very sparse reading view.
     lines = [line.rstrip() for line in md.split("\n")]
     md = "\n".join(lines)
+    md = re.sub(r"\n{3,}", "\n\n", md)
     return md.strip()

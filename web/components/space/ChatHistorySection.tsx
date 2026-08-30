@@ -21,7 +21,6 @@ import {
   type SessionOrganizationPatch,
   type SessionSummary,
 } from "@/lib/session-api";
-import { listCourses, type StudyCourse } from "@/lib/courses-api";
 
 /**
  * Sessions list for chat history. Reopened sessions always route back to
@@ -43,22 +42,17 @@ export default function ChatHistorySection({
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [courses, setCourses] = useState<StudyCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [courseFilter, setCourseFilter] = useState("all");
+  const [courseFilter] = useState("all");
   const [kindFilter, setKindFilter] = useState("all");
   const [archiveFilter, setArchiveFilter] = useState("active");
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
     try {
-      const [nextSessions, nextCourses] = await Promise.all([
-        listAllSessions({ force }),
-        listCourses({ force }),
-      ]);
+      const nextSessions = await listAllSessions({ force });
       setSessions(nextSessions);
-      setCourses(nextCourses);
     } finally {
       setLoading(false);
     }
@@ -178,24 +172,10 @@ export default function ChatHistorySection({
               className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/55"
             />
           </label>
-          <div className="mt-2 grid gap-2 sm:grid-cols-3">
-            <label className="sr-only" htmlFor="history-course-filter">
-              {t("Filter by course")}
-            </label>
-            <select
-              id="history-course-filter"
-              value={courseFilter}
-              onChange={(event) => setCourseFilter(event.target.value)}
-              className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
-            >
-              <option value="all">{t("All courses")}</option>
-              <option value="unclassified">{t("Unclassified")}</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.name}
-                </option>
-              ))}
-            </select>
+          {/* Course filter temporarily hidden pending further product work;
+              courseFilter stays at its "all" default so filteredSessions is
+              unaffected. */}
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <label className="sr-only" htmlFor="history-kind-filter">
               {t("Filter by conversation type")}
             </label>
@@ -238,7 +218,7 @@ export default function ChatHistorySection({
           ) : (
             <OrganizedSessionList
               sessions={filteredSessions}
-              courses={courses}
+              courses={[]}
               activeSessionId={activeSessionId}
               onSelect={handleSelect}
               onRename={handleRename}

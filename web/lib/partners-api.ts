@@ -122,6 +122,16 @@ export interface CreatePartnerPayload {
   start?: boolean;
 }
 
+export interface ConfirmPartnerDraftPayload {
+  name?: string;
+  description?: string;
+  soul?: string;
+  language?: string;
+  emoji?: string;
+  color?: string;
+  start?: boolean;
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
@@ -164,6 +174,22 @@ export async function createPartner(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
+  );
+}
+
+export async function confirmPartnerDraft(
+  draftId: string,
+  payload: ConfirmPartnerDraftPayload,
+): Promise<PartnerInfo> {
+  return json(
+    await apiFetch(
+      apiUrl(`/api/v1/partners/drafts/${encodeURIComponent(draftId)}/confirm`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    ),
   );
 }
 
