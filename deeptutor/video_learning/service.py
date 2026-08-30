@@ -752,6 +752,8 @@ async def download_ytdlp_subtitle(video_id: str, *, preferred_language: str = ""
                     downloader.download([f"https://www.youtube.com/watch?v={video_id}"])
             except Exception as exc:
                 message = str(exc).lower()
+                if any(marker in message for marker in ("429", "too many requests", "rate limit")):
+                    return [], "", "rate_limited"
                 if any(marker in message for marker in ("sign in", "cookies", "login", "authentication")):
                     return [], "", "auth_required"
                 return [], "", "unavailable"

@@ -1050,7 +1050,13 @@ export function TimedMediaReader({ onClose }: { onClose: () => void }) {
                 </>
               ) : (
                 <div className="space-y-3 p-2 text-sm text-[var(--muted-foreground)]">
-                  <p>{material.transcript.fetch?.status === "fetching" || material.transcript.fetch?.status === "queued" ? t("Preparing YouTube subtitles…") : t("No subtitles are available for this video.")}</p>
+                  <p>
+                    {material.transcript.fetch?.status === "fetching" || material.transcript.fetch?.status === "queued"
+                      ? t("Preparing YouTube subtitles…")
+                      : material.transcript.fetch?.status === "retry_wait"
+                        ? `${t("YouTube subtitle retry scheduled.")}${material.transcript.fetch.next_retry_at ? ` ${t("Next attempt")}: ${new Date(material.transcript.fetch.next_retry_at).toLocaleTimeString()}` : ""}`
+                        : t("No subtitles are available for this video.")}
+                  </p>
                   <button
                     type="button"
                     disabled={youtubeConnecting}

@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 import sys
 import types
@@ -19,6 +20,8 @@ from deeptutor.video_learning.service import (
     parse_webvtt,
     parse_youtube_url,
 )
+from deeptutor.video_learning.subtitle_prefetch import SubtitlePrefetchService
+from deeptutor.video_learning.youtube_session import HostChromeSessionStore
 
 
 def test_normalize_cues_decodes_html_entities():
@@ -367,3 +370,41 @@ async def test_ytdlp_uses_chrome_and_downloads_subtitles_only(monkeypatch: pytes
     assert cues == [{"start": 0.0, "end": 1.0, "text": "Chrome caption"}]
     assert language == "en"
     assert source == "youtube-chrome"
+
+
+@pytest.mark.asyncio
+async def test_subtitle_prefetch_preserves_rate_limit_backoff_and_is_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = TimedMediaStore(tmp_path)
+    material = store.create({
+        "source": {"video_id": "dQw4w9WgXcQ"},
+        "transcript": {"cues": []},
+        "segments": [],
+    })
+    monkeypatch.setattr(HostChromeSessionStore, "enabled", classmethod(lambda cls, _owner: True))
+    calls = 0
+
+    async def rate_limited(*_args: Any, **_kwargs: Any) -> tuple[list[dict[str, Any]], str, str]:
+        nonlocal calls
+        calls += 1
+        return [], "", "rate_limited"
+
+    monkeypatch.setattr("deeptutor.video_learning.subtitle_prefetch.download_ytdlp_subtitle", rate_limited)
+    service = SubtitlePrefetchService()
+    queued = await service.enqueue("evan", material["material_id"], store, manual=True)
+    assert queued["status"] == "queued"
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+        if not service._pending:
+            break
+
+    saved = store.get(material["material_id"])["transcript"]["fetch"]
+    assert calls == 1
+    assert saved["status"] == "retry_wait"
+    assert saved["attempts"] == 1
+    assert saved["error_code"] == "rate_limited"
+    assert saved["next_retry_at"]
+    repeated = await service.enqueue("evan", material["material_id"], store)
+    assert repeated == saved

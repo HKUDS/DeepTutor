@@ -39,7 +39,12 @@ export interface TimedMediaMaterial {
     language: string;
     source: string;
     cues: TimedCue[];
-    fetch?: { status: string; error_code?: string | null };
+    fetch?: {
+      status: string;
+      attempts?: number;
+      next_retry_at?: string | null;
+      error_code?: string | null;
+    };
   };
   segments: TimedSegment[];
   playback: {
