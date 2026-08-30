@@ -21,6 +21,7 @@ def test_known_engines() -> None:
         "pymupdf4llm",
         "liteparse",
         "tika",
+        "paddle",
     }
 
 
@@ -34,6 +35,7 @@ def test_list_engines_reports_metadata_and_availability() -> None:
         "pymupdf4llm",
         "liteparse",
         "tika",
+        "paddle",
     }
     assert engines["text_only"]["available"] is True
     assert engines["text_only"]["needs_local_models"] is False
@@ -46,6 +48,9 @@ def test_list_engines_reports_metadata_and_availability() -> None:
     assert engines["liteparse"]["needs_local_models"] is False
     assert engines["tika"]["available"] is True
     assert engines["tika"]["needs_local_models"] is False
+    # PaddleOCR is a cloud backend — always available, no local models.
+    assert engines["paddle"]["available"] is True
+    assert engines["paddle"]["needs_local_models"] is False
 
 
 def test_get_parser_unknown_raises() -> None:

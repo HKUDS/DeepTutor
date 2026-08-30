@@ -36,6 +36,7 @@ from .embedding_endpoint import (
     embedding_endpoint_validation_error,
     gemini_default_embedding_endpoint,
     normalize_embedding_endpoint_for_display,
+    volcengine_embedding_endpoint,
 )
 from .loader import load_config_with_main
 from .model_catalog import ModelCatalogService, get_model_catalog_service
@@ -96,6 +97,11 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
         requires_api_key=True,
         soft_fallback=False,
         supports_answer=True,
+    ),
+    "doubao_custom": SearchProviderSpec(
+        label="Doubao Search Custom",
+        requires_api_key=True,
+        soft_fallback=False,
     ),
     "bocha": SearchProviderSpec(label="Bocha", requires_api_key=True, soft_fallback=False),
     "zhipu": SearchProviderSpec(label="Zhipu", requires_api_key=True, soft_fallback=False),
@@ -239,6 +245,17 @@ EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
         default_model="qwen3-vl-embedding",
         default_dim=2560,
         max_batch_items=20,
+        multimodal=True,
+    ),
+    "volcengine": EmbeddingProviderSpec(
+        label="Volcengine Ark",
+        adapter="volcengine",
+        default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["volcengine"],
+        keywords=("volcengine", "ark", "doubao", "doubao-embedding", "火山引擎", "方舟"),
+        is_local=False,
+        default_model="doubao-embedding-vision-251215",
+        default_dim=2048,
+        max_batch_items=16,
         multimodal=True,
     ),
     "custom": EmbeddingProviderSpec(
@@ -975,6 +992,11 @@ def resolve_embedding_runtime_config(
         # diagnostic for a text model (issue #660). Surface the true per-model
         # endpoint the SDK will actually POST to.
         api_base = dashscope_embedding_endpoint(resolved_model)
+    if provider_name == "volcengine":
+        # Ark serves vision and text embedding models from different endpoints;
+        # surface the per-model URL the adapter will actually POST to so the
+        # Settings diagnostic stays honest about which surface is in use.
+        api_base = volcengine_embedding_endpoint(resolved_model)
     api_version = active_api_version or ((mapped.api_version or "") if mapped else "")
     extra_headers = active_extra_headers or ((mapped.extra_headers or {}) if mapped else {})
 

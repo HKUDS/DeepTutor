@@ -101,6 +101,7 @@ DOCUMENT_PARSING_ENGINE_MARKITDOWN = "markitdown"
 DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM = "pymupdf4llm"
 DOCUMENT_PARSING_ENGINE_LITEPARSE = "liteparse"
 DOCUMENT_PARSING_ENGINE_TIKA = "tika"
+DOCUMENT_PARSING_ENGINE_PADDLE = "paddle"
 _DOCUMENT_PARSING_ENGINES = frozenset(
     {
         DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
@@ -110,6 +111,7 @@ _DOCUMENT_PARSING_ENGINES = frozenset(
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
         DOCUMENT_PARSING_ENGINE_LITEPARSE,
         DOCUMENT_PARSING_ENGINE_TIKA,
+        DOCUMENT_PARSING_ENGINE_PADDLE,
     }
 )
 # Image formats PyMuPDF4LLM can write extracted page images as.
@@ -194,6 +196,27 @@ _DEFAULT_TIKA_ENGINE: dict[str, Any] = {
     "server_url": "http://localhost:9998",
 }
 
+# PaddleOCR (飞桨) engine slice — cloud-only via the PaddleOCR AI Studio API
+# (https://paddleocr.aistudio-app.com, same backend the paddleocr-mcp server
+# uses). ``api_token`` is the AI Studio access token
+# (https://aistudio.baidu.com/account/accessToken). ``model`` is the document
+# parsing model id (PaddleOCR-VL-1.6 by default). The remaining knobs map to
+# the API's ``optionalPayload`` (snake_case here, camelCased on the wire).
+_DEFAULT_PADDLE_ENGINE: dict[str, Any] = {
+    "api_token": "",
+    "base_url": "https://paddleocr.aistudio-app.com",
+    "model": "PaddleOCR-VL-1.6",
+    "use_layout_detection": True,
+    "use_chart_recognition": False,
+    "use_ocr_for_image_block": False,
+    "use_doc_orientation_classify": False,
+    "use_doc_unwarping": False,
+    "layout_threshold": 0.5,
+    "write_images": True,
+    "request_timeout": 120,
+    "poll_timeout": 600,
+}
+
 # Built-in text-only engine slice. It deliberately has no knobs: it reuses
 # DeepTutor's legacy text extractors for PDF / Office / text-like files.
 _DEFAULT_TEXT_ONLY_ENGINE: dict[str, Any] = {}
@@ -213,6 +236,7 @@ DEFAULT_DOCUMENT_PARSING_SETTINGS: dict[str, Any] = {
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _DEFAULT_PYMUPDF4LLM_ENGINE,
         DOCUMENT_PARSING_ENGINE_LITEPARSE: _DEFAULT_LITEPARSE_ENGINE,
         DOCUMENT_PARSING_ENGINE_TIKA: _DEFAULT_TIKA_ENGINE,
+        DOCUMENT_PARSING_ENGINE_PADDLE: _DEFAULT_PADDLE_ENGINE,
     },
 }
 
@@ -322,6 +346,13 @@ def _coerce_bool(value: Any, default: bool = False) -> bool:
 def _coerce_int(value: Any, default: int) -> int:
     try:
         return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    try:
+        return float(str(value).strip())
     except (TypeError, ValueError):
         return default
 
@@ -493,6 +524,15 @@ class RuntimeSettingsService:
         if include_process_overrides:
             slice_ = self._apply_mineru_process_overrides(slice_)
         return slice_
+
+    def load_paddle(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
+        """Return the PaddleOCR engine slice (flat) from the v2 structure."""
+        del include_process_overrides  # no env overrides for paddle yet
+        return dict(
+            self.load_document_parsing(include_process_overrides=False)["engines"][
+                DOCUMENT_PARSING_ENGINE_PADDLE
+            ]
+        )
 
     def save_mineru(self, settings: dict[str, Any]) -> dict[str, Any]:
         """Persist only the MinerU engine slice, preserving the other engines."""
@@ -909,6 +949,9 @@ class RuntimeSettingsService:
             DOCUMENT_PARSING_ENGINE_TIKA: self._normalize_tika_engine(
                 engines_in.get(DOCUMENT_PARSING_ENGINE_TIKA) or {}
             ),
+            DOCUMENT_PARSING_ENGINE_PADDLE: self._normalize_paddle_engine(
+                engines_in.get(DOCUMENT_PARSING_ENGINE_PADDLE) or {}
+            ),
         }
 
         engine = _string(settings.get("engine")).lower().replace("-", "_").replace(" ", "_")
@@ -979,6 +1022,36 @@ class RuntimeSettingsService:
             "server_url": _string(settings.get("server_url")).rstrip("/")
             or "http://localhost:9998",
         }
+
+    def _normalize_paddle_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        """Normalize the PaddleOCR (飞桨) cloud engine slice."""
+        payload = dict(_DEFAULT_PADDLE_ENGINE)
+        payload.update(
+            {
+                "api_token": _string(settings.get("api_token")),
+                "base_url": _string(settings.get("base_url")).rstrip("/")
+                or "https://paddleocr.aistudio-app.com",
+                "model": _string(settings.get("model")) or "PaddleOCR-VL-1.6",
+                "use_layout_detection": _coerce_bool(
+                    settings.get("use_layout_detection"), True
+                ),
+                "use_chart_recognition": _coerce_bool(
+                    settings.get("use_chart_recognition"), False
+                ),
+                "use_ocr_for_image_block": _coerce_bool(
+                    settings.get("use_ocr_for_image_block"), False
+                ),
+                "use_doc_orientation_classify": _coerce_bool(
+                    settings.get("use_doc_orientation_classify"), False
+                ),
+                "use_doc_unwarping": _coerce_bool(settings.get("use_doc_unwarping"), False),
+                "layout_threshold": _coerce_float(settings.get("layout_threshold"), 0.5),
+                "write_images": _coerce_bool(settings.get("write_images"), True),
+                "request_timeout": _coerce_float(settings.get("request_timeout"), 120.0),
+                "poll_timeout": _coerce_float(settings.get("poll_timeout"), 600.0),
+            }
+        )
+        return payload
 
     def _apply_tika_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
         payload = dict(settings)
@@ -1189,6 +1262,10 @@ def load_integrations_settings() -> dict[str, Any]:
 
 def load_mineru_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_mineru()
+
+
+def load_paddle_settings() -> dict[str, Any]:
+    return get_runtime_settings_service().load_paddle()
 
 
 def load_llamaindex_settings() -> dict[str, Any]:

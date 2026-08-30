@@ -133,10 +133,10 @@ def parse_knowledge_page(data: Mapping[str, Any]) -> ImaKnowledgePage:
     for raw in _entries(data, _DOCUMENT_KEYS):
         # A folder can appear inside the document array (search matches folder
         # names, and a listing mixes both), identified by carrying a folder id
-        # and no media id. Route it to the folder list instead of inventing a
-        # content-less document.
+        # or the ``media_type: 99`` / ``folder_`` media-id marker. Route it to
+        # the folder list instead of inventing a content-less document.
         folder = _folder_from(raw)
-        if folder is not None and not _text(raw, "media_id"):
+        if folder is not None:
             if folder.folder_id not in seen_folders:
                 seen_folders.add(folder.folder_id)
                 folders.append(folder)
@@ -275,6 +275,14 @@ def _document_from(raw: Mapping[str, Any]) -> ImaDocument | None:
 
 def _folder_from(raw: Mapping[str, Any]) -> ImaFolder | None:
     folder_id = _text(raw, "folder_id")
+    if not folder_id:
+        # Live get_knowledge_list responses list folders inside
+        # ``knowledge_list`` with ``media_id: "folder_<id>"`` and
+        # ``media_type: 99`` — no ``folder_id`` field at all. Recognize both
+        # spellings so a folder is never mistaken for a content-less document.
+        media_id = _text(raw, "media_id")
+        if _int(raw.get("media_type")) == 99 or media_id.startswith("folder_"):
+            folder_id = media_id
     if not folder_id:
         return None
     return ImaFolder(

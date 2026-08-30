@@ -43,14 +43,20 @@ export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
 
   const previewSource = useMemo<FilePreviewSource | null>(() => {
     if (!selectedFile) return null;
+    // IMA cloud documents have no local raw/ file — the backend serves the
+    // content keyed by the listing's media id, passed through the query
+    // string (a plain query param is invisible to the file-path routing).
+    const mediaQuery = selectedFile.media_id
+      ? `?media_id=${encodeURIComponent(selectedFile.media_id)}`
+      : "";
     return {
       filename: selectedFile.name,
       mimeType: selectedFile.mime_type ?? undefined,
-      url: knowledgeBaseFilePath(kb.name, selectedFile.name),
-      extractedTextUrl: knowledgeBaseFilePreviewTextPath(
+      url: `${knowledgeBaseFilePath(kb.name, selectedFile.name)}${mediaQuery}`,
+      extractedTextUrl: `${knowledgeBaseFilePreviewTextPath(
         kb.name,
         selectedFile.name,
-      ),
+      )}${mediaQuery}`,
       size: selectedFile.size,
       id: `${kb.name}/${selectedFile.name}`,
     };

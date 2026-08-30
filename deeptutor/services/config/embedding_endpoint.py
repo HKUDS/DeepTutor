@@ -16,6 +16,21 @@ GEMINI_OPENAI_COMPAT_EMBEDDING_ENDPOINT = (
 GEMINI_API_HOST = "generativelanguage.googleapis.com"
 SENSITIVE_ENDPOINT_QUERY_KEYS = frozenset({"access_token", "api_key", "key", "token"})
 
+# Volcengine Ark (火山方舟) serves text and multimodal embeddings from DIFFERENT
+# endpoints: ``/api/v3/embeddings`` (OpenAI-compatible, text models like
+# ``doubao-embedding-text-*``) and ``/api/v3/embeddings/multimodal`` (native
+# shape, vision models like ``doubao-embedding-vision-*``). Vision models
+# require at least one image in the input — a text-only request is rejected by
+# the service. Keep the per-model routing here so the runtime resolver and the
+# adapter agree on which URL a model actually POSTs to.
+VOLCENGINE_MULTIMODAL_EMBEDDING_ENDPOINT = (
+    "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
+)
+VOLCENGINE_TEXT_EMBEDDING_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/embeddings"
+VOLCENGINE_DEFAULT_EMBEDDING_MODEL = "doubao-embedding-vision-251215"
+VOLCENGINE_VISION_EMBEDDING_DIM = 2048
+VOLCENGINE_TEXT_EMBEDDING_DIM = 1024
+
 
 def redact_embedding_endpoint_for_display(endpoint: str | None) -> str:
     """Hide credential-like query values while retaining endpoint diagnostics."""
@@ -107,6 +122,7 @@ EMBEDDING_PROVIDER_LABELS = {
     "siliconflow": "SiliconFlow",
     "ollama": "Ollama",
     "cohere": "Cohere",
+    "volcengine": "Volcengine Ark",
 }
 
 EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
@@ -123,6 +139,7 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
         "https://dashscope.aliyuncs.com/api/v1/services/embeddings/"
         "multimodal-embedding/multimodal-embedding"
     ),
+    "volcengine": VOLCENGINE_MULTIMODAL_EMBEDDING_ENDPOINT,
 }
 
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
@@ -162,6 +179,41 @@ def dashscope_embedding_endpoint(model: str | None) -> str:
     if is_dashscope_multimodal_embedding_model(model):
         return DASHSCOPE_MULTIMODAL_EMBEDDING_ENDPOINT
     return DASHSCOPE_TEXT_EMBEDDING_ENDPOINT
+
+
+# Volcengine Ark (火山方舟) serves text and multimodal embeddings from DIFFERENT
+# endpoints too: ``/api/v3/embeddings`` (OpenAI-compatible, text models like
+# ``doubao-embedding-text-*``) and ``/api/v3/embeddings/multimodal`` (native
+# shape, vision models like ``doubao-embedding-vision-*``). Vision models
+# require at least one image in the input — a text-only request is rejected by
+# the service. Keep the per-model routing here so the runtime resolver and the
+# adapter agree on which URL a model actually POSTs to.
+VOLCENGINE_MULTIMODAL_EMBEDDING_ENDPOINT = (
+    "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
+)
+VOLCENGINE_TEXT_EMBEDDING_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/embeddings"
+VOLCENGINE_DEFAULT_EMBEDDING_MODEL = "doubao-embedding-vision-251215"
+VOLCENGINE_VISION_EMBEDDING_DIM = 2048
+VOLCENGINE_TEXT_EMBEDDING_DIM = 1024
+
+
+def is_volcengine_vision_embedding_model(model: str | None) -> bool:
+    """Whether a Volcengine Ark embedding model uses the multimodal surface."""
+    return "vision" in str(model or "").strip().lower()
+
+
+def volcengine_embedding_endpoint(model: str | None) -> str:
+    """Return the Ark embedding endpoint a model routes to."""
+    if is_volcengine_vision_embedding_model(model):
+        return VOLCENGINE_MULTIMODAL_EMBEDDING_ENDPOINT
+    return VOLCENGINE_TEXT_EMBEDDING_ENDPOINT
+
+
+def volcengine_embedding_dim(model: str | None) -> int:
+    """Return the default vector dimension for an Ark embedding model."""
+    if is_volcengine_vision_embedding_model(model):
+        return VOLCENGINE_VISION_EMBEDDING_DIM
+    return VOLCENGINE_TEXT_EMBEDDING_DIM
 
 
 def canonical_embedding_provider_name(name: str | None) -> str:

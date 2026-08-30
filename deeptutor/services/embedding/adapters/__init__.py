@@ -13,6 +13,7 @@ from .jina import JinaEmbeddingAdapter
 from .ollama import OllamaEmbeddingAdapter
 from .openai_compatible import OpenAICompatibleEmbeddingAdapter
 from .openai_sdk import OpenAISDKEmbeddingAdapter
+from .volcengine import VolcengineEmbeddingAdapter
 
 ADAPTER_BACKENDS: dict[str, type[BaseEmbeddingAdapter]] = {
     "openai_compat": OpenAICompatibleEmbeddingAdapter,
@@ -22,6 +23,7 @@ ADAPTER_BACKENDS: dict[str, type[BaseEmbeddingAdapter]] = {
     "ollama": OllamaEmbeddingAdapter,
     "dashscope_native": DashScopeMultiModalEmbeddingAdapter,
     "gemini": GeminiEmbeddingAdapter,
+    "volcengine": VolcengineEmbeddingAdapter,
 }
 
 __all__ = [
@@ -37,4 +39,5 @@ __all__ = [
     "JinaEmbeddingAdapter",
     "CohereEmbeddingAdapter",
     "OllamaEmbeddingAdapter",
+    "VolcengineEmbeddingAdapter",
 ]

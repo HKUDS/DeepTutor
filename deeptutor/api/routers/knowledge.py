@@ -27,7 +27,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
@@ -35,7 +35,11 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
 from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
-from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_files
+from deeptutor.knowledge.kb_types import (
+    IMA_KB_TYPE,
+    is_connected_kb,
+    supports_local_raw_files,
+)
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -2348,9 +2352,16 @@ async def list_kb_raw_files(kb_name: str):
     ``type: "folder"`` entries so user-created/uploaded structure shows even
     before it holds any files. Folders are purely organizational and have no
     effect on indexing or retrieval.
+
+    Connected KBs keep no DeepTutor-managed ``raw/`` directory. IMA libraries
+    are served from IMA's cloud ``get_knowledge_list`` instead, so the
+    Knowledge Center shows the library's real documents and folders; other
+    connected types keep the historical empty listing.
     """
     raw_dir = _resolve_kb_raw_dir(kb_name, allow_unsupported=True)
     if raw_dir is None:
+        if _is_ima_kb(kb_name):
+            return {"files": await _list_ima_cloud_files(kb_name)}
         return {"files": []}
     if not raw_dir.exists() or not raw_dir.is_dir():
         return {"files": []}
@@ -2378,6 +2389,129 @@ async def list_kb_raw_files(kb_name: str):
             }
         )
     return {"files": files}
+
+
+def _resolve_kb_entry(kb_name: str) -> dict:
+    """Resolve a KB's config entry through the same manager path as raw dirs."""
+    manager = _overridden_kb_manager()
+    if manager is not None:
+        resolved_name = _resolve_registered_kb_name(manager, kb_name)
+    else:
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        resolved_name = resource.name
+    return _load_kb_entry_or_404(manager, resolved_name)
+
+
+def _is_ima_kb(kb_name: str) -> bool:
+    try:
+        return _resolve_kb_entry(kb_name).get("type") == IMA_KB_TYPE
+    except HTTPException:
+        return False
+
+
+# The IMA cloud listing budget mirrors the inventory reader's (see
+# services/rag/pipelines/ima/inventory.py): a huge library must not stall the
+# listing request.
+_IMA_LIST_MAX_REQUESTS = 8
+_IMA_LIST_MAX_DEPTH = 3
+
+
+async def _list_ima_cloud_files(kb_name: str) -> list[dict]:
+    """One flat listing of an IMA library: documents and folders, cloud-side.
+
+    Walks ``get_knowledge_list`` breadth-first (mirroring the inventory
+    reader), flattening folder names into POSIX paths so the web client's
+    existing file tree renders without changes. IMA folders are recognized by
+    the parser via their ``media_type: 99`` / ``folder_`` marker (see
+    :func:`deeptutor.services.rag.pipelines.ima.models.parse_knowledge_page`).
+    Each document entry carries its IMA ``media_id`` so a later preview /
+    download request can fetch the actual content from the cloud.
+
+    Any IMA failure degrades to the historical empty listing rather than
+    failing the request — the UI treats an unreachable library as "nothing
+    to show" instead of an error page.
+    """
+    from collections import deque
+
+    client = _ima_client_for_kb(kb_name)
+    if client is None:
+        return []
+
+    files: list[dict] = []
+    seen_folders: set[str] = set()
+    queue: deque[tuple[str, str, int]] = deque([("", str(client.knowledge_base_id), 0)])
+    requests = 0
+    try:
+        while queue:
+            prefix, folder_id, depth = queue.popleft()
+            cursor = ""
+            while True:
+                if requests >= _IMA_LIST_MAX_REQUESTS:
+                    return files
+                page = await client.get_knowledge_list(
+                    folder_id=folder_id, cursor=cursor, limit=50
+                )
+                requests += 1
+                for document in page.documents:
+                    name = f"{prefix}{document.title}" if prefix else document.title
+                    files.append(
+                        {
+                            "name": name,
+                            "type": "file",
+                            "size": 0,
+                            "modified": 0,
+                            "mime_type": None,
+                            "media_id": document.media_id,
+                        }
+                    )
+                for folder in page.folders:
+                    name = f"{prefix}{folder.name}" if prefix else folder.name
+                    files.append({"name": name, "type": "folder", "size": 0, "modified": 0})
+                    if (
+                        depth < _IMA_LIST_MAX_DEPTH
+                        and folder.folder_id not in seen_folders
+                        and folder.folder_id != folder_id
+                    ):
+                        seen_folders.add(folder.folder_id)
+                        queue.append((f"{name}/", folder.folder_id, depth + 1))
+                cursor = page.next_cursor
+                if page.is_end or not cursor:
+                    break
+    except Exception as exc:
+        logger.warning("Could not list IMA cloud files for '%s' (%s)", kb_name, type(exc).__name__)
+        return files
+    return files
+
+
+def _ima_client_for_kb(kb_name: str):
+    """An :class:`ImaClient` for a connected IMA KB, or ``None`` otherwise.
+
+    Shares the entry-resolution path with the raw-dir helpers: a non-IMA KB,
+    a missing entry, or a broken credential resolution simply yields ``None``
+    so callers fall through to the local-file logic. IMA failures are logged,
+    never raised — the endpoints treat an unreachable library as "no cloud
+    content" instead of failing the whole request.
+    """
+    from deeptutor.services.rag.pipelines.ima.client import ImaClient
+    from deeptutor.services.rag.pipelines.ima.config import resolve_kb_config
+
+    try:
+        entry = _resolve_kb_entry(kb_name)
+    except Exception as exc:
+        logger.warning(
+            "Could not resolve IMA KB entry for '%s' (%s)", kb_name, type(exc).__name__
+        )
+        return None
+    if entry.get("type") != IMA_KB_TYPE:
+        return None
+    try:
+        return ImaClient(resolve_kb_config(dict(entry)))
+    except Exception as exc:
+        logger.warning(
+            "Could not build IMA client for '%s' (%s)", kb_name, type(exc).__name__
+        )
+        return None
 
 
 class CreateFolderPayload(BaseModel):
@@ -2441,8 +2575,17 @@ async def move_kb_file(kb_name: str, payload: MoveFilePayload):
 
 
 @router.get("/{kb_name}/file-preview-text/{filename:path}")
-async def serve_kb_raw_file_text_preview(kb_name: str, filename: str):
-    """Serve extracted plain text for a raw KB document preview."""
+async def serve_kb_raw_file_text_preview(kb_name: str, filename: str, media_id: str = ""):
+    """Serve extracted plain text for a raw KB document preview.
+
+    Connected IMA libraries keep no local ``raw/`` file: when the listing's
+    ``media_id`` is supplied, the text is pulled from IMA's cloud content
+    instead (note text directly, file media through the shared extractor).
+    """
+    if media_id:
+        client = _ima_client_for_kb(kb_name)
+        if client is not None:
+            return await _serve_ima_text_preview(client, filename, media_id)
     target = _resolve_kb_raw_file_or_404(kb_name, filename)
     try:
         text = extract_text_from_path(
@@ -2458,13 +2601,32 @@ async def serve_kb_raw_file_text_preview(kb_name: str, filename: str):
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
+async def _serve_ima_text_preview(client, filename: str, media_id: str) -> PlainTextResponse:
+    """Extracted plain text for one IMA cloud document (``""`` → 422)."""
+    from deeptutor.services.rag.pipelines.ima.media import extract_text
+
+    content = await client.get_media_content(media_id)
+    text = await extract_text(content, filename, max_chars=MAX_EXTRACTED_CHARS_PER_DOC)
+    if not text:
+        raise HTTPException(
+            status_code=422, detail="No extractable text in this IMA document"
+        )
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
+
+
 @router.get("/{kb_name}/files/{filename:path}")
-async def serve_kb_raw_file(kb_name: str, filename: str):
+async def serve_kb_raw_file(kb_name: str, filename: str, media_id: str = ""):
     """Serve a single raw document for inline preview / download.
 
     Resolution is sandboxed to the KB's raw/ directory; any path that
-    escapes via traversal yields 403.
+    escapes via traversal yields 403. Connected IMA libraries are served
+    from IMA's cloud content keyed by the listing's ``media_id`` instead
+    of a local file.
     """
+    if media_id:
+        client = _ima_client_for_kb(kb_name)
+        if client is not None:
+            return await _serve_ima_media_file(client, filename, media_id)
     target = _resolve_kb_raw_file_or_404(kb_name, filename)
     media_type, _ = mimetypes.guess_type(target.name)
     return FileResponse(
@@ -2472,6 +2634,29 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
         media_type=media_type or "application/octet-stream",
         filename=target.name,
         content_disposition_type="inline",
+    )
+
+
+async def _serve_ima_media_file(client, filename: str, media_id: str):
+    """One IMA cloud document's content for inline preview / download.
+
+    Notes come back as plain text; file media arrives as bytes streamed from
+    IMA's short-lived COS link (capped by IMA's 20 MB retrieval limit). The
+    MIME type follows the requested filename's extension so the browser's
+    existing preview renderers (PDF iframe, ``<img>``, text fetch) work
+    unchanged.
+    """
+    content = await client.get_media_content(media_id)
+    if content is None:
+        raise HTTPException(status_code=404, detail="Document is not available in IMA")
+    if content.text:
+        return PlainTextResponse(content.text, media_type="text/plain; charset=utf-8")
+    if not content.data:
+        raise HTTPException(status_code=404, detail="Document has no readable content")
+    media_type, _ = mimetypes.guess_type(filename)
+    return Response(
+        content=content.data,
+        media_type=media_type or "application/octet-stream",
     )
 
 
