@@ -14,6 +14,7 @@ from deeptutor.multi_user.learning_access import (
     allowed_reading_extensions,
     assert_learning_material,
 )
+from deeptutor.learning.storage import LearningStore
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import (
     ReadingContext,
@@ -38,6 +39,23 @@ def _normal(value: str) -> str:
 def _verified_selection(candidate: str, unit_text: str) -> str:
     value = _normal(candidate)
     return value if value and value in _normal(unit_text) else ""
+
+
+def _record_reading_activity(
+    material_id: str,
+    *,
+    extension_id: str,
+    action: str,
+    locator: int,
+    result_type: str,
+) -> None:
+    LearningStore().record_reading_activity(
+        material_id,
+        extension_id=extension_id,
+        action=action,
+        locator=locator,
+        result_type=result_type,
+    )
 
 
 @router.get("/extensions")
@@ -122,7 +140,6 @@ async def run_extension_action(
         )
         if result.type not in extension.manifest.result_types:
             raise ValueError(f"Extension returned undeclared result type {result.type!r}.")
-        return result.model_dump()
     except TimeoutError as exc:
         registry.mark_timed_out(extension_id)
         raise HTTPException(
@@ -142,6 +159,16 @@ async def run_extension_action(
         ) from exc
     finally:
         registry.finish_action(extension_id)
+
+    await asyncio.to_thread(
+        _record_reading_activity,
+        material_id,
+        extension_id=extension_id,
+        action=action,
+        locator=payload.locator,
+        result_type=result.type,
+    )
+    return result.model_dump()
 
 
 __all__ = ["router"]

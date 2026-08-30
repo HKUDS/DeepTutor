@@ -416,6 +416,50 @@ class LearnerProfile(BaseModel):
                 self.notes.strip(),
             )
         )
+ 
+ 
+ReadingExtensionResultType = Literal[
+    "card",
+    "quiz",
+    "feedback",
+    "browser_speech",
+]
+
+
+class ReadingProgressRecord(BaseModel):
+    """One material's Reading progress in an account's learning records."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    material_id: str
+    latest_locator: int = Field(ge=1)
+    latest_percentage: float = Field(ge=0.0, le=1.0)
+    furthest_locator: int = Field(ge=1)
+    furthest_percentage: float = Field(ge=0.0, le=1.0)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class ReadingActivityRecord(BaseModel):
+    """One successful Reading-extension action, without source content."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    activity_id: str
+    material_id: str
+    extension_id: str
+    action: str
+    locator: int = Field(ge=1)
+    result_type: ReadingExtensionResultType
+    created_at: float = Field(default_factory=time.time)
+
+
+class ReadingLearningRecords(BaseModel):
+    """Account-scoped Reading summary for reporting surfaces."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    progress: list[ReadingProgressRecord] = Field(default_factory=list)
+    activities: list[ReadingActivityRecord] = Field(default_factory=list)
 
 
 class LearningProgress(BaseModel):
@@ -485,5 +529,8 @@ __all__ = [
     "TopicMetadata",
     "MasteryTopic",
     "LearnerMasteryOverride",
+    "ReadingActivityRecord",
+    "ReadingLearningRecords",
+    "ReadingProgressRecord",
     "LearningProgress",
 ]
