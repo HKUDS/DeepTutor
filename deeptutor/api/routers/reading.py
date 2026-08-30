@@ -34,6 +34,7 @@ from deeptutor.multi_user.learning_access import (
     assert_learning_material_mutation,
     current_learning_policy,
 )
+from deeptutor.learning.storage import LearningStore
 from deeptutor.reading import (
     ANNOTATION_COLORS,
     Annotation,
@@ -81,6 +82,14 @@ _MEDIA_EXTENSIONS = {
 
 def _store() -> ReadingStore:
     return ReadingStore()
+
+
+def _record_reading_position(material_id: str, *, locator: int, percentage: float) -> None:
+    LearningStore().record_reading_position(
+        material_id,
+        locator=locator,
+        percentage=percentage,
+    )
 
 
 def _catalog() -> ReadingCatalogStore:
@@ -1182,6 +1191,12 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
                 source_anchor=payload.source_anchor,
                 percentage=payload.percentage,
             ),
+        )
+        await asyncio.to_thread(
+            _record_reading_position,
+            material_id,
+            locator=saved.locator,
+            percentage=saved.percentage,
         )
         return PositionInfo(**saved.to_dict())
     except Exception as exc:
