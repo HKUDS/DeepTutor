@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import { isConversationReasoningEffort } from "@/lib/reasoning-effort";
 import type { LLMSelection } from "@/lib/unified-ws";
 
 const LLM_OPTIONS_CACHE_KEY = "llm-options:list";
@@ -13,6 +14,7 @@ export interface LLMOption extends LLMSelection {
   /** Human-readable provider name from the registry ("OpenRouter"). */
   provider_label?: string;
   context_window?: number;
+  supported_reasoning_levels?: string[];
   is_active_default: boolean;
 }
 
@@ -31,6 +33,43 @@ export function sameLLMSelection(
   b: LLMSelection | null | undefined,
 ) {
   return llmSelectionKey(a) === llmSelectionKey(b);
+}
+
+export function normalizeLLMSelection(value: unknown): LLMSelection | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const profileId =
+    typeof record.profile_id === "string" ? record.profile_id.trim() : "";
+  const modelId =
+    typeof record.model_id === "string" ? record.model_id.trim() : "";
+  if (!profileId || !modelId) return null;
+
+  const reasoningEffort =
+    typeof record.reasoning_effort === "string"
+      ? record.reasoning_effort.trim().toLowerCase()
+      : "";
+  if (reasoningEffort && !isConversationReasoningEffort(reasoningEffort)) {
+    return { profile_id: profileId, model_id: modelId };
+  }
+  return {
+    profile_id: profileId,
+    model_id: modelId,
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+  };
+}
+
+export function withLLMReasoningEffort(
+  selection: LLMSelection | null,
+  reasoningEffort: string,
+): LLMSelection | null {
+  if (!selection) return null;
+  const normalized = reasoningEffort.trim().toLowerCase();
+  if (normalized && !isConversationReasoningEffort(normalized)) return selection;
+  return {
+    profile_id: selection.profile_id,
+    model_id: selection.model_id,
+    ...(normalized ? { reasoning_effort: normalized } : {}),
+  };
 }
 
 /** List the configured model profiles.

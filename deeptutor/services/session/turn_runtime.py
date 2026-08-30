@@ -461,6 +461,7 @@ def _request_snapshot_metadata(
     persona: str,
     memory_references: Sequence[str],
     llm_selection: dict[str, str] | None,
+    llm_runtime: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Persist the front-end context chips with the user message."""
     snapshot: dict[str, Any] = {
@@ -502,6 +503,8 @@ def _request_snapshot_metadata(
         snapshot["memoryReferences"] = memory_references
     if llm_selection:
         snapshot["llmSelection"] = llm_selection
+    if llm_runtime:
+        snapshot["llmRuntime"] = llm_runtime
     return {"request_snapshot": snapshot}
 
 
@@ -2461,6 +2464,13 @@ class TurnRuntimeManager:
                         persona=active_persona,
                         memory_references=memory_references,
                         llm_selection=payload.get("llm_selection"),
+                        llm_runtime={
+                            "model": str(getattr(llm_config, "model", "") or ""),
+                            "provider": str(getattr(llm_config, "provider_name", "") or ""),
+                            "reasoningEffort": str(
+                                getattr(llm_config, "reasoning_effort", "") or ""
+                            ),
+                        },
                     ),
                     **parent_kwargs,
                 )

@@ -186,6 +186,17 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
   },
 };
 
+const RUNTIME_EFFORT_LABELS: Record<string, string> = {
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+  adaptive: "Adaptive",
+};
+
 export function ActivityBody({
   activity,
   open,
@@ -198,7 +209,7 @@ export function ActivityBody({
   configSection?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const { tools, knowledgeBases, space, attachments, artifacts } = activity;
+  const { tools, knowledgeBases, runtimeModels, space, attachments, artifacts } = activity;
   const { sessions, notebooks, books } = useResolvedTitles(activity, open);
 
   const spaceSubsections: ReactNode[] = [];
@@ -338,6 +349,28 @@ export function ActivityBody({
               >
                 {kb}
               </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
+
+      {runtimeModels.length > 0 ? (
+        <SectionCard
+          icon={Brain}
+          title={t("Runtime models")}
+          count={runtimeModels.length}
+        >
+          <ul className="space-y-0.5 p-1.5">
+            {runtimeModels.map(({ model, reasoningEffort }) => (
+              <SpaceItemRow
+                key={`${model}-${reasoningEffort}`}
+                title={model}
+                subtitle={
+                  reasoningEffort
+                    ? t(RUNTIME_EFFORT_LABELS[reasoningEffort] ?? reasoningEffort)
+                    : t("Provider default (Auto)")
+                }
+              />
             ))}
           </ul>
         </SectionCard>

@@ -164,6 +164,65 @@ test("dedupes knowledge bases across turns", () => {
   assert.deepEqual(activity.knowledgeBases, ["KB"]);
 });
 
+test("collects effective runtime models and reasoning efforts in order", () => {
+  const activity = buildSessionActivity(
+    messages(
+      {
+        role: "user",
+        requestSnapshot: snapshot({
+          llmSelection: {
+            profile_id: "p1",
+            model_id: "m1",
+            reasoning_effort: "high",
+          },
+        }),
+      },
+      {
+        role: "user",
+        requestSnapshot: snapshot({
+          llmSelection: {
+            profile_id: "p-requested",
+            model_id: "m-requested",
+            reasoning_effort: "high",
+          },
+          llmRuntime: {
+            model: "actual/model",
+            provider: "provider",
+            reasoningEffort: "",
+          },
+        }),
+      },
+      {
+        role: "user",
+        requestSnapshot: snapshot({
+          llmRuntime: {
+            model: "google/gemini-3-flash",
+            provider: "gemini",
+            reasoningEffort: "",
+          },
+        }),
+      },
+      {
+        role: "user",
+        requestSnapshot: snapshot({
+          llmRuntime: {
+            model: "google/gemini-3-flash",
+            provider: "gemini",
+            reasoningEffort: "",
+          },
+        }),
+      },
+    ),
+  );
+
+  assert.deepEqual(activity.runtimeModels, [
+    { model: "p1:m1", reasoningEffort: "high" },
+    { model: "actual/model", reasoningEffort: "" },
+    { model: "google/gemini-3-flash", reasoningEffort: "" },
+  ]);
+  assert.equal(activity.isEmpty, false);
+});
+
 test("hides deleted knowledge bases when an available set is given", () => {
   const activity = buildSessionActivity(
     messages({

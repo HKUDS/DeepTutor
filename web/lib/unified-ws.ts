@@ -45,6 +45,7 @@ export interface StreamEvent {
 export interface LLMSelection {
   profile_id: string;
   model_id: string;
+  reasoning_effort?: string;
 }
 
 // ---- Client message ----

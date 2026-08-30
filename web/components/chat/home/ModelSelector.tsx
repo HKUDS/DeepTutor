@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Bot, Check, ChevronDown } from "lucide-react";
+import { AlertCircle, Bot, Brain, Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import ProviderIcon from "@/components/common/ProviderIcon";
@@ -9,8 +9,10 @@ import type { LLMSelection } from "@/lib/unified-ws";
 import {
   llmSelectionKey,
   sameLLMSelection,
+  withLLMReasoningEffort,
   type LLMOption,
 } from "@/lib/llm-options";
+import { conversationReasoningEffortOptions } from "@/lib/reasoning-effort";
 
 function formatContextWindow(value?: number) {
   if (!value) return "";
@@ -129,9 +131,12 @@ export default function ModelSelector({
   onRefresh?: () => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open);
+  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(
+    modelOpen || reasoningOpen,
+  );
 
   const selectedSelection = allowSystemDefault
     ? value
@@ -143,19 +148,34 @@ export default function ModelSelector({
       null,
     [options, selectedSelection],
   );
+  const selectedEffort = selectedSelection?.reasoning_effort?.trim() || "";
+  const reasoningOptions = selectedOption
+    ? conversationReasoningEffortOptions(
+        selectedOption.provider,
+        selectedOption.model,
+        selectedEffort,
+        selectedOption.supported_reasoning_levels,
+      )
+    : [];
+  const selectedReasoningOption =
+    reasoningOptions.find((option) => option.value === selectedEffort) ?? null;
+  const showReasoningSelector = Boolean(
+    selectedOption && reasoningOptions.length > 0,
+  );
 
   useEffect(() => {
-    if (!open) return;
+    if (!modelOpen && !reasoningOpen) return;
     const handler = (event: MouseEvent) => {
       const target = event.target as Node;
       if (rootRef.current && !rootRef.current.contains(target)) {
-        setOpen(false);
+        setModelOpen(false);
+        setReasoningOpen(false);
         linger();
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open, linger]);
+  }, [modelOpen, reasoningOpen, linger]);
 
   const defaultLabel = systemDefaultLabel || t("System default");
   const defaultDetail =
@@ -180,7 +200,7 @@ export default function ModelSelector({
     placement === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5";
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative flex shrink-0 items-center gap-1">
       {/* Same resting/expanded treatment as PersonaSelector: the brand
           icon is the whole control at rest; hovering (or opening) slides
           the model name out with a max-width animation and lingers ~1.2s
@@ -190,20 +210,22 @@ export default function ModelSelector({
         disabled={disabled}
         onClick={() => {
           if (canRefresh) {
-            setOpen(false);
+            setModelOpen(false);
+            setReasoningOpen(false);
             onRefresh?.();
             return;
           }
-          setOpen((current) => !current);
+          setReasoningOpen(false);
+          setModelOpen((current) => !current);
         }}
         aria-label={canRefresh ? t("Refresh models") : t("Select model")}
         title={canRefresh ? t("Refresh models") : undefined}
-        aria-expanded={open}
+        aria-expanded={modelOpen}
         {...lingerProps}
         className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
           disabled
             ? "cursor-not-allowed text-[var(--border)]"
-            : open
+            : modelOpen
               ? "bg-[var(--muted)] text-[var(--foreground)]"
               : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
         }`}
@@ -223,12 +245,46 @@ export default function ModelSelector({
           <span className="min-w-0 truncate">{label}</span>
           <ChevronDown
             size={13}
-            className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            className={`shrink-0 transition-transform ${modelOpen ? "rotate-180" : ""}`}
           />
         </span>
       </button>
+      {showReasoningSelector ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            setModelOpen(false);
+            setReasoningOpen((current) => !current);
+          }}
+          aria-label={t("Select reasoning effort")}
+          title={t("Select reasoning effort")}
+          aria-expanded={reasoningOpen}
+          {...lingerProps}
+          className={`inline-flex h-8 w-[86px] shrink-0 items-center justify-between gap-1 rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            disabled
+              ? "cursor-not-allowed text-[var(--border)]"
+              : reasoningOpen
+              ? "bg-[var(--muted)] text-[var(--foreground)]"
+              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+          }`}
+        >
+          <span className="flex min-w-0 items-center gap-1">
+            <Brain size={16} strokeWidth={1.7} className="shrink-0" />
+            <span className="min-w-0 truncate text-[12.5px]">
+              {selectedEffort
+                ? t(selectedReasoningOption?.label ?? selectedEffort)
+                : t("Auto")}
+            </span>
+          </span>
+          <ChevronDown
+            size={13}
+            className={`shrink-0 transition-transform ${reasoningOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+      ) : null}
 
-      {open && !disabled && (
+      {modelOpen && !disabled && (
         <div
           className={`absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
         >
@@ -244,7 +300,8 @@ export default function ModelSelector({
                 title={defaultDetail}
                 onClick={() => {
                   onChange(null);
-                  setOpen(false);
+                  setModelOpen(false);
+                  setReasoningOpen(false);
                   linger();
                 }}
                 className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
@@ -287,10 +344,62 @@ export default function ModelSelector({
                   selected={optionKey === selectedKey}
                   onSelect={() => {
                     onChange(optionSelection);
-                    setOpen(false);
+                    setModelOpen(false);
+                    setReasoningOpen(false);
                     linger();
                   }}
                 />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {showReasoningSelector && reasoningOpen && !disabled && (
+        <div
+          className={`absolute right-0 z-50 ${menuPlacementClass} w-[min(230px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
+        >
+          <div className="px-3 py-1.5 text-[11px] text-[var(--muted-foreground)]">
+            {t("Applies to this conversation until changed")}
+          </div>
+          <div className="max-h-[240px] overflow-y-auto py-1">
+            {reasoningOptions.map((option) => {
+              const selected = option.value === selectedEffort;
+              return (
+                <button
+                  type="button"
+                  key={option.value || "auto"}
+                  onClick={() => {
+                    onChange(withLLMReasoningEffort(selectedSelection, option.value));
+                    setReasoningOpen(false);
+                    linger();
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                    selected
+                      ? "bg-[var(--primary)]/[0.06]"
+                      : "hover:bg-[var(--muted)]/45"
+                  }`}
+                >
+                  <Brain
+                    size={14}
+                    strokeWidth={1.7}
+                    className={`shrink-0 ${
+                      selected
+                        ? "text-[var(--primary)]"
+                        : "text-[var(--muted-foreground)]"
+                    }`}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                    {t(option.label)}
+                  </span>
+                  {selected ? (
+                    <Check
+                      size={14}
+                      strokeWidth={2}
+                      className="shrink-0 text-[var(--primary)]"
+                    />
+                  ) : null}
+                </button>
               );
             })}
           </div>

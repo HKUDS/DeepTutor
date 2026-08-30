@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  conversationReasoningEffortOptions,
   reasoningEffortOptions,
   reasoningEffortOptionsFromSupportedLevels,
   setModelReasoningEffort,
@@ -156,6 +157,49 @@ test("managed profiles use only the provider-supported reasoning levels", () => 
       "medium",
     ]).map((option) => option.value),
     ["", "high", "medium"],
+  );
+});
+
+test("conversation overrides use only wire-valid request levels", () => {
+  const anthropic = conversationReasoningEffortOptions(
+    "anthropic",
+    "claude-opus-5",
+    "",
+  ).map((option) => option.value);
+  assert.equal(anthropic.includes("adaptive"), false);
+
+  assert.deepEqual(
+    conversationReasoningEffortOptions(
+      "openai_codex",
+      "gpt-5.6-sol",
+      "",
+      ["minimal", "medium", "xhigh", "max", "adaptive"],
+    ).map((option) => option.value),
+    ["", "minimal", "medium", "xhigh", "max"],
+  );
+});
+
+test("conversation overrides hide a catalog with only non-request levels", () => {
+  assert.deepEqual(
+    conversationReasoningEffortOptions(
+      "anthropic",
+      "claude-opus-5",
+      "",
+      ["adaptive"],
+    ),
+    [],
+  );
+});
+
+test("catalog reasoning levels normalize case and preserve stale overrides", () => {
+  assert.deepEqual(
+    conversationReasoningEffortOptions(
+      "openai_codex",
+      "gpt-5.6-sol",
+      "max",
+      ["LOW", "high", "high"],
+    ).map((option) => option.value),
+    ["", "low", "high", "max"],
   );
 });
 

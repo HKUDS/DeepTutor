@@ -51,6 +51,7 @@ import {
   normalizeBookReferences,
   type BookReferencePayload,
 } from "@/lib/book-references";
+import { normalizeLLMSelection } from "@/lib/llm-options";
 
 type SessionRuntimeStatus =
   | "idle"
@@ -165,6 +166,11 @@ export interface MessageRequestSnapshot {
   persona?: string;
   memoryReferences?: MemoryReferencePayload;
   llmSelection?: LLMSelection | null;
+  llmRuntime?: {
+    model: string;
+    provider?: string;
+    reasoningEffort?: string;
+  };
 }
 
 export interface MessageItem {
@@ -1022,14 +1028,7 @@ function asStringArray(value: unknown): string[] {
 }
 
 function asLLMSelection(value: unknown): LLMSelection | null {
-  const record = asRecord(value);
-  const profileId =
-    typeof record?.profile_id === "string" ? record.profile_id.trim() : "";
-  const modelId =
-    typeof record?.model_id === "string" ? record.model_id.trim() : "";
-  return profileId && modelId
-    ? { profile_id: profileId, model_id: modelId }
-    : null;
+  return normalizeLLMSelection(value);
 }
 
 function normalizeSelectedBranches(value: unknown): Record<string, number> {
@@ -1108,6 +1107,21 @@ function hydrateRequestSnapshot(
   const memoryReferences = asMemoryReferences(stored.memoryReferences);
   const bookReferences = normalizeBookReferences(stored.bookReferences);
   const llmSelection = asLLMSelection(stored.llmSelection);
+  const runtimeRecord = asRecord(stored.llmRuntime);
+  const llmRuntime =
+    runtimeRecord && typeof runtimeRecord.model === "string" && runtimeRecord.model.trim()
+      ? {
+          model: runtimeRecord.model.trim(),
+          provider:
+            typeof runtimeRecord.provider === "string"
+              ? runtimeRecord.provider.trim()
+              : "",
+          reasoningEffort:
+            typeof runtimeRecord.reasoningEffort === "string"
+              ? runtimeRecord.reasoningEffort.trim()
+              : "",
+        }
+      : undefined;
   const masteryPathId =
     typeof (stored.masteryPathId ?? stored.mastery_path_id) === "string"
       ? String(stored.masteryPathId ?? stored.mastery_path_id).trim()
@@ -1124,6 +1138,7 @@ function hydrateRequestSnapshot(
   if (persona) snapshot.persona = persona;
   if (memoryReferences.length) snapshot.memoryReferences = memoryReferences;
   if (llmSelection) snapshot.llmSelection = llmSelection;
+  if (llmRuntime) snapshot.llmRuntime = llmRuntime;
   if (masteryPathId) snapshot.masteryPathId = masteryPathId;
   return snapshot;
 }

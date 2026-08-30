@@ -57,9 +57,15 @@ export interface SpaceReferenceSummary {
   memoryKinds: Array<"summary" | "profile">;
 }
 
+export interface RuntimeModelSelection {
+  model: string;
+  reasoningEffort: string;
+}
+
 export interface SessionActivity {
   tools: ToolUsage[];
   knowledgeBases: string[];
+  runtimeModels: RuntimeModelSelection[];
   space: SpaceReferenceSummary;
   /** Files the user uploaded. */
   attachments: AttachmentWithOrigin[];
@@ -88,6 +94,8 @@ export function buildSessionActivity(
   const memoryKinds = new Set<"summary" | "profile">();
   const attachments: AttachmentWithOrigin[] = [];
   const artifacts: AttachmentWithOrigin[] = [];
+  const runtimeModels: RuntimeModelSelection[] = [];
+  const runtimeModelKeys = new Set<string>();
 
   messages.forEach((msg, idx) => {
     msg.events?.forEach((event: StreamEvent) => {
@@ -127,6 +135,23 @@ export function buildSessionActivity(
       snap.questionNotebookReferences?.forEach((q) => questionEntryIds.add(q));
       if (snap.persona) personas.add(snap.persona);
       snap.memoryReferences?.forEach((k) => memoryKinds.add(k));
+      const runtimeModel =
+        snap.llmRuntime?.model ||
+        (snap.llmSelection
+          ? `${snap.llmSelection.profile_id}:${snap.llmSelection.model_id}`
+          : "");
+      if (runtimeModel) {
+        const reasoningEffort = (
+          snap.llmRuntime?.reasoningEffort ??
+          snap.llmSelection?.reasoning_effort ??
+          ""
+        ).trim();
+        const key = `${runtimeModel}\0${reasoningEffort}`;
+        if (!runtimeModelKeys.has(key)) {
+          runtimeModelKeys.add(key);
+          runtimeModels.push({ model: runtimeModel, reasoningEffort });
+        }
+      }
     }
   });
 
@@ -149,6 +174,7 @@ export function buildSessionActivity(
   const isEmpty =
     tools.length === 0 &&
     kbs.size === 0 &&
+    runtimeModels.length === 0 &&
     attachments.length === 0 &&
     artifacts.length === 0 &&
     space.historySessionIds.length === 0 &&
@@ -161,6 +187,7 @@ export function buildSessionActivity(
   return {
     tools,
     knowledgeBases: Array.from(kbs),
+    runtimeModels,
     space,
     attachments,
     artifacts,
