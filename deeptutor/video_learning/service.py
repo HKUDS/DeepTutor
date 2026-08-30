@@ -735,6 +735,10 @@ async def download_ytdlp_subtitle(video_id: str, *, preferred_language: str = ""
             options = {
                 "quiet": True,
                 "no_warnings": True,
+                "socket_timeout": 20,
+                "retries": 1,
+                "fragment_retries": 1,
+                "extractor_retries": 1,
                 "skip_download": True,
                 "noplaylist": True,
                 "ignoreconfig": True,
@@ -768,7 +772,10 @@ async def download_ytdlp_subtitle(video_id: str, *, preferred_language: str = ""
                     return cues, candidate.stem.rsplit(".", 1)[-1], "youtube-chrome"
             return [], "", "unavailable"
 
-    return await asyncio.to_thread(fetch)
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(fetch), timeout=45)
+    except asyncio.TimeoutError:
+        return [], "", "temporary_error"
 
 
 def _select_caption(captions: list[Any], preferred_language: str = "") -> dict[str, Any] | None:

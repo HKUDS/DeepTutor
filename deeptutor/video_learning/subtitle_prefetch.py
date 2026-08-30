@@ -122,7 +122,7 @@ class SubtitlePrefetchService:
                         }
                         latest["segments"] = build_segments(cues)
                     else:
-                        if code == "rate_limited":
+                        if code in {"rate_limited", "temporary_error"}:
                             delay = RETRY_DELAYS[min(max(attempts - 1, 0), len(RETRY_DELAYS) - 1)]
                             retry_at = (datetime.now(timezone.utc) + delay).isoformat()
                             _set_fetch(

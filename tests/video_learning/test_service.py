@@ -365,6 +365,8 @@ async def test_ytdlp_uses_chrome_and_downloads_subtitles_only(monkeypatch: pytes
     cues, language, source = await download_ytdlp_subtitle("dQw4w9WgXcQ")
 
     assert captured["cookiesfrombrowser"] == ("chrome",)
+    assert captured["socket_timeout"] == 20
+    assert captured["retries"] == 1
     assert captured["skip_download"] is True
     assert captured["writesubtitles"] is True
     assert cues == [{"start": 0.0, "end": 1.0, "text": "Chrome caption"}]
