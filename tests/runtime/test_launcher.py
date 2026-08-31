@@ -557,3 +557,77 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     )
     assert "DEEPTUTOR_NEXT_DIST_DIR" not in captured_envs["backend"]
     assert "DEEPTUTOR_NEXT_DIST_DIR" not in captured_envs["frontend"]
+
+
+def test_windows_signal_handlers_ignore_sigint(monkeypatch) -> None:
+    """Browser/Ctrl+Click CTRL_C_EVENT must not shut down the launcher (#1147)."""
+    recorded: list[tuple[object, object]] = []
+
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(launcher.signal, "SIGINT", 2, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGTERM", 15, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGBREAK", 21, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGHUP", None, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIG_IGN", object())
+
+    def fake_signal(sig, handler):
+        recorded.append((sig, handler))
+
+    monkeypatch.setattr(launcher.signal, "signal", fake_signal)
+    launcher._install_signal_handlers(lambda _name: None)
+
+    assert (launcher.signal.SIGINT, launcher.signal.SIG_IGN) in recorded
+    assert launcher.signal.SIGTERM in {sig for sig, _ in recorded}
+    assert launcher.signal.SIGBREAK in {sig for sig, _ in recorded}
+    assert not any(
+        sig is launcher.signal.SIGINT and handler is not launcher.signal.SIG_IGN
+        for sig, handler in recorded
+    )
+
+
+def test_non_windows_signal_handlers_keep_sigint(monkeypatch) -> None:
+    recorded: list[tuple[object, object]] = []
+    monkeypatch.setattr(launcher.sys, "platform", "linux")
+    monkeypatch.setattr(launcher.signal, "SIGINT", 2, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGTERM", 15, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGHUP", 1, raising=False)
+    monkeypatch.setattr(launcher.signal, "SIGBREAK", None, raising=False)
+
+    def fake_signal(sig, handler):
+        recorded.append((sig, handler))
+
+    monkeypatch.setattr(launcher.signal, "signal", fake_signal)
+    launcher._install_signal_handlers(lambda _name: None)
+
+    assert launcher.signal.SIGINT in {sig for sig, _ in recorded}
+
+
+def test_stop_hint_uses_ctrl_break_on_windows(monkeypatch) -> None:
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(
+        launcher,
+        "_ACTIVE_LABELS",
+        {
+            "start.press_ctrl_c": "Press Ctrl+C to stop.",
+            "start.press_ctrl_break": "Press Ctrl+Break to stop.",
+        },
+    )
+    assert launcher._stop_hint_label() == "Press Ctrl+Break to stop."
+
+
+def test_open_frontend_in_browser_is_best_effort(monkeypatch) -> None:
+    opened: list[str] = []
+
+    def fake_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr("webbrowser.open", fake_open)
+    launcher._open_frontend_in_browser("http://localhost:3782")
+    assert opened == ["http://localhost:3782"]
+
+    def boom(_url: str) -> bool:
+        raise RuntimeError("no browser")
+
+    monkeypatch.setattr("webbrowser.open", boom)
+    launcher._open_frontend_in_browser("http://localhost:3782")  # must not raise

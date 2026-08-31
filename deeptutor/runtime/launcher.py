@@ -928,7 +928,21 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
             signal_name = str(signum)
         request_shutdown(signal_name)
 
-    for sig_name in ("SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"):
+    # On Windows, opening a browser or Ctrl+Clicking a terminal hyperlink
+    # delivers CTRL_C_EVENT (SIGINT) to the foreground console process — the
+    # same signal as a deliberate Ctrl+C (#1147). Ignore SIGINT there and stop
+    # via SIGBREAK (Ctrl+Break) instead; child processes already use
+    # CREATE_NEW_PROCESS_GROUP so they stay isolated.
+    if sys.platform == "win32":
+        try:
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+        except (OSError, ValueError):
+            pass
+        sig_names = ("SIGTERM", "SIGBREAK")
+    else:
+        sig_names = ("SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK")
+
+    for sig_name in sig_names:
         sig = getattr(signal, sig_name, None)
         if sig is None:
             continue
@@ -937,6 +951,21 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
         except (OSError, ValueError):
             continue
 
+
+def _open_frontend_in_browser(url: str) -> None:
+    """Best-effort auto-open so users need not Ctrl+Click the terminal URL."""
+    try:
+        import webbrowser
+
+        webbrowser.open(url)
+    except Exception:
+        return
+
+
+def _stop_hint_label() -> str:
+    if sys.platform == "win32":
+        return _t("start.press_ctrl_break")
+    return _t("start.press_ctrl_c")
 
 def _handoff_pending_update(
     runtime_home: Path,
@@ -1094,7 +1123,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     _log(f"{_t('start.frontend'):<10} {frontend_url}")
     _log(f"{_t('start.workspace'):<10} {runtime_home}")
     _log(f"{_t('start.frontend_runtime')}: {frontend.kind}")
-    _log(_t("start.press_ctrl_c"))
+    _log(_stop_hint_label())
 
     common_env = os.environ.copy()
     common_env.update(runtime_env)
@@ -1222,6 +1251,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
             )
         _complete_restarted_update(runtime_home)
         _log(_t("start.open_in_browser", url=frontend_url))
+        _open_frontend_in_browser(frontend_url)
 
         while not shutdown_requested:
             if _handoff_pending_update(runtime_home, restart_argv=restart_argv):
