@@ -967,6 +967,7 @@ def _stop_hint_label() -> str:
         return _t("start.press_ctrl_break")
     return _t("start.press_ctrl_c")
 
+
 def _handoff_pending_update(
     runtime_home: Path,
     *,
