@@ -496,6 +496,23 @@ app.include_router(
     tags=["video-learning-settings"],
     dependencies=_admin,
 )
+# Keep the settings contract visible even when an imported router has already
+# been initialized by another application instance during test collection.
+if not any(route.path == "/api/v1/settings/video-learning" for route in app.routes):
+    app.add_api_route(
+        "/api/v1/settings/video-learning",
+        video_learning.get_video_learning_settings,
+        methods=["GET"],
+        tags=["video-learning-settings"],
+        dependencies=_admin,
+    )
+    app.add_api_route(
+        "/api/v1/settings/video-learning",
+        video_learning.update_video_learning_settings,
+        methods=["PUT"],
+        tags=["video-learning-settings"],
+        dependencies=_admin,
+    )
 app.include_router(
     mcp_settings.router,
     prefix="/api/v1/settings/mcp",
