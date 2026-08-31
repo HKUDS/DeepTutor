@@ -396,6 +396,9 @@ from deeptutor.api.routers import (
     voice,
 )
 from deeptutor.api.routers import (
+    audio as audio_router,
+)
+from deeptutor.api.routers import (
     tools as tools_router,
 )
 from deeptutor.multi_user.router import router as multi_user_router  # noqa: E402
@@ -529,6 +532,7 @@ app.include_router(
 app.include_router(tools_router.router, prefix="/api/v1/tools", tags=["tools"], dependencies=_auth)
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"], dependencies=_auth)
 app.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"], dependencies=_auth)
+app.include_router(audio_router.router, prefix="/api/v1/audio", tags=["audio"], dependencies=_auth)
 app.include_router(
     video_learning.router,
     prefix="/api/v1/video-learning",

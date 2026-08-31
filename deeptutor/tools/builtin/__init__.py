@@ -48,7 +48,7 @@ class _PromptHintsMixin:
     """Shared prompt-hint loader for built-in tools."""
 
     def get_prompt_hints(self, language: str = "en"):
-        return load_prompt_hints(self.name, language=language)
+        return load_prompt_hints(str(getattr(self, "name", "")), language=language)
 
 
 class BrainstormTool(_PromptHintsMixin, BaseTool):
@@ -1561,6 +1561,75 @@ class ReadSkillTool(_PromptHintsMixin, BaseTool):
         )
 
 
+class TTSTool(_PromptHintsMixin, BaseTool):
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="tts",
+            description="Convert text to speech audio using the configured TTS provider.",
+            parameters=[
+                ToolParameter(
+                    name="text",
+                    type="string",
+                    description="The text to synthesize into speech.",
+                ),
+                ToolParameter(
+                    name="language",
+                    type="string",
+                    description="Target language code, e.g. 'en' or 'zh'. Defaults to auto-detect.",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="voice",
+                    type="string",
+                    description="Specific voice ID to use. Overrides the default for the language.",
+                    required=False,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from pathlib import Path
+        import uuid
+
+        from deeptutor.services.tts.config import load_tts_config
+        from deeptutor.services.tts.providers import get_tts_provider
+
+        text = kwargs.get("text", "")
+        if not text.strip():
+            return ToolResult(content="No text provided for synthesis.")
+
+        config = load_tts_config()
+        provider: Any = get_tts_provider(config)
+
+        language = kwargs.get("language") or ""
+        voice = kwargs.get("voice") or ""
+
+        # Resolve voice from language if not explicitly set
+        if not voice:
+            if language and config.voices.get(language):
+                voice = config.voices[language]
+            else:
+                voice = provider.detect_voice(text, config.voices)
+
+        audio_data = await provider.synthesize(text=text, voice=voice or None)
+
+        from deeptutor.services.path_service import get_path_service
+
+        session_id = kwargs.get("session_id", "default")
+        audio_dir = get_path_service().workspace_root / "chat" / "audio" / session_id
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{uuid.uuid4().hex}.mp3"
+        audio_path: Path = audio_dir / filename
+        audio_path.write_bytes(audio_data)
+
+        relative_path = f"{session_id}/{filename}"
+        audio_url = f"/api/v1/audio/{relative_path}"
+        return ToolResult(
+            content=f"Audio generated successfully ({len(audio_data)} bytes).",
+            metadata={"audio_url": audio_url, "audio_path": str(audio_path)},
+        )
+
+
 class LoadToolsTool(_PromptHintsMixin, BaseTool):
     """Load deferred (Extended) tools' schemas into the current session.
 
@@ -1747,6 +1816,7 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     # grant-gated; the chat pipeline only mounts them when a model is configured.
     ImagegenTool,
     VideogenTool,
+    TTSTool,
     # Mastery Path + Solve + Obsidian tools — globally registered so schemas/API
     # stay stable; the chat loop capabilities decide when to auto-mount them for
     # a turn. Obsidian is a knowledge capability: when its vault is selected it
@@ -1801,21 +1871,6 @@ COMING_SOON_TOOL_NAMES: tuple[str, ...] = tuple(
     tool_type().name for tool_type in COMING_SOON_TOOL_TYPES
 )
 
-# Tools the user can switch on/off from /settings/tools ("体验增强" /
-# Experience Enhancement). Everything else in BUILTIN_TOOL_NAMES is mounted
-# automatically by the chat pipeline under per-tool context gates and is
-# locked-on from the user's perspective. Ordering here is the canonical
-# display order for the settings page.
-USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
-    "brainstorm",
-    "web_search",
-    "paper_search",
-    "reason",
-    "geogebra_analysis",
-    "imagegen",
-    "videogen",
-)
-
 # Built-in tools the chat agent loop auto-mounts under context gates (a KB
 # attached, the sandbox enabled, the user having memory/notebooks, …) rather
 # than user toggles — "locked-on" in the product chat composer. Partners,
@@ -1843,6 +1898,22 @@ CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "load_tools",
     "cron",
     "ask_user",
+)
+
+# Tools the user can switch on/off from /settings/tools ("体验增强" /
+# Experience Enhancement). Everything else in BUILTIN_TOOL_NAMES is mounted
+# automatically by the chat pipeline under per-tool context gates and is
+# locked-on from the user's perspective. Ordering here is the canonical
+# display order for the settings page.
+USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
+    "brainstorm",
+    "web_search",
+    "paper_search",
+    "reason",
+    "geogebra_analysis",
+    "imagegen",
+    "videogen",
+    "tts",
 )
 
 TOOL_ALIASES: dict[str, tuple[str, dict[str, Any]]] = {
