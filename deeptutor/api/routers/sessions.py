@@ -114,6 +114,8 @@ async def list_sessions(
 MAX_EVENT_PAYLOAD = 1024 * 1024
 _TRUNCATION_NOTICE = "\n\n[... content truncated]"
 _TRUNCATABLE_EVENT_TYPES = ("tool_result", "observation")
+
+
 def _redact_private_message_metadata(messages: list[dict[str, Any]]) -> None:
     """Remove provider-only state before session details cross the API."""
     _redact_provider_state_metadata(messages)

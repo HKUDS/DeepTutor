@@ -105,9 +105,7 @@ def test_explicit_reading_references_are_normalized_at_the_turn_boundary() -> No
             },
             {"material_id": "../../etc", "revision": 1, "locators": [1]},
         ]
-    ) == [
-        {"material_id": "abcdef0123456789", "revision": 4, "locators": [2, 3]}
-    ]
+    ) == [{"material_id": "abcdef0123456789", "revision": 4, "locators": [2, 3]}]
 
 
 # ---------------------------------------------------------------------------
@@ -226,9 +224,7 @@ def test_explicit_reading_references_are_persisted_for_retry() -> None:
         partner_group_references=[],
         question_notebook_references=[],
         book_references=[],
-        reading_references=[
-            {"material_id": "abcdef0123456789", "revision": 1, "locators": [1, 2]}
-        ],
+        reading_references=[{"material_id": "abcdef0123456789", "revision": 1, "locators": [1, 2]}],
         persona="",
         memory_references=[],
         llm_selection=None,
