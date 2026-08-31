@@ -21,6 +21,22 @@ class _Paths:
         return self.root / feature
 
 
+def _dependency_calls(route: object) -> set[object]:
+    pending: list[object] = list(getattr(route, "dependencies", ()) or ())
+    if hasattr(route, "dependant"):
+        pending.extend(route.dependant.dependencies)
+
+    calls: set[object] = set()
+    while pending:
+        dependency = pending.pop()
+        call = getattr(dependency, "dependency", None) or dependency.call
+        if call in calls:
+            continue
+        calls.add(call)
+        pending.extend(getattr(dependency, "dependencies", ()) or ())
+    return calls
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     monkeypatch.setattr(service, "get_current_path_service", lambda: _Paths(tmp_path))
@@ -59,7 +75,15 @@ def test_main_mounts_settings_as_admin_only_and_learning_as_authenticated() -> N
     from deeptutor.api.main import app
 
     mounts: dict[str, set[object]] = {}
+    routes: list[object] = []
     for route in app.routes:
+        effective_candidates = getattr(route, "effective_candidates", None)
+        if callable(effective_candidates):
+            routes.extend(effective_candidates())
+        else:
+            routes.append(route)
+
+    for route in routes:
         path = str(getattr(route, "path", ""))
         if path.startswith("/api/v1/settings/video-learning"):
             key = "/api/v1/settings/video-learning"
@@ -67,9 +91,7 @@ def test_main_mounts_settings_as_admin_only_and_learning_as_authenticated() -> N
             key = "/api/v1/video-learning"
         else:
             continue
-        mounts.setdefault(key, set()).update(
-            dependency.call for dependency in route.dependant.dependencies
-        )
+        mounts.setdefault(key, set()).update(_dependency_calls(route))
     assert require_admin in mounts["/api/v1/settings/video-learning"]
     assert require_auth in mounts["/api/v1/video-learning"]
 
