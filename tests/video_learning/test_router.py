@@ -8,7 +8,11 @@ import httpx
 import pytest
 
 from deeptutor.api.routers import video_learning
-from deeptutor.api.routers.auth import require_admin, require_learning_surface
+from deeptutor.api.routers.auth import (
+    require_admin,
+    require_auth,
+    require_learning_surface,
+)
 from deeptutor.services.notebook.service import NotebookManager
 from deeptutor.video_learning import notes as video_notes
 from deeptutor.video_learning import service
@@ -21,6 +25,22 @@ class _Paths:
     def get_workspace_feature_dir(self, feature: str) -> Path:
         assert feature == "timed_media"
         return self.root / feature
+
+
+def _dependency_calls(route: object) -> set[object]:
+    pending: list[object] = list(getattr(route, "dependencies", ()) or ())
+    if hasattr(route, "dependant"):
+        pending.extend(route.dependant.dependencies)
+
+    calls: set[object] = set()
+    while pending:
+        dependency = pending.pop()
+        call = getattr(dependency, "dependency", None) or dependency.call
+        if call in calls:
+            continue
+        calls.add(call)
+        pending.extend(getattr(dependency, "dependencies", ()) or ())
+    return calls
 
 
 @pytest.fixture
@@ -87,12 +107,10 @@ def test_main_mounts_settings_as_admin_only_and_learning_policy_scoped() -> None
             key = "/api/v1/video-learning"
         else:
             continue
-        dependencies = list(getattr(route, "dependencies", ()) or ())
-        if not dependencies and hasattr(route, "dependant"):
-            dependencies = route.dependant.dependencies
-        mounts.setdefault(key, set()).update(dependency.dependency for dependency in dependencies)
+        mounts.setdefault(key, set()).update(_dependency_calls(route))
     assert require_admin in mounts["/api/v1/settings/video-learning"]
     assert require_learning_surface in mounts["/api/v1/video-learning"]
+    assert require_auth in mounts["/api/v1/video-learning"]
 
 
 def test_progress_clamps_to_duration_and_unknown_material_is_404(client: TestClient) -> None:
