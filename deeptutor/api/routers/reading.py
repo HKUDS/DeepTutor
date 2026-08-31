@@ -29,12 +29,12 @@ from fastapi.params import File
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
+from deeptutor.learning.storage import LearningStore
 from deeptutor.multi_user.learning_access import (
     assert_learning_material,
     assert_learning_material_mutation,
     current_learning_policy,
 )
-from deeptutor.learning.storage import LearningStore
 from deeptutor.reading import (
     ANNOTATION_COLORS,
     Annotation,
