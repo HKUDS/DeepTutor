@@ -44,6 +44,7 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
     "dashscope",
     "zhipu",
     "moonshot",
+    "minimax_coding_plan",
     "gemini",
     "siliconflow",
     "openrouter",
@@ -64,6 +65,14 @@ LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
     "dashscope": ("qwen-plus", "qwen-turbo", "qwen-max", "qwen3-coder-plus"),
     "zhipu": ("glm-4.6", "glm-4.5", "glm-4-flash"),
     "moonshot": ("kimi-k2.6", "kimi-k2.5", "kimi-latest"),
+    "minimax": ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed"),
+    "minimax_coding_plan": ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed"),
+    "minimax_coding_plan_anthropic": (
+        "MiniMax-M3",
+        "MiniMax-M2.7",
+        "MiniMax-M2.7-highspeed",
+    ),
+    "minimax_anthropic": ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed"),
     "gemini": ("gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"),
     "siliconflow": (
         "Qwen/Qwen3-Coder-480B-A35B-Instruct",

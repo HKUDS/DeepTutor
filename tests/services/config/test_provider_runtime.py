@@ -416,6 +416,44 @@ def test_llm_minimax_anthropic_binding_uses_anthropic_endpoint() -> None:
     assert resolved.effective_url == "https://api.minimax.io/anthropic"
 
 
+def test_llm_minimax_coding_plan_binding_uses_china_token_plan_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM",
+            "binding": "minimax_coding_plan",
+            "base_url": "",
+            "api_key": "sk-cp-token-plan",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "m", "model": "MiniMax-M3"}],
+        }
+    )
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "minimax_coding_plan"
+    assert resolved.provider_mode == "standard"
+    assert resolved.effective_url == "https://api.minimaxi.com/v1"
+
+
+def test_llm_minimax_coding_plan_anthropic_binding_uses_china_anthropic_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM",
+            "binding": "minimax_coding_plan_anthropic",
+            "base_url": "",
+            "api_key": "sk-cp-token-plan",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "c", "model": "MiniMax-M3"}],
+        }
+    )
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "minimax_coding_plan_anthropic"
+    assert resolved.provider_mode == "standard"
+    assert resolved.effective_url == "https://api.minimaxi.com/anthropic"
+
+
 def test_llm_custom_anthropic_binding_stays_direct() -> None:
     catalog = _build_catalog(
         llm_profile={

@@ -76,6 +76,14 @@ def test_minimax_openai_compat_supports_tools_without_response_format() -> None:
     assert supports_response_format("minimax", "MiniMax-M2.7") is False
     assert supports_tools("minimax", "MiniMax-M2.7-highspeed") is True
     assert supports_response_format("minimax", "MiniMax-M2.7-highspeed") is False
+    assert supports_tools("minimax_coding_plan", "MiniMax-M3") is True
+    assert supports_response_format("minimax_coding_plan", "MiniMax-M3") is False
+    assert supports_tools("minimax_coding_plan_anthropic", "MiniMax-M3") is True
+    assert supports_vision("minimax_coding_plan_anthropic", "MiniMax-M3") is True
+    assert supports_tools("minimax_coding_plan", "MiniMax-M3") is True
+    assert supports_response_format("minimax_coding_plan", "MiniMax-M3") is False
+    assert supports_tools("minimax_coding_plan_anthropic", "MiniMax-M3") is True
+    assert supports_response_format("minimax_coding_plan_anthropic", "MiniMax-M3") is False
 
 
 def test_siliconflow_openai_compat_supports_tools_for_deepseek() -> None:

@@ -42,6 +42,7 @@ const BINARY_THINKING_PROVIDERS = new Set([
   "byteplus_coding_plan",
   "dashscope",
   "minimax",
+  "minimax_coding_plan",
 ]);
 
 function includesAny(value: string, patterns: string[]): boolean {
@@ -139,6 +140,7 @@ export function reasoningEffortOptions(
   if (BINARY_THINKING_PROVIDERS.has(provider)) {
     const supported =
       provider === "minimax" ||
+      provider === "minimax_coding_plan" ||
       includesAny(modelName, [
         "deepseek-reasoner",
         "deepseek-v4-pro",

@@ -95,6 +95,13 @@ PROVIDER_ALIASES = {
     "volcengineCodingPlan": "volcengine_coding_plan",
     "bytepluscodingplan": "byteplus_coding_plan",
     "byteplusCodingPlan": "byteplus_coding_plan",
+    "minimaxcodingplan": "minimax_coding_plan",
+    "minimaxCodingPlan": "minimax_coding_plan",
+    "minimax_token_plan": "minimax_coding_plan",
+    "minimaxtokenplan": "minimax_coding_plan",
+    "minimaxcodingplananthropic": "minimax_coding_plan_anthropic",
+    "minimax_token_plan_anthropic": "minimax_coding_plan_anthropic",
+    "minimaxtokenplananthropic": "minimax_coding_plan_anthropic",
     "github-copilot": "github_copilot",
     "openai-codex": "openai_codex",
     "codebuddy-code": "codebuddy",
@@ -383,9 +390,12 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     # MiniMax runs two separate platforms: global (platform.minimax.io /
     # api.minimax.io) and mainland China (platform.minimaxi.com /
     # api.minimaxi.com). Keys are issued per platform and are NOT
-    # interchangeable. The global endpoint is the default here; China-platform
-    # users must override base_url to https://api.minimaxi.com/v1 (or
-    # https://api.minimaxi.com/anthropic) *and* use a China-platform key.
+    # interchangeable. ``minimax`` / ``minimax_anthropic`` default to the
+    # global PAYG endpoints. Token Plan (formerly Coding Plan) subscription
+    # keys start with ``sk-cp-`` and are most often issued on the China
+    # platform, so the Token Plan bindings default to api.minimaxi.com.
+    # Override base_url to api.minimax.io when the key is from the global
+    # Token Plan.
     ProviderSpec(
         name="minimax",
         keywords=("minimax",),
@@ -402,6 +412,24 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="MiniMax (Anthropic)",
         backend="anthropic",
         default_api_base="https://api.minimax.io/anthropic",
+    ),
+    ProviderSpec(
+        name="minimax_coding_plan",
+        keywords=("minimax-plan", "minimax_coding_plan"),
+        env_key="MINIMAX_API_KEY",
+        display_name="MiniMax Token Plan",
+        backend="openai_compat",
+        detect_by_key_prefix="sk-cp-",
+        default_api_base="https://api.minimaxi.com/v1",
+        thinking_style="reasoning_split",
+    ),
+    ProviderSpec(
+        name="minimax_coding_plan_anthropic",
+        keywords=("minimax_coding_plan_anthropic",),
+        env_key="MINIMAX_API_KEY",
+        display_name="MiniMax Token Plan (Anthropic)",
+        backend="anthropic",
+        default_api_base="https://api.minimaxi.com/anthropic",
     ),
     ProviderSpec(
         name="mistral",

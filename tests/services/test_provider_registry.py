@@ -39,6 +39,28 @@ def test_edenai_provider_aliases_and_base_detection() -> None:
     assert find_gateway(api_base="https://api.edenai.run/v3") == spec
 
 
+def test_minimax_token_plan_aliases_and_key_detection() -> None:
+    spec = find_by_name("minimax_coding_plan")
+
+    assert spec is not None
+    assert spec.display_name == "MiniMax Token Plan"
+    assert spec.backend == "openai_compat"
+    assert spec.default_api_base == "https://api.minimaxi.com/v1"
+    assert spec.detect_by_key_prefix == "sk-cp-"
+    assert find_by_name("minimax-coding-plan") == spec
+    assert find_by_name("minimax_token_plan") == spec
+    assert find_by_name("minimaxTokenPlan") == spec
+    assert find_gateway(api_key="sk-cp-test-key") == spec
+    assert find_gateway(api_key="sk-api-payg-key") != spec
+
+    anthropic = find_by_name("minimax_coding_plan_anthropic")
+    assert anthropic is not None
+    assert anthropic.display_name == "MiniMax Token Plan (Anthropic)"
+    assert anthropic.backend == "anthropic"
+    assert anthropic.default_api_base == "https://api.minimaxi.com/anthropic"
+    assert find_by_name("minimax_token_plan_anthropic") == anthropic
+
+
 def test_novita_provider_aliases_and_base_detection() -> None:
     spec = find_by_name("novita")
 

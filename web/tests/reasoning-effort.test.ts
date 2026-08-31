@@ -92,6 +92,12 @@ test("known reasoning families get conservative provider-specific choices", () =
     "high",
   ]);
   assert.deepEqual(values("dashscope", "qwen3-max"), ["", "minimal", "high"]);
+  assert.deepEqual(values("minimax", "MiniMax-M3"), ["", "minimal", "high"]);
+  assert.deepEqual(values("minimax_coding_plan", "MiniMax-M3"), [
+    "",
+    "minimal",
+    "high",
+  ]);
 });
 
 test("OpenAI-compatible gateways expose explicit effort levels", () => {

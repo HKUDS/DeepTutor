@@ -90,6 +90,15 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": False,
         "has_thinking_tags": False,
     },
+    "minimax_coding_plan_anthropic": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": False,
+        "has_thinking_tags": False,
+    },
     "codebuddy": {
         "supports_response_format": False,
         "supports_streaming": True,
@@ -214,6 +223,13 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
     # function calling for M-series text models. Response-format support is
     # still disabled by the model override below.
     "minimax": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,
+        "system_in_messages": True,
+    },
+    "minimax_coding_plan": {
         "supports_response_format": False,
         "supports_streaming": True,
         "supports_tools": True,

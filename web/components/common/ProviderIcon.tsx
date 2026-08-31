@@ -32,6 +32,8 @@ const PROVIDER_ICONS: Record<string, { file: string; mono?: boolean }> = {
   moonshot: { file: "moonshot.svg", mono: true },
   minimax: { file: "minimax-color.svg" },
   minimax_anthropic: { file: "minimax-color.svg" },
+  minimax_coding_plan: { file: "minimax-color.svg" },
+  minimax_coding_plan_anthropic: { file: "minimax-color.svg" },
   mistral: { file: "mistral-color.svg" },
   stepfun: { file: "stepfun-color.svg" },
   xiaomi_mimo: { file: "xiaomimimo.svg", mono: true },

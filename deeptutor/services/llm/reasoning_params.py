@@ -17,6 +17,7 @@ _PROVIDER_THINKING_STYLES = {
     "byteplus_coding_plan": "thinking_type",
     "dashscope": "enable_thinking",
     "minimax": "reasoning_split",
+    "minimax_coding_plan": "reasoning_split",
 }
 _PROVIDER_REASONING_PATTERNS = {
     "deepseek": ("deepseek-v4-pro", "deepseek-reasoner"),

@@ -592,6 +592,15 @@ def test_llm_provider_choices_include_novita() -> None:
     assert llm["novita"]["base_url"] == "https://api.novita.ai/openai"
 
 
+def test_llm_provider_choices_include_minimax_token_plan() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["minimax_coding_plan"]["label"] == "MiniMax Token Plan"
+    assert llm["minimax_coding_plan"]["base_url"] == "https://api.minimaxi.com/v1"
+    assert llm["minimax_coding_plan_anthropic"]["label"] == "MiniMax Token Plan (Anthropic)"
+    assert llm["minimax_coding_plan_anthropic"]["base_url"] == "https://api.minimaxi.com/anthropic"
+
+
 def test_llm_provider_choices_include_edenai() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 

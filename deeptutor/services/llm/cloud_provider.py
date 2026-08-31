@@ -97,6 +97,7 @@ _BINDINGS_WITH_EXTRA_BODY_THINKING = frozenset(
         "byteplus",
         "byteplus_coding_plan",
         "minimax",
+        "minimax_coding_plan",
     }
 )
 

@@ -356,6 +356,11 @@ async def test_direct_openai_gpt5_agentic_tools_use_provider_adapter(monkeypatch
 def test_anthropic_backend_can_use_native_tool_calling() -> None:
     assert can_use_native_tool_calling(binding="custom_anthropic", model="claude-test") is True
     assert can_use_native_tool_calling(binding="minimax_anthropic", model="MiniMax-M3") is True
+    assert can_use_native_tool_calling(binding="minimax_coding_plan_anthropic", model="MiniMax-M3") is True
+    assert (
+        can_use_native_tool_calling(binding="minimax_coding_plan_anthropic", model="MiniMax-M3")
+        is True
+    )
 
 
 def test_custom_qwen_can_use_native_tool_calling() -> None:
@@ -392,6 +397,7 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "novita",
         "volcengine_coding_plan",
         "byteplus_coding_plan",
+        "minimax_coding_plan",
     ):
         assert can_use_native_tool_calling(binding=binding, model=None) is True, binding
 
