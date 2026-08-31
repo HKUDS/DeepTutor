@@ -4497,5 +4497,16 @@
   "Notes could not be loaded.": "无法加载笔记。",
   "Note was not saved.": "笔记未保存。",
   "Note was not deleted.": "笔记未删除。",
-  "Video learning panels": "视频学习面板"
+  "Video learning panels": "视频学习面板",
+  "Learning progress": "学习进度",
+  "Review your own reading and learning activity.": "查看你自己的阅读与学习活动。",
+  "Unable to load learning progress": "无法加载学习进度",
+  "Loading progress": "正在加载进度",
+  "No learning activity yet": "还没有学习活动",
+  "Learning actions": "学习操作",
+  "Reading progress": "阅读进度",
+  "No reading progress yet": "还没有阅读进度",
+  "Furthest reading progress": "最远阅读进度",
+  "No learning actions yet": "还没有学习操作",
+  "Locator": "位置"
 }

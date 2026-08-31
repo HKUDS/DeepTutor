@@ -4497,5 +4497,16 @@
   "Notes could not be loaded.": "Notes could not be loaded.",
   "Note was not saved.": "Note was not saved.",
   "Note was not deleted.": "Note was not deleted.",
-  "Video learning panels": "Video learning panels"
+  "Video learning panels": "Video learning panels",
+  "Learning progress": "Learning progress",
+  "Review your own reading and learning activity.": "Review your own reading and learning activity.",
+  "Unable to load learning progress": "Unable to load learning progress",
+  "Loading progress": "Loading progress",
+  "No learning activity yet": "No learning activity yet",
+  "Learning actions": "Learning actions",
+  "Reading progress": "Reading progress",
+  "No reading progress yet": "No reading progress yet",
+  "Furthest reading progress": "Furthest reading progress",
+  "No learning actions yet": "No learning actions yet",
+  "Locator": "Locator"
 }
