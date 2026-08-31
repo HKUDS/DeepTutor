@@ -258,3 +258,38 @@ export async function testInvidious(
     }),
   );
 }
+
+export interface InvidiousHubItem {
+  video_id: string;
+  title: string;
+  author: string;
+  author_id: string;
+  duration_seconds: number;
+  thumbnail_url: string;
+  view_count: number;
+  published_text: string;
+  url: string;
+}
+
+export interface InvidiousHubFeed {
+  current_tab: string;
+  tabs: string[];
+  items: InvidiousHubItem[];
+  reason: string;
+  invidious_public_base_url: string;
+}
+
+export function youtubeWatchUrl(videoId: string): string {
+  return `https://youtu.be/${videoId}`;
+}
+
+export async function getInvidiousHome(
+  tab = "",
+): Promise<InvidiousHubFeed> {
+  const query = tab ? `?tab=${encodeURIComponent(tab)}` : "";
+  return unwrap(
+    await apiFetch(apiUrl(`/api/v1/video-learning/invidious/home${query}`), {
+      cache: "no-store",
+    }),
+  );
+}

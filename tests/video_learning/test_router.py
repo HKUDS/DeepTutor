@@ -341,3 +341,70 @@ def test_stream_forwards_a_206_range_response(
     assert response.content == b"video-bytes"
     assert response.headers["content-range"] == "bytes 0-10/100"
     assert upstream_client.closed is True
+
+
+def test_invidious_home_requires_configuration(client: TestClient) -> None:
+    response = client.get("/api/v1/video-learning/invidious/home")
+    assert response.status_code == 400
+    assert "Invidious" in response.json()["detail"]
+
+
+def test_invidious_home_rejects_private_tabs(client: TestClient) -> None:
+    service.save_video_learning_settings(
+        {
+            "version": 1,
+            "default_provider": "youtube",
+            "youtube": {"transcript_provider": "none"},
+            "invidious": {"api_base_url": "http://127.0.0.1:3000", "public_base_url": ""},
+        }
+    )
+    response = client.get(
+        "/api/v1/video-learning/invidious/home",
+        params={"tab": "Subscriptions"},
+    )
+    assert response.status_code == 400
+    assert "Popular or Trending" in response.json()["detail"]
+
+
+def test_invidious_home_returns_public_feed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service.save_video_learning_settings(
+        {
+            "version": 1,
+            "default_provider": "youtube",
+            "youtube": {"transcript_provider": "none"},
+            "invidious": {"api_base_url": "http://127.0.0.1:3000", "public_base_url": ""},
+        }
+    )
+
+    async def fake_feed(tab: str = "") -> dict[str, object]:
+        assert tab in {"", "Popular"}
+        return {
+            "current_tab": "Popular",
+            "tabs": ["Popular", "Trending"],
+            "items": [
+                {
+                    "video_id": "dQw4w9WgXcQ",
+                    "title": "Lecture",
+                    "author": "Tutor",
+                    "author_id": "",
+                    "duration_seconds": 12,
+                    "thumbnail_url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+                    "view_count": 0,
+                    "published_text": "",
+                    "url": "https://youtu.be/dQw4w9WgXcQ",
+                }
+            ],
+            "reason": "",
+            "invidious_public_base_url": "http://127.0.0.1:3000",
+        }
+
+    monkeypatch.setattr(video_learning.invidious_hub, "get_public_feed", fake_feed)
+    response = client.get("/api/v1/video-learning/invidious/home", params={"tab": "Popular"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["tabs"] == ["Popular", "Trending"]
+    assert payload["items"][0]["url"] == "https://youtu.be/dQw4w9WgXcQ"
+    assert "connected" not in payload
+    assert "authorize" not in payload

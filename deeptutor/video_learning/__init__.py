@@ -1,5 +1,6 @@
 """Video-learning domain API."""
 
+from . import invidious_hub
 from .service import (
     PROVIDER_RESOLVERS,
     ProviderResolution,
@@ -26,6 +27,7 @@ __all__ = [
     "TimedMediaStore",
     "build_segments",
     "get_timed_media_store",
+    "invidious_hub",
     "load_video_learning_settings",
     "material_with_playback",
     "normalize_cues",
