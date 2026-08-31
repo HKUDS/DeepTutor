@@ -10,11 +10,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
+from deeptutor.learning.storage import LearningStore
 from deeptutor.multi_user.learning_access import (
     allowed_reading_extensions,
     assert_learning_material,
 )
-from deeptutor.learning.storage import LearningStore
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import (
     ReadingContext,
