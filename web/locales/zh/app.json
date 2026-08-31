@@ -4006,5 +4006,16 @@
   "references": "引用",
   "That question is no longer waiting for an answer, so this was sent as a new message.": "这道题已经不再等待作答，所以这条内容作为新消息发送了。",
   "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "知识库名称不能包含 {{chars}} —— 这些字符会切断路径和 URL。",
-  "Select text in the document first.": "请先在文档中选中文字。"
+  "Select text in the document first.": "请先在文档中选中文字。",
+  "Learning progress": "学习进度",
+  "Review your own reading and learning activity.": "查看你自己的阅读与学习活动。",
+  "Unable to load learning progress": "无法加载学习进度",
+  "Loading progress": "正在加载进度",
+  "No learning activity yet": "还没有学习活动",
+  "Learning actions": "学习操作",
+  "Reading progress": "阅读进度",
+  "No reading progress yet": "还没有阅读进度",
+  "Furthest reading progress": "最远阅读进度",
+  "No learning actions yet": "还没有学习操作",
+  "Locator": "位置"
 }
