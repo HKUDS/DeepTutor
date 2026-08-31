@@ -6,7 +6,7 @@ import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
@@ -121,6 +121,16 @@ async def resolve_video(payload: ResolveRequest) -> dict[str, Any]:
             payload.language,
             provider_override=payload.provider_override,
         )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/materials")
+async def list_recent_video_materials(
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list[dict[str, Any]]:
+    try:
+        return get_timed_media_store().list_recent_materials(limit)
     except Exception as exc:
         raise _http_error(exc) from exc
 

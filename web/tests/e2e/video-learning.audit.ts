@@ -9,7 +9,8 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   let invidiousOffline = false;
   let transcriptReady = true;
   let transcriptRefreshCount = 0;
-  let savedPosition = 0;
+  let savedPosition = 37;
+  let recentMode: "delayed" | "ready" | "empty" | "error" = "delayed";
   let nativeResolveCount = 0;
   let nextNoteId = 1;
   const notes: Array<{
@@ -155,6 +156,29 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     }
     if (path === "/api/dashboard/suggestions")
       return json({ suggestions: [], stale: false });
+    if (path === "/api/video-learning/materials") {
+      if (recentMode === "delayed") {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      if (recentMode === "error") {
+        return json({ detail: "Recent videos are unavailable" }, 500);
+      }
+      if (recentMode === "empty") return json([]);
+      return json([
+        {
+          material_id: MATERIAL_ID,
+          title: "Recent lesson",
+          author: "Teacher",
+          duration_seconds: 120,
+          thumbnail_url: "",
+          provider: "youtube",
+          video_id: "dQw4w9WgXcQ",
+          source_url: "https://youtu.be/dQw4w9WgXcQ",
+          last_position: savedPosition,
+          updated_at: "2026-08-31T12:00:00Z",
+        },
+      ]);
+    }
     if (path === "/api/video-learning/materials/resolve") {
       const body = request.postDataJSON() as { provider_override?: "youtube" };
       if (body.provider_override === "youtube") nativeResolveCount += 1;
@@ -237,10 +261,12 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   });
 
   await page.goto("/chat?capability=immersive_watching");
+  await expect(page.getByText("Loading recent videos.")).toBeVisible();
+  await expect(page.getByText("Continue watching")).toBeVisible();
+  await expect(page.getByText("Recent lesson")).toBeVisible();
   await page
-    .getByPlaceholder("https://youtu.be/…")
-    .fill("https://youtu.be/dQw4w9WgXcQ?t=7");
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+    .getByRole("button", { name: "Continue watching Recent lesson" })
+    .click();
 
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
   await expect(
@@ -383,4 +409,19 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     page.locator('iframe[title="Fake YouTube player"]'),
   ).toBeVisible();
   expect(nativeResolveCount).toBe(beforeFailure + 1);
+
+  await page.getByRole("button", { name: "Close video learning" }).click();
+  recentMode = "empty";
+  await page.reload();
+  await expect(page.getByText("No recent videos yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Close video learning" }).click();
+
+  recentMode = "error";
+  await page.reload();
+  await expect(
+    page.getByText("Recent videos could not be loaded."),
+  ).toBeVisible();
+  recentMode = "ready";
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("Recent lesson")).toBeVisible();
 });

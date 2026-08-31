@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -67,6 +68,41 @@ def _material(*, duration: int = 100) -> dict[str, object]:
     }
 
 
+def _write_recent_material(
+    root: Path,
+    *,
+    video_id: str,
+    updated_at: str,
+    last_position: int = 0,
+) -> str:
+    material_id = service.material_id_for(video_id)
+    target_dir = root / "timed_media"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 1,
+        "type": "timed_media",
+        "material_id": material_id,
+        "updated_at": updated_at,
+        "source": {
+            "provider": "youtube",
+            "video_id": video_id,
+            "url": f"https://youtu.be/{video_id}",
+        },
+        "metadata": {
+            "title": f"Lesson {video_id}",
+            "author": "Teacher",
+            "duration_seconds": 120,
+            "thumbnail_url": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+        },
+        "transcript": {"status": "ready", "cues": [{"text": "secret cue"}]},
+        "segments": [{"text": "secret segment"}],
+        "learning": {"last_position": last_position},
+        "provider_cache": {"invidious_formats": [{"url": "https://cache.example/video"}]},
+    }
+    (target_dir / f"{material_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+    return material_id
+
+
 def test_main_mounts_settings_as_admin_only_and_learning_policy_scoped() -> None:
     from deeptutor.api.main import app
 
@@ -111,6 +147,83 @@ def test_progress_clamps_to_duration_and_unknown_material_is_404(client: TestCli
 
     missing = client.get("/api/video-learning/materials/0123456789abcdef")
     assert missing.status_code == 404
+
+
+def test_recent_materials_are_safe_sorted_and_account_isolated(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    current_root = {"value": tmp_path / "alice"}
+    monkeypatch.setattr(service, "get_current_path_service", lambda: _Paths(current_root["value"]))
+    newest = _write_recent_material(
+        current_root["value"],
+        video_id="aaaaaaaaaaa",
+        updated_at="2026-08-31T12:00:00+00:00",
+        last_position=42,
+    )
+    oldest = _write_recent_material(
+        current_root["value"],
+        video_id="bbbbbbbbbbb",
+        updated_at="2026-08-30T12:00:00Z",
+    )
+    malformed_id = service.material_id_for("ccccccccccc")
+    other_type_id = service.material_id_for("ddddddddddd")
+    recent_dir = current_root["value"] / "timed_media"
+    (recent_dir / f"{malformed_id}.json").write_text("{not-json", encoding="utf-8")
+    (recent_dir / f"{other_type_id}.json").write_text(
+        json.dumps({"version": 1, "type": "other", "material_id": other_type_id}),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/video-learning/materials")
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert [row["material_id"] for row in rows] == [newest, oldest]
+    assert rows[0] == {
+        "material_id": newest,
+        "title": "Lesson aaaaaaaaaaa",
+        "author": "Teacher",
+        "duration_seconds": 120.0,
+        "thumbnail_url": "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg",
+        "provider": "youtube",
+        "video_id": "aaaaaaaaaaa",
+        "source_url": "https://youtu.be/aaaaaaaaaaa",
+        "last_position": 42.0,
+        "updated_at": "2026-08-31T12:00:00+00:00",
+    }
+    serialized = json.dumps(rows)
+    assert "secret cue" not in serialized
+    assert "secret segment" not in serialized
+    assert "provider_cache" not in serialized
+    assert "cache.example" not in serialized
+
+    current_root["value"] = tmp_path / "bob"
+    assert client.get("/api/video-learning/materials").json() == []
+
+
+def test_recent_materials_limit_defaults_to_20_and_hard_caps_at_100(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bulk"
+    monkeypatch.setattr(service, "get_current_path_service", lambda: _Paths(root))
+    for index in range(21):
+        _write_recent_material(
+            root,
+            video_id=f"v{index:08d}xxx",
+            updated_at=f"2026-08-{index + 1:02d}T12:00:00Z",
+        )
+
+    default_response = client.get("/api/video-learning/materials")
+    limited_response = client.get("/api/video-learning/materials?limit=2")
+    invalid_response = client.get("/api/video-learning/materials?limit=101")
+
+    assert len(default_response.json()) == 20
+    assert len(limited_response.json()) == 2
+    assert invalid_response.status_code == 422
 
 
 def test_video_notes_use_notebook_storage_and_stay_material_scoped(
