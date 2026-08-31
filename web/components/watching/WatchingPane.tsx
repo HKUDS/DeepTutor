@@ -6,6 +6,7 @@ import {
   Check,
   Captions,
   ExternalLink,
+  History,
   Loader2,
   Pencil,
   Play,
@@ -22,10 +23,12 @@ import type { PlayerController } from "@/lib/video-player-controller";
 import {
   createVideoNote,
   deleteVideoNote,
+  listRecentVideoMaterials,
   listVideoNotes,
   saveVideoProgress,
   updateVideoNote,
   type VideoNote,
+  type RecentVideoMaterial,
 } from "@/lib/video-learning-api";
 import { videoTimeFromHref } from "@/lib/watching-citations";
 import { WatchingPlayer } from "./WatchingPlayer";
@@ -58,6 +61,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [notes, setNotes] = useState<VideoNote[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+  const [recentVideos, setRecentVideos] = useState<RecentVideoMaterial[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentError, setRecentError] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
@@ -304,6 +310,24 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     await refresh();
   }, [refresh]);
 
+  const refreshRecentVideos = useCallback(async () => {
+    setRecentLoading(true);
+    setRecentError(false);
+    try {
+      setRecentVideos(await listRecentVideoMaterials());
+    } catch {
+      setRecentError(true);
+      setRecentVideos([]);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (material) return;
+    void refreshRecentVideos();
+  }, [material, refreshRecentVideos]);
+
   const retryTranscript = useCallback(async () => {
     setPlayerError(null);
     await refreshTranscript();
@@ -402,6 +426,100 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
               )}
             </div>
           )}
+          <section
+            className="w-full max-w-xl text-left"
+            aria-label={t("Continue watching")}
+          >
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+              <History className="h-3.5 w-3.5" />
+              {t("Continue watching")}
+            </div>
+            {recentLoading ? (
+              <p className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("Loading recent videos.")}
+              </p>
+            ) : recentError ? (
+              <div
+                role="alert"
+                className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3 text-sm"
+              >
+                {t("Recent videos could not be loaded.")}
+                <button
+                  type="button"
+                  onClick={() => void refreshRecentVideos()}
+                  className="ml-2 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium"
+                >
+                  {t("Retry")}
+                </button>
+              </div>
+            ) : recentVideos.length === 0 ? (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {t("No recent videos yet.")}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {recentVideos.map((video) => {
+                  const progress =
+                    video.duration_seconds > 0
+                      ? Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            (video.last_position / video.duration_seconds) * 100,
+                          ),
+                        )
+                      : 0;
+                  return (
+                    <li key={video.material_id}>
+                      <button
+                        type="button"
+                        onClick={() => void openUrl(video.source_url)}
+                        disabled={loading}
+                        className="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] p-2 text-left transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+                        aria-label={t("Continue watching {{title}}", {
+                          title: video.title || video.video_id,
+                        })}
+                      >
+                        {video.thumbnail_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={video.thumbnail_url}
+                            alt=""
+                            width={80}
+                            height={45}
+                            loading="lazy"
+                            className="aspect-video w-20 shrink-0 rounded-md object-cover"
+                          />
+                        ) : (
+                          <span className="flex aspect-video w-20 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]">
+                            <Play className="h-4 w-4" />
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">
+                            {video.title || video.video_id}
+                          </span>
+                          <span className="block truncate text-xs text-[var(--muted-foreground)]">
+                            {video.author || video.provider}
+                          </span>
+                          <span className="mt-1 block h-1 overflow-hidden rounded-full bg-[var(--muted)]">
+                            <span
+                              className="block h-full bg-red-600"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs tabular-nums text-[var(--muted-foreground)]">
+                          {formatTime(video.last_position)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         </div>
       )}
 

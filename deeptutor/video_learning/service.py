@@ -24,6 +24,8 @@ from deeptutor.services.file_io import atomic_write_json
 ProviderName = Literal["youtube", "invidious"]
 MAX_TRANSCRIPT_CUES = 20_000
 MAX_TRANSCRIPT_BYTES = 2 * 1024 * 1024
+DEFAULT_RECENT_MATERIALS_LIMIT = 20
+MAX_RECENT_MATERIALS_LIMIT = 100
 MIN_SEGMENT_SECONDS = 20
 MAX_SEGMENT_SECONDS = 90
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}
@@ -319,6 +321,49 @@ class TimedMediaStore:
         atomic_write_json(self._path(str(payload.get("material_id") or "")), payload)
         return payload
 
+    def list_recent_materials(
+        self, limit: int = DEFAULT_RECENT_MATERIALS_LIMIT
+    ) -> list[dict[str, Any]]:
+        if not isinstance(limit, int) or not 1 <= limit <= MAX_RECENT_MATERIALS_LIMIT:
+            raise TimedMediaError("Recent timed media limit is invalid.")
+
+        rows: list[tuple[datetime, dict[str, Any]]] = []
+        for path in self.root.glob("*.json"):
+            if not MATERIAL_ID_RE.fullmatch(path.stem):
+                continue
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, UnicodeError):
+                continue
+            if (
+                not isinstance(payload, dict)
+                or payload.get("type") != "timed_media"
+                or payload.get("material_id") != path.stem
+            ):
+                continue
+            source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+            metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+            learning = payload.get("learning") if isinstance(payload.get("learning"), dict) else {}
+            rows.append(
+                (
+                    _parse_updated_at(payload.get("updated_at")),
+                    {
+                        "material_id": str(payload.get("material_id") or ""),
+                        "title": str(metadata.get("title") or ""),
+                        "author": str(metadata.get("author") or ""),
+                        "duration_seconds": _nonnegative_number(metadata.get("duration_seconds")),
+                        "thumbnail_url": str(metadata.get("thumbnail_url") or ""),
+                        "provider": str(source.get("provider") or ""),
+                        "video_id": str(source.get("video_id") or ""),
+                        "source_url": str(source.get("url") or ""),
+                        "last_position": _nonnegative_number(learning.get("last_position")),
+                        "updated_at": str(payload.get("updated_at") or ""),
+                    },
+                )
+            )
+        rows.sort(key=lambda row: row[0], reverse=True)
+        return [summary for _updated_at, summary in rows[:limit]]
+
     @contextmanager
     def lock(self, material_id: str):
         if not MATERIAL_ID_RE.fullmatch(material_id or ""):
@@ -354,6 +399,23 @@ class TimedMediaStore:
 
 def get_timed_media_store() -> TimedMediaStore:
     return TimedMediaStore()
+
+
+def _parse_updated_at(value: Any) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _nonnegative_number(value: Any) -> float:
+    try:
+        return max(0.0, float(value or 0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def material_id_for(video_id: str) -> str:
