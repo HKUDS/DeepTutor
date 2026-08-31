@@ -69,7 +69,8 @@ def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
                 visibility="list",
                 default_reasoning_level=_optional_string(raw_model.get("default_reasoning_level")),
                 supported_reasoning_levels=_reasoning_levels(
-                    raw_model.get("supported_reasoning_levels")
+                    raw_model.get("supported_reasoning_levels"),
+                    model_slug=slug,
                 ),
                 supports_reasoning_summary=_summary_support(raw_model),
                 supports_parallel_tool_calls=(
@@ -94,18 +95,23 @@ def _optional_positive_int(value: object) -> int | None:
     return value
 
 
-def _reasoning_levels(value: object) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        return ()
+def _reasoning_levels(value: object, *, model_slug: str) -> tuple[str, ...]:
     efforts: list[str] = []
-    for item in value:
-        effort: object
-        if isinstance(item, dict):
-            effort = item.get("effort")
-        else:
-            effort = item
-        if isinstance(effort, str) and effort and effort not in efforts:
-            efforts.append(effort)
+    if isinstance(value, list):
+        for item in value:
+            effort: object
+            if isinstance(item, dict):
+                effort = item.get("effort")
+            else:
+                effort = item
+            if isinstance(effort, str) and effort and effort not in efforts:
+                efforts.append(effort)
+
+    # The Codex catalog can lag the Luna API contract: ``none`` is accepted by
+    # the provider even when omitted here. Remove this compatibility entry once
+    # the catalog advertises it consistently.
+    if model_slug == "gpt-5.6-luna" and "none" not in efforts:
+        efforts.insert(0, "none")
     return tuple(efforts)
 
 

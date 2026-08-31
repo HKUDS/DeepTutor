@@ -157,6 +157,12 @@ test("managed profiles use only the provider-supported reasoning levels", () => 
     ]).map((option) => option.value),
     ["", "high", "medium"],
   );
+  assert.deepEqual(
+    reasoningEffortOptionsFromSupportedLevels(["none", "low", "none"]).map(
+      (option) => option.value,
+    ),
+    ["", "none", "low"],
+  );
 });
 
 test("Auto removes the catalog field instead of persisting an empty string", () => {
