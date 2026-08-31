@@ -48,9 +48,7 @@ class VisualizerStore:
 
         service = get_path_service()
         self.root = (root or (service.get_user_root() / "visualizers")).resolve()
-        self.state_file = (
-            state_file or service.get_settings_file("visualizers.json")
-        ).resolve()
+        self.state_file = (state_file or service.get_settings_file("visualizers.json")).resolve()
 
     def state(self) -> dict[str, list[str]]:
         try:
@@ -151,9 +149,7 @@ class VisualizerStore:
                 raise VisualizerStoreError(f"invalid visualizer.json: {exc}") from exc
             self._validate_imported_manifest(manifest, package_root)
             if manifest.id in (reserved_ids or set()):
-                raise VisualizerStoreError(
-                    f"visualizer id is reserved by the host: {manifest.id}"
-                )
+                raise VisualizerStoreError(f"visualizer id is reserved by the host: {manifest.id}")
             destination = (self.root / manifest.id).resolve()
             if not destination.is_relative_to(self.root):
                 raise VisualizerStoreError("visualizer id escapes the installation root")

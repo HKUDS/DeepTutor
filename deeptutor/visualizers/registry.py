@@ -31,12 +31,8 @@ class VisualizerRegistry:
             installed.add(plugin.manifest.id)
         for plugin in bundled_visualizers():
             catalog.setdefault(plugin.manifest.id, plugin)
-            if (
-                plugin.manifest.id in explicitly_installed
-                or (
-                    plugin.manifest.default_installed
-                    and plugin.manifest.id not in uninstalled
-                )
+            if plugin.manifest.id in explicitly_installed or (
+                plugin.manifest.default_installed and plugin.manifest.id not in uninstalled
             ):
                 installed.add(plugin.manifest.id)
         for manifest, root in self.store.user_packages():
@@ -138,9 +134,8 @@ class VisualizerRegistry:
             manifest = plugin.manifest
             schema = ""
             if manifest.payload_schema:
-                schema = (
-                    "\nPayload JSON Schema:\n"
-                    + json.dumps(manifest.payload_schema, ensure_ascii=False, indent=2)
+                schema = "\nPayload JSON Schema:\n" + json.dumps(
+                    manifest.payload_schema, ensure_ascii=False, indent=2
                 )
             blocks.append(
                 f"### {manifest.id} — {manifest.display_name}\n"

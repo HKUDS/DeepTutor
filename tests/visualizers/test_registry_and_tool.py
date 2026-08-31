@@ -72,9 +72,7 @@ def test_registry_lifecycle_for_bundled_and_imported_types(tmp_path: Path) -> No
     ok, _, error = plugin.validate_payload('{"min":0,"max":10}')
     assert ok is False
     assert "schema violation" in error
-    ok, data, error = plugin.validate_payload(
-        '{"min":0,"max":10,"points":[2,5,8]}'
-    )
+    ok, data, error = plugin.validate_payload('{"min":0,"max":10,"points":[2,5,8]}')
     assert ok is True, error
     assert data["points"] == [2, 5, 8]
     assert "Payload JSON Schema" in registry.prompt_catalog("number_line")
@@ -123,8 +121,8 @@ def test_core_visualizer_quality_gates(tmp_path: Path) -> None:
     assert ok is False
     assert "complete document" in error
     ok, _, error = html.validate_payload(
-        "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width\">"
-        "</head><body><label>Value <input></label><button id=\"reset\">Reset</button>"
+        '<!doctype html><html><head><meta name="viewport" content="width=device-width">'
+        '</head><body><label>Value <input></label><button id="reset">Reset</button>'
         "<script>document.querySelector('#reset').onclick=()=>{};</script></body></html>"
     )
     assert ok is True, error
@@ -152,9 +150,7 @@ async def test_submit_tool_validates_and_commits_geogebra_envelope(tmp_path: Pat
         _visualizer_registry=registry,
         _requested_visualizer="geogebra",
         visualizer="geogebra",
-        payload=json.dumps(
-            {"app_name": "geometry", "commands": ["A=(0,0)", "B=(4,0)"]}
-        ),
+        payload=json.dumps({"app_name": "geometry", "commands": ["A=(0,0)", "B=(4,0)"]}),
     )
     assert missing_view.success is False
     assert "coordinate bounds is required" in missing_view.content

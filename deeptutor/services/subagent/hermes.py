@@ -46,9 +46,7 @@ class HermesBackend(SubagentBackend):
             display_name=self.display_name,
             available=ok,
             version=text if ok else "",
-            detail=""
-            if ok
-            else not_found_detail(text, "hermes CLI not found on PATH"),
+            detail="" if ok else not_found_detail(text, "hermes CLI not found on PATH"),
         )
 
     def _build_command(
@@ -96,9 +94,7 @@ class HermesBackend(SubagentBackend):
         partner_id: str | None = None,  # noqa: ARG002 — partner-only
     ) -> ConsultResult:
         config = config or BackendConfig()
-        cmd = self._build_command(
-            question, session_id=session_id, config=config, images=images
-        )
+        cmd = self._build_command(question, session_id=session_id, config=config, images=images)
         result = ConsultResult(session_id=session_id)
         answer_lines: list[str] = []
         returncode = "0"
