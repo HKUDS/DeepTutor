@@ -70,11 +70,15 @@ class SubmitVisualizationTool(BaseTool):
             registry = get_visualizer_registry()
 
         visualizer_id = str(kwargs.get("visualizer") or "").strip().lower()
-        requested = str(
-            kwargs.get("_requested_visualizer")
-            or context.metadata.get(REQUESTED_VISUALIZER_KEY)
-            or "auto"
-        ).strip().lower()
+        requested = (
+            str(
+                kwargs.get("_requested_visualizer")
+                or context.metadata.get(REQUESTED_VISUALIZER_KEY)
+                or "auto"
+            )
+            .strip()
+            .lower()
+        )
         if requested != "auto" and visualizer_id != requested:
             return ToolResult(
                 content=(
@@ -105,8 +109,7 @@ class SubmitVisualizationTool(BaseTool):
         entry_url = ""
         if plugin.manifest.render_target == "iframe":
             entry_url = (
-                f"/api/v1/visualizers/{plugin.manifest.id}/assets/"
-                f"{plugin.manifest.renderer_entry}"
+                f"/api/v1/visualizers/{plugin.manifest.id}/assets/{plugin.manifest.renderer_entry}"
             )
         envelope = VisualizationEnvelope(
             render_type=plugin.manifest.id,
@@ -124,9 +127,7 @@ class SubmitVisualizationTool(BaseTool):
                 alt_text=str(kwargs.get("alt_text") or "").strip()[:2000],
             ),
             interaction=VisualizationInteraction(
-                events=["prompt", "resize"]
-                if plugin.manifest.render_target == "iframe"
-                else [],
+                events=["prompt", "resize"] if plugin.manifest.render_target == "iframe" else [],
             ),
             fallback={"renderer": "svg"} if visualizer_id != "svg" else {},
         )

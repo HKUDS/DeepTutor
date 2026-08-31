@@ -18,7 +18,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from deeptutor.services.config import load_auth_settings
 
@@ -47,6 +47,7 @@ from deeptutor.services.auth import (
     list_users,
     register_pb,
     set_avatar,
+    set_learner_profile,
     set_role,
 )
 from deeptutor.services.codex_auth.contracts import CodexAuthError
@@ -154,6 +155,15 @@ class UserInfo(BaseModel):
     created_at: str
     disabled: bool = False
     avatar: str = ""
+
+
+class LearnerProfileRequest(BaseModel):
+    age: int | None = Field(default=None, ge=3, le=120)
+    grade_level: str | None = Field(default=None, max_length=80)
+    curriculum: str | None = Field(default=None, max_length=80)
+    language: str | None = Field(default=None, max_length=80)
+    reading_level: str | None = Field(default=None, max_length=80)
+    explanation_style: str | None = Field(default=None, max_length=80)
 
 
 # Markers settable through PUT /profile. Image markers ("img:<version>") are
@@ -753,6 +763,38 @@ async def get_avatar_image(
 async def get_users(_: TokenPayload = Depends(require_admin)) -> list[UserInfo]:
     """List all registered users. Requires admin role."""
     return [UserInfo(**u) for u in list_users()]
+
+
+@router.get("/users/{username}/learner-profile")
+async def get_learner_profile(username: str, _: TokenPayload = Depends(require_admin)) -> dict:
+    """Return the structured profile managed for an ordinary learner."""
+    from deeptutor.multi_user.identity import get_user
+
+    user = get_user(username)
+    if user is None or str(user.get("role") or "user") != "user":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return {"learner_profile": user.get("learner_profile")}
+
+
+@router.put("/users/{username}/learner-profile")
+async def put_learner_profile(
+    username: str,
+    body: LearnerProfileRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    from deeptutor.multi_user.learner_profile import normalize_profile
+
+    try:
+        profile = normalize_profile(body.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    updated = set_learner_profile(username, profile)
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    logger.info("Admin '%s' updated learner profile for '%s'", current.username, username)
+    return {"learner_profile": updated}
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)

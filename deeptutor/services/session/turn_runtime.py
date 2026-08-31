@@ -2464,6 +2464,15 @@ class TurnRuntimeManager:
             from deeptutor.services.skill.service import SkillService, render_skills_manifest
 
             current_user = get_current_user()
+            learner_profile_prompt = ""
+            if not current_user.is_admin:
+                from deeptutor.multi_user.identity import get_user_by_id
+                from deeptutor.multi_user.learner_profile import prompt_block
+
+                account = get_user_by_id(current_user.id)
+                learner_profile_prompt = prompt_block(
+                    account[1].get("learner_profile") if account else None
+                )
             requested_persona = str(payload.get("persona") or "").strip()
             persona_context = ""
             if requested_persona:
@@ -2795,6 +2804,7 @@ class TurnRuntimeManager:
                     "book_references": book_references,
                     "course_id": str(payload.get("course_id") or ""),
                     "course_conventions": str(payload.get("course_conventions") or ""),
+                    "learner_profile_prompt": learner_profile_prompt,
                     "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
                     "mastery_mode": workspace_mode == WORKSPACE_MODE_MASTERY,
                     "mastery_path_lease_managed": mastery_lease_managed,

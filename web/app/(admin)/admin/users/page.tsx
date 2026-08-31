@@ -13,6 +13,7 @@ import {
 } from "@/lib/admin-api";
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
 import { BookPermissionEditor } from "@/features/multi-user/components/BookPermissionEditor";
+import { LearnerProfileEditor } from "@/features/multi-user/components/LearnerProfileEditor";
 import { UserAvatar } from "@/components/UserAvatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { filterUsersByQuery } from "@/lib/admin-users";
@@ -456,6 +457,7 @@ export default function AdminUsersPage() {
                           <td colSpan={4} className="p-0">
                             <GrantEditor key={user.id} userId={user.id} />
                             <BookPermissionEditor userId={user.id} />
+                            <LearnerProfileEditor username={user.username} />
                           </td>
                         </tr>
                       )}

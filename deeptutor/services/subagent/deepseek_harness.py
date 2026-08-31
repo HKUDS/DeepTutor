@@ -53,9 +53,7 @@ class DeepSeekHarnessBackend(SubagentBackend):
             display_name=self.display_name,
             available=ok or sdk,
             version=text if ok else ("Python SDK" if sdk else ""),
-            detail=""
-            if ok or sdk
-            else not_found_detail(text, "dsh CLI / Python SDK not found"),
+            detail="" if ok or sdk else not_found_detail(text, "dsh CLI / Python SDK not found"),
         )
 
     def _build_headless_command(
@@ -65,9 +63,7 @@ class DeepSeekHarnessBackend(SubagentBackend):
         if config.system_prompt.strip():
             prompt = f"{config.system_prompt.strip()}\n\n{question}"
         if images:
-            prompt += "\n\nAttached local files:\n" + "\n".join(
-                f"- {path}" for path in images
-            )
+            prompt += "\n\nAttached local files:\n" + "\n".join(f"- {path}" for path in images)
         return [self.cli_command, "--profile", "headless", *config.extra_args, prompt]
 
     async def consult(
@@ -189,9 +185,7 @@ class DeepSeekHarnessBackend(SubagentBackend):
         if config.system_prompt.strip() and not session_id:
             prompt = f"{config.system_prompt.strip()}\n\n{question}"
         if images:
-            prompt += "\n\nAttached local files:\n" + "\n".join(
-                f"- {path}" for path in images
-            )
+            prompt += "\n\nAttached local files:\n" + "\n".join(f"- {path}" for path in images)
 
         async def publish(event: SubagentEvent) -> None:
             result.event_count += 1

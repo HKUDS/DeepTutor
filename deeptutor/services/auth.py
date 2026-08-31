@@ -212,6 +212,20 @@ def get_user_info(username: str) -> dict | None:
     return None
 
 
+def get_learner_profile(username: str) -> dict[str, Any] | None:
+    """Return the structured learner profile for an existing account."""
+    from deeptutor.multi_user.identity import get_learner_profile as _get_profile
+
+    return _get_profile(username)
+
+
+def set_learner_profile(username: str, profile: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Replace the structured learner profile for an existing account."""
+    from deeptutor.multi_user.identity import set_learner_profile as _set_profile
+
+    return _set_profile(username, profile)
+
+
 # ---------------------------------------------------------------------------
 # JWT
 # ---------------------------------------------------------------------------

@@ -88,6 +88,9 @@ class ChatPromptAssembler:
         course_conventions = str((context.metadata or {}).get("course_conventions") or "")
         if course_conventions:
             blocks.append(PromptBlock("course_conventions", course_conventions))
+        learner_profile = str((context.metadata or {}).get("learner_profile_prompt") or "")
+        if learner_profile:
+            blocks.append(PromptBlock("learner_profile", learner_profile))
         if context.persona_context:
             blocks.append(PromptBlock("persona_style", context.persona_context))
         partner_policy = self._partner_turn_policy(context)
