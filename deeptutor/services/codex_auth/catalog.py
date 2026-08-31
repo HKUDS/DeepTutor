@@ -18,7 +18,13 @@ from .constants import (
     CODEX_MODELS_URL,
     CODEX_STALE_CACHE_SECONDS,
 )
-from .contracts import CatalogSnapshot, CodexAuthError, CodexCredentials, CodexModel
+from .contracts import (
+    CatalogSnapshot,
+    CodexAuthError,
+    CodexCredentials,
+    CodexModel,
+    normalize_codex_reasoning_levels,
+)
 from .storage import CodexCredentialStore
 
 
@@ -107,12 +113,7 @@ def _reasoning_levels(value: object, *, model_slug: str) -> tuple[str, ...]:
             if isinstance(effort, str) and effort and effort not in efforts:
                 efforts.append(effort)
 
-    # The Codex catalog can lag the Luna API contract: ``none`` is accepted by
-    # the provider even when omitted here. Remove this compatibility entry once
-    # the catalog advertises it consistently.
-    if model_slug == "gpt-5.6-luna" and "none" not in efforts:
-        efforts.insert(0, "none")
-    return tuple(efforts)
+    return normalize_codex_reasoning_levels(model_slug, efforts)
 
 
 def _summary_support(raw_model: Mapping[str, Any]) -> bool:

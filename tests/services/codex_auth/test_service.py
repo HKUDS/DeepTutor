@@ -791,6 +791,35 @@ async def test_owner_persists_none_for_managed_luna(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_owner_persists_none_for_managed_luna_with_legacy_profile(
+    tmp_path: Path,
+) -> None:
+    snapshot = _snapshot(
+        "live",
+        _model("gpt-5.6-luna", supported_reasoning_levels=("none", "low")),
+    )
+    service, model_catalog = _bound_reasoning_service(tmp_path, snapshot)
+    synced = model_catalog.load()
+    synced["services"]["llm"]["active_profile_id"] = CODEX_PROFILE_ID
+    synced["services"]["llm"]["active_model_id"] = codex_model_id("gpt-5.6-luna")
+    legacy_model = _managed_profile(synced)["models"][0]
+    legacy_model["codex_supported_reasoning_levels"] = ["low"]
+    model_catalog.save(synced)
+
+    assert service.public_status()["models"][0]["supported_reasoning_levels"] == [
+        "none",
+        "low",
+    ]
+
+    status = await service.set_reasoning_effort("gpt-5.6-luna", "none")
+
+    model = _managed_profile(model_catalog.load())["models"][0]
+    assert model["codex_supported_reasoning_levels"] == ["none", "low"]
+    assert model["reasoning_effort"] == "none"
+    assert status["models"][0]["reasoning_effort"] == "none"
+
+
+@pytest.mark.asyncio
 async def test_runtime_validation_accepts_any_effort_for_a_bound_model(tmp_path: Path) -> None:
     """Effort is a per-request knob, not part of what binds a config to a token.
 
