@@ -11,6 +11,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   let transcriptRefreshCount = 0;
   let savedPosition = 0;
   let nativeResolveCount = 0;
+  let resolveCount = 0;
   let nextNoteId = 1;
   const notes: Array<{
     notebook_id: string;
@@ -77,6 +78,14 @@ test("YouTube learning survives reload and switches to Invidious without silent 
             start_seconds: savedPosition,
           },
   });
+
+  const openWatching = async () => {
+    await page.getByRole("button", { name: "Chat", exact: true }).click();
+    await page
+      .getByRole("button", { name: /Immersive Watching/ })
+      .last()
+      .click();
+  };
 
   await page.addInitScript(() => {
     class FakePlayer {
@@ -147,7 +156,30 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     }
     if (path === "/api/v1/dashboard/suggestions")
       return json({ suggestions: [], stale: false });
+    if (path === "/api/v1/video-learning/invidious/home") {
+      const tab = new URL(request.url()).searchParams.get("tab") || "Popular";
+      return json({
+        current_tab: tab,
+        tabs: ["Popular", "Trending"],
+        items: [
+          {
+            video_id: "dQw4w9WgXcQ",
+            title: "Public hub lecture",
+            author: "Teacher",
+            author_id: "UC123",
+            duration_seconds: 120,
+            thumbnail_url: "https://example.test/lecture.jpg",
+            view_count: 12,
+            published_text: "today",
+            url: "https://youtu.be/dQw4w9WgXcQ?t=7",
+          },
+        ],
+        reason: "",
+        invidious_public_base_url: "https://invidious.example.test",
+      });
+    }
     if (path === "/api/v1/video-learning/materials/resolve") {
+      resolveCount += 1;
       const body = request.postDataJSON() as { provider_override?: "youtube" };
       if (body.provider_override === "youtube") nativeResolveCount += 1;
       return json(material(body.provider_override || provider));
@@ -223,14 +255,10 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   });
 
   await page.goto("/home");
-  await page
-    .getByRole("button", { name: /Immersive Watching/ })
-    .last()
-    .click();
-  await page
-    .getByPlaceholder("https://youtu.be/…")
-    .fill("https://youtu.be/dQw4w9WgXcQ?t=7");
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await openWatching();
+  await expect(page.getByText("Public hub lecture")).toBeVisible();
+  await page.getByRole("button", { name: /Public hub lecture/ }).click();
+  expect(resolveCount).toBe(1);
 
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
   await expect(
@@ -257,11 +285,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   await expect(page.getByText("The first grounded concept.")).toBeVisible();
 
   await page.reload();
-  await page.getByRole("button", { name: "Chat", exact: true }).click();
-  await page
-    .getByRole("button", { name: /Immersive Watching/ })
-    .last()
-    .click();
+  await openWatching();
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
   await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByText("First timestamped note")).toBeVisible();
@@ -332,10 +356,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     });
   await expect.poll(() => savedPosition).toBeGreaterThanOrEqual(70);
   await page.reload();
-  await page
-    .getByRole("button", { name: /Immersive Watching/ })
-    .last()
-    .click();
+  await openWatching();
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
   await expect
     .poll(() =>
@@ -355,6 +376,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   await page.getByRole("button", { name: "Refresh provider" }).click();
   await expect(page.locator("video")).toBeVisible();
   await expect(page.getByText("Invidious", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByRole("button", { name: "Retry captions" })).toBeVisible();
   const player = page.locator("video");
   await player.evaluate((video) =>
@@ -362,6 +384,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   );
   await page.getByRole("button", { name: "Retry captions" }).click();
   await expect.poll(() => transcriptRefreshCount).toBe(1);
+  await page.getByRole("tab", { name: "Transcript" }).click();
   await expect(page.getByRole("button", { name: "Explain here" })).toBeVisible();
   await expect(player).toHaveAttribute("data-transcript-retry-probe", "before");
 
