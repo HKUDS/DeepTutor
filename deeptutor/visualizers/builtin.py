@@ -43,11 +43,9 @@ def _text_validator(render_type: str):
                     "Interactive HTML must be a complete document with doctype, html, "
                     f"body and script; missing: {', '.join(missing)}",
                 )
-            if "name=\"viewport\"" not in lowered and "name='viewport'" not in lowered:
+            if 'name="viewport"' not in lowered and "name='viewport'" not in lowered:
                 return False, None, "Interactive HTML must include a viewport meta tag"
-            has_control = any(
-                token in lowered for token in ("<button", "<input", "<select")
-            )
+            has_control = any(token in lowered for token in ("<button", "<input", "<select"))
             if not has_control:
                 return False, None, "Interactive HTML must include a learner control"
             if "reset" not in lowered:

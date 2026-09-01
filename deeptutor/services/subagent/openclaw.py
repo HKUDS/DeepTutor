@@ -44,9 +44,7 @@ class OpenClawBackend(SubagentBackend):
             display_name=self.display_name,
             available=ok,
             version=text if ok else "",
-            detail=""
-            if ok
-            else not_found_detail(text, "openclaw CLI not found on PATH"),
+            detail="" if ok else not_found_detail(text, "openclaw CLI not found on PATH"),
         )
 
     def _build_command(
@@ -62,9 +60,7 @@ class OpenClawBackend(SubagentBackend):
         if config.system_prompt.strip() and fresh_session:
             prompt = f"{config.system_prompt.strip()}\n\n{question}"
         if images:
-            prompt += "\n\nAttached local files:\n" + "\n".join(
-                f"- {path}" for path in images
-            )
+            prompt += "\n\nAttached local files:\n" + "\n".join(f"- {path}" for path in images)
         cmd = [
             self.cli_command,
             "agent",

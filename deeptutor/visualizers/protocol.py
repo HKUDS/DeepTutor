@@ -71,9 +71,7 @@ class VisualizerManifest(BaseModel):
         if self.render_target == "iframe" and not self.renderer_entry:
             raise ValueError("iframe visualizers require renderer_entry")
         if len(json.dumps(self.payload_schema, ensure_ascii=False)) > MAX_MANIFEST_SCHEMA_CHARS:
-            raise ValueError(
-                f"payload_schema exceeds {MAX_MANIFEST_SCHEMA_CHARS} characters"
-            )
+            raise ValueError(f"payload_schema exceeds {MAX_MANIFEST_SCHEMA_CHARS} characters")
         if self.payload_schema:
             remote_ref = _find_remote_schema_ref(self.payload_schema)
             if remote_ref:
@@ -118,9 +116,7 @@ class VisualizationEnvelope(BaseModel):
     render_type: str
     renderer: RendererRef
     payload: VisualizationPayload
-    presentation: VisualizationPresentation = Field(
-        default_factory=VisualizationPresentation
-    )
+    presentation: VisualizationPresentation = Field(default_factory=VisualizationPresentation)
     interaction: VisualizationInteraction = Field(default_factory=VisualizationInteraction)
     fallback: dict[str, Any] = Field(default_factory=dict)
 

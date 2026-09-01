@@ -115,9 +115,7 @@ async def import_visualizer(
         except VisualizerStoreError as exc:
             raise _http_error(exc) from exc
         catalog = registry.public_catalog()
-        public_manifest = next(
-            item for item in catalog if item["id"] == plugin.manifest.id
-        )
+        public_manifest = next(item for item in catalog if item["id"] == plugin.manifest.id)
         return {
             "status": "installed",
             "visualizer": plugin.manifest.id,

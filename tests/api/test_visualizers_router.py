@@ -74,9 +74,7 @@ def test_visualizer_catalog_install_import_and_asset_routes(
     assert imported.status_code == 200
     assert imported.json()["visualizer"] == "fraction_tiles"
 
-    asset = client.get(
-        "/api/v1/visualizers/fraction_tiles/assets/index.html"
-    )
+    asset = client.get("/api/v1/visualizers/fraction_tiles/assets/index.html")
     assert asset.status_code == 200
     assert "Fraction Tiles" in asset.text
     assert "connect-src 'none'" in asset.headers["content-security-policy"]
@@ -84,9 +82,7 @@ def test_visualizer_catalog_install_import_and_asset_routes(
 
     disabled = client.post("/api/v1/visualizers/fraction_tiles/disable")
     assert disabled.status_code == 200
-    assert client.get(
-        "/api/v1/visualizers/fraction_tiles/assets/index.html"
-    ).status_code == 404
+    assert client.get("/api/v1/visualizers/fraction_tiles/assets/index.html").status_code == 404
 
     assert client.post("/api/v1/visualizers/fraction_tiles/enable").status_code == 200
     assert client.delete("/api/v1/visualizers/fraction_tiles").status_code == 200
