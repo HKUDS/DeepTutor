@@ -2349,6 +2349,81 @@ def test_create_rejects_indexing_selection_for_other_provider_before_registratio
     assert manager.config["knowledge_bases"] == {}
 
 
+def test_empty_lightrag_kb_can_update_pending_indexing_policy(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["empty"] = {
+        "rag_provider": "lightrag",
+        "status": "ready",
+        "progress": {"stage": "completed"},
+    }
+    (manager.base_dir / "empty" / "raw").mkdir(parents=True)
+    policy = {
+        "policy": "pending_pinned",
+        "selection": {
+            "profile_id": "profile-1",
+            "model_id": "model-1",
+            "reasoning_effort": "none",
+        },
+        "descriptor": {"model": "safe-model", "reasoning_effort": "none"},
+        "fingerprint": "b" * 64,
+        "vision_available": False,
+    }
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.storage.latest_published_root",
+        lambda _kb_dir: None,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.indexing_policy.pending_policy_for_selection",
+        lambda selection: policy if selection["reasoning_effort"] == "none" else None,
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.put(
+            "/api/knowledge-bases/empty/indexing-policy",
+            json={
+                "profile_id": "profile-1",
+                "model_id": "model-1",
+                "reasoning_effort": "none",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["indexing_policy"] == policy
+    assert manager.config["knowledge_bases"]["empty"]["pending_indexing_policy"] == policy
+
+
+@pytest.mark.parametrize("reason", ["published", "documents", "active"])
+def test_pending_indexing_policy_update_rejects_ineligible_kb(
+    monkeypatch, tmp_path: Path, reason: str
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    entry = {"rag_provider": "lightrag", "status": "ready"}
+    manager.config["knowledge_bases"]["kb"] = entry
+    raw_dir = manager.base_dir / "kb" / "raw"
+    raw_dir.mkdir(parents=True)
+    if reason == "documents":
+        (raw_dir / "doc.txt").write_text("content", encoding="utf-8")
+    if reason == "active":
+        entry.update({"status": "processing", "progress": {"stage": "processing_file"}})
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.storage.latest_published_root",
+        lambda _kb_dir: object() if reason == "published" else None,
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.put(
+            "/api/knowledge-bases/kb/indexing-policy",
+            json={"profile_id": "profile-1", "model_id": "model-1"},
+        )
+
+    assert response.status_code == 409
+    assert "pending_indexing_policy" not in entry
+
+
 def test_reindex_passes_frozen_lightrag_snapshot_to_background_task(
     monkeypatch, tmp_path: Path
 ) -> None:

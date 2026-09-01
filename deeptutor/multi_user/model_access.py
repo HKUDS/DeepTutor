@@ -101,6 +101,11 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
                     "model_id": str(model_id),
                     "name": (model or {}).get("name") or str(model_id),
                     "model": (model or {}).get("model") or "",
+                    "provider": profile.get("binding") or "",
+                    "reasoning_effort": (model or {}).get("reasoning_effort"),
+                    "supported_reasoning_efforts": (model or {}).get(
+                        "codex_supported_reasoning_levels"
+                    ),
                     "source": "admin",
                     "available": model is not None,
                 }
@@ -128,7 +133,9 @@ def allowed_llm_options() -> dict[str, Any]:
             "model_name": item.get("name") or item.get("model") or item.get("model_id"),
             "label": item.get("name") or item.get("model") or item.get("model_id"),
             "model": item.get("model") or "",
-            "provider": "",
+            "provider": item.get("provider") or "",
+            "reasoning_effort": item.get("reasoning_effort"),
+            "supported_reasoning_efforts": item.get("supported_reasoning_efforts"),
             "source": item.get("source") or "admin",
             "is_active_default": False,
         }

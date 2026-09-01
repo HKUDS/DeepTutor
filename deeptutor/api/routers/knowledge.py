@@ -206,6 +206,14 @@ class SupportedFileTypesInfo(BaseModel):
     allow_any_extension: bool = False
 
 
+class IndexingLLMSelectionRequest(BaseModel):
+    """Secret-free catalog identity for an empty LightRAG knowledge base."""
+
+    profile_id: str = Field(min_length=1)
+    model_id: str = Field(min_length=1)
+    reasoning_effort: str | None = None
+
+
 IMAGE_ACCEPT_MIME_TYPES = {
     ".bmp": "image/bmp",
     ".gif": "image/gif",
@@ -3413,6 +3421,93 @@ async def reindex_knowledge_base(
         raise HTTPException(status_code=500, detail=format_exception_message(e))
 
 
+@router.put("/knowledge-bases/{kb_name}/indexing-policy")
+async def update_pending_indexing_policy(
+    kb_name: str,
+    payload: IndexingLLMSelectionRequest,
+):
+    """Change the pending model of an empty, unpublished LightRAG KB."""
+    manager, kb_name, kb_base_dir = _writable_kb(kb_name)
+    kb_entry = _load_kb_entry_or_404(manager, kb_name)
+    _assert_not_connected_kb(kb_name, kb_entry)
+    provider = _validate_registered_provider(kb_entry.get("rag_provider"))
+    if provider != LIGHTRAG_PROVIDER:
+        raise HTTPException(
+            status_code=400,
+            detail="Indexing-model policy is supported only for built-in LightRAG.",
+        )
+
+    def assert_no_active_task(entry: dict) -> None:
+        status = str(entry.get("status") or "").lower()
+        progress = entry.get("progress")
+        stage = str(progress.get("stage") or "").lower() if isinstance(progress, dict) else ""
+        if status in {"initializing", "processing"} and stage not in {
+            "completed",
+            "error",
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The pending indexing model cannot change while an indexing task "
+                    "is active."
+                ),
+            )
+
+    assert_no_active_task(kb_entry)
+    kb_dir = kb_base_dir / kb_name
+    from deeptutor.services.rag.pipelines.lightrag.storage import latest_published_root
+
+    if latest_published_root(kb_dir) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This knowledge base already has a published index; run a full re-index "
+                "to change its model."
+            ),
+        )
+    raw_dir = kb_dir / "raw"
+    if raw_dir.is_dir() and any(path.is_file() for path in raw_dir.rglob("*")):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The pending indexing model can change only while the knowledge base "
+                "is empty."
+            ),
+        )
+
+    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+        IndexingPolicyError,
+        pending_policy_for_selection,
+    )
+
+    try:
+        policy = pending_policy_for_selection(payload.model_dump(exclude_none=True))
+    except (ValueError, PermissionError, IndexingPolicyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Re-read immediately before saving so a task queued during model
+    # resolution cannot be overwritten through a stale entry reference.
+    kb_entry = _load_kb_entry_or_404(manager, kb_name)
+    assert_no_active_task(kb_entry)
+    if latest_published_root(kb_dir) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This knowledge base already has a published index; run a full re-index "
+                "to change its model."
+            ),
+        )
+    if raw_dir.is_dir() and any(path.is_file() for path in raw_dir.rglob("*")):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The pending indexing model can change only while the knowledge base "
+                "is empty."
+            ),
+        )
+    kb_entry["pending_indexing_policy"] = policy
+    manager._save_config()
+    return {"indexing_policy": policy}
 @router.post("/knowledge-bases/{kb_name}/retry")
 async def retry_knowledge_base(
     kb_name: str,

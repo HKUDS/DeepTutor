@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -23,25 +23,45 @@ import {
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import ProcessLogs from "@/components/common/ProcessLogs";
+import Modal from "@/components/common/Modal";
+import { useLLMOptions } from "@/hooks/useLLMOptions";
+import type { IndexingLLMSelection } from "@/lib/knowledge-api";
+import { kbHasLiveProgress } from "@/lib/knowledge-helpers";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
+import IndexingModelSelector, {
+  selectionFromLLMOption,
+} from "./IndexingModelSelector";
+import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
 
 interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
   task?: TaskState;
-  onReindex: () => Promise<void>;
+  onReindex: (indexingLLM?: IndexingLLMSelection) => Promise<void>;
+  onUpdatePendingIndexingPolicy: (
+    indexingLLM: IndexingLLMSelection,
+  ) => Promise<void>;
 }
 
 export default function KbIndexVersionsSection({
   kb,
   task,
   onReindex,
+  onUpdatePendingIndexingPolicy,
 }: KbIndexVersionsSectionProps) {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
+    null,
+  );
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const llmCatalog = useLLMOptions();
   const provider = kb.statistics?.rag_provider || "llamaindex";
+  const isLightRag = provider === "lightrag";
   const pageIndexProvider = !providerUsesEmbeddingMetadata(provider);
+  const modelInsensitiveProvider = pageIndexProvider || isLightRag;
   const versions = kb.statistics?.index_versions ?? [];
-  const activeSig = pageIndexProvider
+  const activeSig = modelInsensitiveProvider
     ? null
     : (kb.statistics?.active_signature ?? null);
   const needsReindex = kbNeedsReindex(kb);
@@ -53,10 +73,85 @@ export default function KbIndexVersionsSection({
   const lastIndexed = formatKnowledgeTimestamp(kb.metadata?.last_indexed_at);
   const lastIndexedCount = kb.metadata?.last_indexed_count;
 
+  const publishedLightRagVersion = isLightRag
+    ? versions.find(
+        (version) => version.provider === "lightrag" && version.ready,
+      )
+    : undefined;
+  const emptyPendingEligible =
+    isLightRag &&
+    kb.statistics?.raw_documents === 0 &&
+    !publishedLightRagVersion &&
+    !kbHasLiveProgress(kb) &&
+    !task?.executing;
+
+  useEffect(() => {
+    if (!modelDialogOpen || indexingLLM || llmCatalog.options.length === 0)
+      return;
+    const active = llmCatalog.options.find(
+      (option) =>
+        (option.profile_id === llmCatalog.activeDefault?.profile_id &&
+          option.model_id === llmCatalog.activeDefault?.model_id) ||
+        option.is_active_default,
+    );
+    if (active) setIndexingLLM(selectionFromLLMOption(active));
+  }, [
+    indexingLLM,
+    llmCatalog.activeDefault,
+    llmCatalog.options,
+    modelDialogOpen,
+  ]);
+
+  const openModelDialog = () => {
+    const saved = kb.metadata?.indexing_policy?.selection;
+    const savedOption = llmCatalog.options.find(
+      (option) =>
+        option.profile_id === saved?.profile_id &&
+        option.model_id === saved?.model_id,
+    );
+    const activeOption = llmCatalog.options.find(
+      (option) =>
+        (option.profile_id === llmCatalog.activeDefault?.profile_id &&
+          option.model_id === llmCatalog.activeDefault?.model_id) ||
+        option.is_active_default,
+    );
+    setIndexingLLM(
+      savedOption
+        ? selectionFromLLMOption(savedOption, saved?.reasoning_effort || "")
+        : activeOption
+          ? selectionFromLLMOption(activeOption)
+          : null,
+    );
+    setDialogError(null);
+    setModelDialogOpen(true);
+  };
+
   const handleReindex = async () => {
+    if (isLightRag) {
+      openModelDialog();
+      return;
+    }
     setSubmitting(true);
     try {
       await onReindex();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleModelSubmit = async () => {
+    if (!indexingLLM) return;
+    setSubmitting(true);
+    setDialogError(null);
+    try {
+      if (emptyPendingEligible) {
+        await onUpdatePendingIndexingPolicy(indexingLLM);
+      } else {
+        await onReindex(indexingLLM);
+      }
+      setModelDialogOpen(false);
+    } catch (error) {
+      setDialogError(error instanceof Error ? error.message : String(error));
     } finally {
       setSubmitting(false);
     }
@@ -80,13 +175,15 @@ export default function KbIndexVersionsSection({
               {t(
                 pageIndexProvider
                   ? "PageIndex versions are model-insensitive and preserve rebuild history."
-                  : "Each embedding configuration gets its own stored vector index.",
+                  : isLightRag
+                    ? "Each full rebuild publishes a separate LightRAG index version."
+                    : "Each embedding configuration gets its own stored vector index.",
               )}
             </p>
           </div>
         </div>
 
-        {showReindexCta && (
+        {(showReindexCta || emptyPendingEligible) && (
           <button
             type="button"
             onClick={handleReindex}
@@ -97,9 +194,11 @@ export default function KbIndexVersionsSection({
                     "Retry indexing from the documents already stored in this knowledge base.",
                   )
                 : t(
-                    pageIndexProvider
-                      ? "Rebuild this PageIndex knowledge base. Existing index versions are preserved."
-                      : "Click Re-index to rebuild this knowledge base with the active embedding model. Existing index versions are preserved.",
+                    isLightRag
+                      ? "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds."
+                      : pageIndexProvider
+                        ? "Rebuild this PageIndex knowledge base. Existing index versions are preserved."
+                        : "Click Re-index to rebuild this knowledge base with the active embedding model. Existing index versions are preserved.",
                   )
             }
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50 ${
@@ -113,20 +212,29 @@ export default function KbIndexVersionsSection({
             ) : (
               <RefreshCw className="h-3 w-3" />
             )}
-            {isReindexingHere
-              ? isError
-                ? t("Retrying…")
-                : t("Re-indexing…")
-              : isError
-                ? t("Retry indexing")
-                : t("Re-index")}
+            {emptyPendingEligible
+              ? t("Change model")
+              : isReindexingHere
+                ? isError
+                  ? t("Retrying…")
+                  : t("Re-indexing…")
+                : isError
+                  ? t("Retry indexing")
+                  : t("Re-index")}
           </button>
         )}
       </div>
 
       {isError && <KbIndexFailureBanner kb={kb} />}
 
-      {!pageIndexProvider && !isError && (needsReindex || mismatch) && (
+      {isLightRag && (
+        <LightRagIndexingProvenance
+          policy={kb.metadata?.indexing_policy}
+          version={publishedLightRagVersion}
+        />
+      )}
+
+      {!modelInsensitiveProvider && !isError && (needsReindex || mismatch) && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
           {t(
             "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
@@ -149,7 +257,9 @@ export default function KbIndexVersionsSection({
               lastIndexedCount === 1
                 ? "{{count}} indexed doc"
                 : "{{count}} indexed docs",
-              { count: lastIndexedCount },
+              {
+                count: lastIndexedCount,
+              },
             )}
           </span>
         )}
@@ -165,6 +275,13 @@ export default function KbIndexVersionsSection({
               }
               version={version}
               activeSignature={activeSig}
+              isPublishedLightRag={version === publishedLightRagVersion}
+              isLightRagVersion={isLightRag}
+              isLegacyLightRag={
+                isLightRag &&
+                kb.metadata?.indexing_policy?.policy === "legacy_unpinned" &&
+                version.ready === true
+              }
             />
           ))}
         </ul>
@@ -210,6 +327,65 @@ export default function KbIndexVersionsSection({
             )}
           </div>
         )}
+
+      <Modal
+        isOpen={modelDialogOpen}
+        onClose={() => !submitting && setModelDialogOpen(false)}
+        title={
+          emptyPendingEligible
+            ? t("Change pending indexing model")
+            : t("Re-index with a pinned model")
+        }
+        width="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setModelDialogOpen(false)}
+              disabled={submitting}
+              className="rounded-md border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--foreground)] disabled:opacity-50"
+            >
+              {t("Cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleModelSubmit()}
+              disabled={submitting || !indexingLLM}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-50"
+            >
+              {submitting && <Loader2 className="h-3 w-3 animate-spin" />}
+              {emptyPendingEligible
+                ? t("Save model")
+                : t("Start full re-index")}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3 p-4">
+          <p className="text-[12px] text-[var(--muted-foreground)]">
+            {emptyPendingEligible
+              ? t(
+                  "This selection will take effect when the empty knowledge base is indexed for the first time.",
+                )
+              : t(
+                  "A full re-index publishes a new version and then makes this model the pinned identity for future incremental uploads.",
+                )}
+          </p>
+          <IndexingModelSelector
+            options={llmCatalog.options}
+            selection={indexingLLM}
+            loading={llmCatalog.loading}
+            error={llmCatalog.error}
+            disabled={submitting}
+            onChange={setIndexingLLM}
+          />
+          {dialogError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              {dialogError}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -217,22 +393,33 @@ export default function KbIndexVersionsSection({
 function IndexVersionRow({
   version,
   activeSignature,
+  isPublishedLightRag,
+  isLightRagVersion,
+  isLegacyLightRag,
 }: {
   version: IndexVersion;
   activeSignature: string | null;
+  isPublishedLightRag: boolean;
+  isLightRagVersion: boolean;
+  isLegacyLightRag: boolean;
 }) {
   const { t } = useTranslation();
   const matchesActive =
     !!version.signature && version.signature === activeSignature;
-  const isActive = matchesActive && version.ready === true;
+  const isActive =
+    isPublishedLightRag || (matchesActive && version.ready === true);
   const isPhantom = matchesActive && version.ready !== true;
-  const isLegacy = !!version.legacy;
+  const isLegacy = !!version.legacy || isLegacyLightRag;
+  const isFailedLightRagCandidate =
+    isLightRagVersion && version.ready !== true && !isLegacy;
 
-  const title = isLegacy
-    ? t("Legacy index")
-    : version.model
-      ? version.model
-      : (version.signature ?? t("Unknown"));
+  const title = isFailedLightRagCandidate
+    ? t("Failed rebuild candidate")
+    : isLegacy
+      ? t("Legacy index")
+      : version.model
+        ? version.model
+        : (version.signature ?? t("Unknown"));
 
   const created = formatKnowledgeTimestamp(version.created_at);
 
@@ -293,6 +480,11 @@ function IndexVersionRow({
               {t("Legacy")}
             </span>
           )}
+          {isFailedLightRagCandidate && (
+            <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">
+              {t("Not published")}
+            </span>
+          )}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-[var(--muted-foreground)]">
           {typeof version.dimension === "number" && (
@@ -305,6 +497,11 @@ function IndexVersionRow({
           {created && <span>{created}</span>}
           {version.signature && (
             <span className="font-mono">{version.signature.slice(0, 10)}</span>
+          )}
+          {version.failure_summary && (
+            <span className="text-red-600 dark:text-red-300">
+              {version.failure_summary}
+            </span>
           )}
         </div>
       </div>

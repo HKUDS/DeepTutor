@@ -4,6 +4,12 @@ import type { ImaKnowledgeBaseOption } from "@/lib/ima-connection";
 
 const KNOWLEDGE_CACHE_PREFIX = "knowledge:";
 
+export interface IndexingLLMSelection {
+  profile_id: string;
+  model_id: string;
+  reasoning_effort?: string;
+}
+
 export interface KnowledgeBaseSummary {
   id?: string;
   name: string;
@@ -683,6 +689,7 @@ export async function createKnowledgeBase(payload: {
   files: File[];
   pageindexMode?: "flash" | "standard";
   searchMode?: string;
+  indexingLLM?: IndexingLLMSelection;
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   form.append("name", payload.name);
@@ -691,6 +698,9 @@ export async function createKnowledgeBase(payload: {
     form.append("pageindex_mode", payload.pageindexMode);
   }
   if (payload.searchMode) form.append("search_mode", payload.searchMode);
+  if (payload.indexingLLM) {
+    form.append("indexing_llm", JSON.stringify(payload.indexingLLM));
+  }
   appendFilesWithPaths(form, payload.files);
 
   const res = await apiFetch(apiUrl("/api/knowledge-bases"), {
@@ -1173,11 +1183,17 @@ export async function setDefaultKnowledgeBase(name: string): Promise<void> {
 
 export async function reindexKnowledgeBase(
   name: string,
+  indexingLLM?: IndexingLLMSelection,
 ): Promise<KnowledgeTaskResponse> {
+  const form = new FormData();
+  if (indexingLLM) {
+    form.append("indexing_llm", JSON.stringify(indexingLLM));
+  }
   const res = await apiFetch(
     apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/reindex`),
     {
       method: "POST",
+      body: form,
     },
   );
   if (!res.ok) {
@@ -1191,6 +1207,30 @@ export async function reindexKnowledgeBase(
   }
   invalidateKnowledgeCaches();
   return (await res.json()) as KnowledgeTaskResponse;
+}
+
+export async function updatePendingIndexingPolicy(
+  name: string,
+  indexingLLM: IndexingLLMSelection,
+): Promise<{ indexing_policy: Record<string, unknown> }> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/indexing-policy`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(indexingLLM),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(
+        res,
+        `Failed to update indexing model (${res.status})`,
+      ),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as { indexing_policy: Record<string, unknown> };
 }
 
 export async function retryKnowledgeBase(

@@ -91,13 +91,36 @@ export interface KnowledgeIndexFailure {
 }
 
 export interface IndexVersion {
+  version?: string;
   signature?: string;
+  provider?: string;
+  state?: string;
   model?: string;
   dimension?: number;
   binding?: string;
   created_at?: string;
   ready?: boolean;
   legacy?: boolean;
+  failure_summary?: string;
+  indexing_policy?: LightRagIndexingPolicy;
+}
+
+export interface LightRagIndexingPolicy {
+  policy: "pending_pinned" | "pinned" | "legacy_unpinned" | string;
+  selection?: {
+    profile_id: string;
+    model_id: string;
+    reasoning_effort?: string;
+  };
+  descriptor?: {
+    model?: string;
+    binding?: string;
+    provider_mode?: string;
+    reasoning_effort?: string | null;
+  };
+  fingerprint?: string | null;
+  vision_available?: boolean;
+  vlm_used?: boolean;
 }
 
 export interface KnowledgeBase {
@@ -127,6 +150,7 @@ export interface KnowledgeBase {
     agent_kind?: string;
     /** Bound partner id when agent_kind === "partner". */
     partner_id?: string;
+    indexing_policy?: LightRagIndexingPolicy;
   };
   progress?: ProgressInfo;
   statistics?: {
@@ -150,10 +174,7 @@ export interface KnowledgeBase {
 }
 
 export type ProviderConnectionStatus =
-  | "ready"
-  | "needs_key"
-  | "needs_setup"
-  | "unavailable";
+  "ready" | "needs_key" | "needs_setup" | "unavailable";
 
 export const providerUsesEmbeddingMetadata = (provider?: string): boolean =>
   provider !== "pageindex" && provider !== "pageindex-oss";
@@ -375,6 +396,7 @@ export const kbCanReindex = (kb: KnowledgeBase): boolean => {
       : true;
   if (!hasSourceFiles) return false;
   if (status === "error") return true;
+  if (kbProvider(kb) === "lightrag") return !kbHasLiveProgress(kb);
   return (
     Boolean(kb.statistics?.needs_reindex) ||
     kb.statistics?.active_match === false

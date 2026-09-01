@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Modal from "@/components/common/Modal";
 import { useImaConnection } from "@/hooks/useImaConnection";
+import { useLLMOptions } from "@/hooks/useLLMOptions";
 import {
   getGraphRagConfig,
   getLightRagConfig,
@@ -29,6 +30,7 @@ import {
   probeLinkedFolder,
   probeWeKnora,
   type KnowledgeUploadPolicy,
+  type IndexingLLMSelection,
   type LinkedFolderProbe,
   type RagProviderSummary,
   type WeKnoraProbe,
@@ -45,6 +47,9 @@ import {
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
+import IndexingModelSelector, {
+  selectionFromLLMOption,
+} from "./IndexingModelSelector";
 
 const OBSIDIAN_SOURCE = "obsidian";
 const MARGINNOTE4_SOURCE = "marginnote4";
@@ -67,6 +72,7 @@ interface CreateKbModalProps {
     files: File[];
     pageindexMode?: "flash" | "standard";
     searchMode?: string;
+    indexingLLM?: IndexingLLMSelection;
   }) => Promise<void>;
   /** Link a pre-built engine index folder in place (no copy, no re-index). */
   onConnectLinkedFolder: (params: {
@@ -158,6 +164,9 @@ export default function CreateKbModal({
   const [weKnoraProbe, setWeKnoraProbe] = useState<WeKnoraProbe | null>(null);
   const [weKnoraProbing, setWeKnoraProbing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
   const linkIsMarginNote = linkSource === MARGINNOTE4_SOURCE;
@@ -168,6 +177,7 @@ export default function CreateKbModal({
     onError: setError,
     active: linkIsIma,
   });
+  const llmCatalog = useLLMOptions();
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
 
@@ -218,7 +228,28 @@ export default function CreateKbModal({
     setWeKnoraKnowledgeBaseId("");
     setWeKnoraProbe(null);
     setWeKnoraProbing(false);
+    setIndexingLLM(null);
   }, [isOpen, providers, firstLinkable, initialMode, initialSource]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== "new" || provider !== "lightrag" || indexingLLM) {
+      return;
+    }
+    const active = llmCatalog.options.find(
+      (option) =>
+        (option.profile_id === llmCatalog.activeDefault?.profile_id &&
+          option.model_id === llmCatalog.activeDefault?.model_id) ||
+        option.is_active_default,
+    );
+    if (active) setIndexingLLM(selectionFromLLMOption(active));
+  }, [
+    indexingLLM,
+    isOpen,
+    llmCatalog.activeDefault,
+    llmCatalog.options,
+    mode,
+    provider,
+  ]);
 
   useEffect(() => {
     if (!isOpen || mode !== "new") return;
@@ -331,6 +362,7 @@ export default function CreateKbModal({
           !!weKnoraProbe?.ok
         );
       }
+      if (provider === "lightrag" && !indexingLLM) return false;
       return !providerUnavailable;
     }
     if (linkIsIma) return imaConnection.canSubmit;
@@ -432,6 +464,8 @@ export default function CreateKbModal({
             pageindexMode:
               isPageIndexOSS && pageIndexMode ? pageIndexMode : undefined,
             searchMode: retrievalMode || undefined,
+            indexingLLM:
+              provider === "lightrag" ? indexingLLM || undefined : undefined,
           });
         }
       } else if (linkIsIma) {
@@ -552,6 +586,18 @@ export default function CreateKbModal({
             files={files}
             setFiles={setFiles}
             policyForProvider={policyForProvider}
+            indexingModelField={
+              provider === "lightrag" ? (
+                <IndexingModelSelector
+                  options={llmCatalog.options}
+                  selection={indexingLLM}
+                  loading={llmCatalog.loading}
+                  error={llmCatalog.error}
+                  disabled={submitting}
+                  onChange={setIndexingLLM}
+                />
+              ) : null
+            }
             connectionForm={
               isLightRagServer ? (
                 <LightRagServerFields
@@ -712,6 +758,7 @@ function NewModeFields({
   files,
   setFiles,
   policyForProvider,
+  indexingModelField,
   connectionForm,
   t,
 }: {
@@ -734,6 +781,7 @@ function NewModeFields({
   files: File[];
   setFiles: (files: File[]) => void;
   policyForProvider: KnowledgeUploadPolicy;
+  indexingModelField?: ReactNode;
   /** When set, replaces the upload step (e.g. a server connection form). */
   connectionForm?: ReactNode;
   t: TFn;
@@ -865,6 +913,12 @@ function NewModeFields({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {indexingModelField && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
+          {indexingModelField}
         </div>
       )}
 
