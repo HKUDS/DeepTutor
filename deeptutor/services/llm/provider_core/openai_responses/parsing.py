@@ -75,19 +75,11 @@ def _reasoning_text_from_item(item: dict[str, Any]) -> tuple[str, str]:
     summary_parts: list[str] = []
     for block in item.get("content") or []:
         block = _dump_model(block)
-        if (
-            isinstance(block, dict)
-            and block.get("type") == "reasoning_text"
-            and block.get("text")
-        ):
+        if isinstance(block, dict) and block.get("type") == "reasoning_text" and block.get("text"):
             reasoning_parts.append(str(block["text"]))
     for block in item.get("summary") or []:
         block = _dump_model(block)
-        if (
-            isinstance(block, dict)
-            and block.get("type") == "summary_text"
-            and block.get("text")
-        ):
+        if isinstance(block, dict) and block.get("type") == "summary_text" and block.get("text"):
             summary_parts.append(str(block["text"]))
     return "".join(reasoning_parts), "".join(summary_parts)
 

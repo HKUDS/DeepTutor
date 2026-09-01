@@ -571,9 +571,7 @@ async def test_finish_round_persists_native_items_without_reasoning(
 
     await _run(pipeline, context)
 
-    assert context.metadata["_provider_response_state"] == {
-        "responses_output_items": native_items
-    }
+    assert context.metadata["_provider_response_state"] == {"responses_output_items": native_items}
 
 
 @pytest.mark.asyncio
@@ -609,9 +607,7 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
                             "arguments": json.dumps({"query": "Fourier transform"}),
                         }
                     ],
-                    provider_specific_fields={
-                        "native_output_items": first_round_native_items
-                    },
+                    provider_specific_fields={"native_output_items": first_round_native_items},
                 ),
             ],
             # Round 2: the model sees the tool result in-protocol and finishes

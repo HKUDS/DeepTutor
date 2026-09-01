@@ -272,9 +272,7 @@ async def test_summary_reasoning_remains_supported(consumer: str) -> None:
         _, _, _, _, reasoning = await consume_sdk_stream(
             _sdk_events(
                 [
-                    SimpleNamespace(
-                        type="response.reasoning_summary_text.delta", delta="summary "
-                    ),
+                    SimpleNamespace(type="response.reasoning_summary_text.delta", delta="summary "),
                     SimpleNamespace(
                         type="response.reasoning_summary_text.delta", delta="reasoning"
                     ),
