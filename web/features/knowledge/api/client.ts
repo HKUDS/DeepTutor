@@ -94,9 +94,6 @@ export interface LightRagConfig {
   llm_model_max_async: number;
   /** Extra extraction passes per chunk, to recover missed entities. */
   entity_extract_max_gleaning: number;
-  /** Stable catalog reference, or empty strings for the global active chat model. */
-  llm_profile_id: string;
-  llm_model_id: string;
 }
 
 export interface LightRagServerConfig {

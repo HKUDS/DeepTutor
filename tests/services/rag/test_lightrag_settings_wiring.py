@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import types
 
 import pytest
 
@@ -26,7 +27,6 @@ def _stub_build(monkeypatch) -> None:
     monkeypatch.setattr(engine, "_controlled_class", lambda: _NativeLightRag)
     monkeypatch.setattr(engine, "build_llm_model_func", lambda **_kwargs: "llm")
     monkeypatch.setattr(engine, "build_embedding_func", lambda **_kwargs: "embedding")
-    monkeypatch.setattr(engine, "lightrag_llm_selection_from_settings", lambda: None)
 
 
 def test_native_constructor_receives_every_supported_knob(monkeypatch, tmp_path: Path) -> None:
@@ -54,12 +54,8 @@ def test_native_constructor_receives_every_supported_knob(monkeypatch, tmp_path:
     assert "role_llm_configs" not in rag.kwargs
 
 
-def test_dedicated_selection_reaches_llm_but_not_embedding_adapter(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_global_dedicated_selection_is_not_part_of_constructor(monkeypatch, tmp_path: Path) -> None:
     _stub_build(monkeypatch)
-    selection = {"profile_id": "profile-1", "model_id": "model-1"}
-    monkeypatch.setattr(engine, "lightrag_llm_selection_from_settings", lambda: selection)
     llm_calls: list[dict[str, object]] = []
     embedding_calls: list[dict[str, object]] = []
 
@@ -78,7 +74,7 @@ def test_dedicated_selection_reaches_llm_but_not_embedding_adapter(
 
     engine.build_rag(tmp_path)
 
-    assert llm_calls == [{"llm_selection": selection}]
+    assert llm_calls == [{}]
     assert embedding_calls == [{}]
 
 
@@ -93,3 +89,44 @@ def test_vlm_role_is_only_configured_when_enabled(monkeypatch, tmp_path: Path) -
     role = rag.kwargs["role_llm_configs"]["vlm"]
     assert role.func == "vision"
     assert rag.kwargs["vlm_process_enable"] is True
+
+
+def test_snapshot_routes_only_extract_and_vlm_while_query_base_stays_global(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _stub_build(monkeypatch)
+    monkeypatch.setattr(engine, "indexing_kwargs_from_settings", dict)
+    monkeypatch.setattr(engine, "constructor_kwargs_from_settings", dict)
+    llm_calls: list[dict[str, object]] = []
+    vision_calls: list[dict[str, object]] = []
+
+    def build_llm(**kwargs):
+        llm_calls.append(kwargs)
+        return f"llm-{len(llm_calls)}"
+
+    def build_vision(**kwargs):
+        vision_calls.append(kwargs)
+        return "vision"
+
+    monkeypatch.setattr(engine, "build_llm_model_func", build_llm)
+    monkeypatch.setattr(engine, "build_vision_model_func", build_vision)
+    snapshot = types.SimpleNamespace(
+        config=types.SimpleNamespace(binding="openai"),
+        owner=object(),
+        descriptor={"endpoint": "https://example.test/v1"},
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.indexing_policy.cache_identity",
+        lambda _snapshot: "snapshot-fingerprint",
+    )
+
+    rag = engine.build_rag(tmp_path, enable_vlm=True, indexing_snapshot=snapshot)
+
+    assert llm_calls[0] == {}
+    assert llm_calls[1] == {"llm_config": snapshot.config, "owner": snapshot.owner}
+    assert vision_calls == [{"llm_config": snapshot.config, "owner": snapshot.owner}]
+    assert rag.kwargs["llm_model_func"] == "llm-1"
+    assert rag.kwargs["role_llm_configs"]["extract"].func == "llm-2"
+    assert rag.kwargs["role_llm_configs"]["vlm"].func == "vision"
+    assert "keyword" not in rag.kwargs["role_llm_configs"]
+    assert "query" not in rag.kwargs["role_llm_configs"]

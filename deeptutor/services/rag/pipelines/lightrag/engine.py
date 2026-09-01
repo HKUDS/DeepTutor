@@ -17,7 +17,6 @@ from .config import (
     build_vision_model_func,
     constructor_kwargs_from_settings,
     indexing_kwargs_from_settings,
-    lightrag_llm_selection_from_settings,
     normalize_mode,
     query_kwargs_from_settings,
 )
@@ -188,13 +187,14 @@ def build_rag(
     *,
     io_bridge: OwnerLoopBridge | None = None,
     enable_vlm: bool = False,
+    indexing_snapshot: Any | None = None,
 ) -> Any:
     """Construct one exact-version, version-isolated LightRAG instance."""
     _require_exact_version()
     _register_parser()
     from lightrag.llm_roles import RoleLLMConfig
 
-    llm_adapter_kwargs: dict[str, Any] = {"llm_selection": lightrag_llm_selection_from_settings()}
+    llm_adapter_kwargs: dict[str, Any] = {}
     embedding_adapter_kwargs: dict[str, Any] = {}
     if io_bridge is not None:
         llm_adapter_kwargs["io_bridge"] = io_bridge
@@ -209,10 +209,44 @@ def build_rag(
         **indexing_kwargs_from_settings(),
         **constructor_kwargs_from_settings(),
     }
-    if enable_vlm:
-        constructor["role_llm_configs"] = {
-            "vlm": RoleLLMConfig(func=build_vision_model_func(**llm_adapter_kwargs))
+    role_configs: dict[str, Any] = {}
+    if indexing_snapshot is not None:
+        from .indexing_policy import cache_identity
+
+        snapshot_kwargs = {
+            **llm_adapter_kwargs,
+            "llm_config": indexing_snapshot.config,
+            "owner": indexing_snapshot.owner,
         }
+        metadata = {
+            "binding": indexing_snapshot.config.binding,
+            "model": cache_identity(indexing_snapshot),
+            "host": indexing_snapshot.descriptor.get("endpoint"),
+        }
+        role_configs["extract"] = RoleLLMConfig(
+            func=build_llm_model_func(**snapshot_kwargs), metadata=metadata
+        )
+    if enable_vlm:
+        vision_kwargs = llm_adapter_kwargs
+        metadata = None
+        if indexing_snapshot is not None:
+            from .indexing_policy import cache_identity
+
+            vision_kwargs = {
+                **llm_adapter_kwargs,
+                "llm_config": indexing_snapshot.config,
+                "owner": indexing_snapshot.owner,
+            }
+            metadata = {
+                "binding": indexing_snapshot.config.binding,
+                "model": cache_identity(indexing_snapshot),
+                "host": indexing_snapshot.descriptor.get("endpoint"),
+            }
+        role_configs["vlm"] = RoleLLMConfig(
+            func=build_vision_model_func(**vision_kwargs), metadata=metadata
+        )
+    if role_configs:
+        constructor["role_llm_configs"] = role_configs
     return _controlled_class()(**constructor)
 
 

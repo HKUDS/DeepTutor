@@ -339,8 +339,6 @@ DEFAULT_GRAPHRAG_SETTINGS: dict[str, Any] = {
 # GraphRAG's. These ride into ``QueryParam`` and the pinned SDK constructor.
 # ``max_concurrent_files`` sizes the native parser worker pool after DeepTutor
 # has frozen each ParseService result; pre-parsing itself remains serial.
-# Stable catalog references let LightRAG use a dedicated LLM while the global
-# active chat model remains unchanged for ordinary chat.
 DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
     "version": 1,
     "top_k": 60,
@@ -348,8 +346,6 @@ DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
     "max_concurrent_files": 1,
     "llm_model_max_async": 4,
     "entity_extract_max_gleaning": 1,
-    "llm_profile_id": "",
-    "llm_model_id": "",
 }
 
 # LightRAG Server connection defaults. Individual knowledge bases remain free
@@ -968,8 +964,6 @@ class RuntimeSettingsService:
             "entity_extract_max_gleaning": _coerce_clamped_int(
                 settings.get("entity_extract_max_gleaning"), 1, 0, 5
             ),
-            "llm_profile_id": _string(settings.get("llm_profile_id"))[:128],
-            "llm_model_id": _string(settings.get("llm_model_id"))[:128],
         }
 
     def _normalize_lightrag_server(self, settings: dict[str, Any]) -> dict[str, Any]:
