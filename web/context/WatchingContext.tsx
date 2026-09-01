@@ -45,7 +45,32 @@ interface WatchingContextValue {
   setActive(active: boolean): void;
 }
 
-const WatchingContext = createContext<WatchingContextValue | null>(null);
+function noop(): void {}
+async function asyncNoop(): Promise<void> {}
+
+/**
+ * Inactive defaults, matching ReadingContext: AssistantResponse (and any
+ * other shared bubble) may call useWatching outside a WatchingProvider —
+ * e.g. utility routes that host chat without mounting the player. Throwing
+ * there blanked the whole mastery study page (#1161). The real provider
+ * still owns player state when present.
+ */
+const INACTIVE_WATCHING: WatchingContextValue = {
+  material: null,
+  active: false,
+  loading: false,
+  error: null,
+  lastUrl: "",
+  openUrl: asyncNoop,
+  refresh: asyncNoop,
+  refreshTranscript: asyncNoop,
+  close: noop,
+  reportTime: noop,
+  clearError: noop,
+  setActive: noop,
+};
+
+const WatchingContext = createContext<WatchingContextValue>(INACTIVE_WATCHING);
 
 export function WatchingProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -192,8 +217,5 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
 }
 
 export function useWatching(): WatchingContextValue {
-  const context = useContext(WatchingContext);
-  if (!context)
-    throw new Error("useWatching must be used inside WatchingProvider");
-  return context;
+  return useContext(WatchingContext);
 }
