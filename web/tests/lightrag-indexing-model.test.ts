@@ -144,7 +144,6 @@ test("healthy LightRAG knowledge bases retain a full re-index entry", () => {
 test("LightRAG candidates distinguish active builds from failures", () => {
   const currentCandidate = {
     signature: "version-3",
-    provider: "lightrag",
     ready: false,
   };
   const olderFailure = {

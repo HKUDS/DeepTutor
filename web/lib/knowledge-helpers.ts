@@ -135,9 +135,7 @@ export function currentLightRagBuildCandidate(
   rebuildActive: boolean,
 ): IndexVersion | undefined {
   if (!rebuildActive) return undefined;
-  return versions.find(
-    (version) => version.provider === "lightrag" && version.ready !== true,
-  );
+  return versions.find((version) => version.ready !== true);
 }
 
 export function lightRagVersionDisplayState(
