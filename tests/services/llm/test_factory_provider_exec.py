@@ -26,6 +26,10 @@ class _FakeProvider:
         self.stream_response = stream_response or LLMResponse(content=stream_chunk)
         self.stream_chunk = stream_chunk
         self.reasoning_chunk = reasoning_chunk
+        self.closed = 0
+
+    async def aclose(self) -> None:
+        self.closed += 1
 
     async def chat_with_retry(self, **kwargs: Any) -> LLMResponse:
         self.complete_kwargs = kwargs
@@ -164,7 +168,7 @@ async def test_complete_with_config_never_resolves_or_merges_global_config(monke
     def _unexpected_resolver(**_kwargs: Any):
         raise AssertionError("explicit config path must not resolve global config")
 
-    def _fake_get_runtime_provider(config: LLMConfig):
+    def _fake_build_isolated_provider(config: LLMConfig):
         captured_config["config"] = config
         return provider
 
@@ -172,13 +176,15 @@ async def test_complete_with_config_never_resolves_or_merges_global_config(monke
     monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", _unexpected_resolver)
     monkeypatch.setattr("deeptutor.services.llm.factory._resolve_provider_spec", lambda **_: None)
     monkeypatch.setattr(
-        "deeptutor.services.llm.factory.get_runtime_provider", _fake_get_runtime_provider
+        "deeptutor.services.llm.factory.build_isolated_provider",
+        _fake_build_isolated_provider,
     )
 
     assert await complete_with_config(snapshot, "hello") == "ok"
     assert captured_config["config"] is snapshot
     assert captured_config["config"].extra_headers == {}
     assert provider.complete_kwargs["reasoning_effort"] is None
+    assert provider.closed == 1
 
 
 @pytest.mark.asyncio

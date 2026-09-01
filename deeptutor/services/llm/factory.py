@@ -23,7 +23,8 @@ from .capabilities import supports_response_format, supports_vision
 from .config import LLMConfig, get_llm_config
 from .error_mapping import map_error
 from .multimodal import prepare_multimodal_messages
-from .provider_factory import get_runtime_provider
+from .provider_core.base import LLMProvider
+from .provider_factory import build_isolated_provider, get_runtime_provider
 from .utils import is_local_llm_server
 
 DEFAULT_MAX_RETRIES = settings.retry.max_retries
@@ -357,9 +358,10 @@ async def _complete_with_resolved_config(
     image_mime_type: str,
     image_filename: str,
     kwargs: dict[str, Any],
+    provider: LLMProvider | None = None,
 ) -> str:
     """Execute one completion from an already resolved configuration."""
-    provider = get_runtime_provider(config)
+    provider = provider or get_runtime_provider(config)
     capability_binding = _capability_binding(config, provider_spec)
     request_messages = _build_messages(prompt, system_prompt, messages)
     request_messages = _apply_inline_image_data(
@@ -485,21 +487,26 @@ async def complete_with_config(
         base_url=config.effective_url or config.base_url,
         fallback=config.provider_name or config.binding,
     )
-    return await _complete_with_resolved_config(
-        config,
-        provider_spec,
-        prompt=prompt,
-        system_prompt=system_prompt,
-        messages=messages,
-        max_retries=max_retries,
-        retry_delay=retry_delay,
-        exponential_backoff=exponential_backoff,
-        allow_image_fallback=allow_image_fallback,
-        image_data=image_data,
-        image_mime_type=str(image_mime_type or "image/png"),
-        image_filename=str(image_filename or "image.png"),
-        kwargs=kwargs,
-    )
+    provider = build_isolated_provider(config)
+    try:
+        return await _complete_with_resolved_config(
+            config,
+            provider_spec,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            messages=messages,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+            exponential_backoff=exponential_backoff,
+            allow_image_fallback=allow_image_fallback,
+            image_data=image_data,
+            image_mime_type=str(image_mime_type or "image/png"),
+            image_filename=str(image_filename or "image.png"),
+            kwargs=kwargs,
+            provider=provider,
+        )
+    finally:
+        await provider.aclose()
 
 
 async def stream(

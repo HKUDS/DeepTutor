@@ -3101,6 +3101,7 @@ async def run_reindex_task(
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
     task_stream_manager.ensure_task(task_id)
+    index_published = False
 
     with capture_task_logs(task_id):
         try:

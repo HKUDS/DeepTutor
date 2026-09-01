@@ -19,7 +19,7 @@ from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
 from . import block_policy, engine, ingress, storage
 from . import config as lr_config
-from .indexing_policy import IndexingLLMSnapshot, resolve_write_snapshot
+from .indexing_policy import IndexingLLMSnapshot, IndexingPolicyError, resolve_write_snapshot
 from .worker import OwnerLoopBridge, run_in_worker_loop
 
 logger = logging.getLogger(__name__)
@@ -396,17 +396,24 @@ class LightRagPipeline:
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self._ensure_available()
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        existing = storage.latest_published_root(kb_dir)
+        versions = list_kb_versions(kb_dir)
+        explicit = kwargs.get("indexing_snapshot")
+        if explicit is not None and (existing is not None or versions):
+            raise IndexingPolicyError(
+                "An explicit LightRAG indexing model cannot override an existing index; "
+                "run a full re-index."
+            )
         snapshot = resolve_write_snapshot(
             kb_dir,
             base_dir=self.kb_base_dir,
             kb_name=kb_name,
-            explicit=kwargs.get("indexing_snapshot"),
+            explicit=explicit,
         )
-        existing = storage.latest_published_root(kb_dir)
         if existing is not None:
             root_dir = existing
             is_update = True
-        elif list_kb_versions(kb_dir):
+        elif versions:
             raise LightRagNeedsReindexError(
                 "This LightRAG index is legacy, unpublished, or corrupt and must be rebuilt "
                 "before appending."
@@ -422,8 +429,19 @@ class LightRagPipeline:
                 raise RuntimeError(f"LightRAG did not produce a ready index for {kb_name!r}")
             policy = dict(outcome.indexing_policy)
             policy["vlm_used"] = outcome.vlm_used
-            storage.write_meta(root_dir, indexing_policy=policy)
-            self._clear_pending_policy(kb_name)
+            if not is_update:
+                storage.write_meta(root_dir, indexing_policy=policy)
+                self._clear_pending_policy(kb_name)
+            else:
+                try:
+                    storage.write_meta(root_dir, indexing_policy=policy)
+                    self._clear_pending_policy(kb_name)
+                except Exception:
+                    self.logger.warning(
+                        "LightRAG append completed but metadata refresh failed; preserving the "
+                        "existing published policy",
+                        exc_info=True,
+                    )
             return outcome.complete
         except LightRagBatchError as exc:
             if not is_update and exc.outcome.accepted == 0:

@@ -1636,6 +1636,52 @@ def test_reindex_task_persists_completed_progress(monkeypatch, tmp_path: Path) -
     assert "embedding_mismatch" not in entry
 
 
+def test_reindex_task_preserves_prepublication_failure(monkeypatch, tmp_path: Path) -> None:
+    base_dir = tmp_path / "knowledge_bases"
+    raw_dir = base_dir / "kb" / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "fixture.txt").write_text("fixture", encoding="utf-8")
+    (base_dir / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "lightrag",
+                        "status": "processing",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _FailingRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def initialize(self, *_args, **_kwargs) -> bool:
+            raise RuntimeError("original indexing failure")
+
+    rag_service_module = importlib.import_module("deeptutor.services.rag.service")
+    monkeypatch.setattr(rag_service_module, "RAGService", _FailingRagService)
+    task_id = knowledge_router_module._build_unique_task_id("kb_reindex", "prepublish-fail")
+
+    asyncio.run(
+        knowledge_router_module.run_reindex_task(
+            kb_name="kb",
+            base_dir=str(base_dir),
+            task_id=task_id,
+            signature_hash="lightrag",
+        )
+    )
+
+    task = knowledge_router_module.TaskIDManager.get_instance().get_task_metadata(task_id)
+    assert task is not None
+    assert task["status"] == "error"
+    assert task["error"] == "original indexing failure"
+
+
 @pytest.mark.parametrize("failed_sink", ["progress_file", "central_config"])
 def test_reindex_task_does_not_report_a_published_version_as_failed_when_bookkeeping_fails(
     monkeypatch, tmp_path: Path, failed_sink: str

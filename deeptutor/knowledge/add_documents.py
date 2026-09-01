@@ -24,6 +24,7 @@ from deeptutor.services.rag.factory import (
     normalize_provider_name,
 )
 from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.services.rag.index_versioning import list_kb_versions
 from deeptutor.services.rag.provider_binding import resolve_bound_provider
 from deeptutor.services.rag.service import RAGService
 
@@ -189,7 +190,10 @@ class DocumentAdder:
                 f"Knowledge base '{kb_name}' uses legacy index format and requires reindex before incremental add"
             )
 
-        if not has_provider_index:
+        allows_lightrag_bootstrap = self.rag_provider == LIGHTRAG_PROVIDER and not list_kb_versions(
+            self.kb_dir
+        )
+        if not has_provider_index and not allows_lightrag_bootstrap:
             raise ValueError(f"Knowledge base not initialized ({self.rag_provider}): {kb_name}")
 
         self.api_key = api_key

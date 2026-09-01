@@ -641,6 +641,58 @@ def test_atomic_meta_failure_leaves_new_candidate_unpublished(tmp_path: Path, mo
     assert storage.latest_published_root(kb_dir) == old
 
 
+def test_append_metadata_refresh_failure_preserves_published_success(
+    tmp_path: Path, monkeypatch
+) -> None:
+    kb_dir = tmp_path / "kb"
+    published = kb_dir / "version-1"
+    _write_published_version(published)
+    original_meta = (published / "meta.json").read_bytes()
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+
+    async def finish_index(*_args, **_kwargs):
+        return BatchOutcome(
+            requested=1,
+            accepted=1,
+            processed=("doc.md",),
+            indexing_policy={"policy": "legacy_unpinned"},
+        )
+
+    monkeypatch.setattr(pipeline, "_run_indexing", finish_index)
+    monkeypatch.setattr(
+        storage,
+        "write_meta",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("metadata unavailable")),
+    )
+
+    assert asyncio.run(pipeline.add_documents("kb", [str(tmp_path / "doc.md")])) is True
+    assert (published / "meta.json").read_bytes() == original_meta
+
+
+def test_append_rejects_explicit_indexing_snapshot_before_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    published = tmp_path / "kb" / "version-1"
+    _write_published_version(published)
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+
+    async def unexpected(*_args, **_kwargs):
+        raise AssertionError("append must not reach indexing")
+
+    monkeypatch.setattr(pipeline, "_run_indexing", unexpected)
+
+    with pytest.raises(indexing_policy.IndexingPolicyError, match="full re-index"):
+        asyncio.run(
+            pipeline.add_documents(
+                "kb",
+                [str(tmp_path / "doc.md")],
+                indexing_snapshot=_indexing_snapshot(),
+            )
+        )
+
+
 def test_pending_policy_drift_fails_before_creating_a_version(tmp_path: Path, monkeypatch) -> None:
     kb_dir = tmp_path / "kb"
     kb_dir.mkdir()
@@ -1120,7 +1172,6 @@ def test_append_rejects_corrupt_or_unpublished_existing_version(
             pipeline.add_documents(
                 "kb",
                 [str(tmp_path / "new.md")],
-                indexing_snapshot=_indexing_snapshot(),
             )
         )
 

@@ -24,7 +24,12 @@ _EXPIRY_SKEW_SECONDS = 60
 class GitHubCopilotProvider(OpenAICompatProvider):
     """Provider that first tries existing Copilot auth, then oauth-cli-kit tokens."""
 
-    def __init__(self, default_model: str = "github-copilot/gpt-4.1"):
+    def __init__(
+        self,
+        default_model: str = "github-copilot/gpt-4.1",
+        *,
+        configure_env: bool = True,
+    ):
         self._copilot_access_token: str | None = None
         self._copilot_expires_at: float = 0.0
         super().__init__(
@@ -38,6 +43,7 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             },
             spec=find_by_name("github_copilot"),
             provider_name="github_copilot",
+            configure_env=configure_env,
         )
 
     async def _try_existing_local_auth(self) -> None:

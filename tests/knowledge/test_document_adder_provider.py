@@ -78,6 +78,19 @@ def test_document_adder_preserves_explicit_bound_provider(tmp_path: Path) -> Non
     assert adder.rag_provider == "graphrag"
 
 
+def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(tmp_path: Path) -> None:
+    (tmp_path / "empty-kb").mkdir()
+
+    adder = DocumentAdder(
+        kb_name="empty-kb",
+        base_dir=str(tmp_path),
+        rag_provider="lightrag",
+    )
+
+    assert adder.rag_provider == "lightrag"
+    assert adder.raw_dir.is_dir()
+
+
 def test_process_new_documents_returns_failures_without_marking_processed(
     monkeypatch, tmp_path: Path
 ) -> None:
