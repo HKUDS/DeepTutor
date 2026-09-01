@@ -888,10 +888,7 @@ class AgentLoop:
                     provider_fields = getattr(choice, "provider_specific_fields", None)
                     if isinstance(provider_fields, dict):
                         native_items = provider_fields.get("native_output_items")
-                        if isinstance(native_items, list) and any(
-                            isinstance(item, dict) and item.get("type") == "reasoning"
-                            for item in native_items
-                        ):
+                        if isinstance(native_items, list):
                             response_output_items = [
                                 dict(item) for item in native_items if isinstance(item, dict)
                             ]

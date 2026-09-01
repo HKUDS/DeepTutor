@@ -211,6 +211,12 @@ async def test_forced_responses_agentic_stream_maps_tool_calls(monkeypatch) -> N
     class FakeResponses:
         async def create(self, **kwargs):
             captured["request"] = kwargs
+            reasoning_item = SimpleNamespace(
+                type="reasoning",
+                id="rs_123",
+                content=[{"type": "reasoning_text", "text": "inspect protocol"}],
+                encrypted_content="opaque",
+            )
             item = SimpleNamespace(
                 type="function_call",
                 id="fc_123",
@@ -220,6 +226,10 @@ async def test_forced_responses_agentic_stream_maps_tool_calls(monkeypatch) -> N
             )
 
             async def events():
+                yield SimpleNamespace(
+                    type="response.reasoning_text.delta", delta="inspect protocol"
+                )
+                yield SimpleNamespace(type="response.output_item.done", item=reasoning_item)
                 yield SimpleNamespace(type="response.output_item.added", item=item)
                 yield SimpleNamespace(type="response.output_item.done", item=item)
                 yield SimpleNamespace(
@@ -280,8 +290,18 @@ async def test_forced_responses_agentic_stream_maps_tool_calls(monkeypatch) -> N
     assert captured["request"]["stream"] is True
     assert captured["request"]["tools"][0]["name"] == "lookup"
     assert "messages" not in captured["request"]
+    assert [
+        chunk.choices[0].delta.reasoning_content
+        for chunk in chunks
+        if chunk.choices[0].delta.reasoning_content
+    ] == ["inspect protocol"]
     assert chunks[-2].choices[0].delta.tool_calls[0].function.name == "lookup"
+    assert chunks[-2].choices[0].delta.tool_calls[0].function.arguments == '{"query": "protocol"}'
     assert chunks[-1].choices[0].finish_reason == "tool_calls"
+    assert [
+        item["type"]
+        for item in chunks[-1].choices[0].provider_specific_fields["native_output_items"]
+    ] == ["reasoning", "function_call"]
 
 
 class _EndpointError(RuntimeError):
