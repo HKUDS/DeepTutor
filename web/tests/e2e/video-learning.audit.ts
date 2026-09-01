@@ -26,6 +26,16 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     created_at: number;
     updated_at: number;
   }> = [];
+  const transcriptCues = [
+    { start: 7, end: 12, text: "The first grounded concept." },
+    ...Array.from({ length: 60 }, (_, index) => ({
+      start: 13 + index,
+      end: 14 + index,
+      text: `Intermediate lesson detail ${index + 1}.`,
+    })),
+    { start: 70, end: 75, text: "The second grounded concept." },
+    { start: 110, end: 115, text: "The third grounded concept." },
+  ];
 
   const material = (selected: "youtube" | "invidious") => ({
     version: 1,
@@ -48,10 +58,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
           reason: "",
           language: "en",
           source: selected,
-          cues: [
-            { start: 7, end: 12, text: "The first grounded concept." },
-            { start: 70, end: 75, text: "The second grounded concept." },
-          ],
+          cues: transcriptCues,
         }
       : {
           status: "unavailable",
@@ -124,6 +131,11 @@ test("YouTube learning survives reload and switches to Invidious without silent 
       playVideo() {}
       pauseVideo() {}
       destroy() {
+        const players = (
+          window as typeof window & { __fakePlayers?: FakePlayer[] }
+        ).__fakePlayers;
+        const index = players?.indexOf(this) ?? -1;
+        if (index >= 0) players?.splice(index, 1);
         this.element.remove();
       }
     }
@@ -272,6 +284,52 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     page.getByText("The first grounded concept.").locator(".."),
   ).toHaveClass(/ring-1/);
 
+  const transcriptList = page.getByTestId("video-transcript-list");
+  const followButton = page.getByRole("button", { name: "Follow playback" });
+  await expect(followButton).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => {
+    const player = (
+      window as typeof window & { __fakePlayers: Array<{ current: number }> }
+    ).__fakePlayers.at(-1);
+    if (player) player.current = 74;
+  });
+  await expect(
+    page.getByText("The second grounded concept.").locator(".."),
+  ).toHaveClass(/ring-1/);
+  await expect
+    .poll(() => transcriptList.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(100);
+
+  await transcriptList.hover();
+  await page.mouse.wheel(0, 20);
+  await expect(followButton).toHaveAttribute("aria-pressed", "false");
+  const pausedScrollTop = await transcriptList.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.evaluate(() => {
+    const player = (
+      window as typeof window & { __fakePlayers: Array<{ current: number }> }
+    ).__fakePlayers.at(-1);
+    if (player) player.current = 112;
+  });
+  await expect(
+    page.getByText("The third grounded concept.").locator(".."),
+  ).toHaveClass(/ring-1/);
+  await expect
+    .poll(() => transcriptList.evaluate((element) => element.scrollTop))
+    .toBe(pausedScrollTop);
+  await followButton.click();
+  await expect(followButton).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() => transcriptList.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(pausedScrollTop);
+
+  await page.evaluate(() => {
+    const player = (
+      window as typeof window & { __fakePlayers: Array<{ current: number }> }
+    ).__fakePlayers.at(-1);
+    if (player) player.current = 8;
+  });
   await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByText("No notes yet.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy notes" })).toBeDisabled();

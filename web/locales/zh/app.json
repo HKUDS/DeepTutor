@@ -4449,6 +4449,7 @@
   "no captions": "没有字幕",
   "Retry captions": "重试字幕",
   "Explain here": "解释此处",
+  "Follow playback": "跟随播放",
   "YouTube playback failed.": "YouTube 播放失败。",
   "YouTube learning video": "YouTube 学习视频",
   "The configured Invidious stream could not be played.": "无法播放已配置的 Invidious 视频流。",
