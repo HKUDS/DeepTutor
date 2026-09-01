@@ -318,6 +318,13 @@ class OpenAICompatProvider(LLMProvider):
             prepared.append(clean)
 
         sanitized = LLMProvider._sanitize_request_messages(prepared, _ALLOWED_MSG_KEYS)
+        if responses_api:
+            # Responses continuation identifies a function_call_output by the
+            # provider's original call_id. Shortening that id (the legacy
+            # Chat Completions compatibility rule below) breaks the exact
+            # function_call -> function_call_output replay contract.
+            return sanitized
+
         id_map: dict[str, str] = {}
 
         def map_id(value: Any) -> Any:

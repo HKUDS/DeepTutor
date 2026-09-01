@@ -78,3 +78,52 @@ class TestConvertMessages:
         )
 
         assert input_items == native_items
+
+    def test_replays_reasoning_call_and_tool_output_without_changing_arguments(self) -> None:
+        native_items = [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "content": [{"type": "reasoning_text", "text": "private"}],
+                "encrypted_content": "opaque",
+            },
+            {
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "lookup",
+                "arguments": '{"topic":"geometry"}',
+                "caller": "assistant",
+            },
+        ]
+
+        _instructions, input_items = convert_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1|fc_1",
+                            "type": "function",
+                            "function": {
+                                "name": "lookup",
+                                "arguments": '{"topic":"geometry"}',
+                            },
+                        }
+                    ],
+                    "_provider_response_state": {"responses_output_items": native_items},
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1|fc_1",
+                    "content": "tool result",
+                },
+            ]
+        )
+
+        assert input_items == [
+            *native_items,
+            {"type": "function_call_output", "call_id": "call_1", "output": "tool result"},
+        ]
+        assert isinstance(input_items[1]["arguments"], str)

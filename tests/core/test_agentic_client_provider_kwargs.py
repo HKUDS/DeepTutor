@@ -116,8 +116,69 @@ async def test_provider_stream_exposes_final_reasoning_content() -> None:
 
     chunks = [chunk async for chunk in stream]
 
+    reasoning_deltas = [
+        chunk.choices[0].delta.reasoning_content
+        for chunk in chunks
+        if chunk.choices[0].delta.reasoning_content
+    ]
     final_choice = chunks[-1].choices[0]
+    assert reasoning_deltas == ["private reasoning"]
     assert final_choice.provider_specific_fields["reasoning_content"] == "private reasoning"
+
+
+@pytest.mark.asyncio
+async def test_provider_stream_does_not_repeat_streamed_reasoning_fallback() -> None:
+    class FakeProvider:
+        async def chat_stream(self, **kwargs):
+            await kwargs["on_reasoning_delta"]("first ")
+            await kwargs["on_reasoning_delta"]("second")
+            return LLMResponse(
+                content="answer",
+                finish_reason="stop",
+                reasoning_content="first second",
+            )
+
+    stream = _ProviderOpenAIStream(
+        provider=FakeProvider(),
+        messages=[],
+        tools=None,
+        model="reasoning-model",
+        max_tokens=32,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+        extra_kwargs={},
+    )
+
+    chunks = [chunk async for chunk in stream]
+
+    assert [
+        chunk.choices[0].delta.reasoning_content
+        for chunk in chunks
+        if chunk.choices[0].delta.reasoning_content
+    ] == ["first ", "second"]
+
+
+@pytest.mark.asyncio
+async def test_provider_nonstream_exposes_reasoning_and_json_tool_arguments() -> None:
+    class FakeProvider:
+        async def chat(self, **_kwargs):
+            return LLMResponse(
+                content=None,
+                reasoning_content="private reasoning",
+                tool_calls=[
+                    ToolCallRequest(id="call_1|fc_1", name="lookup", arguments={"topic": "fft"})
+                ],
+                finish_reason="stop",
+            )
+
+    adapter = _ProviderOpenAIAdapter(FakeProvider())
+
+    response = await adapter.chat.completions.create(messages=[], stream=False)
+
+    message = response.choices[0].message
+    assert message.reasoning_content == "private reasoning"
+    assert message.tool_calls[0].function.arguments == '{"topic": "fft"}'
 
 
 @pytest.mark.parametrize("binding", ["moonshot", "openai", "custom"])

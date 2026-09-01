@@ -501,7 +501,21 @@ async def test_finish_round_persists_provider_response_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = _Registry()
-    native_items = [{"type": "reasoning", "id": "rs_1", "summary": []}]
+    native_items = [
+        {
+            "type": "reasoning",
+            "id": "rs_1",
+            "content": [{"type": "reasoning_text", "text": "private reasoning"}],
+            "encrypted_content": "opaque",
+        },
+        {
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "A direct answer."}],
+            "phase": "final_answer",
+        },
+    ]
     client = _ScriptedChatClient(
         [
             [
@@ -528,10 +542,58 @@ async def test_finish_round_persists_provider_response_state(
 
 
 @pytest.mark.asyncio
+async def test_finish_round_persists_native_items_without_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native_items = [
+        {
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "A direct answer."}],
+        }
+    ]
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    content="A direct answer.",
+                    provider_specific_fields={"native_output_items": native_items},
+                )
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(session_id="s1", user_message="Hello")
+
+    await _run(pipeline, context)
+
+    assert context.metadata["_provider_response_state"] == {"responses_output_items": native_items}
+
+
+@pytest.mark.asyncio
 async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
     """A tool round (narration text + a tool call) is followed by a tool-less
     finish round whose text is the answer — two LLM calls, no respond pass."""
     registry = _Registry()
+    first_round_native_items = [
+        {
+            "type": "reasoning",
+            "id": "rs_1",
+            "content": [{"type": "reasoning_text", "text": "round one private reasoning"}],
+            "encrypted_content": "opaque",
+        },
+        {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call-1",
+            "name": "web_search",
+            "arguments": '{"query":"Fourier transform"}',
+        },
+    ]
     client = _ScriptedChatClient(
         [
             # Round 1: preamble (narration) text + a tool call.
@@ -544,7 +606,8 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
                             "name": "web_search",
                             "arguments": json.dumps({"query": "Fourier transform"}),
                         }
-                    ]
+                    ],
+                    provider_specific_fields={"native_output_items": first_round_native_items},
                 ),
             ],
             # Round 2: the model sees the tool result in-protocol and finishes
@@ -577,7 +640,8 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
     assert assistant_tc and assistant_tc[0]["tool_calls"][0]["function"]["name"] == "web_search"
     assert assistant_tc[0]["content"] == "Searching."
     assert assistant_tc[0]["_provider_response_state"] == {
-        "reasoning_content": "round one private reasoning"
+        "responses_output_items": first_round_native_items,
+        "reasoning_content": "round one private reasoning",
     }
     tool_msgs = [m for m in second_round if m.get("role") == "tool"]
     assert tool_msgs and "tool answer" in tool_msgs[0]["content"]

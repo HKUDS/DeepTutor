@@ -10,6 +10,7 @@ import pytest
 from deeptutor.services.llm.provider_core.openai_responses.parsing import (
     consume_sdk_stream,
     consume_sse,
+    parse_response_output,
 )
 
 
@@ -26,6 +27,61 @@ class _SSEFixture:
 async def _sdk_events(events):
     for event in events:
         yield event
+
+
+class _SDKItem(SimpleNamespace):
+    def model_dump(self):
+        return dict(vars(self))
+
+
+def test_nonstream_prefers_reasoning_text_and_preserves_complete_output_order() -> None:
+    output = [
+        {
+            "type": "reasoning",
+            "id": "rs_1",
+            "content": [{"type": "reasoning_text", "text": "raw reasoning"}],
+            "summary": [{"type": "summary_text", "text": "summary fallback"}],
+            "encrypted_content": "encrypted-token",
+            "status": "completed",
+        },
+        {
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "phase": "final_answer",
+            "content": [{"type": "output_text", "text": "visible answer"}],
+            "status": "completed",
+        },
+    ]
+
+    result = parse_response_output(
+        {
+            "output": output,
+            "status": "completed",
+            "usage": {"input_tokens": 3, "output_tokens": 5},
+        }
+    )
+
+    assert result.content == "visible answer"
+    assert result.reasoning_content == "raw reasoning"
+    assert result.provider_specific_fields["native_output_items"] == output
+
+
+def test_nonstream_uses_summary_only_when_raw_reasoning_is_absent() -> None:
+    result = parse_response_output(
+        {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "summary only"}],
+                }
+            ],
+            "status": "completed",
+        }
+    )
+
+    assert result.reasoning_content == "summary only"
 
 
 @pytest.mark.asyncio
@@ -99,6 +155,134 @@ async def test_sdk_arguments_can_be_correlated_by_item_id() -> None:
     assert len(tool_calls) == 1
     assert tool_calls[0].id == "call_1|fc_1"
     assert tool_calls[0].arguments == {"topic": "geometry"}
+
+
+@pytest.mark.asyncio
+async def test_sdk_deepseek_reasoning_text_and_function_call_are_forwarded_in_order() -> None:
+    reasoning_item = _SDKItem(
+        type="reasoning",
+        id="rs_1",
+        content=[{"type": "reasoning_text", "text": "inspect then call"}],
+        encrypted_content="encrypted-token",
+        status="completed",
+    )
+    function_item = _SDKItem(
+        type="function_call",
+        id="fc_1",
+        call_id="call_1",
+        name="lookup",
+        arguments='{"topic":"geometry"}',
+        status="completed",
+        caller="assistant",
+    )
+    events = [
+        SimpleNamespace(type="response.reasoning_text.delta", delta="inspect "),
+        SimpleNamespace(type="response.reasoning_text.delta", delta="then call"),
+        SimpleNamespace(type="response.reasoning_text.done", text="inspect then call"),
+        SimpleNamespace(type="response.output_item.done", item=reasoning_item),
+        SimpleNamespace(type="response.output_item.added", item=function_item),
+        SimpleNamespace(
+            type="response.function_call_arguments.done",
+            item_id="fc_1",
+            arguments='{"topic":"geometry"}',
+        ),
+        SimpleNamespace(type="response.output_item.done", item=function_item),
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(status="completed", usage=None),
+        ),
+    ]
+    reasoning_deltas: list[str] = []
+    provider_events: list[tuple[str, dict]] = []
+
+    _, tool_calls, _, _, reasoning = await consume_sdk_stream(
+        _sdk_events(events),
+        on_reasoning_delta=lambda text: _append_async(reasoning_deltas, text),
+        on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
+    )
+
+    assert reasoning == "inspect then call"
+    assert reasoning_deltas == ["inspect ", "then call"]
+    assert tool_calls[0].arguments == {"topic": "geometry"}
+    assert [payload for kind, payload in provider_events if kind == "output_item"] == [
+        reasoning_item.model_dump(),
+        function_item.model_dump(),
+    ]
+
+
+async def _append_async(values: list[str], value: str) -> None:
+    values.append(value)
+
+
+@pytest.mark.asyncio
+async def test_sse_supports_reasoning_text_and_preserves_message_item() -> None:
+    reasoning_item = {
+        "type": "reasoning",
+        "id": "rs_1",
+        "content": [{"type": "reasoning_text", "text": "raw"}],
+        "encrypted_content": "encrypted-token",
+    }
+    message_item = {
+        "type": "message",
+        "id": "msg_1",
+        "role": "assistant",
+        "phase": "final_answer",
+        "content": [{"type": "output_text", "text": "answer"}],
+    }
+    events = [
+        {"type": "response.reasoning_text.delta", "delta": "raw"},
+        {"type": "response.reasoning_text.done", "text": "raw"},
+        {"type": "response.output_item.done", "item": reasoning_item},
+        {"type": "response.output_text.delta", "delta": "answer"},
+        {"type": "response.output_item.done", "item": message_item},
+    ]
+    reasoning_deltas: list[str] = []
+    provider_events: list[tuple[str, dict]] = []
+
+    content, _, _ = await consume_sse(
+        _SSEFixture(events),
+        on_reasoning_delta=lambda text: _append_async(reasoning_deltas, text),
+        on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
+    )
+
+    assert content == "answer"
+    assert reasoning_deltas == ["raw"]
+    assert [payload for kind, payload in provider_events if kind == "output_item"] == [
+        reasoning_item,
+        message_item,
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("consumer", ["sse", "sdk"])
+async def test_summary_reasoning_remains_supported(consumer: str) -> None:
+    reasoning_deltas: list[str] = []
+    if consumer == "sse":
+        await consume_sse(
+            _SSEFixture(
+                [
+                    {"type": "response.reasoning_summary_text.delta", "delta": "summary "},
+                    {"type": "response.reasoning_summary_text.delta", "delta": "reasoning"},
+                ]
+            ),
+            on_reasoning_delta=lambda text: _append_async(reasoning_deltas, text),
+        )
+        reasoning = "".join(reasoning_deltas)
+    else:
+        _, _, _, _, reasoning = await consume_sdk_stream(
+            _sdk_events(
+                [
+                    SimpleNamespace(type="response.reasoning_summary_text.delta", delta="summary "),
+                    SimpleNamespace(
+                        type="response.reasoning_summary_text.delta", delta="reasoning"
+                    ),
+                ]
+            ),
+            on_reasoning_delta=lambda text: _append_async(reasoning_deltas, text),
+        )
+
+    assert reasoning == "summary reasoning"
+    assert reasoning_deltas == ["summary reasoning"]
 
 
 @pytest.mark.asyncio

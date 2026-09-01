@@ -205,6 +205,59 @@ def test_responses_body_replays_persisted_native_output_items() -> None:
     assert body["input"] == native_items
 
 
+def test_responses_body_preserves_provider_call_id_for_tool_output() -> None:
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    provider.default_model = "gpt-test"
+    provider._spec = find_service_provider("openai")
+    native_items = [
+        {"type": "reasoning", "id": "rs_1", "encrypted_content": "opaque"},
+        {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_provider_original",
+            "name": "lookup",
+            "arguments": '{"topic":"fft"}',
+        },
+    ]
+
+    body = provider._build_responses_body(
+        messages=[
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_provider_original|fc_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": '{"topic":"fft"}'},
+                    }
+                ],
+                "_provider_response_state": {"responses_output_items": native_items},
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_provider_original|fc_1",
+                "content": "tool result",
+            },
+        ],
+        tools=None,
+        model="gpt-test",
+        max_tokens=32,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+    )
+
+    assert body["input"] == [
+        *native_items,
+        {
+            "type": "function_call_output",
+            "call_id": "call_provider_original",
+            "output": "tool result",
+        },
+    ]
+
+
 def test_services_dashscope_minimal_reasoning_uses_enable_thinking_only() -> None:
     kwargs = _build_services_kwargs("dashscope", "minimal")
 

@@ -279,7 +279,7 @@ class TestParseServerExecutedWebSearch:
         assert result.content == "FFT is O(N log N)."
         assert result.tool_calls == []
         fields = result.provider_specific_fields
-        assert fields["native_output_items"] == [response["output"][0]]
+        assert fields["native_output_items"] == response["output"]
         assert fields["citations"] == [
             {"url": "https://example.com/paper", "title": "Cooley-Tukey"}
         ]

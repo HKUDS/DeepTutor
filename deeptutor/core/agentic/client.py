@@ -413,6 +413,7 @@ class _ProviderOpenAIAdapter:
                 SimpleNamespace(
                     message=SimpleNamespace(
                         content=response.content or "",
+                        reasoning_content=response.reasoning_content,
                         tool_calls=[
                             _openai_tool_call(tool_call, index=index)
                             for index, tool_call in enumerate(response.tool_calls or [])
@@ -454,6 +455,7 @@ class _ProviderOpenAIStream:
         self._queue: asyncio.Queue[Any] | None = None
         self._task: asyncio.Task[None] | None = None
         self._emitted_content = False
+        self._emitted_reasoning = False
 
     def __aiter__(self) -> "_ProviderOpenAIStream":
         if self._queue is None:
@@ -484,6 +486,11 @@ class _ProviderOpenAIStream:
                 self._emitted_content = True
                 await self._queue.put(_openai_stream_chunk(content=text))
 
+        async def _on_reasoning_delta(text: str) -> None:
+            if text:
+                self._emitted_reasoning = True
+                await self._queue.put(_openai_stream_chunk(reasoning_content=text))
+
         try:
             response = await self._provider.chat_stream(
                 messages=self._messages,
@@ -494,10 +501,15 @@ class _ProviderOpenAIStream:
                 reasoning_effort=self._reasoning_effort,
                 tool_choice=self._tool_choice,
                 on_content_delta=_on_content_delta,
+                on_reasoning_delta=_on_reasoning_delta,
                 **self._extra_kwargs,
             )
             if response.content and not self._emitted_content:
                 await self._queue.put(_openai_stream_chunk(content=response.content))
+            if response.reasoning_content and not self._emitted_reasoning:
+                await self._queue.put(
+                    _openai_stream_chunk(reasoning_content=response.reasoning_content)
+                )
             for index, tool_call in enumerate(response.tool_calls or []):
                 await self._queue.put(_openai_stream_chunk(tool_call=tool_call, index=index))
             provider_fields = dict(response.provider_specific_fields or {})
@@ -538,6 +550,7 @@ def _openai_tool_call(tool_call: Any, *, index: int) -> Any:
 def _openai_stream_chunk(
     *,
     content: str | None = None,
+    reasoning_content: str | None = None,
     tool_call: Any | None = None,
     index: int = 0,
     finish_reason: str | None = None,
@@ -550,7 +563,11 @@ def _openai_stream_chunk(
     return SimpleNamespace(
         choices=[
             SimpleNamespace(
-                delta=SimpleNamespace(content=content, tool_calls=tool_calls),
+                delta=SimpleNamespace(
+                    content=content,
+                    reasoning_content=reasoning_content,
+                    tool_calls=tool_calls,
+                ),
                 finish_reason=finish_reason,
                 provider_specific_fields=provider_specific_fields,
             )

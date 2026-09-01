@@ -67,6 +67,29 @@ def test_normalize_drops_oversized_or_unknown_protocol_state() -> None:
     )
 
 
+def test_normalize_preserves_native_web_search_items_in_order() -> None:
+    items = [
+        {"type": "reasoning", "id": "rs_1", "encrypted_content": "opaque"},
+        {
+            "type": "web_search_call",
+            "id": "ws_1",
+            "status": "completed",
+            "action": {"type": "search", "query": "fft"},
+        },
+        {"type": "web_search", "id": "ws_2", "status": "completed"},
+        {
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "answer"}],
+        },
+    ]
+
+    state = normalize_provider_response_state({"responses_output_items": items})
+
+    assert state == {"responses_output_items": items}
+
+
 def test_redact_private_message_metadata_preserves_public_metadata() -> None:
     messages = [
         {
