@@ -1,24 +1,44 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, KeyRound, Library } from "lucide-react";
+import {
+  KeyRound,
+  Library,
+  Save,
+  ShieldOff,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
-  clearGuardianMaterials,
+  getGuardianMaterials,
   getGuardianReport,
+  getGuardianRestrictions,
   listGuardianRelationships,
   resetLearnerCredentials,
+  revokeMyGuardianRelationship,
+  saveGuardianMaterials,
+  saveGuardianRestrictions,
+  type GuardianExtension,
+  type GuardianMaterial,
   type GuardianRelationship,
   type GuardianReport,
+  type GuardianRestrictions,
 } from "@/lib/guardian-api";
 
-type BusyAction = "report" | "materials" | "credentials" | null;
-type ConfirmAction = "materials" | "credentials" | null;
+type BusyAction =
+  | "loading"
+  | "materials"
+  | "restrictions"
+  | "credentials"
+  | "revoke"
+  | null;
+type ConfirmAction = "credentials" | "revoke" | null;
 
 const permissionKeys: Record<string, string> = {
   assign_materials: "Manage materials",
+  manage_restrictions: "Manage restrictions",
   reset_credentials: "Reset credentials",
   view_reports: "View reports",
 };
@@ -29,11 +49,15 @@ export default function GuardianSettingsPage() {
   const [selectedRelationship, setSelectedRelationship] =
     useState<GuardianRelationship | null>(null);
   const [report, setReport] = useState<GuardianReport | null>(null);
+  const [materials, setMaterials] = useState<GuardianMaterial[]>([]);
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
+  const [restrictions, setRestrictions] =
+    useState<GuardianRestrictions | null>(null);
+  const [extensions, setExtensions] = useState<GuardianExtension[]>([]);
+  const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
-  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,14 +84,84 @@ export default function GuardianSettingsPage() {
   const selectLearner = async (relationship: GuardianRelationship) => {
     setSelectedRelationship(relationship);
     setReport(null);
-    setTemporaryPassword(null);
-    setCopied(false);
+    setMaterials([]);
+    setSelectedMaterialIds([]);
+    setRestrictions(null);
+    setExtensions([]);
+    setNewPassword("");
     setMessage(null);
     setError(null);
-    if (!relationship.permissions.includes("view_reports")) return;
-    setBusy("report");
+    setBusy("loading");
     try {
-      setReport(await getGuardianReport(relationship.learner_user_id));
+      const [nextReport, nextMaterials, nextRestrictions] = await Promise.all([
+        relationship.permissions.includes("view_reports")
+          ? getGuardianReport(relationship.learner_user_id)
+          : Promise.resolve(null),
+        relationship.permissions.includes("assign_materials")
+          ? getGuardianMaterials(relationship.learner_user_id)
+          : Promise.resolve(null),
+        relationship.permissions.includes("manage_restrictions")
+          ? getGuardianRestrictions(relationship.learner_user_id)
+          : Promise.resolve(null),
+      ]);
+      setReport(nextReport);
+      if (nextMaterials) {
+        setMaterials(nextMaterials);
+        setSelectedMaterialIds(
+          nextMaterials.filter((item) => item.assigned).map((item) => item.book_id),
+        );
+      }
+      if (nextRestrictions) {
+        setRestrictions(nextRestrictions.restrictions);
+        setExtensions(nextRestrictions.available_extensions);
+      }
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveMaterials = async () => {
+    if (!selectedRelationship || !can("assign_materials")) return;
+    setBusy("materials");
+    setError(null);
+    setMessage(null);
+    try {
+      await saveGuardianMaterials(
+        selectedRelationship.learner_user_id,
+        selectedMaterialIds,
+      );
+      const nextMaterials = await getGuardianMaterials(
+        selectedRelationship.learner_user_id,
+      );
+      setMaterials(nextMaterials);
+      if (can("view_reports")) {
+        setReport(await getGuardianReport(selectedRelationship.learner_user_id));
+      }
+      setMessage(t("Approved materials saved."));
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveRestrictions = async () => {
+    if (!selectedRelationship || !restrictions || !can("manage_restrictions")) {
+      return;
+    }
+    setBusy("restrictions");
+    setError(null);
+    setMessage(null);
+    try {
+      setRestrictions(
+        await saveGuardianRestrictions(
+          selectedRelationship.learner_user_id,
+          restrictions,
+        ),
+      );
+      setMessage(t("Learning restrictions saved."));
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -76,16 +170,23 @@ export default function GuardianSettingsPage() {
   };
 
   const resetCredentials = async () => {
-    if (!selectedRelationship || !can("reset_credentials")) return;
+    if (
+      !selectedRelationship ||
+      !can("reset_credentials") ||
+      newPassword.length < 8
+    ) {
+      return;
+    }
     setConfirmAction(null);
     setBusy("credentials");
     setError(null);
     setMessage(null);
-    setTemporaryPassword(null);
     try {
-      setTemporaryPassword(
-        await resetLearnerCredentials(selectedRelationship.learner_user_id),
+      await resetLearnerCredentials(
+        selectedRelationship.learner_user_id,
+        newPassword,
       );
+      setNewPassword("");
       setMessage(t("Learner credentials were reset."));
     } catch (reason) {
       setError((reason as Error).message);
@@ -94,18 +195,20 @@ export default function GuardianSettingsPage() {
     }
   };
 
-  const clearMaterials = async () => {
-    if (!selectedRelationship || !can("assign_materials")) return;
+  const revokeRelationship = async () => {
+    if (!selectedRelationship) return;
     setConfirmAction(null);
-    setBusy("materials");
+    setBusy("revoke");
     setError(null);
     setMessage(null);
     try {
-      await clearGuardianMaterials(selectedRelationship.learner_user_id);
-      if (can("view_reports")) {
-        setReport(await getGuardianReport(selectedRelationship.learner_user_id));
-      }
-      setMessage(t("Approved materials removed."));
+      await revokeMyGuardianRelationship(selectedRelationship.id);
+      setRelationships((current) =>
+        current.filter((item) => item.id !== selectedRelationship.id),
+      );
+      setSelectedRelationship(null);
+      setReport(null);
+      setMessage(t("Guardian access revoked."));
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -164,17 +267,28 @@ export default function GuardianSettingsPage() {
       )}
 
       {selectedRelationship && (
-        <section className="mt-8 border-t border-[var(--border)] pt-6">
-          <h2 className="font-medium">
-            {report?.learner.username ?? selectedRelationship.learner_username}
-          </h2>
+        <section className="mt-8 space-y-6 border-t border-[var(--border)] pt-6">
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="font-medium">
+              {report?.learner.username ?? selectedRelationship.learner_username}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setConfirmAction("revoke")}
+              disabled={busy !== null}
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-500/40 px-3 py-1.5 text-xs text-red-600 disabled:opacity-50"
+            >
+              <ShieldOff className="h-3.5 w-3.5" />
+              {t("Revoke access")}
+            </button>
+          </div>
 
-          {busy === "report" ? (
-            <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-              {t("Loading learner report…")}
+          {busy === "loading" ? (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {t("Loading learner details…")}
             </p>
           ) : can("view_reports") && report ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-[var(--border)] p-4">
                 <Library className="mb-2 h-4 w-4 text-[var(--muted-foreground)]" />
                 <div className="text-xs text-[var(--muted-foreground)]">
@@ -196,66 +310,180 @@ export default function GuardianSettingsPage() {
               </div>
             </div>
           ) : !can("view_reports") ? (
-            <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+            <p className="text-sm text-[var(--muted-foreground)]">
               {t("You are not authorized to view this learner report.")}
             </p>
           ) : null}
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            {can("assign_materials") && (
-              <button
-                type="button"
-                onClick={() => setConfirmAction("materials")}
-                disabled={
-                  busy !== null ||
-                  (report !== null && report.assigned_materials.length === 0)
-                }
-                className="rounded-md border border-[var(--border)] px-3 py-2 text-sm disabled:opacity-50"
-              >
-                {busy === "materials"
-                  ? t("Removing…")
-                  : t("Remove approved materials")}
-              </button>
-            )}
-            {can("reset_credentials") && (
+          {can("assign_materials") && (
+            <div className="rounded-lg border border-[var(--border)] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-medium">{t("Approved materials")}</h3>
+                <button
+                  type="button"
+                  onClick={() => void saveMaterials()}
+                  disabled={busy !== null}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs text-[var(--primary-foreground)] disabled:opacity-50"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {busy === "materials" ? t("Saving…") : t("Save materials")}
+                </button>
+              </div>
+              {materials.length === 0 ? (
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {t("No approved materials are available.")}
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {materials.map((material) => (
+                    <label
+                      key={material.book_id}
+                      className="flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedMaterialIds.includes(material.book_id)}
+                        disabled={busy !== null}
+                        onChange={() =>
+                          setSelectedMaterialIds((current) =>
+                            current.includes(material.book_id)
+                              ? current.filter((id) => id !== material.book_id)
+                              : [...current, material.book_id],
+                          )
+                        }
+                      />
+                      <span className="truncate">
+                        {material.title || material.book_id}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {can("manage_restrictions") && restrictions && (
+            <div className="rounded-lg border border-[var(--border)] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="inline-flex items-center gap-2 text-sm font-medium">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  {t("Learning restrictions")}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => void saveRestrictions()}
+                  disabled={busy !== null}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs text-[var(--primary-foreground)] disabled:opacity-50"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {busy === "restrictions"
+                    ? t("Saving…")
+                    : t("Save restrictions")}
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs">
+                  <span className="mb-1 block text-[var(--muted-foreground)]">
+                    {t("Age band")}
+                  </span>
+                  <select
+                    value={restrictions.age_band}
+                    disabled={busy !== null}
+                    onChange={(event) =>
+                      setRestrictions((current) =>
+                        current
+                          ? {
+                              ...current,
+                              age_band: event.target
+                                .value as GuardianRestrictions["age_band"],
+                            }
+                          : current,
+                      )
+                    }
+                    className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2"
+                  >
+                    {(["6-8", "9-12", "13-15"] as const).map((band) => (
+                      <option key={band} value={band}>
+                        {band}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 self-end rounded-md border border-[var(--border)] px-3 py-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={restrictions.allow_upload}
+                    disabled={busy !== null}
+                    onChange={(event) =>
+                      setRestrictions((current) =>
+                        current
+                          ? { ...current, allow_upload: event.target.checked }
+                          : current,
+                      )
+                    }
+                  />
+                  {t("Allow learner uploads")}
+                </label>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {extensions.map((extension) => (
+                  <label
+                    key={extension.id}
+                    className="flex items-center gap-2 rounded-md border border-[var(--border)] px-3 py-2 text-xs"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={restrictions.extensions.includes(extension.id)}
+                      disabled={busy !== null}
+                      onChange={() =>
+                        setRestrictions((current) =>
+                          current
+                            ? {
+                                ...current,
+                                extensions: current.extensions.includes(extension.id)
+                                  ? current.extensions.filter(
+                                      (id) => id !== extension.id,
+                                    )
+                                  : [...current.extensions, extension.id],
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                    <span>{extension.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {can("reset_credentials") && (
+            <div className="rounded-lg border border-[var(--border)] p-4">
+              <label className="text-xs">
+                <span className="mb-1 block text-[var(--muted-foreground)]">
+                  {t("New learner password")}
+                </span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  minLength={8}
+                  autoComplete="new-password"
+                  disabled={busy !== null}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3"
+                />
+              </label>
               <button
                 type="button"
                 onClick={() => setConfirmAction("credentials")}
-                disabled={busy !== null}
-                className="inline-flex items-center gap-2 rounded-md border border-red-500/40 px-3 py-2 text-sm text-red-600 disabled:opacity-50"
+                disabled={busy !== null || newPassword.length < 8}
+                className="mt-3 inline-flex items-center gap-2 rounded-md border border-red-500/40 px-3 py-2 text-sm text-red-600 disabled:opacity-50"
               >
                 <KeyRound className="h-4 w-4" />
                 {busy === "credentials"
                   ? t("Resetting…")
                   : t("Reset learner credentials")}
               </button>
-            )}
-          </div>
-
-          {temporaryPassword && (
-            <div className="mt-5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
-              <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
-                {t("Temporary password")}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <code className="min-w-0 flex-1 break-all rounded bg-[var(--background)] px-3 py-2 text-sm">
-                  {temporaryPassword}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(temporaryPassword);
-                    setCopied(true);
-                  }}
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-3 py-2 text-sm"
-                >
-                  <Copy className="h-4 w-4" />
-                  {copied ? t("Copied") : t("Copy")}
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
-                {t("Copy this password now. It will not be shown again.")}
-              </p>
             </div>
           )}
         </section>
@@ -266,26 +494,26 @@ export default function GuardianSettingsPage() {
         title={
           confirmAction === "credentials"
             ? t("Reset learner credentials")
-            : t("Remove approved materials")
+            : t("Revoke guardian access")
         }
         confirmLabel={
           confirmAction === "credentials"
             ? t("Reset credentials")
-            : t("Remove materials")
+            : t("Revoke access")
         }
         tone="danger"
         busy={busy !== null}
         onCancel={() => setConfirmAction(null)}
         onConfirm={() => {
           if (confirmAction === "credentials") void resetCredentials();
-          if (confirmAction === "materials") void clearMaterials();
+          if (confirmAction === "revoke") void revokeRelationship();
         }}
       >
         {confirmAction === "credentials"
           ? t(
               "This changes the learner password and revokes every learner device credential.",
             )
-          : t("This removes every approved material from the learner account.")}
+          : t("This immediately removes your access to this learner account.")}
       </ConfirmDialog>
     </main>
   );

@@ -198,3 +198,16 @@ def test_update_job_rejects_tampered_restart_arguments(tmp_path: Path) -> None:
             home=home,
             restart_argv=["start", "--home", str(home.resolve()), "--port", "9999"],
         )
+
+
+def test_launcher_available_uses_the_read_only_process_probe(monkeypatch) -> None:
+    probed: list[int] = []
+    monkeypatch.setenv(app_update.LAUNCHER_PID_ENV, "4242")
+    monkeypatch.setattr(
+        app_update,
+        "is_process_alive",
+        lambda pid: probed.append(pid) or True,
+    )
+
+    assert app_update.launcher_available() is True
+    assert probed == [4242]

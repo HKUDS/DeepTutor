@@ -307,9 +307,7 @@ class OpenAICompatProvider(LLMProvider):
                     clean["_provider_response_state"] = {"responses_output_items": output_items}
             else:
                 state = normalize_provider_response_state(message.get("_provider_response_state"))
-                reasoning_content = (
-                    state.get("reasoning_content") if state is not None else None
-                )
+                reasoning_content = state.get("reasoning_content") if state is not None else None
                 if (
                     isinstance(reasoning_content, str)
                     and reasoning_content

@@ -124,11 +124,32 @@ def start(
         "--dev",
         help="Use the Next.js development server for frontend work.",
     ),
+    detach: bool = typer.Option(
+        False,
+        "--detach",
+        help="Run outside the current console; stop later with `deeptutor stop`.",
+    ),
+    open_browser: bool = typer.Option(
+        True,
+        "--open-browser/--no-browser",
+        help="Open the frontend automatically after startup.",
+    ),
 ) -> None:
     """Launch backend + frontend together. Source installs default to production."""
     from deeptutor.runtime.launcher import start as start_web
 
-    start_web(home=home, dev=dev)
+    start_web(home=home, dev=dev, detach=detach, open_browser=open_browser)
+
+
+@app.command()
+def stop(
+    home: Path | None = typer.Option(None, "--home", help="Runtime workspace root."),
+) -> None:
+    """Stop a DeepTutor launcher started with ``--detach``."""
+    from deeptutor.runtime.launcher import stop as stop_web
+
+    if not stop_web(home=home):
+        raise typer.Exit(code=1)
 
 
 @app.command()

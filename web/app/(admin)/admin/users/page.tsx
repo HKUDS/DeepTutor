@@ -15,6 +15,7 @@ import {
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
 import { BookPermissionEditor } from "@/features/multi-user/components/BookPermissionEditor";
 import { LearnerProfileEditor } from "@/features/multi-user/components/LearnerProfileEditor";
+import { GuardianRelationshipsEditor } from "@/features/multi-user/components/GuardianRelationshipsEditor";
 import { UserAvatar } from "@/components/UserAvatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { filterUsersByQuery } from "@/lib/admin-users";
@@ -472,7 +473,14 @@ export default function AdminUsersPage() {
                             />
                             <BookPermissionEditor userId={user.id} />
                             {user.preset === "learner" && (
-                              <LearnerProfileEditor username={user.username} />
+                              <>
+                                <GuardianRelationshipsEditor
+                                  learnerId={user.id}
+                                  learnerUsername={user.username}
+                                  users={users}
+                                />
+                                <LearnerProfileEditor username={user.username} />
+                              </>
                             )}
                           </td>
                         </tr>

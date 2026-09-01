@@ -57,8 +57,7 @@ def normalize_reading_references(value: Any) -> list[dict[str, Any]]:
         key = (material_id, revision)
         target = by_reference.get(key)
         if target is None and (
-            material_id not in material_ids
-            and len(material_ids) >= MAX_READING_REFERENCE_MATERIALS
+            material_id not in material_ids and len(material_ids) >= MAX_READING_REFERENCE_MATERIALS
         ):
             continue
         for candidate in locators:

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import os
 from pathlib import Path
-import secrets
 import shutil
 from typing import Any
 import uuid
@@ -25,12 +25,21 @@ from .audit import log_admin_action, log_guardian_action
 from .book_permission import BookDefaultLevel, BookPermission, BookPermissionLevel
 from .context import get_current_user
 from .device_credentials import revoke_device_credentials_for_user
-from .grants import load_grant, normalize_grant, save_grant, validate_grant
+from .grants import (
+    LEARNING_AGE_BANDS,
+    LEARNING_SURFACES,
+    learner_grant,
+    load_grant,
+    normalize_grant,
+    save_grant,
+    validate_grant,
+)
 from .guardians import (
     GUARDIAN_PERMISSIONS,
     authorize_guardian,
     guardian_can_access,
     list_relationships,
+    relationship_by_id,
     revoke_guardian,
 )
 from .identity import (
@@ -84,6 +93,44 @@ class GuardianMaterialsPayload(BaseModel):
             if book_id not in book_ids:
                 book_ids.append(book_id)
         return book_ids
+
+
+class GuardianRestrictionsPayload(BaseModel):
+    age_band: str
+    allow_upload: StrictBool
+    allowed_surfaces: list[str]
+    extensions: list[str]
+
+    @field_validator("age_band")
+    @classmethod
+    def age_band_valid(cls, value: str) -> str:
+        if value not in LEARNING_AGE_BANDS:
+            raise ValueError("Unknown learning age band")
+        return value
+
+    @field_validator("allowed_surfaces")
+    @classmethod
+    def surfaces_valid(cls, value: list[str]) -> list[str]:
+        surfaces = list(dict.fromkeys(value))
+        if not surfaces or not set(surfaces).issubset(LEARNING_SURFACES):
+            raise ValueError("Unknown or empty learning surface")
+        return surfaces
+
+    @field_validator("extensions")
+    @classmethod
+    def extensions_valid(cls, value: list[str]) -> list[str]:
+        extensions: list[str] = []
+        for raw_id in value:
+            extension_id = raw_id.strip()
+            if not extension_id:
+                raise ValueError("Reading extension ids cannot be empty")
+            if extension_id not in extensions:
+                extensions.append(extension_id)
+        return extensions
+
+
+class GuardianCredentialResetPayload(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class SkillInstallPayload(BaseModel):
@@ -253,13 +300,35 @@ def _relationship_view(
 
 def _require_guardian_access(
     current: object, learner_user_id: str, permission: str
-) -> tuple[str, dict[str, Any], str]:
-    guardian_user_id = str(getattr(current, "user_id", "") or "")
-    _guardian_username, _guardian_record = _require_assignable_user(guardian_user_id)
+) -> tuple[str, dict[str, Any], str, bool]:
+    actor_user_id = str(getattr(current, "user_id", "") or "")
     learner_username, learner_record = _require_assignable_user(learner_user_id)
-    if not guardian_can_access(guardian_user_id, learner_user_id, permission):
+    is_admin = str(getattr(current, "role", "") or "") == "admin"
+    if is_admin:
+        return learner_username, learner_record, actor_user_id, True
+    _guardian_username, _guardian_record = _require_assignable_user(actor_user_id)
+    if not guardian_can_access(actor_user_id, learner_user_id, permission):
         raise HTTPException(status_code=403, detail="Guardian authorization required")
-    return learner_username, learner_record, guardian_user_id
+    return learner_username, learner_record, actor_user_id, False
+
+
+def _log_supervisor_action(
+    action: str,
+    *,
+    actor_user_id: str,
+    learner_user_id: str,
+    is_admin: bool,
+    summary: dict[str, Any] | None = None,
+) -> None:
+    if is_admin:
+        log_admin_action(action, target_user_id=learner_user_id, summary=summary)
+        return
+    log_guardian_action(
+        action,
+        guardian_user_id=actor_user_id,
+        learner_user_id=learner_user_id,
+        summary=summary,
+    )
 
 
 @router.get("/admin/resources")
@@ -372,12 +441,37 @@ async def my_guardianships(
     return {"relationships": relationships}
 
 
+@router.delete("/me/guardianships/{relationship_id}")
+async def revoke_my_guardianship(
+    relationship_id: str,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    guardian_user_id = str(getattr(current, "user_id", "") or "")
+    _require_assignable_user(guardian_user_id)
+    relationship = relationship_by_id(relationship_id)
+    if (
+        relationship is None
+        or relationship["guardian_user_id"] != guardian_user_id
+        or relationship["revoked_at"] is not None
+    ):
+        raise HTTPException(status_code=404, detail="Active guardian relationship not found")
+    revoked = revoke_guardian(relationship_id, revoked_by=guardian_user_id, reason="self_revoked")
+    assert revoked is not None
+    log_guardian_action(
+        "guardian_self_revoke",
+        guardian_user_id=guardian_user_id,
+        learner_user_id=relationship["learner_user_id"],
+        summary={"relationship_id": relationship_id},
+    )
+    return {"relationship": _relationship_view(revoked, _users_by_id()), "ok": True}
+
+
 @router.get("/learners/{learner_user_id}/guardian-report")
 async def guardian_report(
     learner_user_id: str,
     current: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    learner_username, learner_record, guardian_user_id = _require_guardian_access(
+    learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
         current, learner_user_id, "view_reports"
     )
     from .book_access import admin_book_catalog
@@ -391,10 +485,11 @@ async def guardian_report(
         if permission.level_for(book["book_id"]) != "none"
     ]
     grant = load_grant(learner_user_id)
-    log_guardian_action(
+    _log_supervisor_action(
         "guardian_report_view",
-        guardian_user_id=guardian_user_id,
+        actor_user_id=actor_user_id,
         learner_user_id=learner_user_id,
+        is_admin=is_admin,
         summary={"assigned_material_count": len(assigned_materials)},
     )
     return {
@@ -414,55 +509,182 @@ async def guardian_report(
     }
 
 
+@router.get("/learners/{learner_user_id}/materials")
+async def guardian_material_catalog(
+    learner_user_id: str,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    _learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
+        current, learner_user_id, "assign_materials"
+    )
+    from .book_access import admin_book_catalog
+    from .book_permission import normalize_book_permission
+
+    permission = normalize_book_permission(learner_record.get("book_permission"))
+    materials = [
+        {
+            **book,
+            "assigned": permission.level_for(book["book_id"]) != "none",
+            "permission": permission.level_for(book["book_id"]),
+        }
+        for book in admin_book_catalog()
+    ]
+    _log_supervisor_action(
+        "guardian_material_catalog_view",
+        actor_user_id=actor_user_id,
+        learner_user_id=learner_user_id,
+        is_admin=is_admin,
+        summary={"material_count": len(materials)},
+    )
+    return {"materials": materials}
+
+
 @router.put("/learners/{learner_user_id}/materials")
 async def assign_guardian_materials(
     learner_user_id: str,
     payload: GuardianMaterialsPayload,
     current: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    learner_username, learner_record, guardian_user_id = _require_guardian_access(
+    learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
         current, learner_user_id, "assign_materials"
     )
-    from .book_access import shared_book_exists
+    from .book_access import admin_book_catalog
     from .book_permission import (
         BookPermission,
         normalize_book_permission,
         public_permission_dict,
     )
 
-    unknown = next(
-        (book_id for book_id in payload.book_ids if not shared_book_exists(book_id)),
-        None,
-    )
+    catalog = admin_book_catalog()
+    catalog_ids = {book["book_id"] for book in catalog}
+    unknown = next((book_id for book_id in payload.book_ids if book_id not in catalog_ids), None)
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown approved book id: {unknown}")
 
     # Guardians hand out the admin-approved catalogue as read-only material.
     # Admins remain the only source of edit/create capability.
     existing = normalize_book_permission(learner_record.get("book_permission"))
+    selected_ids = set(payload.book_ids)
     permission = BookPermission(
         create=existing.create,
         default=existing.default,
-        books=tuple((book_id, "read") for book_id in payload.book_ids),
+        books=tuple(
+            (book["book_id"], "read" if book["book_id"] in selected_ids else "none")
+            for book in catalog
+            if (book["book_id"] in selected_ids) != (existing.default == "read")
+        ),
     )
     if not set_book_permission(learner_username, permission):
         raise HTTPException(status_code=404, detail="User not found")
     result = public_permission_dict(permission)
-    log_guardian_action(
+    _log_supervisor_action(
         "guardian_material_assign",
-        guardian_user_id=guardian_user_id,
+        actor_user_id=actor_user_id,
         learner_user_id=learner_user_id,
+        is_admin=is_admin,
         summary={"book_ids": payload.book_ids, "read_only": True},
     )
     return {"book_permission": result}
 
 
-@router.post("/learners/{learner_user_id}/credentials/reset")
-async def reset_learner_credentials(
+def _guardian_restrictions(grant: dict[str, Any]) -> dict[str, Any]:
+    policy = grant.get("learning_policy")
+    if not isinstance(policy, dict):
+        raise HTTPException(status_code=409, detail="Learner account has no learning policy")
+    reading = policy.get("reading") if isinstance(policy.get("reading"), dict) else {}
+    return {
+        "age_band": policy.get("age_band"),
+        "allow_upload": bool(reading.get("allow_upload", False)),
+        "allowed_surfaces": list(policy.get("allowed_surfaces") or ["chat", "reading"]),
+        "extensions": list(reading.get("extensions") or []),
+    }
+
+
+def _restriction_grant(learner_user_id: str, learner_record: dict[str, Any]) -> dict[str, Any]:
+    grant = load_grant(learner_user_id)
+    if grant.get("learning_policy") is None and learner_record.get("preset") == "learner":
+        return learner_grant(learner_user_id)
+    return grant
+
+
+@router.get("/learners/{learner_user_id}/restrictions")
+async def get_guardian_restrictions(
     learner_user_id: str,
     current: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    learner_username, _learner_record, guardian_user_id = _require_guardian_access(
+    _learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
+        current, learner_user_id, "manage_restrictions"
+    )
+    restrictions = _guardian_restrictions(_restriction_grant(learner_user_id, learner_record))
+    _log_supervisor_action(
+        "guardian_restrictions_view",
+        actor_user_id=actor_user_id,
+        learner_user_id=learner_user_id,
+        is_admin=is_admin,
+    )
+    return {
+        "restrictions": restrictions,
+        "available_extensions": [
+            extension.manifest.model_dump() for extension in get_reading_extension_registry().all()
+        ],
+    }
+
+
+@router.put("/learners/{learner_user_id}/restrictions")
+async def put_guardian_restrictions(
+    learner_user_id: str,
+    payload: GuardianRestrictionsPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    _learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
+        current, learner_user_id, "manage_restrictions"
+    )
+    available_extensions = {
+        extension.manifest.id for extension in get_reading_extension_registry().all()
+    }
+    unknown_extensions = sorted(set(payload.extensions) - available_extensions)
+    if unknown_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown reading extensions: {', '.join(unknown_extensions)}",
+        )
+    grant = deepcopy(_restriction_grant(learner_user_id, learner_record))
+    policy = grant.get("learning_policy")
+    if not isinstance(policy, dict):
+        raise HTTPException(status_code=409, detail="Learner account has no learning policy")
+    reading = policy.get("reading")
+    if not isinstance(reading, dict):
+        reading = {}
+        policy["reading"] = reading
+    policy["age_band"] = payload.age_band
+    policy["allowed_surfaces"] = payload.allowed_surfaces
+    reading["allow_upload"] = payload.allow_upload
+    reading["extensions"] = payload.extensions
+    try:
+        grant = normalize_grant(learner_user_id, grant)
+        validate_grant(grant)
+        _validate_reading_policy(grant)
+        grant = save_grant(learner_user_id, grant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    restrictions = _guardian_restrictions(grant)
+    _log_supervisor_action(
+        "guardian_restrictions_set",
+        actor_user_id=actor_user_id,
+        learner_user_id=learner_user_id,
+        is_admin=is_admin,
+        summary=restrictions,
+    )
+    return {"restrictions": restrictions}
+
+
+@router.post("/learners/{learner_user_id}/credentials/reset")
+async def reset_learner_credentials(
+    learner_user_id: str,
+    payload: GuardianCredentialResetPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    learner_username, _learner_record, actor_user_id, is_admin = _require_guardian_access(
         current, learner_user_id, "reset_credentials"
     )
     if POCKETBASE_ENABLED:
@@ -470,26 +692,23 @@ async def reset_learner_credentials(
             status_code=400,
             detail="Guardian credential reset requires built-in local authentication.",
         )
-    temporary_password = secrets.token_urlsafe(18)
-    # Revoke device access first. If that write fails, the learner's existing
-    # password remains valid and no one-time replacement secret is lost in a
-    # failed HTTP response.
     revoked_devices = revoke_device_credentials_for_user(
         learner_user_id,
-        revoked_by=guardian_user_id,
+        revoked_by=actor_user_id,
     )
-    if set_password(learner_username, hash_password(temporary_password)) is None:
+    if set_password(learner_username, hash_password(payload.new_password)) is None:
         raise HTTPException(status_code=404, detail="User not found")
-    log_guardian_action(
+    _log_supervisor_action(
         "guardian_credential_reset",
-        guardian_user_id=guardian_user_id,
+        actor_user_id=actor_user_id,
         learner_user_id=learner_user_id,
+        is_admin=is_admin,
         summary={
             "credential_reset": True,
             "device_credentials_revoked": revoked_devices,
         },
     )
-    return {"temporary_password": temporary_password}
+    return {"ok": True, "device_credentials_revoked": revoked_devices}
 
 
 @router.get("/users/{user_id}/grants")

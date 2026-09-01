@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const MATERIAL_A = "aaaaaaaaaaaaaaaa";
 const MATERIAL_B = "bbbbbbbbbbbbbbbb";
 const SESSION_ID = "citation-material-regression";
+const WORKSPACE_ID = "citation-material-workspace";
 
 function material(materialId: string, title: string) {
   return {
@@ -27,6 +28,56 @@ function material(materialId: string, title: string) {
 
 const materialA = material(MATERIAL_A, "Source material A");
 const materialB = material(MATERIAL_B, "Current material B");
+
+function libraryMaterial(materialId: string, title: string) {
+  return {
+    material_id: materialId,
+    content_id: materialId,
+    filename: `${title}.md`,
+    title,
+    source_kind: "file",
+    source_url: "",
+    mime: "text/markdown",
+    render_mode: "text",
+    cover_url: "",
+    duration_seconds: 0,
+    status: "ready",
+    progress: 0,
+    error_code: "",
+    error_detail: "",
+    created_at: 1,
+    updated_at: 2,
+    last_opened_at: 2,
+    size_bytes: 256,
+    unit_count: 2,
+    collections: [],
+  };
+}
+
+const workspace = {
+  workspace_id: WORKSPACE_ID,
+  title: "Citation material regression",
+  description: "",
+  active_material_id: MATERIAL_B,
+  created_at: 1,
+  updated_at: 2,
+  tabs: [
+    {
+      material: libraryMaterial(MATERIAL_A, "Source material A"),
+      tab_order: 0,
+      pinned: false,
+      opened: true,
+      added_at: 1,
+    },
+    {
+      material: libraryMaterial(MATERIAL_B, "Current material B"),
+      tab_order: 1,
+      pinned: false,
+      opened: true,
+      added_at: 2,
+    },
+  ],
+};
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/**", async (route) => {
@@ -129,6 +180,12 @@ test.beforeEach(async ({ page }) => {
       });
     }
     if (path === "/api/v1/reading/extensions") return json([]);
+    if (path === `/api/v1/reading/workspaces/${WORKSPACE_ID}`) {
+      return json({ workspace, sessions: [] });
+    }
+    if (path === `/api/v1/reading/workspaces/${WORKSPACE_ID}/sessions`) {
+      return json({ sessions: [] });
+    }
     if (path === "/api/v1/reading/materials") {
       return json([materialB, materialA]);
     }
@@ -158,7 +215,7 @@ test.beforeEach(async ({ page }) => {
 test("historical citation reopens its turn material and unsupported locator stays plain", async ({
   page,
 }) => {
-  await page.goto(`/home/${SESSION_ID}`);
+  await page.goto(`/reading/${WORKSPACE_ID}/${SESSION_ID}`);
 
   await expect(page.getByRole("link", { name: "p.2" })).toHaveAttribute(
     "href",
@@ -166,12 +223,6 @@ test("historical citation reopens its turn material and unsupported locator stay
   );
   await expect(page.getByRole("link", { name: "p.1" })).toHaveCount(0);
 
-  await page
-    .getByRole("button", { name: /Immersive Reading/ })
-    .last()
-    .click();
-  await page.getByRole("button", { name: "Open a document to read" }).click();
-  await page.getByText("Current material B.md").click();
   await expect(page.getByText("Wrong material text.")).toBeVisible();
 
   await page.getByRole("link", { name: "p.2" }).click();

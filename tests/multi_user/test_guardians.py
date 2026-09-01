@@ -134,8 +134,27 @@ def test_admin_can_authorize_and_revoke_guardians(mu_isolated_root, monkeypatch)
     assert mine.status_code == 200
     assert mine.json()["relationships"][0]["id"] == relationship["id"]
 
+    self_revoked = client.delete(
+        f"/api/v1/multi-user/me/guardianships/{relationship['id']}",
+        headers=_auth("guardian-token"),
+    )
+    assert self_revoked.status_code == 200
+    assert self_revoked.json()["relationship"]["revocation_reason"] == "self_revoked"
+    assert (
+        client.get("/api/v1/multi-user/me/guardianships", headers=_auth("guardian-token")).json()[
+            "relationships"
+        ]
+        == []
+    )
+
+    replacement = client.post(
+        "/api/v1/multi-user/guardians",
+        headers=_auth("root-token"),
+        json={"guardian_user_id": guardian_id, "learner_user_id": learner_id},
+    ).json()["relationship"]
+
     revoked = client.delete(
-        f"/api/v1/multi-user/guardians/{relationship['id']}",
+        f"/api/v1/multi-user/guardians/{replacement['id']}",
         headers=_auth("root-token"),
     )
     assert revoked.status_code == 200
@@ -158,7 +177,7 @@ def test_admin_can_authorize_and_revoke_guardians(mu_isolated_root, monkeypatch)
         headers=_auth("root-token"),
         params={"include_revoked": True},
     ).json()["relationships"]
-    assert len(history) == 1
+    assert len(history) == 2
 
 
 def test_guardian_report_requires_active_relationship_and_is_audited(mu_isolated_root, monkeypatch):
@@ -233,24 +252,92 @@ def test_guardian_can_assign_only_read_access_to_approved_books(mu_isolated_root
     assert permission["create"] is True
     assert permission["default"] == "none"
 
+    catalog = client.get(materials_url, headers=_auth("guardian-token"))
+    assert catalog.status_code == 200
+    assert {item["book_id"] for item in catalog.json()["materials"] if item["assigned"]} == {
+        "bk_private",
+        "bk_approved",
+    }
+
+    from deeptutor.multi_user.book_permission import BookPermission
+    from deeptutor.multi_user.identity import set_book_permission
+
+    assert set_book_permission("learner", BookPermission(create=True, default="read"))
+    narrowed = client.put(
+        materials_url,
+        headers=_auth("guardian-token"),
+        json={"book_ids": ["bk_approved"]},
+    )
+    assert narrowed.status_code == 200
+    assert narrowed.json()["book_permission"]["default"] == "read"
+    assert narrowed.json()["book_permission"]["books"] == {"bk_private": "none"}
+
     report = client.get(
         f"/api/v1/multi-user/learners/{learner_id}/guardian-report",
         headers=_auth("guardian-token"),
     )
     assert report.status_code == 200
     assert {item["book_id"] for item in report.json()["assigned_materials"]} == {
-        "bk_private",
         "bk_approved",
     }
 
     reset = client.post(
         f"/api/v1/multi-user/learners/{learner_id}/credentials/reset",
         headers=_auth("guardian-token"),
+        json={"new_password": "replacement-password"},
     )
     assert reset.status_code == 403
 
 
-def test_guardian_can_reset_local_credentials_once_and_audit_hides_secret(
+def test_guardian_can_adjust_only_the_exposed_learning_restrictions(mu_isolated_root, monkeypatch):
+    client, users = _client(mu_isolated_root, monkeypatch)
+    learner_id = users["learner"]["id"]
+    created = client.post(
+        "/api/v1/multi-user/guardians",
+        headers=_auth("root-token"),
+        json={
+            "guardian_user_id": users["guardian"]["id"],
+            "learner_user_id": learner_id,
+            "permissions": ["manage_restrictions"],
+        },
+    )
+    assert created.status_code == 201
+
+    url = f"/api/v1/multi-user/learners/{learner_id}/restrictions"
+    assert client.get(url, headers=_auth("stranger-token")).status_code == 403
+    before = client.get(url, headers=_auth("guardian-token"))
+    assert before.status_code == 200
+    assert before.json()["restrictions"]["age_band"] == "9-12"
+
+    changed = client.put(
+        url,
+        headers=_auth("guardian-token"),
+        json={
+            "age_band": "13-15",
+            "allow_upload": True,
+            "allowed_surfaces": ["reading"],
+            "extensions": [],
+        },
+    )
+    assert changed.status_code == 200
+    assert changed.json()["restrictions"] == {
+        "age_band": "13-15",
+        "allow_upload": True,
+        "allowed_surfaces": ["reading"],
+        "extensions": [],
+    }
+
+    from deeptutor.multi_user.grants import load_grant
+
+    grant = load_grant(learner_id)
+    assert grant["learning_policy"]["allowed_capabilities"] == [
+        "chat",
+        "immersive_reading",
+    ]
+    assert grant["learning_policy"]["reading"]["material_ids"] == []
+
+
+def test_guardian_can_reset_local_credentials_without_returning_or_auditing_secret(
     mu_isolated_root, monkeypatch
 ):
     client, users = _client(mu_isolated_root, monkeypatch)
@@ -278,6 +365,7 @@ def test_guardian_can_reset_local_credentials_once_and_audit_hides_secret(
     unsupported = client.post(
         f"/api/v1/multi-user/learners/{learner_id}/credentials/reset",
         headers=_auth("guardian-token"),
+        json={"new_password": "replacement-password"},
     )
     assert unsupported.status_code == 400
     monkeypatch.setattr(multi_user_router, "POCKETBASE_ENABLED", False)
@@ -296,20 +384,32 @@ def test_guardian_can_reset_local_credentials_once_and_audit_hides_secret(
     reset = client.post(
         f"/api/v1/multi-user/learners/{learner_id}/credentials/reset",
         headers=_auth("guardian-token"),
+        json={"new_password": "replacement-password"},
     )
     assert reset.status_code == 200
-    temporary_password = reset.json()["temporary_password"]
-    assert len(temporary_password) >= 16
+    assert reset.json()["ok"] is True
+    assert "temporary_password" not in reset.json()
+    assert "new_password" not in reset.json()
 
     from deeptutor.multi_user.identity import load_users
 
     learner_hash = load_users()["learner"]["hash"]
     assert verify_password("learner-password", learner_hash) is False
-    assert verify_password(temporary_password, learner_hash) is True
+    assert verify_password("replacement-password", learner_hash) is True
     assert validate_device_token(learner_id, device["id"], session_nonce) is False
 
     audit_path = mu_isolated_root / "data" / "system" / "audit" / "usage.jsonl"
-    assert temporary_password not in audit_path.read_text()
+    assert "replacement-password" not in audit_path.read_text()
+
+    admin_reset = client.post(
+        f"/api/v1/multi-user/learners/{learner_id}/credentials/reset",
+        headers=_auth("root-token"),
+        json={"new_password": "admin-replacement-password"},
+    )
+    assert admin_reset.status_code == 200
+    learner_hash = load_users()["learner"]["hash"]
+    assert verify_password("admin-replacement-password", learner_hash) is True
+    assert "admin-replacement-password" not in audit_path.read_text()
 
 
 def test_user_deletion_revokes_related_guardian_records(mu_isolated_root, monkeypatch):

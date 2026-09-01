@@ -14,19 +14,40 @@ const page = readWebFile(
   "guardian",
   "page.tsx",
 );
+const adminEditor = readWebFile(
+  "features",
+  "multi-user",
+  "components",
+  "GuardianRelationshipsEditor.tsx",
+);
 
-test("guardian credential reset returns the one-time password to the UI", () => {
-  assert.match(api, /Promise<string>/);
-  assert.match(api, /return data\.temporary_password/);
-  assert.match(page, /setTemporaryPassword/);
-  assert.match(page, /Copy this password now\. It will not be shown again\./);
+test("guardian credential reset never returns or renders a plaintext credential", () => {
+  assert.match(api, /JSON\.stringify\(\{ new_password: newPassword \}\)/);
+  assert.doesNotMatch(api, /temporary_password/);
+  assert.doesNotMatch(page, /Temporary password|setTemporaryPassword|clipboard/);
+  assert.doesNotMatch(adminEditor, /Temporary password|setTemporaryPassword|clipboard/);
+  assert.match(page, /type="password"/);
+  assert.match(adminEditor, /type="password"/);
 });
 
 test("guardian actions follow each relationship permission", () => {
   assert.match(page, /can\("view_reports"\)/);
   assert.match(page, /can\("assign_materials"\)/);
+  assert.match(page, /can\("manage_restrictions"\)/);
   assert.match(page, /can\("reset_credentials"\)/);
+  assert.match(page, /revokeMyGuardianRelationship/);
+  assert.match(page, /saveGuardianMaterials/);
+  assert.match(page, /saveGuardianRestrictions/);
   assert.match(page, /<ConfirmDialog/);
+});
+
+test("administrators can create, review, revoke, and reset guardian access", () => {
+  assert.match(adminEditor, /listAdminGuardianRelationships/);
+  assert.match(adminEditor, /authorizeGuardianRelationship/);
+  assert.match(adminEditor, /revokeGuardianRelationship/);
+  assert.match(adminEditor, /getGuardianReport/);
+  assert.match(adminEditor, /resetLearnerCredentials/);
+  assert.match(adminEditor, /PERMISSIONS/);
 });
 
 test("settings visibility uses the account preset rather than policy presence", () => {
@@ -48,8 +69,12 @@ test("guardian management copy is localized", () => {
   for (const key of [
     "Guardian management",
     "Approved materials",
+    "Manage restrictions",
+    "Revoke guardian access",
+    "Save materials",
+    "Learning restrictions",
+    "Guardian relationships",
     "Reset learner credentials",
-    "Temporary password",
     "This changes the learner password and revokes every learner device credential.",
   ]) {
     assert.ok(en[key], `missing English key: ${key}`);
