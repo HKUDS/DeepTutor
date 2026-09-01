@@ -4742,5 +4742,7 @@
   "A full re-index publishes a new version and then makes this model the pinned identity for future incremental uploads.": "完整重建会发布新版本，并将此模型固定为后续增量上传的索引身份。",
   "Failed rebuild candidate": "失败的重建候选版本",
   "Not published": "未发布",
+  "Rebuild candidate in progress": "正在构建重建候选版本",
+  "Building": "构建中",
   "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds.": "选择模型并发布新的 LightRAG 索引版本；重建成功前，当前已发布版本保持可用。"
 }

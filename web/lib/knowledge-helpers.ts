@@ -123,6 +123,30 @@ export interface LightRagIndexingPolicy {
   vlm_used?: boolean;
 }
 
+export type LightRagVersionDisplayState =
+  | "published"
+  | "building"
+  | "failed"
+  | "legacy"
+  | "inactive";
+
+export function lightRagVersionDisplayState(
+  version: IndexVersion,
+  options: {
+    published: boolean;
+    rebuildActive: boolean;
+    kbError: boolean;
+    legacy: boolean;
+  },
+): LightRagVersionDisplayState {
+  if (options.published) return "published";
+  if (options.legacy || version.legacy) return "legacy";
+  if (version.ready) return "inactive";
+  if (options.rebuildActive) return "building";
+  if (options.kbError || version.failure_summary) return "failed";
+  return "inactive";
+}
+
 export interface KnowledgeBase {
   id?: string;
   name: string;
@@ -389,6 +413,7 @@ export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
   resolveKbStatus(kb) === "ready" && !kbNeedsReindex(kb);
 
 export const kbCanReindex = (kb: KnowledgeBase): boolean => {
+  if (kb.read_only) return false;
   const status = resolveKbStatus(kb);
   const hasSourceFiles =
     typeof kb.statistics?.raw_documents === "number"

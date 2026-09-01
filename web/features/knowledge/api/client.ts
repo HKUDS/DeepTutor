@@ -1185,16 +1185,15 @@ export async function reindexKnowledgeBase(
   name: string,
   indexingLLM?: IndexingLLMSelection,
 ): Promise<KnowledgeTaskResponse> {
-  const form = new FormData();
+  const request: RequestInit = { method: "POST" };
   if (indexingLLM) {
+    const form = new FormData();
     form.append("indexing_llm", JSON.stringify(indexingLLM));
+    request.body = form;
   }
   const res = await apiFetch(
     apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/reindex`),
-    {
-      method: "POST",
-      body: form,
-    },
+    request,
   );
   if (!res.ok) {
     const detail = await readErrorDetail(

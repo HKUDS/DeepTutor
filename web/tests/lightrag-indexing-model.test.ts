@@ -9,7 +9,11 @@ import {
   updatePendingIndexingPolicy,
 } from "../lib/knowledge-api";
 import { selectionFromLLMOption } from "../components/knowledge/IndexingModelSelector";
-import { kbCanReindex, type KnowledgeBase } from "../lib/knowledge-helpers";
+import {
+  kbCanReindex,
+  lightRagVersionDisplayState,
+  type KnowledgeBase,
+} from "../lib/knowledge-helpers";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -85,6 +89,21 @@ test("pending-policy update is JSON-only and creates no indexing request", async
   });
 });
 
+test("non-LightRAG re-index keeps the established bodyless request", async () => {
+  let captured: RequestInit | undefined;
+  const restore = stubFetch(async (_input, init) => {
+    captured = init;
+    return jsonResponse(200, { task_id: "task-2", noop: false });
+  });
+  try {
+    await reindexKnowledgeBase("vectors");
+  } finally {
+    restore();
+  }
+  assert.equal(captured?.method, "POST");
+  assert.equal(Object.hasOwn(captured ?? {}, "body"), false);
+});
+
 test("model defaults are inherited while an explicit none remains serialized", () => {
   const option = {
     profile_id: "p",
@@ -118,6 +137,29 @@ test("healthy LightRAG knowledge bases retain a full re-index entry", () => {
     },
   };
   assert.equal(kbCanReindex(kb), true);
+  assert.equal(kbCanReindex({ ...kb, read_only: true }), false);
+});
+
+test("LightRAG candidates distinguish active builds from failures", () => {
+  const candidate = { signature: "version-2", ready: false };
+  assert.equal(
+    lightRagVersionDisplayState(candidate, {
+      published: false,
+      rebuildActive: true,
+      kbError: false,
+      legacy: false,
+    }),
+    "building",
+  );
+  assert.equal(
+    lightRagVersionDisplayState(candidate, {
+      published: false,
+      rebuildActive: false,
+      kbError: true,
+      legacy: false,
+    }),
+    "failed",
+  );
 });
 
 test("model controls are scoped to built-in LightRAG create/rebuild surfaces", () => {
@@ -130,8 +172,22 @@ test("model controls are scoped to built-in LightRAG create/rebuild surfaces", (
     path.join(root, "components/knowledge/KbDocumentsSection.tsx"),
     "utf8",
   );
+  const detailSource = readFileSync(
+    path.join(root, "components/knowledge/KnowledgeBaseDetail.tsx"),
+    "utf8",
+  );
+  const provenanceSource = readFileSync(
+    path.join(root, "components/knowledge/LightRagIndexingProvenance.tsx"),
+    "utf8",
+  );
   assert.match(createSource, /provider === "lightrag" \? \(/);
   assert.match(createSource, /indexingLLM:\s*provider === "lightrag"/);
   assert.doesNotMatch(uploadSource, /IndexingModelSelector/);
   assert.match(uploadSource, /LightRagIndexingProvenance/);
+  assert.match(provenanceSource, /compact && \(/);
+  assert.match(provenanceSource, /modelLabel \|\| t\("Active chat model at indexing time"\)/);
+  assert.match(
+    detailSource,
+    /status === "error" && kbProvider\(kb\) !== "lightrag"/,
+  );
 });

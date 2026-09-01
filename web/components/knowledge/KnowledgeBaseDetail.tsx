@@ -303,7 +303,9 @@ export default function KnowledgeBaseDetail({
                   onReindex={(indexingLLM) =>
                     kb.read_only
                       ? Promise.resolve()
-                      : onReindex(kb.name, indexingLLM)
+                      : status === "error" && kbProvider(kb) !== "lightrag"
+                        ? handleRetry()
+                        : onReindex(kb.name, indexingLLM)
                   }
                   onUpdatePendingIndexingPolicy={(indexingLLM) =>
                     kb.read_only

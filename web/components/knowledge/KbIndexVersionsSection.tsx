@@ -14,7 +14,9 @@ import {
 import {
   formatKnowledgeTimestamp,
   kbCanReindex,
+  kbHasLiveProgress,
   kbNeedsReindex,
+  lightRagVersionDisplayState,
   providerUsesEmbeddingMetadata,
   resolveKbStatus,
   resolveProgressPercent,
@@ -26,7 +28,6 @@ import ProcessLogs from "@/components/common/ProcessLogs";
 import Modal from "@/components/common/Modal";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
 import type { IndexingLLMSelection } from "@/lib/knowledge-api";
-import { kbHasLiveProgress } from "@/lib/knowledge-helpers";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
 import IndexingModelSelector, {
   selectionFromLLMOption,
@@ -80,6 +81,7 @@ export default function KbIndexVersionsSection({
     : undefined;
   const emptyPendingEligible =
     isLightRag &&
+    !kb.read_only &&
     kb.statistics?.raw_documents === 0 &&
     !publishedLightRagVersion &&
     !kbHasLiveProgress(kb) &&
@@ -282,6 +284,8 @@ export default function KbIndexVersionsSection({
                 kb.metadata?.indexing_policy?.policy === "legacy_unpinned" &&
                 version.ready === true
               }
+              isRebuildActive={Boolean(isReindexingHere)}
+              kbError={isError}
             />
           ))}
         </ul>
@@ -396,25 +400,40 @@ function IndexVersionRow({
   isPublishedLightRag,
   isLightRagVersion,
   isLegacyLightRag,
+  isRebuildActive,
+  kbError,
 }: {
   version: IndexVersion;
   activeSignature: string | null;
   isPublishedLightRag: boolean;
   isLightRagVersion: boolean;
   isLegacyLightRag: boolean;
+  isRebuildActive: boolean;
+  kbError: boolean;
 }) {
   const { t } = useTranslation();
   const matchesActive =
     !!version.signature && version.signature === activeSignature;
+  const lightRagState = isLightRagVersion
+    ? lightRagVersionDisplayState(version, {
+        published: isPublishedLightRag,
+        rebuildActive: isRebuildActive,
+        kbError,
+        legacy: isLegacyLightRag,
+      })
+    : null;
   const isActive =
-    isPublishedLightRag || (matchesActive && version.ready === true);
+    lightRagState === "published" ||
+    (!isLightRagVersion && matchesActive && version.ready === true);
   const isPhantom = matchesActive && version.ready !== true;
-  const isLegacy = !!version.legacy || isLegacyLightRag;
-  const isFailedLightRagCandidate =
-    isLightRagVersion && version.ready !== true && !isLegacy;
+  const isLegacy = lightRagState === "legacy" || !!version.legacy;
+  const isFailedLightRagCandidate = lightRagState === "failed";
+  const isBuildingLightRagCandidate = lightRagState === "building";
 
   const title = isFailedLightRagCandidate
     ? t("Failed rebuild candidate")
+    : isBuildingLightRagCandidate
+      ? t("Rebuild candidate in progress")
     : isLegacy
       ? t("Legacy index")
       : version.model
@@ -445,6 +464,8 @@ function IndexVersionRow({
       >
         {isActive ? (
           <Star className="h-3.5 w-3.5" fill="currentColor" />
+        ) : isBuildingLightRagCandidate ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : isPhantom ? (
           <AlertTriangle className="h-3.5 w-3.5" />
         ) : isLegacy ? (
@@ -483,6 +504,11 @@ function IndexVersionRow({
           {isFailedLightRagCandidate && (
             <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">
               {t("Not published")}
+            </span>
+          )}
+          {isBuildingLightRagCandidate && (
+            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+              {t("Building")}
             </span>
           )}
         </div>

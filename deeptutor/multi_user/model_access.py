@@ -125,6 +125,10 @@ def allowed_llm_options() -> dict[str, Any]:
     user = get_current_user()
     if user.is_admin:
         return list_llm_options(admin_catalog())
+    catalog = admin_catalog()
+    llm_service = catalog.get("services", {}).get("llm", {})
+    active_profile_id = str(llm_service.get("active_profile_id") or "")
+    active_model_id = str(llm_service.get("active_model_id") or "")
     options = [
         {
             "profile_id": item.get("profile_id"),
@@ -137,12 +141,23 @@ def allowed_llm_options() -> dict[str, Any]:
             "reasoning_effort": item.get("reasoning_effort"),
             "supported_reasoning_efforts": item.get("supported_reasoning_efforts"),
             "source": item.get("source") or "admin",
-            "is_active_default": False,
+            "is_active_default": (
+                item.get("profile_id") == active_profile_id
+                and item.get("model_id") == active_model_id
+            ),
         }
         for item in redacted_model_access(user.id).get("llm", [])
         if item.get("available")
     ]
-    return {"active": None, "options": options}
+    active = next(
+        (
+            {"profile_id": active_profile_id, "model_id": active_model_id}
+            for option in options
+            if option["is_active_default"]
+        ),
+        None,
+    )
+    return {"active": active, "options": options}
 
 
 def has_capability_access(capability: str, user_id: str | None = None) -> bool:

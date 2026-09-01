@@ -4742,5 +4742,7 @@
   "A full re-index publishes a new version and then makes this model the pinned identity for future incremental uploads.": "A full re-index publishes a new version and then makes this model the pinned identity for future incremental uploads.",
   "Failed rebuild candidate": "Failed rebuild candidate",
   "Not published": "Not published",
+  "Rebuild candidate in progress": "Rebuild candidate in progress",
+  "Building": "Building",
   "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds.": "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds."
 }

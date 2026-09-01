@@ -47,6 +47,12 @@ export default function LightRagIndexingProvenance({
       <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
         {summary}
       </p>
+      {compact && (
+        <p className="mt-1 text-[11px] font-medium text-[var(--foreground)]">
+          {modelLabel || t("Active chat model at indexing time")}
+          {effort ? ` · ${t("Reasoning effort")}: ${effort}` : ""}
+        </p>
+      )}
       {!compact && (
         <dl className="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-2">
           <ProvenanceField label={t("Model")}>
