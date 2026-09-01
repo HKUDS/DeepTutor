@@ -213,6 +213,11 @@ deeptutor memory clear --force
 ```bash
 deeptutor plugin list                            # 查看所有工具和 capability
 deeptutor plugin info <name>                     # 查看详情
+deeptutor plugin state                           # 查看插件包状态
+deeptutor plugin search [query]                  # 搜索官方插件索引
+deeptutor plugin show <plugin-id>                # 查看插件包元数据
+deeptutor plugin enable <plugin-id>              # 记录插件包为启用（运行时 gating 为下一阶段）
+deeptutor plugin disable <plugin-id>             # 记录插件包为停用
 ```
 
 ### `config` — 配置

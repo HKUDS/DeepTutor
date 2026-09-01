@@ -5,9 +5,11 @@ from deeptutor.plugins.loader import (
     discover_plugins,
     load_plugin_capability,
 )
+from deeptutor.plugins.manifest import parse_manifest
 
 __all__ = [
     "PluginManifest",
     "discover_plugins",
     "load_plugin_capability",
+    "parse_manifest",
 ]
