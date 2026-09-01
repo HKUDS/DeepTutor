@@ -2349,9 +2349,7 @@ def test_create_rejects_indexing_selection_for_other_provider_before_registratio
     assert manager.config["knowledge_bases"] == {}
 
 
-def test_empty_lightrag_kb_can_update_pending_indexing_policy(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_empty_lightrag_kb_can_update_pending_indexing_policy(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     manager.config["knowledge_bases"]["empty"] = {
         "rag_provider": "lightrag",

@@ -143,9 +143,7 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
             supported_levels = model.get("codex_supported_reasoning_levels")
             if isinstance(supported_levels, list):
                 option["supported_reasoning_efforts"] = [
-                    str(level).strip().lower()
-                    for level in supported_levels
-                    if str(level).strip()
+                    str(level).strip().lower() for level in supported_levels if str(level).strip()
                 ]
             options.append(option)
 

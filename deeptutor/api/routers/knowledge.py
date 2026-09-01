@@ -3448,8 +3448,7 @@ async def update_pending_indexing_policy(
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    "The pending indexing model cannot change while an indexing task "
-                    "is active."
+                    "The pending indexing model cannot change while an indexing task is active."
                 ),
             )
 
@@ -3470,8 +3469,7 @@ async def update_pending_indexing_policy(
         raise HTTPException(
             status_code=409,
             detail=(
-                "The pending indexing model can change only while the knowledge base "
-                "is empty."
+                "The pending indexing model can change only while the knowledge base is empty."
             ),
         )
 
@@ -3501,8 +3499,7 @@ async def update_pending_indexing_policy(
         raise HTTPException(
             status_code=409,
             detail=(
-                "The pending indexing model can change only while the knowledge base "
-                "is empty."
+                "The pending indexing model can change only while the knowledge base is empty."
             ),
         )
     kb_entry["pending_indexing_policy"] = policy
