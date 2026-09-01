@@ -53,6 +53,27 @@ def test_agentic_chat_final_prompt_uses_selected_language(
     assert "You are DeepTutor" in en_prompt
 
 
+def test_agentic_chat_prompt_keeps_japanese_as_reply_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeRegistry:
+        def build_prompt_text(self, *_args, **_kwargs) -> str:
+            return "- tool"
+
+    monkeypatch.setattr(
+        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        lambda: FakeRegistry(),
+    )
+
+    from deeptutor.core.context import UnifiedContext
+
+    ctx = UnifiedContext()
+    ja_prompt = AgenticChatPipeline(language="ja")._build_system_prompt([], ctx)
+
+    assert "Write ALL reader-facing text strictly in 日本語" in ja_prompt
+    assert "Write ALL reader-facing text (titles, prose" not in ja_prompt
+
+
 def test_mastery_plugin_system_prompt_uses_localized_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -120,6 +141,16 @@ def test_legacy_chat_agent_system_prompt_uses_selected_language() -> None:
     assert "请严格使用中文" in zh_messages[0]["content"]
     assert "You are DeepTutor" in en_messages[0]["content"]
     assert "Write ALL reader-facing text" in en_messages[0]["content"]
+
+
+def test_legacy_chat_agent_system_prompt_keeps_japanese_directive() -> None:
+    messages = ChatAgent(language="ja", config={}).build_messages(
+        message="フーリエ変換を説明して",
+        history=[],
+    )
+
+    content = messages[0]["content"]
+    assert "Write ALL reader-facing text strictly in 日本語" in content
 
 
 def test_prompt_blocks_include_localized_optional_context() -> None:

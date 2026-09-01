@@ -106,6 +106,11 @@ class SettingSpec:
     # Optional extra validation beyond "the value is one of ``choices``".
     # Returns an error message, or None when the value is acceptable.
     validate: Callable[[str], str | None] | None = None
+    # When True, a value that is not in ``choices`` may still be written if
+    # ``validate`` accepts it (reply language: listed endonyms plus any
+    # compact BCP-47 code). Secrets still cannot land here: validate must
+    # refuse free-form text.
+    open_ended: bool = False
     # Pre-commit connectivity check against a candidate that is not on disk.
     probe: Callable[[str], Awaitable[ProbeResult]] | None = None
     # Human-readable consequence, surfaced verbatim by the agent alongside the
@@ -126,8 +131,8 @@ class SettingSpec:
 # --------------------------------------------------------------------------
 
 _LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
-    ("en", "English", "Interface and replies in English."),
-    ("zh", "简体中文", "Interface and replies in Simplified Chinese."),
+    ("en", "English", "Interface in English."),
+    ("zh", "简体中文", "Interface in Simplified Chinese."),
 )
 
 _THEME_CHOICES: tuple[tuple[str, str, str], ...] = (
@@ -171,6 +176,46 @@ def _static_choices(
     return _choices
 
 
+def _response_language_choices(
+    current: Callable[[], str],
+) -> Callable[[], tuple[SettingChoice, ...]]:
+    def _choices() -> tuple[SettingChoice, ...]:
+        from deeptutor.services.prompt.language import (
+            RESPONSE_LANGUAGE_CHOICES,
+            language_label,
+        )
+
+        active = current()
+        return tuple(
+            SettingChoice(
+                value=code,
+                label=language_label(code),
+                description=f"Replies in {language_label(code)}.",
+                current=code == active,
+            )
+            for code in RESPONSE_LANGUAGE_CHOICES
+        )
+
+    return _choices
+
+
+def _validate_response_language(value: str) -> str | None:
+    from deeptutor.services.settings.interface_settings import try_parse_response_language
+
+    if try_parse_response_language(value) is None:
+        return "Reply language must be a BCP-47 code such as en, ja, or pl."
+    return None
+
+
+def _write_response_language(value: str) -> None:
+    from deeptutor.services.settings.interface_settings import (
+        normalize_response_language,
+        set_ui_setting,
+    )
+
+    set_ui_setting("response_language", normalize_response_language(value))
+
+
 def _interface_specs() -> list[SettingSpec]:
     language_read = _read_ui("language", "en")
     response_read = _read_ui("response_language", "en")
@@ -193,10 +238,12 @@ def _interface_specs() -> list[SettingSpec]:
             scope="personal",
             effect="instant",
             label="Reply language",
-            summary="Language the assistant writes its answers in.",
+            summary="Language the assistant writes its answers in. Listed options plus any compact language code (for example pl, ar).",
             read=response_read,
-            choices=_static_choices(_LANGUAGE_CHOICES, response_read),
-            write=_write_ui("response_language"),
+            choices=_response_language_choices(response_read),
+            write=_write_response_language,
+            validate=_validate_response_language,
+            open_ended=True,
             effect_detail="Applies from the next turn onwards.",
         ),
         SettingSpec(

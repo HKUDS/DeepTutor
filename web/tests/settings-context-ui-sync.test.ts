@@ -112,6 +112,22 @@ test("settings-context: persistUiSettingsPatch sends only the changed code-block
   });
 });
 
+test("settings-context: persistUiSettingsPatch rejects a failed save", async () => {
+  const persist = (settingsContext as any).persistUiSettingsPatch;
+
+  await assert.rejects(
+    () =>
+      persist({ response_language: "ja" }, async () => {
+        return {
+          ok: false,
+          status: 422,
+          text: async () => "must be a BCP-47 language code",
+        } as Response;
+      }),
+    /HTTP 422/,
+  );
+});
+
 test("settings-context: persistUiSettingsPatch can save theme without sending code-block fields", async () => {
   const persist = (settingsContext as any).persistUiSettingsPatch;
 

@@ -52,26 +52,57 @@ def _interface_settings_file():
     return get_path_service().get_settings_file("interface")
 
 
-def _normalize_language(language: Any, default: str = "en") -> str:
-    """
-    Normalize language codes:
-    - en/english -> en
-    - zh/chinese/cn -> zh
-    """
-    if language is None or language == "":
-        language = default
+def _parse_ui_language(language: Any) -> str | None:
+    if not isinstance(language, str):
+        return None
+    s = language.lower().strip()
+    if s in {"en", "english"}:
+        return "en"
+    if s in {"zh", "chinese", "cn"}:
+        return "zh"
+    return None
 
-    if isinstance(language, str):
-        s = language.lower().strip()
-        if s in {"en", "english"}:
-            return "en"
-        if s in {"zh", "chinese", "cn"}:
-            return "zh"
 
-    # Fall back to default
-    if isinstance(default, str):
-        return _normalize_language(default, "en")
-    return "en"
+def normalize_ui_language(language: Any, default: str = "en") -> str:
+    """Collapse the interface locale to the two shipped UI catalogs (en/zh)."""
+    parsed = _parse_ui_language(language)
+    if parsed is not None:
+        return parsed
+    fallback = _parse_ui_language(default)
+    return fallback if fallback is not None else "en"
+
+
+def try_parse_response_language(language: Any) -> str | None:
+    """Return a stored reply-language code, or None when the value is unusable.
+
+    Accepts the historical en/zh aliases plus any compact BCP-47-like code
+    (``ja``, ``pl``, ``zh-tw``). Junk, blank and non-strings are None so the
+    caller can inherit a default instead of inventing one here.
+    """
+    if not isinstance(language, str):
+        return None
+    s = language.lower().strip()
+    if not s:
+        return None
+    ui = _parse_ui_language(s)
+    if ui is not None:
+        return ui
+    from deeptutor.services.prompt.language import is_response_language_code
+
+    return s if is_response_language_code(s) else None
+
+
+def normalize_response_language(language: Any, default: str = "en") -> str:
+    """Normalize the reader-facing model output language."""
+    parsed = try_parse_response_language(language)
+    if parsed is not None:
+        return parsed
+    fallback = try_parse_response_language(default)
+    return fallback if fallback is not None else "en"
+
+
+# Historical name used when UI and reply language were the same field.
+_normalize_language = normalize_ui_language
 
 
 def resolve_languages(saved: Mapping[str, Any]) -> dict[str, str]:
@@ -85,14 +116,14 @@ def resolve_languages(saved: Mapping[str, Any]) -> dict[str, str]:
     own superset of defaults on top) go through this one function so they can
     never disagree about what a legacy file means.
 
-    ``_normalize_language`` already falls back to its ``default`` for a value
-    that is missing, blank or unrecognized, so absence, ``null`` and junk all
-    land on the interface language without a separate key-presence check.
+    ``normalize_response_language`` already falls back to its ``default`` for a
+    value that is missing, blank or unrecognized, so absence, ``null`` and junk
+    all land on the interface language without a separate key-presence check.
     """
-    language = _normalize_language(saved.get("language"), DEFAULT_UI_SETTINGS["language"])
+    language = normalize_ui_language(saved.get("language"), DEFAULT_UI_SETTINGS["language"])
     return {
         "language": language,
-        "response_language": _normalize_language(saved.get("response_language"), language),
+        "response_language": normalize_response_language(saved.get("response_language"), language),
     }
 
 
@@ -209,10 +240,10 @@ def get_ui_language(default: str = "en") -> str:
     3) 'en'
     """
     settings = get_ui_settings()
-    return _normalize_language(settings.get("language"), default)
+    return normalize_ui_language(settings.get("language"), default)
 
 
 def get_response_language(default: str = "en") -> str:
     """Get the preferred reader-facing model output language."""
     settings = get_ui_settings()
-    return _normalize_language(settings.get("response_language"), default)
+    return normalize_response_language(settings.get("response_language"), default)

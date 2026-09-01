@@ -1436,12 +1436,18 @@ class TurnRuntimeManager:
     async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         await self._ensure_accepting_turns()
         persona_explicit = "persona" in payload
-        if not payload.get("language"):
-            from deeptutor.services.settings.interface_settings import (
-                get_response_language,
-            )
+        from deeptutor.services.settings.interface_settings import (
+            get_response_language,
+        )
 
-            payload = {**payload, "language": get_response_language(default="en")}
+        # Account reply language wins over a stale client default (the web
+        # used to send "en" even after the user picked Japanese).
+        payload = {
+            **payload,
+            "language": get_response_language(
+                default=str(payload.get("language") or "en")
+            ),
+        }
         raw_config = dict(payload.get("config", {}) or {})
         runtime_only_keys = (
             "_persist_user_message",

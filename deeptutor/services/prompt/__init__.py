@@ -18,18 +18,24 @@ Usage:
 """
 
 from .language import (
+    RESPONSE_LANGUAGE_CHOICES,
     append_language_directive,
+    is_response_language_code,
     language_directive,
     language_label,
     normalize_language,
+    prompt_locale,
 )
 from .manager import PromptManager, get_prompt_manager
 
 __all__ = [
     "PromptManager",
+    "RESPONSE_LANGUAGE_CHOICES",
     "append_language_directive",
     "get_prompt_manager",
+    "is_response_language_code",
     "language_directive",
     "language_label",
     "normalize_language",
+    "prompt_locale",
 ]
