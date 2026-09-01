@@ -105,20 +105,19 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     // only when this browser has made no choice of its own — a local selection
     // is the more specific signal and must win.
     //
-    // One fetch carries both fields: the interface locale and the
-    // reader-facing output language are stored together and are gated by the
-    // same "has this browser chosen yet?" question, so splitting them into two
-    // bootstraps would only give them a chance to disagree.
+    // The saved UI locale lives in the backend, but a local selection is the
+    // more specific signal and must win. Reply language is account-level:
+    // always refresh it from the same `/settings/ui` payload so a browser
+    // that already chose English for the chrome still picks up ja/pl replies.
     const controller = new AbortController();
     let cancelled = false;
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
-      if (hasStoredLanguage()) {
+      const storedUiLanguage = hasStoredLanguage();
+      if (storedUiLanguage) {
         if (!cancelled) {
           setLanguageState(readStoredLanguage());
-          setLanguageReady(true);
         }
-        return;
       }
       fallbackTimer = setTimeout(() => {
         controller.abort();
@@ -129,25 +128,34 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
           signal: controller.signal,
           skipAuthRedirect: true,
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (!cancelled) setLanguageReady(true);
+          return;
+        }
         const payload = (await response.json()) as {
           language?: unknown;
           response_language?: unknown;
         };
-        if (payload.language !== "zh" && payload.language !== "en") return;
-        writeStoredLanguage(payload.language);
-        // A backend that predates the split sends no response_language;
-        // resolveResponseLanguage inherits the interface locale, matching what
-        // the server does for a legacy interface.json.
+        if (
+          !storedUiLanguage &&
+          (payload.language === "zh" || payload.language === "en")
+        ) {
+          writeStoredLanguage(payload.language);
+          if (!cancelled) setLanguageState(payload.language);
+        }
+        // Reply language is account-level and independent of the UI locale.
+        // Always adopt the server value so a browser that already chose
+        // English for the chrome still picks up Japanese/Polish replies.
         writeStoredResponseLanguage(
           resolveResponseLanguage(
             typeof payload.response_language === "string"
               ? payload.response_language
               : null,
-            payload.language,
+            typeof payload.language === "string"
+              ? payload.language
+              : readStoredLanguage(),
           ),
         );
-        if (!cancelled) setLanguageState(payload.language);
       } catch {
         // Offline or unauthenticated: keep the local default.
       } finally {

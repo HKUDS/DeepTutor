@@ -1,5 +1,7 @@
 "use client";
 
+import { tryParseResponseLanguage } from "../lib/response-languages";
+
 export type AppLanguage = "en" | "zh";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
@@ -70,10 +72,12 @@ export function normalizeLanguage(
 export function resolveResponseLanguage(
   value: string | null | undefined,
   legacyLanguage: string | null | undefined = "en",
-): AppLanguage {
-  return value === "zh" || value === "en"
-    ? value
-    : normalizeLanguage(legacyLanguage);
+): string {
+  return (
+    tryParseResponseLanguage(value) ??
+    tryParseResponseLanguage(legacyLanguage) ??
+    "en"
+  );
 }
 
 export function readStoredLanguage(): AppLanguage {
@@ -101,6 +105,15 @@ export function hasStoredLanguage(): boolean {
   }
 }
 
+export function hasStoredResponseLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(RESPONSE_LANGUAGE_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function writeStoredLanguage(language: AppLanguage): void {
   if (typeof window === "undefined") return;
   try {
@@ -115,7 +128,7 @@ export function writeStoredLanguage(language: AppLanguage): void {
   }
 }
 
-export function readStoredResponseLanguage(): AppLanguage {
+export function readStoredResponseLanguage(): string {
   if (typeof window === "undefined") return "en";
   try {
     return resolveResponseLanguage(
@@ -127,13 +140,14 @@ export function readStoredResponseLanguage(): AppLanguage {
   }
 }
 
-export function writeStoredResponseLanguage(language: AppLanguage): void {
+export function writeStoredResponseLanguage(language: string): void {
   if (typeof window === "undefined") return;
+  const resolved = resolveResponseLanguage(language);
   try {
-    window.localStorage.setItem(RESPONSE_LANGUAGE_STORAGE_KEY, language);
+    window.localStorage.setItem(RESPONSE_LANGUAGE_STORAGE_KEY, resolved);
     window.dispatchEvent(
       new CustomEvent(RESPONSE_LANGUAGE_EVENT, {
-        detail: { language },
+        detail: { language: resolved },
       }),
     );
   } catch {

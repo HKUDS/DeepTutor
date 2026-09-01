@@ -15,7 +15,7 @@ from typing import Any, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,7 @@ from deeptutor.services.settings.interface_settings import (
 from deeptutor.services.settings.interface_settings import (
     atomic_update,
     resolve_languages,
+    try_parse_response_language,
 )
 from deeptutor.services.settings.starter_settings import (
     TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
@@ -125,15 +126,29 @@ class SidebarNavOrder(BaseModel):
     learnResearch: List[str]
 
 
+def _require_response_language(value: Any) -> str:
+    parsed = try_parse_response_language(value)
+    if parsed is None:
+        raise ValueError("must be a BCP-47 language code (for example ja, pl, zh-tw)")
+    return parsed
+
+
 class UISettings(BaseModel):
     theme: Literal["light", "dark", "glass", "snow"] = "snow"
     language: Literal["zh", "en"] = "en"
-    response_language: Literal["zh", "en"] = "en"
+    response_language: str = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
     code_block_theme: Optional[str] = None
     code_block_show_line_numbers: Optional[bool] = None
     code_block_wrap_long_lines: Optional[bool] = None
+
+    @field_validator("response_language", mode="before")
+    @classmethod
+    def _normalize_response_language(cls, value: Any) -> str:
+        if value is None or value == "":
+            return "en"
+        return _require_response_language(value)
 
 
 class UISettingsUpdate(BaseModel):
@@ -146,17 +161,23 @@ class UISettingsUpdate(BaseModel):
     from the frontend.
     """
 
-    # Same Literal domains as UISettings — a None default keeps them optional
-    # for exclude_unset partial merges, but an explicit value is still validated
-    # so PUT /ui cannot persist a theme/language the app can't render.
+    # Theme and interface language stay closed enumerations the app can render.
+    # Reply language is open-ended: listed codes plus any compact BCP-47 tag.
     theme: Literal["light", "dark", "glass", "snow"] | None = None
     language: Literal["zh", "en"] | None = None
-    response_language: Literal["zh", "en"] | None = None
+    response_language: str | None = None
     sidebar_description: str | None = None
     sidebar_nav_order: SidebarNavOrder | None = None
     code_block_theme: str | None = None
     code_block_show_line_numbers: bool | None = None
     code_block_wrap_long_lines: bool | None = None
+
+    @field_validator("response_language", mode="before")
+    @classmethod
+    def _normalize_response_language(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return _require_response_language(value)
 
 
 class VoiceAutoplayUpdate(BaseModel):

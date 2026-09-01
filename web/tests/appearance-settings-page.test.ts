@@ -85,3 +85,12 @@ test("appearance settings page: preview includes a line long enough to demonstra
     "The preview needs a 120+ character line so Wrap long lines has a visible effect",
   );
 });
+
+test("appearance settings page: offers listed reply languages plus a custom code", () => {
+  const source = readAppearancePage();
+
+  assert.match(source, /RESPONSE_LANGUAGE_OPTIONS/);
+  assert.match(source, /CUSTOM_RESPONSE_LANGUAGE/);
+  assert.match(source, /updateResponseLanguage/);
+  assert.match(source, /t\("Custom"\)/);
+});

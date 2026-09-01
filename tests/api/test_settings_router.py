@@ -73,6 +73,30 @@ async def test_ui_languages_are_persisted_independently(
     assert response["response_language"] == "zh"
 
 
+@pytest.mark.asyncio
+async def test_ui_response_language_accepts_any_compact_code(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(theme="snow", language="en", response_language="JA")
+    )
+
+    assert response["language"] == "en"
+    assert response["response_language"] == "ja"
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert stored["response_language"] == "ja"
+
+
+def test_ui_response_language_rejects_free_form_text() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        settings_router.UISettingsUpdate(response_language="not a language")
+
+
 class _FakeEmbeddingAdapter:
     def __init__(self, config: dict[str, Any]):
         self.config = config

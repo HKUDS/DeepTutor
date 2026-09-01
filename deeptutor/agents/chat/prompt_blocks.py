@@ -7,7 +7,7 @@ from typing import Any
 
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
-from deeptutor.services.prompt.language import append_language_directive
+from deeptutor.services.prompt.language import append_language_directive, prompt_locale
 
 
 class ChatPromptAssembler:
@@ -15,7 +15,8 @@ class ChatPromptAssembler:
 
     def __init__(self, *, prompts: dict[str, Any], language: str) -> None:
         self.prompts = prompts
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        self.output_language = language or "en"
+        self.language = prompt_locale(self.output_language)
 
     def system_prompt(
         self,
@@ -53,7 +54,7 @@ class ChatPromptAssembler:
         joined = "\n\n---\n\n".join(
             f"## {block.name}\n{block.content.strip()}" for block in blocks if block.content.strip()
         )
-        return append_language_directive(joined, self.language)
+        return append_language_directive(joined, self.output_language)
 
     def blocks(
         self,

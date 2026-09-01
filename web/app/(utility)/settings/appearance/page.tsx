@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
@@ -12,9 +13,16 @@ import {
   SettingRow,
   SettingSection,
   SettingsPageHeader,
+  inputClass,
   selectClass,
   selectOptionClass,
 } from "@/components/settings/shared";
+import {
+  CUSTOM_RESPONSE_LANGUAGE,
+  RESPONSE_LANGUAGE_OPTIONS,
+  isListedResponseLanguage,
+  tryParseResponseLanguage,
+} from "@/lib/response-languages";
 
 const CODE_BLOCK_PREVIEW_SNIPPET = `def fibonacci(n):
     """Generate the first n Fibonacci numbers."""
@@ -53,6 +61,34 @@ export default function AppearanceSettingsPage() {
     updateCodeBlockWrapLongLines,
   } = useSettings();
 
+  const listedResponseLanguage = isListedResponseLanguage(responseLanguage);
+  const [draftingCustom, setDraftingCustom] = useState(
+    () => !isListedResponseLanguage(responseLanguage),
+  );
+  const [customCode, setCustomCode] = useState(
+    listedResponseLanguage ? "" : responseLanguage,
+  );
+
+  useEffect(() => {
+    if (!isListedResponseLanguage(responseLanguage)) {
+      setCustomCode(responseLanguage);
+    }
+  }, [responseLanguage]);
+
+  const commitCustomResponseLanguage = () => {
+    const parsed = tryParseResponseLanguage(customCode);
+    if (!parsed) {
+      setCustomCode(listedResponseLanguage ? "" : responseLanguage);
+      setDraftingCustom(false);
+      return;
+    }
+    setDraftingCustom(!isListedResponseLanguage(parsed));
+    void updateResponseLanguage(parsed).catch(() => {});
+  };
+
+  const showCustomInput =
+    draftingCustom || !isListedResponseLanguage(responseLanguage);
+
   // All code-block values come straight from the settings context (backed by
   // AppShellContext, the single source of truth), so the toggles reflect the
   // current preference without any local mirror state.
@@ -75,7 +111,7 @@ export default function AppearanceSettingsPage() {
 
       <SettingSection
         title={t("Language")}
-        description={t("Choose the interface language.")}
+        description={t("Choose the interface and reply languages.")}
       >
         <SettingRow
           title={t("Interface language")}
@@ -106,22 +142,64 @@ export default function AppearanceSettingsPage() {
             "Sets the default language for chat and capability responses.",
           )}
           control={
-            <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["en", "zh"] as const).map((value) => (
-                <button
-                  key={value}
-                  onClick={() => updateResponseLanguage(value)}
-                  className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    responseLanguage === value
-                      ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  }`}
+            <div className="flex min-w-[220px] flex-col items-stretch gap-2">
+              <select
+                value={
+                  listedResponseLanguage && !draftingCustom
+                    ? responseLanguage
+                    : CUSTOM_RESPONSE_LANGUAGE
+                }
+                onChange={(event) => {
+                  const next = event.target.value;
+                  if (next === CUSTOM_RESPONSE_LANGUAGE) {
+                    setDraftingCustom(true);
+                    setCustomCode(
+                      listedResponseLanguage ? "" : responseLanguage,
+                    );
+                    return;
+                  }
+                  setDraftingCustom(false);
+                  setCustomCode("");
+                  void updateResponseLanguage(next).catch(() => {});
+                }}
+                className={`${selectClass} pr-8`}
+              >
+                {RESPONSE_LANGUAGE_OPTIONS.map((option) => (
+                  <option
+                    key={option.code}
+                    value={option.code}
+                    className={selectOptionClass}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+                <option
+                  value={CUSTOM_RESPONSE_LANGUAGE}
+                  className={selectOptionClass}
                 >
-                  {value === "en"
-                    ? t("language.english")
-                    : t("language.chinese")}
-                </button>
-              ))}
+                  {t("Custom")}
+                </option>
+              </select>
+              {showCustomInput ? (
+                <input
+                  type="text"
+                  value={customCode}
+                  maxLength={16}
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  placeholder={t("e.g. pl, ar, nl")}
+                  aria-label={t("Language code")}
+                  onChange={(event) => setCustomCode(event.target.value)}
+                  onBlur={commitCustomResponseLanguage}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  className={`${inputClass} font-mono text-[13px]`}
+                />
+              ) : null}
             </div>
           }
         />

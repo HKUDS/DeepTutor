@@ -133,19 +133,24 @@ def _diff_neighbours(
 
 def _choice_error(spec: SettingSpec, value: str) -> str | None:
     choices = spec.choices()
+    match = next((choice for choice in choices if choice.value == value), None)
+    if match is not None and not match.available:
+        return (
+            f"'{match.label}' is listed but not usable yet: "
+            f"{match.description or 'it needs setup first'}"
+        )
+    if spec.open_ended:
+        return None
     if not choices:
         return (
             f"'{spec.label}' has no configured options yet, so there is nothing to select. "
             "It has to be set up in Settings first."
         )
-    match = next((choice for choice in choices if choice.value == value), None)
     if match is None:
         offered = ", ".join(choice.value for choice in choices)
         return (
             f"'{value}' is not one of the available options for {spec.label}. Options: {offered}."
         )
-    if not match.available:
-        return f"'{match.label}' is listed but not usable yet: {match.description or 'it needs setup first'}"
     return None
 
 

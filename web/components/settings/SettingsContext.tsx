@@ -19,8 +19,11 @@ import {
   writeStoredCodeBlockShowLineNumbers,
   writeStoredCodeBlockTheme,
   writeStoredCodeBlockWrapLongLines,
+  readStoredLanguage,
+  readStoredResponseLanguage,
   writeStoredLanguage,
   writeStoredResponseLanguage,
+  resolveResponseLanguage,
 } from "@/context/app-shell-storage";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
@@ -169,7 +172,7 @@ export type Catalog = {
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
   language: "en" | "zh";
-  response_language: "en" | "zh";
+  response_language: string;
   code_block_theme: string;
   code_block_show_line_numbers: boolean;
   code_block_wrap_long_lines: boolean;
@@ -208,11 +211,17 @@ export async function persistUiSettingsPatch(
   patch: UiSettingsPatch,
   fetcher: typeof apiFetch = apiFetch,
 ): Promise<void> {
-  await fetcher(apiUrl("/api/v1/settings/ui"), {
+  const response = await fetcher(apiUrl("/api/v1/settings/ui"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to save UI settings (HTTP ${response.status})${detail ? `: ${detail}` : ""}`,
+    );
+  }
 }
 
 export type ProviderOption = {
@@ -693,9 +702,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [theme, setTheme] = useState<UiSettings["theme"]>("snow");
-  const [language, setLanguage] = useState<UiSettings["language"]>("en");
-  const [responseLanguage, setResponseLanguage] =
-    useState<UiSettings["response_language"]>("en");
+  const [language, setLanguage] = useState<UiSettings["language"]>(() =>
+    typeof window === "undefined" ? "en" : readStoredLanguage(),
+  );
+  const [responseLanguage, setResponseLanguage] = useState<
+    UiSettings["response_language"]
+  >(() =>
+    typeof window === "undefined" ? "en" : readStoredResponseLanguage(),
+  );
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());
   const [draft, setDraft] = useState<Catalog>(defaultCatalog());
   const [catalogEditable, setCatalogEditable] = useState<boolean | null>(null);
@@ -815,7 +829,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       setTheme(payload.ui.theme);
       setLanguage(payload.ui.language);
-      setResponseLanguage(payload.ui.response_language ?? payload.ui.language);
+      const resolvedResponseLanguage = resolveResponseLanguage(
+        payload.ui.response_language,
+        payload.ui.language,
+      );
+      setResponseLanguage(resolvedResponseLanguage);
+      writeStoredLanguage(payload.ui.language);
+      writeStoredResponseLanguage(resolvedResponseLanguage);
       // Writes the backend-loaded values into app-shell storage and dispatches
       // the code-block settings event; AppShellContext (the single source) picks
       // them up, so no separate copy needs seeding here.
@@ -937,11 +957,19 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const updateResponseLanguage = useCallback(
     async (next: UiSettings["response_language"]) => {
+      const previous = readStoredResponseLanguage();
       setResponseLanguage(next);
       writeStoredResponseLanguage(next);
-      await persistUiSettingsPatch({ response_language: next });
+      try {
+        await persistUiSettingsPatch({ response_language: next });
+      } catch (error) {
+        setResponseLanguage(previous);
+        writeStoredResponseLanguage(previous);
+        setToast(t("Failed to save"));
+        throw error;
+      }
     },
-    [],
+    [t],
   );
 
   // Each setter updates the app-shell source of truth (which normalizes,

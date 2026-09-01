@@ -13,7 +13,7 @@ import React, {
 import {
   RESPONSE_LANGUAGE_EVENT,
   RESPONSE_LANGUAGE_STORAGE_KEY,
-  normalizeLanguage,
+  resolveResponseLanguage,
   readStoredChatResponseTimeout,
   readStoredResponseLanguage,
   writeStoredActiveSessionId,
@@ -1658,7 +1658,7 @@ export function UnifiedChatProvider({
     if (typeof window === "undefined") return;
 
     const syncLanguage = (language: string | null | undefined) => {
-      dispatch({ type: "SET_LANGUAGE", lang: normalizeLanguage(language) });
+      dispatch({ type: "SET_LANGUAGE", lang: resolveResponseLanguage(language) });
     };
     const onResponseLanguage = (event: Event) => {
       const detail = (event as CustomEvent<{ language?: string }>).detail;

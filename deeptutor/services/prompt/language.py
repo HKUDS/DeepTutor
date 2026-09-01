@@ -7,6 +7,8 @@ utilities.
 
 from __future__ import annotations
 
+import re
+
 _LANGUAGE_LABELS: dict[str, str] = {
     "zh": "中文（简体）",
     "zh-cn": "中文（简体）",
@@ -22,9 +24,44 @@ _LANGUAGE_LABELS: dict[str, str] = {
     "it": "Italiano",
 }
 
+# Picker order for reply language. ``zh-cn`` is an alias of ``zh``, not a
+# separate option. Any other BCP-47-shaped code is still accepted at write time.
+RESPONSE_LANGUAGE_CHOICES: tuple[str, ...] = (
+    "en",
+    "zh",
+    "zh-tw",
+    "ja",
+    "ko",
+    "es",
+    "fr",
+    "de",
+    "ru",
+    "pt",
+    "it",
+)
+
+_RESPONSE_LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8}){0,2}$")
+_RESPONSE_LANGUAGE_CODE_MAX_LEN = 16
+
+
+def is_response_language_code(language: str | None) -> bool:
+    """True for a compact BCP-47-like code the reply-language setting can store."""
+    if not isinstance(language, str):
+        return False
+    code = language.strip().lower()
+    if not code or len(code) > _RESPONSE_LANGUAGE_CODE_MAX_LEN:
+        return False
+    return _RESPONSE_LANGUAGE_CODE_RE.fullmatch(code) is not None
+
 
 def normalize_language(language: str | None) -> str:
     return (language or "en").strip().lower() or "en"
+
+
+def prompt_locale(language: str | None) -> str:
+    """Return the prompt-file locale (en/zh). Other codes reuse English YAML."""
+    code = normalize_language(language)
+    return "zh" if code.startswith("zh") else "en"
 
 
 def language_label(language: str | None) -> str:
@@ -74,8 +111,11 @@ def append_language_directive(system_prompt: str | None, language: str | None) -
 
 
 __all__ = [
+    "RESPONSE_LANGUAGE_CHOICES",
     "append_language_directive",
+    "is_response_language_code",
     "language_directive",
     "language_label",
     "normalize_language",
+    "prompt_locale",
 ]
