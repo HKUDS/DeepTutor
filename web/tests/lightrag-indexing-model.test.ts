@@ -10,6 +10,7 @@ import {
 } from "../lib/knowledge-api";
 import { selectionFromLLMOption } from "../components/knowledge/IndexingModelSelector";
 import {
+  currentLightRagBuildCandidate,
   kbCanReindex,
   lightRagVersionDisplayState,
   type KnowledgeBase,
@@ -141,9 +142,24 @@ test("healthy LightRAG knowledge bases retain a full re-index entry", () => {
 });
 
 test("LightRAG candidates distinguish active builds from failures", () => {
-  const candidate = { signature: "version-2", ready: false };
+  const currentCandidate = {
+    signature: "version-3",
+    provider: "lightrag",
+    ready: false,
+  };
+  const olderFailure = {
+    signature: "version-2",
+    provider: "lightrag",
+    ready: false,
+    failure_summary: "paper.pdf: parse failed",
+  };
   assert.equal(
-    lightRagVersionDisplayState(candidate, {
+    currentLightRagBuildCandidate([currentCandidate, olderFailure], true),
+    currentCandidate,
+  );
+  assert.equal(currentLightRagBuildCandidate([olderFailure], false), undefined);
+  assert.equal(
+    lightRagVersionDisplayState(currentCandidate, {
       published: false,
       rebuildActive: true,
       kbError: false,
@@ -152,10 +168,10 @@ test("LightRAG candidates distinguish active builds from failures", () => {
     "building",
   );
   assert.equal(
-    lightRagVersionDisplayState(candidate, {
+    lightRagVersionDisplayState(olderFailure, {
       published: false,
       rebuildActive: false,
-      kbError: true,
+      kbError: false,
       legacy: false,
     }),
     "failed",
@@ -186,6 +202,10 @@ test("model controls are scoped to built-in LightRAG create/rebuild surfaces", (
   assert.match(uploadSource, /LightRagIndexingProvenance/);
   assert.match(provenanceSource, /compact && \(/);
   assert.match(provenanceSource, /modelLabel \|\| t\("Active chat model at indexing time"\)/);
+  assert.match(
+    provenanceSource,
+    /t\("Reasoning effort"\).*effort \|\| t\("Model default"\)/s,
+  );
   assert.match(
     detailSource,
     /status === "error" && kbProvider\(kb\) !== "lightrag"/,

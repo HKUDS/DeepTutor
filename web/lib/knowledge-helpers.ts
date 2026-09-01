@@ -130,6 +130,16 @@ export type LightRagVersionDisplayState =
   | "legacy"
   | "inactive";
 
+export function currentLightRagBuildCandidate(
+  versions: IndexVersion[],
+  rebuildActive: boolean,
+): IndexVersion | undefined {
+  if (!rebuildActive) return undefined;
+  return versions.find(
+    (version) => version.provider === "lightrag" && version.ready !== true,
+  );
+}
+
 export function lightRagVersionDisplayState(
   version: IndexVersion,
   options: {

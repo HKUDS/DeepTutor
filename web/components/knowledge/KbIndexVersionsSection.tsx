@@ -12,6 +12,7 @@ import {
   Star,
 } from "lucide-react";
 import {
+  currentLightRagBuildCandidate,
   formatKnowledgeTimestamp,
   kbCanReindex,
   kbHasLiveProgress,
@@ -78,6 +79,9 @@ export default function KbIndexVersionsSection({
     ? versions.find(
         (version) => version.provider === "lightrag" && version.ready,
       )
+    : undefined;
+  const buildingLightRagVersion = isLightRag
+    ? currentLightRagBuildCandidate(versions, Boolean(isReindexingHere))
     : undefined;
   const emptyPendingEligible =
     isLightRag &&
@@ -284,7 +288,7 @@ export default function KbIndexVersionsSection({
                 kb.metadata?.indexing_policy?.policy === "legacy_unpinned" &&
                 version.ready === true
               }
-              isRebuildActive={Boolean(isReindexingHere)}
+              isRebuildActive={version === buildingLightRagVersion}
               kbError={isError}
             />
           ))}

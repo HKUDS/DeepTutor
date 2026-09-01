@@ -50,7 +50,7 @@ export default function LightRagIndexingProvenance({
       {compact && (
         <p className="mt-1 text-[11px] font-medium text-[var(--foreground)]">
           {modelLabel || t("Active chat model at indexing time")}
-          {effort ? ` · ${t("Reasoning effort")}: ${effort}` : ""}
+          {` · ${t("Reasoning effort")}: ${effort || t("Model default")}`}
         </p>
       )}
       {!compact && (
