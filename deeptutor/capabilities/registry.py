@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import cache
 import inspect
 import logging
-from typing import Any
+from typing import Any, cast
 
 from deeptutor.capabilities.ask_questions import AskQuestionsLoopCapability
 from deeptutor.capabilities.course_study import CourseStudyLoopCapability
@@ -21,44 +21,53 @@ from deeptutor.capabilities.reading import ReadingCapability
 from deeptutor.capabilities.setup import SetupCapability
 from deeptutor.capabilities.solve import SolveLoopCapability
 from deeptutor.capabilities.subagent import SubagentCapability
+from deeptutor.capabilities.watching import WatchingCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.entry_points import load_entry_point_group
+from deeptutor.visualizers.loop_capability import VisualizationLoopCapability
 
 logger = logging.getLogger(__name__)
 
 LOOP_CAPABILITIES_GROUP = "deeptutor.loop_capabilities"
 
-LOOP_CAPABILITIES: tuple[LoopCapability, ...] = (
-    AskQuestionsLoopCapability(),
-    MasteryLoopCapability(),
-    SolveLoopCapability(),
-    ObsidianCapability(),
-    MarginNoteCapability(),
-    SubagentCapability(),
-    # Additive (not a KnowledgeCapability): an IMA library is searchable over
-    # HTTP, so ``rag`` keeps serving it and these tools only add what retrieval
-    # cannot do. See ``capabilities/ima/capability.py``.
-    ImaCapability(),
-    # Additive: reading material is addressed by locator through this
-    # capability's own store, so chat keeps its whole surface (web search, code,
-    # rag over other KBs) while gaining the five reading tools on top.
-    ReadingCapability(),
-    # Additive: Course Study retains chat's RAG/web/code surface while adding
-    # state sensing and closed-set hand-offs. Its strict mode + course-id gate
-    # keeps these tools out of every other mode.
-    CourseStudyLoopCapability(),
-    ExploreContextCapability(),
-    # Additive as well: configuring the app is something the user asks for in
-    # the middle of other work, so the turn keeps its normal surface. Activation
-    # is gated on objective signals, not on the model's sense of relevance —
-    # see ``capabilities/setup/binding.py``.
-    SetupCapability(),
-    # Additive: a natural-language request becomes a reviewable Partner draft;
-    # the actual create remains behind an explicit user confirmation in the UI.
-    PartnerAuthoringCapability(),
-    # Additive and Group-only: saves the Partner's complete answer first, then
-    # permits one user-approved proposal to ask exactly one peer.
-    PartnerGroupCapability(),
+LOOP_CAPABILITIES = cast(
+    tuple[LoopCapability, ...],
+    (
+        AskQuestionsLoopCapability(),
+        MasteryLoopCapability(),
+        SolveLoopCapability(),
+        ObsidianCapability(),
+        MarginNoteCapability(),
+        SubagentCapability(),
+        # Additive (not a KnowledgeCapability): an IMA library is searchable over
+        # HTTP, so ``rag`` keeps serving it and these tools only add what retrieval
+        # cannot do. See ``capabilities/ima/capability.py``.
+        ImaCapability(),
+        # Additive: reading material is addressed by locator through this
+        # capability's own store, so chat keeps its whole surface (web search, code,
+        # rag over other KBs) while gaining the five reading tools on top.
+        ReadingCapability(),
+        # Additive: Course Study retains chat's RAG/web/code surface while adding
+        # state sensing and closed-set hand-offs. Its strict mode + course-id gate
+        # keeps these tools out of every other mode.
+        CourseStudyLoopCapability(),
+        WatchingCapability(),
+        ExploreContextCapability(),
+        # Additive as well: configuring the app is something the user asks for in
+        # the middle of other work, so the turn keeps its normal surface. Activation
+        # is gated on objective signals, not on the model's sense of relevance —
+        # see ``capabilities/setup/binding.py``.
+        SetupCapability(),
+        # Additive: a natural-language request becomes a reviewable Partner draft;
+        # the actual create remains behind an explicit user confirmation in the UI.
+        PartnerAuthoringCapability(),
+        # Additive and Group-only: saves the Partner's complete answer first, then
+        # permits one user-approved proposal to ask exactly one peer.
+        PartnerGroupCapability(),
+        # Reuses the shared chat loop while committing a typed canvas envelope
+        # through submit_visualization. Activation is explicit and turn-local.
+        VisualizationLoopCapability(),
+    ),
 )
 
 

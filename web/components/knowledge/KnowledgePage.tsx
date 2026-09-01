@@ -7,10 +7,9 @@ import { Loader2 } from "lucide-react";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { updateRagProviderMode } from "@/lib/knowledge-api";
 import KnowledgeBaseDetail from "./KnowledgeBaseDetail";
-import KnowledgeHome from "./KnowledgeHome";
+import KnowledgeHome, { type KnowledgeHomeSection } from "./KnowledgeHome";
 import EngineDetail from "./EngineDetail";
 import CreateKbModal from "./CreateKbModal";
-import PageIndexSettingsModal from "./PageIndexSettingsModal";
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
@@ -18,6 +17,10 @@ export default function KnowledgePage() {
   const searchParams = useSearchParams();
   const initialKb = searchParams.get("kb");
   const initialEngine = searchParams.get("engine");
+  const initialHomeSection: KnowledgeHomeSection =
+    initialEngine || searchParams.get("section") === "engines"
+      ? "knowledge-engines"
+      : "knowledge-bases";
 
   const {
     kbs: allKbs,
@@ -57,26 +60,20 @@ export default function KnowledgePage() {
   const [selectedEngineId, setSelectedEngineId] = useState<string | null>(
     initialEngine,
   );
+  const [homeSection, setHomeSection] =
+    useState<KnowledgeHomeSection>(initialHomeSection);
   const [createOpen, setCreateOpen] = useState(false);
   const [createPreset, setCreatePreset] = useState<{
     mode: "new" | "link";
     source?: string;
   } | null>(null);
-  const [pipelineOpen, setPipelineOpen] = useState(false);
 
   const openCreate = useCallback(() => {
     setCreatePreset(null);
     setCreateOpen(true);
   }, []);
-  // Obsidian lives in the engines grid for discoverability but routes through
-  // the unified create flow, pre-set to "link existing → Obsidian".
-  const openObsidian = useCallback(() => {
-    setCreatePreset({ mode: "link", source: "obsidian" });
-    setCreateOpen(true);
-  }, []);
-  // Same deal for a MarginNote library.
-  const openMarginNote4 = useCallback(() => {
-    setCreatePreset({ mode: "link", source: "marginnote4" });
+  const openSource = useCallback((source: "obsidian" | "marginnote4") => {
+    setCreatePreset({ mode: "link", source });
     setCreateOpen(true);
   }, []);
   // Lands on the Overview console unless deep-linked to a KB or an engine.
@@ -85,11 +82,13 @@ export default function KnowledgePage() {
   );
 
   const openKb = useCallback((name: string) => {
+    setHomeSection("knowledge-bases");
     setExplicitSelection(name);
     setView("kb");
   }, []);
 
   const openEngine = useCallback((id: string) => {
+    setHomeSection("knowledge-engines");
     setSelectedEngineId(id);
     setView("engine");
   }, []);
@@ -120,11 +119,14 @@ export default function KnowledgePage() {
   // The Overview view carries neither, so reloading the console stays on it.
   const urlKb = view === "kb" ? (selectedKbName ?? null) : null;
   const urlEngine = view === "engine" ? (selectedProvider?.id ?? null) : null;
+  const urlSection =
+    view === "home" && homeSection === "knowledge-engines" ? "engines" : null;
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (
       searchParams.get("kb") === urlKb &&
-      searchParams.get("engine") === urlEngine
+      searchParams.get("engine") === urlEngine &&
+      searchParams.get("section") === urlSection
     ) {
       return;
     }
@@ -133,12 +135,20 @@ export default function KnowledgePage() {
     else params.delete("kb");
     if (urlEngine) params.set("engine", urlEngine);
     else params.delete("engine");
+    if (urlSection) params.set("section", urlSection);
+    else params.delete("section");
     const search = params.toString();
     router.replace(search ? `?${search}` : "?", { scroll: false });
-  }, [router, searchParams, urlKb, urlEngine]);
+  }, [router, searchParams, urlKb, urlEngine, urlSection]);
 
   const handleCreate = useCallback(
-    async (params: { name: string; provider: string; files: File[] }) => {
+    async (params: {
+      name: string;
+      provider: string;
+      files: File[];
+      pageindexMode?: "flash" | "standard";
+      searchMode?: string;
+    }) => {
       try {
         await createKb(params);
         openKb(params.name);
@@ -261,15 +271,19 @@ export default function KnowledgePage() {
               providers={providers}
               onOpenKb={openKb}
               onOpenEngine={openEngine}
+              onOpenSource={openSource}
               onCreate={openCreate}
-              onConnectObsidian={openObsidian}
-              onConnectMarginNote4={openMarginNote4}
+              activeSection={homeSection}
+              onSectionChange={setHomeSection}
             />
           ) : view === "engine" && selectedProvider ? (
             <EngineDetail
               provider={selectedProvider}
               kbs={kbs}
-              onBack={() => setView("home")}
+              onBack={() => {
+                setHomeSection("knowledge-engines");
+                setView("home");
+              }}
               onOpenKb={openKb}
               onSelectMode={handleSelectMode}
               onChanged={() => void refresh({ force: true })}
@@ -282,9 +296,10 @@ export default function KnowledgePage() {
               providers={providers}
               onOpenKb={openKb}
               onOpenEngine={openEngine}
+              onOpenSource={openSource}
               onCreate={openCreate}
-              onConnectObsidian={openObsidian}
-              onConnectMarginNote4={openMarginNote4}
+              activeSection={homeSection}
+              onSectionChange={setHomeSection}
             />
           ) : (
             <KnowledgeBaseDetail
@@ -299,7 +314,10 @@ export default function KnowledgePage() {
               onSetDefault={handleSetDefault}
               onDelete={handleDelete}
               onClearHistory={clearHistory}
-              onBack={() => setView("home")}
+              onBack={() => {
+                setHomeSection("knowledge-bases");
+                setView("home");
+              }}
             />
           )}
         </div>
@@ -318,16 +336,10 @@ export default function KnowledgePage() {
         onConnectIma={connectIma}
         initialMode={createPreset?.mode}
         initialSource={createPreset?.source}
-        onConfigureProvider={() => {
+        onConfigureProvider={(providerId) => {
           setCreateOpen(false);
-          setPipelineOpen(true);
+          openEngine(providerId);
         }}
-      />
-
-      <PageIndexSettingsModal
-        isOpen={pipelineOpen}
-        onClose={() => setPipelineOpen(false)}
-        onSaved={() => void refresh({ force: true })}
       />
     </div>
   );

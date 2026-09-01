@@ -1792,6 +1792,35 @@ def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path
     assert entry["pageindex_mode"] == "standard"
 
 
+def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+    preflight = importlib.import_module("deeptutor.services.rag.preflight")
+    monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
+    lightrag_config = importlib.import_module("deeptutor.services.rag.pipelines.lightrag.config")
+    monkeypatch.setattr(lightrag_config, "is_lightrag_available", lambda: True)
+
+    async def _noop_init_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/create",
+            data={
+                "name": "kb-light",
+                "rag_provider": "lightrag",
+                "search_mode": "hybrid",
+            },
+            files=_upload_payload(),
+        )
+
+    assert response.status_code == 200
+    assert manager.config["knowledge_bases"]["kb-light"]["search_mode"] == "hybrid"
+
+
 def test_create_pageindex_oss_rejects_non_pdf(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
@@ -1927,3 +1956,61 @@ def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
     assert again["max_concurrent_files"] == 4
     assert again["entity_extract_max_gleaning"] == 2
     assert again["top_k"] == 42
+
+
+def test_lightrag_server_defaults_are_redacted_and_reused_for_probe(
+    monkeypatch, tmp_path: Path
+) -> None:
+    service = RuntimeSettingsService(tmp_path, process_env={})
+    monkeypatch.setattr(config_module, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(
+        config_module, "load_lightrag_server_settings", service.load_lightrag_server
+    )
+
+    calls: list[tuple[str, str]] = []
+
+    class Result:
+        ok = True
+
+        def to_dict(self) -> dict:
+            return {
+                "ok": True,
+                "base_url": "http://localhost:9621",
+                "reachable": True,
+                "auth_required": True,
+                "auth_ok": True,
+                "core_version": "1.0",
+                "api_version": "1",
+                "error": None,
+            }
+
+    async def fake_probe(server_url: str, api_key: str):
+        calls.append((server_url, api_key))
+        return Result()
+
+    probe_module = importlib.import_module("deeptutor.services.rag.pipelines.lightrag_server.probe")
+    monkeypatch.setattr(probe_module, "probe_server", fake_probe)
+
+    with TestClient(_build_app()) as client:
+        saved = client.put(
+            "/api/v1/knowledge/rag-pipelines/lightrag-server/config",
+            json={"server_url": "http://localhost:9621/", "api_key": "private-key"},
+        )
+        assert saved.status_code == 200
+        assert saved.json() == {
+            "server_url": "http://localhost:9621",
+            "api_key_set": True,
+            "configured": True,
+        }
+        assert "private-key" not in saved.text
+
+        probed = client.post(
+            "/api/v1/knowledge/probe-lightrag-server",
+            json={
+                "server_url": "http://localhost:9621",
+                "use_saved_api_key": True,
+            },
+        )
+
+    assert probed.status_code == 200
+    assert calls == [("http://localhost:9621", "private-key")]

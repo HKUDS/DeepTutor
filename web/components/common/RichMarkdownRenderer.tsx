@@ -158,6 +158,7 @@ export default function RichMarkdownRenderer({
   enableMath = false,
   enableCode = false,
   enableMermaid = false,
+  enableImages = true,
   allowHtml = false,
   trackSourceLines = false,
 }: MarkdownRendererProps) {
@@ -648,16 +649,17 @@ export default function RichMarkdownRenderer({
         </a>
       );
     },
-    img: ({ node, src, alt, ...props }: any) => (
-      <img
-        src={src}
-        alt={alt || ""}
-        loading="lazy"
-        className={`${gap} inline-block max-w-full rounded-lg border border-[var(--border)]`}
-        {...lineAttr(node)}
-        {...props}
-      />
-    ),
+    img: ({ node, src, alt, ...props }: any) =>
+      enableImages ? (
+        <img
+          src={src}
+          alt={alt || ""}
+          loading="lazy"
+          className={`${gap} inline-block max-w-full rounded-lg border border-[var(--border)]`}
+          {...lineAttr(node)}
+          {...props}
+        />
+      ) : null,
     blockquote: ({ node, ...props }: any) => (
       <blockquote
         className={`${gap} border-l-[3px] border-[var(--muted-foreground)] pl-4 italic text-[var(--muted-foreground)] [&>p]:mb-1`}
@@ -711,7 +713,14 @@ export default function RichMarkdownRenderer({
   const components = useMemo(
     () => (isTrace ? traceComponents : normalComponents),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- components only change with variant/feature flags
-    [isTrace, variant, enableMermaid, enableCode, trackSourceLines],
+    [
+      isTrace,
+      variant,
+      enableMermaid,
+      enableCode,
+      enableImages,
+      trackSourceLines,
+    ],
   );
 
   const rootClasses = isTrace

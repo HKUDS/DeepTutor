@@ -3,9 +3,8 @@
 Google retired Gemini CLI on 2026-06-18 and pointed its users at Antigravity
 CLI, so for anyone on a Google AI Pro/Ultra or Gemini Code Assist plan the
 ``gemini`` backend simply stopped having a CLI to detect (#828). This backend is
-the replacement path. The old one is deliberately kept: Gemini CLI still runs
-for anyone holding a Gemini API key, and a working connection must not break on
-upgrade.
+the supported replacement path; the retired Gemini CLI backend is no longer
+registered or offered as a connection.
 
 Invocation is ``agy -p <question> --output-format stream-json``. The event
 vocabulary is the CLI's own and is *not* Gemini CLI's, despite the shared

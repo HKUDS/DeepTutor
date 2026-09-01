@@ -11,26 +11,7 @@ import {
 } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import {
-  BarChart3,
-  BrainCircuit,
-  CircleHelp,
-  Clapperboard,
-  Code2,
-  Compass,
-  Database,
-  FileSearch,
-  Globe,
-  GraduationCap,
-  Image as ImageIcon,
-  Lightbulb,
-  MessageSquare,
-  Microscope,
-  PenLine,
-  Signpost,
-  Sparkles,
-  type LucideIcon,
-} from "lucide-react";
+import { GraduationCap, PenLine, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
@@ -70,6 +51,10 @@ import {
 } from "@/context/UnifiedChatContext";
 import { useAppShell } from "@/context/AppShellContext";
 
+import {
+  WATCHING_ASK_EVENT,
+  WatchingPane,
+} from "@/components/watching/WatchingPane";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
 import {
@@ -89,11 +74,6 @@ import {
   fetchSessionAskHint,
   updateSessionOrganization,
 } from "@/lib/session-api";
-import {
-  loadCapabilityPlaygroundConfigs,
-  resolveCapabilityPlaygroundConfig,
-  type CapabilityPlaygroundConfigMap,
-} from "@/lib/playground-config";
 import {
   DEFAULT_QUIZ_CONFIG,
   buildQuizWSConfig,
@@ -118,6 +98,13 @@ import {
   getEnabledOptionalTools,
   invalidateEnabledOptionalToolsCache,
 } from "@/lib/tools-settings";
+import {
+  ALL_TOOLS,
+  CHAT_CAPABILITIES,
+  VISIBLE_CHAT_CAPABILITIES,
+  getChatCapability,
+  type ToolName,
+} from "@/lib/chat-capabilities";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import { buildChatOutline } from "@/lib/chat-outline";
 import { isPlaceholderSessionTitle } from "@/lib/session-title";
@@ -128,6 +115,7 @@ import {
 } from "@/lib/book-references";
 import {
   normalizeSelectedText,
+  textFromDomSelection,
   type SelectionTutorContext,
 } from "@/lib/selection-tutor";
 
@@ -200,171 +188,6 @@ const ResearchConfigPanel = dynamic(
 /*  Type & data definitions                                           */
 /* ------------------------------------------------------------------ */
 
-type ToolName =
-  | "brainstorm"
-  | "geogebra_analysis"
-  | "web_search"
-  | "code_execution"
-  | "reason"
-  | "paper_search"
-  | "imagegen"
-  | "videogen";
-
-interface ToolDef {
-  name: ToolName;
-  label: string;
-  icon: LucideIcon;
-}
-
-const ALL_TOOLS: ToolDef[] = [
-  { name: "brainstorm", label: "Brainstorm", icon: Lightbulb },
-  { name: "geogebra_analysis", label: "GeoGebra", icon: Compass },
-  { name: "web_search", label: "Web Search", icon: Globe },
-  { name: "code_execution", label: "Code", icon: Code2 },
-  { name: "reason", label: "Reason", icon: Sparkles },
-  { name: "paper_search", label: "Arxiv Search", icon: FileSearch },
-  { name: "imagegen", label: "Image Gen", icon: ImageIcon },
-  { name: "videogen", label: "Video Gen", icon: Clapperboard },
-];
-
-interface CapabilityDef {
-  value: string;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  allowedTools: ToolName[];
-  defaultTools: ToolName[];
-  /**
-   * Collapse this capability into the picker's "More" flyout instead of listing
-   * it directly.
-   *
-   * Purely about presentation — which handful of modes deserve to be one click
-   * away. It used to key off whether a capability ran on the chat agent loop,
-   * which conflated an implementation detail with menu order and meant the menu
-   * could not be reordered without lying about the engine.
-   */
-  secondary?: boolean;
-
-  /**
-   * Keep this capability resolvable but stop offering it as a new choice.
-   *
-   * A capability that graduated into its own workspace still has sessions in
-   * people's history. Deleting the entry outright would make those sessions
-   * render under the wrong label while still sending the old capability to the
-   * server. So the definition stays — for naming and icons — and only the
-   * picker hides it.
-   */
-  legacy?: boolean;
-}
-
-const CAPABILITIES: CapabilityDef[] = [
-  {
-    value: "",
-    label: "Chat",
-    description: "Flexible conversation with any tool",
-    icon: MessageSquare,
-    allowedTools: [
-      "brainstorm",
-      "geogebra_analysis",
-      "web_search",
-      "code_execution",
-      "reason",
-      "paper_search",
-      "imagegen",
-      "videogen",
-    ],
-    defaultTools: [],
-  },
-  {
-    value: "deep_solve",
-    label: "Solve",
-    description: "Multi-step reasoning & problem solving",
-    icon: BrainCircuit,
-    allowedTools: ["web_search", "code_execution", "reason"],
-    defaultTools: ["web_search", "code_execution", "reason"],
-    secondary: true,
-  },
-  {
-    value: "ask_questions",
-    label: "Ask Questions",
-    description: "Let the model ask you questions to fill in missing context",
-    icon: CircleHelp,
-    allowedTools: [
-      "brainstorm",
-      "geogebra_analysis",
-      "web_search",
-      "code_execution",
-      "reason",
-      "paper_search",
-      "imagegen",
-      "videogen",
-    ],
-    defaultTools: [],
-  },
-  {
-    value: "deep_question",
-    label: "Quiz",
-    description: "Auto-validated question generation",
-    icon: PenLine,
-    allowedTools: ["web_search", "code_execution"],
-    defaultTools: ["web_search", "code_execution"],
-  },
-  {
-    value: "deep_research",
-    label: "Research",
-    description: "Comprehensive multi-agent research",
-    icon: Microscope,
-    allowedTools: ["web_search", "paper_search", "code_execution"],
-    defaultTools: ["web_search", "paper_search", "code_execution"],
-    secondary: true,
-  },
-  {
-    value: "visualize",
-    label: "Visualize",
-    description:
-      "Generate charts, diagrams, interactive pages, or math animations",
-    icon: BarChart3,
-    allowedTools: [],
-    defaultTools: [],
-  },
-  {
-    value: "course_study",
-    label: "Course Study",
-    description: "See where a course stands and what to do next",
-    icon: Signpost,
-    // The four course tools auto-mount server-side once the conversation
-    // belongs to a course; this mode orchestrates and hands off, so it keeps
-    // the ordinary tools for understanding a request well enough to route it.
-    allowedTools: ["web_search", "code_execution", "reason"],
-    defaultTools: [],
-  },
-  {
-    value: "mastery_path",
-    label: "Mastery Path",
-    description: "Mastery-based tutoring with a hard gate",
-    icon: GraduationCap,
-    // The mastery tools (status/quiz/grade/assess/build) auto-mount server-side
-    // when this capability is active; rag auto-mounts when a KB is attached.
-    // These are only the extra optional tools the tutor may also reach for.
-    allowedTools: ["web_search", "code_execution"],
-    defaultTools: [],
-    // Mastery Path is its own workspace now (/mastery). Started from
-    // here it had no topic to belong to, so `resolve_mastery_path_id` minted a
-    // path keyed by the session id — a learning path whose identity was an
-    // accident of whichever chat happened to open it, and whose map, review
-    // trail and evidence lived on a screen the learner was not looking at.
-    // Existing sessions keep working; the picker just no longer starts new ones.
-    legacy: true,
-  },
-];
-
-// Course Study hidden from the mode picker pending further product work; the
-// entry stays in CAPABILITIES so a conversation already bound to it (e.g. via
-// the course page's deep link) still resolves correctly.
-const VISIBLE_CAPABILITIES = CAPABILITIES.filter(
-  (cap) => cap.value !== "course_study",
-);
-
 interface KnowledgeBase {
   name: string;
   is_default?: boolean;
@@ -392,10 +215,6 @@ interface PendingAttachment {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
-
-function getCapability(value: string | null): CapabilityDef {
-  return CAPABILITIES.find((c) => c.value === (value || "")) ?? CAPABILITIES[0];
-}
 
 /**
  * Read the context-window measurement a finished turn attached to its
@@ -503,8 +322,6 @@ export default function ChatPage() {
     error: llmOptionsError,
     refresh: refreshLLMOptions,
   } = useLLMOptions();
-  const [capabilityConfigs, setCapabilityConfigs] =
-    useState<CapabilityPlaygroundConfigMap>({});
   // User-toggleable tools the user has enabled in /settings/tools. This is
   // the single source of truth for which optional tools the chat agent may
   // use; the chat composer no longer exposes a picker.
@@ -749,13 +566,36 @@ export default function ChatPage() {
     return () => window.removeEventListener("dt:visualize-prompt", onVizPrompt);
   }, [handlePrefillComposer]);
 
+  useEffect(() => {
+    const onWatchingAsk = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ timeSeconds?: number; text?: string }>
+      ).detail;
+      const text = (detail?.text || "").trim();
+      if (!text) return;
+      const total = Math.max(0, Math.floor(Number(detail?.timeSeconds) || 0));
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const seconds = total % 60;
+      const timestamp = hours
+        ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+        : `${minutes}:${String(seconds).padStart(2, "0")}`;
+      handlePrefillComposer(
+        `> [${timestamp}] ${text}\n\n${t("Explain this part of the video")}: `,
+      );
+    };
+    window.addEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
+    return () => window.removeEventListener(WATCHING_ASK_EVENT, onWatchingAsk);
+  }, [handlePrefillComposer, t]);
+
   const activeCap = useMemo(
-    () => getCapability(state.activeCapability),
+    () => getChatCapability(state.activeCapability),
     [state.activeCapability],
   );
   const isQuizMode = activeCap.value === "deep_question";
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
+  const isWatchingMode = activeCap.value === "immersive_watching";
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
 
   // Edit-invalidates-confirm wrappers — flipping any field after the user
@@ -1378,10 +1218,6 @@ export default function ChatPage() {
     };
   }, [refreshKnowledgeBases, refreshLLMOptions, refreshUserEnabledTools]);
 
-  useEffect(() => {
-    setCapabilityConfigs(loadCapabilityPlaygroundConfigs());
-  }, []);
-
   /* Composer setup requested by the URL that opened this page (capability,
      tools, persistent mastery path). Runs once: from here on the composer is
      the user's to change. */
@@ -1517,33 +1353,24 @@ export default function ChatPage() {
   const handleSelectCapability = useCallback(
     (value: string) => {
       const cap =
-        CAPABILITIES.find((c) => c.value === value) ?? CAPABILITIES[0];
-      const storageKey = cap.value || "chat";
-      const config = resolveCapabilityPlaygroundConfig(
-        capabilityConfigs,
-        storageKey,
-        cap.allowedTools,
-      );
+        CHAT_CAPABILITIES.find((c) => c.value === value) ??
+        CHAT_CAPABILITIES[0];
       setCapability(cap.value || null);
       // Per-capability tool selection now derives from the user's saved
       // settings (/settings/tools) intersected with the capability's
-      // allow-list. Playground-saved configs still override when the user
-      // explicitly pinned tools in the playground for this capability.
+      // allow-list.
       const baseline =
         userEnabledTools === null ? cap.allowedTools : userEnabledTools;
-      const enabledToolsForCap = capabilityConfigs[storageKey]
-        ? [...config.enabledTools]
-        : baseline.filter((tool) =>
-            cap.allowedTools.includes(tool as ToolName),
-          );
+      const enabledToolsForCap = baseline.filter((tool) =>
+        cap.allowedTools.includes(tool as ToolName),
+      );
       setTools(enabledToolsForCap);
-      if (config.knowledgeBase) setKBs([config.knowledgeBase]);
       // Switching capability invalidates any prior config confirmation —
       // the new capability has its own form that needs explicit confirm.
       setCapabilityConfigConfirmed(false);
       setCapMenuOpen(false);
     },
-    [capabilityConfigs, setCapability, setKBs, setTools, userEnabledTools],
+    [setCapability, setTools, userEnabledTools],
   );
 
   const fileToAttachment = useCallback(
@@ -1812,7 +1639,7 @@ export default function ChatPage() {
       setSelectionTutorPrompt(null);
       return;
     }
-    const text = normalizeSelectedText(selection.toString());
+    const text = textFromDomSelection(selection);
     if (text.length < 2) {
       setSelectionTutorPrompt(null);
       return;
@@ -1879,6 +1706,26 @@ export default function ChatPage() {
     setSelectionTutorPrompt(null);
     window.getSelection()?.removeAllRanges();
   }, [selectionTutorPrompt, state.language, state.sessionId]);
+
+  const handleMessagesCopy = useCallback(
+    (event: React.ClipboardEvent<HTMLDivElement>) => {
+      const selection = window.getSelection();
+      const container = messagesContainerRef.current;
+      if (!selection || !container || selection.isCollapsed) return;
+      if (
+        !selection.rangeCount ||
+        !container.contains(selection.getRangeAt(0).commonAncestorContainer)
+      ) {
+        return;
+      }
+      const remapped = textFromDomSelection(selection);
+      const raw = normalizeSelectedText(selection.toString());
+      if (!remapped || remapped === raw) return;
+      event.clipboardData.setData("text/plain", remapped);
+      event.preventDefault();
+    },
+    [messagesContainerRef],
+  );
 
   const handleClosePreview = useCallback(() => {
     setPreviewSource(null);
@@ -2355,6 +2202,19 @@ export default function ChatPage() {
           viewerPanelRef={viewerPanelRef}
         />
         <div className="relative h-full overflow-hidden">
+          {/* The video panel slides in from the left and the chat column shrinks to
+            make room. Rendered as a sibling with its own transform rather than
+            wrapping the chat, so switching modes never remounts the chat tree —
+            a remount would refetch every piece of session metadata and stall the
+            UI for seconds (the regression behind the slow session-open bug). */}
+          <div
+            data-watching-open={isWatchingMode ? "true" : "false"}
+            className="dt-watching-shell"
+          >
+            {isWatchingMode && (
+              <WatchingPane onClose={() => setCapability("")} />
+            )}
+          </div>
           <div
             // When the preview drawer is open AND the viewport is wide enough,
             // push the chat content to the left by the drawer's width so the two
@@ -2365,6 +2225,7 @@ export default function ChatPage() {
             // hand-tune it without fighting Tailwind's arbitrary-value parser.
             data-preview-open={previewSource ? "true" : "false"}
             data-viewer-open={viewerPanelOpen ? "true" : "false"}
+            data-watching-open={isWatchingMode ? "true" : "false"}
             className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
           >
             <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
@@ -2476,6 +2337,7 @@ export default function ChatPage() {
                       handleMessagesScroll();
                     }}
                     onClick={handleMessagesClick}
+                    onCopy={handleMessagesCopy}
                     onMouseUp={handleMessagesSelection}
                     onKeyUp={handleMessagesSelection}
                     // `both-edges` reserves the scrollbar gutter on both sides so
@@ -2606,7 +2468,7 @@ export default function ChatPage() {
                 capabilityNeedsConfig={capabilityNeedsConfig}
                 capabilityConfigConfirmed={capabilityConfigConfirmed}
                 onRequestConfigConfirm={ensureActivityPanelOpen}
-                capabilities={VISIBLE_CAPABILITIES}
+                capabilities={VISIBLE_CHAT_CAPABILITIES}
                 onSetCapMenuOpen={setCapMenuOpen}
                 onSetSpaceMenuOpen={setSpaceMenuOpen}
                 onToggleKB={handleToggleKB}

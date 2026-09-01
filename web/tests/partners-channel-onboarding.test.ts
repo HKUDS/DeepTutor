@@ -7,12 +7,17 @@ import {
   applyChannelOnboarding,
   cancelChannelOnboarding,
   getChannelOnboarding,
+  getPartnerChannelRuntime,
   startChannelOnboarding,
   supportsChannelOnboarding,
 } from "../lib/partners-api";
 
 const onboardingPanelSource = readFileSync(
   path.resolve(process.cwd(), "components/partners/ChannelOnboardingPanel.tsx"),
+  "utf8",
+);
+const runtimeStatusSource = readFileSync(
+  path.resolve(process.cwd(), "components/partners/ChannelRuntimeStatus.tsx"),
   "utf8",
 );
 
@@ -56,6 +61,15 @@ test("QR action controls are rendered with a non-null onboarding session", () =>
   assert.match(onboardingPanelSource, /\{session && active \? \(/);
 });
 
+test("channel runtime setup output is rendered in the WebUI", () => {
+  assert.match(runtimeStatusSource, /setup\.qr_data_url/);
+  assert.match(runtimeStatusSource, /setup\.message/);
+  assert.match(runtimeStatusSource, /getPartnerChannelRuntime/);
+  assert.match(runtimeStatusSource, /Listener running/);
+  assert.match(runtimeStatusSource, /Configuration required/);
+  assert.match(runtimeStatusSource, /if \(!enabled\)/);
+});
+
 test("onboarding client sends the partner-scoped lifecycle requests", async () => {
   const session = {
     session_id: "session id",
@@ -87,6 +101,22 @@ test("onboarding client sends the partner-scoped lifecycle requests", async () =
     assert.equal(stub.calls[2].method, "DELETE");
     assert.equal(stub.calls[3].method, "POST");
     assert.match(stub.calls[3].url, /\/apply$/);
+  } finally {
+    stub.restore();
+  }
+});
+
+test("channel runtime client reads the partner-scoped status endpoint", async () => {
+  const stub = stubFetch({ partner_id: "p", running: true, channels: {} });
+  try {
+    await getPartnerChannelRuntime("partner id");
+    assert.deepEqual(stub.calls, [
+      {
+        method: "GET",
+        url: "/api/v1/partners/partner%20id/channels/status",
+        body: undefined,
+      },
+    ]);
   } finally {
     stub.restore();
   }

@@ -36,6 +36,8 @@ export interface RagProviderSummary {
   default_mode?: string;
   /** Whether an existing index for this engine can be linked in place. */
   linkable?: boolean;
+  /** The engine works, but reusable defaults have not been configured yet. */
+  setup_required?: boolean;
 }
 
 export interface PageIndexConfig {
@@ -83,6 +85,12 @@ export interface LightRagConfig {
   llm_model_max_async: number;
   /** Extra extraction passes per chunk, to recover missed entities. */
   entity_extract_max_gleaning: number;
+}
+
+export interface LightRagServerConfig {
+  server_url: string;
+  api_key_set: boolean;
+  configured: boolean;
 }
 
 export interface PreflightCheck {
@@ -448,12 +456,27 @@ export const updateLightRagConfig = (
   payload: Partial<Omit<LightRagConfig, "version">>,
 ) => updateEngineConfig<LightRagConfig>("lightrag", payload);
 
+export const getLightRagServerConfig = (options?: { force?: boolean }) =>
+  getEngineConfig<LightRagServerConfig>(
+    "lightrag-server",
+    "lightrag-server-config",
+    options,
+  );
+
+export const updateLightRagServerConfig = (payload: {
+  server_url?: string;
+  /** Omit to keep the stored key; empty clears it. */
+  api_key?: string;
+}) => updateEngineConfig<LightRagServerConfig>("lightrag-server", payload);
+
 export async function getEnginePreflight(
   provider: string,
 ): Promise<EnginePreflight> {
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/rag-pipelines/${provider}/preflight`),
-    { cache: "no-store" },
+    {
+      cache: "no-store",
+    },
   );
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to check environment"));
@@ -466,9 +489,7 @@ export async function getEngineModelOptions(
 ): Promise<ModelOptionsByKind> {
   const res = await apiFetch(
     apiUrl(
-      `/api/v1/knowledge/rag-pipelines/model-options?kinds=${encodeURIComponent(
-        kinds.join(","),
-      )}`,
+      `/api/v1/knowledge/rag-pipelines/model-options?kinds=${encodeURIComponent(kinds.join(","))}`,
     ),
     { cache: "no-store" },
   );
@@ -640,6 +661,7 @@ export async function createKnowledgeBase(payload: {
   provider: string;
   files: File[];
   pageindexMode?: "flash" | "standard";
+  searchMode?: string;
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   form.append("name", payload.name);
@@ -647,6 +669,7 @@ export async function createKnowledgeBase(payload: {
   if (payload.pageindexMode) {
     form.append("pageindex_mode", payload.pageindexMode);
   }
+  if (payload.searchMode) form.append("search_mode", payload.searchMode);
   appendFilesWithPaths(form, payload.files);
 
   const res = await apiFetch(apiUrl("/api/v1/knowledge/create"), {
@@ -901,6 +924,7 @@ export async function connectImaKnowledgeBase(payload: {
 export async function probeLightRagServer(payload: {
   serverUrl: string;
   apiKey?: string;
+  useSavedApiKey?: boolean;
 }): Promise<LightRagServerProbe> {
   const res = await apiFetch(
     apiUrl("/api/v1/knowledge/probe-lightrag-server"),
@@ -910,6 +934,7 @@ export async function probeLightRagServer(payload: {
       body: JSON.stringify({
         server_url: payload.serverUrl,
         api_key: payload.apiKey ?? "",
+        use_saved_api_key: payload.useSavedApiKey ?? false,
       }),
     },
   );
@@ -974,7 +999,10 @@ export async function uploadKnowledgeBaseFiles(
 
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/upload`),
-    { method: "POST", body: form },
+    {
+      method: "POST",
+      body: form,
+    },
   );
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to upload files"));
@@ -1043,7 +1071,9 @@ export async function deleteKbFile(
 export async function setDefaultKnowledgeBase(name: string): Promise<void> {
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/default/${encodeURIComponent(name)}`),
-    { method: "PUT" },
+    {
+      method: "PUT",
+    },
   );
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to set default"));
@@ -1056,7 +1086,9 @@ export async function reindexKnowledgeBase(
 ): Promise<KnowledgeTaskResponse> {
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/reindex`),
-    { method: "POST" },
+    {
+      method: "POST",
+    },
   );
   if (!res.ok) {
     const detail = await readErrorDetail(
@@ -1076,7 +1108,9 @@ export async function retryKnowledgeBase(
 ): Promise<KnowledgeTaskResponse> {
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/retry`),
-    { method: "POST" },
+    {
+      method: "POST",
+    },
   );
   if (!res.ok) {
     const detail = await readErrorDetail(res, `Retry failed (${res.status})`);
@@ -1091,7 +1125,9 @@ export async function retryKnowledgeBase(
 export async function deleteKnowledgeBase(name: string): Promise<void> {
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}`),
-    { method: "DELETE" },
+    {
+      method: "DELETE",
+    },
   );
   if (!res.ok) {
     throw new Error(
@@ -1317,7 +1353,9 @@ export async function removeWebSource(
 export async function syncWebSources(kbName: string): Promise<WebSyncResult> {
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(kbName)}/sync-web`),
-    { method: "POST" },
+    {
+      method: "POST",
+    },
   );
   if (!res.ok) {
     throw new Error(

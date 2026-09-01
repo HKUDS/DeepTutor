@@ -40,6 +40,14 @@ def _mastery_payload(session_id: str, path_id: str) -> dict:
     }
 
 
+def _mastery_chat_payload(session_id: str, path_id: str) -> dict:
+    return {
+        **_mastery_payload(session_id, path_id),
+        "capability": "chat",
+        "workspace_mode": "mastery_path",
+    }
+
+
 def test_terminal_error_marks_turn_failed() -> None:
     error_message = "provider authentication failed"
     status, error = _resolve_turn_outcome(
@@ -79,6 +87,35 @@ def test_non_terminal_error_keeps_completed_done_status() -> None:
 
     assert status == "completed"
     assert error == ""
+
+
+@pytest.mark.asyncio
+async def test_has_live_executions_counts_placeholders_and_running_tasks(tmp_path) -> None:
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "chat_history.db"))
+    runtime._executions["placeholder"] = SimpleNamespace(task=None)  # type: ignore[assignment]
+    assert await runtime.has_live_executions() is True
+
+    runtime._executions.clear()
+    task = asyncio.create_task(asyncio.sleep(0))
+    runtime._executions["running"] = SimpleNamespace(task=task)  # type: ignore[assignment]
+    assert await runtime.has_live_executions() is True
+
+    await task
+    assert await runtime.has_live_executions() is False
+
+
+@pytest.mark.asyncio
+async def test_managed_update_reservation_is_atomic_with_turn_ownership(tmp_path) -> None:
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "chat_history.db"))
+    reserved = object()
+
+    assert await runtime.reserve_managed_update(lambda: reserved) is reserved
+    runtime._managed_update_is_active = lambda: True  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="preparing an update"):
+        await runtime._ensure_accepting_turns()
+
+    runtime._managed_update_is_active = lambda: False  # type: ignore[method-assign]
+    await runtime._ensure_accepting_turns()
 
 
 @pytest.mark.asyncio
@@ -420,6 +457,34 @@ async def test_mastery_path_allows_only_one_live_turn_across_sessions(
 
     await runtime.cancel_turn(first_turn["id"])
     LearningStore().release_path_lease("shared", turn_id=first_turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_chat_action_inside_mastery_keeps_path_binding_and_lease(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    _isolate_learning_store(monkeypatch, tmp_path)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    _, turn = await runtime.start_turn(_mastery_chat_payload(session["id"], "shared"))
+
+    lease = LearningStore().get_path_lease("shared")
+    assert lease is not None
+    assert lease.turn_id == turn["id"]
+    detail = await store.get_session(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["workspace_mode"] == "mastery_path"
+    assert detail["preferences"]["capability"] == "chat"
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
 
 
 @pytest.mark.asyncio

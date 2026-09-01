@@ -11,6 +11,7 @@ import SettingsStatusPanel from "@/components/settings/SettingsStatusPanel";
 import { setPendingPrompt } from "@/lib/pending-prompt";
 import {
   SETTINGS_CATEGORIES,
+  settingsAnchorHref,
   type Lang,
   type SettingsLeaf,
 } from "@/lib/settings-nav";
@@ -94,7 +95,7 @@ export default function SettingsOverview() {
         draftState === "saved"
           ? t("A saved draft is waiting to be applied.")
           : t("There are changes you have not saved anywhere yet."),
-      href: "/settings/models#llm",
+      href: settingsAnchorHref("llm"),
       label: t("Review"),
     });
   }
@@ -104,7 +105,7 @@ export default function SettingsOverview() {
       text: t("{{service}} failed its last connection test.", {
         service: tr(item.leaf.label),
       }),
-      href: item.leaf.href,
+      href: settingsAnchorHref(item.leaf.key),
       label: t("Open"),
     });
   }
@@ -225,7 +226,7 @@ export default function SettingsOverview() {
                 }`}
               >
                 <Link
-                  href={item.leaf.href}
+                  href={settingsAnchorHref(item.leaf.key)}
                   className="text-[12.5px] text-[var(--foreground)] transition-opacity hover:opacity-70"
                 >
                   {tr(item.leaf.label)}
@@ -256,7 +257,7 @@ export default function SettingsOverview() {
         <p className="mt-5 text-[11.5px] text-[var(--muted-foreground)]">
           {t("Browser API base")}{" "}
           <Link
-            href="/settings/network"
+            href={settingsAnchorHref("network")}
             className="font-mono text-[var(--foreground)]/70 underline-offset-2 hover:underline"
           >
             {apiBase}

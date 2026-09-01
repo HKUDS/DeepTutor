@@ -54,6 +54,7 @@ class WhatsAppChannel(BaseChannel):
         bridge_url = self.config.bridge_url
 
         logger.info("Connecting to WhatsApp bridge at {}...", bridge_url)
+        self.set_setup_state("connecting")
 
         self._running = True
 
@@ -68,6 +69,7 @@ class WhatsAppChannel(BaseChannel):
                         )
                     self._connected = True
                     logger.info("Connected to WhatsApp bridge")
+                    self.set_setup_state("connecting")
 
                     # Listen for messages
                     async for message in ws:
@@ -82,6 +84,10 @@ class WhatsAppChannel(BaseChannel):
                 self._connected = False
                 self._ws = None
                 logger.warning("WhatsApp bridge connection error: {}", e)
+                self.set_setup_state(
+                    "error",
+                    message="Channel connection failed; the listener will retry.",
+                )
 
                 if self._running:
                     logger.info("Reconnecting in 5 seconds...")
@@ -91,6 +97,7 @@ class WhatsAppChannel(BaseChannel):
         """Stop the WhatsApp channel."""
         self._running = False
         self._connected = False
+        self.set_setup_state("disconnected")
 
         if self._ws:
             await self._ws.close()
@@ -178,12 +185,26 @@ class WhatsAppChannel(BaseChannel):
 
             if status == "connected":
                 self._connected = True
+                self.set_setup_state("connected")
             elif status == "disconnected":
                 self._connected = False
+                self.set_setup_state("disconnected")
 
         elif msg_type == "qr":
-            # QR code for authentication
-            logger.info("Scan QR code in the bridge terminal to connect WhatsApp")
+            # Authentication output is rendered by DeepTutor's Partner WebUI,
+            # not left in the bridge/server terminal. Bridges in the wild use
+            # one of these three field names; ignore non-string diagnostic data.
+            payload = data.get("qr") or data.get("payload") or data.get("data") or ""
+            if isinstance(payload, dict):
+                payload = payload.get("qr") or payload.get("payload") or ""
+            self.set_setup_state(
+                "waiting_for_scan",
+                qr_payload=payload if isinstance(payload, str) else "",
+            )
 
         elif msg_type == "error":
             logger.error("WhatsApp bridge error: {}", data.get("error"))
+            self.set_setup_state(
+                "error",
+                message="Channel connection failed; the listener will retry.",
+            )

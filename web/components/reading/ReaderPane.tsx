@@ -18,7 +18,7 @@ import {
   READER_TURN_END_EVENT,
   type ReaderActionPayload,
 } from "@/lib/reading-reader-action";
-import { locatorFromHref } from "@/lib/reading-citations";
+import { citationTargetFromHref } from "@/lib/reading-citations";
 import {
   fetchExport,
   type AnnotationColor,
@@ -158,6 +158,20 @@ export function ReaderPane({
     setJump({ locator, quote, nonce: nonceRef.current });
   }, []);
 
+  const navigateCitation = useCallback(
+    async (href: string | null | undefined) => {
+      const target = citationTargetFromHref(href);
+      if (!target) return false;
+      if (target.materialId && target.materialId !== material?.material_id) {
+        const opened = await openMaterial(target.materialId);
+        if (!opened) return true;
+      }
+      requestJump(target.locator);
+      return true;
+    },
+    [material?.material_id, openMaterial, requestJump],
+  );
+
   useEffect(() => {
     if (!externalJump) return;
     requestJump(externalJump.locator, externalJump.quote);
@@ -209,16 +223,15 @@ export function ReaderPane({
         const answers = document.querySelectorAll('[role="article"]');
         const last = answers[answers.length - 1];
         const anchor = last?.querySelector<HTMLAnchorElement>(
-          'a[href^="#dt-locator-"]',
+          'a[href^="#dt-locator-"], a[href^="#dt-material-"]',
         );
-        const locator = locatorFromHref(anchor?.getAttribute("href"));
-        if (locator) requestJump(locator);
+        void navigateCitation(anchor?.getAttribute("href"));
       }, 120);
       return () => window.clearTimeout(timer);
     };
     window.addEventListener(READER_TURN_END_EVENT, onTurnEnd);
     return () => window.removeEventListener(READER_TURN_END_EVENT, onTurnEnd);
-  }, [autoJump, material, requestJump]);
+  }, [autoJump, material, navigateCitation]);
 
   /**
    * Citation clicks in assistant prose, intercepted in the CAPTURE phase.
@@ -238,17 +251,17 @@ export function ReaderPane({
       if (event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
         return;
-      const target = event.target as HTMLElement | null;
-      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
-      const locator = locatorFromHref(anchor?.getAttribute("href"));
-      if (!locator) return;
+      const element = event.target as HTMLElement | null;
+      const anchor = element?.closest?.("a[href]") as HTMLAnchorElement | null;
+      const citation = citationTargetFromHref(anchor?.getAttribute("href"));
+      if (!citation) return;
       event.preventDefault();
       event.stopPropagation();
-      requestJump(locator);
+      void navigateCitation(anchor?.getAttribute("href"));
     };
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
-  }, [requestJump]);
+  }, [navigateCitation]);
 
   // -- annotations ---------------------------------------------------------
 
@@ -470,6 +483,7 @@ export function ReaderPane({
               materialId={material.material_id}
               unit={material.unit}
               unitCount={material.unit_count}
+              contentFormat={material.content_format}
               annotations={annotations}
               jump={jump}
               highlightedAnnotationId={activeAnnotationId}

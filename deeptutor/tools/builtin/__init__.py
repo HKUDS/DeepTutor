@@ -32,6 +32,7 @@ from deeptutor.tools.partner_memory import (
 from deeptutor.tools.prompting import load_prompt_hints
 from deeptutor.tools.question_bank import ACTIONS as QB_ACTIONS
 from deeptutor.tools.question_bank import FILTERS as QB_FILTERS
+from deeptutor.visualizers.tool import VISUALIZER_TOOL_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +348,10 @@ class CodeExecutionTool(_PromptHintsMixin, BaseTool):
                 "complete, ready-to-run source in `code` and pick `language` "
                 "(python, c, or cpp). Use it for calculation, data processing, "
                 "and code-generated deliverables instead of embedding source in "
-                "an exec command. Print concise results to stdout."
+                "an exec command. Preserve explicit quantities and scope; after "
+                "failure or a missing artifact, diagnose the cause and change "
+                "strategy rather than retrying identical code. Print concise "
+                "results to stdout."
             ),
             parameters=[
                 ToolParameter(
@@ -1733,6 +1737,9 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     GithubTool,
     AskUserTool,
     CronTool,
+    # Generic commit point for the visualization loop capability. It is only
+    # mounted while visualize mode is active.
+    *VISUALIZER_TOOL_TYPES,
     # Image → GeoGebra figure reconstruction. User-toggleable in chat; the
     # solve loop capability force-mounts it for diagram problems.
     GeoGebraAnalysisTool,

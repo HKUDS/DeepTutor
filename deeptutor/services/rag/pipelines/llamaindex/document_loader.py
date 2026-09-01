@@ -99,7 +99,30 @@ class LlamaIndexDocumentLoader:
 
         for file_path_str in classification.image_files:
             path = Path(file_path_str)
-            image_sources.append(_ImageSource(path=path, origin=path))
+            from deeptutor.services.parsing import get_parse_service
+
+            parse_service = get_parse_service()
+            supports = getattr(parse_service, "supports", lambda _path: False)
+            if supports(path):
+                self.logger.info(f"Parsing image with active document parser: {path.name}")
+                text, extracted_images, parse_engine = await asyncio.to_thread(
+                    self._parse_document, path, parse_service
+                )
+                if text.strip() or extracted_images:
+                    self._append_if_nonempty(
+                        documents,
+                        path,
+                        text,
+                        parse_engine=parse_engine,
+                        extracted_image_count=len(extracted_images),
+                    )
+                    image_sources.extend(extracted_images)
+                else:
+                    # Preserve the pre-parser behavior when an image-capable
+                    # engine fails or yields no usable IR.
+                    image_sources.append(_ImageSource(path=path, origin=path))
+            else:
+                image_sources.append(_ImageSource(path=path, origin=path))
 
         if image_sources:
             documents.extend(
@@ -113,7 +136,11 @@ class LlamaIndexDocumentLoader:
 
         return documents
 
-    def _parse_document(self, file_path: Path) -> tuple[str, list[_ImageSource], str]:
+    def _parse_document(
+        self,
+        file_path: Path,
+        parse_service=None,  # noqa: ANN001
+    ) -> tuple[str, list[_ImageSource], str]:
         """Parse a document through the shared, engine-pluggable parse layer.
 
         Returns ``(text, extracted_images, engine)``. A parse failure (engine
@@ -124,7 +151,7 @@ class LlamaIndexDocumentLoader:
         from deeptutor.services.parsing import ParserError, get_parse_service
 
         try:
-            parsed = get_parse_service().parse(file_path)
+            parsed = (parse_service or get_parse_service()).parse(file_path)
         except ParserError as exc:
             self.logger.warning(
                 f"Skipped {file_path.name}: the active document-parsing engine could "

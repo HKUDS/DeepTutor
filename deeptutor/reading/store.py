@@ -38,7 +38,7 @@ import shutil
 import sqlite3
 import threading
 import time
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Literal, Mapping, Sequence
 import uuid
 
 from deeptutor.reading.extract import extract_material, synthesise_outline
@@ -68,6 +68,8 @@ POSITIONS_DIR = "positions"
 UNIT_REFS_NAME = "unit_refs.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
+ASSETS_DIR = "assets"
+REVISIONS_DIR = "revisions"
 
 # Both content hashes and separately minted catalog ids are path-safe. Content
 # directories themselves remain hashes only.
@@ -368,6 +370,10 @@ class ReadingStore:
         raw_data: bytes | None = None,
         outline: Sequence[OutlineEntry] | None = None,
         unit_refs: Sequence[UnitReference] = (),
+        content_format: Literal["plain_text", "web_markdown"] = "plain_text",
+        source_type: str = "upload",
+        source_url: str = "",
+        assets: Mapping[str, bytes] | None = None,
     ) -> MaterialManifest:
         """Install trusted, already-extracted units (web pages and transcripts).
 
@@ -385,6 +391,8 @@ class ReadingStore:
             raise ReadingError(f"unsupported reading unit: {unit}")
         if render_mode not in {"text", "pdf", "epub", "video", "audio"}:
             raise ReadingError(f"unsupported render mode: {render_mode}")
+        if content_format not in {"plain_text", "web_markdown"}:
+            raise ReadingError(f"unsupported content format: {content_format}")
         remote_video = render_mode == "video" and extractor.startswith(("youtube-", "bilibili-"))
         if render_mode != "text" and not raw_data and not remote_video:
             raise ReadingError(f"{render_mode} materials require playable source bytes")
@@ -398,6 +406,13 @@ class ReadingStore:
             (stage_dir / UNITS_DIR).mkdir(parents=True, exist_ok=True)
             for index, text in enumerate(clean_units, start=1):
                 self._unit_file(stage_dir, index).write_text(text, encoding="utf-8")
+
+            if assets:
+                assets_dir = stage_dir / ASSETS_DIR
+                assets_dir.mkdir(parents=True, exist_ok=True)
+                for name, data in assets.items():
+                    safe_name = _safe_filename(str(name), fallback="asset")
+                    (assets_dir / safe_name).write_bytes(bytes(data))
 
             if raw_data is not None:
                 raw_dir = stage_dir / RAW_DIR
@@ -427,11 +442,34 @@ class ReadingStore:
                 created_at=existing.created_at if existing else time.time(),
                 has_raw_view=render_mode == "pdf",
                 render_mode=render_mode,  # type: ignore[arg-type]
+                content_format=content_format,
+                source_type=source_type,
+                source_url=source_url,
+                revision=(existing.revision + 1 if existing else 1),
             )
             _atomic_write(
                 stage_dir / MANIFEST_NAME,
                 json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
             )
+            if existing is not None and material_dir.is_dir():
+                previous_revisions = material_dir / REVISIONS_DIR
+                if previous_revisions.is_dir():
+                    shutil.copytree(
+                        previous_revisions,
+                        stage_dir / REVISIONS_DIR,
+                        dirs_exist_ok=True,
+                    )
+                revision_dir = stage_dir / REVISIONS_DIR / f"{existing.revision:06d}"
+                if not revision_dir.exists():
+                    revision_dir.mkdir(parents=True, exist_ok=True)
+                    for filename in (MANIFEST_NAME, OUTLINE_NAME, UNIT_REFS_NAME):
+                        source = material_dir / filename
+                        if source.is_file():
+                            shutil.copy2(source, revision_dir / filename)
+                    for dirname in (UNITS_DIR, ASSETS_DIR):
+                        source_dir = material_dir / dirname
+                        if source_dir.is_dir():
+                            shutil.copytree(source_dir, revision_dir / dirname)
             for state_name in (ANNOTATIONS_NAME, POSITION_NAME):
                 source_state = material_dir / state_name
                 if source_state.is_file():
@@ -457,6 +495,40 @@ class ReadingStore:
                 shutil.rmtree(stage_dir, ignore_errors=True)
                 shutil.rmtree(backup_dir, ignore_errors=True)
             return self.manifest(material_id)
+
+    def revisions(self, material_id: str) -> list[MaterialManifest]:
+        """List immutable prior manifests, oldest first."""
+        self.manifest(material_id)
+        root = self._dir(material_id) / REVISIONS_DIR
+        if not root.is_dir():
+            return []
+        rows: list[MaterialManifest] = []
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or not re.fullmatch(r"\d{6}", child.name):
+                continue
+            data = _read_json(child / MANIFEST_NAME)
+            if isinstance(data, dict):
+                rows.append(MaterialManifest.from_dict(data))
+        return rows
+
+    def revision_unit_text(self, material_id: str, revision: int, locator: int) -> str:
+        """Read a unit from a preserved prior web-snapshot revision."""
+        self.manifest(material_id)
+        if revision < 1 or locator < 1:
+            raise ReadingError("revision and locator must be positive")
+        revision_dir = self._dir(material_id) / REVISIONS_DIR / f"{revision:06d}"
+        data = _read_json(revision_dir / MANIFEST_NAME)
+        if not isinstance(data, dict):
+            raise MaterialNotFound(f"revision {revision} not found")
+        manifest = MaterialManifest.from_dict(data)
+        if locator > manifest.unit_count:
+            raise ReadingError(
+                f"{manifest.unit} {locator} is out of range for revision {revision}."
+            )
+        path = self._unit_file(revision_dir, locator)
+        if not path.is_file():
+            raise MaterialNotFound(f"revision {revision} unit {locator} not found")
+        return path.read_text(encoding="utf-8")
 
     def _is_complete(self, material_id: str, manifest: MaterialManifest) -> bool:
         """Whether a previously ingested material is still fully on disk."""
@@ -664,6 +736,15 @@ class ReadingStore:
             if candidate.is_file():
                 return candidate
         return None
+
+    def asset_path(self, material_id: str, asset_name: str) -> Path | None:
+        """Resolve one generated snapshot raster without permitting traversal."""
+        self.manifest(material_id)
+        name = str(asset_name or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{20}\.(?:png|jpg|gif|webp)", name):
+            return None
+        path = self._dir(material_id) / ASSETS_DIR / name
+        return path if path.is_file() else None
 
     @contextmanager
     def staged_delete(self, material_id: str) -> Iterator[bool]:

@@ -1,0 +1,2 @@
+# Optional public-caption adapter. Playback itself uses the YouTube IFrame API.
+youtube-transcript-api>=1.0.0,<2.0.0

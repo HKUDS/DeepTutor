@@ -10,10 +10,9 @@ export type CategorySection = {
 };
 
 /**
- * The content side of a merged settings category (Models, Chat, Partners &
- * Agents): every leaf's page component stacked in one scrollable document
- * instead of one route per leaf, so browsing the whole category is a scroll
- * instead of N page loads.
+ * A continuously scrolling settings document. It is used both for the whole
+ * Settings page (Overview through About) and for the nested sections inside
+ * Models, Chat, and Partners & Agents.
  *
  * Scroll position is the source of truth for "which leaf is active" — not
  * `IntersectionObserver`, which does not reliably fire in every render
@@ -25,20 +24,30 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
   const { setActiveSection } = useSettings();
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // One-time: jump to the hash anchor (if any) once the section list has
-  // painted, and tell the nav which leaf is on screen.
+  // Only the outermost document owns scroll tracking. Merged category pages
+  // are also rendered on their legacy routes, so they keep working on their
+  // own; when nested inside /settings, the parent sees their marked sections
+  // and tracks the complete document without competing state updates.
   useEffect(() => {
+    const rootElement = rootRef.current;
+    if (!rootElement) return;
+    const nested = Boolean(
+      rootElement.parentElement?.closest("[data-settings-section-list]"),
+    );
+    if (nested) return;
+
     const requested = window.location.hash.replace(/^#/, "");
+    const requestedElement = requested
+      ? document.getElementById(requested)
+      : null;
     const initial =
-      sections.find((s) => s.key === requested)?.key ??
-      sections[0]?.key ??
-      null;
+      requestedElement && rootElement.contains(requestedElement)
+        ? requested
+        : (sections[0]?.key ?? null);
     setActiveSection(initial);
-    if (requested && requested !== sections[0]?.key) {
+    if (requestedElement && requested !== sections[0]?.key) {
       requestAnimationFrame(() => {
-        document
-          .getElementById(requested)
-          ?.scrollIntoView({ behavior: "auto", block: "start" });
+        requestedElement.scrollIntoView({ behavior: "auto", block: "start" });
       });
     }
     return () => setActiveSection(null);
@@ -48,19 +57,28 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
   }, []);
 
   useEffect(() => {
-    const root = rootRef.current?.closest<HTMLElement>(
-      "[data-settings-scroll]",
+    const rootElement = rootRef.current;
+    if (!rootElement) return;
+    const nested = Boolean(
+      rootElement.parentElement?.closest("[data-settings-section-list]"),
     );
+    if (nested) return;
+
+    const root = rootElement.closest<HTMLElement>("[data-settings-scroll]");
     if (!root) return;
 
     let ticking = false;
     const measure = () => {
       ticking = false;
       const threshold = root.getBoundingClientRect().top + 96;
-      let current = sections[0]?.key ?? null;
-      for (const { key } of sections) {
-        const el = document.getElementById(key);
-        if (el && el.getBoundingClientRect().top <= threshold) current = key;
+      const allSections = Array.from(
+        rootElement.querySelectorAll<HTMLElement>("[data-settings-section]"),
+      );
+      let current = allSections[0]?.id || sections[0]?.key || null;
+      for (const element of allSections) {
+        if (element.getBoundingClientRect().top <= threshold) {
+          current = element.id;
+        }
       }
       setActiveSection(current);
       if (current && window.location.hash !== `#${current}`) {
@@ -77,15 +95,20 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
       requestAnimationFrame(measure);
     };
     root.addEventListener("scroll", onScroll, { passive: true });
-    return () => root.removeEventListener("scroll", onScroll);
+    const raf = requestAnimationFrame(measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      root.removeEventListener("scroll", onScroll);
+    };
   }, [sections, setActiveSection]);
 
   return (
-    <div ref={rootRef}>
+    <div ref={rootRef} data-settings-section-list>
       {sections.map(({ key, Component }, index) => (
         <section
           key={key}
           id={key}
+          data-settings-section
           className={
             index === 0
               ? "scroll-mt-16"

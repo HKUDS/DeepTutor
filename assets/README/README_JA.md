@@ -61,9 +61,10 @@
 
 DeepTutorは、個別指導、問題解決、クイズ生成、研究、ビジュアライゼーション、習熟度練習を1つの拡張可能なシステムに統合したエージェントネイティブな学習ワークスペースです。
 
-- **すべてのモードで1つのランタイム** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Mastery Path、Immersive Readingは、同じ機能ランタイムとセッションコンテキストを共有しながら、用途別に設計されたループとパイプラインを維持します。
+- **すべてのモードで1つのランタイム** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading、Immersive Watchingは、同じ機能ランタイムとセッションコンテキストを共有しながら、用途別に設計されたループとパイプラインを維持します。
 - **接続された学習コンテキスト** — 知識ベース、本、Co-Writerの下書き、ノートブック、問題バンク、ペルソナ、Memoryが孤立したツールに閉じ込められることなく、すべてのワークフローで利用可能です。
-- **サブエージェントとPartners** — 任意のターンからライブのコーディングCLI（Claude Code、Codex、Gemini、Antigravity、Kimi、opencode、MiMo）またはPartnerに相談（または過去の会話をインポート）し、同じブレインで永続的なIMコンパニオンを実行します。
+- **没入型動画学習** — YouTubeリンクを貼り付けるだけで、プライバシー強化ネイティブ再生、同期字幕、タイムスタンプに基づく個別指導、再開可能な進捗を利用できます。管理者は教材を再構築せずに、再生をセルフホストのInvidiousインスタンスへ切り替えられます。
+- **サブエージェントとPartners** — 任意のターンからライブエージェントハーネス（Claude Code、Codex、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw、DeepSeek）またはPartnerに相談し（または過去の会話をインポートし）、同じブレインで永続的なIMコンパニオンを実行します。
 - **マルチエンジン知識** — LlamaIndex、PageIndex、GraphRAG、LightRAG、リモートのLightRAG Server、Tencent IMAまたはMarginNote 4ライブラリ、あるいはリンクされたObsidianボールトにまたがるバージョン管理されたRAGライブラリ（プラグ可能なドキュメント解析付き）。
 - **拡張可能なツールとスキル** — 組み込みツール、MCPサーバー、CLIアプリ、画像/ビデオ/音声生成モデル、EduHubからインストール可能なコミュニティスキル。
 - **検査可能なメモリ** — L1トレース、L2サーフェスサマリー、L3合成によりパーソナライズが可視化・編集可能となり、Memory Graphですべての主張を証拠まで追跡できます。
@@ -135,6 +136,7 @@ pip install -e ".[rag-lightrag]"    # 組み込みLightRAGエンジン（サポ�
 pip install -e ".[graphrag]"        # Microsoft GraphRAGエンジン
 pip install -e ".[dev]"             # テスト/lintツール
 pip install -e ".[partners]"        # Partner IMチャンネルSDK
+pip install -e ".[video-learning]"  # optional YouTube public-caption adapter
 pip install -e ".[matrix]"          # MatrixチャンネルE2EE/libolmなし
 pip install -e ".[matrix-e2e]"      # Matrix E2EE; libolmが必要
 pip install -e ".[math-animator]"   # Maninアドオン; LaTeX/ffmpeg/システムライブラリが必要
@@ -246,7 +248,7 @@ deeptutor init --cli
 deeptutor chat
 ```
 
-`deeptutor init --cli`はフルアプリと同じ`data/user/settings/`レイアウトを共有しますが、バックエンド/フロントエンドのポートプロンプトをスキップし、埋め込みをデフォルトで**オフ**にします（`deeptutor kb …`やRAGツールを使用する予定がある場合は`Yes`を選択してください）。完全なランタイムレイアウト（`system.json`、`auth.json`、`integrations.json`、`model_catalog.json`、`main.yaml`、`agents.yaml`）を書き込み、アクティブなLLMプロバイダーとモデルのプロンプトも表示します。
+`deeptutor init --cli`はフルアプリと同じ`data/user/settings/`レイアウトを共有しますが、バックエンド/フロントエンドのポートプロンプトをスキップし、埋め込みをデフォルトで**オフ**にします（`deeptutor kb …`やRAGツールを使用する予定がある場合は`Yes`を選択してください）。主要なランタイムファイル（`system.json`、`auth.json`、`integrations.json`、`interface.json`、`model_catalog.json`、`main.yaml`、`agents.yaml`）を書き込み、アクティブなLLMプロバイダーとモデルのプロンプトを表示します。
 
 <details>
 <summary><b>よく使うコマンド</b></summary>
@@ -291,6 +293,7 @@ deeptutor config show
 | `auth.json` | オプション認証トグル、ユーザー名、パスワードハッシュ、トークン/クッキー設定 |
 | `integrations.json` | オプションのPocketBaseとサイドカー統合設定 |
 | `interface.json` | UIの言語とモデル出力言語/テーマ/サイドバー設定 |
+| `video_learning.json` | デフォルトのYouTube/Invidious再生プロバイダー、Invidiousオリジン、オプションの文字起こしアダプター |
 | `main.yaml` | ランタイム動作のデフォルトとパス注入 |
 | `agents.yaml` | 機能/ツールのtemperatureとトークン設定 |
 
@@ -303,7 +306,7 @@ deeptutor config show
 日常的に使用するメインサーフェスから始めましょう：Chat、Partners、My Agents、Co-Writer、Book、Knowledge Center、Learning Space、Memory、Settings。ツアーの最後はマルチユーザーデプロイメントとして共有・分離ワークスペースをカバーします。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
 </div>
 
 <details>
@@ -334,7 +337,7 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 
 コンテキストには2種類あります：**スティッキーセッションコンテキスト**（サブエージェント、知識ベース、ペルソナ、モデル、音声）はコンポーザーツールバーに常駐し、ターンをまたいで持続します。**ワンタイム参照**（ファイル、チャット履歴、本、ノートブック、問題バンク、インポートしたエージェント）は単一のターンのために`+`メニューから追加します。
 
-Chatはより深い機能へのローンチポイントでもあります：コンテキストに応じた確認カードには**Ask Questions**、問題生成には**Quiz**、チャート/図/アニメーションには**Visualize**、学習計画フローには**Mastery Path**、そしてスレッドの横でPDF、EPUBなどのドキュメントを読み、ページ/章へのグラウンディング、読書位置とアウトラインの永続化、注釈、選択テキスト操作を利用できる**Immersive Reading**。引用付きレポートの**Research**と推論問題解決の**Solve**は「その他の機能」の下にあります。
+Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**、**Immersive Watching**にワンクリックでアクセスできます。引用付きレポートの**Research**と手順を追った推論の**Solve**は*その他の機能*の下にあります。**Mastery Path**と**Immersive Reading**は専用のサイドバーワークスペースで、Course Studyはコースに紐づいた独自のコンテキストを維持します。
 
 </details>
 
@@ -370,7 +373,7 @@ Partnersは独自のソウル、モデルポリシー、ライブラリ、メモ
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agentsワークスペース" width="900">
 </div>
 
-My Agentsは他のエージェントをDeepTutorのコンテキストにし、2つの異なることを行います。**ライブエージェントを接続** — マシン上のClaude Code、Codex、Gemini、Antigravity、Kimi、opencode、MiMo CodeいずれかのCLI、またはPartnerの1つ — してチャットターン内から相談できます。DeepTutorは実際に他のエージェントを*実行*し、`consult_subagent`ツールを介してその作業をActivityパネルにストリーミングします。Agentチップ（または`@`入力）で選択し、相談で取れるラウンド数を設定します。
+My Agentsは他のエージェントをDeepTutorのコンテキストにし、2つの異なることを行います。**ライブエージェントを接続** — マシン上のClaude Code、Codex、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness、または自分のPartnersのいずれか — してチャットターン内から相談できます。DeepTutorは実際に他のエージェントを*実行*し、`consult_subagent`ツールを介してその作業をActivityパネルにストリーミングします。Agentチップ（または`@`入力）で選択し、相談で取れるラウンド数を設定します。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Claude Codeサブエージェントをライブで相談" width="900">
@@ -433,7 +436,7 @@ Bookは選択したソースをインタラクティブな**生きている本**
 
 KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。KBは**GitHubリポジトリ**（リポジトリ、ブランチ、glob）または**ドキュメントサイトのURL**（クロール深度とページ数に上限あり）も追跡できます。オンデマンド同期ではコンテンツのハッシュ差分から追加・変更・削除を検出するため、フォローしているドキュメントを再アップロードなしで最新の状態に保てます。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。Tikaはリモート専用で、Apache Tikaサーバー（`TIKA_SERVER_URL`）を指定します。CLIは`list/info/create/add/search/set-default/delete`、ソースの追加/削除コマンド、`list-sources`、`sync`でライフサイクルをミラーします。
 
-組み込みLightRAGエンジンは`pip install 'deeptutor[rag-lightrag]'`でインストールします。このエクストラにはサポート対象のLightRAG SDKが含まれますが、MinerUはインストールしません。構造化されたPDF解析が必要な場合は、Document Parsingで独立してMinerUを選択し、クラウドモードを設定するかローカルCLIをインストールしてください。テキストのみおよびその他の解析エンジンはMinerUを必要としません。
+組み込みLightRAGエンジンは`pip install 'deeptutor[rag-lightrag]'`でインストールします。このエクストラにはサポート対象のLightRAG SDKが含まれますが、MinerUはインストールしません。構造化解析が必要な場合は、Document ParsingでMinerUを個別に選択し、クラウドモードを設定するか、現在のローカルCLIをインストールしてください。MinerUはPDF、一般的なラスター画像、DOCX、PPTX、XLSXを受け付けます。従来の`magic-pdf`コマンドは引き続きPDFのみです。テキストのみおよびその他の解析エンジンはMinerUを必要としません。
 
 </details>
 
@@ -444,7 +447,7 @@ KBを作成する際は、**新規作成**（ドキュメントをアップロ�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Spaceハブ" width="900">
 </div>
 
-Learning Spaceはライブラリ、整理、パーソナライゼーションの層です。**My courses**は科目ごとの会話をまとめ、チューターのスレッドを親スレッドの下にネストします。Chat Historyではコースまたはスレッドの種類で絞り込み、セッションのピン留め、アーカイブ、移動ができます。**会話と素材**には、ノートブック — レコードをノートブック間で移動・コピーでき、Markdownへのエクスポートも可能です — と、あなたの回答、参照回答、説明を保存する問題バンクも含まれます。**パーソナライゼーション**には習熟パス、ペルソナ、スキル（`SKILL.md`プレイブック）、ワンクリックで導入できる**MCPサービス**、[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログの**CLIアプリ**があり、各アプリの使用ガイドはオンデマンドで読み込まれます。ここのものはすべてChat、Partners、Co-Writer、Bookから再利用できます。
+Learning Spaceはライブラリ、整理、パーソナライゼーションの層です。**My courses**は科目ごとの会話をまとめ、チューターのスレッドを親スレッドの下にネストします。Chat Historyではコースまたはスレッドの種類で絞り込み、セッションのピン留め、アーカイブ、移動ができます。**会話と素材**には、ノートブック — レコードをノートブック間で移動・コピーでき、Markdownへのエクスポートも可能です — と、あなたの回答、参照回答、説明を保存する問題バンクも含まれます。**パーソナライゼーション**にはペルソナ、スキル（`SKILL.md`プレイブック）、ワンクリックで導入できる**MCPサービス**、[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログの**CLIアプリ**があり、各アプリの使用ガイドはオンデマンドで読み込まれます。ここのものはすべてChat、Partners、Co-Writer、Bookから再利用できます。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="EduHubからスキルをインポート" width="900">
@@ -478,7 +481,9 @@ Memory Graphはピラミッド全体を表示します — L3合成が中心、L
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settingsハブ" width="900">
 </div>
 
-Settingsはオペレーションコントロールプレーンで、ライブステータスストリップ（バックエンドの健全性とプロセスツリー全体の常駐メモリ使用量）と、どのページにもワンクリックで到達できる常駐の検索可能なナビゲーターがあります：**外観**（テーマ、UI言語とモデル出力言語、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**モデル**（接続、LLM、タスクモデル、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（ツール、機能パラメーター、スターティングポイント、添付ファイル上限）、**Partners & Agents**（ターンから相談できるサブエージェント）、**Memory**（コンソリデーターのバジェット）。**接続**は1つのベンダー認証情報を保持し、そのベンダーが提供できるすべてのサービスにミラーするため、キーを5つのページに貼り付けるのではなく1回だけ入力すれば済みます。**タスクモデル**は誰も明示的に依頼していない作業 — 会話への命名、コンポーザーのスターティングポイントの生成 — のために小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトに解決されます。
+Settingsはオペレーションコントロールプレーンで、ライブステータスストリップ（バックエンドの健全性とプロセスツリー全体の常駐メモリ使用量）と、どのページにもワンクリックで到達できる常駐の検索可能なナビゲーターがあります：**外観**（テーマ、UI言語とモデル出力言語、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**モデル**（接続、LLM、タスクモデル、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（Video Learning、ツール、機能パラメーター、スターティングポイント、添付ファイル上限）、**Partners & Agents**（9つのローカルハーネス）、**Memory**（コンソリデーターのバジェット）、**About**（バージョン確認と安全なアップデート）。**接続**は1つのベンダー認証情報を保持し、そのベンダーが提供できるすべてのサービスにミラーするため、キーを5つのページに貼り付けるのではなく1回だけ入力すれば済みます。**タスクモデル**は誰も明示的に依頼していない作業 — 会話への命名、コンポーザーのスターティングポイントの生成 — のために小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトに解決されます。
+
+Settings → Chatの**Video Learning**は、デフォルトで公式のプライバシー強化YouTube IFrame Playerを使用します。再生をローカルに保つには、管理者が管理するInvidious APIオリジン（例：`http://127.0.0.1:3000`）を設定してテストし、Invidiousを選択して保存します。新規または再度開いた動画には、同じ教材IDと進捗のままプロバイダーが直ちに反映されます。InvidiousメディアはDeepTutorのバイトレンジプロキシ経由でストリーミングされ、アップストリームURLがブラウザに公開されたりディスクに保存されたりすることはありません。インスタンスに障害が発生した場合、学習者がネイティブのYouTubeフォールバックを明示的に選択するまで、DeepTutorはYouTubeへ接続しないままです。公開字幕による個別指導はオプションです：`.[video-learning]`をインストールしてください。未インストールでも再生は続行しますが、文字起こしに基づく**Explain here**は理由とともに無効になります。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor外観設定とテーマ" width="900">
@@ -569,7 +574,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-リポジトリにはルートの[`SKILL.md`](../../SKILL.md)が含まれています — ツール使用可能なLLMにサーフェス全体を1回の読み取りで教える約150行のハンドオーバードキュメント。Claude Code、Codex、OpenCodeに渡してください（これらは`SKILL.md`を自動的に取得します）、または`deeptutor run`をLangChain / AutoGenループのツールとしてラップしてください。完全なレシピ：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
+リポジトリにはルートの[`SKILL.md`](../../SKILL.md)が含まれています — ツール使用可能なLLMにサーフェス全体を1回の読み取りで教える約200行のハンドオーバードキュメント。Claude Code、Codex、OpenCodeに渡してください（これらは`SKILL.md`を自動的に取得します）、または`deeptutor run`をLangChain / AutoGenループのツールとしてラップしてください。完全なレシピ：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
 
 </details>
 
@@ -582,7 +587,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor doctor [--online]` | ワークスペースがセッションを開始できる状態か確認；`--online`は設定済みのモデルプロバイダーもプローブし、`--format json`はレポートを出力 |
 | `deeptutor start [--home PATH] [--dev]` | バックエンド + フロントエンドを一緒に起動 |
 | `deeptutor serve [--port PORT]` | FastAPIバックエンドのみ起動 |
-| `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`）；`--format json`でNDJSON出力 |
+| `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`）；`--format json`でNDJSON出力 |
 | `deeptutor chat` | 機能、ツール、KB、ノートブック、履歴コントロール付きインタラクティブREPL |
 | `deeptutor partner list/create/start/stop` | IM接続Partnersを管理 |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | 知識ベースを管理し、登録済みGitHub/Webソースを同期（ソースの追加/削除コマンドを含む） |
@@ -667,7 +672,7 @@ deeptutor skill install clawhub:udiedrichsen/stock-analysis
 
 複数の公開者が同じスラッグを共有している場合、検索結果には各公開者と完全にスコープ付けされたインストール参照（`clawhub:<ownerHandle>/<slug>`）が表示されます。
 
-`settings/skill_hubs.json`にさらにレジストリを追加できます：`type: "clawhub"`エントリは互換性のあるHTTP APIを指し（EduHubとClawHubはどちらもそれを話します）、`type: "command"`はレジストリが配布するフェッチCLIをラップし、`"default"`はベアスラッグに使用するハブを選択します。すべて同じインポートゲートを通過します。
+`data/user/settings/skill_hubs.json`にさらにレジストリを追加できます：`type: "clawhub"`エントリは互換性のあるHTTP APIを指し（EduHubとClawHubはどちらもそれを話します）、`type: "command"`はレジストリが配布するフェッチCLIをラップし、`"default"`はベアスラッグに使用するハブを選択します。すべて同じインポートゲートを通過します。
 
 </details>
 

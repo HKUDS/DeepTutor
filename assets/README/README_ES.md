@@ -61,9 +61,10 @@
 
 DeepTutor es un espacio de trabajo de aprendizaje nativo de agentes que conecta tutoría, resolución de problemas, generación de cuestionarios, investigación, visualización y práctica de dominio en un sistema extensible.
 
-- **Un runtime para todos los modos** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Mastery Path e Immersive Reading comparten un mismo runtime de capacidades y contexto de sesión, pero conservan bucles y pipelines especializados para cada propósito.
+- **Un runtime para todos los modos** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading e Immersive Watching comparten un mismo runtime de capacidades y contexto de sesión, pero conservan bucles y pipelines especializados para cada propósito.
 - **Contexto de aprendizaje conectado** — Bases de conocimiento, libros, borradores de Co-Writer, cuadernos, bancos de preguntas, personas y Memory están disponibles en todos los flujos de trabajo en lugar de vivir en herramientas aisladas.
-- **Subagentes y Partners** — consulta una CLI de codificación en vivo (Claude Code, Codex, Gemini, Antigravity, Kimi, opencode o MiMo) o un Partner desde cualquier turno (o importa sus conversaciones pasadas), y ejecuta compañeros IM persistentes con el mismo cerebro.
+- **Aprendizaje inmersivo por vídeo** — pega un enlace de YouTube para una reproducción nativa con privacidad mejorada, subtítulos sincronizados, tutoría basada en marcas de tiempo y progreso reanudable; los administradores pueden cambiar la reproducción a una instancia de Invidious autoalojada sin reconstruir los materiales.
+- **Subagentes y Partners** — consulta un entorno de agente en vivo (Claude Code, Codex, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw o DeepSeek) o un Partner desde cualquier turno (o importa sus conversaciones pasadas), y ejecuta compañeros IM persistentes con el mismo cerebro.
 - **Conocimiento multi-motor** — bibliotecas RAG con versiones: LlamaIndex, PageIndex, GraphRAG, LightRAG, un LightRAG Server remoto, una biblioteca de Tencent IMA o MarginNote 4, o un vault Obsidian vinculado, con análisis de documentos conectable.
 - **Herramientas y habilidades extensibles** — herramientas integradas, servidores MCP, aplicaciones CLI, modelos de generación de imagen / video / voz, y skills de la comunidad instalables desde EduHub.
 - **Memoria inspectable** — trazas L1, resúmenes de superficie L2 y síntesis L3 hacen visible y editable la personalización, con un Memory Graph que traza cada afirmación hasta su evidencia.
@@ -135,6 +136,7 @@ pip install -e ".[rag-lightrag]"    # Motor LightRAG integrado (SDK compatible e
 pip install -e ".[graphrag]"        # Motor GraphRAG de Microsoft
 pip install -e ".[dev]"             # herramientas de pruebas/lint
 pip install -e ".[partners]"        # SDKs de canales IM de Partners
+pip install -e ".[video-learning]"  # optional YouTube public-caption adapter
 pip install -e ".[matrix]"          # canal Matrix sin E2EE/libolm
 pip install -e ".[matrix-e2e]"      # Matrix E2EE; requiere libolm
 pip install -e ".[math-animator]"   # complemento Manim; requiere LaTeX/ffmpeg/libs del sistema
@@ -246,7 +248,7 @@ deeptutor init --cli
 deeptutor chat
 ```
 
-`deeptutor init --cli` comparte el mismo diseño `data/user/settings/` que la aplicación completa pero omite las solicitudes de puertos de backend/frontend y establece embeddings en **desactivado** (elige `Yes` si planeas usar `deeptutor kb …` o herramientas RAG). Aún escribe un diseño de runtime completo (`system.json`, `auth.json`, `integrations.json`, `model_catalog.json`, `main.yaml`, `agents.yaml`) y aún solicita el proveedor LLM y modelo activos.
+`deeptutor init --cli` comparte el mismo diseño `data/user/settings/` que la aplicación completa pero omite las solicitudes de puertos de backend/frontend y establece embeddings en **desactivado** (elige `Yes` si planeas usar `deeptutor kb …` o herramientas RAG). Aún escribe los archivos clave de runtime (`system.json`, `auth.json`, `integrations.json`, `interface.json`, `model_catalog.json`, `main.yaml`, `agents.yaml`) y solicita el proveedor LLM y modelo activos.
 
 <details>
 <summary><b>Comandos comunes</b></summary>
@@ -303,6 +305,7 @@ Todo bajo `data/user/settings/` es JSON/YAML plano. La página **Settings** en e
 | `auth.json` | Interruptor de autenticación opcional, nombre de usuario, hash de contraseña, configuración de token/cookie |
 | `integrations.json` | Configuración opcional de PocketBase e integraciones sidecar |
 | `interface.json` | Idioma de UI y de salida del modelo / tema / preferencias de barra lateral |
+| `video_learning.json` | Proveedor de reproducción predeterminado de YouTube/Invidious, orígenes de Invidious y adaptador de transcripción opcional |
 | `main.yaml` | Valores predeterminados de comportamiento de runtime e inyección de rutas |
 | `agents.yaml` | Configuración de temperatura y tokens de capacidades/herramientas |
 
@@ -315,7 +318,7 @@ El `.env` de la raíz del proyecto **no** se lee como archivo de configuración 
 Comienza con las superficies principales que usarás día a día: Chat, Partners, Mis Agentes, Co-Writer, Book, Centro de Conocimiento, Espacio de Aprendizaje, Memory y Settings. El tour luego cubre los despliegues Multi-Usuario para espacios de trabajo compartidos y aislados.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="Inicio de DeepTutor — el espacio de trabajo Chat con todas las superficies en la barra lateral" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Inicio de DeepTutor — el espacio de trabajo Chat con todas las superficies en la barra lateral" width="900">
 </div>
 
 <details>
@@ -346,7 +349,7 @@ Las herramientas activables por el usuario son `brainstorm`, `web_search`, `pape
 
 El contexto viene en dos tipos: el **contexto de sesión persistente** (subagente, bases de conocimiento, persona, modelo, voz) vive en la barra de herramientas del compositor y persiste entre turnos; las **referencias de un solo uso** (archivos, historial de chat, libros, cuadernos, banco de preguntas, agentes importados) vienen del menú `+` para un único turno.
 
-Chat es también el punto de lanzamiento para capacidades más profundas: **Ask Questions** para una tarjeta de aclaración adaptada al contexto, **Quiz** para generación de preguntas, **Visualize** para gráficos / diagramas / animaciones, **Mastery Path** para flujos de planes de aprendizaje e **Immersive Reading** para PDFs, EPUBs y otros documentos junto al hilo, con fundamentación por página/capítulo, posición y esquemas persistentes, anotaciones y acciones sobre texto seleccionado. **Research** para informes con citas y **Solve** para razonamiento trabajado se encuentran bajo *More Capabilities*.
+Inicio mantiene **Chat**, **Ask Questions**, **Quiz**, **Visualize** e **Immersive Watching** a un clic; **Research** para informes con citas y **Solve** para razonamiento trabajado se encuentran bajo *More Capabilities*. **Mastery Path** e **Immersive Reading** son espacios de trabajo dedicados en la barra lateral, mientras que Course Study mantiene su propio contexto vinculado al curso.
 
 </details>
 
@@ -382,7 +385,7 @@ Para una configuración más rápida, la página de canales de Partner puede cre
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="Espacio de trabajo de Mis Agentes DeepTutor" width="900">
 </div>
 
-Mis Agentes convierte a otros agentes en contexto para DeepTutor y hace dos cosas distintas. **Conectar un agente en vivo** — una CLI de Claude Code, Codex, Gemini, Antigravity, Kimi, opencode o MiMo Code en tu máquina, o uno de tus Partners — y consultarlo desde dentro de un turno de chat: DeepTutor realmente *ejecuta* el otro agente y transmite su trabajo al panel de Activity a través de la herramienta `consult_subagent`. Selecciónalo con el chip de Agente (o escribe `@`), y establece cuántas rondas puede tomar la consulta.
+Mis Agentes convierte a otros agentes en contexto para DeepTutor y hace dos cosas distintas. **Conectar un agente en vivo** — Claude Code, Codex, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw o DeepSeek Harness en tu máquina, o uno de tus Partners — y consultarlo desde dentro de un turno de chat: DeepTutor realmente *ejecuta* el otro agente y transmite su trabajo al panel de Activity a través de la herramienta `consult_subagent`. Selecciónalo con el chip de Agente (o escribe `@`), y establece cuántas rondas puede tomar la consulta.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Consultando un subagente Claude Code en vivo" width="900">
@@ -445,7 +448,7 @@ Las bases de conocimiento son las colecciones de documentos detrás del RAG — 
 
 Al crear una KB, puedes **crear nueva** (subir documentos y construir un índice nuevo) o **vincular existente** (reutilizar un índice construido en otro lugar, leer en el lugar sin re-indexar). Una KB también puede rastrear **repositorios de GitHub** (repositorio, rama y patrón glob) o **URLs de sitios de documentación** (con límites de profundidad de rastreo y número de páginas); la sincronización bajo demanda compara hashes para detectar contenido añadido, modificado y eliminado, de modo que la documentación que sigues se mantiene actualizada sin volver a subirla. La re-indexación escribe un nuevo directorio `version-N` plano y conserva los anteriores, de modo que un índice funcional nunca se destruye a mitad de la reconstrucción. Un solo documento puede eliminarse incluso de una base en estado de **error** — descartando un archivo que no se pudo analizar sin necesidad de borrar y reconstruir todo. El análisis de documentos — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM o LiteParse — se elige en **Settings → Knowledge Base**, con descargas de modelos locales desactivadas por defecto. Docling también puede ejecutarse en modo **remoto** contra un servidor Docling Serve (sin necesidad de instalación local ni modelos), configurado a través de **Settings → Document Parsing** (`mode=remote`, una URL base de servidor y una clave API opcional) o las variables de entorno `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. Tika es solo remoto y apunta a un servidor Apache Tika (`TIKA_SERVER_URL`). La CLI refleja el ciclo de vida con `list/info/create/add/search/set-default/delete`, comandos para añadir o eliminar fuentes, `list-sources` y `sync`.
 
-El motor LightRAG integrado se instala con `pip install 'deeptutor[rag-lightrag]'`. Ese extra contiene el SDK de LightRAG compatible pero no instala MinerU. Elige MinerU de forma independiente en Document Parsing y configura su modo en la nube o instala su CLI local cuando se desee un análisis estructurado de PDF; Text-only y los demás motores de análisis no requieren MinerU.
+El motor LightRAG integrado se instala con `pip install 'deeptutor[rag-lightrag]'`. Ese extra contiene el SDK de LightRAG compatible pero no instala MinerU. Elige MinerU de forma independiente en Document Parsing y configura su modo en la nube o instala su CLI local vigente cuando se desee un análisis estructurado. MinerU acepta PDF, imágenes rasterizadas comunes, DOCX, PPTX y XLSX; el comando heredado `magic-pdf` sigue limitado a PDF. Text-only y los demás motores de análisis no requieren MinerU.
 
 </details>
 
@@ -456,7 +459,7 @@ El motor LightRAG integrado se instala con `pip install 'deeptutor[rag-lightrag]
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="Hub del Espacio de Aprendizaje DeepTutor" width="900">
 </div>
 
-El Espacio de Aprendizaje es la capa de biblioteca, organización y personalización. **Mis cursos** agrupa las conversaciones de cada materia y mantiene los hilos del tutor anidados bajo su conversación principal; el historial de chat permite filtrar por curso o tipo de hilo, además de fijar, archivar o mover sesiones. **Conversaciones y Materiales** también guarda cuadernos — con registros que se mueven o copian entre cuadernos y una exportación a Markdown — y un banco de preguntas que conserva tu respuesta, la respuesta de referencia y una explicación. **Personalización** guarda rutas de dominio, personas, skills (guías `SKILL.md`), **Servicios MCP** con instalación en un clic y **Aplicaciones CLI** del catálogo [CLI-Anything](https://github.com/HKUDS/CLI-Anything), cada una con una guía de uso cargada bajo demanda. Todo aquí se puede reutilizar desde Chat, Partners, Co-Writer y Book.
+El Espacio de Aprendizaje es la capa de biblioteca, organización y personalización. **Mis cursos** agrupa las conversaciones de cada materia y mantiene los hilos del tutor anidados bajo su conversación principal; el historial de chat permite filtrar por curso o tipo de hilo, además de fijar, archivar o mover sesiones. **Conversaciones y Materiales** también guarda cuadernos — con registros que se mueven o copian entre cuadernos y una exportación a Markdown — y un banco de preguntas que conserva tu respuesta, la respuesta de referencia y una explicación. **Personalización** guarda personas, skills (guías `SKILL.md`), **Servicios MCP** con instalación en un clic y **Aplicaciones CLI** del catálogo [CLI-Anything](https://github.com/HKUDS/CLI-Anything), cada una con una guía de uso cargada bajo demanda. Todo aquí se puede reutilizar desde Chat, Partners, Co-Writer y Book.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="Importar skills desde EduHub" width="900">
@@ -490,7 +493,9 @@ El Memory Graph muestra toda la pirámide — síntesis L3 en el centro, L2 en e
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Hub de configuración DeepTutor" width="900">
 </div>
 
-Settings es el panel de control operativo, con una tira de estado en vivo (estado del backend y memoria residente en todo el árbol de procesos) y un navegador persistente y con búsqueda que llega a cualquier página en un clic: **Apariencia** (tema, idioma de UI y de salida del modelo, estilo de bloques de código), **Red** (base de API, puertos, CORS), **Modelos** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (motor de análisis de documentos), **Chat** (herramientas, parámetros por capacidad, sugerencias iniciales, límites de adjuntos), **Partners & Agents** (los subagentes que puedes consultar desde un turno), y **Memory** (los presupuestos del consolidador). Una **conexión** (Connection) guarda una credencial de proveedor y la refleja en cada servicio que ese proveedor puede ofrecer, de modo que una clave se introduce una sola vez en lugar de pegarla en cinco páginas; los **modelos de tarea** (Task models) fijan un modelo pequeño y rápido para el trabajo que nadie pidió — nombrar una conversación, escribir las sugerencias iniciales del compositor — y recurren al predeterminado activo cuando se dejan vacíos.
+Settings es el panel de control operativo, con una tira de estado en vivo (estado del backend y memoria residente en todo el árbol de procesos) y un navegador persistente y con búsqueda que llega a cualquier página en un clic: **Apariencia** (tema, idioma de UI y de salida del modelo, estilo de bloques de código), **Red** (base de API, puertos, CORS), **Modelos** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (motor de análisis de documentos), **Chat** (Video Learning, herramientas, parámetros por capacidad, sugerencias iniciales, límites de adjuntos), **Partners & Agents** (nueve entornos de agentes locales), **Memory** (los presupuestos del consolidador) y **About** (comprobaciones de versión y actualizaciones seguras). Una **conexión** (Connection) guarda una credencial de proveedor y la refleja en cada servicio que ese proveedor puede ofrecer, de modo que una clave se introduce una sola vez en lugar de pegarla en cinco páginas; los **modelos de tarea** (Task models) fijan un modelo pequeño y rápido para el trabajo que nadie pidió — nombrar una conversación, escribir las sugerencias iniciales del compositor — y recurren al predeterminado activo cuando se dejan vacíos.
+
+**Video Learning** en Settings → Chat usa de forma predeterminada el reproductor IFrame oficial de YouTube con privacidad mejorada. Para mantener la reproducción en local, configura el origen de la API de Invidious gestionado por el administrador (por ejemplo `http://127.0.0.1:3000`), pruébalo, selecciona Invidious y guarda. Los vídeos nuevos o reabiertos adoptan inmediatamente el proveedor con el mismo ID de material y progreso. El contenido multimedia de Invidious se transmite a través del proxy de rangos de bytes de DeepTutor; las URL de origen no se exponen al navegador ni se almacenan en disco. Si la instancia falla, DeepTutor permanece desconectado de YouTube hasta que el alumno elija explícitamente la alternativa nativa de YouTube. La tutoría mediante subtítulos públicos es opcional: instala `.[video-learning]`; la reproducción continúa sin este extra, mientras que **Explain here** basado en la transcripción se desactiva con una explicación.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Configuración de apariencia de DeepTutor y temas" width="900">
@@ -581,7 +586,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-El repo incluye un [`SKILL.md`](../../SKILL.md) raíz — un documento de traspaso de ~150 líneas que enseña a cualquier LLM que use herramientas toda la superficie en una lectura. Entrégaselo a Claude Code, Codex u OpenCode (los recogen automáticamente), o envuelve `deeptutor run` como herramienta en un bucle LangChain / AutoGen. Recetas completas: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
+El repo incluye un [`SKILL.md`](../../SKILL.md) raíz — un documento de traspaso de ~200 líneas que enseña a cualquier LLM que use herramientas toda la superficie en una lectura. Entrégaselo a Claude Code, Codex u OpenCode (los recogen automáticamente), o envuelve `deeptutor run` como herramienta en un bucle LangChain / AutoGen. Recetas completas: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
 
 </details>
 
@@ -594,7 +599,7 @@ El repo incluye un [`SKILL.md`](../../SKILL.md) raíz — un documento de traspa
 | `deeptutor doctor [--online]` | Verificar si el espacio de trabajo está listo para iniciar una sesión; `--online` también sondea el proveedor de modelo configurado, `--format json` imprime el informe |
 | `deeptutor start [--home PATH] [--dev]` | Lanzar backend + frontend juntos |
 | `deeptutor serve [--port PORT]` | Iniciar solo el backend FastAPI |
-| `deeptutor run <capability> <message>` | Ejecutar un turno de capacidad único (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`); agrega `--format json` para salida NDJSON |
+| `deeptutor run <capability> <message>` | Ejecutar un turno de capacidad único (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`); agrega `--format json` para salida NDJSON |
 | `deeptutor chat` | REPL interactivo con controles de capacidad, herramienta, KB, notebook e historial |
 | `deeptutor partner list/create/start/stop` | Gestionar partners conectados por IM |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | Gestionar bases de conocimiento y sincronizar fuentes de GitHub/web registradas (con comandos para añadir o eliminar fuentes) |
@@ -679,7 +684,7 @@ deeptutor skill install clawhub:udiedrichsen/stock-analysis
 
 Cuando varios publicadores comparten el mismo slug, la búsqueda muestra cada publicador y una referencia de instalación completamente calificada (`clawhub:<ownerHandle>/<slug>`).
 
-Agrega más registros en `settings/skill_hubs.json`: una entrada `type: "clawhub"` apunta a cualquier API HTTP compatible (EduHub y ClawHub ambas lo hablan), `type: "command"` envuelve cualquier CLI de fetch que envíe un registro, y `"default"` elige el hub usado para slugs simples. Todos ellos alimentan la misma puerta de importación.
+Agrega más registros en `data/user/settings/skill_hubs.json`: una entrada `type: "clawhub"` apunta a cualquier API HTTP compatible (EduHub y ClawHub ambas lo hablan), `type: "command"` envuelve cualquier CLI de fetch que envíe un registro, y `"default"` elige el hub usado para slugs simples. Todos ellos alimentan la misma puerta de importación.
 
 </details>
 

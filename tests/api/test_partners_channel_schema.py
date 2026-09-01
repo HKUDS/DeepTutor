@@ -36,6 +36,24 @@ class TestChannelPayloadValidation:
     def test_allows_disabled_channel_with_empty_allow_list(self) -> None:
         _validate_channels_payload({"weixin": {"enabled": False, "allow_from": []}})
 
+    def test_rejects_a_malformed_discovered_channel_section(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_channels_payload(
+                {
+                    "telegram": {
+                        "enabled": True,
+                        "allow_from": ["*"],
+                        "connection_pool_size": "not-a-number",
+                    }
+                }
+            )
+
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.detail["errors"][0]["loc"] == (
+            "telegram",
+            "connection_pool_size",
+        )
+
 
 class TestResolveConfigModel:
     def test_telegram_pairs_with_telegram_config(self) -> None:

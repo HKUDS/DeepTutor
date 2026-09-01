@@ -355,6 +355,38 @@ export interface ChannelsSchemaResponse {
   channels: Record<string, ChannelSchemaEntry>;
 }
 
+export interface PartnerChannelRuntimeSetup {
+  status: string;
+  message?: string;
+  qr_payload?: string;
+  qr_data_url?: string | null;
+}
+
+export interface PartnerChannelRuntimeEntry {
+  enabled: boolean;
+  running: boolean;
+  setup: PartnerChannelRuntimeSetup;
+}
+
+export interface PartnerChannelRuntimeResponse {
+  partner_id: string;
+  running: boolean;
+  channels: Record<string, PartnerChannelRuntimeEntry>;
+}
+
+export async function getPartnerChannelRuntime(
+  partnerId: string,
+): Promise<PartnerChannelRuntimeResponse> {
+  return json(
+    await apiFetch(
+      apiUrl(
+        `/api/v1/partners/${encodeURIComponent(partnerId)}/channels/status`,
+      ),
+      { cache: "no-store" },
+    ),
+  );
+}
+
 export type PartnerChannelOnboardingChannel = "feishu" | "wecom";
 
 export type PartnerChannelOnboardingStatus =
@@ -465,6 +497,8 @@ export async function getPartnerHistory(
     content: string;
     timestamp?: string;
     channel?: string;
+    sender_id?: string;
+    metadata?: Record<string, unknown>;
     attachments?: Record<string, unknown>[];
     /** Persisted turn trace (assistant rows only) for rehydrating activity. */
     events?: Record<string, unknown>[];

@@ -1,3 +1,5 @@
+import { GeogebraTabProvider } from "@/context/GeogebraTabContext";
+import { QuizFollowupProvider } from "@/context/QuizFollowupContext";
 import { UnifiedChatProvider } from "@/context/UnifiedChatContext";
 
 /**
@@ -9,5 +11,11 @@ import { UnifiedChatProvider } from "@/context/UnifiedChatContext";
 export default function MasteryStudyLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return <UnifiedChatProvider>{children}</UnifiedChatProvider>;
+  return (
+    <UnifiedChatProvider>
+      <QuizFollowupProvider>
+        <GeogebraTabProvider>{children}</GeogebraTabProvider>
+      </QuizFollowupProvider>
+    </UnifiedChatProvider>
+  );
 }

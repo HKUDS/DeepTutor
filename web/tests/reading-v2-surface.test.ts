@@ -89,6 +89,14 @@ test("reading is reachable only through its own workspace", () => {
   assert.doesNotMatch(css, /dt-reader-shell|--reader-width/);
 });
 
+test("reading owns an isolated chat runtime instead of inheriting Home's stream", () => {
+  const layout = source("app/(workspace)/reading/layout.tsx");
+
+  assert.match(layout, /UnifiedChatProvider/);
+  assert.match(layout, /QuizFollowupProvider/);
+  assert.match(layout, /GeogebraTabProvider/);
+});
+
 test("Reading V2 inherits product theme tokens instead of a fixed cream palette", () => {
   const library = librarySurface();
   const workspace = workspaceSurface();

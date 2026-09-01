@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { SubagentSettingsEditor } from "@/components/settings/SubagentSettingsEditor";
-
-export default function GeminiAgentSettingsPage() {
-  return <SubagentSettingsEditor kind="gemini" />;
+/** Preserve old bookmarks after the Gemini CLI harness was retired. */
+export default function RetiredGeminiAgentSettingsPage() {
+  redirect("/settings/agents#agent-antigravity");
 }

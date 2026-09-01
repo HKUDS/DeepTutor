@@ -116,7 +116,7 @@ export interface KnowledgeBase {
     vault_path?: string;
     /** SQLite store of a connected MarginNote 4 library (when type === "marginnote4"). */
     db_path?: string;
-    /** Backend of a connected subagent (when type === "subagent"): "claude_code" | "codex" | "gemini" | "antigravity" | "kimi" | "opencode" | "mimo" | "partner". */
+    /** Backend of a connected subagent (when type === "subagent"): "claude_code" | "codex" | "antigravity" | "kimi" | "opencode" | "mimo" | "hermes" | "openclaw" | "deepseek_harness" | "partner". */
     agent_kind?: string;
     /** Bound partner id when agent_kind === "partner". */
     partner_id?: string;
@@ -142,7 +142,11 @@ export interface KnowledgeBase {
   available?: boolean;
 }
 
-export type ProviderConnectionStatus = "ready" | "needs_key" | "unavailable";
+export type ProviderConnectionStatus =
+  | "ready"
+  | "needs_key"
+  | "needs_setup"
+  | "unavailable";
 
 export const providerUsesEmbeddingMetadata = (provider?: string): boolean =>
   provider !== "pageindex" && provider !== "pageindex-oss";
@@ -151,7 +155,9 @@ export const providerConnectionStatus = (provider: {
   id: string;
   configured?: boolean;
   requires_api_key?: boolean;
+  setup_required?: boolean;
 }): ProviderConnectionStatus => {
+  if (provider.setup_required) return "needs_setup";
   if (provider.requires_api_key && provider.configured === false)
     return "needs_key";
   if (provider.configured === false) return "unavailable";

@@ -226,12 +226,16 @@ def list_pipelines() -> List[Dict[str, Any]]:
         lightrag_ready, lightrag_modes, lightrag_default_mode = False, [], ""
 
     try:
+        from deeptutor.services.config import load_lightrag_server_settings
+
         from .pipelines.lightrag_server import config as lightrag_server_config
 
         lightrag_server_modes = list(lightrag_server_config.SUPPORTED_MODES)
         lightrag_server_default_mode = lightrag_server_config.DEFAULT_MODE
+        lightrag_server_defaults_ready = bool(load_lightrag_server_settings().get("server_url"))
     except Exception:
         lightrag_server_modes, lightrag_server_default_mode = [], ""
+        lightrag_server_defaults_ready = False
 
     return [
         {
@@ -282,6 +286,7 @@ def list_pipelines() -> List[Dict[str, Any]]:
             # credential. The endpoint is configured per-KB at connect time.
             "configured": True,
             "requires_api_key": False,
+            "setup_required": not lightrag_server_defaults_ready,
             "modes": lightrag_server_modes,
             "default_mode": lightrag_server_default_mode,
         },

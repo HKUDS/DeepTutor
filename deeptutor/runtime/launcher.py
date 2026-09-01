@@ -28,6 +28,7 @@ from deeptutor.runtime.home import (
     validate_runtime_home,
 )
 from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
+from deeptutor.services.app_update import LAUNCHER_PID_ENV
 
 BACKEND_READY_TIMEOUT = 60
 FRONTEND_READY_TIMEOUT = 120
@@ -932,6 +933,63 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
             continue
 
 
+def _handoff_pending_update(
+    runtime_home: Path,
+    *,
+    restart_argv: list[str],
+    parent_pid: int | None = None,
+    worker_launcher: Callable[[Path], None] | None = None,
+) -> bool:
+    """Hand a pending Web update to a detached worker before shutdown."""
+
+    from deeptutor.services.app_update import (
+        UpdateJobStore,
+        launch_update_worker,
+        update_store_root,
+    )
+
+    store = UpdateJobStore(update_store_root(runtime_home))
+    try:
+        job = store.load()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return False
+    if job.status != "pending":
+        return False
+    try:
+        store.prepare_handoff(
+            job.id,
+            home=runtime_home,
+            restart_argv=restart_argv,
+        )
+        if worker_launcher is not None:
+            worker_launcher(store.root)
+        else:
+            launch_update_worker(store.root, parent_pid=parent_pid or os.getpid())
+    except Exception as exc:
+        try:
+            store.mark_failed(job.id, f"Launcher handoff failed: {exc}")
+        except Exception:
+            pass
+        return False
+    return True
+
+
+def _complete_restarted_update(runtime_home: Path) -> bool:
+    """Mark an update successful only after both managed servers are ready."""
+
+    from deeptutor.services.app_update import UpdateJobStore, update_store_root
+
+    store = UpdateJobStore(update_store_root(runtime_home))
+    try:
+        job = store.load()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return False
+    if job.status != "restarting" or job.restart_home != str(runtime_home.resolve()):
+        return False
+    store.mark_succeeded(job.id)
+    return True
+
+
 def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     _relax_console_encoding()
     runtime_home = get_runtime_home(home)
@@ -940,6 +998,9 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     runtime_home.mkdir(parents=True, exist_ok=True)
+    restart_argv = ["start", "--home", str(runtime_home.resolve())]
+    if dev:
+        restart_argv.append("--dev")
     os.environ[DEEPTUTOR_HOME_ENV] = str(runtime_home)
     _reset_runtime_singletons()
 
@@ -1053,9 +1114,16 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     # the tree that is "DeepTutor". Without it the probe can only measure the
     # backend itself.
     common_env[SUPERVISOR_PID_ENV] = str(os.getpid())
+    common_env[LAUNCHER_PID_ENV] = str(os.getpid())
     _apply_single_user_allocator_env(common_env)
-    if frontend.kind == "source-production":
-        common_env["DEEPTUTOR_NEXT_DIST_DIR"] = SOURCE_PRODUCTION_DIST_DIR
+    # ``DEEPTUTOR_NEXT_DIST_DIR`` is a build-only override.  In particular it
+    # must not leak into the backend: commands launched by agent tools inherit
+    # the backend environment, and an ordinary ``npm run build`` would then
+    # clean the live ``.next-deeptutor`` tree out from under the standalone
+    # server.  The generated server.js already embeds its distDir in
+    # ``__NEXT_PRIVATE_STANDALONE_CONFIG``, so neither long-running child needs
+    # this variable after the build has completed.
+    common_env.pop("DEEPTUTOR_NEXT_DIST_DIR", None)
 
     backend_cmd = [
         sys.executable,
@@ -1147,9 +1215,13 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
                 timeout=FRONTEND_READY_TIMEOUT,
                 should_stop=lambda: shutdown_requested,
             )
+        _complete_restarted_update(runtime_home)
         _log(_t("start.open_in_browser", url=frontend_url))
 
         while not shutdown_requested:
+            if _handoff_pending_update(runtime_home, restart_argv=restart_argv):
+                shutdown_requested = True
+                break
             for proc in processes:
                 if proc.process.poll() is not None:
                     _log(_t("start.exited", name=proc.name, code=proc.process.returncode))

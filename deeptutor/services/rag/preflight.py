@@ -17,6 +17,7 @@ from .factory import (
     GRAPHRAG_PROVIDER,
     IMA_PROVIDER,
     LIGHTRAG_PROVIDER,
+    LIGHTRAG_SERVER_PROVIDER,
     PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
@@ -205,6 +206,26 @@ def _lightrag_preflight() -> dict:
     )
 
 
+def _lightrag_server_preflight() -> dict:
+    try:
+        from deeptutor.services.config import load_lightrag_server_settings
+
+        settings = load_lightrag_server_settings()
+        server_url = str(settings.get("server_url") or "").strip()
+    except Exception:
+        server_url = ""
+    return _finalize(
+        [
+            _check(
+                "server_url",
+                "Default server configured",
+                bool(server_url),
+                server_url or "Add a server URL under Connection defaults.",
+            )
+        ]
+    )
+
+
 def _ima_preflight() -> dict:
     try:
         from .pipelines.ima.config import get_account_credentials
@@ -240,6 +261,7 @@ _PREFLIGHTS = {
     PAGEINDEX_OSS_PROVIDER: _pageindex_oss_preflight,
     GRAPHRAG_PROVIDER: _graphrag_preflight,
     LIGHTRAG_PROVIDER: _lightrag_preflight,
+    LIGHTRAG_SERVER_PROVIDER: _lightrag_server_preflight,
     IMA_PROVIDER: _ima_preflight,
 }
 

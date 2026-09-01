@@ -9,6 +9,7 @@ from __future__ import annotations
 import html as _html
 import logging
 import re
+from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +317,7 @@ def _remove_element(el) -> None:
         parent.remove(el)
 
 
-def extract_article_markdown(raw_html: str) -> tuple[str, str]:
+def extract_article_markdown(raw_html: str, base_url: str = "") -> tuple[str, str]:
     """Extract ``(title, markdown)`` from a doc-site HTML page.
 
     Falls back to full-body text if no article container is found, but
@@ -366,7 +367,7 @@ def extract_article_markdown(raw_html: str) -> tuple[str, str]:
             _remove_element(el)
 
     # Convert to markdown
-    md = _element_to_markdown(content_el)
+    md = _element_to_markdown(content_el, base_url=base_url)
     md = _clean_markdown(md)
 
     if not title:
@@ -416,7 +417,7 @@ def _pre_to_text(el) -> str:
     return "".join(parts)
 
 
-def _element_to_markdown(el) -> str:
+def _element_to_markdown(el, base_url: str = "") -> str:
     """Recursively convert an lxml element to markdown text.
 
     Correctly preserves inter-element whitespace by including both
@@ -445,7 +446,7 @@ def _element_to_markdown(el) -> str:
                 parts.append(child.tail)
             continue
 
-        text = _element_to_markdown(child)
+        text = _element_to_markdown(child, base_url=base_url)
 
         if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             level = int(tag[1])
@@ -474,7 +475,7 @@ def _element_to_markdown(el) -> str:
             else:
                 parts.append(text)
         elif tag in ("ul", "ol"):
-            items = _list_to_markdown(child, ordered=(tag == "ol"))
+            items = _list_to_markdown(child, ordered=(tag == "ol"), base_url=base_url)
             parts.append(f"\n\n{items}\n\n")
         elif tag == "blockquote":
             quoted = "\n".join(f"> {line}" for line in text.strip().split("\n"))
@@ -491,6 +492,7 @@ def _element_to_markdown(el) -> str:
             href = child.get("href", "")
             link_text = child.text_content().strip()
             if href and link_text and not href.startswith("#"):
+                href = _normalise_captured_url(href, base_url)
                 parts.append(f"[{link_text}]({href})")
             elif link_text:
                 parts.append(link_text)
@@ -506,6 +508,7 @@ def _element_to_markdown(el) -> str:
             alt = child.get("alt", "")
             src = child.get("src", "")
             if src:
+                src = _normalise_captured_url(src, base_url)
                 parts.append(f"![{alt}]({src})")
         elif tag in ("div", "section", "span", "article", "main"):
             parts.append(text)
@@ -522,7 +525,17 @@ def _element_to_markdown(el) -> str:
     return "".join(parts)
 
 
-def _list_to_markdown(el, ordered: bool = False) -> str:
+def _normalise_captured_url(value: str, base_url: str) -> str:
+    candidate = str(value or "").strip()
+    if not candidate or candidate.startswith("#") or not base_url:
+        return candidate
+    parsed = urlparse(candidate)
+    if parsed.scheme and parsed.scheme.lower() not in {"http", "https"}:
+        return candidate
+    return urljoin(base_url, candidate)
+
+
+def _list_to_markdown(el, ordered: bool = False, base_url: str = "") -> str:
     """Convert a <ul> or <ol> element to markdown."""
     lines: list[str] = []
     idx = 0
@@ -530,7 +543,7 @@ def _list_to_markdown(el, ordered: bool = False) -> str:
         if _tag_name(child) == "li":
             idx += 1
             prefix = f"{idx}. " if ordered else "- "
-            text = _element_to_markdown(child).strip()
+            text = _element_to_markdown(child, base_url=base_url).strip()
             # Handle nested lists
             text = text.replace("\n", "\n  ")
             lines.append(f"{prefix}{text}")

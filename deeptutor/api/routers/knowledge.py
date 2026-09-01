@@ -1412,6 +1412,58 @@ async def update_lightrag_pipeline_config(payload: LightRagConfigUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class LightRagServerConfigUpdate(BaseModel):
+    """Reusable LightRAG Server defaults (individual KBs may override them)."""
+
+    server_url: str | None = None
+    api_key: str | None = None
+
+
+def _lightrag_server_config_payload() -> dict:
+    from deeptutor.services.config import get_runtime_settings_service
+
+    settings = get_runtime_settings_service().load_lightrag_server()
+    server_url = str(settings.get("server_url") or "")
+    api_key_set = bool(settings.get("api_key"))
+    return {
+        "server_url": server_url,
+        "api_key_set": api_key_set,
+        "configured": bool(server_url),
+    }
+
+
+@router.get("/rag-pipelines/lightrag-server/config")
+async def get_lightrag_server_pipeline_config():
+    """Read reusable server defaults with the API key redacted."""
+    try:
+        return _lightrag_server_config_payload()
+    except Exception as e:
+        logger.error(f"Error reading LightRAG Server config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/rag-pipelines/lightrag-server/config")
+async def update_lightrag_server_pipeline_config(payload: LightRagServerConfigUpdate):
+    """Persist reusable defaults without changing existing KB bindings."""
+    try:
+        from deeptutor.services.config import get_runtime_settings_service
+        from deeptutor.services.rag.pipelines.lightrag_server.config import normalize_base_url
+
+        service = get_runtime_settings_service()
+        current = service.load_lightrag_server()
+        server_url = current.get("server_url", "")
+        if payload.server_url is not None:
+            server_url = normalize_base_url(payload.server_url)
+        api_key = current.get("api_key", "")
+        if payload.api_key is not None:
+            api_key = payload.api_key.strip()
+        service.save_lightrag_server({"server_url": server_url, "api_key": api_key})
+        return _lightrag_server_config_payload()
+    except Exception as e:
+        logger.error(f"Error updating LightRAG Server config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/rag-pipelines/{provider}/preflight")
 async def get_rag_pipeline_preflight(provider: str):
     """Check whether ``provider`` can run in the current environment.
@@ -1854,6 +1906,7 @@ async def connect_linked_folder_route(payload: ConnectFolderRequest):
 class ProbeLightRagServerRequest(BaseModel):
     server_url: str
     api_key: str = ""
+    use_saved_api_key: bool = False
 
 
 class ConnectLightRagServerRequest(BaseModel):
@@ -1875,7 +1928,15 @@ async def probe_lightrag_server_route(payload: ProbeLightRagServerRequest):
     server_url = (payload.server_url or "").strip()
     if not server_url:
         raise HTTPException(status_code=400, detail="server_url is required.")
-    result = await probe_server(server_url, payload.api_key or "")
+    api_key = payload.api_key or ""
+    if payload.use_saved_api_key and not api_key:
+        from deeptutor.services.config import load_lightrag_server_settings
+        from deeptutor.services.rag.pipelines.lightrag_server.config import normalize_base_url
+
+        defaults = load_lightrag_server_settings()
+        if normalize_base_url(defaults.get("server_url")) == normalize_base_url(server_url):
+            api_key = str(defaults.get("api_key") or "")
+    result = await probe_server(server_url, api_key)
     return result.to_dict()
 
 
@@ -1895,7 +1956,16 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
     if not name or not server_url:
         raise HTTPException(status_code=400, detail="Both name and server_url are required.")
 
-    result = await probe_server(server_url, payload.api_key or "")
+    api_key = payload.api_key or ""
+    if not api_key:
+        from deeptutor.services.config import load_lightrag_server_settings
+        from deeptutor.services.rag.pipelines.lightrag_server.config import normalize_base_url
+
+        defaults = load_lightrag_server_settings()
+        if normalize_base_url(defaults.get("server_url")) == normalize_base_url(server_url):
+            api_key = str(defaults.get("api_key") or "")
+
+    result = await probe_server(server_url, api_key)
     if not result.ok:
         raise HTTPException(
             status_code=400, detail=result.error or "Could not connect to the LightRAG server."
@@ -1910,7 +1980,7 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
         entry = manager.register_lightrag_server_kb(
             name,
             result.base_url,
-            api_key=payload.api_key or "",
+            api_key=api_key,
             search_mode=search_mode,
         )
     except ValueError as e:
@@ -2633,6 +2703,7 @@ async def create_knowledge_base(
     files: list[UploadFile] = File(default=[]),
     rag_provider: str = Form(DEFAULT_PROVIDER),
     pageindex_mode: str = Form(""),
+    search_mode: str = Form(""),
     rel_paths: list[str] = Form(None),
 ):
     """Create a new knowledge base and initialize it with files."""
@@ -2659,6 +2730,23 @@ async def create_knowledge_base(
                 detail="PageIndex OSS mode must be 'flash', 'standard', or omitted.",
             )
         _assert_provider_ready(rag_provider)
+        search_mode = str(search_mode or "").strip().lower()
+        if search_mode:
+            from deeptutor.services.rag.service import RAGService
+
+            provider_entry = next(
+                (item for item in RAGService.list_providers() if item["id"] == rag_provider),
+                None,
+            )
+            supported_modes = (provider_entry or {}).get("modes") or []
+            if search_mode not in supported_modes:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Invalid search mode '{search_mode}' for {rag_provider}. "
+                        f"Choose one of: {', '.join(supported_modes)}."
+                    ),
+                )
         _enforce_provider_formats(rag_provider, files)
         allowed_extensions = FileTypeRouter.get_supported_extensions()
         _validate_upload_batch(files, allowed_extensions=allowed_extensions, rel_paths=rel_paths)
@@ -2688,6 +2776,8 @@ async def create_knowledge_base(
             manager.config["knowledge_bases"][name]["needs_reindex"] = False
             if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode:
                 manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
+            if search_mode:
+                manager.config["knowledge_bases"][name]["search_mode"] = search_mode
             manager._save_config()
 
         progress_tracker = ProgressTracker(name, kb_base_dir)

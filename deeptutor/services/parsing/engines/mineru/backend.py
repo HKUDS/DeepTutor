@@ -1,7 +1,7 @@
 """Unified MinerU parsing entrypoint.
 
-Hides the local-CLI vs cloud-API split behind one function so callers (the
-mimic-mode adapter) never branch on backend. Both branches converge on the
+Hides the local-CLI vs cloud-API split behind one function so callers never
+branch on backend. Both branches converge on the
 same contract: write MinerU artifacts into a working directory and return its
 path. Backend selection comes from ``document_parsing.json`` via
 :func:`resolve_mineru_config`.
@@ -22,12 +22,46 @@ from .config import (
     MinerUError,
     resolve_mineru_config,
 )
+from .formats import MINERU_PDF_FORMATS, MINERU_SUPPORTED_FORMATS
 
 logger = logging.getLogger(__name__)
 
 # PATH-lookup order matches ``check_mineru_installed`` in local.py so the
 # probe reports the same command the parse subprocess will actually use.
-_LOCAL_CLI_COMMANDS = ("magic-pdf", "mineru")
+_LOCAL_CLI_COMMANDS = ("mineru", "magic-pdf")
+
+
+def parse_document_to_workdir(
+    source_path: str | Path,
+    output_base: str | Path,
+    *,
+    config: MinerUConfig | None = None,
+    on_output: Callable[[str], None] | None = None,
+) -> Path:
+    """Parse a MinerU-supported document or image into ``output_base``.
+
+    The current MinerU input set is intentionally validated here as well as in
+    :class:`ParseService`, because this module is also used directly by a few
+    adapters and tests.
+    """
+    cfg = config or resolve_mineru_config()
+    source_path = Path(source_path)
+    suffix = source_path.suffix.lower()
+    if suffix not in MINERU_SUPPORTED_FORMATS:
+        raise MinerUError(
+            f"MinerU does not support {suffix or 'files without an extension'}. "
+            "Supported inputs are PDF, common raster images, DOCX, PPTX, and XLSX."
+        )
+    output_base = Path(output_base)
+    output_base.mkdir(parents=True, exist_ok=True)
+
+    if cfg.is_cloud:
+        from .cloud import parse_cloud
+
+        logger.info("Parsing %s via MinerU cloud API", source_path.name)
+        return parse_cloud(source_path, output_base, cfg, on_progress=on_output)
+
+    return _parse_local(source_path, output_base, config=cfg, on_output=on_output)
 
 
 def parse_pdf_to_workdir(
@@ -46,18 +80,15 @@ def parse_pdf_to_workdir(
     lines from whichever backend runs — raw CLI output locally, task-state
     summaries from the cloud poller. Raises :class:`MinerUError` on failure.
     """
-    cfg = config or resolve_mineru_config()
     pdf_path = Path(pdf_path)
-    output_base = Path(output_base)
-    output_base.mkdir(parents=True, exist_ok=True)
-
-    if cfg.is_cloud:
-        from .cloud import parse_cloud
-
-        logger.info("Parsing %s via MinerU cloud API", pdf_path.name)
-        return parse_cloud(pdf_path, output_base, cfg, on_progress=on_output)
-
-    return _parse_local(pdf_path, output_base, config=cfg, on_output=on_output)
+    if pdf_path.suffix.lower() not in MINERU_PDF_FORMATS:
+        raise MinerUError(f"parse_pdf_to_workdir expects a PDF file: {pdf_path}")
+    return parse_document_to_workdir(
+        pdf_path,
+        output_base,
+        config=config,
+        on_output=on_output,
+    )
 
 
 def local_cli_probe(configured_path: str = "") -> dict[str, Any]:
@@ -115,7 +146,7 @@ def local_cli_version(command: str, timeout: float = 60.0) -> str:
 
 
 def _parse_local(
-    pdf_path: Path,
+    source_path: Path,
     output_base: Path,
     *,
     config: MinerUConfig,
@@ -123,7 +154,7 @@ def _parse_local(
 ) -> Path:
     """Local-CLI branch: delegate to the existing subprocess parser and return
     the deterministic output directory it writes to (``<base>/<stem>``)."""
-    from .local import parse_pdf_with_mineru
+    from .local import parse_document_with_mineru
     from .models import model_env_overrides, render_env_overrides
 
     cli_command = None
@@ -135,6 +166,20 @@ def _parse_local(
                 "Fix it in Settings → MinerU (or clear it to auto-detect from PATH)."
             )
         cli_command = probe["path"]
+    else:
+        probe = local_cli_probe()
+        if probe["found"]:
+            cli_command = probe["path"]
+
+    if (
+        cli_command
+        and Path(cli_command).name == "magic-pdf"
+        and source_path.suffix.lower() != ".pdf"
+    ):
+        raise MinerUError(
+            "The legacy magic-pdf CLI only accepts PDF files. Install the current "
+            "MinerU CLI (`pip install mineru`) to parse images, DOCX, PPTX, or XLSX."
+        )
 
     # A lazy first-parse model download must honor the configured source and
     # custom address, not just the explicit Download button.
@@ -143,9 +188,9 @@ def _parse_local(
     # does, so the Windows render-thread guard belongs on this branch alone.
     subprocess_env = {**download_env, **render_env_overrides()}
 
-    logger.info("Parsing %s via local MinerU CLI (%s)", pdf_path.name, cli_command or "PATH")
-    ok = parse_pdf_with_mineru(
-        str(pdf_path),
+    logger.info("Parsing %s via local MinerU CLI (%s)", source_path.name, cli_command or "PATH")
+    ok = parse_document_with_mineru(
+        str(source_path),
         str(output_base),
         on_output=on_output,
         cli_command=cli_command,
@@ -156,9 +201,9 @@ def _parse_local(
             "Local MinerU parsing failed. Ensure MinerU is installed "
             "(`pip install mineru`) or switch to cloud mode in Settings → MinerU."
         )
-    working_dir = output_base / pdf_path.stem
+    working_dir = output_base / source_path.stem
     if not working_dir.is_dir():
-        # Defensive: the CLI names its output dir after the PDF stem, but fall
+        # Defensive: the CLI names its output dir after the source stem, but fall
         # back to the newest sub-directory if that assumption ever breaks.
         subdirs = sorted(
             (d for d in output_base.iterdir() if d.is_dir()),
@@ -171,4 +216,10 @@ def _parse_local(
     return working_dir
 
 
-__all__ = ["MinerUError", "local_cli_probe", "local_cli_version", "parse_pdf_to_workdir"]
+__all__ = [
+    "MinerUError",
+    "local_cli_probe",
+    "local_cli_version",
+    "parse_document_to_workdir",
+    "parse_pdf_to_workdir",
+]

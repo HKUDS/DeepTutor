@@ -60,8 +60,25 @@ export default function FigureBlock({ block }: FigureBlockProps) {
   const renderType = coerceRenderType(block.payload?.render_type, language);
 
   const result: VisualizeResult = {
+    schema_version: "deeptutor.visualization/v1",
     response: description,
     render_type: renderType,
+    renderer: {
+      id: renderType,
+      version: "1.0.0",
+      target: "native",
+      native_renderer: renderType,
+      entry_url: "",
+    },
+    payload: { format: language, data: content },
+    presentation: {
+      title: "",
+      description,
+      alt_text: description,
+      aspect_ratio: "",
+    },
+    interaction: { events: [] },
+    fallback: {},
     code: { language, content },
     analysis: {
       render_type: renderType,

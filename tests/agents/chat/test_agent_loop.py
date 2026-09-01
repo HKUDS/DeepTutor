@@ -328,6 +328,50 @@ async def test_multi_chunk_usage_counts_as_one_call(
 
 
 @pytest.mark.asyncio
+async def test_capability_can_intentionally_finish_with_empty_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Structured-artifact capabilities suppress prose after committing it."""
+
+    registry = _Registry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "commit-1",
+                            "name": "web_search",
+                            "arguments": json.dumps({"query": "commit artifact"}),
+                        }
+                    ]
+                )
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_has_capability_finish_guard", lambda _context: True)
+    monkeypatch.setattr(
+        pipeline,
+        "_capability_final_text_override",
+        lambda _context, _text: "",
+    )
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="structured", user_message="Build the artifact"),
+    )
+
+    assert _contents(events) == []
+    result = _result(events)
+    assert result.metadata["completed"] is True
+    assert result.metadata["response"] == ""
+
+
+@pytest.mark.asyncio
 async def test_empty_finish_gets_one_nudge_then_recovers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

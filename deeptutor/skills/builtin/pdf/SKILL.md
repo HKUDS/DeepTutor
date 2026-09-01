@@ -21,6 +21,7 @@ Work PDFs in the sandbox with preinstalled Python libs. Pick the library by task
 
 Write complete Python source and run it via `code_execution`. Save outputs to the workspace dir.
 After execution, refer to the PDF exactly as the Generated artifacts list names it. Use `exec` only for a genuinely shell-only command; never put this source in `python -c` or a heredoc.
+Preserve an explicitly requested quantity (such as 500 words) and verify the count in the output before finishing. If execution fails or the artifact is missing, diagnose stderr/root cause and change strategy; do not retry identical code or reduce the requested scope without asking.
 
 ## Extract text and tables (pdfplumber)
 

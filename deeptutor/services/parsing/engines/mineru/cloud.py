@@ -1,9 +1,9 @@
 """MinerU cloud (mineru.net) v4 API backend.
 
-Implements the token-required *Precision API* flow for a single local PDF:
+Implements the token-required *Precision API* flow for one local input:
 
 1. ``POST /api/v4/file-urls/batch`` → ``{batch_id, file_urls: [signed_url]}``
-2. ``PUT`` the raw PDF bytes to ``signed_url`` (no auth, no Content-Type)
+2. ``PUT`` the raw file bytes to ``signed_url`` (no auth, no Content-Type)
 3. Poll ``GET /api/v4/extract-results/batch/{batch_id}`` until the file's
    ``state`` reaches ``done`` / ``failed``
 4. Download the ``full_zip_url`` archive and extract it into a working dir
@@ -31,6 +31,7 @@ import httpx
 from deeptutor.services.keypool import KeyPool
 
 from .config import MinerUConfig, MinerUError
+from .formats import MINERU_SUPPORTED_FORMATS
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ _MAX_ENTRIES = 5000
 
 
 def parse_cloud(
-    pdf_path: Path,
+    source_path: Path,
     output_base: Path,
     config: MinerUConfig,
     *,
@@ -59,9 +60,9 @@ def parse_cloud(
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     on_progress: Callable[[str], None] | None = None,
 ) -> Path:
-    """Parse ``pdf_path`` via the MinerU cloud API; return the working dir.
+    """Parse ``source_path`` via the MinerU cloud API; return the working dir.
 
-    The working dir sits under ``output_base`` (named after the PDF stem) and
+    The working dir sits under ``output_base`` (named after the input stem) and
     holds the unzipped MinerU artifacts. ``on_progress`` (if given) receives a
     short status line whenever the polled task state / page count changes.
     Raises :class:`MinerUError` on any misconfiguration, API error, timeout,
@@ -72,9 +73,11 @@ def parse_cloud(
             "MinerU cloud mode is selected but no API token is configured. "
             "Add a token in Settings → MinerU, or switch to local mode."
         )
-    pdf_path = Path(pdf_path)
-    if not pdf_path.is_file():
-        raise MinerUError(f"PDF file not found: {pdf_path}")
+    source_path = Path(source_path)
+    if not source_path.is_file():
+        raise MinerUError(f"Input file not found: {source_path}")
+    if source_path.suffix.lower() not in MINERU_SUPPORTED_FORMATS:
+        raise MinerUError(f"Unsupported MinerU cloud input format: {source_path.suffix or 'none'}")
 
     base_url = config.api_base_url.rstrip("/")
     key_pool = KeyPool(config.api_keys)
@@ -88,15 +91,15 @@ def parse_cloud(
             logger.debug("on_progress callback failed", exc_info=True)
 
     with httpx.Client(base_url=base_url, headers={"Accept": "application/json"}) as client:
-        report(f"MinerU cloud: requesting upload slot for {pdf_path.name}")
-        batch_id, upload_url = _request_upload(client, pdf_path, config, key_pool)
-        size_mb = pdf_path.stat().st_size / (1024 * 1024)
-        report(f"MinerU cloud: uploading {pdf_path.name} ({size_mb:.1f} MB)")
-        _upload_file(pdf_path, upload_url)
+        report(f"MinerU cloud: requesting upload slot for {source_path.name}")
+        batch_id, upload_url = _request_upload(client, source_path, config, key_pool)
+        size_mb = source_path.stat().st_size / (1024 * 1024)
+        report(f"MinerU cloud: uploading {source_path.name} ({size_mb:.1f} MB)")
+        _upload_file(source_path, upload_url)
         zip_url = _poll_for_zip(
             client,
             batch_id,
-            pdf_path.name,
+            source_path.name,
             poll_interval=poll_interval,
             timeout=timeout,
             on_progress=on_progress,
@@ -106,10 +109,10 @@ def parse_cloud(
         archive_bytes = _download(zip_url)
 
     report("MinerU cloud: extracting archive")
-    working_dir = output_base / pdf_path.stem
+    working_dir = output_base / source_path.stem
     _reset_dir(working_dir)
     _extract_archive(archive_bytes, working_dir)
-    logger.info("MinerU cloud parse complete: %s → %s", pdf_path.name, working_dir)
+    logger.info("MinerU cloud parse complete: %s → %s", source_path.name, working_dir)
     return working_dir
 
 
@@ -119,10 +122,10 @@ def parse_cloud(
 
 
 def _request_upload(
-    client: httpx.Client, pdf_path: Path, config: MinerUConfig, key_pool: KeyPool
+    client: httpx.Client, source_path: Path, config: MinerUConfig, key_pool: KeyPool
 ) -> tuple[str, str]:
     """POST file-urls/batch → ``(batch_id, signed_upload_url)``."""
-    file_entry: dict[str, object] = {"name": pdf_path.name, "is_ocr": config.is_ocr}
+    file_entry: dict[str, object] = {"name": source_path.name, "is_ocr": config.is_ocr}
     body: dict[str, object] = {
         "files": [file_entry],
         "model_version": config.model_version,
@@ -141,19 +144,19 @@ def _request_upload(
     return batch_id, str(file_urls[0])
 
 
-def _upload_file(pdf_path: Path, upload_url: str) -> None:
-    """PUT the PDF bytes to the signed URL.
+def _upload_file(source_path: Path, upload_url: str) -> None:
+    """PUT the input bytes to the signed URL.
 
     The signed URL carries its own auth; per MinerU's docs we must NOT send an
     ``Authorization`` or ``Content-Type`` header (a stray Content-Type breaks
     the OSS signature).
     """
-    data = pdf_path.read_bytes()
+    data = source_path.read_bytes()
     try:
         response = httpx.put(upload_url, content=data, timeout=_UPLOAD_TIMEOUT_SECONDS)
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise MinerUError(f"Failed to upload PDF to MinerU: {exc}") from exc
+        raise MinerUError(f"Failed to upload file to MinerU: {exc}") from exc
 
 
 def _poll_for_zip(

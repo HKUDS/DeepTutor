@@ -6,6 +6,12 @@ import pytest
 
 from deeptutor.api.routers import system as system_router
 from deeptutor.runtime.memory_probe import MemorySnapshot, ProcessMemory
+from deeptutor.services.app_update import (
+    Installation,
+    ReleaseInfo,
+    UpdateJobStore,
+    VersionCheckResult,
+)
 
 
 def _snapshot(*processes: ProcessMemory, **overrides: object) -> MemorySnapshot:
@@ -19,6 +25,136 @@ def _snapshot(*processes: ProcessMemory, **overrides: object) -> MemorySnapshot:
     }
     fields.update(overrides)
     return MemorySnapshot(**fields)  # type: ignore[arg-type]
+
+
+class _UpdateSettings:
+    def __init__(self, enabled: bool = True) -> None:
+        self.enabled = enabled
+
+    def load_system(self, *, include_process_overrides: bool = True) -> dict[str, object]:
+        del include_process_overrides
+        return {"version_check_enabled": self.enabled}
+
+    def save_system(self, payload: dict[str, object]) -> dict[str, object]:
+        self.enabled = bool(payload["version_check_enabled"])
+        return payload
+
+
+class _VersionService:
+    def __init__(self, result: VersionCheckResult) -> None:
+        self.result = result
+        self.forces: list[bool] = []
+
+    async def check(self, *, force: bool = False) -> VersionCheckResult:
+        self.forces.append(force)
+        return self.result
+
+    def cached(self) -> VersionCheckResult:
+        return self.result
+
+
+def _update_result() -> VersionCheckResult:
+    return VersionCheckResult(
+        current_version="1.6.1",
+        release=ReleaseInfo(
+            version="1.7.0",
+            name="DeepTutor 1.7",
+            published_at="2026-08-30T00:00:00Z",
+            url="https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.0",
+            excerpt="A stable release.",
+            migration_warning=False,
+        ),
+        checked_at="2026-08-30T00:00:00+00:00",
+        cached=False,
+    )
+
+
+def _pypi_installation() -> Installation:
+    return Installation(
+        mode="pypi",
+        current_version="1.6.1",
+        automatic_update=True,
+        command="pip install -U deeptutor",
+        reason="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_status_combines_cached_release_and_installation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    version_service = _VersionService(_update_result())
+    monkeypatch.setattr(system_router, "get_runtime_settings_service", _UpdateSettings)
+    monkeypatch.setattr(system_router, "get_version_check_service", lambda: version_service)
+    monkeypatch.setattr(system_router, "get_update_installation", _pypi_installation)
+    monkeypatch.setattr(system_router, "launcher_available", lambda: True)
+    monkeypatch.setattr(
+        system_router,
+        "get_update_job_store",
+        lambda: UpdateJobStore(tmp_path / "update"),
+    )
+    monkeypatch.setattr(
+        system_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+
+    payload = await system_router.get_update_status()
+
+    assert payload["current_version"] == "1.6.1"
+    assert payload["release"]["version"] == "1.7.0"
+    assert payload["update_available"] is True
+    assert payload["installation"]["mode"] == "pypi"
+    assert version_service.forces == [False]
+
+
+@pytest.mark.asyncio
+async def test_managed_update_refuses_live_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Activity:
+        async def reserve_managed_update(self, _reserve):
+            return None
+
+    monkeypatch.setattr(system_router, "get_runtime_settings_service", _UpdateSettings)
+    monkeypatch.setattr(system_router, "launcher_available", lambda: True)
+    monkeypatch.setattr(system_router, "get_turn_activity", _Activity)
+
+    with pytest.raises(Exception) as raised:
+        await system_router.request_managed_update(
+            system_router.ManagedUpdateRequest(confirmation="update-and-restart")
+        )
+
+    assert getattr(raised.value, "status_code", None) == 409
+
+
+@pytest.mark.asyncio
+async def test_managed_update_creates_durable_job(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    class _Activity:
+        async def reserve_managed_update(self, reserve):
+            return reserve()
+
+    store = UpdateJobStore(tmp_path / "update")
+    monkeypatch.setattr(system_router, "get_runtime_settings_service", _UpdateSettings)
+    monkeypatch.setattr(system_router, "launcher_available", lambda: True)
+    monkeypatch.setattr(system_router, "get_turn_activity", _Activity)
+    monkeypatch.setattr(system_router, "get_update_installation", _pypi_installation)
+    monkeypatch.setattr(
+        system_router, "get_version_check_service", lambda: _VersionService(_update_result())
+    )
+    monkeypatch.setattr(system_router, "get_update_job_store", lambda: store)
+
+    payload = await system_router.request_managed_update(
+        system_router.ManagedUpdateRequest(confirmation="update-and-restart")
+    )
+
+    assert payload["status"] == "pending"
+    assert payload["target_version"] == "1.7.0"
+    assert store.load().id == payload["id"]
 
 
 @pytest.mark.asyncio

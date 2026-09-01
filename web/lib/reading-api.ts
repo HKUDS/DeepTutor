@@ -12,6 +12,7 @@ export type UnitKind = "page" | "chapter" | "slide" | "section" | "segment";
 export type AnnotationKind = "highlight" | "underline" | "note";
 export type ExportFormat = "auto" | "pdf" | "markdown";
 export type RenderMode = "text" | "pdf" | "epub" | "video" | "audio";
+export type ContentFormat = "plain_text" | "web_markdown";
 
 /** Palette offered by the annotation toolbar; mirrored server-side. */
 export const ANNOTATION_COLORS = [
@@ -52,6 +53,10 @@ export interface MaterialInfo {
   has_raw_view: boolean;
   render_mode: RenderMode;
   extractor: string;
+  content_format?: ContentFormat;
+  source_type?: string;
+  source_url?: string;
+  revision?: number;
   annotation_count: number;
 }
 

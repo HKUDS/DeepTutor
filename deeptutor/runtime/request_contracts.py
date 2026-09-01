@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from deeptutor.agents.math_animator.request_config import (
     MathAnimatorRequestConfig,
@@ -56,21 +56,26 @@ class DeepQuestionRequestConfig(BaseModel):
 class VisualizeRequestConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    render_mode: Literal[
-        "auto",
-        "svg",
-        "chartjs",
-        "mermaid",
-        "html",
-        "manim_video",
-        "manim_image",
-    ] = "auto"
+    # Visualizer ids are discovered at runtime, so this contract deliberately
+    # validates the stable id grammar rather than freezing an enum into every
+    # API client. Availability is checked against the per-user registry.
+    render_mode: str = Field(default="auto", min_length=2, max_length=64)
     # Only meaningful when the routed render_type is manim_video / manim_image
     # (either chosen explicitly or selected by AnalysisAgent in auto mode).
     # Mirrors MathAnimatorRequestConfig defaults so the auto path stays
     # zero-config.
     quality: Literal["low", "medium", "high"] = "medium"
     style_hint: str = Field(default="", max_length=500)
+
+    @field_validator("render_mode")
+    @classmethod
+    def _valid_render_mode(cls, value: str) -> str:
+        import re
+
+        normalized = value.strip().lower()
+        if normalized != "auto" and not re.fullmatch(r"[a-z][a-z0-9_.-]{1,63}", normalized):
+            raise ValueError("must be 'auto' or a valid visualizer id")
+        return normalized
 
 
 def _clean_public_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:

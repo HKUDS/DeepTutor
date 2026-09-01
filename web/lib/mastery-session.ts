@@ -8,10 +8,10 @@
  * If those two ever disagreed, a conversation would render under a topic and
  * then navigate somewhere else — so the rule lives here and neither owns it.
  *
- * Both signals are required. `capability` says the last turn actually ran the
- * mastery tutor, and `mastery_path_id` says which path it ran against; a
- * session that switched capability mid-conversation keeps the stale id, and a
- * course-study conversation about a path carries neither.
+ * Workspace mode and path id are both required. The capability is now a
+ * per-turn action (Chat, Quiz, Research, ...), so it must not decide which
+ * product surface owns the conversation. Legacy sessions that predate
+ * `workspace_mode` still fall back to their old capability value.
  *
  * Immersive Reading conversations answer the same question with their own
  * pair of signals, and land on their collection instead. They are here rather
@@ -25,7 +25,11 @@ import type { SessionSummary } from "@/lib/session-api";
 export function masteryPathIdOf(session: SessionSummary): string {
   const preferences = session.preferences;
   if (!preferences) return "";
-  if (preferences.capability !== "mastery_path") return "";
+  if (
+    preferences.workspace_mode !== "mastery_path" &&
+    preferences.capability !== "mastery_path"
+  )
+    return "";
   return String(preferences.mastery_path_id || "");
 }
 
@@ -40,7 +44,11 @@ export function masteryPathIdOf(session: SessionSummary): string {
 export function readingWorkspaceIdOf(session: SessionSummary): string {
   const preferences = session.preferences;
   if (!preferences) return "";
-  if (preferences.session_kind !== "immersive_reading") return "";
+  if (
+    preferences.workspace_mode !== "immersive_reading" &&
+    preferences.session_kind !== "immersive_reading"
+  )
+    return "";
   return String(preferences.reading_workspace_id || "");
 }
 

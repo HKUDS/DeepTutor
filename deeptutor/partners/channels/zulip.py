@@ -102,6 +102,13 @@ class ZulipChannel(BaseChannel):
     async def start(self) -> None:
         if not self.config.site or not self.config.email or not self.config.api_key:
             logger.error("Zulip site/email/apiKey not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         self._running = True
@@ -118,12 +125,20 @@ class ZulipChannel(BaseChannel):
         except Exception as e:
             logger.error("Failed to create Zulip client: {}", e)
             self._running = False
+            self.set_setup_state(
+                "error",
+                message="Channel authentication failed. Check the saved credentials.",
+            )
             return
 
         profile = self._call_with_retry(self._client.get_profile)
         if not profile or profile.get("result") != "success":
             logger.error("Failed to get Zulip bot profile")
             self._running = False
+            self.set_setup_state(
+                "error",
+                message="Channel authentication failed. Check the saved credentials.",
+            )
             return
 
         self._bot_email = profile.get("email", self.config.email)
@@ -134,6 +149,7 @@ class ZulipChannel(BaseChannel):
             self._bot_email,
             self._bot_user_id,
         )
+        self.set_setup_state("connected")
 
         self._subscribe_to_streams()
 

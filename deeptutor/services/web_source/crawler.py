@@ -26,6 +26,8 @@ from urllib.parse import quote, unquote, urldefrag, urljoin, urlparse
 
 import httpx
 
+from deeptutor.services.web_source.markdown import strip_leading_snapshot_provenance
+
 # Reuse the SSRF guard and HTML extraction from web_fetch
 from deeptutor.tools.web_fetch import (
     DEFAULT_MAX_CHARS,
@@ -299,7 +301,7 @@ async def _process_page(
     )
 
     try:
-        title, body = extract_article_markdown(html)
+        title, body = extract_article_markdown(html, base_url=final_url or url)
     except Exception:
         title, body = _extract_readable(html)
     content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
@@ -355,8 +357,8 @@ async def crawl_docs_site(
     except (TypeError, ValueError):
         result.errors.append("Crawl depth and page count must be integers")
         return result
-    if not 1 <= max_depth <= MAX_CRAWL_DEPTH:
-        result.errors.append(f"Crawl depth must be between 1 and {MAX_CRAWL_DEPTH}")
+    if not 0 <= max_depth <= MAX_CRAWL_DEPTH:
+        result.errors.append(f"Crawl depth must be between 0 and {MAX_CRAWL_DEPTH}")
         return result
     if not 1 <= max_pages <= MAX_CRAWL_PAGES:
         result.errors.append(f"Crawl page count must be between 1 and {MAX_CRAWL_PAGES}")
@@ -609,8 +611,7 @@ async def crawl_and_diff(
     changed_paths: list[str] = []
     for fname in added + updated:
         content = page_contents.get(fname, "")
-        page_url = page_urls.get(fname, "")
-        full_content = f"<!-- source: {page_url} -->\n\n{content}"
+        full_content = strip_leading_snapshot_provenance(content)
         dest = _contained_path(raw_dir, fname)
         if dest is None:
             return CrawlDiff(ok=False, error=f"Unsafe page filename: {fname}", url=url)

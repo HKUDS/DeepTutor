@@ -158,6 +158,32 @@ def test_get_material_400s_for_a_traversal_attempt(client: TestClient) -> None:
     assert response.status_code in (400, 404)
 
 
+def test_snapshot_assets_are_served_with_sniffed_private_headers(client: TestClient) -> None:
+    store = ReadingStore()
+    material_id = "0123456789abcdef"
+    name = "a" * 20 + ".png"
+    store.ingest_units(
+        material_id,
+        filename="snapshot.md",
+        units=["# Snapshot"],
+        content_format="web_markdown",
+        source_type="url_snapshot",
+        source_url="https://example.com",
+        assets={name: b"\x89PNG\r\n\x1a\nasset"},
+    )
+
+    response = client.get(f"/api/v1/reading/materials/{material_id}/assets/{name}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cache-control"].startswith("private")
+    assert (
+        client.get(f"/api/v1/reading/materials/{material_id}/assets/not-an-image.svg").status_code
+        == 404
+    )
+
+
 def test_delete_material_is_idempotent_then_404s(client: TestClient) -> None:
     material = _upload(client)
     material_id = material["material_id"]

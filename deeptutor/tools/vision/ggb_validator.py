@@ -68,6 +68,7 @@ COMMANDS_WITH_BRACKETS = {
     "SetPointSize",
     "SetFilling",
     "SetLabelVisible",
+    "SetLabelMode",
     "SetCaption",
     "SetVisible",
     "SetLineStyle",
@@ -84,6 +85,7 @@ COMMANDS_WITH_BRACKETS = {
     "Sequence",
     "Element",
     "Length",
+    "Distance",
 }
 
 # Common mistakes patterns and their fixes

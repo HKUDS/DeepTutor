@@ -195,6 +195,14 @@ test("engine status follows the credential and install state", () => {
     providerConnectionStatus({ id: "graphrag", configured: false }),
     "unavailable",
   );
+  assert.equal(
+    providerConnectionStatus({
+      id: "lightrag-server",
+      configured: true,
+      setup_required: true,
+    }),
+    "needs_setup",
+  );
 });
 
 test("a MarginNote library shows devices instead of files and index versions", () => {

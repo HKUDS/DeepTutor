@@ -164,6 +164,10 @@ class MaterialInfo(BaseModel):
     has_raw_view: bool = False
     render_mode: Literal["text", "pdf", "epub", "video", "audio"] = "text"
     extractor: str = ""
+    content_format: Literal["plain_text", "web_markdown"] = "plain_text"
+    source_type: str = "upload"
+    source_url: str = ""
+    revision: int = 1
     annotation_count: int = 0
 
 
@@ -1039,6 +1043,38 @@ async def get_unit(material_id: str, locator: int) -> UnitText:
         raise _http_error(exc) from exc
 
 
+@router.get("/materials/{material_id}/revisions")
+async def list_material_revisions(material_id: str) -> list[dict[str, Any]]:
+    """Prior immutable snapshots retained when a URL is cleaned/refetched."""
+    store = _store()
+    try:
+        return [row.to_dict() for row in store.revisions(material_id)]
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get(
+    "/materials/{material_id}/revisions/{revision}/units/{locator}",
+    response_model=UnitText,
+)
+async def get_revision_unit(material_id: str, revision: int, locator: int) -> UnitText:
+    store = _store()
+    try:
+        manifest = next(
+            (row for row in store.revisions(material_id) if row.revision == revision),
+            None,
+        )
+        if manifest is None:
+            raise MaterialNotFound(f"revision {revision} not found")
+        return UnitText(
+            locator=locator,
+            unit=manifest.unit,
+            text=store.revision_unit_text(material_id, revision, locator),
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.get("/materials/{material_id}/raw")
 async def get_raw(material_id: str) -> FileResponse:
     """The original bytes, for the faithful viewer. Serves Range requests."""
@@ -1059,6 +1095,34 @@ async def get_raw(material_id: str) -> FileResponse:
         media_type=manifest.mime or "application/octet-stream",
         filename=manifest.filename,
         content_disposition_type="inline",
+    )
+
+
+@router.get("/materials/{material_id}/assets/{asset_name}")
+async def get_snapshot_asset(material_id: str, asset_name: str) -> FileResponse:
+    """Serve one authenticated, MIME-sniffed image captured with a web page."""
+    from deeptutor.services.web_source.snapshot_assets import snapshot_asset_mime
+
+    store = _store()
+    try:
+        path = store.asset_path(material_id, asset_name)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    if path is None:
+        raise HTTPException(status_code=404, detail="Snapshot image not found.")
+    data = path.read_bytes()
+    mime = snapshot_asset_mime(data)
+    if mime is None:
+        raise HTTPException(status_code=404, detail="Snapshot image is invalid.")
+    return FileResponse(
+        path,
+        media_type=mime,
+        filename=path.name,
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

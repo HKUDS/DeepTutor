@@ -214,6 +214,38 @@ class TestChannelOnboarding:
         repeat = client.post(f"/api/v1/partners/ada/channel-onboarding/{session_id}/apply")
         assert repeat.status_code == 409
 
+    def test_channel_runtime_qr_output_is_available_to_the_webui(self, client):
+        from types import SimpleNamespace
+
+        from deeptutor.api.routers import partners as router_mod
+
+        assert _create(client).status_code == 200
+        manager = router_mod.get_partner_manager()
+        manager._partners["ada"] = SimpleNamespace(
+            running=True,
+            config=SimpleNamespace(channels={"whatsapp": {"enabled": True}}),
+            channel_manager=SimpleNamespace(
+                get_status=lambda: {
+                    "whatsapp": {
+                        "enabled": True,
+                        "running": True,
+                        "setup": {
+                            "status": "waiting_for_scan",
+                            "qr_payload": "scan-me",
+                        },
+                    }
+                }
+            ),
+        )
+
+        response = client.get("/api/v1/partners/ada/channels/status")
+
+        assert response.status_code == 200
+        setup = response.json()["channels"]["whatsapp"]["setup"]
+        assert setup["status"] == "waiting_for_scan"
+        assert setup["qr_payload"] == "scan-me"
+        assert setup["qr_data_url"].startswith("data:image/png;base64,")
+
     def test_onboarding_errors_and_scope(self, client, monkeypatch):
         self._install_feishu_manager(monkeypatch)
         assert _create(client).status_code == 200

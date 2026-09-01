@@ -38,6 +38,51 @@ def _msg(content: str = "hello", channel: str = "telegram") -> InboundMessage:
 
 class TestTurnExecution:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("channel", ["weixin", "telegram"])
+    async def test_all_im_channels_mirror_user_trace_and_answer_to_web_activity(
+        self, partners_root, fake_orchestrator, channel
+    ):
+        fake_orchestrator.script = [
+            event(
+                StreamEventType.TOOL_CALL,
+                content="partner_read",
+                metadata={"args": {"topic": "profile"}},
+            ),
+            *finish("I remember."),
+        ]
+        frames: list[dict[str, Any]] = []
+
+        async def capture(_msg: InboundMessage, frame: dict[str, Any]) -> None:
+            frames.append(frame)
+
+        runner = PartnerRunner(
+            "ada",
+            PartnerConfig(name="Ada"),
+            MessageBus(),
+            on_channel_activity=capture,
+        )
+
+        await runner._handle_inbound(_msg("What do you know about me?", channel=channel))
+
+        assert frames[0]["type"] == "user_echo"
+        assert frames[0]["content"] == "What do you know about me?"
+        assert frames[0]["channel"] == channel
+        assert frames[0]["external"] is True
+        assert any(
+            frame["type"] == "stream_event" and frame["event"]["type"] == "tool_call"
+            for frame in frames
+        )
+        assert [frame["type"] for frame in frames[-2:]] == ["content", "done"]
+        assert frames[-2]["content"] == "I remember."
+        assert len({frame["activity_id"] for frame in frames}) == 1
+
+        records = _shared_store().messages(f"{channel}:42")
+        assert [record["role"] for record in records] == ["user", "assistant"]
+        assert records[0]["metadata"]["activity_id"] == frames[0]["activity_id"]
+        assert records[1]["metadata"]["activity_id"] == frames[0]["activity_id"]
+        assert any(event["type"] == "tool_call" for event in records[1]["events"])
+
+    @pytest.mark.asyncio
     async def test_returns_finish_text_and_persists_session(self, partners_root, fake_orchestrator):
         fake_orchestrator.script = narration_round("c1", "let me check") + finish(
             "The answer is 4."
@@ -674,6 +719,62 @@ class TestSessionStoreOps:
 
 
 class TestLiveTurn:
+    def test_channel_activity_feed_broadcasts_replays_and_isolates_accounts(self):
+        from deeptutor.services.partners.manager import PartnerActivityFeed
+
+        feed = PartnerActivityFeed(max_recent=2)
+        first = feed.subscribe("alice")
+        second = feed.subscribe("alice")
+        owner = feed.subscribe_many(("alice", None))
+        outsider = feed.subscribe("bob")
+        frame = {
+            "type": "user_echo",
+            "activity_id": "turn-1",
+            "external": True,
+        }
+
+        feed.publish("alice", frame)
+
+        assert first.get_nowait() == frame
+        assert second.get_nowait() == frame
+        assert owner.get_nowait() == frame
+        assert outsider.empty()
+        late = feed.subscribe("alice")
+        assert late.get_nowait() == frame
+
+        feed.unsubscribe("alice", first)
+        feed.publish("alice", {**frame, "type": "done"})
+        assert first.empty()
+        assert second.get_nowait()["type"] == "done"
+        assert owner.get_nowait()["type"] == "done"
+
+        shared = {**frame, "activity_id": "turn-2"}
+        feed.publish(None, shared)
+        assert owner.get_nowait() == shared
+        assert second.empty()
+
+    def test_owner_activity_history_can_merge_private_and_unlinked_channel_sessions(
+        self, partners_root
+    ):
+        from deeptutor.multi_user.models import CurrentUser
+        from deeptutor.multi_user.paths import scope_for_user, user_context
+        from deeptutor.services.partners.manager import PartnerManager
+
+        actor = CurrentUser("owner", "owner", "user", scope_for_user("owner", is_admin=False))
+        private = session_store_for("ada", actor)
+        shared = session_store_for("ada", None)
+        private.append("web-1", "user", "from web")
+        shared.append("weixin:42", "user", "from weixin")
+
+        with user_context(actor):
+            manager = PartnerManager()
+            assert [
+                item["content"] for item in manager.get_history("ada", include_shared=False)
+            ] == ["from web"]
+            assert {
+                item["content"] for item in manager.get_history("ada", include_shared=True)
+            } == {"from web", "from weixin"}
+
     @pytest.mark.asyncio
     async def test_group_boundary_returns_trace_and_invocation_metadata(
         self, partners_root, fake_orchestrator, monkeypatch

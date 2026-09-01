@@ -11,8 +11,9 @@ import {
   type ReactNode,
 } from "react";
 import { useAppShell } from "@/context/AppShellContext";
-import { BookText, Github, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { BookText, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { BrandGlyph } from "@/components/common/BrandIcon";
 import OrganizedSessionList from "@/components/courses/OrganizedSessionList";
 import SessionList from "@/components/SessionList";
 import { useSidebarDrawer } from "@/components/layout/AppShell";
@@ -227,7 +228,11 @@ export function SidebarShell({
             aria-label={t("Docs") as string}
             className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
           >
-            <BookText size={15} strokeWidth={1.6} />
+            <BookText
+              size={15}
+              strokeWidth={1.8}
+              className="text-blue-600 dark:text-blue-400"
+            />
           </a>
           <a
             href={GITHUB_REPO_URL}
@@ -237,7 +242,12 @@ export function SidebarShell({
             aria-label="GitHub"
             className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
           >
-            <Github size={15} strokeWidth={1.6} />
+            <BrandGlyph
+              namespace="mcp"
+              id="github"
+              size={15}
+              className="text-[#181717] dark:text-white"
+            />
           </a>
           <VersionBadge collapsed />
         </div>
@@ -378,7 +388,11 @@ export function SidebarShell({
             aria-label={t("Docs") as string}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
           >
-            <BookText size={13} strokeWidth={1.7} />
+            <BookText
+              size={15}
+              strokeWidth={1.9}
+              className="text-blue-600 dark:text-blue-400"
+            />
           </a>
           <a
             href={GITHUB_REPO_URL}
@@ -388,7 +402,12 @@ export function SidebarShell({
             aria-label="GitHub"
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
           >
-            <Github size={13} strokeWidth={1.7} />
+            <BrandGlyph
+              namespace="mcp"
+              id="github"
+              size={15}
+              className="text-[#181717] dark:text-white"
+            />
           </a>
         </div>
       </div>

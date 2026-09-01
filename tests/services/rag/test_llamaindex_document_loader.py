@@ -69,6 +69,38 @@ def test_loader_routes_parser_files_through_active_parse_engine(
     assert "Block two" in by_name["paper.pdf"]
 
 
+def test_loader_routes_images_through_active_parser_when_supported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    import deeptutor.services.parsing as parsing
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    image_path = tmp_path / "diagram.png"
+    image_path.write_bytes(b"\x89PNG\r\n")
+    calls: list[Path] = []
+
+    class _StubService:
+        def supports(self, path: Path) -> bool:
+            return path.suffix == ".png"
+
+        def parse(self, path: Path, **_kwargs):
+            calls.append(path)
+            return ParsedDocument(markdown="OCR and layout from MinerU", engine="mineru")
+
+    service = _StubService()
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: service)
+
+    documents = asyncio.run(LlamaIndexDocumentLoader().load([str(image_path)]))
+
+    assert calls == [image_path]
+    assert len(documents) == 1
+    assert documents[0].text == "OCR and layout from MinerU"
+
+
 def test_loader_keeps_event_loop_responsive_while_parser_blocks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

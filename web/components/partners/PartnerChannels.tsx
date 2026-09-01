@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, RefreshCw, Save } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
@@ -23,6 +23,7 @@ import {
 import WeixinQrLogin from "@/components/partners/WeixinQrLogin";
 import ChannelIcon from "@/components/partners/ChannelIcon";
 import ChannelOnboardingPanel from "@/components/partners/ChannelOnboardingPanel";
+import ChannelRuntimeStatus from "@/components/partners/ChannelRuntimeStatus";
 
 const LEGACY_GLOBAL_DELIVERY_KEYS = new Set([
   "send_progress",
@@ -49,32 +50,42 @@ export default function PartnerChannels({
   const { t } = useTranslation();
   const [schemaCatalog, setSchemaCatalog] =
     useState<ChannelsSchemaResponse | null>(null);
+  const [catalogError, setCatalogError] = useState(false);
   const [channels, setChannels] = useState<Record<string, unknown>>({});
   const [activeChannel, setActiveChannel] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
+  const [detailError, setDetailError] = useState(false);
   const [saving, setSaving] = useState(false);
   /** dot-paths of secrets the user has explicitly toggled to plaintext. */
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setSchemaCatalog(await getChannelSchemas());
-      } catch {
-        /* leave catalog null → renders fallback message */
-      }
-    })();
+  const loadCatalog = useCallback(async () => {
+    setCatalogError(false);
+    try {
+      setSchemaCatalog(await getChannelSchemas());
+    } catch {
+      setSchemaCatalog(null);
+      setCatalogError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog]);
 
   const loadDetail = useCallback(async () => {
     setLoadingDetail(true);
+    setDetailError(false);
     try {
       // Edit form needs raw secrets to populate fields. Default GET masks them.
       const res = await apiFetch(
         apiUrl(`/api/v1/partners/${partnerId}?include_secrets=true`),
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        setDetailError(true);
+        return;
+      }
       const data = await res.json();
       const raw = (data.channels ?? {}) as Record<string, unknown>;
       setChannels(stripLegacyGlobalDelivery(raw));
@@ -83,6 +94,8 @@ export default function PartnerChannels({
           ? data.last_reload_error
           : null,
       );
+    } catch {
+      setDetailError(true);
     } finally {
       setLoadingDetail(false);
     }
@@ -142,13 +155,28 @@ export default function PartnerChannels({
         await loadDetail();
       } else if (res.status === 422) {
         const err = (await res.json().catch(() => ({}))) as {
-          detail?: { message?: string } | string;
+          detail?:
+            | {
+                message?: string;
+                errors?: Array<{ loc?: Array<string | number>; msg?: string }>;
+              }
+            | string;
         };
         const detail = err.detail;
+        const firstError =
+          typeof detail === "object" ? detail.errors?.[0] : undefined;
+        const fieldDetail = firstError
+          ? `${firstError.loc?.join(".") ?? "channel"}: ${firstError.msg ?? t("Invalid channel configuration")}`
+          : "";
         onToast(
           typeof detail === "string"
             ? detail
-            : (detail?.message ?? t("Invalid channel configuration")),
+            : [
+                detail?.message ?? t("Invalid channel configuration"),
+                fieldDetail,
+              ]
+                .filter(Boolean)
+                .join(" — "),
         );
       } else {
         const err = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -161,10 +189,29 @@ export default function PartnerChannels({
     }
   };
 
-  if (loadingDetail || !schemaCatalog) {
+  if (loadingDetail || (!schemaCatalog && !catalogError)) {
     return (
       <div className="flex justify-center py-10">
         <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+      </div>
+    );
+  }
+
+  if (!schemaCatalog || detailError) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-8 text-amber-700 dark:text-amber-300">
+        <p className="text-[13px]">{t("Could not load this section.")}</p>
+        <button
+          type="button"
+          onClick={() => {
+            if (!schemaCatalog) void loadCatalog();
+            if (detailError) void loadDetail();
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-current px-3 py-1.5 text-[12px] font-medium"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t("Retry")}
+        </button>
       </div>
     );
   }
@@ -292,6 +339,20 @@ export default function PartnerChannels({
                       onToast={onToast}
                     />
                   )}
+                  <ChannelRuntimeStatus
+                    partnerId={partnerId}
+                    channel={activeChannel ?? activeEntry.name}
+                    enabled={activeValue.enabled === true}
+                  />
+                  {activeValue.enabled === true &&
+                    Array.isArray(activeValue.allow_from) &&
+                    activeValue.allow_from.length === 0 && (
+                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+                        {t(
+                          "Add at least one allowed sender before starting this channel.",
+                        )}
+                      </div>
+                    )}
                   {(activeEntry.json_schema as JsonSchema).description && (
                     <p className="text-[11px] text-[var(--muted-foreground)]">
                       {(activeEntry.json_schema as JsonSchema).description}

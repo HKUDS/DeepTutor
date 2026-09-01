@@ -32,6 +32,7 @@ dependencies = [
     "tenacity>=8.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "jsonschema>=4.20.0,<5.0.0",
     "aiosqlite>=0.19.0",
     "typer>=0.9.0",
     "rich>=13.0.0",
@@ -128,6 +129,10 @@ cli = [
 # Not in `all` — it vendors a ~130 MB headless CLI and chat works over plain
 # HTTP without it.
 codebuddy = ["codebuddy-agent-sdk>=0.3,<0.4"]
+
+# Native YouTube playback has no Python dependency. This small, optional
+# adapter enables transcript-grounded learning when public captions exist.
+video-learning = ["youtube-transcript-api>=1.0.0,<2.0.0"]
 
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
@@ -259,6 +264,7 @@ all = [
     "deeptutor[matrix]",
     "deeptutor[math-animator]",
     "deeptutor[dev]",
+    "deeptutor[video-learning]",
 ]
 
 [tool.setuptools]

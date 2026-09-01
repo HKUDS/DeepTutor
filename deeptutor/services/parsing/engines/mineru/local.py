@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-"""
-Parse PDF files using MinerU and save results to reference_papers directory
-"""
+"""Run MinerU's local CLI for supported documents and images."""
 
 import argparse
 from collections import deque
@@ -12,6 +10,8 @@ import shutil
 import subprocess
 import sys
 import time
+
+from .formats import MINERU_SUPPORTED_FORMATS
 
 # Minimum seconds between on_output callbacks. MinerU's CLI emits tqdm-style
 # progress that universal-newline decoding turns into many lines per second;
@@ -25,20 +25,6 @@ def check_mineru_installed():
         # Security: Using partial path is intentional here - we need to find
         # the command in user's PATH. These are trusted CLI tools, not user input.
         result = subprocess.run(
-            ["magic-pdf", "--version"],  # nosec B607
-            check=False,
-            capture_output=True,
-            text=True,
-            shell=False,
-        )
-        if result.returncode == 0:
-            return "magic-pdf"
-    except FileNotFoundError:
-        pass
-
-    try:
-        # Security: Same as above - intentionally using PATH lookup for CLI tool.
-        result = subprocess.run(
             ["mineru", "--version"],  # nosec B607
             check=False,
             capture_output=True,
@@ -50,21 +36,35 @@ def check_mineru_installed():
     except FileNotFoundError:
         pass
 
+    try:
+        # Security: Same as above - intentionally using PATH lookup for CLI tool.
+        result = subprocess.run(
+            ["magic-pdf", "--version"],  # nosec B607
+            check=False,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+        if result.returncode == 0:
+            return "magic-pdf"
+    except FileNotFoundError:
+        pass
+
     return None
 
 
-def parse_pdf_with_mineru(
-    pdf_path: str,
+def parse_document_with_mineru(
+    source_path: str,
     output_base_dir: str | None = None,
     on_output: Callable[[str], None] | None = None,
     cli_command: str | None = None,
     extra_env: dict[str, str] | None = None,
 ):
     """
-    Parse PDF file using MinerU
+    Parse a supported document or image using MinerU.
 
     Args:
-        pdf_path: Path to PDF file
+        source_path: Path to a PDF, image, DOCX, PPTX, or XLSX file
         output_base_dir: Base path for output directory, defaults to reference_papers
         on_output: Optional callback invoked (rate-limited) with each line of
             the CLI's combined stdout/stderr, so callers can surface live
@@ -94,13 +94,19 @@ def parse_pdf_with_mineru(
             return False
         print(f"✓ Detected MinerU command: {mineru_cmd}")
 
-    pdf_file = Path(pdf_path).resolve()
-    if not pdf_file.exists():
-        print(f"✗ Error: PDF file does not exist: {pdf_file}")
+    source_file = Path(source_path).resolve()
+    if not source_file.exists():
+        print(f"✗ Error: Input file does not exist: {source_file}")
         return False
 
-    if not pdf_file.suffix.lower() == ".pdf":
-        print(f"✗ Error: File is not PDF format: {pdf_file}")
+    suffix = source_file.suffix.lower()
+    if suffix not in MINERU_SUPPORTED_FORMATS:
+        print(f"✗ Error: Unsupported MinerU input format: {source_file}")
+        return False
+
+    if Path(mineru_cmd).name == "magic-pdf" and suffix != ".pdf":
+        print("✗ Error: The legacy magic-pdf CLI only accepts PDF files.")
+        print("Install the current CLI with `pip install mineru` for images and Office files.")
         return False
 
     # Project root is 3 levels up from deeptutor/tools/question/
@@ -112,22 +118,24 @@ def parse_pdf_with_mineru(
 
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    pdf_name = pdf_file.stem
-    output_dir = base_dir / pdf_name
+    source_name = source_file.stem
+    output_dir = base_dir / source_name
 
     if output_dir.exists():
         print(f"⚠️ Directory already exists, replacing: {output_dir.name}")
         shutil.rmtree(output_dir)
 
-    print(f"📄 PDF file: {pdf_file}")
+    print(f"📄 Input file: {source_file}")
     print(f"📁 Output directory: {output_dir}")
     print("→ Starting parsing...")
 
     try:
         temp_output = base_dir / "temp_mineru_output"
+        if temp_output.exists():
+            shutil.rmtree(temp_output)
         temp_output.mkdir(parents=True, exist_ok=True)
 
-        cmd = [mineru_cmd, "-p", str(pdf_file), "-o", str(temp_output)]
+        cmd = [mineru_cmd, "-p", str(source_file), "-o", str(temp_output)]
 
         print(f"🔧 Executing command: {' '.join(cmd)}")
 
@@ -188,7 +196,7 @@ def parse_pdf_with_mineru(
 
         # Move MinerU-generated content to target directory
         if source_folder.exists() and source_folder.is_dir():
-            # If source_folder is the PDF-named directory, move its contents
+            # If source_folder is the source-named directory, move its contents
             for item in source_folder.iterdir():
                 dest_item = output_dir / item.name
                 if dest_item.exists():
@@ -221,6 +229,27 @@ def parse_pdf_with_mineru(
 
         traceback.print_exc()
         return False
+
+
+def parse_pdf_with_mineru(
+    pdf_path: str,
+    output_base_dir: str | None = None,
+    on_output: Callable[[str], None] | None = None,
+    cli_command: str | None = None,
+    extra_env: dict[str, str] | None = None,
+):
+    """Backward-compatible PDF-only wrapper around the generic CLI adapter."""
+    pdf_file = Path(pdf_path)
+    if pdf_file.suffix.lower() != ".pdf":
+        print(f"✗ Error: File is not PDF format: {pdf_file.resolve()}")
+        return False
+    return parse_document_with_mineru(
+        pdf_path,
+        output_base_dir,
+        on_output=on_output,
+        cli_command=cli_command,
+        extra_env=extra_env,
+    )
 
 
 def main():

@@ -2,8 +2,7 @@
 
 Phase 2 implementation. Uses the unified LLM service with a strict JSON
 response. The frontend ``CodeBlock`` component renders the code and the
-explanation side-by-side; the playground "code_execution" tool can be
-hooked in later for live runs.
+explanation side-by-side.
 
 Prompts live in ``deeptutor/book/prompts/{en,zh}/code.yaml``.
 """

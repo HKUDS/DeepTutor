@@ -1,7 +1,8 @@
 """Subagent connections API.
 
 Backs the "My Agents → connected agents" feature: detect which local agent CLIs
-(Claude Code, Codex, Gemini CLI, Kimi CLI, opencode, MiMo Code) are installed on
+(Claude Code, Codex, Antigravity CLI, Kimi CLI, opencode, MiMo Code, Hermes Agent,
+OpenClaw, DeepSeek Harness) are installed on
 this machine, connect one as a pointer KB the chat composer can select, and
 configure the consult budget. Connections are
 stored as ``type: subagent`` knowledge bases (per-user, via the KB manager), so

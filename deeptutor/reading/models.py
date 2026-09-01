@@ -23,6 +23,7 @@ from typing import Any, Literal
 # model and the UI ("page 12" vs "chapter 3"); the addressing is identical.
 UnitKind = Literal["page", "chapter", "slide", "section", "segment"]
 RenderMode = Literal["text", "pdf", "epub", "video", "audio"]
+ContentFormat = Literal["plain_text", "web_markdown"]
 
 AnnotationKind = Literal["highlight", "underline", "note"]
 TextSelectorType = Literal["TextQuoteSelector", "TextPositionSelector"]
@@ -206,6 +207,12 @@ class MaterialManifest:
     # Selects the faithful renderer without overloading ``has_raw_view``.
     # The legacy boolean remains PDF-only until every client understands EPUB.
     render_mode: RenderMode = "text"
+    # Uploaded Markdown remains literal source text; only captured web pages
+    # opt into structured rendering.
+    content_format: ContentFormat = "plain_text"
+    source_type: str = "upload"
+    source_url: str = ""
+    revision: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -222,6 +229,10 @@ class MaterialManifest:
             "created_at": self.created_at,
             "has_raw_view": self.has_raw_view,
             "render_mode": self.render_mode,
+            "content_format": self.content_format,
+            "source_type": self.source_type,
+            "source_url": self.source_url,
+            "revision": self.revision,
         }
 
     @classmethod
@@ -230,6 +241,9 @@ class MaterialManifest:
         render_mode = str(data.get("render_mode") or "")
         if render_mode not in ("text", "pdf", "epub", "video", "audio"):
             render_mode = "pdf" if data.get("has_raw_view") else "text"
+        content_format = str(data.get("content_format") or "")
+        if content_format not in ("plain_text", "web_markdown"):
+            content_format = "plain_text"
         return cls(
             material_id=str(data.get("material_id") or ""),
             filename=str(data.get("filename") or ""),
@@ -244,6 +258,10 @@ class MaterialManifest:
             created_at=float(data.get("created_at") or 0.0),
             has_raw_view=bool(data.get("has_raw_view")),
             render_mode=render_mode,  # type: ignore[arg-type]
+            content_format=content_format,  # type: ignore[arg-type]
+            source_type=str(data.get("source_type") or "upload"),
+            source_url=str(data.get("source_url") or ""),
+            revision=max(1, int(data.get("revision") or 1)),
         )
 
 
@@ -416,6 +434,7 @@ __all__ = [
     "DEFAULT_ANNOTATION_COLOR",
     "Annotation",
     "AnnotationKind",
+    "ContentFormat",
     "MaterialManifest",
     "MaterialNotFound",
     "OutlineEntry",

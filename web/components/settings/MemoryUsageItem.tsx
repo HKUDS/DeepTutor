@@ -137,7 +137,7 @@ export default function MemoryUsageItem() {
         />
         <div className="flex items-baseline gap-2">
           <span className="text-[13px] font-medium leading-none tracking-tight text-[var(--foreground)]">
-            {t("Memory")}
+            {t("System memory")}
           </span>
           <span className="text-[12px] leading-none tabular-nums text-[var(--muted-foreground)]">
             {summary}

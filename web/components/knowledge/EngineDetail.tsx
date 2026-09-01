@@ -9,13 +9,11 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleSlash,
-  Cloud,
   Copy,
   Database,
   ExternalLink,
   KeyRound,
   Loader2,
-  Network,
   RefreshCw,
   Server,
   Settings2,
@@ -30,19 +28,24 @@ import {
   getEnginePreflight,
   getGraphRagConfig,
   getLightRagConfig,
+  getLightRagServerConfig,
   getImaConfig,
   getLlamaIndexConfig,
   setEngineActiveModel,
+  probeLightRagServer,
   testGraphRagModelCompatibility,
   updateGraphRagConfig,
   updateImaConfig,
   updateLightRagConfig,
+  updateLightRagServerConfig,
   updateLlamaIndexConfig,
   type EnginePreflight,
   type GraphRagModelCompatibility,
   type GraphRagConfig,
   type ImaAccountConfig,
   type LightRagConfig,
+  type LightRagServerConfig,
+  type LightRagServerProbe,
   type LlamaIndexConfig,
   type ModelOptionsByKind,
   type RagProviderSummary,
@@ -57,6 +60,7 @@ import {
   type ProviderConnectionStatus,
 } from "@/lib/knowledge-helpers";
 import { PageIndexConfigForm } from "./PageIndexSettingsModal";
+import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
 
 interface EngineDetailProps {
   provider: RagProviderSummary;
@@ -68,15 +72,6 @@ interface EngineDetailProps {
   onChanged: () => void;
   onError: (message: string) => void;
 }
-
-const ENGINE_ICONS: Record<string, LucideIcon> = {
-  llamaindex: Boxes,
-  pageindex: Cloud,
-  "pageindex-oss": Database,
-  graphrag: Network,
-  lightrag: Workflow,
-  "lightrag-server": Server,
-};
 
 const INSTALL_HINTS: Record<string, string> = {
   graphrag: "pip install 'deeptutor[graphrag]'",
@@ -150,6 +145,8 @@ const ENGINE_PREREQUISITES: Record<string, string> = {
     "Local knowledge-graph retrieval. Needs the optional dependency installed; indexing is LLM-heavy. Requires an active chat model and embedding model.",
   lightrag:
     "Graph + vector retrieval with multimodal parsing. Needs the optional dependency installed; indexing is LLM-heavy. Requires active chat and embedding models; multimodal also needs a vision model.",
+  "lightrag-server":
+    "Server engine: retrieval runs on a standalone LightRAG service you operate. Save a reusable URL here, test it, then override it only when a knowledge base needs another server.",
   ima: "Hosted engine: the library lives in Tencent IMA and DeepTutor keeps no copy. Requires an IMA Client ID and API key. Chat searches it, browses its documents, reads full sources, and — only when you ask — collects a web page or saves a note.",
 };
 
@@ -167,6 +164,13 @@ function StatusBadge({ status }: { status: ProviderConnectionStatus }) {
     return (
       <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
         {t("Needs key")}
+      </span>
+    );
+  }
+  if (status === "needs_setup") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10.5px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+        {t("Needs setup")}
       </span>
     );
   }
@@ -983,6 +987,177 @@ function LightRagForm({
   );
 }
 
+/* --------------------- LightRAG Server defaults form -------------------- */
+
+function LightRagServerForm({
+  onChanged,
+  onError,
+}: {
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [loaded, setLoaded] = useState<LightRagServerConfig | null>(null);
+  const [serverUrl, setServerUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [probe, setProbe] = useState<LightRagServerProbe | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLightRagServerConfig({ force: true })
+      .then((config) => {
+        if (cancelled) return;
+        setLoaded(config);
+        setServerUrl(config.server_url);
+      })
+      .catch((err) =>
+        onError(err instanceof Error ? err.message : String(err)),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [onError]);
+
+  if (!loaded) return <FormSkeleton />;
+
+  const normalizedUrl = serverUrl.trim().replace(/\/+$/, "");
+  const dirty = normalizedUrl !== loaded.server_url || apiKey.length > 0;
+  const testedCurrentUrl = probe?.ok && probe.base_url === normalizedUrl;
+
+  const test = async () => {
+    if (!normalizedUrl) return;
+    setProbing(true);
+    setProbe(null);
+    try {
+      setProbe(
+        await probeLightRagServer({
+          serverUrl: normalizedUrl,
+          apiKey,
+          useSavedApiKey: !apiKey && loaded.api_key_set,
+        }),
+      );
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProbing(false);
+    }
+  };
+
+  const save = async () => {
+    if (!testedCurrentUrl) return;
+    setSaving(true);
+    try {
+      const next = await updateLightRagServerConfig({
+        server_url: normalizedUrl,
+        ...(apiKey ? { api_key: apiKey } : {}),
+      });
+      setLoaded(next);
+      setServerUrl(next.server_url);
+      setApiKey("");
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-[var(--border)] p-4">
+      <div>
+        <label className="mb-1 block text-[12px] font-medium text-[var(--foreground)]">
+          {t("Server URL")}
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={serverUrl}
+            onChange={(event) => {
+              setServerUrl(event.target.value);
+              setProbe(null);
+            }}
+            placeholder={t("LightRAG server URL placeholder")}
+            className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25"
+          />
+          <button
+            type="button"
+            onClick={() => void test()}
+            disabled={!normalizedUrl || probing || saving}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)] disabled:opacity-40"
+          >
+            {probing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Server className="h-3.5 w-3.5" />
+            )}
+            {t("Test connection")}
+          </button>
+        </div>
+      </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-[12px] font-medium text-[var(--foreground)]">
+          {t("API key")} · {t("optional")}
+        </span>
+        <input
+          type="password"
+          autoComplete="off"
+          value={apiKey}
+          onChange={(event) => {
+            setApiKey(event.target.value);
+            setProbe(null);
+          }}
+          placeholder={
+            loaded.api_key_set
+              ? t("Saved key · leave blank to keep")
+              : t("Only if your server requires one")
+          }
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25"
+        />
+      </label>
+
+      {probe && (
+        <div
+          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[11.5px] leading-relaxed ${
+            probe.ok
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+              : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+          }`}
+        >
+          {probe.ok ? (
+            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          )}
+          <span>
+            {probe.ok
+              ? t("Connected to LightRAG server")
+              : probe.error || t("Could not connect")}
+          </span>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+        <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+          {t(
+            "New knowledge bases inherit this connection. You can override it without changing the saved default.",
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!dirty || !testedCurrentUrl || saving}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {t("Save as default")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FormSkeleton() {
   return (
     <div className="flex items-center justify-center rounded-2xl border border-[var(--border)] py-10">
@@ -1397,7 +1572,6 @@ export default function EngineDetail({
 }: EngineDetailProps) {
   const { t } = useTranslation();
   const status = providerConnectionStatus(provider);
-  const Icon = ENGINE_ICONS[provider.id] ?? Boxes;
   const installHint = INSTALL_HINTS[provider.id];
   const hasModes = (provider.modes?.length ?? 0) > 0;
 
@@ -1420,9 +1594,11 @@ export default function EngineDetail({
 
         {/* Header */}
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[var(--border)] text-[var(--foreground)]">
-            <Icon className="h-5 w-5" strokeWidth={1.6} />
-          </div>
+          <KnowledgeEngineIcon
+            engine={provider.id}
+            size={38}
+            className="mt-0.5"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-serif text-[20px] font-semibold tracking-tight text-[var(--foreground)]">
@@ -1444,6 +1620,12 @@ export default function EngineDetail({
           defaultOpen={status !== "ready"}
           onError={onError}
         />
+
+        {provider.id === "lightrag-server" && (
+          <Section label={t("Connection defaults")} icon={Server}>
+            <LightRagServerForm onChanged={onChanged} onError={onError} />
+          </Section>
+        )}
 
         {/* Retrieval modes (graphrag / lightrag) */}
         {hasModes && (
@@ -1519,6 +1701,7 @@ export default function EngineDetail({
                     }`}
                   >
                     <div className="flex min-w-0 items-center gap-2">
+                      <KnowledgeEngineIcon engine={provider.id} size={24} />
                       <span
                         className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
                           ready

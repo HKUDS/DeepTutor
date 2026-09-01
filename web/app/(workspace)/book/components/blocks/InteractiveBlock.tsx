@@ -33,8 +33,25 @@ export default function InteractiveBlock({ block }: InteractiveBlockProps) {
   }
 
   const result: VisualizeResult = {
+    schema_version: "deeptutor.visualization/v1",
     response: description,
     render_type: "html",
+    renderer: {
+      id: "html",
+      version: "1.0.0",
+      target: "native",
+      native_renderer: "html",
+      entry_url: "",
+    },
+    payload: { format: "text/html", data: content },
+    presentation: {
+      title: "",
+      description,
+      alt_text: description,
+      aspect_ratio: "",
+    },
+    interaction: { events: ["prompt", "resize"] },
+    fallback: {},
     code: { language: "html", content },
     analysis: {
       render_type: "html",

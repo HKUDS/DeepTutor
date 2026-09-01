@@ -11,10 +11,8 @@ import {
   READER_ACTION_EVENT,
   type ReaderActionPayload,
 } from "@/lib/reading-reader-action";
-import {
-  READING_CAPABILITY,
-  setReadingWorkspace,
-} from "@/lib/reading-turn-state";
+import { setReadingWorkspace } from "@/lib/reading-turn-state";
+import { READING_WORKSPACE_MODE } from "@/lib/workspace-mode";
 import {
   activateReadingMaterial,
   deleteReadingConversation,
@@ -50,8 +48,7 @@ export function useReadingWorkspace(
     useReading();
   const {
     state,
-    setCapability,
-    setTools,
+    configureSession,
     loadSession,
     newSession,
     cancelStreamingTurn,
@@ -100,13 +97,16 @@ export function useReadingWorkspace(
 
   useEffect(() => {
     setReadingWorkspace(workspaceId);
-    setCapability(READING_CAPABILITY);
-    setTools(["web_search", "reason"]);
     return () => {
       setReadingWorkspace(null);
       closeMaterial();
     };
-  }, [closeMaterial, setCapability, setTools, workspaceId]);
+  }, [closeMaterial, workspaceId]);
+
+  const sessionConfiguration = useMemo(
+    () => ({ workspaceMode: READING_WORKSPACE_MODE }),
+    [],
+  );
 
   const activeTab = useMemo(
     () =>
@@ -186,9 +186,12 @@ export function useReadingWorkspace(
         // the backend attaches the session to this workspace when the first
         // turn runs (see `turn_runtime`), so opening a collection and walking
         // away no longer litters it with empty conversations.
-        if (sessionIdParam) await loadSession(sessionIdParam);
-        else newSession();
-        setCapability(READING_CAPABILITY);
+        if (sessionIdParam) {
+          await loadSession(sessionIdParam);
+          configureSession(sessionConfiguration, sessionIdParam);
+        } else {
+          newSession({ ...sessionConfiguration, capability: null });
+        }
       } catch (caught) {
         setError(
           caught instanceof Error
@@ -198,11 +201,12 @@ export function useReadingWorkspace(
       }
     })();
   }, [
+    configureSession,
     loadSession,
     loading,
     newSession,
     sessionIdParam,
-    setCapability,
+    sessionConfiguration,
     t,
     workspace,
     workspaceId,
@@ -320,9 +324,15 @@ export function useReadingWorkspace(
   const newConversation = useCallback(() => {
     if (!workspace) return;
     cancelStreamingTurn();
-    newSession();
+    newSession({ ...sessionConfiguration, capability: null });
     router.push(`/reading/${workspace.workspace_id}`);
-  }, [cancelStreamingTurn, newSession, router, workspace]);
+  }, [
+    cancelStreamingTurn,
+    newSession,
+    router,
+    sessionConfiguration,
+    workspace,
+  ]);
 
   // When the first turn assigns a session id, put it in the URL and let the
   // conversation menu see the row the backend just attached. Mirrors the
@@ -355,20 +365,27 @@ export function useReadingWorkspace(
       setConversations(await listReadingConversations(workspaceId));
       if (sessionId === sessionIdParam) {
         cancelStreamingTurn();
-        newSession();
+        newSession({ ...sessionConfiguration, capability: null });
         router.push(`/reading/${workspaceId}`);
       }
     },
-    [cancelStreamingTurn, newSession, router, sessionIdParam, workspaceId],
+    [
+      cancelStreamingTurn,
+      newSession,
+      router,
+      sessionConfiguration,
+      sessionIdParam,
+      workspaceId,
+    ],
   );
 
   const openConversation = useCallback(
     async (sessionId: string) => {
       router.push(`/reading/${workspaceId}/${sessionId}`);
       await loadSession(sessionId);
-      setCapability(READING_CAPABILITY);
+      configureSession(sessionConfiguration, sessionId);
     },
-    [loadSession, router, setCapability, workspaceId],
+    [configureSession, loadSession, router, sessionConfiguration, workspaceId],
   );
 
   const organizeNotes = useCallback(async () => {

@@ -30,6 +30,11 @@ from deeptutor.reading.catalog_store import ReadingCatalogStore
 from deeptutor.reading.extract import split_markdown_by_headings
 from deeptutor.reading.models import OutlineEntry, ReadingError, UnitReference
 from deeptutor.reading.store import ReadingStore, content_hash
+from deeptutor.services.web_source.markdown import strip_leading_snapshot_provenance
+from deeptutor.services.web_source.snapshot_assets import (
+    ImageFetcher,
+    localize_snapshot_images,
+)
 from deeptutor.tools.web_fetch import FetchOutcome, fetch_url_as_markdown
 
 logger = logging.getLogger(__name__)
@@ -125,6 +130,7 @@ class ReadingIngestionService:
         bilibili_loader: BilibiliLoader | None = None,
         media_chunker: MediaChunker | None = None,
         transcriber: Transcriber | None = None,
+        image_fetcher: ImageFetcher | None = None,
     ) -> None:
         self.catalog = catalog or ReadingCatalogStore()
         self.reading_store = reading_store or ReadingStore(self.catalog.root)
@@ -132,6 +138,7 @@ class ReadingIngestionService:
         self._youtube_loader = youtube_loader or _load_youtube_captions
         self._bilibili_loader = bilibili_loader or _load_bilibili_media
         self._media_chunker = media_chunker or _chunk_media_audio
+        self._image_fetcher = image_fetcher
         if transcriber is None:
             from deeptutor.services.voice import transcribe_audio
 
@@ -208,7 +215,14 @@ class ReadingIngestionService:
         outcome = await self._web_fetcher(record.source_url, max_chars=500_000)
         if not outcome.ok:
             raise ReadingError(outcome.error or "web source could not be fetched")
-        units, outline = split_markdown_by_headings(outcome.markdown)
+        source_url = outcome.url or record.source_url
+        markdown = strip_leading_snapshot_provenance(outcome.markdown)
+        markdown, assets = await localize_snapshot_images(
+            markdown,
+            record.material_id,
+            fetcher=self._image_fetcher,
+        )
+        units, outline = split_markdown_by_headings(markdown)
         if not units:
             raise ReadingError("web source contained no readable article text")
         self.reading_store.ingest_units(
@@ -219,6 +233,10 @@ class ReadingIngestionService:
             title=outcome.title or record.title,
             mime="text/markdown",
             extractor="safe-web-fetch",
+            content_format="web_markdown",
+            source_type="url_snapshot",
+            source_url=source_url,
+            assets=assets,
             # An empty outline means the page had only its synthetic title (or
             # no headings), so ReadingStore deliberately retains its existing
             # first-line fallback for unstructured web content.
@@ -230,7 +248,7 @@ class ReadingIngestionService:
             filename=f"{record.material_id}.md",
             title=outcome.title or record.title,
             source_kind=SourceKind.WEB,
-            source_url=outcome.url or record.source_url,
+            source_url=source_url,
             mime="text/markdown",
             render_mode="text",
             status=IngestionStatus.READY,

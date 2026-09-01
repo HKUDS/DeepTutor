@@ -19,10 +19,12 @@ def test_empty_allow_list_skips_only_misconfigured_channel(monkeypatch):
 
         def __init__(self, config, _bus):
             self.config = SimpleNamespace(allow_from=config["allow_from"])
+            self.is_running = False
+            self.setup_state = {}
 
     monkeypatch.setattr(
-        "deeptutor.partners.channels.registry.discover_all",
-        lambda: {"invalid": _Channel, "valid": _Channel},
+        "deeptutor.partners.channels.registry.discover_all_with_errors",
+        lambda: ({"invalid": _Channel, "valid": _Channel}, {}),
     )
     config = ChannelsConfig(
         invalid={"enabled": True, "allow_from": []},
@@ -32,6 +34,28 @@ def test_empty_allow_list_skips_only_misconfigured_channel(monkeypatch):
     manager = ChannelManager(config, _MultiShotBus([]))  # type: ignore[arg-type]
 
     assert list(manager.channels) == ["valid"]
+    assert manager.get_status()["invalid"]["setup"]["status"] == "action_required"
+
+
+def test_unavailable_configured_channel_remains_visible(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.partners.channels.registry.discover_all_with_errors",
+        lambda: ({}, {"telegram": "optional package missing"}),
+    )
+    manager = ChannelManager(
+        ChannelsConfig(telegram={"enabled": True, "allow_from": ["*"]}),
+        _MultiShotBus([]),  # type: ignore[arg-type]
+    )
+
+    assert manager.channels == {}
+    assert manager.get_status()["telegram"] == {
+        "enabled": True,
+        "running": False,
+        "setup": {
+            "status": "unavailable",
+            "message": "optional package missing",
+        },
+    }
 
 
 class _OneShotBus:
@@ -123,8 +147,8 @@ def test_partner_id_is_available_while_the_channel_is_constructed(partners_root,
             pass
 
     monkeypatch.setattr(
-        "deeptutor.partners.channels.registry.discover_all",
-        lambda: {"telegram": _EagerChannel},
+        "deeptutor.partners.channels.registry.discover_all_with_errors",
+        lambda: ({"telegram": _EagerChannel}, {}),
     )
     manager = ChannelManager(
         ChannelsConfig(telegram={"enabled": True}),
@@ -134,6 +158,60 @@ def test_partner_id_is_available_while_the_channel_is_constructed(partners_root,
 
     channel = manager.channels["telegram"]
     assert channel.resolved_at_init == partners_root / "ada" / "channels" / "telegram"
+
+
+@pytest.mark.asyncio
+async def test_start_failure_is_sanitized_into_runtime_status():
+    from deeptutor.partners.bus.queue import MessageBus
+    from deeptutor.partners.channels.base import BaseChannel
+
+    class _FailingChannel(BaseChannel):
+        name = "telegram"
+
+        async def start(self):
+            raise RuntimeError("secret-token-must-not-leak")
+
+        async def stop(self):
+            self._running = False
+
+        async def send(self, msg):
+            pass
+
+    channel = _FailingChannel({}, MessageBus())
+    manager = ChannelManager(ChannelsConfig(), MessageBus())
+
+    await manager._start_channel("telegram", channel)
+
+    assert channel.is_running is False
+    assert channel.setup_state == {
+        "status": "error",
+        "message": "Channel startup failed (RuntimeError).",
+    }
+
+
+@pytest.mark.asyncio
+async def test_start_return_without_listener_requests_configuration():
+    from deeptutor.partners.bus.queue import MessageBus
+    from deeptutor.partners.channels.base import BaseChannel
+
+    class _UnconfiguredChannel(BaseChannel):
+        name = "telegram"
+
+        async def start(self):
+            return
+
+        async def stop(self):
+            self._running = False
+
+        async def send(self, msg):
+            pass
+
+    channel = _UnconfiguredChannel({}, MessageBus())
+    manager = ChannelManager(ChannelsConfig(), MessageBus())
+
+    await manager._start_channel("telegram", channel)
+
+    assert channel.setup_state["status"] == "action_required"
 
 
 async def _dispatch_one(

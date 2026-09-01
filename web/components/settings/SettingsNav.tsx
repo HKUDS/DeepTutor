@@ -17,6 +17,7 @@ import { fetchAuthStatus } from "@/lib/auth";
 import {
   SETTINGS_CATEGORIES,
   SETTINGS_HUB_HREF,
+  settingsAnchorHref,
   type Lang,
   type SettingsLeaf,
 } from "@/lib/settings-nav";
@@ -147,9 +148,10 @@ export function SettingsNavCompact() {
   const tr = (value: Lang) => (zh ? value.zh : value.en);
   const groups = useGroups(useHideAdminOnly());
   const { activeSection, setActiveSection } = useSettings();
-  const currentValue = activeSection
-    ? `${pathname}#${activeSection}`
-    : pathname;
+  const currentValue =
+    pathname === SETTINGS_HUB_HREF
+      ? settingsAnchorHref(activeSection ?? "overview")
+      : pathname;
 
   return (
     <div className="relative md:hidden">
@@ -161,16 +163,19 @@ export function SettingsNavCompact() {
         }
         className="w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--background)] py-2 pl-3 pr-8 text-[13px] font-medium text-[var(--foreground)] outline-none"
       >
-        <option value={SETTINGS_HUB_HREF}>{t("Overview")}</option>
+        <option value={settingsAnchorHref("overview")}>{t("Overview")}</option>
         {groups.map((group) =>
           group.standalone ? (
-            <option key={group.key} value={group.rows[0]?.leaf.href}>
+            <option
+              key={group.key}
+              value={settingsAnchorHref(group.rows[0]?.leaf.key ?? group.key)}
+            >
               {tr(group.label)}
             </option>
           ) : (
             <optgroup key={group.key} label={tr(group.label)}>
               {group.rows.map(({ leaf }) => (
-                <option key={leaf.key} value={leaf.href}>
+                <option key={leaf.key} value={settingsAnchorHref(leaf.key)}>
                   {tr(leaf.label)}
                 </option>
               ))}
@@ -236,11 +241,31 @@ export default function SettingsNav() {
   const [manualExpanded, setManualExpanded] = useState<Record<string, boolean>>(
     {},
   );
+  const groupIsActive = useCallback(
+    (group: Group) =>
+      (pathname === SETTINGS_HUB_HREF &&
+        (activeSection === group.key ||
+          group.rows.some(({ leaf }) => leaf.key === activeSection))) ||
+      pathname === group.href ||
+      group.rows.some(({ leaf }) => leaf.href.split("#", 1)[0] === pathname),
+    [activeSection, pathname],
+  );
   const isExpanded = useCallback(
     (group: Group) =>
       manualExpanded[group.key] ??
-      (pathname === group.href || (needle !== "" && group.rows.length > 0)),
-    [manualExpanded, pathname, needle],
+      (groupIsActive(group) || (needle !== "" && group.rows.length > 0)),
+    [groupIsActive, manualExpanded, needle],
+  );
+
+  const navigateInDocument = useCallback(
+    (key: string, event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (
+        goToLeaf(settingsAnchorHref(key), pathname, router, setActiveSection)
+      ) {
+        event.preventDefault();
+      }
+    },
+    [pathname, router, setActiveSection],
   );
 
   return (
@@ -270,11 +295,15 @@ export default function SettingsNav() {
       </div>
 
       <Row
-        href={SETTINGS_HUB_HREF}
+        href={settingsAnchorHref("overview")}
         label={t("Overview")}
         icon={LayoutGrid}
-        active={pathname === SETTINGS_HUB_HREF}
+        active={
+          pathname === SETTINGS_HUB_HREF &&
+          (activeSection === null || activeSection === "overview")
+        }
         tourId="tour-nav-overview"
+        onClick={(event) => navigateInDocument("overview", event)}
       />
 
       {visible.length === 0 && (
@@ -287,22 +316,29 @@ export default function SettingsNav() {
         group.standalone ? (
           <div key={group.key} className="mt-3.5 first:mt-3">
             <Row
-              href={group.rows[0]!.leaf.href}
+              href={settingsAnchorHref(group.rows[0]!.leaf.key)}
               label={tr(group.rows[0]!.leaf.label)}
               icon={group.rows[0]!.leaf.icon}
-              active={pathname === group.rows[0]!.leaf.href}
+              active={
+                (pathname === SETTINGS_HUB_HREF &&
+                  activeSection === group.rows[0]!.leaf.key) ||
+                pathname === group.rows[0]!.leaf.href
+              }
               failing={failing(group.rows[0]!.leaf)}
               hint={tr(group.rows[0]!.leaf.blurb)}
               tourId={`tour-nav-${group.key}`}
+              onClick={(event) =>
+                navigateInDocument(group.rows[0]!.leaf.key, event)
+              }
             />
           </div>
         ) : (
           <div key={group.key} className="mt-3.5 first:mt-3">
             <CategoryHeaderRow
-              href={group.href}
+              href={settingsAnchorHref(group.key)}
               label={tr(group.label)}
               icon={group.icon}
-              active={pathname === group.href}
+              active={groupIsActive(group)}
               expanded={isExpanded(group)}
               onToggle={() =>
                 setManualExpanded((prev) => ({
@@ -311,27 +347,24 @@ export default function SettingsNav() {
                 }))
               }
               tourId={`tour-nav-${group.key}`}
+              onClick={(event) => navigateInDocument(group.key, event)}
             />
             {isExpanded(group) && (
               <div className="mt-0.5 space-y-px pl-4">
                 {group.rows.map(({ leaf }) => (
                   <Row
                     key={leaf.key}
-                    href={leaf.href}
+                    href={settingsAnchorHref(leaf.key)}
                     label={tr(leaf.label)}
                     icon={leaf.icon}
                     active={
-                      pathname === group.href && activeSection === leaf.key
+                      (pathname === SETTINGS_HUB_HREF &&
+                        activeSection === leaf.key) ||
+                      (pathname === group.href && activeSection === leaf.key)
                     }
                     failing={failing(leaf)}
                     hint={tr(leaf.blurb)}
-                    onClick={(event) => {
-                      if (
-                        goToLeaf(leaf.href, pathname, router, setActiveSection)
-                      ) {
-                        event.preventDefault();
-                      }
-                    }}
+                    onClick={(event) => navigateInDocument(leaf.key, event)}
                   />
                 ))}
               </div>
@@ -358,6 +391,7 @@ function CategoryHeaderRow({
   expanded,
   onToggle,
   tourId,
+  onClick,
 }: {
   href: string;
   label: string;
@@ -366,6 +400,7 @@ function CategoryHeaderRow({
   expanded: boolean;
   onToggle: () => void;
   tourId?: string;
+  onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -373,6 +408,7 @@ function CategoryHeaderRow({
       <Link
         href={href}
         data-tour={tourId}
+        onClick={onClick}
         aria-current={active ? "page" : undefined}
         className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] leading-tight transition-colors ${
           active

@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
@@ -72,35 +65,6 @@ export function CardAction({
 export function CardGrid({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
-  );
-}
-
-export function BackRow({
-  label,
-  current,
-  onBack,
-}: {
-  label: string;
-  current: string;
-  onBack: () => void;
-}) {
-  return (
-    <div className="mb-4 flex items-center gap-1.5 text-[12px]">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1 rounded-md py-0.5 pr-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        {label}
-      </button>
-      <span aria-hidden className="text-[var(--muted-foreground)]/40">
-        /
-      </span>
-      <span className="min-w-0 truncate font-medium text-[var(--foreground)]">
-        {current}
-      </span>
-    </div>
   );
 }
 
@@ -202,9 +166,11 @@ function NameRow({
   onRenameCommit: () => void;
   onRenameCancel: () => void;
   onRenameStart: () => void;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  expandLabel: string;
+  /** Absent when this card has nothing to expand in place (e.g. a provider
+   *  card, which opens a dialog instead). */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  expandLabel?: string;
 }) {
   if (renaming) {
     return (
@@ -237,26 +203,28 @@ function NameRow({
       >
         {name}
       </span>
-      <button
-        type="button"
-        aria-label={expandLabel}
-        aria-expanded={expanded}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleExpand();
-        }}
-        className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
-      >
-        <ChevronDown
-          className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
-        />
-      </button>
+      {onToggleExpand && (
+        <button
+          type="button"
+          aria-label={expandLabel}
+          aria-expanded={expanded}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpand();
+          }}
+          className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+        >
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+          />
+        </button>
+      )}
     </div>
   );
 }
 
 /** "In use" is stated; everything else offers to become it. */
-function UseRow({
+export function UseRow({
   inUse,
   onUse,
   detail,
@@ -296,7 +264,7 @@ export function ProfileCard({
   profile,
   service,
   inUse,
-  expanded,
+  open,
   renaming,
   renameValue,
   onRenameChange,
@@ -304,22 +272,21 @@ export function ProfileCard({
   onRenameCancel,
   onRenameStart,
   onOpen,
-  onToggleExpand,
   onUse,
 }: {
   profile: CatalogProfile;
   service: ServiceName;
   inUse: boolean;
-  expanded: boolean;
+  /** Whether this card's dialog is currently open — a purely visual cue,
+   *  distinct from `inUse` (which provider is actually running). */
+  open: boolean;
   renaming: boolean;
   renameValue: string;
   onRenameChange: (value: string) => void;
   onRenameCommit: () => void;
   onRenameCancel: () => void;
   onRenameStart: () => void;
-  /** Absent for search, which has no models to drill into. */
-  onOpen?: () => void;
-  onToggleExpand: () => void;
+  onOpen: () => void;
   onUse: () => void;
 }) {
   const { t } = useTranslation();
@@ -329,7 +296,7 @@ export function ProfileCard({
   const count = profile.models.length;
 
   return (
-    <CardShell expanded={expanded} inUse={inUse} onOpen={onOpen}>
+    <CardShell expanded={open} inUse={inUse} onOpen={onOpen}>
       <NameRow
         icon={<ProviderIcon provider={provider} size={15} className="mt-0.5" />}
         name={profile.name}
@@ -339,16 +306,13 @@ export function ProfileCard({
         onRenameCommit={onRenameCommit}
         onRenameCancel={onRenameCancel}
         onRenameStart={onRenameStart}
-        expanded={expanded}
-        onToggleExpand={onToggleExpand}
-        expandLabel={t("Edit connection")}
       />
       <div className="min-w-0">
         <p className="truncate font-mono text-[10.5px] text-[var(--muted-foreground)]/80">
           {endpoint || t("Provider default endpoint")}
         </p>
       </div>
-      <div className={onOpen ? "pr-5" : ""}>
+      <div className="pr-5">
         <UseRow
           inUse={inUse}
           onUse={onUse}

@@ -11,12 +11,13 @@ page's "sync" button just re-reads it:
 * **Claude Code** has no model-list CLI; its ``--model`` takes stable aliases
   (opus / sonnet / haiku) plus any full name, and ``--effort`` a fixed set — so
   we offer those as suggestions and the UI also allows a free-text model.
-* **Gemini CLI** models are stable aliases (auto / pro / flash / flash-lite)
-  plus any concrete name — curated suggestions, free text allowed.
 * **Kimi CLI** has no model-list surface — free text only.
 * **opencode / MiMo Code** enumerate ``provider/model`` slugs via their own
   ``<cli> models`` command (models.dev catalog); syncing re-runs it with
   ``--refresh``. Reasoning effort is their ``--variant`` scale.
+* **Hermes Agent / OpenClaw / DeepSeek Harness** accept free-text model ids.
+  Their official reasoning surfaces are exposed as curated suggestions while
+  still allowing the underlying config to carry newer values.
 
 Each backend kind maps to one options provider in ``_PROVIDERS`` — adding a
 backend means adding a provider here, nothing else changes.
@@ -54,20 +55,33 @@ _CLAUDE_MODELS = (
 )
 _CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
-# Gemini CLI: ``--model`` takes stable aliases plus any concrete model name.
-# There is no reasoning-effort flag (thinking is a settings.json concern).
-_GEMINI_MODELS = (
-    ("auto", "Auto (recommended)"),
-    ("pro", "Gemini Pro"),
-    ("flash", "Gemini Flash"),
-    ("flash-lite", "Gemini Flash-Lite"),
-)
-
 # Antigravity CLI: ``--effort`` accepts exactly these three.
 _ANTIGRAVITY_EFFORTS = ("low", "medium", "high")
 
 # opencode family: ``--variant`` — provider-relative reasoning effort.
 _OPENCODE_EFFORTS = ("minimal", "high", "max")
+
+_HERMES_EFFORTS = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
+_OPENCLAW_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh")
+_DEEPSEEK_HARNESS_EFFORTS = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
 
 
 @dataclass(slots=True)
@@ -215,22 +229,6 @@ async def _probe(kind: str) -> tuple[bool, str]:
     return await probe_version([backend.cli_command, "--version"])
 
 
-async def _gemini_options() -> BackendOptions:
-    from deeptutor.services.subagent.gemini import GEMINI_NOT_FOUND_DETAIL
-
-    ok, version = await _probe("gemini")
-    return BackendOptions(
-        kind="gemini",
-        display_name="Gemini CLI",
-        available=ok,
-        version=version if ok else "",
-        models=[ModelOption(slug=slug, display_name=name) for slug, name in _GEMINI_MODELS],
-        efforts=[],  # no reasoning-effort flag
-        allow_custom_model=True,
-        detail="" if ok else not_found_detail(version, GEMINI_NOT_FOUND_DETAIL),
-    )
-
-
 async def _antigravity_options() -> BackendOptions:
     from deeptutor.services.subagent.antigravity import (
         _NOT_FOUND_DETAIL as _ANTIGRAVITY_NOT_FOUND,
@@ -324,15 +322,55 @@ async def _mimo_options(*, refresh: bool = False) -> BackendOptions:
     return await _opencode_family_options("mimo", "MiMo Code", refresh=refresh)
 
 
+async def _free_text_options(
+    kind: str, display_name: str, efforts: tuple[str, ...]
+) -> BackendOptions:
+    backend = get_backend(kind)
+    ok, version = await _probe(kind)
+    sdk_available = False
+    if kind == "deepseek_harness" and not ok:
+        from deeptutor.services.subagent.deepseek_harness import _sdk_available
+
+        sdk_available = _sdk_available()
+    available = ok or sdk_available
+    cli = backend.cli_command if backend else kind
+    return BackendOptions(
+        kind=kind,
+        display_name=display_name,
+        available=available,
+        version=version if ok else ("Python SDK" if sdk_available else ""),
+        models=[],
+        efforts=list(efforts),
+        allow_custom_model=True,
+        detail="" if available else not_found_detail(version, f"{cli} CLI not found on PATH"),
+    )
+
+
+async def _hermes_options() -> BackendOptions:
+    return await _free_text_options("hermes", "Hermes Agent", _HERMES_EFFORTS)
+
+
+async def _openclaw_options() -> BackendOptions:
+    return await _free_text_options("openclaw", "OpenClaw", _OPENCLAW_EFFORTS)
+
+
+async def _deepseek_harness_options() -> BackendOptions:
+    return await _free_text_options(
+        "deepseek_harness", "DeepSeek Harness", _DEEPSEEK_HARNESS_EFFORTS
+    )
+
+
 # One provider per backend kind — the discovery order is the settings order.
 _PROVIDERS: dict[str, Callable[..., Awaitable[BackendOptions]]] = {
     "claude_code": _claude_options,
     "codex": _codex_options,
-    "gemini": _gemini_options,
     "antigravity": _antigravity_options,
     "kimi": _kimi_options,
     "opencode": _opencode_options,
     "mimo": _mimo_options,
+    "hermes": _hermes_options,
+    "openclaw": _openclaw_options,
+    "deepseek_harness": _deepseek_harness_options,
 }
 
 

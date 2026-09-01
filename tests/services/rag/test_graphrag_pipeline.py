@@ -898,6 +898,37 @@ def test_ingestion_uses_active_parse_service_for_parser_files(tmp_path, monkeypa
     )
 
 
+def test_ingestion_parses_images_when_active_engine_supports_them(tmp_path, monkeypatch) -> None:
+    from deeptutor.services import parsing
+
+    root = tmp_path / "root"
+    image = tmp_path / "diagram.png"
+    image.write_bytes(b"\x89PNG\r\n")
+    calls: list[Path] = []
+
+    class _Parsed:
+        markdown = "OCR text from diagram"
+        blocks: list[dict] = []
+
+    class _ParseService:
+        def supports(self, path: Path) -> bool:
+            return path.suffix == ".png"
+
+        def parse(self, path: Path):
+            calls.append(path)
+            return _Parsed()
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: _ParseService())
+
+    count = asyncio.run(ingestion.prepare_input([str(image)], root))
+
+    assert count == 1
+    assert calls == [image]
+    assert (storage.input_dir(root) / "diagram.txt").read_text(encoding="utf-8") == (
+        "OCR text from diagram"
+    )
+
+
 def test_ingestion_avoids_name_collisions(tmp_path) -> None:
     root = tmp_path / "root"
     a = tmp_path / "a" / "doc.txt"

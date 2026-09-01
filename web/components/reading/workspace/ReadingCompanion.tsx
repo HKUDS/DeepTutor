@@ -39,14 +39,19 @@ import { useTranslation } from "react-i18next";
 
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
-import SessionViewerPanel from "@/components/chat/home/SessionViewerPanel";
+import SessionViewerPanel, {
+  type SessionViewerPanelHandle,
+} from "@/components/chat/home/SessionViewerPanel";
+import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import Tooltip from "@/components/common/Tooltip";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
+import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import { buildChatOutline } from "@/lib/chat-outline";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import { setReadingViewport } from "@/lib/reading-turn-state";
+import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
 import {
   fetchReadingAskHint,
   fetchReadingOpeners,
@@ -113,17 +118,30 @@ export function ReadingCompanion({
     editMessage,
     switchBranch,
   } = useUnifiedChat();
+  const confirmResearchOutline = useResearchOutlineContinuation();
 
   const [showSessions, setShowSessions] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuView, setMenuView] = useState<MenuView>("actions");
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const viewerPanelRef = useRef<SessionViewerPanelHandle | null>(null);
 
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
     setMenuView("actions");
   }, []);
+
+  const handleWelcomeAction = useCallback(
+    (prompt: string) => {
+      if (workspaceActionNeedsConfiguration(state.activeCapability)) {
+        prefillInputRef.current?.(prompt);
+        return;
+      }
+      onQuickPrompt(prompt);
+    },
+    [onQuickPrompt, prefillInputRef, state.activeCapability],
+  );
 
   /* ── Transcript scrolling ────────────────────────────────────────────
      The pin-to-bottom hook /home uses. The companion used to be a bare
@@ -314,7 +332,9 @@ export function ReadingCompanion({
             label={
               activeConversation
                 ? t("Link earlier reading conversations")
-                : t("Send a message first, then link earlier reading conversations")
+                : t(
+                    "Send a message first, then link earlier reading conversations",
+                  )
             }
           >
             <button
@@ -497,7 +517,9 @@ export function ReadingCompanion({
           const container = messagesContainerRef.current;
           if (!container) return;
           const distanceFromBottom =
-            container.scrollHeight - container.scrollTop - container.clientHeight;
+            container.scrollHeight -
+            container.scrollTop -
+            container.clientHeight;
           // Arm-only while streaming: the exported handler decides "did the
           // user move?" by distance-from-bottom alone, a fine proxy in a
           // 960px column but not in this 380px one — a single paragraph
@@ -530,12 +552,13 @@ export function ReadingCompanion({
             onEditMessage={editMessage}
             onSwitchBranch={switchBranch}
             onSubmitUserReply={submitUserReply}
+            onConfirmOutline={confirmResearchOutline}
             showModeBadge={false}
           />
         ) : (
           <CompanionWelcome
             title={material?.title ?? ""}
-            onAction={onQuickPrompt}
+            onAction={handleWelcomeAction}
             suggestions={openers}
           />
         )}
@@ -548,7 +571,10 @@ export function ReadingCompanion({
       >
         {selection && (
           <div className="mx-4 mb-2 flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2.5 py-2 dark:border-[var(--border)] dark:bg-[var(--card)]">
-            <Highlighter size={12} className="mt-0.5 shrink-0 text-[var(--primary)]" />
+            <Highlighter
+              size={12}
+              className="mt-0.5 shrink-0 text-[var(--primary)]"
+            />
             <p className="line-clamp-2 min-w-0 flex-1 text-[10.5px] leading-relaxed text-[var(--muted-foreground)]">
               {selection.quote}
             </p>
@@ -594,12 +620,14 @@ export function ReadingCompanion({
           the companion rather than squeezing it: at this width a third column
           would leave nothing readable. */}
       <SessionViewerPanel
+        ref={viewerPanelRef}
         open={viewerOpen}
         sessionId={state.sessionId}
         activity={sessionActivity}
         onClose={() => setViewerOpen(false)}
         onAutoOpen={() => setViewerOpen(true)}
       />
+      <ChatViewerBridges viewerPanelRef={viewerPanelRef} />
     </aside>
   );
 }

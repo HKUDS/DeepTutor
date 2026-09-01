@@ -85,6 +85,25 @@ def test_mineru_signature_distinguishes_local_and_cloud() -> None:
     assert local != cloud
 
 
+def test_mineru_advertises_current_document_and_image_formats() -> None:
+    parser = factory.get_parser("mineru")
+
+    assert parser.supported_formats() == {
+        ".pdf",
+        ".png",
+        ".jpeg",
+        ".jpg",
+        ".jp2",
+        ".webp",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".docx",
+        ".pptx",
+        ".xlsx",
+    }
+
+
 def test_mineru_cloud_readiness_needs_token() -> None:
     from deeptutor.services.parsing.engines.mineru.config import MinerUConfig
     from deeptutor.services.parsing.engines.mineru.readiness import mineru_readiness

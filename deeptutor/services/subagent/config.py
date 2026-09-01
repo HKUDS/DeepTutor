@@ -59,16 +59,18 @@ class BackendConfig:
     network_access: bool = False
     # Codex: --ephemeral — don't persist the session under ~/.codex/sessions.
     ephemeral: bool = False
-    # Kimi / opencode / MiMo: answer the CLI's permission asks affirmatively so
-    # a headless run never stalls (kimi --yolo; the opencode family's
-    # permission.asked replies). Same trust model as CC's bypassPermissions.
+    # Kimi / Hermes / opencode / MiMo: answer the CLI's permission asks
+    # affirmatively so a headless run never stalls (kimi/hermes --yolo; the
+    # opencode family's permission.asked replies). Same trust model as CC's
+    # bypassPermissions.
     auto_approve: bool = True
     # Kimi: stream the model's thinking (--thinking / --no-thinking). The
     # opencode family always streams reasoning over its event bus.
     thinking: bool = True
     # Forward image attachments from the chat turn to the agent (CC image input
-    # / Codex -i / Gemini @path / opencode-family file parts). Off by default —
-    # the user opts in per backend. Kimi has no headless image input.
+    # / Codex -i / Hermes --image / opencode-family file parts).
+    # Off by default — the user opts in per backend. Kimi has no headless image
+    # input; OpenClaw and DeepSeek receive opted-in paths as file references.
     forward_images: bool = False
     extra_args: list[str] = field(default_factory=list)
 

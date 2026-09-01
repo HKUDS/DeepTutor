@@ -153,7 +153,7 @@ async def fetch_url_as_markdown(
     except Exception as exc:  # pragma: no cover — defensive
         return FetchOutcome(ok=False, error=f"Unexpected fetch failure: {exc}")
 
-    title, body = _extract_readable(raw)
+    title, body = _extract_readable(raw, base_url=final_url)
     truncated = False
     if len(body) > max_chars:
         body = body[:max_chars].rstrip() + "\n…[truncated]"
@@ -245,7 +245,7 @@ async def _bounded_read(response: httpx.Response, limit: int) -> str:
         return buf.decode("utf-8", errors="replace")
 
 
-def _extract_readable(html_or_text: str) -> tuple[str, str]:
+def _extract_readable(html_or_text: str, base_url: str = "") -> tuple[str, str]:
     """Return ``(title, body_text)`` extracted from an HTML string.
 
     For non-HTML payloads (plain text, JSON dumps) just normalises
@@ -263,7 +263,7 @@ def _extract_readable(html_or_text: str) -> tuple[str, str]:
                 extract_article_markdown,
             )
 
-            return extract_article_markdown(html_or_text)
+            return extract_article_markdown(html_or_text, base_url=base_url)
         except Exception:
             logger.debug("structured HTML extraction failed; using text fallback", exc_info=True)
         title_match = _TITLE_RE.search(html_or_text)

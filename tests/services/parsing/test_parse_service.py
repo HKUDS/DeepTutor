@@ -109,6 +109,18 @@ def test_unsupported_format_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         service.parse(_pdf(tmp_path, b"data", "notes.txt"), engine="fake")
 
 
+def test_supports_is_a_side_effect_free_suffix_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parser = _FakeParser()
+    _use(monkeypatch, parser)
+    service = ParseService(cache_root=tmp_path / "cache")
+
+    assert service.supports(tmp_path / "missing.pdf", engine="fake") is True
+    assert service.supports(tmp_path / "missing.png", engine="fake") is False
+    assert parser.calls == []
+
+
 def test_missing_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _use(monkeypatch, _FakeParser())
     service = ParseService(cache_root=tmp_path / "cache")

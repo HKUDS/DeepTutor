@@ -29,6 +29,8 @@ export interface SessionMessage {
 
 export interface SessionPreferences {
   capability?: string;
+  /** Stable learning surface, independent of the action used for a turn. */
+  workspace_mode?: "immersive_reading" | "mastery_path" | "";
   tools?: string[];
   knowledge_bases?: string[];
   language?: string;

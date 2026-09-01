@@ -18,6 +18,7 @@ import {
   isMasteryDraftSessionReady,
   type MasteryDraftRouteGuard,
 } from "@/lib/mastery-study-route";
+import { MASTERY_WORKSPACE_MODE } from "@/lib/workspace-mode";
 
 /**
  * Resolves which topic and which chat session a study route is showing.
@@ -88,7 +89,8 @@ export function useMasteryStudySession(
   );
   const sessionConfiguration = useMemo<SessionConfiguration>(
     () => ({
-      capability: "mastery_path",
+      workspaceMode: MASTERY_WORKSPACE_MODE,
+      capability: null,
       masteryPathId: pathId,
       knowledgeBases,
     }),

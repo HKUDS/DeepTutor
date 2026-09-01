@@ -762,7 +762,10 @@ body[data-picker-open] .dt-mark-pulse {
    slide-in and the squeeze animate as one motion. Stays a no-op below
    the lg breakpoint, where the drawer overlays instead. */
 .chat-preview-shell {
-  transition: padding-right 220ms ease-out;
+  transition:
+    padding-right 220ms ease-out,
+    padding-left 240ms cubic-bezier(0.32, 0.72, 0, 1);
+  padding-left: 0;
   padding-right: 0;
 }
 /* While the viewer is being drag-resized, kill the squeeze transition so the
@@ -782,6 +785,39 @@ body[data-picker-open] .dt-mark-pulse {
      ``--viewer-width`` var the panel writes (falls back to 620px). */
   .chat-preview-shell[data-preview-open="false"][data-viewer-open="true"] {
     padding-right: min(var(--viewer-width, 620px), 92vw);
+  }
+}
+
+/* ----- Immersive watching -----------------------------------------------
+   The video-learning panel remains part of Home while reading owns its
+   dedicated workspace. Keeping a watching-specific shell prevents the two
+   navigation models from becoming coupled again. */
+.dt-watching-shell {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 30;
+  width: 100%;
+  display: flex;
+  transform: translateX(-100%);
+  transition:
+    transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    visibility 240ms;
+  visibility: hidden;
+}
+.dt-watching-shell[data-watching-open="true"] {
+  transform: translateX(0);
+  visibility: visible;
+}
+.dt-watching-shell > * {
+  flex: 1;
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  .dt-watching-shell {
+    width: 64%;
+  }
+  .chat-preview-shell[data-watching-open="true"] {
+    padding-left: 64%;
   }
 }
 

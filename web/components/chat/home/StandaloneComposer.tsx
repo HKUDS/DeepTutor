@@ -47,6 +47,23 @@ import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import { getSubagentSettings } from "@/lib/subagents-api";
 import type { LLMSelection } from "@/lib/unified-ws";
+import {
+  DEFAULT_QUIZ_CONFIG,
+  buildQuizWSConfig,
+  type DeepQuestionFormConfig,
+} from "@/lib/quiz-types";
+import {
+  DEFAULT_VISUALIZE_CONFIG,
+  buildVisualizeWSConfig,
+  type VisualizeFormConfig,
+} from "@/lib/visualize-types";
+import {
+  buildResearchWSConfig,
+  createEmptyResearchConfig,
+  validateResearchConfig,
+  type DeepResearchFormConfig,
+} from "@/lib/research-types";
+import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
 
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
@@ -70,6 +87,22 @@ const BookReferencePicker = dynamic(
   () => import("@/components/chat/BookReferencePicker"),
   { ssr: false },
 );
+const CapabilityConfigCard = dynamic(
+  () => import("@/components/chat/home/CapabilityConfigCard"),
+  { ssr: false },
+);
+const QuizConfigPanel = dynamic(
+  () => import("@/components/quiz/QuizConfigPanel"),
+  { ssr: false },
+);
+const VisualizeConfigPanel = dynamic(
+  () => import("@/components/visualize/VisualizeConfigPanel"),
+  { ssr: false },
+);
+const ResearchConfigPanel = dynamic(
+  () => import("@/components/research/ResearchConfigPanel"),
+  { ssr: false },
+);
 
 interface PendingAttachment {
   type: string;
@@ -83,6 +116,8 @@ interface PendingAttachment {
 /** Everything the user attached to this send, already in wire shape. */
 export interface StandaloneComposerSubmission {
   content: string;
+  /** Configuration for Quiz, Visualize, or Research. */
+  config?: Record<string, unknown>;
   attachments: Array<{
     type: string;
     filename?: string;
@@ -201,6 +236,18 @@ function StandaloneComposerImpl({
   const [dragging, setDragging] = useState(false);
   const [capMenuOpen, setCapMenuOpen] = useState(false);
   const [spaceMenuOpen, setSpaceMenuOpen] = useState(false);
+  const [quizConfig, setQuizConfig] = useState<DeepQuestionFormConfig>({
+    ...DEFAULT_QUIZ_CONFIG,
+  });
+  const [quizPdf, setQuizPdf] = useState<File | null>(null);
+  const [visualizeConfig, setVisualizeConfig] = useState<VisualizeFormConfig>({
+    ...DEFAULT_VISUALIZE_CONFIG,
+  });
+  const [researchConfig, setResearchConfig] = useState<DeepResearchFormConfig>(
+    createEmptyResearchConfig(),
+  );
+  const [capabilityConfigConfirmed, setCapabilityConfigConfirmed] =
+    useState(false);
 
   const [ownKnowledgeBases, setOwnKnowledgeBases] = useState<string[]>([]);
   const selectedKnowledgeBases = controlledKnowledgeBases ?? ownKnowledgeBases;
@@ -625,8 +672,44 @@ function StandaloneComposerImpl({
     [notebookReferencesPayload, selectedNotebookRecords],
   );
 
+  const resolvedCapabilities = useMemo(() => {
+    const list = capabilities?.length ? capabilities : [CHAT_ONLY_CAPABILITY];
+    return list.map((capability) => ({
+      ...capability,
+      label: t(capability.label),
+      description: t(capability.description),
+    }));
+  }, [capabilities, t]);
+  const activeCap =
+    resolvedCapabilities.find(
+      (capability) => capability.value === activeCapValue,
+    ) ?? resolvedCapabilities[0];
+  const isQuizMode = activeCap.value === "deep_question";
+  const isVisualizeMode = activeCap.value === "visualize";
+  const isResearchMode = activeCap.value === "deep_research";
+  const capabilityNeedsConfig = workspaceActionNeedsConfiguration(
+    activeCap.value,
+  );
+  const researchValidation = useMemo(
+    () => validateResearchConfig(researchConfig),
+    [researchConfig],
+  );
+  const quizValidationErrors =
+    quizConfig.mode === "mimic" && !quizPdf
+      ? [t("Upload a PDF to mimic its question style.")]
+      : [];
+
+  const selectCapability = useCallback(
+    (value: string) => {
+      setCapabilityConfigConfirmed(false);
+      setCapMenuOpen(false);
+      onSelectCapability?.(value);
+    },
+    [onSelectCapability],
+  );
+
   const handleSend = useCallback(
-    (content: string) => {
+    async (content: string) => {
       if (isStreaming && !awaitingUserReply) return;
       const hasReferences =
         attachments.length > 0 ||
@@ -638,14 +721,38 @@ function StandaloneComposerImpl({
         selectedMemoryFiles.length > 0;
       if (!content.trim() && !hasReferences) return;
 
+      let config: Record<string, unknown> | undefined;
+      let outgoingAttachments = attachments.map((attachment) => ({
+        type: attachment.type,
+        filename: attachment.filename,
+        base64: attachment.base64,
+        mime_type: attachment.mimeType,
+      }));
+      if (isQuizMode) {
+        config = buildQuizWSConfig(quizConfig);
+        if (quizConfig.mode === "mimic" && quizPdf) {
+          const raw = await readFileAsDataUrl(quizPdf);
+          outgoingAttachments = [
+            ...outgoingAttachments,
+            {
+              type: "pdf",
+              filename: quizPdf.name,
+              base64: extractBase64FromDataUrl(raw),
+              mime_type: "application/pdf",
+            },
+          ];
+        }
+      } else if (isVisualizeMode) {
+        config = buildVisualizeWSConfig(visualizeConfig);
+      } else if (isResearchMode) {
+        if (!researchValidation.valid) return;
+        config = buildResearchWSConfig(researchConfig);
+      }
+
       onSubmit({
         content,
-        attachments: attachments.map((a) => ({
-          type: a.type,
-          filename: a.filename,
-          base64: a.base64,
-          mime_type: a.mimeType,
-        })),
+        config,
+        attachments: outgoingAttachments,
         knowledgeBases: selectedKnowledgeBases,
         notebookReferences: notebookReferencesPayload,
         historyReferences: selectedHistorySessions.map((s) => s.sessionId),
@@ -671,9 +778,16 @@ function StandaloneComposerImpl({
       attachments,
       awaitingUserReply,
       isStreaming,
+      isQuizMode,
+      isResearchMode,
+      isVisualizeMode,
       llmSelection,
       notebookReferencesPayload,
       onSubmit,
+      quizConfig,
+      quizPdf,
+      researchConfig,
+      researchValidation.valid,
       selectedAgent,
       selectedBookReferences,
       selectedHistorySessions,
@@ -683,23 +797,72 @@ function StandaloneComposerImpl({
       selectedPersona,
       selectedQuestionEntries,
       subagentBudget,
+      visualizeConfig,
     ],
   );
 
-  const resolvedCapabilities = useMemo(() => {
-    const list = capabilities?.length ? capabilities : [CHAT_ONLY_CAPABILITY];
-    return list.map((cap) => ({
-      ...cap,
-      label: t(cap.label),
-      description: t(cap.description),
-    }));
-  }, [capabilities, t]);
-  const activeCap =
-    resolvedCapabilities.find((cap) => cap.value === activeCapValue) ??
-    resolvedCapabilities[0];
+  const capabilityConfigSection = capabilityNeedsConfig ? (
+    <div className="mx-auto mb-2 w-full max-w-[720px] px-3">
+      {isQuizMode ? (
+        <CapabilityConfigCard
+          capability="deep_question"
+          confirmed={capabilityConfigConfirmed}
+          canConfirm={quizValidationErrors.length === 0}
+          validationErrors={quizValidationErrors}
+          onConfirm={() => setCapabilityConfigConfirmed(true)}
+        >
+          <QuizConfigPanel
+            value={quizConfig}
+            onChange={(next) => {
+              setQuizConfig(next);
+              setCapabilityConfigConfirmed(false);
+            }}
+            uploadedPdf={quizPdf}
+            onUploadPdf={(file) => {
+              setQuizPdf(file);
+              setCapabilityConfigConfirmed(false);
+            }}
+          />
+        </CapabilityConfigCard>
+      ) : isVisualizeMode ? (
+        <CapabilityConfigCard
+          capability="visualize"
+          confirmed={capabilityConfigConfirmed}
+          canConfirm
+          onConfirm={() => setCapabilityConfigConfirmed(true)}
+        >
+          <VisualizeConfigPanel
+            value={visualizeConfig}
+            onChange={(next) => {
+              setVisualizeConfig(next);
+              setCapabilityConfigConfirmed(false);
+            }}
+          />
+        </CapabilityConfigCard>
+      ) : (
+        <CapabilityConfigCard
+          capability="deep_research"
+          confirmed={capabilityConfigConfirmed}
+          canConfirm={researchValidation.valid}
+          validationErrors={Object.values(researchValidation.errors)}
+          onConfirm={() => setCapabilityConfigConfirmed(true)}
+        >
+          <ResearchConfigPanel
+            value={researchConfig}
+            errors={researchValidation.errors}
+            onChange={(next) => {
+              setResearchConfig(next);
+              setCapabilityConfigConfirmed(false);
+            }}
+          />
+        </CapabilityConfigCard>
+      )}
+    </div>
+  ) : null;
 
   return (
     <>
+      {capabilityConfigSection}
       <ChatComposer
         composerRef={composerRef}
         capMenuRef={capMenuRef}
@@ -740,10 +903,10 @@ function StandaloneComposerImpl({
         selectedKnowledgeBases={selectedKbOnly}
         isStreaming={isStreaming}
         awaitingUserReply={awaitingUserReply}
-        isVisualizeMode={false}
-        capabilityNeedsConfig={false}
-        capabilityConfigConfirmed={true}
-        onRequestConfigConfirm={() => {}}
+        isVisualizeMode={isVisualizeMode}
+        capabilityNeedsConfig={capabilityNeedsConfig}
+        capabilityConfigConfirmed={capabilityConfigConfirmed}
+        onRequestConfigConfirm={() => setCapabilityConfigConfirmed(false)}
         capabilities={resolvedCapabilities}
         onSetCapMenuOpen={setCapMenuOpen}
         onSetSpaceMenuOpen={setSpaceMenuOpen}
@@ -772,7 +935,7 @@ function StandaloneComposerImpl({
         onDrop={handleDrop}
         onPaste={handlePaste}
         onAddFiles={handleAddFiles}
-        onSelectCapability={onSelectCapability ?? (() => {})}
+        onSelectCapability={selectCapability}
         showCapabilityChip={showCapabilityChip}
         onCancelStreaming={onCancelStreaming}
         prefillInputRef={prefillInputRef}

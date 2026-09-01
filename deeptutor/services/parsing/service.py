@@ -45,6 +45,16 @@ class ParseService:
             load_document_parsing_settings().get("engine") or _DEFAULT_DOCUMENT_PARSING_ENGINE
         )
 
+    def supports(self, source_path: str | Path, *, engine: Optional[str] = None) -> bool:
+        """Return whether the selected engine advertises support for this path.
+
+        This is a cheap routing check only: it does not require the file to
+        exist, initialize models, or evaluate engine readiness.
+        """
+        engine_name = (engine or self.active_engine()).strip().lower()
+        supported = get_parser(engine_name).supported_formats()
+        return not supported or Path(source_path).suffix.lower() in supported
+
     def parse(
         self,
         source_path: str | Path,

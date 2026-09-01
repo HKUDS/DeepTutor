@@ -8,18 +8,26 @@ import {
   Loader2,
   Map as MapIcon,
   MessageCircle,
+  PanelRight,
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
+import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
+import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
+import SessionViewerPanel, {
+  type SessionViewerPanelHandle,
+} from "@/components/chat/home/SessionViewerPanel";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
+import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import { fetchMasteryAskHint, type MasteryTopic } from "@/lib/learning-api";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
+import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
 
 import { topicDisplayName, type Translate } from "./format";
 import { LevelUpCelebration } from "./LevelUpCelebration";
@@ -76,10 +84,14 @@ export function MasteryStudy({
     editMessage,
     switchBranch,
   } = useUnifiedChat();
+  const confirmResearchOutline = useResearchOutlineContinuation();
   const { topic, topicError, knowledgeBases, sessionError, sessionLoading } =
     useMasteryStudySession(pathId, routeSessionId);
   const hasMessages = state.messages.length > 0;
   const prefillInputRef = useRef<((text: string) => void) | null>(null);
+  const viewerPanelRef = useRef<SessionViewerPanelHandle | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const sessionActivity = buildSessionActivity(state.messages);
   /* ── Transcript scrolling ────────────────────────────────────────────
      Was a bare `scrollIntoView` keyed on message count — no notion of the
      user having scrolled away, so it yanked the view back to the bottom
@@ -226,6 +238,17 @@ export function MasteryStudy({
     [sendMessage, sessionError, sessionLoading, state.isStreaming],
   );
 
+  const startFromPrompt = useCallback(
+    (prompt: string) => {
+      if (workspaceActionNeedsConfiguration(state.activeCapability)) {
+        prefillInputRef.current?.(prompt);
+        return;
+      }
+      submit(prompt);
+    },
+    [state.activeCapability, submit],
+  );
+
   const copyAssistantMessage = useCallback(async (content: string) => {
     if (content.trim()) await navigator.clipboard.writeText(content);
   }, []);
@@ -295,6 +318,15 @@ export function MasteryStudy({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
+          <button
+            type="button"
+            onClick={() => setViewerOpen((open) => !open)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+            aria-label={t("Activity")}
+            aria-pressed={viewerOpen}
+          >
+            <PanelRight className="h-4 w-4" />
+          </button>
           <ProgressRing
             value={total ? completed / total : 0}
             size={18}
@@ -391,7 +423,7 @@ export function MasteryStudy({
                         <button
                           key={starter.key}
                           type="button"
-                          onClick={() => submit(label)}
+                          onClick={() => startFromPrompt(label)}
                           disabled={state.isStreaming || sessionLoading}
                           className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary)]/35 disabled:opacity-50"
                         >
@@ -418,6 +450,7 @@ export function MasteryStudy({
                     onEditMessage={editMessage}
                     onSwitchBranch={switchBranch}
                     onSubmitUserReply={submitUserReply}
+                    onConfirmOutline={confirmResearchOutline}
                     availableKbNames={new Set(knowledgeBases)}
                     showModeBadge={false}
                   />
@@ -451,6 +484,15 @@ export function MasteryStudy({
           onDone={() => setCelebration(null)}
         />
       )}
+      <SessionViewerPanel
+        ref={viewerPanelRef}
+        open={viewerOpen}
+        sessionId={state.sessionId}
+        activity={sessionActivity}
+        onClose={() => setViewerOpen(false)}
+        onAutoOpen={() => setViewerOpen(true)}
+      />
+      <ChatViewerBridges viewerPanelRef={viewerPanelRef} />
     </main>
   );
 }

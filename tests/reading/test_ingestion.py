@@ -25,6 +25,7 @@ from deeptutor.reading.ingestion import (
 )
 from deeptutor.reading.models import ReadingError
 from deeptutor.reading.store import ReadingStore
+from deeptutor.services.web_source.snapshot_assets import SnapshotAsset
 from deeptutor.tools.web_fetch import FetchOutcome, _extract_readable
 
 _ARTICLE_FIXTURE = Path(__file__).parents[1] / "fixtures" / "web" / "vector_article.html"
@@ -59,6 +60,61 @@ async def test_web_import_uses_safe_fetch_result_and_builds_sections(stores) -> 
     assert manifest.title == "A careful article"
     assert "First claim" in reading.unit_text(ready.material_id, 1)
     assert reading.outline(ready.material_id)[0].synthesised is True
+
+
+@pytest.mark.asyncio
+async def test_web_import_is_rich_localizes_images_and_preserves_old_revision(stores) -> None:
+    reading, catalog = stores
+    url = "https://example.com/article"
+
+    async def fetcher(_url: str, **_kwargs):
+        return FetchOutcome(
+            ok=True,
+            url="https://example.com/final/article",
+            title="Snapshot",
+            markdown=(
+                "<!-- source: https://example.com/legacy -->\n"
+                "# Snapshot\n\n![Diagram](https://cdn.example.com/diagram.png)"
+            ),
+        )
+
+    async def image_fetcher(_url: str):
+        return SnapshotAsset(b"\x89PNG\r\n\x1a\nimage", "image/png", "png")
+
+    service = ReadingIngestionService(
+        reading,
+        catalog,
+        web_fetcher=fetcher,
+        image_fetcher=image_fetcher,
+    )
+    queued = service.queue_url(url)
+    reading.ingest_units(
+        queued.material_id,
+        filename=f"{queued.material_id}.md",
+        units=["<!-- source: https://example.com/old -->\n# Old snapshot"],
+        source_type="url_snapshot",
+        source_url=url,
+    )
+
+    ready = await service.process_url(queued.material_id)
+    manifest = reading.manifest(ready.material_id)
+    current = reading.unit_text(ready.material_id, 1)
+
+    assert manifest.content_format == "web_markdown"
+    assert manifest.source_url == "https://example.com/final/article"
+    assert manifest.revision == 2
+    assert "<!-- source:" not in current
+    assert "/api/v1/reading/materials/" in current
+    assert (
+        reading.asset_path(
+            ready.material_id,
+            next((reading._dir(ready.material_id) / "assets").iterdir()).name,
+        )
+        is not None
+    )
+    revisions = reading.revisions(ready.material_id)
+    assert [row.revision for row in revisions] == [1]
+    assert "# Old snapshot" in reading.revision_unit_text(ready.material_id, 1, 1)
 
 
 @pytest.mark.asyncio

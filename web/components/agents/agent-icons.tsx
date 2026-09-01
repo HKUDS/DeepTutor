@@ -105,57 +105,39 @@ export function GeminiGlyph({ size = 16, ...props }: GlyphProps) {
   );
 }
 
-// Kimi (Moonshot AI): dark tile with a white K.
+// Exact upstream brand assets, kept as local files so agent menus also work
+// offline. Sources are documented in public/agent-icons/README.md.
 export function KimiGlyph({ size = 16, ...props }: GlyphProps) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      {...props}
-    >
-      <rect width="24" height="24" rx="5.4" fill="#16161D" />
-      <path
-        d="M8 5.6h2.6v5.1l4.5-5.1h3.3l-5 5.6 5.2 7.2h-3.2l-3.7-5.3-1.1 1.2v4.1H8z"
-        fill="#fff"
-      />
-    </svg>
+    <OfficialAssetGlyph src="/agent-icons/kimi.svg" size={size} {...props} />
   );
 }
 
-// opencode: dark terminal tile with a prompt chevron + cursor underscore.
 export function OpencodeGlyph({ size = 16, ...props }: GlyphProps) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
+    <OfficialAssetGlyph
+      src="/agent-icons/opencode.svg"
+      size={size}
       {...props}
-    >
-      <rect width="24" height="24" rx="5.4" fill="#0A0A0A" />
-      <path
-        d="M7.2 8.4 11 11.9l-3.8 3.5"
-        stroke="#fff"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12.9 15.6h4.3"
-        stroke="#fff"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-    </svg>
+    />
   );
 }
 
-// MiMo Code (Xiaomi): the brand-orange tile with a white M.
 export function MimoGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <OfficialAssetGlyph
+      src="/agent-icons/mimo-code.svg"
+      size={size}
+      {...props}
+    />
+  );
+}
+
+function OfficialAssetGlyph({
+  src,
+  size = 16,
+  ...props
+}: GlyphProps & { src: string }) {
   return (
     <svg
       width={size}
@@ -165,12 +147,39 @@ export function MimoGlyph({ size = 16, ...props }: GlyphProps) {
       aria-hidden
       {...props}
     >
-      <rect width="24" height="24" rx="5.4" fill="#FF6900" />
-      <path
-        d="M6.4 17.2V6.8h2.5l3.1 5.4 3.1-5.4h2.5v10.4h-2.4v-6l-2.6 4.4h-1.2l-2.6-4.4v6z"
-        fill="#fff"
+      <image
+        href={src}
+        width="24"
+        height="24"
+        preserveAspectRatio="xMidYMid meet"
       />
     </svg>
+  );
+}
+
+export function HermesGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <OfficialAssetGlyph src="/agent-icons/hermes.svg" size={size} {...props} />
+  );
+}
+
+export function OpenClawGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <OfficialAssetGlyph
+      src="/agent-icons/openclaw.svg"
+      size={size}
+      {...props}
+    />
+  );
+}
+
+export function DeepSeekGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <OfficialAssetGlyph
+      src="/agent-icons/deepseek-harness.svg"
+      size={size}
+      {...props}
+    />
   );
 }
 
@@ -196,12 +205,14 @@ export type AgentGlyph = ComponentType<GlyphProps>;
 export function agentGlyph(kind: string | undefined): AgentGlyph | null {
   if (kind === "claude_code") return ClaudeGlyph;
   if (kind === "codex") return CodexGlyph;
-  if (kind === "gemini") return GeminiGlyph;
-  // Google's own successor to Gemini CLI, and it carries the same mark.
+  // Antigravity uses Google's Gemini mark, but Gemini CLI itself is retired.
   if (kind === "antigravity") return GeminiGlyph;
   if (kind === "kimi") return KimiGlyph;
   if (kind === "opencode") return OpencodeGlyph;
   if (kind === "mimo") return MimoGlyph;
+  if (kind === "hermes") return HermesGlyph;
+  if (kind === "openclaw") return OpenClawGlyph;
+  if (kind === "deepseek_harness") return DeepSeekGlyph;
   if (kind === "partner") return PartnerGlyph;
   return null;
 }

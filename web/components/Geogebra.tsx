@@ -4,11 +4,23 @@ import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface GeogebraProps {
-  script: string;
+  script?: string;
+  payload?: GeogebraPayload;
   title?: string;
   className?: string;
   width?: number;
   height?: number;
+}
+
+export interface GeogebraPayload {
+  app_name?: "geometry" | "graphing" | "3d" | "classic" | string;
+  commands: string[];
+  view?: {
+    x_min: number;
+    x_max: number;
+    y_min: number;
+    y_max: number;
+  };
 }
 
 declare global {
@@ -79,7 +91,8 @@ function parseGgbCommands(raw: string): string[] {
 let containerCounter = 0;
 
 const Geogebra: React.FC<GeogebraProps> = ({
-  script,
+  script = "",
+  payload,
   title,
   className = "",
   width = 760,
@@ -109,7 +122,9 @@ const Geogebra: React.FC<GeogebraProps> = ({
           throw new Error("GGBApplet global missing after script load");
         }
 
-        const commands = parseGgbCommands(script);
+        const commands = payload?.commands?.length
+          ? payload.commands.map(String).filter((command) => command.trim())
+          : parseGgbCommands(script);
         const container = containerRef.current;
         if (!container) return;
         container.id = containerIdRef.current;
@@ -117,7 +132,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
 
         const applet = new window.GGBApplet(
           {
-            appName: "geometry",
+            appName: payload?.app_name || "geometry",
             width,
             height,
             showToolBar: false,
@@ -130,8 +145,25 @@ const Geogebra: React.FC<GeogebraProps> = ({
             // The api passed in here lets us drive the applet
             // imperatively without going through a global. We feed each
             // command separately so one bad line doesn't abort the rest.
-            appletOnLoad: (api: { evalCommand: (cmd: string) => boolean }) => {
+            appletOnLoad: (api: {
+              evalCommand: (cmd: string) => boolean;
+              setCoordSystem?: (
+                xMin: number,
+                xMax: number,
+                yMin: number,
+                yMax: number,
+              ) => void;
+            }) => {
               if (cancelled) return;
+              const view = payload?.view;
+              if (view && api.setCoordSystem) {
+                api.setCoordSystem(
+                  view.x_min,
+                  view.x_max,
+                  view.y_min,
+                  view.y_max,
+                );
+              }
               for (const cmd of commands) {
                 try {
                   api.evalCommand(cmd);
@@ -162,7 +194,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
         containerAtMount.innerHTML = "";
       }
     };
-  }, [script, width, height]);
+  }, [script, payload, width, height]);
 
   return (
     <div

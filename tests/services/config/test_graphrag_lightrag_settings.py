@@ -95,6 +95,27 @@ def test_lightrag_settings_written_before_the_indexing_knobs_still_load(
     assert loaded["entity_extract_max_gleaning"] == 1
 
 
+def test_lightrag_server_defaults_round_trip_without_exposing_shape_drift(
+    tmp_path: Path,
+) -> None:
+    svc = RuntimeSettingsService(tmp_path, process_env={})
+    assert svc.load_lightrag_server() == {
+        "version": 1,
+        "server_url": "",
+        "api_key": "",
+    }
+
+    saved = svc.save_lightrag_server(
+        {"server_url": " http://localhost:9621/ ", "api_key": " secret "}
+    )
+    assert saved == {
+        "version": 1,
+        "server_url": "http://localhost:9621",
+        "api_key": "secret",
+    }
+    assert (tmp_path / "lightrag_server.json").exists()
+
+
 def test_response_type_capped(tmp_path: Path) -> None:
     svc = RuntimeSettingsService(tmp_path, process_env={})
     saved = svc.save_graphrag({"response_type": "x" * 500})
@@ -104,7 +125,13 @@ def test_response_type_capped(tmp_path: Path) -> None:
 def test_preflight_shape_for_all_engines() -> None:
     from deeptutor.services.rag.preflight import engine_preflight
 
-    for provider in ("llamaindex", "pageindex", "graphrag", "lightrag"):
+    for provider in (
+        "llamaindex",
+        "pageindex",
+        "graphrag",
+        "lightrag",
+        "lightrag-server",
+    ):
         report = engine_preflight(provider)
         assert set(report) == {"ok", "checks"}
         assert isinstance(report["ok"], bool)

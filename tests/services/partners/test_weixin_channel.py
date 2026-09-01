@@ -211,6 +211,52 @@ class TestStateAndHeaders:
         assert base64.b64decode(headers["X-WECHAT-UIN"]).decode().isdigit()
 
 
+class TestLifecycle:
+    @pytest.mark.asyncio
+    async def test_start_without_token_never_opens_terminal_qr(self, state_dir, monkeypatch):
+        ch = _make_channel(token="", state_dir=str(state_dir))
+
+        def fail_client(*args, **kwargs):
+            raise AssertionError("an unauthenticated channel must not create a login client")
+
+        monkeypatch.setattr(weixin_mod.httpx, "AsyncClient", fail_client)
+
+        await ch.start()
+
+        assert ch.is_running is False
+        assert ch._client is None
+
+    @pytest.mark.asyncio
+    async def test_login_without_token_reports_webui_action_without_a_client(
+        self, state_dir, monkeypatch
+    ):
+        ch = _make_channel(token="", state_dir=str(state_dir))
+
+        def fail_client(*args, **kwargs):
+            raise AssertionError("login setup belongs to the WebUI")
+
+        monkeypatch.setattr(weixin_mod.httpx, "AsyncClient", fail_client)
+
+        assert await ch.login() is False
+        assert ch.setup_state == {"status": "action_required"}
+
+    @pytest.mark.asyncio
+    async def test_start_with_token_enters_message_polling(self, state_dir, monkeypatch):
+        ch = _make_channel(token="token", state_dir=str(state_dir))
+        fake_client = MagicMock()
+        fake_client.aclose = AsyncMock()
+        monkeypatch.setattr(weixin_mod.httpx, "AsyncClient", lambda *args, **kwargs: fake_client)
+
+        async def one_poll():
+            ch._running = False
+
+        ch._poll_once = AsyncMock(side_effect=one_poll)
+
+        await ch.start()
+
+        ch._poll_once.assert_awaited_once()
+
+
 class TestInboundProcessing:
     @pytest.mark.asyncio
     async def test_text_message_published_to_bus(self, state_dir):

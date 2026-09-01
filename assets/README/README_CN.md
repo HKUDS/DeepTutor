@@ -61,9 +61,10 @@
 
 DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测验生成、研究、可视化和掌握度练习整合在一个可扩展的系统中。
 
-- **统一的运行时** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Mastery Path 和 Immersive Reading 共享同一套能力运行时与会话上下文，同时保留各自为特定用途设计的循环和流水线。
+- **统一的运行时** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 和 Immersive Watching 共享同一套能力运行时与会话上下文，同时保留各自为特定用途设计的循环和流水线。
 - **互联的学习上下文** — 知识库、书籍、Co-Writer 草稿、笔记本、题库、人格预设和 Memory，在每个工作流中始终可用，而不是各自孤立。
-- **子智能体与 Partners** — 在任意对话轮次中调用实时运行的编程 CLI（Claude Code、Codex、Gemini、Antigravity、Kimi、opencode 或 MiMo）或 Partner（或导入其历史对话），并在同一大脑上运行持久化的 IM 伴侣。
+- **沉浸式视频学习** — 粘贴 YouTube 链接，即可使用隐私增强的原生播放、同步字幕、基于时间戳的辅导和可续接的学习进度；管理员可以将播放切换到自托管的 Invidious 实例，无需重新构建素材。
+- **子智能体与 Partners** — 在任意对话轮次中咨询实时智能体运行框架（Claude Code、Codex、Antigravity、Kimi、opencode、MiMo、Hermes Agent、OpenClaw 或 DeepSeek Harness）或 Partner（或导入历史对话），并在同一大脑上运行持久化的 IM 伴侣。
 - **多引擎知识库** — 跨 LlamaIndex、PageIndex、GraphRAG、LightRAG、远程 LightRAG Server、Tencent IMA 或 MarginNote 4 知识库，或链接的 Obsidian vault 的版本化 RAG 知识库，支持可插拔的文档解析。
 - **可扩展工具与技能** — 内置工具、MCP 服务器、CLI 应用、图像 / 视频 / 语音生成模型，以及从 EduHub 安装的社区技能。
 - **可审计的记忆** — L1 追踪、L2 表面摘要和 L3 综合让个性化透明可编辑，Memory Graph 将每一条结论追溯到其原始证据。
@@ -135,6 +136,7 @@ pip install -e ".[rag-lightrag]"    # 内置 LightRAG 引擎（精确匹配受�
 pip install -e ".[graphrag]"        # Microsoft GraphRAG 引擎
 pip install -e ".[dev]"             # 测试/代码检查工具
 pip install -e ".[partners]"        # Partner IM 渠道 SDK
+pip install -e ".[video-learning]"  # optional YouTube public-caption adapter
 pip install -e ".[matrix]"          # Matrix 渠道（不含 E2EE/libolm）
 pip install -e ".[matrix-e2e]"      # Matrix E2EE；需要 libolm
 pip install -e ".[math-animator]"   # Manim 插件；需要 LaTeX/ffmpeg/系统库
@@ -246,7 +248,7 @@ deeptutor init --cli
 deeptutor chat
 ```
 
-`deeptutor init --cli` 与完整应用共享同一 `data/user/settings/` 布局，但跳过后端/前端端口提示，并默认将嵌入设为**关闭**（如计划使用 `deeptutor kb …` 或 RAG 工具，选择 `Yes`）。它仍会写入完整的运行时布局（`system.json`、`auth.json`、`integrations.json`、`model_catalog.json`、`main.yaml`、`agents.yaml`），并提示选择活跃的 LLM 提供商和模型。
+`deeptutor init --cli` 与完整应用共享同一 `data/user/settings/` 布局，但跳过后端/前端端口提示，并默认将嵌入设为**关闭**（如计划使用 `deeptutor kb …` 或 RAG 工具，选择 `Yes`）。它仍会写入关键运行时文件（`system.json`、`auth.json`、`integrations.json`、`interface.json`、`model_catalog.json`、`main.yaml`、`agents.yaml`），并提示选择活跃的 LLM 提供商和模型。
 
 <details>
 <summary><b>常用命令</b></summary>
@@ -291,6 +293,7 @@ deeptutor config show
 | `auth.json` | 可选认证开关、用户名、密码哈希、token/cookie 设置 |
 | `integrations.json` | 可选的 PocketBase 和 sidecar 集成设置 |
 | `interface.json` | UI 语言与模型输出语言 / 主题 / 侧边栏偏好 |
+| `video_learning.json` | 默认的 YouTube/Invidious 播放提供商、Invidious 来源和可选的转录适配器 |
 | `main.yaml` | 运行时行为默认值和路径注入 |
 | `agents.yaml` | 能力/工具的 temperature 和 token 设置 |
 
@@ -303,7 +306,7 @@ deeptutor config show
 从日常使用的主要界面开始：Chat、Partners、My Agents、Co-Writer、Book、知识中心、学习空间、Memory 和 Settings。之后将介绍用于共享隔离工作区的多用户部署。
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
+<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
 </div>
 
 <details>
@@ -334,7 +337,7 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 
 上下文分为两类：**粘性会话上下文**（子智能体、知识库、人格预设、模型、语音）存在于编辑器工具栏，在各轮次间持续保留；**一次性引用**（文件、聊天历史、书籍、笔记本、题库、导入的智能体）通过 `+` 菜单添加，仅用于单次对话轮次。
 
-Chat 也是进入更深层能力的入口：**Ask Questions** 提供感知上下文的澄清卡片，**Quiz** 用于题目生成，**Visualize** 用于图表 / 示意图 / 动画，**Mastery Path** 用于学习计划流程，**Immersive Reading** 则可在对话旁阅读 PDF、EPUB 及其他文档，提供页码/章节定位、持久化阅读位置与大纲、批注和选中文本操作。**Research**（带引用的报告）和 **Solve**（有步骤的推理）则位于 *更多能力* 之下。
+主页让 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 和 **Immersive Watching** 一键可达；用于生成引用报告的 **Research** 和用于展示完整推理过程的 **Solve** 位于 *更多能力* 之下。**Mastery Path** 和 **Immersive Reading** 是侧边栏中的专用工作区，而 Course Study 则保留其自身与课程绑定的上下文。
 
 </details>
 
@@ -370,7 +373,7 @@ Partners 是拥有独立灵魂、模型策略、知识库、记忆和渠道的�
 <img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor 我的智能体工作区" width="900">
 </div>
 
-"我的智能体"将其他智能体转化为 DeepTutor 的上下文，具备两种不同的功能。**连接实时智能体** — 连接你机器上的 Claude Code、Codex、Gemini、Antigravity、Kimi、opencode 或 MiMo Code CLI，或你的某个 Partner，在聊天轮次中调用它：DeepTutor 实际上会*运行*另一个智能体，并通过 `consult_subagent` 工具将其工作流式传输到 Activity 面板。通过智能体选项（或输入 `@`）选择它，并设置调用可进行的最大轮数。
+"我的智能体"将其他智能体转化为 DeepTutor 的上下文，具备两种不同的功能。**连接实时智能体** — 连接你机器上的 Claude Code、Codex、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw 或 DeepSeek Harness，或你的某个 Partner，在聊天轮次中调用它：DeepTutor 实际上会*运行*另一个智能体，并通过 `consult_subagent` 工具将其工作流式传输到 Activity 面板。通过智能体选项（或输入 `@`）选择它，并设置调用可进行的最大轮数。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="实时调用 Claude Code 子智能体" width="900">
@@ -433,7 +436,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 
 创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。知识库还可以追踪 **GitHub 仓库**（仓库、分支和 glob 匹配模式）或**文档站点 URL**（限制爬取深度和页面数量）；按需同步时会通过内容哈希差异识别新增、变更和移除的内容，让你关注的文档保持最新，无需重新上传。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、Tika、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。Tika 仅支持远程模式，需指向 Apache Tika 服务器（`TIKA_SERVER_URL`）。CLI 通过 `list/info/create/add/search/set-default/delete`、来源添加/移除命令、`list-sources` 和 `sync` 管理完整生命周期。
 
-内置的 LightRAG 引擎通过 `pip install 'deeptutor[rag-lightrag]'` 安装。该额外依赖包含受支持的 LightRAG SDK，但不会安装 MinerU。如需结构化 PDF 解析，请在文档解析中单独选择 MinerU，并配置其云端模式或安装其本地 CLI；纯文本及其他解析引擎均不需要 MinerU。
+内置的 LightRAG 引擎通过 `pip install 'deeptutor[rag-lightrag]'` 安装。该额外依赖包含受支持的 LightRAG SDK，但不会安装 MinerU。如需结构化解析，请在文档解析中单独选择 MinerU，并配置其云端模式或安装当前的本地 CLI。MinerU 支持 PDF、常见的光栅图像、DOCX、PPTX 和 XLSX；旧版 `magic-pdf` 命令仍仅支持 PDF。纯文本及其他解析引擎均不需要 MinerU。
 
 </details>
 
@@ -444,7 +447,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor 学习空间中心" width="900">
 </div>
 
-学习空间是内容库、组织与个性化层。**我的课程**按学科归拢对话，并将导师线程嵌套在所属父线程下；聊天历史可按课程或线程类型筛选，并支持固定、归档或移动会话。**对话与素材**还包含笔记本 — 记录可在笔记本之间移动或复制，并支持导出为 Markdown — 以及保存你的答案、参考答案和解析的题库。**个性化**包含掌握路径、人格预设、技能（`SKILL.md` 剧本）、一键安装的 **MCP 服务**，以及来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录的 **CLI 应用**，每个应用的使用指南按需加载。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
+学习空间是内容库、组织与个性化层。**我的课程**按学科归拢对话，并将导师线程嵌套在所属父线程下；聊天历史可按课程或线程类型筛选，并支持固定、归档或移动会话。**对话与素材**还包含笔记本 — 记录可在笔记本之间移动或复制，并支持导出为 Markdown — 以及保存你的答案、参考答案和解析的题库。**个性化**包含人格预设、技能（`SKILL.md` 剧本）、一键安装的 **MCP 服务**，以及来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录的 **CLI 应用**，每个应用的使用指南按需加载。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="从 EduHub 导入技能" width="900">
@@ -478,7 +481,9 @@ Memory Graph 展示整个金字塔 — L3 综合位于中心，L2 在中间圆�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor 设置中心" width="900">
 </div>
 
-Settings 是操作控制面板，带有实时状态条（后端健康状况与整个进程树的常驻内存占用）和一个常驻的可搜索导航栏，一键直达任意页面：**外观**（主题、UI 语言与模型输出语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（Connections 连接、LLM、任务模型、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（工具、每个能力的参数、起始建议、附件上限）、**Partners 与智能体**（可在对话轮次中调用的子智能体），以及**记忆**（整合器预算）。**连接**保存一份厂商凭证，并将其镜像到该厂商可服务的每一处 — 一把密钥只需录入一次，无需在五个页面里分别粘贴；**任务模型**为那些没人特意关心的后台工作（比如给会话命名、撰写输入框的起始建议）指定一个小而快的模型，留空时则回退到当前的默认模型。
+Settings 是操作控制面板，带有实时状态条（后端健康状况与整个进程树的常驻内存占用）和一个常驻的可搜索导航栏，一键直达任意页面：**外观**（主题、UI 语言与模型输出语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（Connections 连接、LLM、任务模型、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（Video Learning、工具、每个能力的参数、起始建议、附件上限）、**Partners 与智能体**（九种本地智能体运行框架）、**记忆**（整合器预算），以及**关于**（版本检查与安全更新）。**连接**保存一份厂商凭证，并将其镜像到该厂商可服务的每一处 — 一把密钥只需录入一次，无需在五个页面里分别粘贴；**任务模型**为那些没人特意关心的后台工作（比如给会话命名、撰写输入框的起始建议）指定一个小而快的模型，留空时则回退到当前的默认模型。
+
+Settings → Chat 下的 **Video Learning** 默认使用 YouTube 官方的隐私增强型 IFrame Player。若要让播放保持在本地，请设置由管理员管理的 Invidious API 来源（例如 `http://127.0.0.1:3000`），测试后选择 Invidious 并保存。新建或重新打开的视频会立即采用该提供商，同时保留相同的素材 ID 和进度。Invidious 媒体通过 DeepTutor 的字节范围代理进行流式传输；上游 URL 既不会暴露给浏览器，也不会存储到磁盘。如果实例发生故障，DeepTutor 将保持与 YouTube 离线，直到学习者明确选择原生 YouTube 回退方案。公共字幕辅导是可选功能：安装 `.[video-learning]`；即使未安装，播放仍会继续，但基于转录的 **在此解释** 功能会被禁用并说明原因。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外观设置与主题" width="900">
@@ -569,7 +574,7 @@ SID=$(deeptutor run deep_research "调研 2026 年 RAG 论文" \
 deeptutor run deep_question "就那篇调研测验我" --session "$SID" --format json
 ```
 
-仓库根目录附带 [`SKILL.md`](SKILL.md) — 约 150 行的交接文档，让任何支持工具调用的 LLM 一次性掌握所有接口。将其传递给 Claude Code、Codex 或 OpenCode（它们会自动读取 `SKILL.md`），或将 `deeptutor run` 包装为 LangChain / AutoGen 循环中的工具。完整示例：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
+仓库根目录附带 [`SKILL.md`](SKILL.md) — 约 200 行的交接文档，让任何支持工具调用的 LLM 一次性掌握所有接口。将其传递给 Claude Code、Codex 或 OpenCode（它们会自动读取 `SKILL.md`），或将 `deeptutor run` 包装为 LangChain / AutoGen 循环中的工具。完整示例：[Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
 
 </details>
 
@@ -582,7 +587,7 @@ deeptutor run deep_question "就那篇调研测验我" --session "$SID" --format
 | `deeptutor doctor [--online]` | 检查工作区是否已准备好启动会话；`--online` 还会探测已配置的模型提供商，`--format json` 打印报告 |
 | `deeptutor start [--home PATH] [--dev]` | 同时启动后端 + 前端；`--dev` 启用前端热更新 |
 | `deeptutor serve [--port PORT]` | 仅启动 FastAPI 后端 |
-| `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`）；添加 `--format json` 可获得 NDJSON 输出 |
+| `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`）；添加 `--format json` 可获得 NDJSON 输出 |
 | `deeptutor chat` | 交互式 REPL，支持能力、工具、知识库、笔记本和历史控制 |
 | `deeptutor partner list/create/start/stop` | 管理 IM 连接的 Partners |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | 管理知识库并同步已注册的 GitHub/Web 来源（包含来源添加/移除命令） |
@@ -667,7 +672,7 @@ deeptutor skill install clawhub:udiedrichsen/stock-analysis
 
 当多个发布者共用同一个 slug 时，搜索结果会列出每个发布者及其完整限定的安装引用（`clawhub:<ownerHandle>/<slug>`）。
 
-在 `settings/skill_hubs.json` 中添加更多注册表：`type: "clawhub"` 条目指向任何兼容的 HTTP API（EduHub 和 ClawHub 都支持），`type: "command"` 包装注册表自带的任何获取 CLI，`"default"` 选择用于裸 slug 的 Hub。所有这些来源都经过同一个导入安全门。
+在 `data/user/settings/skill_hubs.json` 中添加更多注册表：`type: "clawhub"` 条目指向任何兼容的 HTTP API（EduHub 和 ClawHub 都支持），`type: "command"` 包装注册表自带的任何获取 CLI，`"default"` 选择用于裸 slug 的 Hub。所有这些来源都经过同一个导入安全门。
 
 </details>
 

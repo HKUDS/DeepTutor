@@ -20,6 +20,7 @@ import type { KnowledgeUploadPolicy } from "@/lib/knowledge-api";
 import {
   formatKnowledgeTimestamp,
   isMarginNoteKb,
+  kbProvider,
   kbDetailSections,
   providerUsesEmbeddingMetadata,
   resolveKbStatus,
@@ -36,6 +37,9 @@ import KbSettingsSection from "./KbSettingsSection";
 import KbGitHubSourcesSection from "./KbGitHubSourcesSection";
 import KbWebSourcesSection from "./KbWebSourcesSection";
 import KbMarginNoteDevicesSection from "./KbMarginNoteDevicesSection";
+import KnowledgeEngineIcon, {
+  knowledgeSourceIconId,
+} from "./KnowledgeEngineIcon";
 
 interface KnowledgeBaseDetailProps {
   kb: KnowledgeBase | null;
@@ -163,45 +167,55 @@ export default function KnowledgeBaseDetail({
       {/* Header */}
       <div className="border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            {onBack && (
-              <button
-                type="button"
-                onClick={onBack}
-                className="mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                {t("Knowledge bases")}
-              </button>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate font-serif text-[18px] font-semibold tracking-tight text-[var(--foreground)]">
-                {kb.name}
-              </h1>
-              {kb.is_default && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-                  <Star className="h-3 w-3" fill="currentColor" />
-                  {t("Default")}
-                </span>
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <KnowledgeEngineIcon
+              engine={knowledgeSourceIconId({
+                provider: kbProvider(kb),
+                type: kb.metadata?.type,
+              })}
+              size={36}
+              className="mt-0.5"
+            />
+            <div className="min-w-0 flex-1">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  {t("Knowledge bases")}
+                </button>
               )}
-              {kb.assigned && (
-                <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
-                  {kb.provenance_label || t("Assigned by admin")}
-                </span>
-              )}
-              <KbStatusBadge
-                kb={kb}
-                isReindexingLocally={isReindexingLocally}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="truncate font-serif text-[18px] font-semibold tracking-tight text-[var(--foreground)]">
+                  {kb.name}
+                </h1>
+                {kb.is_default && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                    <Star className="h-3 w-3" fill="currentColor" />
+                    {t("Default")}
+                  </span>
+                )}
+                {kb.assigned && (
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                    {kb.provenance_label || t("Assigned by admin")}
+                  </span>
+                )}
+                <KbStatusBadge
+                  kb={kb}
+                  isReindexingLocally={isReindexingLocally}
+                />
+              </div>
+              <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
+                {provider}
+                {!pageIndexProvider ? ` · ${embeddingLabel}` : ""} ·{" "}
+                {t("Updated")} {updatedLabel}
+                {lastIndexedLabel
+                  ? ` · ${t("Last indexed")} ${lastIndexedLabel}`
+                  : ""}
+              </p>
             </div>
-            <p className="mt-1 text-[12px] text-[var(--muted-foreground)]">
-              {provider}
-              {!pageIndexProvider ? ` · ${embeddingLabel}` : ""} ·{" "}
-              {t("Updated")} {updatedLabel}
-              {lastIndexedLabel
-                ? ` · ${t("Last indexed")} ${lastIndexedLabel}`
-                : ""}
-            </p>
           </div>
           {canRetry && (
             <button

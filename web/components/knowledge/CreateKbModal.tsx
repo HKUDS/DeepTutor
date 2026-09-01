@@ -5,18 +5,22 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   Check,
+  ChevronRight,
   ExternalLink,
-  FolderOpen,
   FolderSearch,
   Link2,
   Loader2,
   Plus,
   Server,
-  Smartphone,
 } from "lucide-react";
 import Modal from "@/components/common/Modal";
 import { useImaConnection } from "@/hooks/useImaConnection";
 import {
+  getGraphRagConfig,
+  getLightRagConfig,
+  getLightRagServerConfig,
+  getLlamaIndexConfig,
+  getPageIndexConfig,
   probeLightRagServer,
   probeLinkedFolder,
   type KnowledgeUploadPolicy,
@@ -35,6 +39,7 @@ import {
 } from "@/lib/knowledge-helpers";
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
+import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
 
 const OBSIDIAN_SOURCE = "obsidian";
 const MARGINNOTE4_SOURCE = "marginnote4";
@@ -55,6 +60,7 @@ interface CreateKbModalProps {
     provider: string;
     files: File[];
     pageindexMode?: "flash" | "standard";
+    searchMode?: string;
   }) => Promise<void>;
   /** Link a pre-built engine index folder in place (no copy, no re-index). */
   onConnectLinkedFolder: (params: {
@@ -84,7 +90,7 @@ interface CreateKbModalProps {
     knowledgeBaseId: string;
   }) => Promise<void>;
   /** Open the RAG pipeline settings (to add a missing API key). */
-  onConfigureProvider?: () => void;
+  onConfigureProvider?: (providerId: string) => void;
   /** Open straight into a given mode (e.g. "link" from the Obsidian card). */
   initialMode?: Mode;
   /** Pre-select a link source (engine id or "obsidian") when opening in link mode. */
@@ -122,7 +128,14 @@ export default function CreateKbModal({
   // LightRAG Server engine (new mode): a connection instead of an upload.
   const [serverUrl, setServerUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [serverMode, setServerMode] = useState("");
+  const [retrievalMode, setRetrievalMode] = useState("");
+  const [serverDefault, setServerDefault] = useState<{
+    server_url: string;
+    api_key_set: boolean;
+  } | null>(null);
+  const [engineDefaultSummary, setEngineDefaultSummary] = useState<string[]>(
+    [],
+  );
   const [serverProbe, setServerProbe] = useState<LightRagServerProbe | null>(
     null,
   );
@@ -181,10 +194,70 @@ export default function CreateKbModal({
     setProbing(false);
     setServerUrl("");
     setApiKey("");
-    setServerMode("");
+    setRetrievalMode("");
+    setServerDefault(null);
     setServerProbe(null);
     setServerProbing(false);
   }, [isOpen, providers, firstLinkable, initialMode, initialSource]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== "new") return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        let summary: string[] = [];
+        if (provider === "llamaindex") {
+          const config = await getLlamaIndexConfig();
+          summary = [
+            `${t("Retrieval profile")}: ${config.retrieval_profile}`,
+            `${t("Results per query")}: ${config.top_k}`,
+            `${t("Chunk size")}: ${config.chunk_size} / ${t("Chunk overlap")}: ${config.chunk_overlap}`,
+          ];
+        } else if (provider === "graphrag") {
+          const config = await getGraphRagConfig();
+          summary = [
+            `${t("Response style")}: ${config.response_type}`,
+            `${t("Community level")}: ${config.community_level}`,
+          ];
+        } else if (provider === "lightrag") {
+          const config = await getLightRagConfig();
+          summary = [
+            `${t("Results per query")}: ${config.top_k}`,
+            `${t("Files in parallel")}: ${config.max_concurrent_files}`,
+            `${t("Concurrent LLM calls")}: ${config.llm_model_max_async}`,
+          ];
+        } else if (provider === "pageindex") {
+          const config = await getPageIndexConfig();
+          summary = [
+            config.configured ? t("API key configured") : t("API key missing"),
+          ];
+        } else if (provider === LIGHTRAG_SERVER_PROVIDER) {
+          const config = await getLightRagServerConfig();
+          if (!cancelled) {
+            setServerDefault(config);
+            setServerUrl(config.server_url);
+          }
+          summary = [
+            config.server_url || t("No default server URL"),
+            config.api_key_set ? t("API key configured") : t("No API key"),
+          ];
+        } else if (provider === "pageindex-oss") {
+          summary = [t("Uses the globally active chat model")];
+        }
+        if (!cancelled) setEngineDefaultSummary(summary);
+      } catch {
+        if (!cancelled) setEngineDefaultSummary([]);
+      }
+    };
+
+    setEngineDefaultSummary([]);
+    if (provider !== LIGHTRAG_SERVER_PROVIDER) setServerDefault(null);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mode, provider, t]);
 
   // A fresh path / source invalidates a stale probe verdict.
   useEffect(() => {
@@ -204,9 +277,7 @@ export default function CreateKbModal({
   const isPageIndexCloud = provider === "pageindex";
   const isPageIndexOSS = provider === "pageindex-oss";
   const isLightRagServer = provider === LIGHTRAG_SERVER_PROVIDER;
-  const serverModeOptions = activeProvider?.modes ?? [];
-  const effectiveServerMode =
-    serverMode || activeProvider?.default_mode || serverModeOptions[0] || "";
+  const modeOptions = activeProvider?.modes ?? [];
 
   const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
 
@@ -261,6 +332,10 @@ export default function CreateKbModal({
       const result = await probeLightRagServer({
         serverUrl: trimmedServerUrl,
         apiKey: apiKey.trim(),
+        useSavedApiKey:
+          !apiKey.trim() &&
+          !!serverDefault?.api_key_set &&
+          trimmedServerUrl.replace(/\/+$/, "") === serverDefault.server_url,
       });
       setServerProbe(result);
     } catch (err) {
@@ -281,7 +356,7 @@ export default function CreateKbModal({
             name: trimmed,
             serverUrl: trimmedServerUrl,
             apiKey: apiKey.trim(),
-            mode: effectiveServerMode,
+            mode: retrievalMode,
           });
         } else {
           await onCreate({
@@ -290,6 +365,7 @@ export default function CreateKbModal({
             files: selection.validFiles,
             pageindexMode:
               isPageIndexOSS && pageIndexMode ? pageIndexMode : undefined,
+            searchMode: retrievalMode || undefined,
           });
         }
       } else if (linkIsIma) {
@@ -398,6 +474,11 @@ export default function CreateKbModal({
             providerUnavailable={providerUnavailable}
             providerNeedsKey={providerNeedsKey}
             onConfigureProvider={onConfigureProvider}
+            activeProvider={activeProvider}
+            engineDefaultSummary={engineDefaultSummary}
+            modeOptions={modeOptions}
+            retrievalMode={retrievalMode}
+            setRetrievalMode={setRetrievalMode}
             isPageIndexCloud={isPageIndexCloud}
             isPageIndexOSS={isPageIndexOSS}
             pageIndexMode={pageIndexMode}
@@ -412,9 +493,12 @@ export default function CreateKbModal({
                   setServerUrl={setServerUrl}
                   apiKey={apiKey}
                   setApiKey={setApiKey}
-                  serverMode={effectiveServerMode}
-                  setServerMode={setServerMode}
-                  modeOptions={serverModeOptions}
+                  hasSavedApiKey={!!serverDefault?.api_key_set}
+                  usingSavedDefault={
+                    !!serverDefault?.server_url &&
+                    serverUrl.trim().replace(/\/+$/, "") ===
+                      serverDefault.server_url
+                  }
                   submitting={submitting}
                   probing={serverProbing}
                   probe={serverProbe}
@@ -532,6 +616,11 @@ function NewModeFields({
   providers,
   provider,
   setProvider,
+  activeProvider,
+  engineDefaultSummary,
+  modeOptions,
+  retrievalMode,
+  setRetrievalMode,
   submitting,
   providerUnavailable,
   providerNeedsKey,
@@ -549,10 +638,15 @@ function NewModeFields({
   providers: RagProviderSummary[];
   provider: string;
   setProvider: (id: string) => void;
+  activeProvider?: RagProviderSummary;
+  engineDefaultSummary: string[];
+  modeOptions: string[];
+  retrievalMode: string;
+  setRetrievalMode: (mode: string) => void;
   submitting: boolean;
   providerUnavailable: boolean;
   providerNeedsKey: boolean;
-  onConfigureProvider?: () => void;
+  onConfigureProvider?: (providerId: string) => void;
   isPageIndexCloud: boolean;
   isPageIndexOSS: boolean;
   pageIndexMode: "" | "flash" | "standard";
@@ -583,7 +677,10 @@ function NewModeFields({
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={() => setProvider(p.id)}
+                  onClick={() => {
+                    setProvider(p.id);
+                    setRetrievalMode("");
+                  }}
                   className={`group flex w-full flex-1 flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
                     selected
                       ? "border-[var(--primary)] bg-[var(--primary)]/5"
@@ -591,8 +688,9 @@ function NewModeFields({
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-medium text-[var(--foreground)]">
-                      {p.name}
+                    <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
+                      <KnowledgeEngineIcon engine={p.id} size={24} />
+                      <span className="truncate">{p.name}</span>
                     </span>
                     {needsKey ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
@@ -641,7 +739,7 @@ function NewModeFields({
             {providerNeedsKey && onConfigureProvider && (
               <button
                 type="button"
-                onClick={onConfigureProvider}
+                onClick={() => onConfigureProvider(provider)}
                 className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-amber-900 underline-offset-2 hover:underline dark:text-amber-100"
               >
                 {t("Configure")}
@@ -650,6 +748,75 @@ function NewModeFields({
           </div>
         )}
       </div>
+
+      {activeProvider && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/25 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[12px] font-medium text-[var(--foreground)]">
+                {t("Engine defaults")}
+              </div>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                {t(
+                  "This knowledge base starts with the saved engine configuration.",
+                )}
+              </p>
+            </div>
+            {onConfigureProvider && (
+              <button
+                type="button"
+                onClick={() => onConfigureProvider(provider)}
+                className="inline-flex shrink-0 items-center gap-1 text-[11.5px] font-medium text-[var(--primary)] hover:underline"
+              >
+                {t("Edit defaults")}
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          {engineDefaultSummary.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {engineDefaultSummary.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-[10.5px] text-[var(--muted-foreground)]"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {modeOptions.length > 0 && (
+        <div>
+          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+            {t("Retrieval mode")}
+          </label>
+          <select
+            value={retrievalMode}
+            onChange={(event) => setRetrievalMode(event.target.value)}
+            disabled={submitting}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+          >
+            <option value="">
+              {t("Use engine default: {{mode}}", {
+                mode: activeProvider?.default_mode || modeOptions[0],
+              })}
+            </option>
+            {modeOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+            {t(
+              "This override applies only to this knowledge base; the engine default stays unchanged.",
+            )}
+          </p>
+        </div>
+      )}
 
       {isPageIndexOSS && (
         <div>
@@ -721,9 +888,8 @@ function LightRagServerFields({
   setServerUrl,
   apiKey,
   setApiKey,
-  serverMode,
-  setServerMode,
-  modeOptions,
+  hasSavedApiKey,
+  usingSavedDefault,
   submitting,
   probing,
   probe,
@@ -734,9 +900,8 @@ function LightRagServerFields({
   setServerUrl: (value: string) => void;
   apiKey: string;
   setApiKey: (value: string) => void;
-  serverMode: string;
-  setServerMode: (value: string) => void;
-  modeOptions: string[];
+  hasSavedApiKey: boolean;
+  usingSavedDefault: boolean;
   submitting: boolean;
   probing: boolean;
   probe: LightRagServerProbe | null;
@@ -776,6 +941,12 @@ function LightRagServerFields({
             "The base URL of your running LightRAG server. Documents are indexed there — nothing is uploaded or copied.",
           )}
         </p>
+        {usingSavedDefault && (
+          <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+            <Check className="h-3 w-3" />
+            {t("Using saved engine default · editable for this KB")}
+          </p>
+        )}
       </div>
 
       <div>
@@ -796,24 +967,12 @@ function LightRagServerFields({
         />
       </div>
 
-      {modeOptions.length > 0 && (
-        <div>
-          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-            {t("Retrieval mode")}
-          </label>
-          <select
-            value={serverMode}
-            onChange={(event) => setServerMode(event.target.value)}
-            disabled={submitting}
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-          >
-            {modeOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
+      {hasSavedApiKey && !apiKey && usingSavedDefault && (
+        <p className="-mt-2 text-[11px] text-[var(--muted-foreground)]">
+          {t(
+            "The saved API key will be used. Enter a value only to override it.",
+          )}
+        </p>
       )}
 
       {probe && <ServerProbeVerdict probe={probe} t={t} />}
@@ -920,8 +1079,9 @@ function LinkModeFields({
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-medium text-[var(--foreground)]">
-                    {p.name}
+                  <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
+                    <KnowledgeEngineIcon engine={p.id} size={24} />
+                    <span className="truncate">{p.name}</span>
                   </span>
                   {selected ? (
                     <Check className="h-3.5 w-3.5 text-[var(--primary)]" />
@@ -954,8 +1114,8 @@ function LinkModeFields({
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--foreground)]">
-                <FolderOpen className="h-3.5 w-3.5" />
+              <span className="flex items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
+                <KnowledgeEngineIcon engine="obsidian" size={24} />
                 {t("Obsidian")}
               </span>
               {linkIsObsidian && (
@@ -981,8 +1141,8 @@ function LinkModeFields({
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--foreground)]">
-                <Smartphone className="h-3.5 w-3.5" />
+              <span className="flex items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
+                <KnowledgeEngineIcon engine="marginnote4" size={24} />
                 {t("MarginNote 4")}
               </span>
               {linkIsMarginNote && (

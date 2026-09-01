@@ -18,6 +18,7 @@ import StandaloneComposer, {
   type StandaloneComposerSubmission,
 } from "@/components/chat/home/StandaloneComposer";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
 
 export function MasteryComposer({
@@ -43,6 +44,8 @@ export function MasteryComposer({
     setLLMSelection,
     setPersonaSelection,
   } = useUnifiedChat();
+  const { capabilities, activeCapabilityValue, selectCapability } =
+    useWorkspaceChatActions();
 
   // A turn paused on an ask_user card is still "streaming", but typing an
   // answer is exactly how it moves forward — the composer stays live.
@@ -67,8 +70,11 @@ export function MasteryComposer({
         // How many times the tutor may consult the selected agent this turn.
         // Absent when no agent is picked, which is the ordinary case.
         submission.subagentBudget
-          ? { subagent_consult_budget: submission.subagentBudget }
-          : undefined,
+          ? {
+              ...(submission.config ?? {}),
+              subagent_consult_budget: submission.subagentBudget,
+            }
+          : submission.config,
         submission.notebookReferences,
         submission.historyReferences,
         { bookReferences: submission.bookReferences },
@@ -82,9 +88,10 @@ export function MasteryComposer({
 
   return (
     <StandaloneComposer
-      // No capability chip: this screen only ever runs the mastery tutor and
-      // says so in its own header, so a picker that cannot pick is noise.
-      showCapabilityChip={false}
+      capabilities={capabilities}
+      activeCapValue={activeCapabilityValue}
+      onSelectCapability={selectCapability}
+      showCapabilityChip
       hasMessages={state.messages.length > 0}
       isStreaming={state.isStreaming}
       awaitingUserReply={awaitingUserReply}

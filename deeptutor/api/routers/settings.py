@@ -251,7 +251,7 @@ class ChatStarterSettingsUpdate(BaseModel):
 
 
 class MinerUSettingsUpdate(BaseModel):
-    """MinerU PDF-parsing backend settings.
+    """MinerU document-parsing backend settings.
 
     ``api_token`` is tri-state: ``None`` keeps the stored token (the UI sends
     None when the user didn't edit the secret field), ``""`` clears it, and a

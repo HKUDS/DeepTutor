@@ -38,6 +38,7 @@ def _make_bot_class(channel: "QQChannel") -> "type[botpy.Client]":
 
         async def on_ready(self):
             logger.info("QQ bot ready: {}", self.robot.name)
+            channel.set_setup_state("connected")
 
         async def on_c2c_message_create(self, message: "C2CMessage"):
             await channel._on_message(message, is_group=False)
@@ -85,10 +86,21 @@ class QQChannel(BaseChannel):
         """Start the QQ bot."""
         if not QQ_AVAILABLE:
             logger.error("QQ SDK not installed. Run: pip install qq-botpy")
+            self.set_setup_state(
+                "unavailable",
+                message="Required channel dependency is not installed on this server.",
+            )
             return
 
         if not self.config.app_id or not self.config.secret:
             logger.error("QQ app_id and secret not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         self._running = True
@@ -101,9 +113,14 @@ class QQChannel(BaseChannel):
         """Run the bot connection with auto-reconnect."""
         while self._running:
             try:
+                self.set_setup_state("connecting")
                 await self._client.start(appid=self.config.app_id, secret=self.config.secret)
             except Exception as e:
                 logger.warning("QQ bot error: {}", e)
+                self.set_setup_state(
+                    "error",
+                    message="Channel connection failed; the listener will retry.",
+                )
             if self._running:
                 logger.info("Reconnecting QQ bot in 5 seconds...")
                 await asyncio.sleep(5)

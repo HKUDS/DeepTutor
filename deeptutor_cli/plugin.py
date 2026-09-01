@@ -2,7 +2,7 @@
 CLI Plugin Command
 ==================
 
-List and inspect registered plugins (tools, capabilities, playground).
+List and inspect registered tools and capabilities.
 """
 
 from __future__ import annotations

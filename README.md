@@ -50,6 +50,8 @@
 
 ### 📦 Releases
 
+> **[2026.8.31]** [v1.6.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.2) — Immersive YouTube learning, a plugin-driven Visualize catalog, three new agent harnesses, safer reading citations, multi-format MinerU, live Partner channel status, and guided updates.
+
 > **[2026.8.30]** [v1.6.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.1) — One vendor key linked to every service it serves, a task model for background work, Settings as a searchable navigator, a sidebar you arrange, and first-party **LightRAG**.
 
 > **[2026.8.27]** [v1.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0) — Faithful EPUB reading and annotations, Courses with Little Tutor and Ask Questions, bounded web-source sync, shared Books with private learning state, and Serply/native search.
@@ -197,7 +199,7 @@
 
 </details>
 
-> ✨ **v1.6.1 is live.** `pip install -U deeptutor` picks up the latest stable release.
+> ✨ **v1.6.2 is live.** `pip install -U deeptutor` picks up the latest stable release.
 
 ### 📰 News
 
@@ -212,9 +214,10 @@
 
 DeepTutor is an agent-native learning workspace that connects tutoring, problem solving, quiz generation, research, visualization, and mastery practice in one extensible system.
 
-- **One runtime for every mode** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Mastery Path, and Immersive Reading share one capability runtime and session context while keeping purpose-built loops and pipelines.
+- **One runtime for every mode** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading, and Immersive Watching share one capability runtime and session context while keeping purpose-built loops and pipelines.
 - **Connected learning context** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, and Memory stay available across every workflow instead of living in isolated tools.
-- **Subagents and Partners** — consult a live coding CLI (Claude Code, Codex, Gemini, Antigravity, Kimi, opencode, or MiMo) or a Partner from any turn (or import their past conversations), and run persistent IM companions on the same brain.
+- **Immersive video learning** — paste a YouTube link for privacy-enhanced native playback, synchronized captions, timestamp-grounded tutoring, and resumable progress; administrators can switch playback to a self-hosted Invidious instance without rebuilding materials.
+- **Subagents and Partners** — consult a live agent harness (Claude Code, Codex, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw, or DeepSeek) or a Partner from any turn (or import past conversations), and run persistent IM companions on the same brain.
 - **Multi-engine knowledge** — versioned RAG libraries across LlamaIndex, PageIndex, GraphRAG, LightRAG, a remote LightRAG Server, a Tencent IMA or MarginNote 4 library, or a linked Obsidian vault, with pluggable document parsing.
 - **Extensible tools and skills** — built-in tools, MCP servers, CLI apps, image / video / voice generation models, and installable community skills from EduHub.
 - **Inspectable memory** — L1 traces, L2 surface summaries, and L3 synthesis make personalization visible and editable, with a Memory Graph that traces every claim back to its evidence.
@@ -286,6 +289,7 @@ pip install -e ".[rag-lightrag]"    # Built-in LightRAG engine (exact supported 
 pip install -e ".[graphrag]"        # Microsoft GraphRAG engine
 pip install -e ".[dev]"             # tests/lint tools
 pip install -e ".[partners]"        # Partner IM channel SDKs
+pip install -e ".[video-learning]"  # optional YouTube public-caption adapter
 pip install -e ".[matrix]"          # Matrix channel without E2EE/libolm
 pip install -e ".[matrix-e2e]"      # Matrix E2EE; requires libolm
 pip install -e ".[math-animator]"   # Manim addon; requires LaTeX/ffmpeg/system libs
@@ -407,7 +411,7 @@ deeptutor init --cli
 deeptutor chat
 ```
 
-`deeptutor init --cli` shares the same `data/user/settings/` layout as the full app but skips the backend/frontend port prompts and defaults embeddings to **off** (choose `Yes` if you plan to use `deeptutor kb …` or RAG tools). It still writes a complete runtime layout (`system.json`, `auth.json`, `integrations.json`, `model_catalog.json`, `main.yaml`, `agents.yaml`) and still prompts for the active LLM provider and model.
+`deeptutor init --cli` shares the same `data/user/settings/` layout as the full app but skips the backend/frontend port prompts and defaults embeddings to **off** (choose `Yes` if you plan to use `deeptutor kb …` or RAG tools). It still writes the key runtime files (`system.json`, `auth.json`, `integrations.json`, `interface.json`, `model_catalog.json`, `main.yaml`, `agents.yaml`) and prompts for the active LLM provider and model.
 
 <details>
 <summary><b>Common commands</b></summary>
@@ -464,6 +468,7 @@ Everything under `data/user/settings/` is plain JSON/YAML. The **Settings** page
 | `auth.json` | Optional auth toggle, username, password hash, token/cookie settings |
 | `integrations.json` | Optional PocketBase and sidecar integration settings |
 | `interface.json` | UI and model output language / theme / sidebar preferences |
+| `video_learning.json` | Default YouTube/Invidious playback provider, Invidious origins, and optional transcript adapter |
 | `main.yaml` | Runtime behavior defaults and path injection |
 | `agents.yaml` | Capability/tool temperature and token settings |
 
@@ -476,7 +481,7 @@ Project-root `.env` is **not** read as an application config file. For a minimal
 Start with the main surfaces you will use day to day: Chat, Partners, My Agents, Co-Writer, Book, Knowledge Center, Learning Space, Memory, and Settings. The tour then covers Multi-User deployments for shared, isolated workspaces.
 
 <div align="center">
-<img src="assets/figs/web-1.4.6+/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
+<img src="assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
 </div>
 
 <details>
@@ -507,7 +512,7 @@ User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, 
 
 Context comes in two kinds: **sticky session context** (subagent, knowledge bases, persona, model, voice) lives on the composer toolbar and persists across turns; **one-time references** (files, chat history, books, notebooks, question bank, imported agents) come from the `+` menu for a single turn.
 
-Chat is also the launch point for deeper capabilities: **Ask Questions** for a context-aware clarification card, **Quiz** for question generation, **Visualize** for charts / diagrams / animations, **Mastery Path** for learning-plan flows, and **Immersive Reading** for PDFs, EPUBs, and other documents beside the thread with page/chapter grounding, persistent position and outlines, annotations, and selected-text actions. **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*.
+Home keeps **Chat**, **Ask Questions**, **Quiz**, **Visualize**, and **Immersive Watching** one click away; **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*. **Mastery Path** and **Immersive Reading** are dedicated sidebar workspaces, while Course Study keeps its own course-bound context.
 
 </details>
 
@@ -543,7 +548,7 @@ For faster setup, the Partner channel page can create a Feishu/Lark app or WeCom
 <img src="assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agents workspace" width="900">
 </div>
 
-My Agents turns other agents into context for DeepTutor, and does two distinct things. **Connect a live agent** — a Claude Code, Codex, Gemini, Antigravity, Kimi, opencode, or MiMo Code CLI on your machine, or one of your Partners — and consult it from inside a chat turn: DeepTutor actually *runs* the other agent and streams its work into the Activity panel via the `consult_subagent` tool. Select it with the Agent chip (or type `@`), and set how many rounds the consult may take.
+My Agents turns other agents into context for DeepTutor, and does two distinct things. **Connect a live agent** — Claude Code, Codex, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, or DeepSeek Harness on your machine, or one of your Partners — and consult it from inside a chat turn: DeepTutor actually *runs* the other agent and streams its work into the Activity panel via the `consult_subagent` tool. Select it with the Agent chip (or type `@`), and set how many rounds the consult may take.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Consulting a Claude Code subagent live" width="900">
@@ -606,7 +611,7 @@ Knowledge bases are the document collections behind RAG — they ground Chat tur
 
 Creating a KB, you either **create new** (upload documents and build a fresh index) or **link existing** (reuse an index built elsewhere, read in place with no re-index). A KB can also track **GitHub repositories** (repo, branch, glob) or **documentation-site URLs** (bounded crawl depth and page count); on-demand sync hash-diffs added, changed, and removed content so followed documentation stays current without re-uploading. Re-indexing writes a new flat `version-N` directory and keeps prior ones, so a working index is never destroyed mid-rebuild. A single document can be removed even from an **error**-state base — dropping a file that failed to parse without a full delete-and-rebuild. Document parsing — Text-only, MinerU, Docling, Tika, markitdown, PyMuPDF4LLM, or LiteParse — is chosen in **Settings → Knowledge Base**, with local model downloads off by default. Docling can also run in **remote** mode against a Docling Serve server (no local install or models needed), configured via **Settings → Document Parsing** (`mode=remote`, a server base URL, and an optional API key) or the `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables. Tika is remote-only and points at an Apache Tika server (`TIKA_SERVER_URL`). The CLI mirrors the lifecycle with `list/info/create/add/search/set-default/delete`, source add/remove commands, `list-sources`, and `sync`.
 
-The built-in LightRAG engine is installed with `pip install 'deeptutor[rag-lightrag]'`. That extra contains the supported LightRAG SDK but does not install MinerU. Choose MinerU independently in Document Parsing and either configure its cloud mode or install its local CLI when structured PDF parsing is wanted; text-only and the other parsing engines do not require MinerU.
+The built-in LightRAG engine is installed with `pip install 'deeptutor[rag-lightrag]'`. That extra contains the supported LightRAG SDK but does not install MinerU. Choose MinerU independently in Document Parsing and either configure its cloud mode or install its current local CLI when structured parsing is wanted. MinerU accepts PDF, common raster images, DOCX, PPTX, and XLSX; the legacy `magic-pdf` command remains PDF-only. Text-only and the other parsing engines do not require MinerU.
 
 </details>
 
@@ -617,7 +622,7 @@ The built-in LightRAG engine is installed with `pip install 'deeptutor[rag-light
 <img src="assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Space hub" width="900">
 </div>
 
-Learning Space is the library, organization, and personalization layer. **My courses** groups each subject's conversations and keeps tutor threads nested under their parent; Chat History filters by course or thread type and lets you pin, archive, or move sessions. **Conversations & Materials** also holds notebooks — with records that move or copy between notebooks and a Markdown export — and a question bank that keeps your answer, reference answer, and explanation. **Personalization** holds mastery paths, personas, skills (`SKILL.md` playbooks), one-click **MCP Services**, and **CLI Apps** from the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog, each with an on-demand usage guide. Everything here can be reused from Chat, Partners, Co-Writer, and Book.
+Learning Space is the library, organization, and personalization layer. **My courses** groups each subject's conversations and keeps tutor threads nested under their parent; Chat History filters by course or thread type and lets you pin, archive, or move sessions. **Conversations & Materials** also holds notebooks — with records that move or copy between notebooks and a Markdown export — and a question bank that keeps your answer, reference answer, and explanation. **Personalization** holds personas, skills (`SKILL.md` playbooks), one-click **MCP Services**, and **CLI Apps** from the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) catalog, each with an on-demand usage guide. Everything here can be reused from Chat, Partners, Co-Writer, and Book.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="Import skills from EduHub" width="900">
@@ -651,7 +656,9 @@ The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in t
 <img src="assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings is the operational control plane, with a live status strip (backend health and resident memory across the process tree) and a persistent, searchable navigator that reaches any page in one click: **Appearance** (theme, interface and model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, starting points, attachment caps), **Partners & Agents** (the subagents you can consult from a turn), and **Memory** (the consolidator's budgets). A **connection** holds one vendor credential and mirrors it into every service that vendor can serve, so a key is entered once rather than pasted into five pages; **task models** pin a small, fast model for the work nobody asked for — naming a conversation, writing the composer's starting points — and resolve to the active default when left empty.
+Settings is the operational control plane, with a live status strip (backend health and resident memory across the process tree) and a persistent, searchable navigator that reaches any page in one click: **Appearance** (theme, interface and model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (Video Learning, tools, per-capability parameters, starting points, attachment caps), **Partners & Agents** (nine local harnesses), **Memory** (the consolidator's budgets), and **About** (version checks and safe updates). A **connection** holds one vendor credential and mirrors it into every service that vendor can serve, so a key is entered once rather than pasted into five pages; **task models** pin a small, fast model for the work nobody asked for — naming a conversation, writing the composer's starting points — and resolve to the active default when left empty.
+
+**Video Learning** under Settings → Chat defaults to the official privacy-enhanced YouTube IFrame Player. To keep playback local, set the administrator-managed Invidious API origin (for example `http://127.0.0.1:3000`), test it, select Invidious, and save. New or reopened videos pick up the provider immediately with the same material ID and progress. Invidious media is streamed through DeepTutor's byte-range proxy; upstream URLs are neither exposed to the browser nor stored on disk. If the instance fails, DeepTutor stays offline from YouTube until the learner explicitly chooses the native YouTube fallback. Public-caption tutoring is optional: install `.[video-learning]`; playback continues without it, while transcript-based **Explain here** is disabled with a reason.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -742,7 +749,7 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-The repo ships a root [`SKILL.md`](SKILL.md) — a ~150-line handover doc that teaches any tool-using LLM the whole surface in one read. Hand it to Claude Code, Codex, or OpenCode (they pick up `SKILL.md` automatically), or wrap `deeptutor run` as a tool in a LangChain / AutoGen loop. Full recipes: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
+The repo ships a root [`SKILL.md`](SKILL.md) — a ~200-line handover doc that teaches any tool-using LLM the whole surface in one read. Hand it to Claude Code, Codex, or OpenCode (they pick up `SKILL.md` automatically), or wrap `deeptutor run` as a tool in a LangChain / AutoGen loop. Full recipes: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
 
 </details>
 
@@ -755,7 +762,7 @@ The repo ships a root [`SKILL.md`](SKILL.md) — a ~150-line handover doc that t
 | `deeptutor doctor [--online]` | Check whether the workspace is ready to start a session; `--online` also probes the configured model provider, `--format json` prints the report |
 | `deeptutor start [--home PATH] [--dev]` | Launch backend + frontend together; `--dev` enables frontend HMR |
 | `deeptutor serve [--port PORT]` | Start only the FastAPI backend |
-| `deeptutor run <capability> <message>` | Run a single capability turn (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`); add `--format json` for NDJSON output |
+| `deeptutor run <capability> <message>` | Run a single capability turn (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`); add `--format json` for NDJSON output |
 | `deeptutor chat` | Interactive REPL with capability, tool, KB, notebook, and history controls |
 | `deeptutor partner list/create/start/stop` | Manage IM-connected partners |
 | `deeptutor kb list/info/create/add/search/set-default/delete/list-sources/sync` | Manage knowledge bases and synchronize registered GitHub/web sources (with source add/remove commands) |
@@ -841,7 +848,7 @@ deeptutor skill install clawhub:udiedrichsen/stock-analysis
 When several publishers share the same slug, search shows each publisher and a
 fully scoped install ref (`clawhub:<ownerHandle>/<slug>`).
 
-Add more registries in `settings/skill_hubs.json`: a `type: "clawhub"` entry points at any compatible HTTP API (EduHub and ClawHub both speak it), `type: "command"` wraps whatever fetch CLI a registry ships, and `"default"` chooses the hub used for bare slugs. All of them feed the same import gate.
+Add more registries in `data/user/settings/skill_hubs.json`: a `type: "clawhub"` entry points at any compatible HTTP API (EduHub and ClawHub both speak it), `type: "command"` wraps whatever fetch CLI a registry ships, and `"default"` chooses the hub used for bare slugs. All of them feed the same import gate.
 
 </details>
 

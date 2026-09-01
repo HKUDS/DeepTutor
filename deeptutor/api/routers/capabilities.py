@@ -10,9 +10,7 @@ stock install offered the entry, sent the turn anyway, and the learner got
 ``Unknown capability: whisper_visitor. Available: [...]`` (#963).
 
 This endpoint is the missing fact, and deliberately nothing more: the names the
-registry holds, built-ins and plugins alike. Callers that need a capability's
-description or schema already have ``/api/v1/plugins/list``, which enumerates
-every tool as well and is far too heavy to ask "is this feature installed?".
+registry holds, built-ins and plugins alike.
 """
 
 from __future__ import annotations

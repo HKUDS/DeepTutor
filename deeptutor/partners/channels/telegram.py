@@ -271,6 +271,13 @@ class TelegramChannel(BaseChannel):
         """Start the Telegram bot with long polling."""
         if not self.config.token:
             logger.error("Telegram bot token not configured")
+            self.set_setup_state(
+                "action_required",
+                message=(
+                    "Required fields are missing. Complete the channel configuration "
+                    "and save again."
+                ),
+            )
             return
 
         self._running = True
@@ -333,6 +340,7 @@ class TelegramChannel(BaseChannel):
         self._bot_user_id = getattr(bot_info, "id", None)
         self._bot_username = getattr(bot_info, "username", None)
         logger.info("Telegram bot @{} connected", bot_info.username)
+        self.set_setup_state("connected")
 
         try:
             await self._app.bot.set_my_commands(self.BOT_COMMANDS)

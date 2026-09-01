@@ -36,11 +36,11 @@ def _unique_txt_path(target_dir: Path, source: Path, used: set[str]) -> Path:
     return target_dir / candidate
 
 
-def _extract_parser_text(path: Path) -> str:
+def _extract_parser_text(path: Path, parse_service=None) -> str:  # noqa: ANN001
     from deeptutor.services.parsing import ParserError, get_parse_service
 
     try:
-        parsed = get_parse_service().parse(path)
+        parsed = (parse_service or get_parse_service()).parse(path)
     except ParserError as exc:
         logger.error("GraphRAG ingestion: failed to parse %s: %s", path.name, exc)
         return ""
@@ -64,8 +64,9 @@ async def prepare_input(file_paths: Iterable[str], root_dir: Path) -> int:
     go through the shared document-parse bridge, so the active settings engine
     (text-only, MinerU, Docling, markitdown) owns conversion before GraphRAG
     sees text.
-    Image files are skipped in this text-first path; unsupported files are
-    logged and ignored.
+    Images go through the active parser when it supports their suffix (for
+    example MinerU); otherwise they are skipped. Unsupported files are logged
+    and ignored.
     """
     target_dir = storage.input_dir(root_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -89,10 +90,19 @@ async def prepare_input(file_paths: Iterable[str], root_dir: Path) -> int:
         written += _write_doc(target_dir, path, text, used)
 
     for file_path_str in classification.image_files:
-        logger.warning(
-            "GraphRAG ingestion skips image file (text-only engine): %s",
-            Path(file_path_str).name,
-        )
+        from deeptutor.services.parsing import get_parse_service
+
+        path = Path(file_path_str)
+        parse_service = get_parse_service()
+        supports = getattr(parse_service, "supports", lambda _path: False)
+        if supports(path):
+            text = _extract_parser_text(path, parse_service)
+            written += _write_doc(target_dir, path, text, used)
+        else:
+            logger.warning(
+                "GraphRAG ingestion skips image unsupported by the active parser: %s",
+                path.name,
+            )
     for file_path_str in classification.unsupported:
         logger.warning("GraphRAG ingestion skips unsupported file: %s", Path(file_path_str).name)
 

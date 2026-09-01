@@ -18,6 +18,7 @@ import StandaloneComposer, {
   type StandaloneComposerSubmission,
 } from "@/components/chat/home/StandaloneComposer";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
 import { setReadingViewport } from "@/lib/reading-turn-state";
 
@@ -49,6 +50,8 @@ export function ReadingComposer({
     setLLMSelection,
     setPersonaSelection,
   } = useUnifiedChat();
+  const { capabilities, activeCapabilityValue, selectCapability } =
+    useWorkspaceChatActions();
 
   const awaitingUserReply = hasPendingAskUser(
     state.messages[state.messages.length - 1]?.events,
@@ -82,8 +85,11 @@ export function ReadingComposer({
         // How many times the companion may consult the selected agent this
         // turn. Absent when no agent is picked, which is the ordinary case.
         submission.subagentBudget
-          ? { subagent_consult_budget: submission.subagentBudget }
-          : undefined,
+          ? {
+              ...(submission.config ?? {}),
+              subagent_consult_budget: submission.subagentBudget,
+            }
+          : submission.config,
         submission.notebookReferences,
         historyReferences,
         { bookReferences: submission.bookReferences },
@@ -106,9 +112,10 @@ export function ReadingComposer({
 
   return (
     <StandaloneComposer
-      // The active material is named in the header above; a capability chip
-      // here would only repeat it.
-      showCapabilityChip={false}
+      capabilities={capabilities}
+      activeCapValue={activeCapabilityValue}
+      onSelectCapability={selectCapability}
+      showCapabilityChip
       hasMessages={state.messages.length > 0}
       isStreaming={state.isStreaming}
       awaitingUserReply={awaitingUserReply}
