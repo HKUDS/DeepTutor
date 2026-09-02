@@ -121,6 +121,28 @@ def test_supports_is_a_side_effect_free_suffix_check(
     assert parser.calls == []
 
 
+def test_supports_compound_suffixes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = _FakeParser()
+    parser.supported_formats = lambda: frozenset({".tar.gz", ".dclg.xml"})
+    _use(monkeypatch, parser)
+    service = ParseService(cache_root=tmp_path / "cache")
+
+    assert service.supports(tmp_path / "missing.TAR.GZ", engine="fake") is True
+    assert service.supports(tmp_path / "missing.DCLG.XML", engine="fake") is True
+    assert service.supports(tmp_path / "missing.gz", engine="fake") is False
+
+
+def test_empty_supported_formats_delegates_to_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parser = _FakeParser()
+    parser.supported_formats = lambda: frozenset()
+    _use(monkeypatch, parser)
+    service = ParseService(cache_root=tmp_path / "cache")
+
+    assert service.supports(tmp_path / "custom.vendor-format", engine="fake") is True
+
+
 def test_missing_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _use(monkeypatch, _FakeParser())
     service = ParseService(cache_root=tmp_path / "cache")

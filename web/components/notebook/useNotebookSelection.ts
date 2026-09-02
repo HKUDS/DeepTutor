@@ -9,7 +9,7 @@ import {
 /**
  * Hook for managing notebook and record selection across notebook pickers.
  *
- * Backed by the real notebook system (`/api/v1/notebook/*`) so that records
+ * Backed by the real notebook system (`/api/notebooks/*`) so that records
  * saved via Save-to-Notebook from any surface are immediately discoverable
  * here as references.
  */

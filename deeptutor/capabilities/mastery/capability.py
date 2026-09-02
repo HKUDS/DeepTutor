@@ -21,14 +21,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import cast
 import uuid
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import (
+    CapabilityManifest,
+    StreamBusProtocol,
+    TurnCapability,
+)
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.learning.identity import resolve_mastery_path_binding
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def resolve_mastery_path_id(context: UnifiedContext) -> str:
@@ -46,7 +51,7 @@ def resolve_mastery_path_id(context: UnifiedContext) -> str:
     return binding.path_id
 
 
-class MasteryPathCapability(BaseCapability):
+class MasteryPathCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="mastery_path",
         description=(
@@ -58,7 +63,7 @@ class MasteryPathCapability(BaseCapability):
         cli_aliases=["mastery"],
     )
 
-    async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+    async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
         binding = resolve_mastery_path_binding(
             configured_path_id=str(context.metadata.get("mastery_path_id") or ""),
             book_references=(context.metadata or {}).get("book_references", []),
@@ -67,8 +72,9 @@ class MasteryPathCapability(BaseCapability):
         context.metadata["mastery_mode"] = True
         context.metadata["mastery_path_id"] = binding.path_id
         pipeline = AgenticChatPipeline(language=context.language)
+        concrete_stream = cast(StreamBus, stream)
         if context.metadata.get("mastery_path_lease_managed"):
-            await pipeline.run(context, stream)
+            await pipeline.run(context, concrete_stream)
             return
 
         # CLI and SDK calls bypass TurnRuntimeManager, so the capability owns
@@ -92,7 +98,7 @@ class MasteryPathCapability(BaseCapability):
             turn_id,
         )
         try:
-            await pipeline.run(context, stream)
+            await pipeline.run(context, concrete_stream)
         finally:
             # Released by turn: ``mastery_switch`` may have moved this turn onto
             # a different path since the lease was taken.

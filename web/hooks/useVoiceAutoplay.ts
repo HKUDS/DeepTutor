@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch, apiUrl } from "@/lib/api";
@@ -20,7 +22,7 @@ let inflight: Promise<boolean> | null = null;
 function fetchGlobalDefault(): Promise<boolean> {
   if (cachedGlobal !== null) return Promise.resolve(cachedGlobal);
   if (!inflight) {
-    inflight = apiFetch(apiUrl("/api/v1/settings"))
+    inflight = apiFetch(apiUrl("/api/settings"))
       .then((r) => (r.ok ? r.json() : null))
       .then((payload) => {
         cachedGlobal = Boolean(payload?.ui?.voice_autoplay);
@@ -44,7 +46,8 @@ function scopedKey(prefix: string, scopeKey?: string): string {
 function readSession(scopeKey?: string): boolean | null {
   if (typeof window === "undefined") return null;
   try {
-    const v = window.sessionStorage.getItem(
+    const v = browserStorage.readRaw(
+      "session",
       scopedKey(SESSION_KEY_PREFIX, scopeKey),
     );
     return v === "on" ? true : v === "off" ? false : null;
@@ -56,7 +59,8 @@ function readSession(scopeKey?: string): boolean | null {
 function writeSession(value: boolean, scopeKey?: string): void {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(
+    browserStorage.writeRaw(
+      "session",
       scopedKey(SESSION_KEY_PREFIX, scopeKey),
       value ? "on" : "off",
     );
@@ -96,7 +100,7 @@ export function useVoiceAutoplayPreference() {
         new CustomEvent(GLOBAL_EVENT, { detail: { value: next } }),
       );
     }
-    await apiFetch(apiUrl("/api/v1/settings/voice-autoplay"), {
+    await apiFetch(apiUrl("/api/settings/voice-autoplay"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ voice_autoplay: next }),
@@ -162,7 +166,8 @@ export function useVoiceAutoplay(scopeKey?: string) {
   const markPrompted = useCallback(() => {
     if (typeof window === "undefined") return;
     try {
-      window.sessionStorage.setItem(
+      browserStorage.writeRaw(
+        "session",
         scopedKey(PROMPTED_KEY_PREFIX, normalizedScopeKey),
         "1",
       );
@@ -179,7 +184,8 @@ export function useVoiceAutoplay(scopeKey?: string) {
     if (typeof window === "undefined") return false;
     try {
       return (
-        window.sessionStorage.getItem(
+        browserStorage.readRaw(
+          "session",
           scopedKey(PROMPTED_KEY_PREFIX, normalizedScopeKey),
         ) !== "1"
       );

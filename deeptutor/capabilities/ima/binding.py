@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from deeptutor.core.context import UnifiedContext
 from deeptutor.knowledge.kb_types import IMA_KB_TYPE
 
-# Cached on context.metadata: a tuple of bindings, empty once we have looked and
+# Cached per extension: a tuple of bindings, empty once we have looked and
 # found none. Absence of the key means "not resolved yet".
 _CACHE_KEY = "_ima_bindings"
 
@@ -42,11 +42,12 @@ class ImaBinding:
 
 def ima_bindings(context: UnifiedContext) -> tuple[ImaBinding, ...]:
     """Every connected IMA library among this turn's selected knowledge bases."""
-    cached = context.metadata.get(_CACHE_KEY)
+    state = context.extension("ima")
+    cached = state.get(_CACHE_KEY)
     if cached is not None:
         return tuple(cached)
     resolved = _resolve(context)
-    context.metadata[_CACHE_KEY] = resolved
+    state[_CACHE_KEY] = resolved
     return resolved
 
 

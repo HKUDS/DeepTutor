@@ -1,26 +1,5 @@
-"""
-Session Management Module
-=========================
+"""Unified repository-backed session management."""
 
-Provides unified session management for all agent modules.
-
-Usage:
-    from deeptutor.services.session import BaseSessionManager
-
-    class MySessionManager(BaseSessionManager):
-        def __init__(self):
-            super().__init__("my_module")
-
-        def _get_session_id_prefix(self) -> str:
-            return "my_"
-
-        def _get_default_title(self) -> str:
-            return "New My Session"
-
-        # ... implement other abstract methods
-"""
-
-from .base_session_manager import BaseSessionManager
 from .protocol import SessionStoreProtocol
 from .sqlite_store import (
     SQLiteSessionStore,
@@ -28,6 +7,8 @@ from .sqlite_store import (
     make_imported_session_id,
 )
 from .turn_runtime import TurnRuntimeManager, get_turn_runtime_manager
+
+_pocketbase_store_instances: dict[str, SessionStoreProtocol] = {}
 
 
 def get_session_store() -> SessionStoreProtocol:
@@ -41,14 +22,22 @@ def get_session_store() -> SessionStoreProtocol:
     from deeptutor.services.pocketbase_client import is_pocketbase_enabled
 
     if is_pocketbase_enabled():
-        from .pocketbase_store import PocketBaseSessionStore
+        from deeptutor.services.config import load_integrations_settings
 
-        return PocketBaseSessionStore()
+        from .pocketbase_store import PocketBaseSessionStore
+        from .scope import pocketbase_scope
+
+        url = str(load_integrations_settings().get("pocketbase_url") or "").rstrip("/")
+        scope = pocketbase_scope(url)
+        if scope.cache_key not in _pocketbase_store_instances:
+            store = PocketBaseSessionStore()
+            store.store_scope = scope
+            _pocketbase_store_instances[scope.cache_key] = store
+        return _pocketbase_store_instances[scope.cache_key]
     return get_sqlite_session_store()
 
 
 __all__ = [
-    "BaseSessionManager",
     "SessionStoreProtocol",
     "SQLiteSessionStore",
     "TurnRuntimeManager",

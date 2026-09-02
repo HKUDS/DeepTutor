@@ -21,6 +21,8 @@ claims) are engine calls behind tools.
 
 from __future__ import annotations
 
+from typing import cast
+
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.reading.capability import (
     MATERIAL_ID_KEY,
@@ -28,12 +30,16 @@ from deeptutor.capabilities.reading.capability import (
     resolve_material_id,
 )
 from deeptutor.capabilities.reading.tools import READING_TOOL_NAMES
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import (
+    CapabilityManifest,
+    StreamBusProtocol,
+    TurnCapability,
+)
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 
-class ImmersiveReadingCapability(BaseCapability):
+class ImmersiveReadingCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="immersive_reading",
         description=(
@@ -45,14 +51,14 @@ class ImmersiveReadingCapability(BaseCapability):
         cli_aliases=["reading", "read"],
     )
 
-    async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+    async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
         # Normalised so the flag and the id can never disagree: the loop
         # capability keys off the id alone, and a turn with no document open is
         # deliberately just a normal chat turn.
         material_id = resolve_material_id(context)
         context.metadata[MATERIAL_ID_KEY] = material_id
         context.metadata[MODE_KEY] = True
-        await AgenticChatPipeline(language=context.language).run(context, stream)
+        await AgenticChatPipeline(language=context.language).run(context, cast(StreamBus, stream))
 
 
 __all__ = ["ImmersiveReadingCapability"]

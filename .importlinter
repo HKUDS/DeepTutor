@@ -1,0 +1,37 @@
+[importlinter]
+root_package = deeptutor
+
+[importlinter:contract:core-purity]
+name = Core contains values and protocols only
+type = forbidden
+source_modules =
+    deeptutor.core
+forbidden_modules =
+    deeptutor.app
+    deeptutor.api
+    deeptutor.runtime
+    deeptutor.services
+
+[importlinter:contract:no-api-backimports]
+name = Runtime and service layers do not import API adapters
+type = forbidden
+source_modules =
+    deeptutor.runtime
+    deeptutor.services
+    deeptutor.knowledge
+    deeptutor.learning
+    deeptutor.multi_user
+    deeptutor.capabilities
+    deeptutor.agents
+forbidden_modules =
+    deeptutor.api
+ignore_imports =
+    deeptutor.learning.tests.** -> deeptutor.api.**
+
+[importlinter:contract:app-adapter-direction]
+name = Application does not import API adapters
+type = forbidden
+source_modules =
+    deeptutor.app
+forbidden_modules =
+    deeptutor.api

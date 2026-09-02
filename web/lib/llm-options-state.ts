@@ -1,5 +1,5 @@
 import type { LLMOption, LLMOptionsResponse } from "@/lib/llm-options";
-import type { LLMSelection } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 
 export type LLMOptionsStatus = "loading" | "ready" | "error";
 

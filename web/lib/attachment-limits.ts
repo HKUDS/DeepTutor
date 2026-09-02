@@ -12,7 +12,7 @@ import {
  * Runtime chat-attachment limits.
  *
  * The caps live in `data/user/settings/system.json` (editable at
- * /settings/attachments) and are enforced server-side on every message; the
+ * /settings#attachments) and are enforced server-side on every message; the
  * composer mirrors them client-side so oversized picks are rejected before a
  * pointless upload. Defaults apply until the fetch resolves — they match the
  * backend defaults, so a pre-hydration pick is never gated more loosely than
@@ -40,7 +40,7 @@ let inflight: Promise<AttachmentLimits> | null = null;
 function loadAttachmentLimits(): Promise<AttachmentLimits> {
   if (cached) return Promise.resolve(cached);
   if (!inflight) {
-    inflight = apiFetch(apiUrl("/api/v1/settings/chat-attachments"))
+    inflight = apiFetch(apiUrl("/api/settings/chat-attachments"))
       .then(async (response) => {
         if (!response.ok) return DEFAULT_ATTACHMENT_LIMITS;
         const data = (await response.json().catch(() => null)) as {

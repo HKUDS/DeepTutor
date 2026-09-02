@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getModeBadgeLabel } from "@/components/chat/home/ChatMessages";
+import { getModeBadgeLabel } from "@/features/chat/messages";
 import type { ChatOutlineEntry } from "@/lib/chat-outline";
 
 /**

@@ -1,130 +1,194 @@
-import fs from "fs";
-import path from "path";
-import vm from "vm";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const APP_SERVER_DIR = path.resolve(".next/server/app");
-const APP_OUTPUT_DIR = path.resolve(".next");
+const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const NEXT_OUTPUT_DIR = path.join(WEB_ROOT, ".next");
+const BUILD_MANIFEST_PATH = path.join(NEXT_OUTPUT_DIR, "build-manifest.json");
+const NEXT_BIN = path.join(WEB_ROOT, "node_modules", "next", "dist", "bin", "next");
 
-const ROUTE_BUDGETS_KB = {
-  "/": 700,
-  "/co-writer": 200,
-  "/co-writer/[docId]": 700,
-  "/knowledge": 450,
-  "/memory": 450,
-  "/settings": 180,
-};
+const ROUTE_TARGETS = [
+  { route: "/", requestPath: "/", budgetKb: 300 },
+  { route: "/chat/[sessionId]", requestPath: "/chat/perf-budget", budgetKb: 1_020 },
+  { route: "/settings", requestPath: "/settings", budgetKb: 840 },
+  { route: "/knowledge-bases", requestPath: "/knowledge-bases", budgetKb: 540 },
+  { route: "/co-writer", requestPath: "/co-writer", budgetKb: 320 },
+  { route: "/co-writer/[docId]", requestPath: "/co-writer/perf-budget", budgetKb: 515 },
+  {
+    route: "/reading/[workspaceId]/sessions/[sessionId]",
+    requestPath: "/reading/perf-budget/sessions/perf-session",
+    budgetKb: 1_120,
+  },
+  {
+    route: "/mastery/[pathId]/sessions/[sessionId]",
+    requestPath: "/mastery/perf-budget/sessions/perf-session",
+    budgetKb: 980,
+  },
+];
 
-const ROOT_SHELL_BUDGET_KB = 220;
+const ROOT_SHELL_BUDGET_KB = 390;
+const SERVER_TIMEOUT_MS = 20_000;
 
-function walkManifestFiles(rootDir) {
-  const entries = [];
-  for (const item of fs.readdirSync(rootDir, { withFileTypes: true })) {
-    const fullPath = path.join(rootDir, item.name);
-    if (item.isDirectory()) {
-      entries.push(...walkManifestFiles(fullPath));
-      continue;
-    }
-    if (item.name.endsWith("_client-reference-manifest.js")) {
-      entries.push(fullPath);
-    }
+function assertBuildPresent() {
+  if (!fs.existsSync(BUILD_MANIFEST_PATH)) {
+    throw new Error("Missing .next build output. Run `npm run build` before `npm run perf:check`.");
   }
-  return entries.sort();
 }
 
-function evaluateManifest(filePath) {
-  const context = { globalThis: { __RSC_MANIFEST: {} } };
-  vm.createContext(context);
-  vm.runInContext(fs.readFileSync(filePath, "utf8"), context);
-  const manifestEntries = Object.entries(context.globalThis.__RSC_MANIFEST);
-  if (manifestEntries.length !== 1) {
-    throw new Error(`Expected exactly one manifest in ${filePath}`);
-  }
-  const [manifestKey, manifest] = manifestEntries[0];
-  return { manifestKey, manifest };
-}
-
-function normalizePublicRoute(manifestKey) {
-  const withoutGroups = manifestKey.replace(/\/\([^/]+\)/g, "");
-  const withoutPageSuffix = withoutGroups.replace(/\/page$/, "");
-  return withoutPageSuffix || "/";
-}
-
-function resolveChunkSize(chunkPath) {
-  const filePath = path.join(APP_OUTPUT_DIR, chunkPath.replace(/^\/+/, ""));
-  return fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
-}
-
-function sumChunkSizes(chunkPaths) {
-  return chunkPaths.reduce((total, chunkPath) => total + resolveChunkSize(chunkPath), 0);
-}
-
-if (!fs.existsSync(APP_SERVER_DIR)) {
-  console.error("Missing .next/server/app. Run `npm run build` before `npm run perf:check`.");
-  process.exit(1);
-}
-
-const manifestFiles = walkManifestFiles(APP_SERVER_DIR).filter(
-  (filePath) => !filePath.includes("_global-error") && !filePath.includes("_not-found"),
-);
-
-const routeRows = [];
-let rootShellSize = 0;
-
-for (const manifestFile of manifestFiles) {
-  const { manifestKey, manifest } = evaluateManifest(manifestFile);
-  const route = normalizePublicRoute(manifestKey);
-  const entryFiles = manifest.entryJSFiles;
-
-  const rootLayoutFiles = entryFiles["[project]/app/layout"] || [];
-  if (!rootShellSize && rootLayoutFiles.length > 0) {
-    rootShellSize = sumChunkSizes(rootLayoutFiles);
-  }
-  const rootLayoutChunks = new Set(rootLayoutFiles);
-
-  const routeEntryKey = Object.keys(entryFiles).find(
-    (key) => key.startsWith("[project]/app/") && key.endsWith("/page") && !key.includes("/layout"),
-  );
-  if (!routeEntryKey) {
-    continue;
-  }
-
-  const chunkPaths = (entryFiles[routeEntryKey] || []).filter(
-    (chunkPath) => !rootLayoutChunks.has(chunkPath),
-  );
-  routeRows.push({
-    route,
-    sizeBytes: sumChunkSizes(chunkPaths),
-    chunks: chunkPaths.map((chunkPath) => path.basename(chunkPath)),
+function findAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close((error) => (error ? reject(error) : resolve(port)));
+    });
   });
 }
 
-let hasFailure = false;
-
-console.log("Route budgets (excluding root shell):");
-for (const row of routeRows) {
-  const sizeKb = Math.round(row.sizeBytes / 1024);
-  const budget = ROUTE_BUDGETS_KB[row.route];
-  const status = budget && sizeKb > budget ? "FAIL" : "OK";
-  if (status === "FAIL") {
-    hasFailure = true;
+async function waitForServer(baseUrl, processState) {
+  const deadline = Date.now() + SERVER_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (processState.exited) {
+      throw new Error(`Next server exited before readiness:\n${processState.output}`);
+    }
+    try {
+      const response = await fetch(`${baseUrl}/login`);
+      if (response.ok) return;
+    } catch {
+      // Startup races are expected until the listener is ready.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  console.log(
-    `${status.padEnd(4)} ${row.route.padEnd(12)} ${String(sizeKb).padStart(4)}KB` +
-      (budget ? ` / budget ${budget}KB` : ""),
+  throw new Error(`Timed out waiting for the production server:\n${processState.output}`);
+}
+
+async function startBuildServer() {
+  const port = await findAvailablePort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [NEXT_BIN, "start", "--hostname", "127.0.0.1", "--port", String(port)],
+    {
+      cwd: WEB_ROOT,
+      env: {
+        ...process.env,
+        NEXT_TELEMETRY_DISABLED: "1",
+        DEEPTUTOR_API_BASE_URL: "http://127.0.0.1:9",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const state = { exited: false, output: "" };
+  const capture = (chunk) => {
+    state.output = `${state.output}${String(chunk)}`.slice(-8_000);
+  };
+  child.stdout.on("data", capture);
+  child.stderr.on("data", capture);
+  child.once("exit", () => {
+    state.exited = true;
+  });
+  await waitForServer(baseUrl, state);
+  return { baseUrl, child };
+}
+
+function scriptChunks(html, baseUrl) {
+  const chunks = new Set();
+  for (const match of html.matchAll(/<script[^>]+src="([^"]+\.js(?:\?[^\"]*)?)"/g)) {
+    const pathname = decodeURIComponent(new URL(match[1], baseUrl).pathname);
+    const relative = pathname.replace(/^\/_next\//, "");
+    if (relative.startsWith("static/") && relative.endsWith(".js")) chunks.add(relative);
+  }
+  return chunks;
+}
+
+async function loadRouteChunks(baseUrl, requestPath) {
+  const response = await fetch(`${baseUrl}${requestPath}`);
+  if (!response.ok) {
+    throw new Error(`${requestPath} returned HTTP ${response.status} during route measurement`);
+  }
+  return scriptChunks(await response.text(), baseUrl);
+}
+
+function intersection(sets) {
+  if (sets.length === 0) return new Set();
+  return sets.slice(1).reduce(
+    (shared, current) => new Set([...shared].filter((item) => current.has(item))),
+    new Set(sets[0]),
   );
 }
 
-if (rootShellSize) {
-  const rootShellKb = Math.round(rootShellSize / 1024);
-  const rootStatus = rootShellKb > ROOT_SHELL_BUDGET_KB ? "FAIL" : "OK";
-  if (rootStatus === "FAIL") {
-    hasFailure = true;
-  }
-  console.log(
-    `${rootStatus.padEnd(4)} ${"root-shell".padEnd(12)} ${String(rootShellKb).padStart(4)}KB / budget ${ROOT_SHELL_BUDGET_KB}KB`,
-  );
+function difference(source, ...excludedSets) {
+  const excluded = new Set(excludedSets.flatMap((items) => [...items]));
+  return new Set([...source].filter((item) => !excluded.has(item)));
 }
 
-if (hasFailure) {
-  process.exit(1);
+function chunkSize(chunkPath) {
+  const filePath = path.join(NEXT_OUTPUT_DIR, chunkPath);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Build HTML references missing client chunk ${chunkPath}`);
+  }
+  return fs.statSync(filePath).size;
 }
+
+function sumChunkSizes(chunks) {
+  return [...chunks].reduce((total, chunk) => total + chunkSize(chunk), 0);
+}
+
+function kb(bytes) {
+  return Math.round(bytes / 1024);
+}
+
+function printRow(label, sizeKb, budgetKb) {
+  const failed = sizeKb > budgetKb;
+  console.log(
+    `${(failed ? "FAIL" : "OK").padEnd(4)} ${label.padEnd(47)} ${String(sizeKb).padStart(4)}KB / budget ${budgetKb}KB`,
+  );
+  return failed;
+}
+
+async function main() {
+  assertBuildPresent();
+  const buildManifest = JSON.parse(fs.readFileSync(BUILD_MANIFEST_PATH, "utf8"));
+  const frameworkChunks = new Set([
+    ...(buildManifest.rootMainFiles || []),
+    ...(buildManifest.polyfillFiles || []),
+  ]);
+  const server = await startBuildServer();
+
+  try {
+    const rows = [];
+    for (const target of ROUTE_TARGETS) {
+      rows.push({ ...target, chunks: await loadRouteChunks(server.baseUrl, target.requestPath) });
+    }
+    // Auth uses the root layout but neither utility nor workspace layout, so
+    // it prevents feature shells from being misclassified as the root shell.
+    const authChunks = await loadRouteChunks(server.baseUrl, "/login");
+    const appShellChunks = difference(
+      intersection([...rows.map((row) => row.chunks), authChunks]),
+      frameworkChunks,
+    );
+
+    console.log("Route budgets (raw production JS; framework and root app shell excluded):");
+    let failed = false;
+    for (const row of rows) {
+      const routeChunks = difference(row.chunks, frameworkChunks, appShellChunks);
+      failed = printRow(row.route, kb(sumChunkSizes(routeChunks)), row.budgetKb) || failed;
+    }
+    failed =
+      printRow("root-app-shell", kb(sumChunkSizes(appShellChunks)), ROOT_SHELL_BUDGET_KB) || failed;
+
+    if (failed) process.exitCode = 1;
+  } finally {
+    server.child.kill("SIGTERM");
+  }
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

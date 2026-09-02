@@ -23,7 +23,7 @@ from deeptutor.core.context import UnifiedContext
 
 # Headroom over the consult budget so the loop always has rounds left to write
 # the final answer after the last consult. Read by the pipeline via
-# ``context.metadata["_min_loop_rounds"]`` (a generic seam, like solve's
+# ``context.runtime.min_loop_rounds`` (a generic seam, like solve's
 # ``solve_max_replans``) so a high budget is never clipped by the default round
 # budget.
 _FINISH_HEADROOM = 2
@@ -57,7 +57,7 @@ class SubagentCapability(KnowledgeCapability):
         # Ensure the loop has room for ``budget`` consults plus the answer. This
         # runs once during prompt assembly, before the loop reads its round
         # budget — see ``_FINISH_HEADROOM``.
-        context.metadata["_min_loop_rounds"] = budget + _FINISH_HEADROOM
+        context.runtime.min_loop_rounds = budget + _FINISH_HEADROOM
         return PromptBlock(
             "subagent", _system_text(language, conn["name"], budget, conn.get("kind", ""))
         )
@@ -80,8 +80,8 @@ class SubagentCapability(KnowledgeCapability):
         # Turn-scoped, mutable: persists across the loop's rounds via the shared
         # context object — the consult counter and the backend session id that
         # threads context across the model's successive questions.
-        state = context.metadata.setdefault(
-            "_subagent_state",
+        state = context.extension(self.name).setdefault(
+            "session",
             {"count": 0, "session_id": None, "name": conn["name"]},
         )
         # Persistent continuity: on the first consult of a turn, seed the session
@@ -146,14 +146,11 @@ def _effective_config(config):
 
 
 def _resolve_budget(context: UnifiedContext) -> int:
-    """Consult budget for this turn: a per-turn override from the chat composer
-    (``config.subagent_consult_budget``) if present, else the configured default.
-    """
+    """Resolve the typed per-turn override, then the configured default."""
     from deeptutor.services.subagent import load_subagent_settings
     from deeptutor.services.subagent.config import CONSULT_BUDGET_MAX, CONSULT_BUDGET_MIN
 
-    overrides = context.config_overrides if isinstance(context.config_overrides, dict) else {}
-    raw = overrides.get("subagent_consult_budget")
+    raw = context.runtime.subagent_consult_budget
     if raw is not None:
         try:
             return max(CONSULT_BUDGET_MIN, min(CONSULT_BUDGET_MAX, int(raw)))

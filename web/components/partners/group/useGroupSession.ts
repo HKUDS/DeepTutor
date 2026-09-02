@@ -28,7 +28,7 @@ import {
   recomputeAnswerContent,
   shouldAppendEventContent,
 } from "@/lib/stream";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 export type SeatStatus = "waiting" | "working" | "done" | "error";
 
@@ -317,7 +317,7 @@ export function useGroupSession(group: PartnerGroup, sessionKey: string) {
 
   useEffect(() => {
     const socket = new ReconnectingWebSocket(
-      wsUrl(`/api/v1/partner-groups/${encodeURIComponent(group.group_id)}/ws`),
+      wsUrl(`/ws/partner-groups/${encodeURIComponent(group.group_id)}`),
       {
         onOpen: () => {
           setConnected(true);

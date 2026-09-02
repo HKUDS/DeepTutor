@@ -24,7 +24,6 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
-from deeptutor.core.i18n import t
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
 from deeptutor.runtime.providers.text import sanitize_provider_document, sanitize_provider_text
 from deeptutor.services.cli_apps.catalog import get_entry
@@ -37,6 +36,7 @@ from deeptutor.services.cli_apps.runner import (
     run_app,
 )
 from deeptutor.services.cli_apps.state import InstalledApp, disabled_apps, load_installed
+from deeptutor.services.i18n import t
 from deeptutor.services.sandbox.spec import ExecResult
 
 logger = logging.getLogger(__name__)

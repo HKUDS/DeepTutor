@@ -1238,12 +1238,14 @@ def start(
         get_ws_max_size,
         load_auth_settings,
         load_launch_settings,
+        load_system_settings,
     )
     from deeptutor.services.setup import init_user_directories
 
     init_user_directories(runtime_home)
     ensure_runtime_settings_files()
     settings = load_launch_settings(runtime_home)
+    backend_workers = max(1, int(load_system_settings().get("backend_workers") or 1))
     runtime_env = export_runtime_settings_to_env(overwrite=True)
     auth_enabled = bool(load_auth_settings()["enabled"])
 
@@ -1363,7 +1365,7 @@ def start(
         "info",
         # Disable uvicorn's per-request access log. The selective_access_log
         # middleware (deeptutor/api/main.py) surfaces only non-200s, so routine
-        # 200 polling (/settings, /tools, /knowledge/list, ...) stays out of the
+        # 200 polling (/settings, /tools, /knowledge-bases, ...) stays out of the
         # logs — matching run_server.py's access_log=False.
         "--no-access-log",
         # Chat attachments ride the unified WS as base64 in one JSON message;
@@ -1379,6 +1381,8 @@ def start(
         # ECONNRESET ("Failed to proxy ... socket hang up" -> 500).
         "--timeout-keep-alive",
         str(HTTP_KEEP_ALIVE_TIMEOUT),
+        "--workers",
+        str(backend_workers),
     ]
 
     processes: list[ManagedProcess] = []

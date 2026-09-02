@@ -1,4 +1,4 @@
-import type { StreamEvent } from "./unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 type MessageWithEvents = {
   events?: StreamEvent[];

@@ -58,7 +58,12 @@ class TestAdaptChatKwargsToResponses:
 class TestConvertMessages:
     def test_replays_persisted_native_output_items(self) -> None:
         native_items = [
-            {"type": "reasoning", "id": "rs_1", "summary": []},
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "content": [{"type": "reasoning_text", "text": "Need to inspect the MCP status."}],
+                "summary": [],
+            },
             {
                 "type": "message",
                 "id": "msg_1",

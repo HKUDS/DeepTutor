@@ -2,7 +2,12 @@
 
 import { useEffect, useRef } from "react";
 
-import { useSettings } from "./SettingsContext";
+import {
+  SETTINGS_ANCHOR_EVENT,
+  scrollToSettingsSection,
+  type SettingsAnchorEvent,
+} from "@/features/settings/navigation/settings-scroll";
+import { useSettings } from "@/features/settings/store/SettingsStore";
 
 export type CategorySection = {
   key: string;
@@ -23,6 +28,7 @@ export type CategorySection = {
 export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
   const { setActiveSection } = useSettings();
   const rootRef = useRef<HTMLDivElement>(null);
+  const pendingAnchorRef = useRef<string | null>(null);
 
   // Only the outermost document owns scroll tracking. Merged category pages
   // are also rendered on their legacy routes, so they keep working on their
@@ -36,21 +42,79 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
     );
     if (nested) return;
 
-    const requested = window.location.hash.replace(/^#/, "");
-    const requestedElement = requested
-      ? document.getElementById(requested)
-      : null;
-    const initial =
-      requestedElement && rootElement.contains(requestedElement)
-        ? requested
-        : (sections[0]?.key ?? null);
-    setActiveSection(initial);
-    if (requestedElement && requested !== sections[0]?.key) {
-      requestAnimationFrame(() => {
-        requestedElement.scrollIntoView({ behavior: "auto", block: "start" });
+    const alignToAnchor = (requested: string) => {
+      const requestedElement = requested
+        ? document.getElementById(requested)
+        : null;
+      const validRequested = Boolean(
+        requestedElement && rootElement.contains(requestedElement),
+      );
+      setActiveSection(validRequested ? requested : (sections[0]?.key ?? null));
+      if (requested && !validRequested && sections[0]?.key) {
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}#${sections[0].key}`,
+        );
+      }
+      if (validRequested) {
+        pendingAnchorRef.current = requested;
+        requestAnimationFrame(() => {
+          scrollToSettingsSection(requested, "auto");
+          window.history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}#${requested}`,
+          );
+        });
+      }
+    };
+
+    const applyLocationHash = () => {
+      alignToAnchor(window.location.hash.replace(/^#/, ""));
+    };
+
+    const applyRequestedAnchor = (event: Event) => {
+      const key = (event as SettingsAnchorEvent).detail?.key;
+      if (key) alignToAnchor(key);
+    };
+
+    // Settings sections fetch independently. Late content can move a deep
+    // anchor after the first jump, so keep it aligned across layout changes
+    // until the user deliberately starts navigating the document.
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            const key = pendingAnchorRef.current;
+            if (key) alignToAnchor(key);
+          });
+    resizeObserver?.observe(rootElement);
+
+    const cancelPendingAnchor = () => {
+      pendingAnchorRef.current = null;
+    };
+    const scroller = rootElement.closest<HTMLElement>("[data-settings-scroll]");
+    const cancelEvents = ["wheel", "touchstart", "pointerdown", "keydown"];
+    for (const eventName of cancelEvents) {
+      scroller?.addEventListener(eventName, cancelPendingAnchor, {
+        passive: true,
       });
     }
-    return () => setActiveSection(null);
+
+    applyLocationHash();
+    window.addEventListener("hashchange", applyLocationHash);
+    window.addEventListener(SETTINGS_ANCHOR_EVENT, applyRequestedAnchor);
+    return () => {
+      window.removeEventListener("hashchange", applyLocationHash);
+      window.removeEventListener(SETTINGS_ANCHOR_EVENT, applyRequestedAnchor);
+      resizeObserver?.disconnect();
+      for (const eventName of cancelEvents) {
+        scroller?.removeEventListener(eventName, cancelPendingAnchor);
+      }
+      pendingAnchorRef.current = null;
+      setActiveSection(null);
+    };
     // Anchor handling only matters on mount — re-running it on every
     // `sections` identity change would re-jump the scroll position.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,6 +134,18 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
     let ticking = false;
     const measure = () => {
       ticking = false;
+      const pendingAnchor = pendingAnchorRef.current;
+      if (pendingAnchor) {
+        setActiveSection(pendingAnchor);
+        if (window.location.hash !== `#${pendingAnchor}`) {
+          window.history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}#${pendingAnchor}`,
+          );
+        }
+        return;
+      }
       const threshold = root.getBoundingClientRect().top + 96;
       const allSections = Array.from(
         rootElement.querySelectorAll<HTMLElement>("[data-settings-section]"),

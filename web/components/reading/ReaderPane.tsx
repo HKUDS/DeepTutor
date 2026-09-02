@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -180,7 +182,7 @@ export function ReaderPane({
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(AUTO_JUMP_KEY);
+      const stored = browserStorage.readRaw("local", AUTO_JUMP_KEY);
       if (stored !== null) setAutoJump(stored === "1");
     } catch {
       // Private mode / storage disabled — keep the default.
@@ -191,7 +193,7 @@ export function ReaderPane({
     setAutoJump((current) => {
       const next = !current;
       try {
-        window.localStorage.setItem(AUTO_JUMP_KEY, next ? "1" : "0");
+        browserStorage.writeRaw("local", AUTO_JUMP_KEY, next ? "1" : "0");
       } catch {
         // Non-fatal: the toggle still works for this session.
       }

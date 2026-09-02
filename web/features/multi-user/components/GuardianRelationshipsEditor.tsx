@@ -40,7 +40,9 @@ export function GuardianRelationshipsEditor({
   users: UserRecord[];
 }) {
   const { t } = useTranslation();
-  const [relationships, setRelationships] = useState<GuardianRelationship[]>([]);
+  const [relationships, setRelationships] = useState<GuardianRelationship[]>(
+    [],
+  );
   const [report, setReport] = useState<GuardianReport | null>(null);
   const [guardianId, setGuardianId] = useState("");
   const [permissions, setPermissions] = useState<string[]>([...PERMISSIONS]);
@@ -50,7 +52,9 @@ export function GuardianRelationshipsEditor({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [confirm, setConfirm] = useState<
-    { kind: "revoke"; relationship: GuardianRelationship } | { kind: "reset" } | null
+    | { kind: "revoke"; relationship: GuardianRelationship }
+    | { kind: "reset" }
+    | null
   >(null);
 
   useEffect(() => {
@@ -257,13 +261,16 @@ export function GuardianRelationshipsEditor({
 
           {report && (
             <p className="mt-3 text-xs text-[var(--muted-foreground)]">
-              {t("{{materials}} approved materials · {{resources}} enabled resources", {
-                materials: report.assigned_materials.length,
-                resources:
-                  report.grant_summary.model_count +
-                  report.grant_summary.knowledge_base_count +
-                  report.grant_summary.skill_count,
-              })}
+              {t(
+                "{{materials}} approved materials · {{resources}} enabled resources",
+                {
+                  materials: report.assigned_materials.length,
+                  resources:
+                    report.grant_summary.model_count +
+                    report.grant_summary.knowledge_base_count +
+                    report.grant_summary.skill_count,
+                },
+              )}
             </p>
           )}
 
@@ -308,7 +315,9 @@ export function GuardianRelationshipsEditor({
             : t("Revoke guardian access")
         }
         confirmLabel={
-          confirm?.kind === "reset" ? t("Reset credentials") : t("Revoke access")
+          confirm?.kind === "reset"
+            ? t("Reset credentials")
+            : t("Revoke access")
         }
         tone="danger"
         busy={busy}

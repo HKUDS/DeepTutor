@@ -1,4 +1,5 @@
 import type { UnitKind } from "@/lib/reading-api";
+import { browserStorage } from "@/shared/storage";
 
 export const READING_HISTORY_LIMIT = 50;
 const STORAGE_PREFIX = "dt.reader.history.";
@@ -180,7 +181,7 @@ export function loadReadingHistory(sessionId: string): ReadingLocationHistory {
   if (!sessionId || typeof window === "undefined") return EMPTY_READING_HISTORY;
   try {
     return parseReadingHistory(
-      window.localStorage.getItem(readingHistoryStorageKey(sessionId)),
+      browserStorage.readRaw("local", readingHistoryStorageKey(sessionId)),
     );
   } catch {
     return EMPTY_READING_HISTORY;
@@ -193,7 +194,8 @@ export function saveReadingHistory(
 ): void {
   if (!sessionId || typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
+    browserStorage.writeRaw(
+      "local",
       readingHistoryStorageKey(sessionId),
       JSON.stringify(history),
     );

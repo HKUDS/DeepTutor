@@ -73,7 +73,7 @@ const CREATE_ROUTES: {
 }[] = [
   {
     kind: "knowledge_base",
-    href: () => "/knowledge",
+    href: () => "/knowledge-bases",
     label: "New knowledge base",
   },
   {
@@ -88,7 +88,7 @@ const CREATE_ROUTES: {
   },
   {
     kind: "notebook",
-    href: (courseId) => `/notebook?course=${encodeURIComponent(courseId)}`,
+    href: (courseId) => `/notebooks?course=${encodeURIComponent(courseId)}`,
     label: "New notebook",
   },
 ];

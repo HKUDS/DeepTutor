@@ -30,9 +30,9 @@ class BookStatus(str, Enum):
     DRAFT = "draft"  # ideation only, no spine yet
     SPINE_READY = "spine_ready"  # spine confirmed, compilation pending
     COMPILING = "compiling"
-    # Compilation stopped itself after repeated provider-level failures (quota
-    # exhausted, credentials revoked, provider down). Everything generated so
-    # far is intact; ``resume_book`` continues from here.
+    # Compilation was stopped by the user or by the provider-failure breaker.
+    # Everything generated so far is intact; only an explicit ``resume_book``
+    # continues from here.
     PAUSED = "paused"
     READY = "ready"
     ERROR = "error"

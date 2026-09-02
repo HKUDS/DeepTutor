@@ -1,7 +1,14 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
-import { Bookmark, CheckCircle2, FolderOpen, Inbox, LayoutGrid, XCircle } from "lucide-react";
+import {
+  Bookmark,
+  CheckCircle2,
+  FolderOpen,
+  Inbox,
+  LayoutGrid,
+  XCircle,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { NotebookCategory, QuestionBankStats } from "@/lib/notebook-api";
 import type { BankScope } from "./useQuestionBank";

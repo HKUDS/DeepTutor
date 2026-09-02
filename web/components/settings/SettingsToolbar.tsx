@@ -4,8 +4,8 @@ import { Loader2, Rocket, Save, Undo2, Wand2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
-import { storagePathFor } from "@/lib/settings-nav";
-import { useSettings } from "./SettingsContext";
+import { storagePathFor } from "@/features/settings/navigation/settings-nav";
+import { useSettings } from "@/features/settings/store/SettingsStore";
 
 /**
  * Sticky toolbar above the sub-page content.

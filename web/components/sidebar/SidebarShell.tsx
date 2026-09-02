@@ -137,7 +137,7 @@ export function SidebarShell({
     event.preventDefault();
     drawer?.close();
     onNewChat?.();
-    router.push("/home");
+    router.push("/chat");
   };
 
   // The Chat group shows the last 8 home conversations. Grouped ones are

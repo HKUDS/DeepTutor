@@ -1,4 +1,4 @@
-"""API surface tests for /api/v1/capabilities/registered.
+"""API surface tests for /api/capabilities/registered.
 
 The endpoint exists so a page can ask whether the capability it is about to
 send actually exists here (#963): Whisper ships its pages in this repository
@@ -27,19 +27,26 @@ def client() -> TestClient:
     from deeptutor.api.routers import capabilities
 
     app = FastAPI()
-    app.include_router(capabilities.router, prefix="/api/v1/capabilities")
+    app.include_router(capabilities.router, prefix="/api/capabilities")
     return TestClient(app)
 
 
 def test_registered_lists_the_builtin_capabilities(client) -> None:
-    """The names a turn can be started with, sorted and de-duplicated."""
+    """The backend-owned descriptors are sorted and complete."""
     from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
 
-    body = client.get("/api/v1/capabilities/registered").json()
-    names = body["capabilities"]
+    body = client.get("/api/capabilities/registered").json()
+    descriptors = body["capabilities"]
+    names = [item["id"] for item in descriptors]
 
     assert names == sorted(names)
     assert set(BUILTIN_CAPABILITY_CLASSES) <= set(names)
+    assert "mastery_path" in names
+    assert all(
+        set(item) == {"id", "kind", "available", "manifest", "config_schema"}
+        for item in descriptors
+    )
+    assert all(item["available"] is True for item in descriptors)
 
 
 def test_a_stock_install_reports_whisper_missing(client) -> None:
@@ -49,7 +56,8 @@ def test_a_stock_install_reports_whisper_missing(client) -> None:
     in-tree this test failing is the signal to drop the gate — not to loosen
     the assertion.
     """
-    names = client.get("/api/v1/capabilities/registered").json()["capabilities"]
+    descriptors = client.get("/api/capabilities/registered").json()["capabilities"]
+    names = [item["id"] for item in descriptors]
 
     assert "whisper_visitor" not in names
     assert "whisper_trainee" not in names
@@ -59,12 +67,25 @@ def test_plugin_capabilities_are_reported(client, monkeypatch) -> None:
     """A registered plugin capability is visible, which is what un-gates a page."""
     from deeptutor.runtime.registry import capability_registry as registry_module
 
-    class _StubCapability:
-        name = "whisper_visitor"
-
     registry = registry_module.get_capability_registry()
-    monkeypatch.setitem(registry._capabilities, "whisper_visitor", _StubCapability())
+    original = registry.get_manifests
+    monkeypatch.setattr(
+        registry,
+        "get_manifests",
+        lambda: [
+            *original(),
+            {
+                "name": "whisper_visitor",
+                "kind": "turn",
+                "description": "Practice room",
+                "request_schema": {"type": "object"},
+            },
+        ],
+    )
 
-    names = client.get("/api/v1/capabilities/registered").json()["capabilities"]
+    descriptors = client.get("/api/capabilities/registered").json()["capabilities"]
+    names = [item["id"] for item in descriptors]
 
     assert "whisper_visitor" in names
+    descriptor = next(item for item in descriptors if item["id"] == "whisper_visitor")
+    assert descriptor["config_schema"] == {"type": "object"}

@@ -67,7 +67,7 @@ def test_quiz_attempt_syncs_focus_check_to_question_bank(tmp_path, monkeypatch) 
     monkeypatch.setattr(session_package, "get_sqlite_session_store", lambda: store)
 
     app = FastAPI()
-    app.include_router(book_router.router, prefix="/api/v1/book")
+    app.include_router(book_router.router, prefix="/api")
 
     payload = {
         "book_id": "book-1",
@@ -78,7 +78,7 @@ def test_quiz_attempt_syncs_focus_check_to_question_bank(tmp_path, monkeypatch) 
         "is_correct": False,
     }
     with TestClient(app) as client:
-        response = client.post("/api/v1/book/books/quiz-attempt", json=payload)
+        response = client.post("/api/books/quiz-attempt", json=payload)
 
     assert response.status_code == 200
     assert len(resolved.learning.saved) == 1
@@ -105,10 +105,10 @@ def test_quiz_attempt_does_not_create_a_synthetic_chat_session(tmp_path, monkeyp
     monkeypatch.setattr(session_package, "get_sqlite_session_store", lambda: store)
 
     app = FastAPI()
-    app.include_router(book_router.router, prefix="/api/v1/book")
+    app.include_router(book_router.router, prefix="/api")
     with TestClient(app) as client:
         response = client.post(
-            "/api/v1/book/books/quiz-attempt",
+            "/api/books/quiz-attempt",
             json={
                 "book_id": "book-1",
                 "page_id": "page-1",

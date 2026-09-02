@@ -404,11 +404,11 @@ async def require_admin(
 def _learning_surface_for_path(path: str) -> str:
     normalized = "/" + str(path or "").lstrip("/")
     for root, surface in (
-        ("/api/v1/reading", "reading"),
-        ("/api/v1/chat", "chat"),
-        ("/api/v1/question", "chat"),
-        ("/api/v1/question-notebook", "chat"),
-        ("/api/v1/sessions", "chat"),
+        ("/api/reading", "reading"),
+        ("/api/chat", "chat"),
+        ("/api/question", "chat"),
+        ("/api/question-notebook", "chat"),
+        ("/api/sessions", "chat"),
     ):
         if normalized == root or normalized.startswith(f"{root}/"):
             return surface
@@ -670,7 +670,7 @@ async def register(body: RegisterRequest) -> dict:
 
     Public endpoint that creates the *first* admin account when the user store
     is empty. Once an admin exists, this endpoint is closed; further accounts
-    must be created by an admin via ``POST /api/v1/auth/users``.
+    must be created by an admin via ``POST /api/auth/users``.
 
     Only available when AUTH_ENABLED=true.
     """

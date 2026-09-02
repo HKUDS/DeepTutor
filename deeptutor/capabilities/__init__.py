@@ -10,7 +10,7 @@ full chat tool surface and adds its own owned tools + a system prompt block on
 top when active, instead of running a bespoke pipeline.
 """
 
-from deeptutor.capabilities.protocol import KnowledgeCapability, LoopCapability, PromptBlock
+from deeptutor.capabilities.protocol import KnowledgeCapability, LoopExtension, PromptBlock
 from deeptutor.capabilities.registry import (
     LOOP_CAPABILITIES,
     active_loop_capabilities,
@@ -22,7 +22,7 @@ from deeptutor.capabilities.registry import (
 __all__ = [
     "LOOP_CAPABILITIES",
     "KnowledgeCapability",
-    "LoopCapability",
+    "LoopExtension",
     "PromptBlock",
     "active_loop_capabilities",
     "all_loop_capabilities",

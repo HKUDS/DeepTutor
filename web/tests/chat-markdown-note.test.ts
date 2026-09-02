@@ -158,16 +158,22 @@ test("markdown-note drafts persist and restore by chat session", () => {
     noteStorage,
   );
 
-  assert.deepEqual(loadChatMarkdownNoteDraft("user-1", "session-1", noteStorage), {
-    title: "Session note",
-    content: "# Session content",
-    saved: { id: "doc-1", title: "Session note", content: "# Session" },
-  });
-  assert.deepEqual(loadChatMarkdownNoteDraft("user-1", "session-2", noteStorage), {
-    title: "",
-    content: "",
-    saved: null,
-  });
+  assert.deepEqual(
+    loadChatMarkdownNoteDraft("user-1", "session-1", noteStorage),
+    {
+      title: "Session note",
+      content: "# Session content",
+      saved: { id: "doc-1", title: "Session note", content: "# Session" },
+    },
+  );
+  assert.deepEqual(
+    loadChatMarkdownNoteDraft("user-1", "session-2", noteStorage),
+    {
+      title: "",
+      content: "",
+      saved: null,
+    },
+  );
 });
 
 test("a pending markdown-note draft is adopted by its chat session", () => {
@@ -185,11 +191,14 @@ test("a pending markdown-note draft is adopted by its chat session", () => {
     noteStorage,
   );
 
-  assert.deepEqual(loadChatMarkdownNoteDraft("user-1", "session-1", noteStorage), {
-    title: "Pending note",
-    content: "# Pending",
-    saved: null,
-  });
+  assert.deepEqual(
+    loadChatMarkdownNoteDraft("user-1", "session-1", noteStorage),
+    {
+      title: "Pending note",
+      content: "# Pending",
+      saved: null,
+    },
+  );
   assert.equal(storage.has("dt:chat-markdown-note:user-1:pending"), false);
   assert.equal(
     storage.get("dt:chat-markdown-note:user-1:session-1"),

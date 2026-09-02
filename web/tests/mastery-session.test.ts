@@ -38,12 +38,12 @@ test("reading ownership survives switching the per-turn action", () => {
   assert.equal(readingWorkspaceIdOf(item), "reading-42");
 });
 
-test("legacy learning sessions remain routable", () => {
+test("capability and retired session-kind fields do not claim workspace ownership", () => {
   assert.equal(
     masteryPathIdOf(
       session({ capability: "mastery_path", mastery_path_id: "legacy-path" }),
     ),
-    "legacy-path",
+    "",
   );
   assert.equal(
     readingWorkspaceIdOf(
@@ -53,7 +53,7 @@ test("legacy learning sessions remain routable", () => {
         reading_workspace_id: "legacy-reading",
       }),
     ),
-    "legacy-reading",
+    "",
   );
 });
 

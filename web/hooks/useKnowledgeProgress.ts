@@ -88,10 +88,24 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
 
   const socketsRef = useRef<Record<string, WebSocket>>({});
   const sourcesRef = useRef<Record<string, EventSource>>({});
+  const socketTargetsRef = useRef<
+    Record<string, { taskId?: string; retry: number }>
+  >({});
+  const socketRetryTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
+  const subscribeWsRef = useRef<
+    ((kbName: string, expectedTaskId?: string) => void) | null
+  >(null);
 
   const closeSocket = useCallback((kbName: string) => {
-    socketsRef.current[kbName]?.close();
+    delete socketTargetsRef.current[kbName];
+    const retryTimer = socketRetryTimersRef.current[kbName];
+    if (retryTimer) clearTimeout(retryTimer);
+    delete socketRetryTimersRef.current[kbName];
+    const socket = socketsRef.current[kbName];
     delete socketsRef.current[kbName];
+    socket?.close();
   }, []);
 
   const closeSource = useCallback((kbName: string) => {
@@ -100,6 +114,11 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
   }, []);
 
   const closeAll = useCallback(() => {
+    Object.values(socketRetryTimersRef.current).forEach((timer) =>
+      clearTimeout(timer),
+    );
+    socketRetryTimersRef.current = {};
+    socketTargetsRef.current = {};
     Object.values(socketsRef.current).forEach((s) => s.close());
     socketsRef.current = {};
     Object.values(sourcesRef.current).forEach((s) => s.close());
@@ -121,16 +140,32 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
 
   const subscribeWs = useCallback(
     (kbName: string, expectedTaskId?: string) => {
-      closeSocket(kbName);
+      const previous = socketsRef.current[kbName];
+      delete socketsRef.current[kbName];
+      previous?.close();
+      const retryTimer = socketRetryTimersRef.current[kbName];
+      if (retryTimer) clearTimeout(retryTimer);
+      delete socketRetryTimersRef.current[kbName];
+      const existingTarget = socketTargetsRef.current[kbName];
+      socketTargetsRef.current[kbName] = {
+        taskId: expectedTaskId,
+        retry:
+          existingTarget?.taskId === expectedTaskId ? existingTarget.retry : 0,
+      };
       const query = expectedTaskId
         ? `?task_id=${encodeURIComponent(expectedTaskId)}`
         : "";
       const socket = new WebSocket(
         wsUrl(
-          `/api/v1/knowledge/${encodeURIComponent(kbName)}/progress/ws${query}`,
+          `/ws/knowledge-bases/${encodeURIComponent(kbName)}/progress${query}`,
         ),
       );
       socketsRef.current[kbName] = socket;
+
+      socket.onopen = () => {
+        const target = socketTargetsRef.current[kbName];
+        if (target?.taskId === expectedTaskId) target.retry = 0;
+      };
 
       socket.onmessage = (event) => {
         try {
@@ -188,13 +223,34 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
         }
       };
 
-      socket.onerror = () => closeSocket(kbName);
+      socket.onerror = () => socket.close();
       socket.onclose = () => {
-        delete socketsRef.current[kbName];
+        if (socketsRef.current[kbName] === socket) {
+          delete socketsRef.current[kbName];
+        }
+        const target = socketTargetsRef.current[kbName];
+        if (!target || target.taskId !== expectedTaskId) return;
+        const delay = Math.min(500 * 2 ** target.retry, 5000);
+        target.retry += 1;
+        socketRetryTimersRef.current[kbName] = setTimeout(() => {
+          delete socketRetryTimersRef.current[kbName];
+          const latest = socketTargetsRef.current[kbName];
+          if (!latest || latest.taskId !== expectedTaskId) return;
+          subscribeWsRef.current?.(kbName, expectedTaskId);
+        }, delay);
       };
     },
     [closeSocket, closeSource, setProgress, t],
   );
+
+  useEffect(() => {
+    subscribeWsRef.current = subscribeWs;
+    return () => {
+      if (subscribeWsRef.current === subscribeWs) {
+        subscribeWsRef.current = null;
+      }
+    };
+  }, [subscribeWs]);
 
   const openTaskStream = useCallback(
     (
@@ -219,7 +275,9 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
       }));
 
       const source = new EventSource(
-        apiUrl(`/api/v1/knowledge/tasks/${encodeURIComponent(taskId)}/stream`),
+        apiUrl(
+          `/api/knowledge-bases/tasks/${encodeURIComponent(taskId)}/stream`,
+        ),
         { withCredentials: true },
       );
       sourcesRef.current[kbName] = source;
@@ -380,6 +438,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
 
   const dismissTask = useCallback(
     (kbName: string) => {
+      closeSocket(kbName);
       closeSource(kbName);
       setTasksByKb((prev) => {
         if (!(kbName in prev)) return prev;
@@ -388,7 +447,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
         return next;
       });
     },
-    [closeSource],
+    [closeSocket, closeSource],
   );
 
   const cleanupKb = useCallback(

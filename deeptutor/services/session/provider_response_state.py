@@ -13,7 +13,9 @@ MAX_RESPONSE_OUTPUT_BYTES = 256 * 1024
 # agentic loop can legitimately need on the next request.  In particular,
 # function_call_output is an input item built from our own tool message and
 # must never be accepted from persisted provider state.
-_ALLOWED_RESPONSE_OUTPUT_TYPES = frozenset({"reasoning", "message", "function_call"})
+_ALLOWED_RESPONSE_OUTPUT_TYPES = frozenset(
+    {"reasoning", "message", "function_call", "web_search_call", "web_search"}
+)
 _PRIVATE_MESSAGE_METADATA_KEYS = frozenset({"provider_response_state"})
 
 

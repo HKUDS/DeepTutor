@@ -17,7 +17,7 @@ import { useCallback } from "react";
 import StandaloneComposer, {
   type StandaloneComposerSubmission,
 } from "@/components/chat/home/StandaloneComposer";
-import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
 import { setReadingViewport } from "@/lib/reading-turn-state";
@@ -49,7 +49,7 @@ export function ReadingComposer({
     setKBs,
     setLLMSelection,
     setPersonaSelection,
-  } = useUnifiedChat();
+  } = useChatStateAdapter();
   const { capabilities, activeCapabilityValue, selectCapability } =
     useWorkspaceChatActions();
 

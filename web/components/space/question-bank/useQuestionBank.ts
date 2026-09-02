@@ -214,11 +214,13 @@ export function useQuestionBank(
   }, [courseId, scope, reviewFilters, search, sort]);
 
   const loadMeta = useCallback(async () => {
-    const [nextCategories, nextStats, nextMaterials] = await Promise.allSettled([
-      listCategories(courseId),
-      getQuestionBankStats(courseId),
-      listQuestionBankMaterials(courseId),
-    ]);
+    const [nextCategories, nextStats, nextMaterials] = await Promise.allSettled(
+      [
+        listCategories(courseId),
+        getQuestionBankStats(courseId),
+        listQuestionBankMaterials(courseId),
+      ],
+    );
     if (nextCategories.status === "fulfilled")
       setCategories(nextCategories.value);
     if (nextStats.status === "fulfilled") setStats(nextStats.value);

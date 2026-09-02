@@ -1,4 +1,4 @@
-import type { GraphRagModelCompatibility } from "@/lib/knowledge-api";
+import type { GraphRagModelCompatibility } from "@/features/knowledge/model/types";
 
 export interface GraphRagCandidateGate {
   activeKey: string;

@@ -176,7 +176,7 @@ export default function MyAgentsSection() {
   const handleSelect = useCallback(
     (sessionId: string) => {
       setActiveSessionId(sessionId);
-      router.push(`/home/${sessionId}`);
+      router.push(`/chat/${sessionId}`);
     },
     [router, setActiveSessionId],
   );

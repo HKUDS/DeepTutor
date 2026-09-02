@@ -104,7 +104,7 @@ export async function fetchAppUpdateStatus(
   signal?: AbortSignal,
 ): Promise<AppUpdateStatus> {
   return readStatus(
-    await apiFetch(apiUrl("/api/v1/system/update"), {
+    await apiFetch(apiUrl("/api/system/update"), {
       cache: "no-store",
       signal,
     }),
@@ -113,7 +113,7 @@ export async function fetchAppUpdateStatus(
 
 export async function checkAppUpdate(): Promise<AppUpdateStatus> {
   return readStatus(
-    await apiFetch(apiUrl("/api/v1/system/update/check"), {
+    await apiFetch(apiUrl("/api/system/update/check"), {
       method: "POST",
     }),
   );
@@ -123,7 +123,7 @@ export async function setAppUpdateChecks(
   enabled: boolean,
 ): Promise<AppUpdateStatus> {
   return readStatus(
-    await apiFetch(apiUrl("/api/v1/system/update/settings"), {
+    await apiFetch(apiUrl("/api/system/update/settings"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled }),
@@ -132,7 +132,7 @@ export async function setAppUpdateChecks(
 }
 
 export async function requestAppUpdate(): Promise<UpdateJob> {
-  const response = await apiFetch(apiUrl("/api/v1/system/update"), {
+  const response = await apiFetch(apiUrl("/api/system/update"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ confirmation: "update-and-restart" }),
@@ -144,7 +144,7 @@ export async function requestAppUpdate(): Promise<UpdateJob> {
 export async function fetchAppUpdateJob(
   signal?: AbortSignal,
 ): Promise<UpdateJob | null> {
-  const response = await apiFetch(apiUrl("/api/v1/system/update/job"), {
+  const response = await apiFetch(apiUrl("/api/system/update/job"), {
     cache: "no-store",
     signal,
   });

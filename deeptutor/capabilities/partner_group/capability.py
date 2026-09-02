@@ -11,6 +11,10 @@ from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
 
 
+def _state(context: UnifiedContext) -> dict[str, Any]:
+    return context.extension("partner_group")
+
+
 class PartnerGroupCapability:
     """Enforce the public-answer protocol for every Partner Group turn.
 
@@ -68,7 +72,8 @@ class PartnerGroupCapability:
 
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str:
         """Canonicalize the answer, then permit one proposal only when allowed."""
-        if not context.metadata.get("_partner_group_formal_answer"):
+        state = _state(context)
+        if not state.get("formal_answer"):
             answer = str(final_text or "").strip()
             if not answer:
                 return ""
@@ -77,12 +82,12 @@ class PartnerGroupCapability:
             if not isinstance(group, dict) or not group.get("allow_invoke_other"):
                 # An invoked reply must still pass through canonical cleanup,
                 # but a fresh collaboration decision would violate one-hop.
-                context.metadata["_partner_group_invocation_decided"] = True
+                state["invocation_decided"] = True
                 return ""
             # An answer-less early invoke_other already consumed the one
             # collaboration decision. Saving this recovery answer is required,
             # but sending the model through a fresh decision round is not.
-            if context.metadata.get("_partner_group_invocation_decided"):
+            if state.get("invocation_decided"):
                 return ""
             instruction = (
                 "Your formal answer is now complete and saved. Do not rewrite or extend it. "
@@ -100,12 +105,12 @@ class PartnerGroupCapability:
                 )
             return instruction
 
-        if context.metadata.get("_partner_group_invocation_decided"):
+        if state.get("invocation_decided"):
             return ""
 
         # A tool-less private response (NO_INVOKE or stray prose) also consumes
         # the decision; the runner restores the saved public answer instead.
-        context.metadata["_partner_group_invocation_decided"] = True
+        state["invocation_decided"] = True
         return ""
 
     def tool_round_output_policy(
@@ -123,7 +128,8 @@ class PartnerGroupCapability:
         the prose here lets the tool see the formal answer before dispatch.
         """
         has_invoke = "invoke_other" in tool_names
-        formal_answer = str(context.metadata.get("_partner_group_formal_answer") or "").strip()
+        state = _state(context)
+        formal_answer = str(state.get("formal_answer") or "").strip()
         group = context.metadata.get("partner_group")
         can_invoke = isinstance(group, dict) and bool(group.get("allow_invoke_other"))
         if not can_invoke and has_invoke:
@@ -134,38 +140,39 @@ class PartnerGroupCapability:
             # The schema is statically capability-owned, so a disallowed model
             # call may still arrive. Consume it without exposing its prose or
             # opening another collaboration round.
-            context.metadata["_partner_group_invocation_decided"] = True
+            state["invocation_decided"] = True
             return "discard"
         if not formal_answer and has_invoke:
             answer = str(final_text or "").strip()
             if not answer:
                 return "discard"
             answer, _removed_request = self._save_formal_answer(context, answer)
-            if context.metadata.get("_partner_group_invocation_decided"):
+            if state.get("invocation_decided"):
                 return "discard"
-            context.metadata["_capability_answer_published"] = True
+            context.capability_output.answer_published = True
             return "publish"
 
-        if formal_answer and not context.metadata.get("_partner_group_invocation_decided"):
+        if formal_answer and not state.get("invocation_decided"):
             # The finish guard promised exactly one private decision round. Any
             # tool choice consumes it, even if the model chose a different tool.
             if not has_invoke:
-                context.metadata["_partner_group_invocation_decided"] = True
+                state["invocation_decided"] = True
             return "discard"
         return ""
 
     def final_text_override(self, context: UnifiedContext, final_text: str) -> str | None:
         """Restore the saved answer after the bounded private decision round."""
         _ = final_text
-        if not context.metadata.get("_partner_group_invocation_decided"):
+        state = _state(context)
+        if not state.get("invocation_decided"):
             return None
-        answer = str(context.metadata.get("_partner_group_formal_answer") or "").strip()
+        answer = str(state.get("formal_answer") or "").strip()
         return answer or None
 
     @staticmethod
     def _save_formal_answer(context: UnifiedContext, answer: str) -> tuple[str, str]:
         cleaned, removed_request = _without_trailing_peer_request(context, answer)
-        context.metadata["_partner_group_formal_answer"] = cleaned
+        _state(context)["formal_answer"] = cleaned
         return cleaned, removed_request
 
 

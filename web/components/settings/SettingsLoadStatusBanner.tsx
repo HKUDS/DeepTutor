@@ -4,9 +4,9 @@ import { useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { useSettings } from "./SettingsContext";
+import { useSettings } from "@/features/settings/store/SettingsStore";
 
-// Surface the result of the initial /api/v1/settings + /api/v1/system/status
+// Surface the result of the initial /api/settings + /api/system/status
 // load so Docker / first-run users know *why* the page is empty when the
 // backend is unreachable, instead of seeing a blank screen with the failure
 // only in the dev console.

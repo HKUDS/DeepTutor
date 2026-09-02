@@ -183,7 +183,16 @@ def serve(
         )
         raise typer.Exit(code=1)
 
-    from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT, get_ws_max_size
+    from deeptutor.services.config import (
+        HTTP_KEEP_ALIVE_TIMEOUT,
+        get_ws_max_size,
+        load_system_settings,
+    )
+
+    backend_workers = max(1, int(load_system_settings().get("backend_workers") or 1))
+    if reload and backend_workers > 1:
+        console.print("[bold red]Error:[/] --reload cannot be used when backend_workers > 1.")
+        raise typer.Exit(code=2)
 
     # ws_max_size tracks the configured chat-attachment total so base64
     # uploads fit in one WS frame (uvicorn defaults to 16MB).
@@ -192,6 +201,7 @@ def serve(
         host=host,
         port=port,
         reload=reload,
+        workers=backend_workers,
         reload_excludes=["web/*", "data/*"] if reload else None,
         ws_max_size=get_ws_max_size(),
         timeout_keep_alive=HTTP_KEEP_ALIVE_TIMEOUT,

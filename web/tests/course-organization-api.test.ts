@@ -79,7 +79,7 @@ test("course organization patch sends only the requested metadata", async () => 
       course_id: "course-os",
       pinned: true,
     });
-    assert.equal(capturedUrl, "/api/v1/sessions/child/organization");
+    assert.equal(capturedUrl, "/api/sessions/child/organization");
     assert.deepEqual(capturedBody, { course_id: "course-os", pinned: true });
     assert.equal(session.preferences?.course_id, "course-os");
   } finally {

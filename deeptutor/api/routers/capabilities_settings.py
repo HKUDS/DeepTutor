@@ -4,7 +4,7 @@ Surfaces the per-capability tunables (temperature, max_tokens, stage
 budgets, iteration limits) currently scattered across
 ``data/user/settings/agents.yaml`` and ``data/user/settings/main.yaml``.
 
-Mirrors the pattern used by ``/api/v1/memory/settings``:
+Mirrors the pattern used by ``/api/memory/settings``:
 
 * ``GET  /settings``  → returns the full schema with defaults merged in.
 * ``PUT  /settings``  → merges payload back into both YAML files and

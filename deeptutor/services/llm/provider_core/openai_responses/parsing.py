@@ -26,6 +26,19 @@ FINISH_REASON_MAP = {
 # defensively for providers that shorten it.
 _WEB_SEARCH_ITEM_TYPES = {"web_search_call", "web_search"}
 
+# Stateless Responses endpoints require selected output items to be replayed
+# verbatim on the next request. DeepSeek V4 is especially strict here: when
+# thinking is enabled, omitting the preceding ``reasoning`` item produces a
+# 400 ("reasoning_text ... must be passed back"). Keep adjacent messages and
+# function calls so their original chronology survives the compatibility
+# layer as well.
+_REPLAYABLE_OUTPUT_ITEM_TYPES = {
+    "reasoning",
+    "message",
+    "function_call",
+    *_WEB_SEARCH_ITEM_TYPES,
+}
+
 
 def _dump_model(value: Any) -> Any:
     """Normalize an SDK object / dict into a plain dict."""
@@ -323,6 +336,7 @@ def parse_response_output(response: Any) -> LLMResponse:
 
         item_type = item.get("type")
         if item_type == "message":
+            native_output_items.append(dict(item))
             for block in item.get("content") or []:
                 block = _dump_model(block)
                 if not isinstance(block, dict):
@@ -331,6 +345,13 @@ def parse_response_output(response: Any) -> LLMResponse:
                     content_parts.append(block.get("text") or "")
                     native_citations.extend(_citations_from_content_blocks([block]))
         elif item_type == "reasoning":
+            native_output_items.append(dict(item))
+            for block in item.get("content") or []:
+                block = _dump_model(block)
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "reasoning_text" and block.get("text"):
+                    reasoning_content = (reasoning_content or "") + block["text"]
             for summary in item.get("summary") or []:
                 summary = _dump_model(summary)
                 if not isinstance(summary, dict):
@@ -345,6 +366,7 @@ def parse_response_output(response: Any) -> LLMResponse:
             native_output_items.append(dict(item))
             native_citations.extend(_citations_from_content_blocks(item.get("results")))
         elif item_type == "function_call":
+            native_output_items.append(dict(item))
             call_id = item.get("call_id") or ""
             item_id = item.get("id") or _ToolCallBuffers.PLACEHOLDER_ITEM_ID
             args_raw = item.get("arguments") or "{}"
@@ -361,6 +383,13 @@ def parse_response_output(response: Any) -> LLMResponse:
     usage = token_counts(response.get("usage"), prompt="input_tokens", completion="output_tokens")
 
     finish_reason = map_finish_reason(response.get("status"))
+    if not any(item.get("type") == "reasoning" for item in native_output_items):
+        # Preserve the established metadata contract for ordinary native web
+        # search responses. Message/function-call items only need verbatim
+        # replay when they accompany provider-private reasoning state.
+        native_output_items = [
+            item for item in native_output_items if item.get("type") in _WEB_SEARCH_ITEM_TYPES
+        ]
     provider_specific_fields: dict[str, Any] = {}
     if native_output_items or native_citations:
         provider_specific_fields = {
@@ -430,12 +459,16 @@ async def consume_sdk_stream(
         elif event_type == "response.output_item.done":
             item = getattr(event, "item", None)
             item_dict = _dump_model(item) if item is not None else None
+            if (
+                isinstance(item_dict, dict)
+                and item_dict.get("type") in _REPLAYABLE_OUTPUT_ITEM_TYPES
+                and on_provider_event
+            ):
+                on_provider_event("output_item", dict(item_dict))
             if isinstance(item_dict, dict) and item_dict.get("type") in _WEB_SEARCH_ITEM_TYPES:
                 item_id = str(item_dict.get("id") or "")
                 if item_id and item_id not in seen_web_search_items:
                     seen_web_search_items.add(item_id)
-                    if on_provider_event:
-                        on_provider_event("output_item", dict(item_dict))
                 continue
             if item and getattr(item, "type", None) == "function_call":
                 call_id = getattr(item, "call_id", None)
@@ -454,7 +487,10 @@ async def consume_sdk_stream(
                         or "{}",
                     )
                 )
-        elif event_type == "response.reasoning_summary_text.delta":
+        elif event_type in {
+            "response.reasoning_summary_text.delta",
+            "response.reasoning_text.delta",
+        }:
             delta_text = getattr(event, "delta", "") or ""
             reasoning_content = (reasoning_content or "") + delta_text
             if on_reasoning_delta and delta_text:

@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/shared/api/client";
 
 export interface ReadingProgressRecord {
   material_id: string;
@@ -25,7 +25,7 @@ export interface LearningRecords {
 }
 
 export async function listLearningRecords(): Promise<LearningRecords> {
-  const response = await apiFetch(apiUrl("/api/v1/learning/reading/records"));
+  const response = await apiFetch(apiUrl("/api/mastery-paths/reading/records"));
   if (!response.ok) throw new Error("Failed to load learning progress");
   return response.json() as Promise<LearningRecords>;
 }

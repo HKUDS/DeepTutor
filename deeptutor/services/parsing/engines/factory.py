@@ -101,43 +101,45 @@ _ENGINE_META: Dict[str, Dict[str, Any]] = {
     DOCUMENT_PARSING_ENGINE_DOCLING: {
         "name": "Docling",
         "description": (
-            "Structured document conversion (layout/tables). Runs the in-process "
-            "docling package (downloads models on first run) or points at a remote "
-            "Docling Serve server. PDF/Office/HTML/images."
+            "Structured conversion across Docling's current document, image, e-book, "
+            "email, audio/video, and data formats. Runs locally or against Docling "
+            "Serve; some formats require system tools."
         ),
         "needs_local_models": True,
     },
     DOCUMENT_PARSING_ENGINE_MARKITDOWN: {
         "name": "markitdown",
         "description": (
-            "Lightweight, no model downloads — broad format support, Markdown "
-            "output. Works out of the box."
+            "Microsoft MarkItDown with every built-in format extra: PDF, modern "
+            "Office, legacy XLS, e-books, mail, audio, images, notebooks, feeds, "
+            "archives, and text. Markdown output; no local models."
         ),
         "needs_local_models": False,
     },
     DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: {
         "name": "PyMuPDF4LLM",
         "description": (
-            "Lightweight, no model downloads or CUDA — runs on low-end / GPU-less "
-            "machines. PDF/e-book → Markdown and can extract images. PDF and "
-            "e-book formats only."
+            "Current CPU-only PyMuPDF layout/OCR conversion with image extraction. "
+            "Supports PDF, XPS, e-books, SVG, text/Markdown, and PyMuPDF image "
+            "formats; no CUDA or first-run model download."
         ),
         "needs_local_models": False,
     },
     DOCUMENT_PARSING_ENGINE_LITEPARSE: {
         "name": "LiteParse",
         "description": (
-            "Fast, lightweight PDF parser with spatial text extraction. "
-            "Markdown output, optional image extraction. No model downloads. "
-            "Developed by LlamaIndex."
+            "Fast Rust-backed parser from LlamaIndex for PDF, Office, OpenDocument, "
+            "iWork, and images. Markdown output and optional image extraction; "
+            "Office-family inputs require LibreOffice."
         ),
         "needs_local_models": False,
     },
     DOCUMENT_PARSING_ENGINE_TIKA: {
         "name": "Tika",
         "description": (
-            "Remote Apache Tika server. Broad format support, no local install "
-            "or model downloads. Point at an existing tika-server container."
+            "Remote Apache Tika 4 server with content-based detection for more than "
+            "a thousand types, including custom server parsers. No local Python "
+            "package; use the current full server image for OCR/system backends."
         ),
         "needs_local_models": False,
     },

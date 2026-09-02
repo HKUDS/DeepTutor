@@ -58,6 +58,17 @@ class DocumentValidator:
     }
 
     @staticmethod
+    def _matching_extension(filename: str, allowed_extensions: set[str]) -> str:
+        """Return the longest allowed suffix (for example ``.tar.gz``)."""
+        lower_name = filename.lower()
+        matches = [
+            str(extension).lower()
+            for extension in allowed_extensions
+            if lower_name.endswith(str(extension).lower())
+        ]
+        return max(matches, key=len) if matches else ""
+
+    @staticmethod
     def validate_upload_safety(
         filename: str, file_size: int | None, allowed_extensions: set[str] | None = None
     ) -> str:
@@ -89,16 +100,35 @@ class DocumentValidator:
         safe_name = re.sub(r"[\x00-\x1f\x7f]", "", safe_name)
         # Replace problematic characters
         safe_name = re.sub(r'[<>:"/\\|?*]', "_", safe_name)
-        stem, ext = os.path.splitext(safe_name)
-        ext = ext.lower()
-        safe_name = f"{stem}{ext}"
+        # ``None`` means the legacy built-in allow-list. An explicitly empty
+        # set means the selected parser performs content-based detection (for
+        # example remote Tika with custom parsers), so any suffix is accepted
+        # while filename and size checks still apply.
+        allow_any_extension = allowed_extensions is not None and not allowed_extensions
+        extension_source = (
+            DocumentValidator.ALLOWED_EXTENSIONS
+            if allowed_extensions is None
+            else allowed_extensions
+        )
+        exts_to_check = {str(extension).lower() for extension in extension_source}
+        ext = DocumentValidator._matching_extension(safe_name, exts_to_check)
+        if ext:
+            safe_name = f"{safe_name[: -len(ext)]}{ext}"
+        else:
+            stem, fallback_ext = os.path.splitext(safe_name)
+            ext = fallback_ext.lower()
+            safe_name = f"{stem}{ext}"
 
-        if not safe_name or safe_name in (".", "..") or safe_name.strip("_") == "":
+        if (
+            not safe_name
+            or safe_name in (".", "..")
+            or safe_name.strip("_") == ""
+            or (allow_any_extension and safe_name.startswith("."))
+        ):
             raise ValueError("Invalid filename")
 
         # Check file extension
-        exts_to_check = allowed_extensions or DocumentValidator.ALLOWED_EXTENSIONS
-        if ext not in exts_to_check:
+        if not allow_any_extension and ext not in exts_to_check:
             raise ValueError(
                 f"Unsupported file type: {ext}. Allowed types: {', '.join(exts_to_check)}"
             )
@@ -132,7 +162,10 @@ class DocumentValidator:
         Returns:
             Dictionary with file information
         """
-        _, ext = os.path.splitext(filename.lower())
+        ext = (
+            DocumentValidator._matching_extension(filename, DocumentValidator.ALLOWED_EXTENSIONS)
+            or os.path.splitext(filename.lower())[1]
+        )
         return {
             "filename": filename,
             "extension": ext,

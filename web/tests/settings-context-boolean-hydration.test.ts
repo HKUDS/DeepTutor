@@ -12,9 +12,10 @@ import {
 
 const settingsContextPath = path.join(
   process.cwd(),
-  "components",
+  "features",
   "settings",
-  "SettingsContext.tsx",
+  "store",
+  "SettingsStore.tsx",
 );
 
 function readSettingsContextSource() {

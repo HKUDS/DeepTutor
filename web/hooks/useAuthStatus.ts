@@ -28,7 +28,7 @@ const INITIAL: AuthStatusState = {
 };
 
 /**
- * Resolve auth state at runtime from the backend (`/api/v1/auth/status`).
+ * Resolve auth state at runtime from the backend (`/api/auth/status`).
  *
  * The frontend bundle is URL- and auth-agnostic (see web/lib/api.ts): the auth
  * toggle is a runtime setting read from `data/user/settings/auth.json`, never
@@ -39,7 +39,7 @@ const INITIAL: AuthStatusState = {
  */
 // Several components (sidebar Admin / Logout / Profile links) mount this hook
 // at once. Share a single in-flight request so a page load makes one
-// /api/v1/auth/status call instead of one per consumer, and clear it once
+// /api/auth/status call instead of one per consumer, and clear it once
 // settled so a later mount (e.g. after login/logout) fetches fresh.
 let inflight: Promise<AuthStatusState> | null = null;
 

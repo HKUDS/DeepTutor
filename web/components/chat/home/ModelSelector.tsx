@@ -5,7 +5,7 @@ import { AlertCircle, Bot, Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import ProviderIcon from "@/components/common/ProviderIcon";
-import type { LLMSelection } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
   llmSelectionKey,
   sameLLMSelection,

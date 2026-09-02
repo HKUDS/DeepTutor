@@ -9,18 +9,29 @@
 export const LOGIN_PATH = "/login";
 export const COOKIE_NAME = "dt_token";
 export const CODEX_CALLBACK_PATH = "/auth/callback";
-export const CODEX_CALLBACK_API_PATH = "/api/v1/auth/openai-codex/callback";
+export const CODEX_CALLBACK_API_PATH = "/api/auth/openai-codex/callback";
+const RETIRED_PAGE_PATHS = new Set(["/partners/groups"]);
 
 export function isCodexCallbackPath(pathname: string): boolean {
   return pathname === CODEX_CALLBACK_PATH;
 }
 
+/** Exact retired pages that would otherwise collide with a dynamic route. */
+export function isRetiredPagePath(pathname: string): boolean {
+  return RETIRED_PAGE_PATHS.has(pathname);
+}
+
 // Paths whose responses come from the backend, not the Next app. The middleware
 // rewrites these to DEEPTUTOR_API_BASE_URL so the browser can use frontend-
-// relative URLs (e.g. `:3782/api/v1/...` or `.../ws`) and let the rewrite
+// relative URLs (e.g. `:3782/api/...` or `.../ws`) and let the rewrite
 // bridge the origin gap.
 export function isBackendPath(pathname: string): boolean {
-  return pathname.startsWith("/api/") || pathname.startsWith("/ws/");
+  return (
+    pathname.startsWith("/api/") ||
+    pathname === "/ws" ||
+    pathname.startsWith("/ws/") ||
+    pathname.startsWith("/files/")
+  );
 }
 
 // Static assets served straight out of `web/public` (logos, favicons, fonts,

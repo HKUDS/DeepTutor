@@ -11,7 +11,6 @@ from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.mastery.capability import MasteryPathCapability
 from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.learning.models import (
     InteractionStatus,
     KnowledgePoint,
@@ -22,6 +21,7 @@ from deeptutor.learning.models import (
 )
 from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _use_store_root(monkeypatch, root: Path) -> None:
@@ -560,7 +560,7 @@ async def test_a_switch_and_a_build_in_one_round_land_on_the_switched_path(tmp_p
     watched path A's map change instead. Driven through the real dispatcher so
     the ordering contract, not just the tool, is under test.
     """
-    from deeptutor.core.agentic.tool_dispatch import dispatch_tool_calls
+    from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
 
     _use_store_root(monkeypatch, tmp_path)
     LearningStore().save(_built_path("path-a", name="Path A"))

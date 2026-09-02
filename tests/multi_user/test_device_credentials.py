@@ -26,7 +26,7 @@ def _client(mu_isolated_root, monkeypatch) -> tuple[TestClient, dict]:
     monkeypatch.setattr(auth_router, "POCKETBASE_ENABLED", False)
 
     app = FastAPI()
-    app.include_router(auth_router.router, prefix="/api/v1/auth")
+    app.include_router(auth_router.router, prefix="/api/auth")
     client = TestClient(app)
     return client, {
         "admin": admin,
@@ -40,7 +40,7 @@ def test_admin_issue_lists_and_secrets_are_not_persisted(mu_isolated_root, monke
     learner_id = users["learner"]["id"]
 
     created = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": learner_id,
@@ -57,7 +57,7 @@ def test_admin_issue_lists_and_secrets_are_not_persisted(mu_isolated_root, monke
     assert body["device"]["daily_limit_minutes"] == 30
 
     listed = client.get(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
     )
     assert listed.status_code == 200
@@ -88,7 +88,7 @@ def test_only_admins_can_issue_device_credentials(mu_isolated_root, monkeypatch)
         users["learner"]["id"],
     )
     denied = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(learner_token),
         json={
             "user_id": users["learner"]["id"],
@@ -104,7 +104,7 @@ def test_only_admins_can_issue_device_credentials(mu_isolated_root, monkeypatch)
 
     standard = save_user("standard", hash_password("standard-password"))
     wrong_preset = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": standard["id"],
@@ -126,21 +126,21 @@ def test_only_admins_can_list_and_revoke_device_credentials(mu_isolated_root, mo
         "user",
         users["learner"]["id"],
     )
-    empty = client.get("/api/v1/auth/devices", headers=_auth(users["admin_token"]))
+    empty = client.get("/api/auth/devices", headers=_auth(users["admin_token"]))
     assert empty.status_code == 200
     assert empty.json() == {"devices": []}
 
-    assert client.get("/api/v1/auth/devices", headers=_auth(learner_token)).status_code == 403
+    assert client.get("/api/auth/devices", headers=_auth(learner_token)).status_code == 403
     assert (
         client.delete(
-            "/api/v1/auth/devices/dc_missing",
+            "/api/auth/devices/dc_missing",
             headers=_auth(learner_token),
         ).status_code
         == 403
     )
     assert (
         client.delete(
-            "/api/v1/auth/devices/dc_missing",
+            "/api/auth/devices/dc_missing",
             headers=_auth(users["admin_token"]),
         ).status_code
         == 404
@@ -153,7 +153,7 @@ def test_device_login_returns_normal_identity_and_revocation_invalidates_token(
     client, users = _client(mu_isolated_root, monkeypatch)
     learner_id = users["learner"]["id"]
     issued = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": learner_id,
@@ -164,19 +164,19 @@ def test_device_login_returns_normal_identity_and_revocation_invalidates_token(
     ).json()
 
     unknown_code = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": "dc_not-real", "pin": "123456"},
     )
     assert unknown_code.status_code == 401
 
     wrong_pin = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": "000000"},
     )
     assert wrong_pin.status_code == 401
 
     login = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert login.status_code == 200, login.text
@@ -185,21 +185,21 @@ def test_device_login_returns_normal_identity_and_revocation_invalidates_token(
     assert body["role"] == "user"
     token = login.cookies["dt_token"]
 
-    status = client.get("/api/v1/auth/status", headers=_auth(token))
+    status = client.get("/api/auth/status", headers=_auth(token))
     assert status.status_code == 200
     assert status.json()["username"] == "learner"
 
     revoked = client.delete(
-        f"/api/v1/auth/devices/{issued['device']['id']}",
+        f"/api/auth/devices/{issued['device']['id']}",
         headers=_auth(users["admin_token"]),
     )
     assert revoked.status_code == 200
-    revoked_status = client.get("/api/v1/auth/status", headers=_auth(token))
+    revoked_status = client.get("/api/auth/status", headers=_auth(token))
     assert revoked_status.status_code == 200
     assert revoked_status.json()["authenticated"] is False
     assert (
         client.post(
-            "/api/v1/auth/device-login",
+            "/api/auth/device-login",
             json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
         ).status_code
         == 401
@@ -209,7 +209,7 @@ def test_device_login_returns_normal_identity_and_revocation_invalidates_token(
 def test_relogin_rotates_the_lease_and_charges_elapsed_usage(mu_isolated_root, monkeypatch):
     client, users = _client(mu_isolated_root, monkeypatch)
     issued = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": users["learner"]["id"],
@@ -219,42 +219,39 @@ def test_relogin_rotates_the_lease_and_charges_elapsed_usage(mu_isolated_root, m
         },
     ).json()
     first = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     first_token = first.cookies["dt_token"]
     started = datetime.fromisoformat(
-        client.get("/api/v1/auth/devices", headers=_auth(users["admin_token"])).json()["devices"][
-            0
-        ]["last_heartbeat_at"]
+        client.get("/api/auth/devices", headers=_auth(users["admin_token"])).json()["devices"][0][
+            "last_heartbeat_at"
+        ]
     )
 
     from deeptutor.multi_user import device_credentials
 
     monkeypatch.setattr(device_credentials, "utc_now", lambda: _add_seconds(started, 60))
     second = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert second.status_code == 200
     second_token = second.cookies["dt_token"]
 
-    first_status = client.get("/api/v1/auth/status", headers=_auth(first_token))
+    first_status = client.get("/api/auth/status", headers=_auth(first_token))
     assert first_status.json()["authenticated"] is False
     assert (
-        client.get("/api/v1/auth/status", headers=_auth(second_token)).json()["authenticated"]
-        is True
+        client.get("/api/auth/status", headers=_auth(second_token)).json()["authenticated"] is True
     )
-    listed = client.get("/api/v1/auth/devices", headers=_auth(users["admin_token"])).json()[
-        "devices"
-    ]
+    listed = client.get("/api/auth/devices", headers=_auth(users["admin_token"])).json()["devices"]
     assert listed[0]["used_seconds"] == 60
 
 
 def test_pin_failures_are_rate_limited(mu_isolated_root, monkeypatch):
     client, users = _client(mu_isolated_root, monkeypatch)
     issued = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": users["learner"]["id"],
@@ -266,13 +263,13 @@ def test_pin_failures_are_rate_limited(mu_isolated_root, monkeypatch):
     wrong_pin = "000001" if issued["pin"] == "000000" else "000000"
     for _ in range(5):
         denied = client.post(
-            "/api/v1/auth/device-login",
+            "/api/auth/device-login",
             json={"pairing_code": issued["pairing_code"], "pin": wrong_pin},
         )
         assert denied.status_code == 401
 
     locked = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert locked.status_code == 401
@@ -287,7 +284,7 @@ def test_pin_failures_are_rate_limited(mu_isolated_root, monkeypatch):
         lambda: locked_until + timedelta(seconds=1),
     )
     recovered = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert recovered.status_code == 200
@@ -297,7 +294,7 @@ def test_expired_and_deleted_accounts_fail_closed(mu_isolated_root, monkeypatch)
     client, users = _client(mu_isolated_root, monkeypatch)
     learner_id = users["learner"]["id"]
     issued = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": learner_id,
@@ -316,7 +313,7 @@ def test_expired_and_deleted_accounts_fail_closed(mu_isolated_root, monkeypatch)
     monkeypatch.setattr(device_credentials, "utc_now", lambda: future + timedelta(seconds=1))
     assert (
         client.post(
-            "/api/v1/auth/device-login",
+            "/api/auth/device-login",
             json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
         ).status_code
         == 401
@@ -324,14 +321,14 @@ def test_expired_and_deleted_accounts_fail_closed(mu_isolated_root, monkeypatch)
     monkeypatch.setattr(device_credentials, "utc_now", real_now)
 
     login = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert login.status_code == 200
     token = login.cookies["dt_token"]
 
     monkeypatch.setattr(device_credentials, "utc_now", lambda: future + timedelta(seconds=1))
-    expired_status = client.get("/api/v1/auth/status", headers=_auth(token))
+    expired_status = client.get("/api/auth/status", headers=_auth(token))
     assert expired_status.status_code == 200
     assert expired_status.json()["authenticated"] is False
     monkeypatch.setattr(device_credentials, "utc_now", real_now)
@@ -339,7 +336,7 @@ def test_expired_and_deleted_accounts_fail_closed(mu_isolated_root, monkeypatch)
     from deeptutor.multi_user.identity import delete_user
 
     assert delete_user("learner") is True
-    deleted_status = client.get("/api/v1/auth/status", headers=_auth(token))
+    deleted_status = client.get("/api/auth/status", headers=_auth(token))
     assert deleted_status.status_code == 200
     assert deleted_status.json()["authenticated"] is False
 
@@ -347,7 +344,7 @@ def test_expired_and_deleted_accounts_fail_closed(mu_isolated_root, monkeypatch)
 def test_disabled_account_fails_closed(mu_isolated_root, monkeypatch):
     client, users = _client(mu_isolated_root, monkeypatch)
     issued = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": users["learner"]["id"],
@@ -357,7 +354,7 @@ def test_disabled_account_fails_closed(mu_isolated_root, monkeypatch):
         },
     ).json()
     login = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert login.status_code == 200
@@ -371,12 +368,12 @@ def test_disabled_account_fails_closed(mu_isolated_root, monkeypatch):
 
     assert (
         client.post(
-            "/api/v1/auth/device-login",
+            "/api/auth/device-login",
             json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
         ).status_code
         == 401
     )
-    disabled_status = client.get("/api/v1/auth/status", headers=_auth(token))
+    disabled_status = client.get("/api/auth/status", headers=_auth(token))
     assert disabled_status.status_code == 200
     assert disabled_status.json()["authenticated"] is False
 
@@ -385,7 +382,7 @@ def test_heartbeat_enforces_freshness_daily_limit_and_day_rollover(mu_isolated_r
     client, users = _client(mu_isolated_root, monkeypatch)
     learner_id = users["learner"]["id"]
     issued = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": learner_id,
@@ -395,14 +392,14 @@ def test_heartbeat_enforces_freshness_daily_limit_and_day_rollover(mu_isolated_r
         },
     ).json()
     login = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert login.status_code == 200
     token = login.cookies["dt_token"]
 
     listed = client.get(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
     ).json()["devices"]
     started = datetime.fromisoformat(listed[0]["last_heartbeat_at"])
@@ -410,27 +407,27 @@ def test_heartbeat_enforces_freshness_daily_limit_and_day_rollover(mu_isolated_r
     from deeptutor.multi_user import device_credentials
 
     monkeypatch.setattr(device_credentials, "utc_now", lambda: started)
-    first = client.post("/api/v1/auth/device/heartbeat", headers=_auth(token))
+    first = client.post("/api/auth/device/heartbeat", headers=_auth(token))
     assert first.status_code == 200
     assert first.json()["remaining_seconds"] == 300
 
     monkeypatch.setattr(device_credentials, "utc_now", lambda: _add_seconds(started, 60))
-    second = client.post("/api/v1/auth/device/heartbeat", headers=_auth(token))
+    second = client.post("/api/auth/device/heartbeat", headers=_auth(token))
     assert second.status_code == 200
     assert second.json()["used_seconds"] == 60
-    assert client.get("/api/v1/auth/status", headers=_auth(token)).status_code == 200
+    assert client.get("/api/auth/status", headers=_auth(token)).status_code == 200
 
     monkeypatch.setattr(device_credentials, "utc_now", lambda: _add_seconds(started, 300))
-    limited = client.post("/api/v1/auth/device/heartbeat", headers=_auth(token))
+    limited = client.post("/api/auth/device/heartbeat", headers=_auth(token))
     assert limited.status_code == 200
     assert limited.json()["ok"] is False
     assert limited.json()["remaining_seconds"] == 0
-    limited_status = client.get("/api/v1/auth/status", headers=_auth(token))
+    limited_status = client.get("/api/auth/status", headers=_auth(token))
     assert limited_status.status_code == 200
     assert limited_status.json()["authenticated"] is False
     assert (
         client.post(
-            "/api/v1/auth/device-login",
+            "/api/auth/device-login",
             json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
         ).status_code
         == 401
@@ -438,12 +435,12 @@ def test_heartbeat_enforces_freshness_daily_limit_and_day_rollover(mu_isolated_r
 
     monkeypatch.setattr(device_credentials, "utc_now", lambda: _add_seconds(started, 86_400))
     rolled = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     assert rolled.status_code == 200
     rolled_list = client.get(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
     ).json()["devices"]
     assert rolled_list[0]["used_seconds"] == 0
@@ -453,7 +450,7 @@ def test_stale_heartbeat_cannot_access_authenticated_api(mu_isolated_root, monke
     client, users = _client(mu_isolated_root, monkeypatch)
     learner_id = users["learner"]["id"]
     issued = client.post(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
         json={
             "user_id": learner_id,
@@ -463,12 +460,12 @@ def test_stale_heartbeat_cannot_access_authenticated_api(mu_isolated_root, monke
         },
     ).json()
     login = client.post(
-        "/api/v1/auth/device-login",
+        "/api/auth/device-login",
         json={"pairing_code": issued["pairing_code"], "pin": issued["pin"]},
     )
     token = login.cookies["dt_token"]
     listed = client.get(
-        "/api/v1/auth/devices",
+        "/api/auth/devices",
         headers=_auth(users["admin_token"]),
     ).json()["devices"]
     started = datetime.fromisoformat(listed[0]["last_heartbeat_at"])
@@ -476,10 +473,10 @@ def test_stale_heartbeat_cannot_access_authenticated_api(mu_isolated_root, monke
     from deeptutor.multi_user import device_credentials
 
     monkeypatch.setattr(device_credentials, "utc_now", lambda: _add_seconds(started, 301))
-    stale_status = client.get("/api/v1/auth/status", headers=_auth(token))
+    stale_status = client.get("/api/auth/status", headers=_auth(token))
     assert stale_status.status_code == 200
     assert stale_status.json()["authenticated"] is False
-    assert client.post("/api/v1/auth/device/heartbeat", headers=_auth(token)).status_code == 401
+    assert client.post("/api/auth/device/heartbeat", headers=_auth(token)).status_code == 401
 
 
 def test_pocketbase_mode_rejects_local_device_credentials(mu_isolated_root, monkeypatch):
@@ -489,7 +486,7 @@ def test_pocketbase_mode_rejects_local_device_credentials(mu_isolated_root, monk
     monkeypatch.setattr(auth_router, "POCKETBASE_ENABLED", True)
     assert (
         client.post(
-            "/api/v1/auth/devices",
+            "/api/auth/devices",
             headers=_auth(users["admin_token"]),
             json={
                 "user_id": users["learner"]["id"],
@@ -502,7 +499,7 @@ def test_pocketbase_mode_rejects_local_device_credentials(mu_isolated_root, monk
     )
     assert (
         client.post(
-            "/api/v1/auth/device-login",
+            "/api/auth/device-login",
             json={"pairing_code": "dc_not-real", "pin": "123456"},
         ).status_code
         == 400

@@ -6,7 +6,7 @@ import {
   connectImaKnowledgeBase,
   listImaKnowledgeBases,
   probeImaKnowledgeBase,
-} from "../lib/knowledge-api";
+} from "../features/knowledge/api/catalog";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -27,7 +27,7 @@ function stubFetch(
 
 function installWindow(): { redirectedTo: () => string | null } {
   let redirect: string | null = null;
-  const location = { pathname: "/knowledge", href: "" };
+  const location = { pathname: "/knowledge-bases", href: "" };
   Object.defineProperty(location, "href", {
     get: () => redirect ?? "",
     set: (value: string) => {
@@ -61,7 +61,7 @@ test("listImaKnowledgeBases sends credentials and preserves pagination", async (
       limit: 20,
     });
 
-    assert.equal(captured.input, "/api/v1/knowledge/list-ima");
+    assert.equal(captured.input, "/api/knowledge-bases/list-ima");
     assert.equal(captured.init?.method, "POST");
     assert.deepEqual(JSON.parse(String(captured.init?.body)), {
       client_id: "cid",
@@ -146,7 +146,7 @@ test("connectImaKnowledgeBase sends the DeepTutor name and invalidates on succes
       knowledgeBaseId: "kb-1",
     });
 
-    assert.equal(captured.input, "/api/v1/knowledge/connect-ima");
+    assert.equal(captured.input, "/api/knowledge-bases/connect-ima");
     assert.deepEqual(captured.body, {
       name: "Study Notes",
       client_id: "cid",

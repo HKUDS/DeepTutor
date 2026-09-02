@@ -64,10 +64,13 @@ repos:
   # ============================================
   # Frontend code formatting and linting
   # ============================================
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
+  - repo: local
     hooks:
       - id: prettier
+        name: prettier
+        language: node
+        entry: prettier
+        additional_dependencies: [prettier@3.9.6]
         args: [--log-level, warn]
         files: ^web/.*\.(css|scss|json|jsonc|yaml|yml|md|graphql|html|ts|tsx|js|jsx)$
         exclude: ^web/(node_modules|\.next|out|dist|build)/

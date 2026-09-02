@@ -68,7 +68,7 @@ test("app update client uses the canonical system routes", async () => {
       body: typeof init?.body === "string" ? init.body : undefined,
     });
     const updateRequest =
-      String(input) === "/api/v1/system/update" && init?.method === "POST";
+      String(input) === "/api/system/update" && init?.method === "POST";
     const body =
       String(input).endsWith("/job") || updateRequest
         ? jobPayload
@@ -93,11 +93,11 @@ test("app update client uses the canonical system routes", async () => {
   assert.deepEqual(
     requests.map(({ path, method }) => ({ path, method })),
     [
-      { path: "/api/v1/system/update", method: "GET" },
-      { path: "/api/v1/system/update/check", method: "POST" },
-      { path: "/api/v1/system/update/settings", method: "PUT" },
-      { path: "/api/v1/system/update", method: "POST" },
-      { path: "/api/v1/system/update/job", method: "GET" },
+      { path: "/api/system/update", method: "GET" },
+      { path: "/api/system/update/check", method: "POST" },
+      { path: "/api/system/update/settings", method: "PUT" },
+      { path: "/api/system/update", method: "POST" },
+      { path: "/api/system/update/job", method: "GET" },
     ],
   );
   assert.equal(requests[2]?.body, JSON.stringify({ enabled: false }));

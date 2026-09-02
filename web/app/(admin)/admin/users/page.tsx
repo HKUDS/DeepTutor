@@ -392,7 +392,13 @@ export default function AdminUsersPage() {
                           {!isAdmin && user.preset && (
                             <span className="mt-1 block text-[11px] text-[var(--muted-foreground)]">
                               {t("Preset: {{preset}}", {
-                                preset: t(user.preset === "learner" ? "Learner" : user.preset === "custom" ? "Custom" : "Standard"),
+                                preset: t(
+                                  user.preset === "learner"
+                                    ? "Learner"
+                                    : user.preset === "custom"
+                                      ? "Custom"
+                                      : "Standard",
+                                ),
                               })}
                             </span>
                           )}
@@ -479,7 +485,9 @@ export default function AdminUsersPage() {
                                   learnerUsername={user.username}
                                   users={users}
                                 />
-                                <LearnerProfileEditor username={user.username} />
+                                <LearnerProfileEditor
+                                  username={user.username}
+                                />
                               </>
                             )}
                           </td>
@@ -654,10 +662,16 @@ export default function AdminUsersPage() {
               </div>
               <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
                 {createPreset === "learner"
-                  ? t("Chat and Immersive Reading only, with uploads and tools disabled until assigned.")
+                  ? t(
+                      "Chat and Immersive Reading only, with uploads and tools disabled until assigned.",
+                    )
                   : createPreset === "custom"
-                    ? t("Create an ordinary account, then customize its assignments.")
-                    : t("Create an ordinary account with the default workspace behavior.")}
+                    ? t(
+                        "Create an ordinary account, then customize its assignments.",
+                      )
+                    : t(
+                        "Create an ordinary account with the default workspace behavior.",
+                      )}
               </p>
             </fieldset>
 

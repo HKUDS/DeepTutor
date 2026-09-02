@@ -9,7 +9,7 @@ import {
   collectNarrationCallIds,
   shouldAppendEventContent,
 } from "@/lib/stream";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 /**
  * v3 ``ask_user`` payload. Mirrors ``deeptutor.tools.ask_user.AskUserPayload``.

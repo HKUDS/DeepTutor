@@ -44,7 +44,7 @@ from deeptutor.capabilities.reading.tools import (
     WORKSPACE_KWARG,
 )
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +257,9 @@ class ReadingCapability:
         workspace_id = resolve_workspace_id(context)
         if not material_id and not workspace_id:
             return kwargs
-        binding = context.metadata.setdefault("_reading_tool_binding", {"material_id": material_id})
+        binding = context.extension("reading").setdefault(
+            "tool_binding", {"material_id": material_id}
+        )
         if isinstance(binding, dict) and not binding.get("material_id"):
             binding["material_id"] = material_id
         return {

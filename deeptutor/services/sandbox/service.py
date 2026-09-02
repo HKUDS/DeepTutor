@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from deeptutor.core.i18n import t
+from deeptutor.services.i18n import t
 from deeptutor.services.sandbox.backends import SandboxBackend
 from deeptutor.services.sandbox.config import SandboxSettings, build_backend
 from deeptutor.services.sandbox.quota import QuotaExceeded, UserExecQuota

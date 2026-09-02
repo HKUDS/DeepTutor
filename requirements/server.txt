@@ -24,6 +24,9 @@ python-jose[cryptography]>=3.3.0
 # Only used when integrations.pocketbase_url is configured.
 pocketbase>=0.12.0
 
+# --- Multi-worker turn coordination ---
+redis>=5.0.0,<7.0.0
+
 # --- LLM provider runtime (unconditionally imported by provider_core) ---
 loguru>=0.7.3,<1.0.0
 json-repair>=0.57.0,<1.0.0
@@ -31,6 +34,6 @@ json-repair>=0.57.0,<1.0.0
 croniter>=6.0.0,<7.0.0
 
 # --- Runtime observability ---
-# Process-tree memory readings behind /api/v1/system/memory. Imported lazily
+# Process-tree memory readings behind /api/system/memory. Imported lazily
 # with a /proc fallback, so it is soft rather than required.
 psutil>=5.9.0,<8.0.0

@@ -1,7 +1,7 @@
 """The pipeline's half of a CLI app call: where it runs, and where its files land.
 
 A CLI app is given its working directory by the pipeline, exactly as ``exec`` is.
-That is not a stylistic choice — the directory has to be one ``/api/outputs`` will
+That is not a stylistic choice — the directory has to be one ``/files/outputs`` will
 serve from, so the file an app produced becomes a link the reader can open. These
 tests pin that the injection happens for a ``cli_*`` name and that the directory
 it picks is one the path policy actually publishes.

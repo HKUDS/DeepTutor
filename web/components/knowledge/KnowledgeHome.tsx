@@ -25,7 +25,7 @@ import {
   type ProviderConnectionStatus,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
-import type { RagProviderSummary } from "@/lib/knowledge-api";
+import type { RagProviderSummary } from "@/features/knowledge/model/types";
 import { knowledgeEngineGroup } from "@/lib/knowledge-engine-group";
 import KnowledgeEngineIcon, {
   knowledgeSourceIconId,

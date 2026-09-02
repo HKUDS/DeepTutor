@@ -59,7 +59,11 @@ export function LearnerProfileEditor({ username }: { username: string }) {
       setProfile(updated ?? {});
       setMessage(t("Saved"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("Failed to save learner profile"));
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : t("Failed to save learner profile"),
+      );
     } finally {
       setSaving(false);
     }
@@ -69,8 +73,12 @@ export function LearnerProfileEditor({ username }: { username: string }) {
     <div className="border-t border-[var(--border)] bg-[var(--background)]/40 px-5 py-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-medium text-[var(--foreground)]">{t("Learner Profile")}</h3>
-          <p className="text-xs text-[var(--muted-foreground)]">{t("Adapt explanations to this learner")}</p>
+          <h3 className="text-sm font-medium text-[var(--foreground)]">
+            {t("Learner Profile")}
+          </h3>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            {t("Adapt explanations to this learner")}
+          </p>
         </div>
         <button
           type="button"
@@ -78,7 +86,11 @@ export function LearnerProfileEditor({ username }: { username: string }) {
           disabled={loading || saving}
           className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--foreground)] disabled:opacity-50"
         >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+          {saving ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Check size={13} />
+          )}
           {t("Save")}
         </button>
       </div>
@@ -107,7 +119,9 @@ export function LearnerProfileEditor({ username }: { username: string }) {
           </label>
         ))}
       </div>
-      {message && <p className="mt-2 text-xs text-[var(--muted-foreground)]">{message}</p>}
+      {message && (
+        <p className="mt-2 text-xs text-[var(--muted-foreground)]">{message}</p>
+      )}
     </div>
   );
 }

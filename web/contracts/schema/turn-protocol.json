@@ -1,0 +1,1636 @@
+{
+  "$defs": {
+    "ActiveTurnInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "owner_id": {
+          "default": "",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TurnQueryState"
+            },
+            {
+              "const": "none",
+              "type": "string"
+            }
+          ],
+          "default": "none",
+          "title": "Status"
+        },
+        "turn_id": {
+          "default": "",
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "active_turn_info",
+          "default": "active_turn_info",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "ActiveTurnInfo",
+      "type": "object"
+    },
+    "BookReference": {
+      "additionalProperties": false,
+      "properties": {
+        "book_id": {
+          "title": "Book Id",
+          "type": "string"
+        },
+        "page_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Page Ids",
+          "type": "array"
+        }
+      },
+      "required": ["book_id"],
+      "title": "BookReference",
+      "type": "object"
+    },
+    "CancelTurnCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "minLength": 1,
+          "title": "Command Id",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "turn_id": {
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "cancel_turn",
+          "default": "cancel_turn",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["turn_id", "command_id", "protocol_version"],
+      "title": "CancelTurnCommand",
+      "type": "object"
+    },
+    "CheckActiveTurnCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "session_id": {
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "check_active_turn",
+          "default": "check_active_turn",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["session_id", "protocol_version"],
+      "title": "CheckActiveTurnCommand",
+      "type": "object"
+    },
+    "CommandAckEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "command_id": {
+          "minLength": 1,
+          "title": "Command Id",
+          "type": "string"
+        },
+        "command_type": {
+          "enum": ["cancel_turn", "submit_user_reply", "user_input"],
+          "title": "Command Type",
+          "type": "string"
+        },
+        "error_code": {
+          "default": "",
+          "title": "Error Code",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "turn_id": {
+          "default": "",
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "command_ack",
+          "default": "command_ack",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["command_id", "command_type", "accepted"],
+      "title": "CommandAckEvent",
+      "type": "object"
+    },
+    "ErrorEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "correlation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "error_code": {
+          "title": "Error Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": ["error_code", "message"],
+      "title": "ErrorEnvelope",
+      "type": "object"
+    },
+    "LLMSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "model_id": {
+          "title": "Model Id",
+          "type": "string"
+        },
+        "profile_id": {
+          "title": "Profile Id",
+          "type": "string"
+        }
+      },
+      "required": ["profile_id", "model_id"],
+      "title": "LLMSelection",
+      "type": "object"
+    },
+    "NotebookReference": {
+      "additionalProperties": false,
+      "properties": {
+        "notebook_id": {
+          "title": "Notebook Id",
+          "type": "string"
+        },
+        "record_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Record Ids",
+          "type": "array"
+        }
+      },
+      "required": ["notebook_id"],
+      "title": "NotebookReference",
+      "type": "object"
+    },
+    "OutgoingAttachment": {
+      "additionalProperties": false,
+      "properties": {
+        "base64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base64"
+        },
+        "filename": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filename"
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mime Type"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "required": ["type"],
+      "title": "OutgoingAttachment",
+      "type": "object"
+    },
+    "PingCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "type": {
+          "const": "ping",
+          "default": "ping",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["protocol_version"],
+      "title": "PingCommand",
+      "type": "object"
+    },
+    "PongEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "type": {
+          "const": "pong",
+          "default": "pong",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "PongEvent",
+      "type": "object"
+    },
+    "ProtocolErrorEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "error_code": {
+          "minLength": 1,
+          "title": "Error Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "session_id": {
+          "default": "",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "turn_id": {
+          "default": "",
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "protocol_error",
+          "default": "protocol_error",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["error_code", "message"],
+      "title": "ProtocolErrorEvent",
+      "type": "object"
+    },
+    "ReadingReference": {
+      "additionalProperties": false,
+      "properties": {
+        "locators": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Locators",
+          "type": "array"
+        },
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": ["material_id", "revision"],
+      "title": "ReadingReference",
+      "type": "object"
+    },
+    "ReadingViewport": {
+      "additionalProperties": false,
+      "properties": {
+        "locator": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selection"
+        }
+      },
+      "title": "ReadingViewport",
+      "type": "object"
+    },
+    "RegenerateCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "overrides": {
+          "additionalProperties": true,
+          "title": "Overrides",
+          "type": "object"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "session_id": {
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "regenerate",
+          "default": "regenerate",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["session_id", "protocol_version"],
+      "title": "RegenerateCommand",
+      "type": "object"
+    },
+    "ResumeTurnCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "turn_id": {
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "resume_from",
+          "default": "resume_from",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["turn_id", "protocol_version"],
+      "title": "ResumeTurnCommand",
+      "type": "object"
+    },
+    "RuntimeStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "coordination_mode": {
+          "enum": ["memory", "redis"],
+          "title": "Coordination Mode",
+          "type": "string"
+        },
+        "leader_healthy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Leader Healthy"
+        },
+        "leader_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Leader Id"
+        },
+        "lease_ttl_seconds": {
+          "minimum": 1,
+          "title": "Lease Ttl Seconds",
+          "type": "integer"
+        },
+        "minimum_web_protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Minimum Web Protocol Version",
+          "type": "string"
+        },
+        "owner_turn_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Owner Turn Count",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "recovery_backlog": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Recovery Backlog",
+          "type": "integer"
+        },
+        "recovery_interval_seconds": {
+          "minimum": 1,
+          "title": "Recovery Interval Seconds",
+          "type": "integer"
+        },
+        "redis_configured": {
+          "title": "Redis Configured",
+          "type": "boolean"
+        },
+        "redis_status": {
+          "enum": ["ok", "unavailable", "not_configured"],
+          "title": "Redis Status",
+          "type": "string"
+        },
+        "renew_interval_seconds": {
+          "minimum": 1,
+          "title": "Renew Interval Seconds",
+          "type": "integer"
+        },
+        "worker_count": {
+          "minimum": 1,
+          "title": "Worker Count",
+          "type": "integer"
+        },
+        "worker_id": {
+          "title": "Worker Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "worker_id",
+        "worker_count",
+        "coordination_mode",
+        "redis_configured",
+        "redis_status",
+        "lease_ttl_seconds",
+        "renew_interval_seconds",
+        "recovery_interval_seconds"
+      ],
+      "title": "RuntimeStatus",
+      "type": "object"
+    },
+    "SessionDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "active_turn": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TurnSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "preferences": {
+          "additionalProperties": true,
+          "title": "Preferences",
+          "type": "object"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated At"
+        }
+      },
+      "required": ["id", "title"],
+      "title": "SessionDetail",
+      "type": "object"
+    },
+    "SessionSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "active_turn": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TurnSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated At"
+        }
+      },
+      "required": ["id", "title"],
+      "title": "SessionSummary",
+      "type": "object"
+    },
+    "StartTurnCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "attachments": {
+          "items": {
+            "$ref": "#/$defs/OutgoingAttachment"
+          },
+          "title": "Attachments",
+          "type": "array"
+        },
+        "auto_route": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Auto Route"
+        },
+        "book_references": {
+          "items": {
+            "$ref": "#/$defs/BookReference"
+          },
+          "title": "Book References",
+          "type": "array"
+        },
+        "capability": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "chat",
+          "title": "Capability"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "course_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Course Id"
+        },
+        "followup_question_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Followup Question Context"
+        },
+        "history_references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "History References",
+          "type": "array"
+        },
+        "knowledge_bases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Knowledge Bases",
+          "type": "array"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "llm_selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMSelection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mastery_path_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mastery Path Id"
+        },
+        "mastery_path_lease_managed": {
+          "default": false,
+          "title": "Mastery Path Lease Managed",
+          "type": "boolean"
+        },
+        "memory_references": {
+          "items": {
+            "enum": ["recent", "profile", "scope", "preferences", "summary"],
+            "type": "string"
+          },
+          "title": "Memory References",
+          "type": "array"
+        },
+        "notebook_references": {
+          "items": {
+            "$ref": "#/$defs/NotebookReference"
+          },
+          "title": "Notebook References",
+          "type": "array"
+        },
+        "parent_message_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Message Id"
+        },
+        "partner_group_references": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Partner Group References",
+          "type": "array"
+        },
+        "persist_user_message": {
+          "default": true,
+          "title": "Persist User Message",
+          "type": "boolean"
+        },
+        "persona": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Persona"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "question_notebook_references": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Question Notebook References",
+          "type": "array"
+        },
+        "reading_material_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reading Material Id"
+        },
+        "reading_material_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reading Material Revision"
+        },
+        "reading_references": {
+          "items": {
+            "$ref": "#/$defs/ReadingReference"
+          },
+          "title": "Reading References",
+          "type": "array"
+        },
+        "reading_viewport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReadingViewport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reading_workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reading Workspace Id"
+        },
+        "regenerate": {
+          "default": false,
+          "title": "Regenerate",
+          "type": "boolean"
+        },
+        "regenerated_from_message_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Regenerated From Message Id"
+        },
+        "selection_tutor_context": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selection Tutor Context"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Skills",
+          "type": "array"
+        },
+        "subagent_consult_budget": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subagent Consult Budget"
+        },
+        "superseded_turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Superseded Turn Id"
+        },
+        "timed_media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timed Media Id"
+        },
+        "timed_media_viewport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimedMediaViewport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tools"
+        },
+        "type": {
+          "default": "start_turn",
+          "enum": ["message", "start_turn"],
+          "title": "Type",
+          "type": "string"
+        },
+        "workspace_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Mode"
+        }
+      },
+      "required": ["content", "protocol_version"],
+      "title": "StartTurnCommand",
+      "type": "object"
+    },
+    "StreamEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "default": "",
+          "title": "Content",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "default": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "default": "",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "source": {
+          "default": "",
+          "title": "Source",
+          "type": "string"
+        },
+        "stage": {
+          "default": "",
+          "title": "Stage",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "number"
+        },
+        "turn_id": {
+          "default": "",
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/StreamEventType"
+        }
+      },
+      "required": ["type", "timestamp"],
+      "title": "StreamEvent",
+      "type": "object"
+    },
+    "StreamEventType": {
+      "enum": [
+        "stage_start",
+        "stage_end",
+        "thinking",
+        "observation",
+        "content",
+        "tool_call",
+        "tool_result",
+        "progress",
+        "sources",
+        "result",
+        "error",
+        "session",
+        "session_meta",
+        "wait_for_input",
+        "done"
+      ],
+      "title": "StreamEventType",
+      "type": "string"
+    },
+    "SubmitUserReplyCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "answers": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/UserAnswer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answers"
+        },
+        "command_id": {
+          "minLength": 1,
+          "title": "Command Id",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "turn_id": {
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "submit_user_reply",
+          "default": "submit_user_reply",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["turn_id", "command_id", "protocol_version"],
+      "title": "SubmitUserReplyCommand",
+      "type": "object"
+    },
+    "SubscribeSessionCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "after_seq": {
+          "default": 0,
+          "minimum": 0,
+          "title": "After Seq",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "session_id": {
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "subscribe_session",
+          "default": "subscribe_session",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["session_id", "protocol_version"],
+      "title": "SubscribeSessionCommand",
+      "type": "object"
+    },
+    "SubscribeTurnCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "after_seq": {
+          "default": 0,
+          "minimum": 0,
+          "title": "After Seq",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "turn_id": {
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "subscribe_turn",
+          "default": "subscribe_turn",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["turn_id", "protocol_version"],
+      "title": "SubscribeTurnCommand",
+      "type": "object"
+    },
+    "TimedMediaViewport": {
+      "additionalProperties": false,
+      "properties": {
+        "time_seconds": {
+          "minimum": 0,
+          "title": "Time Seconds",
+          "type": "number"
+        }
+      },
+      "required": ["time_seconds"],
+      "title": "TimedMediaViewport",
+      "type": "object"
+    },
+    "TurnFailureCode": {
+      "enum": [
+        "worker_lost",
+        "lease_lost",
+        "coordination_unavailable",
+        "provider_error",
+        "internal_error",
+        "rejected",
+        "server_shutdown"
+      ],
+      "title": "TurnFailureCode",
+      "type": "string"
+    },
+    "TurnQueryState": {
+      "description": "Client observation state, including server-side recovery windows.",
+      "enum": [
+        "queued",
+        "running",
+        "waiting_input",
+        "recovering",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "TurnQueryState",
+      "type": "string"
+    },
+    "TurnStatus": {
+      "enum": [
+        "queued",
+        "running",
+        "waiting_input",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "TurnStatus",
+      "type": "string"
+    },
+    "TurnSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "default": "",
+          "title": "Capability",
+          "type": "string"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "error": {
+          "default": "",
+          "title": "Error",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TurnFailureCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "last_seq": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Last Seq",
+          "type": "integer"
+        },
+        "owner_id": {
+          "default": "",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "query_state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TurnQueryState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TurnStatus"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated At"
+        }
+      },
+      "required": ["id", "session_id", "status"],
+      "title": "TurnSummary",
+      "type": "object"
+    },
+    "UnsubscribeCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "type": {
+          "const": "unsubscribe",
+          "default": "unsubscribe",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["protocol_version"],
+      "title": "UnsubscribeCommand",
+      "type": "object"
+    },
+    "UserAnswer": {
+      "additionalProperties": false,
+      "properties": {
+        "questionId": {
+          "minLength": 1,
+          "title": "Questionid",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": ["questionId"],
+      "title": "UserAnswer",
+      "type": "object"
+    },
+    "UserInputCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "minLength": 1,
+          "title": "Command Id",
+          "type": "string"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "turn_id": {
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "user_input",
+          "default": "user_input",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": ["turn_id", "content", "command_id", "protocol_version"],
+      "title": "UserInputCommand",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "client_command": {
+      "discriminator": {
+        "mapping": {
+          "cancel_turn": "#/$defs/CancelTurnCommand",
+          "check_active_turn": "#/$defs/CheckActiveTurnCommand",
+          "message": "#/$defs/StartTurnCommand",
+          "ping": "#/$defs/PingCommand",
+          "regenerate": "#/$defs/RegenerateCommand",
+          "resume_from": "#/$defs/ResumeTurnCommand",
+          "start_turn": "#/$defs/StartTurnCommand",
+          "submit_user_reply": "#/$defs/SubmitUserReplyCommand",
+          "subscribe_session": "#/$defs/SubscribeSessionCommand",
+          "subscribe_turn": "#/$defs/SubscribeTurnCommand",
+          "unsubscribe": "#/$defs/UnsubscribeCommand",
+          "user_input": "#/$defs/UserInputCommand"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StartTurnCommand"
+        },
+        {
+          "$ref": "#/$defs/SubscribeTurnCommand"
+        },
+        {
+          "$ref": "#/$defs/SubscribeSessionCommand"
+        },
+        {
+          "$ref": "#/$defs/ResumeTurnCommand"
+        },
+        {
+          "$ref": "#/$defs/UnsubscribeCommand"
+        },
+        {
+          "$ref": "#/$defs/CancelTurnCommand"
+        },
+        {
+          "$ref": "#/$defs/RegenerateCommand"
+        },
+        {
+          "$ref": "#/$defs/SubmitUserReplyCommand"
+        },
+        {
+          "$ref": "#/$defs/UserInputCommand"
+        },
+        {
+          "$ref": "#/$defs/CheckActiveTurnCommand"
+        },
+        {
+          "$ref": "#/$defs/PingCommand"
+        }
+      ],
+      "title": "Client Command"
+    },
+    "error": {
+      "$ref": "#/$defs/ErrorEnvelope"
+    },
+    "minimum_web_protocol_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Minimum Web Protocol Version",
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "runtime_status": {
+      "$ref": "#/$defs/RuntimeStatus"
+    },
+    "server_event": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StreamEvent"
+        },
+        {
+          "$ref": "#/$defs/ActiveTurnInfo"
+        },
+        {
+          "$ref": "#/$defs/PongEvent"
+        },
+        {
+          "$ref": "#/$defs/CommandAckEvent"
+        },
+        {
+          "$ref": "#/$defs/ProtocolErrorEvent"
+        }
+      ],
+      "title": "Server Event"
+    },
+    "session_detail": {
+      "$ref": "#/$defs/SessionDetail"
+    },
+    "session_summary": {
+      "$ref": "#/$defs/SessionSummary"
+    }
+  },
+  "required": [
+    "client_command",
+    "server_event",
+    "runtime_status",
+    "session_summary",
+    "session_detail",
+    "error"
+  ],
+  "title": "TurnProtocolDocument",
+  "type": "object"
+}

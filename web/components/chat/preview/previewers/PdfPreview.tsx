@@ -7,7 +7,7 @@ import type { FilePreviewSource } from "../previewerFor";
 
 /**
  * PDF preview powered by the browser's built-in viewer (PDF.js in Chrome /
- * Firefox, Preview in Safari). Loads the original file from /api/attachments
+ * Firefox, Preview in Safari). Loads the original file from /files/attachments
  * via an <iframe> — zero extra bundle weight.
  *
  * The "load" event sometimes fires twice in WebKit because of the inline

@@ -6,7 +6,7 @@ type StreamingRequestInit = RequestInit & { duplex: "half" };
 
 test("upload proxy streams the original body and preserves the backend response", async () => {
   const request = new Request(
-    "http://frontend.test/api/v1/knowledge/create?source=web",
+    "http://frontend.test/api/knowledge-bases?source=web",
     {
       method: "POST",
       headers: {
@@ -26,7 +26,7 @@ test("upload proxy streams the original body and preserves the backend response"
     fetchImpl: async (input, init) => {
       assert.equal(
         String(input),
-        "http://127.0.0.1:8123/api/v1/knowledge/create?source=web",
+        "http://127.0.0.1:8123/api/knowledge-bases?source=web",
       );
       assert.equal(init?.method, "POST");
       const headers = new Headers(init?.headers);

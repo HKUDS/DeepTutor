@@ -88,7 +88,9 @@ class PartnerSessionStore:
             return True
         return self.is_archived_key(session_key)
 
-    def set_archived(self, session_key: str, archived: bool) -> None:
+    def set_archived(self, session_key: str, archived: bool) -> bool:
+        if not self._path(session_key).exists():
+            return False
         stem = self._stem(session_key)
         index = self._load_index()
         entry = index.get(stem, {})
@@ -101,6 +103,7 @@ class PartnerSessionStore:
         else:
             index.pop(stem, None)
         self._save_index(index)
+        return True
 
     def delete_session(self, session_key: str) -> bool:
         """Remove a session's file and its index entry. Returns whether it existed."""

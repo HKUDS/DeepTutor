@@ -1,0 +1,32 @@
+export {
+  connectImaKnowledgeBase,
+  connectLinkedFolder,
+  connectMarginNote4Library,
+  connectObsidianVault,
+  connectWeKnora,
+  createKnowledgeBase,
+  deleteKnowledgeBase,
+  getKnowledgeUploadPolicy,
+  invalidateKnowledgeCaches,
+  listImaKnowledgeBases,
+  listKnowledgeBases,
+  listRagProviders,
+  probeImaKnowledgeBase,
+  probeLinkedFolder,
+  probeWeKnora,
+  readErrorDetail,
+  reindexKnowledgeBase,
+  retryKnowledgeBase,
+  setDefaultKnowledgeBase,
+} from "./client";
+
+export type {
+  ImaKnowledgeBasePage,
+  ImaProbe,
+  KnowledgeBaseSummary,
+  KnowledgeTaskResponse,
+  KnowledgeUploadPolicy,
+  LinkedFolderProbe,
+  RagProviderSummary,
+  WeKnoraProbe,
+} from "../model/types";

@@ -80,7 +80,7 @@ export default function PartnerChannels({
     try {
       // Edit form needs raw secrets to populate fields. Default GET masks them.
       const res = await apiFetch(
-        apiUrl(`/api/v1/partners/${partnerId}?include_secrets=true`),
+        apiUrl(`/api/partners/${partnerId}?include_secrets=true`),
       );
       if (!res.ok) {
         setDetailError(true);
@@ -145,7 +145,7 @@ export default function PartnerChannels({
   const save = async () => {
     setSaving(true);
     try {
-      const res = await apiFetch(apiUrl(`/api/v1/partners/${partnerId}`), {
+      const res = await apiFetch(apiUrl(`/api/partners/${partnerId}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channels: stripLegacyGlobalDelivery(channels) }),

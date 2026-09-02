@@ -47,12 +47,12 @@ def test_read_aloud_crosses_the_authenticated_api_boundary_with_stored_text(monk
         lambda: registry,
     )
     app = FastAPI()
-    app.include_router(reading_extensions.router, prefix="/api/v1/reading")
+    app.include_router(reading_extensions.router, prefix="/api/reading")
     client = TestClient(app)
 
     try:
         response = client.post(
-            f"/api/v1/reading/materials/{material.material_id}/extensions/read_aloud/actions/read",
+            f"/api/reading/materials/{material.material_id}/extensions/read_aloud/actions/read",
             json={"locator": 1, "visible_text": "Forged text", "locale": "zh-CN"},
         )
     finally:

@@ -43,6 +43,17 @@
     --input: #e6decc;
     --ring: #b0501e;
     --overlay: rgba(28, 24, 22, 0.42);
+    --success: #237a4b;
+    --success-foreground: #14532d;
+    --success-surface: #ecf8f0;
+    --warning: #a15c00;
+    --warning-foreground: #713f12;
+    --warning-surface: #fff7df;
+    --info: #2563eb;
+    --info-foreground: #1e3a8a;
+    --info-surface: #eff6ff;
+    --surface-raised: #ffffff;
+    --shadow-raised: 0 16px 40px rgba(69, 49, 31, 0.12);
   }
 
   /* Dark — warm near-black, same terracotta family as Cream. */
@@ -68,6 +79,17 @@
     --input: #3a3634;
     --ring: #d4734b;
     --overlay: rgba(0, 0, 0, 0.6);
+    --success: #5fd08a;
+    --success-foreground: #bbf7d0;
+    --success-surface: #173424;
+    --warning: #f2b84b;
+    --warning-foreground: #fde68a;
+    --warning-surface: #3a2c16;
+    --info: #7ba7ff;
+    --info-foreground: #bfdbfe;
+    --info-surface: #172641;
+    --surface-raised: #2a2826;
+    --shadow-raised: 0 16px 44px rgba(0, 0, 0, 0.32);
   }
 
   /* Default — pure-white neutral canvas (theme id "snow" kept for stored
@@ -96,6 +118,17 @@
     --input: #e5e5e5;
     --ring: #2563eb;
     --overlay: rgba(0, 0, 0, 0.4);
+    --success: #16794b;
+    --success-foreground: #14532d;
+    --success-surface: #ecfdf3;
+    --warning: #a15c00;
+    --warning-foreground: #713f12;
+    --warning-surface: #fffaeb;
+    --info: #2563eb;
+    --info-foreground: #1e3a8a;
+    --info-surface: #eff6ff;
+    --surface-raised: #ffffff;
+    --shadow-raised: 0 16px 40px rgba(13, 13, 13, 0.12);
   }
 
   /* Glass — translucent purple panels on near-black. Slightly brighter
@@ -116,10 +149,23 @@
     --muted-foreground: #b5b5c7;
     --accent: rgba(255, 255, 255, 0.12);
     --accent-foreground: #ffffff;
+    --destructive: #f07178;
+    --destructive-foreground: #ffffff;
     --border: rgba(255, 255, 255, 0.12);
     --input: rgba(255, 255, 255, 0.06);
     --ring: #a855f7;
     --overlay: rgba(0, 0, 0, 0.55);
+    --success: #68dfa0;
+    --success-foreground: #bbf7d0;
+    --success-surface: rgba(34, 197, 94, 0.14);
+    --warning: #f7c65a;
+    --warning-foreground: #fde68a;
+    --warning-surface: rgba(245, 158, 11, 0.16);
+    --info: #9ab7ff;
+    --info-foreground: #dbeafe;
+    --info-surface: rgba(59, 130, 246, 0.16);
+    --surface-raised: rgba(35, 32, 51, 0.96);
+    --shadow-raised: 0 18px 48px rgba(0, 0, 0, 0.42);
   }
 
   .theme-glass body {
@@ -167,6 +213,9 @@
 
   html {
     -webkit-font-smoothing: antialiased;
+    --motion-fast: 120ms;
+    --motion-base: 180ms;
+    --motion-slow: 240ms;
   }
 
   html[data-scroll-behavior="smooth"] {
@@ -189,6 +238,22 @@
   summary::-webkit-details-marker {
     display: none;
   }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer components {
@@ -198,6 +263,11 @@
 
   .muted-chip {
     @apply rounded-full bg-[var(--muted)] px-3 py-1 text-xs text-[var(--muted-foreground)];
+  }
+
+  .surface-raised {
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-raised);
   }
 }
 

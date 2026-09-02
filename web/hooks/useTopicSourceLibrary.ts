@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { bookApi } from "@/lib/book-api";
-import { listKnowledgeBases } from "@/lib/knowledge-api";
+import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { SUBAGENT_KB_TYPE } from "@/lib/knowledge-helpers";
 import type { TopicSourceInput, TopicSourceKind } from "@/lib/learning-api";
 import { getNotebook, listNotebooks } from "@/lib/notebook-api";

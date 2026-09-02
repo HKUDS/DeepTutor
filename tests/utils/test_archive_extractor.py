@@ -85,6 +85,21 @@ def test_nested_zip_is_never_extracted(tmp_path: Path) -> None:
     assert any(member == "inner.zip" for member, _ in result.skipped)
 
 
+def test_unbounded_parser_policy_still_rejects_nested_zip(tmp_path: Path) -> None:
+    src = _make_zip(
+        tmp_path / "a.zip",
+        [("vendor.custom", b"payload"), ("inner.zip", b"PK\x03\x04")],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=set())
+
+    assert [p.name for p in result.extracted] == ["vendor.custom"]
+    assert any(
+        member == "inner.zip" and reason == "nested archive" for member, reason in result.skipped
+    )
+
+
 def test_macosx_and_dotfiles_are_skipped(tmp_path: Path) -> None:
     src = _make_zip(
         tmp_path / "a.zip",

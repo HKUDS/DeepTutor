@@ -65,6 +65,23 @@
 name: deeptutor
 
 services:
+  # Internal-only coordination service for multi-worker mode.
+  redis:
+    image: docker.io/library/redis:7.4-alpine
+    container_name: deeptutor-redis
+    restart: unless-stopped
+    userns_mode: keep-id
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - ./data/redis:/data:U
+    networks:
+      - deeptutor
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # ----------------------------------------------------------
   # PocketBase — optional auth + storage sidecar
   # ----------------------------------------------------------
@@ -170,12 +187,14 @@ services:
         - CMD
         - curl
         - -fsS
-        - http://localhost:8001/
+        - http://localhost:8001/health/ready
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
     depends_on:
+      redis:
+        condition: service_healthy
       pocketbase:
         condition: service_healthy
     networks:

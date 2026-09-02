@@ -74,7 +74,7 @@ async def localize_snapshot_images(
         digest = hashlib.sha256(url.encode("utf-8") + asset.data).hexdigest()[:20]
         name = f"{digest}.{asset.extension}"
         assets[name] = asset.data
-        replacements[url] = f"/api/v1/reading/materials/{material_id}/assets/{name}"
+        replacements[url] = f"/api/reading/materials/{material_id}/assets/{name}"
 
     def replace(match: re.Match[str]) -> str:
         alt, url = match.group(1), match.group(2)

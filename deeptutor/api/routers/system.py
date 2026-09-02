@@ -9,9 +9,14 @@ import json
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
+from deeptutor.api.contracts.turn_protocol import (
+    MINIMUM_WEB_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
+    RuntimeStatus,
+)
 from deeptutor.api.routers.auth import require_admin
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.runtime import memory_probe
@@ -66,9 +71,36 @@ def get_update_installation() -> Installation:
 
 
 def get_turn_activity():
-    from deeptutor.services.session import get_turn_runtime_manager
+    from deeptutor.app.container import get_application_container
 
-    return get_turn_runtime_manager()
+    return get_application_container().runtime_registry.get(
+        get_application_container().store_provider.get()
+    )
+
+
+@router.get(
+    "/runtime",
+    dependencies=[Depends(require_admin)],
+    response_model=RuntimeStatus,
+)
+async def get_runtime_status(request: Request) -> RuntimeStatus:
+    """Return credential-free coordination and worker diagnostics."""
+
+    from deeptutor.app.container import get_application_container
+
+    container = getattr(request.app.state, "application_container", None)
+    if container is None:
+        container = get_application_container()
+        await container.start()
+    report = await container.runtime_report()
+    return RuntimeStatus.model_validate(
+        {
+            **report,
+            "leader_healthy": bool(report.get("leader_id")),
+            "protocol_version": PROTOCOL_VERSION,
+            "minimum_web_protocol_version": MINIMUM_WEB_PROTOCOL_VERSION,
+        }
+    )
 
 
 def _job_payload(job: UpdateJob | None) -> dict[str, Any] | None:
@@ -244,36 +276,6 @@ async def request_managed_update(_request: ManagedUpdateRequest) -> dict[str, An
             detail="Finish the active conversation before updating DeepTutor.",
         )
     return _job_payload(job) or {}
-
-
-@router.get("/runtime-topology")
-async def get_runtime_topology():
-    """
-    Describe the current execution topology.
-
-    This makes the unified runtime explicit for operators and frontend code:
-    interactive chat turns should prefer `/api/v1/ws`, while a few routers still
-    exist as compatibility or isolated subsystem endpoints.
-    """
-    return {
-        "primary_runtime": {
-            "transport": "/api/v1/ws",
-            "manager": "TurnRuntimeManager",
-            "orchestrator": "ChatOrchestrator",
-            "session_store": "SQLiteSessionStore",
-            "capability_entry": "CapabilityRegistry",
-            "tool_entry": "ToolRegistry",
-        },
-        "compatibility_routes": [
-            {"router": "chat", "mode": "legacy_adapter_target"},
-            {"router": "solve", "mode": "legacy_adapter_target"},
-            {"router": "question", "mode": "legacy_specialized"},
-            {"router": "research", "mode": "legacy_specialized"},
-        ],
-        "isolated_subsystems": [
-            {"router": "co_writer", "mode": "independent_subsystem"},
-        ],
-    }
 
 
 @router.get("/status")

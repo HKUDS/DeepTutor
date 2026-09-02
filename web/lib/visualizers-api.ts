@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
-const BASE = "/api/v1/visualizers";
+const BASE = "/api/visualizers";
 
 export interface VisualizerCatalogItem {
   id: string;
@@ -22,7 +22,9 @@ async function json<T>(response: Response): Promise<T> {
     unknown
   >;
   if (!response.ok) {
-    throw new Error(String(payload.detail ?? `Request failed (${response.status})`));
+    throw new Error(
+      String(payload.detail ?? `Request failed (${response.status})`),
+    );
   }
   return payload as T;
 }
@@ -36,9 +38,12 @@ export async function listVisualizers(): Promise<VisualizerCatalogItem[]> {
 
 export async function installBundledVisualizer(id: string): Promise<void> {
   await json(
-    await apiFetch(apiUrl(`${BASE}/bundled/${encodeURIComponent(id)}/install`), {
-      method: "POST",
-    }),
+    await apiFetch(
+      apiUrl(`${BASE}/bundled/${encodeURIComponent(id)}/install`),
+      {
+        method: "POST",
+      },
+    ),
   );
 }
 
@@ -48,7 +53,9 @@ export async function setVisualizerEnabled(
 ): Promise<void> {
   await json(
     await apiFetch(
-      apiUrl(`${BASE}/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`),
+      apiUrl(
+        `${BASE}/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`,
+      ),
       { method: "POST" },
     ),
   );

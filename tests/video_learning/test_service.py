@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -355,3 +357,25 @@ def test_timed_media_store_lock_is_cross_platform(isolated: Path) -> None:
         lock_path = store.root / ".locks" / f"{material_id}.lock"
         assert lock_path.is_file()
         assert lock_path.stat().st_size >= 1
+
+
+def test_timed_media_store_uses_msvcrt_locking_on_windows(
+    isolated: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[int, int]] = []
+    fake_msvcrt = SimpleNamespace(
+        LK_LOCK=1,
+        LK_UNLCK=2,
+        locking=lambda _fileno, mode, length: calls.append((mode, length)),
+    )
+    monkeypatch.setattr(service, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    store = service.TimedMediaStore(root=isolated / "workspace" / "timed_media")
+    with store.lock("b" * 32):
+        assert calls == [(fake_msvcrt.LK_LOCK, 1)]
+
+    assert calls == [
+        (fake_msvcrt.LK_LOCK, 1),
+        (fake_msvcrt.LK_UNLCK, 1),
+    ]
