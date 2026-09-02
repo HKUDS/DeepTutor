@@ -18,6 +18,7 @@ export {
   reindexKnowledgeBase,
   retryKnowledgeBase,
   setDefaultKnowledgeBase,
+  updatePendingIndexingPolicy,
 } from "./client";
 
 export type {

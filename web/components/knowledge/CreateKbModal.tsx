@@ -48,7 +48,7 @@ import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
 import IndexingModelSelector, {
-  selectionFromLLMOption,
+  selectionFromLightRagDefault,
 } from "./IndexingModelSelector";
 
 const OBSIDIAN_SOURCE = "obsidian";
@@ -167,6 +167,11 @@ export default function CreateKbModal({
   const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
     null,
   );
+  const [lightRagConfig, setLightRagConfig] = useState<Awaited<
+    ReturnType<typeof getLightRagConfig>
+  > | null>(null);
+  const [lightRagConfigLoaded, setLightRagConfigLoaded] = useState(false);
+  const [lightRagConfigError, setLightRagConfigError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
   const linkIsMarginNote = linkSource === MARGINNOTE4_SOURCE;
@@ -229,24 +234,36 @@ export default function CreateKbModal({
     setWeKnoraProbe(null);
     setWeKnoraProbing(false);
     setIndexingLLM(null);
+    setLightRagConfig(null);
+    setLightRagConfigLoaded(false);
+    setLightRagConfigError(false);
   }, [isOpen, providers, firstLinkable, initialMode, initialSource]);
 
   useEffect(() => {
-    if (!isOpen || mode !== "new" || provider !== "lightrag" || indexingLLM) {
+    if (
+      !isOpen ||
+      mode !== "new" ||
+      provider !== "lightrag" ||
+      indexingLLM ||
+      !lightRagConfigLoaded ||
+      !lightRagConfig
+    ) {
       return;
     }
-    const active = llmCatalog.options.find(
-      (option) =>
-        (option.profile_id === llmCatalog.activeDefault?.profile_id &&
-          option.model_id === llmCatalog.activeDefault?.model_id) ||
-        option.is_active_default,
+    setIndexingLLM(
+      selectionFromLightRagDefault(
+        llmCatalog.options,
+        lightRagConfig,
+        llmCatalog.activeDefault,
+      ),
     );
-    if (active) setIndexingLLM(selectionFromLLMOption(active));
   }, [
     indexingLLM,
     isOpen,
     llmCatalog.activeDefault,
     llmCatalog.options,
+    lightRagConfig,
+    lightRagConfigLoaded,
     mode,
     provider,
   ]);
@@ -273,6 +290,11 @@ export default function CreateKbModal({
           ];
         } else if (provider === "lightrag") {
           const config = await getLightRagConfig();
+          if (!cancelled) {
+            setLightRagConfig(config);
+            setLightRagConfigLoaded(true);
+            setLightRagConfigError(false);
+          }
           summary = [
             `${t("Results per query")}: ${config.top_k}`,
             `${t("Files in parallel")}: ${config.max_concurrent_files}`,
@@ -298,7 +320,13 @@ export default function CreateKbModal({
         }
         if (!cancelled) setEngineDefaultSummary(summary);
       } catch {
-        if (!cancelled) setEngineDefaultSummary([]);
+        if (!cancelled) {
+          setEngineDefaultSummary([]);
+          if (provider === "lightrag") {
+            setLightRagConfigLoaded(true);
+            setLightRagConfigError(true);
+          }
+        }
       }
     };
 
@@ -593,6 +621,15 @@ export default function CreateKbModal({
                   selection={indexingLLM}
                   loading={llmCatalog.loading}
                   error={llmCatalog.error}
+                  defaultUnavailable={
+                    lightRagConfigLoaded &&
+                    !!(
+                      lightRagConfig?.llm_profile_id ||
+                      lightRagConfig?.llm_model_id
+                    ) &&
+                    !indexingLLM
+                  }
+                  defaultLoadError={lightRagConfigError}
                   disabled={submitting}
                   onChange={setIndexingLLM}
                 />

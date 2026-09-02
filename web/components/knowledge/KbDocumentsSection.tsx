@@ -10,6 +10,7 @@ import {
 import {
   kbIsUploadable,
   kbNeedsReindex,
+  kbRequiresLightRagRebuildBeforeAppend,
   providerUsesEmbeddingMetadata,
   resolveKbStatus,
   resolveProgressPercent,
@@ -82,6 +83,7 @@ export default function KbDocumentsSection({
 
   const uploadable = kbIsUploadable(kb);
   const needsReindex = kbNeedsReindex(kb);
+  const requiresLightRagRebuild = kbRequiresLightRagRebuildBeforeAppend(kb);
   const status = resolveKbStatus(kb);
   const isError = status === "error";
   const provider =
@@ -107,18 +109,22 @@ export default function KbDocumentsSection({
 
   const blockedReason = canUpload
     ? null
-    : needsReindex
+    : requiresLightRagRebuild
       ? t(
-          "This knowledge base is in legacy index format and needs reindex before upload.",
+          "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
         )
-      : status !== "ready"
+      : needsReindex
         ? t(
-            "This knowledge base is currently {{status}} and cannot accept uploads yet.",
-            {
-              status: status.replaceAll("_", " "),
-            },
+            "This knowledge base is in legacy index format and needs reindex before upload.",
           )
-        : null;
+        : status !== "ready"
+          ? t(
+              "This knowledge base is currently {{status}} and cannot accept uploads yet.",
+              {
+                status: status.replaceAll("_", " "),
+              },
+            )
+          : null;
 
   const selection = validateFiles(files, policyForProvider, t);
   const canRetry = Boolean(onRetry) && isError && !isIndexingHere;

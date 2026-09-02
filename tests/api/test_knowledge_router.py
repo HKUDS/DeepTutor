@@ -2249,7 +2249,9 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
         persisted_policy=lambda: {
             "policy": "pinned",
             "selection": {"profile_id": "profile-1", "model_id": "model-1"},
+            "descriptor": {"model": "safe-model"},
             "fingerprint": "a" * 64,
+            "vision_available": True,
         }
     )
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)

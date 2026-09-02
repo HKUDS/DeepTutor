@@ -417,8 +417,16 @@ export const kbNeedsReindex = (kb: KnowledgeBase): boolean =>
   Boolean(kb.statistics?.needs_reindex) ||
   resolveKbStatus(kb) === "needs_reindex";
 
+export const kbRequiresLightRagRebuildBeforeAppend = (
+  kb: KnowledgeBase,
+): boolean =>
+  kbProvider(kb) === "lightrag" &&
+  kb.metadata?.indexing_policy?.policy === "legacy_unpinned";
+
 export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
-  resolveKbStatus(kb) === "ready" && !kbNeedsReindex(kb);
+  resolveKbStatus(kb) === "ready" &&
+  !kbNeedsReindex(kb) &&
+  !kbRequiresLightRagRebuildBeforeAppend(kb);
 
 export const kbCanReindex = (kb: KnowledgeBase): boolean => {
   if (kb.read_only) return false;

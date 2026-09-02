@@ -28,9 +28,14 @@ import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import ProcessLogs from "@/components/common/ProcessLogs";
 import Modal from "@/components/common/Modal";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
-import type { IndexingLLMSelection } from "@/lib/knowledge-api";
+import { getLightRagConfig } from "@/features/knowledge/api/engines";
+import type {
+  IndexingLLMSelection,
+  LightRagConfig,
+} from "@/features/knowledge/model/types";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
 import IndexingModelSelector, {
+  selectionFromLightRagDefault,
   selectionFromLLMOption,
 } from "./IndexingModelSelector";
 import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
@@ -57,6 +62,11 @@ export default function KbIndexVersionsSection({
     null,
   );
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [lightRagConfig, setLightRagConfig] = useState<LightRagConfig | null>(
+    null,
+  );
+  const [lightRagConfigLoaded, setLightRagConfigLoaded] = useState(false);
+  const [lightRagConfigError, setLightRagConfigError] = useState(false);
   const llmCatalog = useLLMOptions();
   const provider = kb.statistics?.rag_provider || "llamaindex";
   const isLightRag = provider === "lightrag";
@@ -92,19 +102,43 @@ export default function KbIndexVersionsSection({
     !task?.executing;
 
   useEffect(() => {
+    if (!isLightRag) return;
+    let cancelled = false;
+    void getLightRagConfig()
+      .then((config) => {
+        if (!cancelled) {
+          setLightRagConfig(config);
+          setLightRagConfigError(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLightRagConfigError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLightRagConfigLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLightRag, t]);
+
+  useEffect(() => {
     if (!modelDialogOpen || indexingLLM || llmCatalog.options.length === 0)
       return;
-    const active = llmCatalog.options.find(
-      (option) =>
-        (option.profile_id === llmCatalog.activeDefault?.profile_id &&
-          option.model_id === llmCatalog.activeDefault?.model_id) ||
-        option.is_active_default,
+    if (!lightRagConfigLoaded || !lightRagConfig) return;
+    setIndexingLLM(
+      selectionFromLightRagDefault(
+        llmCatalog.options,
+        lightRagConfig,
+        llmCatalog.activeDefault,
+      ),
     );
-    if (active) setIndexingLLM(selectionFromLLMOption(active));
   }, [
     indexingLLM,
     llmCatalog.activeDefault,
     llmCatalog.options,
+    lightRagConfig,
+    lightRagConfigLoaded,
     modelDialogOpen,
   ]);
 
@@ -115,18 +149,17 @@ export default function KbIndexVersionsSection({
         option.profile_id === saved?.profile_id &&
         option.model_id === saved?.model_id,
     );
-    const activeOption = llmCatalog.options.find(
-      (option) =>
-        (option.profile_id === llmCatalog.activeDefault?.profile_id &&
-          option.model_id === llmCatalog.activeDefault?.model_id) ||
-        option.is_active_default,
-    );
+    const defaultSelection = lightRagConfig
+      ? selectionFromLightRagDefault(
+          llmCatalog.options,
+          lightRagConfig,
+          llmCatalog.activeDefault,
+        )
+      : null;
     setIndexingLLM(
-      savedOption
+      emptyPendingEligible && savedOption
         ? selectionFromLLMOption(savedOption, saved?.reasoning_effort || "")
-        : activeOption
-          ? selectionFromLLMOption(activeOption)
-          : null,
+        : defaultSelection,
     );
     setDialogError(null);
     setModelDialogOpen(true);
@@ -384,6 +417,14 @@ export default function KbIndexVersionsSection({
             selection={indexingLLM}
             loading={llmCatalog.loading}
             error={llmCatalog.error}
+            defaultUnavailable={
+              lightRagConfigLoaded &&
+              !!(
+                lightRagConfig?.llm_profile_id || lightRagConfig?.llm_model_id
+              ) &&
+              !indexingLLM
+            }
+            defaultLoadError={lightRagConfigError}
             disabled={submitting}
             onChange={setIndexingLLM}
           />

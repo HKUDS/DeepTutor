@@ -37,7 +37,9 @@ export default function LightRagIndexingProvenance({
       )
     : pinned
       ? t("Incremental indexing continues with this pinned model.")
-      : t("Uses the active chat model when indexing. Re-index to pin a model.");
+      : t(
+          "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.",
+        );
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/25 px-3 py-2.5">
@@ -49,14 +51,14 @@ export default function LightRagIndexingProvenance({
       </p>
       {compact && (
         <p className="mt-1 text-[11px] font-medium text-[var(--foreground)]">
-          {modelLabel || t("Active chat model at indexing time")}
+          {modelLabel || t("Unverified historical indexing model")}
           {` · ${t("Reasoning effort")}: ${effort || t("Model default")}`}
         </p>
       )}
       {!compact && (
         <dl className="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-2">
           <ProvenanceField label={t("Model")}>
-            {modelLabel || t("Active chat model at indexing time")}
+            {modelLabel || t("Unverified historical indexing model")}
           </ProvenanceField>
           <ProvenanceField label={t("Reasoning effort")}>
             {effort || t("Model default")}

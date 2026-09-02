@@ -7,11 +7,15 @@ import {
   createKnowledgeBase,
   reindexKnowledgeBase,
   updatePendingIndexingPolicy,
-} from "../lib/knowledge-api";
-import { selectionFromLLMOption } from "../components/knowledge/IndexingModelSelector";
+} from "../features/knowledge/api/client";
+import {
+  selectionFromLightRagDefault,
+  selectionFromLLMOption,
+} from "../components/knowledge/IndexingModelSelector";
 import {
   currentLightRagBuildCandidate,
   kbCanReindex,
+  kbIsUploadable,
   lightRagVersionDisplayState,
   type KnowledgeBase,
 } from "../lib/knowledge-helpers";
@@ -56,12 +60,12 @@ test("create and re-index send the exact pinned selection and preserve none", as
     restore();
   }
 
-  assert.equal(requests[0].url, "/api/v1/knowledge/create");
+  assert.equal(requests[0].url, "/api/knowledge-bases");
   assert.deepEqual(
     JSON.parse(String(requests[0].form.get("indexing_llm"))),
     selection,
   );
-  assert.equal(requests[1].url, "/api/v1/knowledge/papers/reindex");
+  assert.equal(requests[1].url, "/api/knowledge-bases/papers/reindex");
   assert.deepEqual(
     JSON.parse(String(requests[1].form.get("indexing_llm"))),
     selection,
@@ -82,7 +86,7 @@ test("pending-policy update is JSON-only and creates no indexing request", async
   } finally {
     restore();
   }
-  assert.equal(captured?.url, "/api/v1/knowledge/empty/indexing-policy");
+  assert.equal(captured?.url, "/api/knowledge-bases/empty/indexing-policy");
   assert.equal(captured?.init?.method, "PUT");
   assert.deepEqual(JSON.parse(String(captured?.init?.body)), {
     profile_id: "p",
@@ -127,6 +131,51 @@ test("model defaults are inherited while an explicit none remains serialized", (
   });
 });
 
+test("indexing defaults prefer the released LightRAG query model", () => {
+  const active = {
+    profile_id: "active-profile",
+    model_id: "active-model",
+    profile_name: "Active",
+    model_name: "Active model",
+    model: "active",
+    provider: "openai",
+    is_active_default: true,
+  };
+  const dedicated = {
+    ...active,
+    profile_id: "query-profile",
+    model_id: "query-model",
+    profile_name: "Query",
+    model_name: "Query model",
+    model: "query",
+    is_active_default: false,
+  };
+  assert.deepEqual(
+    selectionFromLightRagDefault(
+      [active, dedicated],
+      { llm_profile_id: "query-profile", llm_model_id: "query-model" },
+      { profile_id: "active-profile", model_id: "active-model" },
+    ),
+    { profile_id: "query-profile", model_id: "query-model" },
+  );
+  assert.deepEqual(
+    selectionFromLightRagDefault(
+      [active, dedicated],
+      { llm_profile_id: "", llm_model_id: "" },
+      { profile_id: "active-profile", model_id: "active-model" },
+    ),
+    { profile_id: "active-profile", model_id: "active-model" },
+  );
+  assert.equal(
+    selectionFromLightRagDefault(
+      [active],
+      { llm_profile_id: "missing", llm_model_id: "missing" },
+      { profile_id: "active-profile", model_id: "active-model" },
+    ),
+    null,
+  );
+});
+
 test("healthy LightRAG knowledge bases retain a full re-index entry", () => {
   const kb: KnowledgeBase = {
     name: "graph",
@@ -139,6 +188,17 @@ test("healthy LightRAG knowledge bases retain a full re-index entry", () => {
   };
   assert.equal(kbCanReindex(kb), true);
   assert.equal(kbCanReindex({ ...kb, read_only: true }), false);
+});
+
+test("legacy LightRAG indexes stay queryable but are not uploadable", () => {
+  const kb: KnowledgeBase = {
+    name: "legacy-graph",
+    status: "ready",
+    metadata: { indexing_policy: { policy: "legacy_unpinned" } },
+    statistics: { rag_provider: "lightrag", raw_documents: 1 },
+  };
+  assert.equal(kbIsUploadable(kb), false);
+  assert.equal(kbCanReindex(kb), true);
 });
 
 test("LightRAG candidates distinguish active builds from failures", () => {
@@ -195,18 +255,21 @@ test("model controls are scoped to built-in LightRAG create/rebuild surfaces", (
     path.join(root, "components/knowledge/LightRagIndexingProvenance.tsx"),
     "utf8",
   );
-  assert.match(createSource, /provider === "lightrag" \? \(/);
-  assert.match(createSource, /indexingLLM:\s*provider === "lightrag"/);
+  assert.match(createSource, /provider === ['"]lightrag['"] \? \(/);
+  assert.match(createSource, /indexingLLM:\s*provider === ['"]lightrag['"]/);
   assert.doesNotMatch(uploadSource, /IndexingModelSelector/);
   assert.match(uploadSource, /LightRagIndexingProvenance/);
   assert.match(provenanceSource, /compact && \(/);
-  assert.match(provenanceSource, /modelLabel \|\| t\("Active chat model at indexing time"\)/);
   assert.match(
     provenanceSource,
-    /t\("Reasoning effort"\).*effort \|\| t\("Model default"\)/s,
+    /modelLabel \|\| t\(['"]Unverified historical indexing model['"]\)/,
+  );
+  assert.match(
+    provenanceSource,
+    /t\(['"]Reasoning effort['"]\).*effort \|\| t\(['"]Model default['"]\)/s,
   );
   assert.match(
     detailSource,
-    /status === "error" && kbProvider\(kb\) !== "lightrag"/,
+    /status === ['"]error['"] && kbProvider\(kb\) !== ['"]lightrag['"]/,
   );
 });

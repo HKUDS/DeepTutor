@@ -4744,5 +4744,14 @@
   "Not published": "Not published",
   "Rebuild candidate in progress": "Rebuild candidate in progress",
   "Building": "Building",
-  "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds.": "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds."
+  "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds.": "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds.",
+  "LightRAG query model": "LightRAG query model",
+  "Use active chat model": "Use active chat model",
+  "Used for current LightRAG queries and as the default indexing model for new or fully rebuilt knowledge bases. Published indexes keep their pinned indexing model.": "Used for current LightRAG queries and as the default indexing model for new or fully rebuilt knowledge bases. Published indexes keep their pinned indexing model.",
+  "Defaults to the current LightRAG query model. Once published, incremental indexing keeps this selection.": "Defaults to the current LightRAG query model. Once published, incremental indexing keeps this selection.",
+  "The current LightRAG query model is unavailable here. Choose an accessible indexing model.": "The current LightRAG query model is unavailable here. Choose an accessible indexing model.",
+  "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.": "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.",
+  "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.": "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.",
+  "Unverified historical indexing model": "Unverified historical indexing model",
+  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads."
 }

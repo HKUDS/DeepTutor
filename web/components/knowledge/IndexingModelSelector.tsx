@@ -1,7 +1,10 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
-import type { IndexingLLMSelection } from "@/lib/knowledge-api";
+import type {
+  IndexingLLMSelection,
+  LightRagConfig,
+} from "@/features/knowledge/model/types";
 import type { LLMOption } from "@/lib/llm-options";
 import {
   reasoningEffortOptions,
@@ -32,11 +35,35 @@ export function selectionFromLLMOption(
   return selection;
 }
 
+export function selectionFromLightRagDefault(
+  options: LLMOption[],
+  config: Pick<LightRagConfig, "llm_profile_id" | "llm_model_id">,
+  activeDefault?: {
+    profile_id?: string | null;
+    model_id?: string | null;
+  } | null,
+): IndexingLLMSelection | null {
+  const hasDedicated = Boolean(config.llm_profile_id || config.llm_model_id);
+  const profileId = hasDedicated
+    ? config.llm_profile_id
+    : activeDefault?.profile_id;
+  const modelId = hasDedicated ? config.llm_model_id : activeDefault?.model_id;
+  const option =
+    hasDedicated || (profileId && modelId)
+      ? options.find(
+          (item) => item.profile_id === profileId && item.model_id === modelId,
+        )
+      : options.find((item) => item.is_active_default);
+  return option ? selectionFromLLMOption(option) : null;
+}
+
 interface IndexingModelSelectorProps {
   options: LLMOption[];
   selection: IndexingLLMSelection | null;
   loading: boolean;
   error: boolean;
+  defaultUnavailable?: boolean;
+  defaultLoadError?: boolean;
   disabled?: boolean;
   onChange: (selection: IndexingLLMSelection | null) => void;
 }
@@ -46,6 +73,8 @@ export default function IndexingModelSelector({
   selection,
   loading,
   error,
+  defaultUnavailable = false,
+  defaultLoadError = false,
   disabled = false,
   onChange,
 }: IndexingModelSelectorProps) {
@@ -55,17 +84,18 @@ export default function IndexingModelSelector({
       option.profile_id === selection?.profile_id &&
       option.model_id === selection?.model_id,
   );
-  const reasoningOptions = (selected
-    ? selected.supported_reasoning_efforts?.length
-      ? reasoningEffortOptionsFromSupportedLevels(
-          selected.supported_reasoning_efforts,
-        )
-      : reasoningEffortOptions(
-          selected.provider,
-          selected.model,
-          selection?.reasoning_effort || selected.reasoning_effort || "",
-        )
-    : []
+  const reasoningOptions = (
+    selected
+      ? selected.supported_reasoning_efforts?.length
+        ? reasoningEffortOptionsFromSupportedLevels(
+            selected.supported_reasoning_efforts,
+          )
+        : reasoningEffortOptions(
+            selected.provider,
+            selected.model,
+            selection?.reasoning_effort || selected.reasoning_effort || "",
+          )
+      : []
   ).filter(
     (option) =>
       option.value === "" || INDEXING_REASONING_EFFORTS.has(option.value),
@@ -127,7 +157,27 @@ export default function IndexingModelSelector({
             </option>
           ))}
         </select>
+        <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+          {t(
+            "Defaults to the current LightRAG query model. Once published, incremental indexing keeps this selection.",
+          )}
+        </p>
       </label>
+
+      {defaultUnavailable && !selection && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          {t(
+            "The current LightRAG query model is unavailable here. Choose an accessible indexing model.",
+          )}
+        </div>
+      )}
+      {defaultLoadError && !selection && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {t(
+            "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.",
+          )}
+        </div>
+      )}
 
       {selected && reasoningOptions.length > 0 && (
         <label className="block">

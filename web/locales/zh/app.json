@@ -4744,5 +4744,14 @@
   "Not published": "未发布",
   "Rebuild candidate in progress": "正在构建重建候选版本",
   "Building": "构建中",
-  "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds.": "选择模型并发布新的 LightRAG 索引版本；重建成功前，当前已发布版本保持可用。"
+  "Choose a model and publish a new LightRAG index version. The current published version remains available until the rebuild succeeds.": "选择模型并发布新的 LightRAG 索引版本；重建成功前，当前已发布版本保持可用。",
+  "LightRAG query model": "LightRAG 查询模型",
+  "Use active chat model": "使用当前对话模型",
+  "Used for current LightRAG queries and as the default indexing model for new or fully rebuilt knowledge bases. Published indexes keep their pinned indexing model.": "用于当前 LightRAG 查询，并作为新建或完整重建知识库的默认索引模型。已发布索引继续使用其固定的索引模型。",
+  "Defaults to the current LightRAG query model. Once published, incremental indexing keeps this selection.": "默认使用当前 LightRAG 查询模型。索引发布后，后续增量索引会继续使用此选择。",
+  "The current LightRAG query model is unavailable here. Choose an accessible indexing model.": "当前 LightRAG 查询模型在此不可用。请选择你有权使用的索引模型。",
+  "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.": "无法加载 LightRAG 查询模型设置。请选择索引模型或重试。",
+  "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.": "历史索引模型无法确认。知识库仍可查询，但增量上传前必须完整重建。",
+  "Unverified historical indexing model": "无法确认的历史索引模型",
+  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "此旧版 LightRAG 索引仍可查询，但增量上传前必须完整重建。"
 }
