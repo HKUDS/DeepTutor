@@ -9,6 +9,8 @@ import {
   ArrowRight,
   BookOpen,
   Compass,
+  LayoutGrid,
+  List,
   Loader2,
   MoreHorizontal,
   PencilRuler,
@@ -21,6 +23,7 @@ import {
 import { ModuleOutline } from "@/components/space/learning/ModuleOutline";
 import { ConfirmDialog } from "@/components/space/learning/ConfirmDialog";
 import { EditTopicRouteDialog } from "@/components/space/learning/EditTopicRouteDialog";
+import { LearningBoard } from "@/components/space/learning/LearningBoard";
 import {
   topicDisplayName,
   type Translate,
@@ -33,12 +36,15 @@ import {
   deleteProgress,
   fetchMasteryTopic,
   fetchMasteryTopicSessions,
+  fetchLearningBoard,
   redoProgress,
   renameProgress,
   setMasteryObjectiveOverride,
   type MasteryTopic,
+  type BoardResult,
   type TopicSession,
 } from "@/lib/learning-api";
+import { setPendingPrompt } from "@/lib/pending-prompt";
 
 const NEXT_LABELS: Record<string, { zh: string; en: string }> = {
   probe: {
@@ -90,6 +96,10 @@ export default function MasteryTopicPage() {
   const [confirmAction, setConfirmAction] = useState<"reset" | "delete" | null>(
     null,
   );
+  const [topicView, setTopicView] = useState<"outline" | "board">("outline");
+  const [board, setBoard] = useState<BoardResult | null>(null);
+  const [boardError, setBoardError] = useState(false);
+  const [boardRequestNonce, setBoardRequestNonce] = useState(0);
   const [mutationBusy, setMutationBusy] = useState(false);
   const editorTriggerRef = useRef<HTMLElement | null>(null);
   const confirmTriggerRef = useRef<HTMLElement | null>(null);
@@ -146,6 +156,23 @@ export default function MasteryTopicPage() {
   useEffect(() => {
     void loadSessions();
   }, [activity.revision, activity.signal, loadSessions]);
+
+  useEffect(() => {
+    if (topicView !== "board") return;
+    const controller = new AbortController();
+    setBoardError(false);
+    fetchLearningBoard(pathId, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((result) => setBoard(result))
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setBoard(null);
+        setBoardError(true);
+      });
+    return () => controller.abort();
+  }, [activity.revision, boardRequestNonce, pathId, topicView]);
 
   useEffect(() => {
     if (!selectedId || !topic) return;
@@ -221,6 +248,14 @@ export default function MasteryTopicPage() {
     } finally {
       setMutationBusy(false);
     }
+  };
+
+  const startBoardTutoring = (knowledgePointName: string) => {
+    setPendingPrompt(
+      `Please tutor me on: ${knowledgePointName}. Start with a quick check of what I already know, then guide me step by step.`,
+      "mastery_path",
+    );
+    router.push(`/mastery/${encodeURIComponent(pathId)}/sessions`);
   };
 
   if (loading && !topic) {
@@ -439,14 +474,66 @@ export default function MasteryTopicPage() {
             </section>
           ) : (
             <div className="space-y-5">
-              <ModuleOutline
-                topic={topic}
-                revision={Math.max(topic.path_revision, activity.revision)}
-                selectedId={selectedId}
-                zh={zh}
-                onSelect={setSelectedId}
-                onOverride={handleOverride}
-              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
+                  {(
+                    [
+                      ["outline", List, t("Outline")],
+                      ["board", LayoutGrid, t("Board")],
+                    ] as const
+                  ).map(([value, Icon, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTopicView(value)}
+                      aria-pressed={topicView === value}
+                      className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
+                        topicView === value
+                          ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
+                          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {topicView === "board" && boardError && (
+                  <button
+                    type="button"
+                    onClick={() => setBoardRequestNonce((nonce) => nonce + 1)}
+                    className="text-xs font-medium text-[var(--primary)] hover:underline"
+                  >
+                    {t("Try again")}
+                  </button>
+                )}
+              </div>
+              {topicView === "outline" ? (
+                <ModuleOutline
+                  topic={topic}
+                  revision={Math.max(topic.path_revision, activity.revision)}
+                  selectedId={selectedId}
+                  zh={zh}
+                  onSelect={setSelectedId}
+                  onOverride={handleOverride}
+                />
+              ) : board ? (
+                <LearningBoard
+                  pathId={pathId}
+                  modules={board.modules}
+                  revision={Math.max(topic.path_revision, activity.revision)}
+                  zh={zh}
+                  onStartTutoring={startBoardTutoring}
+                />
+              ) : boardError ? (
+                <p className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 text-center text-sm text-[var(--muted-foreground)]">
+                  {t("The learning board could not be loaded")}
+                </p>
+              ) : (
+                <div className="flex min-h-40 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--card)]">
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+                </div>
+              )}
               <ReviewTrail
                 reviews={topic.reviews}
                 zh={zh}
