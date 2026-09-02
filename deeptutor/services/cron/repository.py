@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import contextlib
-import fcntl
 import json
+import os
 from pathlib import Path
 import sqlite3
+import sys
 import time
 from typing import Any, Protocol
 
@@ -49,11 +50,30 @@ class SQLiteCronRepository:
     def _migration_lock(self):
         self._migration_lock_path.parent.mkdir(parents=True, exist_ok=True)
         with self._migration_lock_path.open("a+b") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            # Mirror ``codex_auth.storage._locked_file``: msvcrt on Windows
+            # (fcntl is Unix-only), so importing this module does not break
+            # ``deeptutor start`` on Windows.
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            if sys.platform == "win32":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                handle.seek(0)
+                if sys.platform == "win32":
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def _is_sqlite(path: Path) -> bool:
