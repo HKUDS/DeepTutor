@@ -43,10 +43,12 @@ from deeptutor.services.provider_registry import (
     wire_api_from_api_format,
 )
 
-# Providers that don't reliably support OpenAI function-calling. The loop
-# still runs without tool schemas — the model just produces prose.
+# Providers that cannot safely use the generic OpenAI function-calling path.
+# Gemini thinking models require provider-specific thought_signature replay,
+# which this path cannot retain. The loop still runs without tool schemas and
+# the model produces prose instead.
 _NATIVE_TOOL_BLOCKED_BINDINGS: frozenset[str] = frozenset(
-    {"anthropic", "claude", "ollama", "lm_studio", "vllm", "llama_cpp"}
+    {"anthropic", "claude", "gemini", "ollama", "lm_studio", "vllm", "llama_cpp"}
 )
 
 # Native provider adapters whose backends speak OpenAI-style function calling

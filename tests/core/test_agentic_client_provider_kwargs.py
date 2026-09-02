@@ -409,7 +409,6 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
     # disabling native tools when a new cloud provider joins the registry (the
     # gap that affected SiliconFlow before #584).
     for binding in (
-        "gemini",
         "zhipu",
         "qianfan",
         "stepfun",
@@ -423,6 +422,12 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "byteplus_coding_plan",
     ):
         assert can_use_native_tool_calling(binding=binding, model=None) is True, binding
+
+
+def test_gemini_openai_compat_stays_opted_out_of_native_tools() -> None:
+    # Gemini thinking models require provider-specific thought signatures to be
+    # replayed after a function call, which the generic OpenAI path cannot retain.
+    assert can_use_native_tool_calling(binding="gemini", model="gemini-3-pro") is False
 
 
 def test_openai_codex_backend_can_use_native_tool_calling() -> None:
