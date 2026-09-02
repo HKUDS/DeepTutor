@@ -494,7 +494,7 @@ class OpenAICompatProvider(LLMProvider):
             or getattr(response, "text", None)
         )
         body_text = str(body).lower() if body is not None else ""
-        return any(
+        endpoint_unsupported = any(
             marker in body_text
             for marker in (
                 "responses",
@@ -508,6 +508,16 @@ class OpenAICompatProvider(LLMProvider):
                 "not supported",
             )
         )
+        # DeepSeek V4 reports a very specific three-part error when a
+        # Responses continuation cannot replay its prior reasoning item.  Keep
+        # these markers conjunctive: each phrase on its own is common in
+        # unrelated validation errors and must not trip the circuit breaker.
+        reasoning_replay_rejected = (
+            any(field in body_text for field in ("reasoning_text", "reasoning_content"))
+            and "thinking mode" in body_text
+            and "passed back" in body_text
+        )
+        return endpoint_unsupported or reasoning_replay_rejected
 
     @staticmethod
     def _is_response_format_error(exc: Exception) -> bool:
