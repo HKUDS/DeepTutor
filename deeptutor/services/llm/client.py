@@ -247,7 +247,7 @@ def reset_llm_client() -> None:
 
     reset_runtime_provider_pool()
     try:
-        from deeptutor.core.agentic.client import reset_agentic_client_pool
+        from deeptutor.runtime.agentic.client import reset_agentic_client_pool
 
         reset_agentic_client_pool()
     except ImportError:

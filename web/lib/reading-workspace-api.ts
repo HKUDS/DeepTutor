@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
-const BASE = "/api/v1/reading";
+const BASE = "/api/reading";
 
 export type ReadingSourceKind =
   | "file"
@@ -487,7 +487,7 @@ export async function sendReadingToNotebook(
   notebookIds: string[],
   materialIds: string[] = [],
 ): Promise<Record<string, unknown>> {
-  return json(`/workspaces/${workspaceId}/notebook`, {
+  return json(`/workspaces/${workspaceId}/notebooks`, {
     method: "POST",
     body: JSON.stringify({
       notebook_ids: notebookIds,
@@ -504,7 +504,7 @@ export async function generateMasteryPathFromReading(
   return unwrap(
     await apiFetch(
       apiUrl(
-        `/api/v1/learning/progress/${encodeURIComponent(bookId)}/generate-from-reading`,
+        `/api/mastery-paths/progress/${encodeURIComponent(bookId)}/generate-from-reading`,
       ),
       {
         method: "POST",

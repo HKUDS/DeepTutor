@@ -197,7 +197,7 @@ export const SUPPORTED_DOC_MIMES = new Set<string>([
 /**
  * Built-in attachment caps. These are compile-time fallbacks only — the
  * effective limits come from the backend policy (see
- * `lib/attachment-limits.ts` / the /settings/attachments page) and must match
+ * `lib/attachment-limits.ts` / the /settings#attachments page) and must match
  * the backend defaults in `deeptutor/services/config/runtime_settings.py`.
  */
 export const DEFAULT_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;

@@ -23,7 +23,7 @@ import {
   listKnowledgeBaseFiles,
   moveKbFile,
   type KnowledgeBaseFile,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/files";
 import { docIconFor, formatBytes } from "@/lib/doc-attachments";
 
 interface KbDocumentListProps {

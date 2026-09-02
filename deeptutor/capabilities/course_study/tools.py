@@ -515,7 +515,7 @@ async def course_handoff(
             # it. Observed live: "u2", a *syllabus unit* id handed in as a
             # mastery path, because both namespaces appear in the state summary
             # and look alike. Passed through it builds a card pointing at
-            # /mastery/u2/study — a page that does not exist — and, being
+            # /mastery/u2/sessions — a page that does not exist — and, being
             # non-empty, also tells the client that destination has a composer
             # waiting for the prepared opening line.
             detail = await _resolve_reference(HANDOFF_REF_KINDS[clean_target], clean_ref_id)

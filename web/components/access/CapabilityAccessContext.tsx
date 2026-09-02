@@ -59,7 +59,7 @@ export function CapabilityAccessProvider({
     try {
       // The settings payload only exposes the catalog to admins, so its
       // presence is our admin signal — admins are never gated.
-      const res = await apiFetch(apiUrl("/api/v1/settings"));
+      const res = await apiFetch(apiUrl("/api/settings"));
       if (!res.ok) return;
       const payload = (await res.json()) as { catalog?: unknown };
       if (payload.catalog) {

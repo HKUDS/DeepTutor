@@ -10,7 +10,7 @@ dedupes by URL.
 Persisting them as assistant-message attachments is what lets the chat UI
 render openable cards (same Viewer path as user uploads) and list them in the
 session activity panel, instead of relying on the model pasting a raw
-``/api/outputs`` URL into its answer.
+``/files/outputs`` URL into its answer.
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
 
-# Artifact URLs are minted as ``"/api/outputs/" + quote(relative_path)`` by
+# Artifact URLs are minted as ``"/files/outputs/" + quote(relative_path)`` by
 # ``services.sandbox.artifacts``. The URL is therefore the record's single
 # source of truth for locating the file again — no redundant path field has to
 # be persisted (or leaked to the client).
-_OUTPUTS_URL_PREFIX = "/api/outputs/"
+_OUTPUTS_URL_PREFIX = "/files/outputs/"
 
 # Extensions whose preview drawer has no in-browser renderer and therefore
 # falls back to the extractor's plain text (mirrors the frontend's
@@ -128,10 +128,10 @@ def _fill_preview_text_sync(attachments: list[dict[str, Any]]) -> None:
 
 
 def _resolve_artifact_path(url: str) -> Path | None:
-    """Map an artifact's ``/api/outputs`` URL back to its file on disk.
+    """Map an artifact's ``/files/outputs`` URL back to its file on disk.
 
     Returns ``None`` unless the result is a real file the outputs endpoint
-    would itself serve — the same guard ``/api/outputs`` applies, so a crafted
+    would itself serve — the same guard ``/files/outputs`` applies, so a crafted
     URL cannot walk this out of the public workspace.
     """
     if not url.startswith(_OUTPUTS_URL_PREFIX):

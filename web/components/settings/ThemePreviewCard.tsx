@@ -2,7 +2,7 @@
 
 import { Check } from "lucide-react";
 
-import type { UiSettings } from "./SettingsContext";
+import type { UiSettings } from "@/features/settings/store/SettingsStore";
 
 type Theme = UiSettings["theme"];
 

@@ -1,10 +1,9 @@
 """Built-in cron service — scheduled tasks for chat and partners.
 
 A trimmed-down take on nanobot's CronService (docs/ref/nanobot): same job
-semantics (``at`` / ``every`` / ``cron`` schedules, JSON persistence, run
-bookkeeping) without the multi-process file-lock/action-log machinery —
-DeepTutor runs one server process, so a single in-process scheduler owns
-the store.
+semantics (``at`` / ``every`` / ``cron`` schedules) with a WAL SQLite
+repository shared by every backend worker. Only the elected background leader
+runs the scheduler; any worker may safely create, inspect, or cancel jobs.
 
 Jobs carry an *owner*: a chat session (the reply is appended to that
 session) or a partner conversation (the prompt is injected into the
@@ -17,12 +16,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-import json
 import logging
 from pathlib import Path
 import time
 from typing import Any, Awaitable, Callable
 import uuid
+
+from deeptutor.services.cron.repository import CronRepository, SQLiteCronRepository
 
 logger = logging.getLogger(__name__)
 
@@ -176,51 +176,56 @@ def validate_schedule(schedule: CronSchedule) -> None:
 
 
 class CronService:
-    """Single-process job store + scheduler."""
+    """Shared job store plus the leader-owned in-process scheduler."""
 
     def __init__(
         self,
-        store_path: Path,
+        store_path: Path | None = None,
         on_job: Callable[[CronJob], Awaitable[tuple[str, str | None]]] | None = None,
+        *,
+        repository: CronRepository | None = None,
+        legacy_store_path: Path | None = None,
+        change_notifier: Callable[[], None] | None = None,
     ) -> None:
         """``on_job`` returns ``(status, error)`` with status ok/error/skipped."""
-        self.store_path = store_path
+        if repository is None:
+            if store_path is None:
+                raise ValueError("store_path or repository is required")
+            repository = SQLiteCronRepository(store_path, legacy_path=legacy_store_path)
+        self.store_path = Path(store_path) if store_path is not None else None
+        self.repository = repository
         self.on_job = on_job
+        self.change_notifier = change_notifier
         self._jobs: dict[str, CronJob] = {}
         self._loaded = False
+        self._loaded_revision = -1
         self._timer_task: asyncio.Task | None = None
         self._wake = asyncio.Event()
         self._running = False
 
     # ── persistence ───────────────────────────────────────────────
 
-    def _load(self) -> None:
-        if self._loaded:
+    def _load(self, *, force: bool = False) -> None:
+        revision = self.repository.revision()
+        if self._loaded and not force and revision == self._loaded_revision:
             return
         self._loaded = True
-        if not self.store_path.exists():
-            return
-        try:
-            data = json.loads(self.store_path.read_text(encoding="utf-8"))
-            for raw in data.get("jobs", []):
-                job = CronJob.from_dict(raw)
-                self._jobs[job.id] = job
-        except Exception:
-            # Preserve the corrupt store for recovery; an empty in-memory
-            # view would otherwise overwrite it on the next save.
-            backup = self.store_path.with_suffix(f".corrupt-{int(time.time())}")
-            try:
-                self.store_path.rename(backup)
-            except OSError:
-                pass
-            logger.exception("Corrupt cron store moved to %s", backup)
+        self._jobs = {
+            job.id: job
+            for job in (CronJob.from_dict(raw) for raw in self.repository.list_payloads())
+        }
+        self._loaded_revision = revision
 
-    def _save(self) -> None:
-        self.store_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"version": 1, "jobs": [asdict(job) for job in self._jobs.values()]}
-        tmp = self.store_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.store_path)
+    def reload(self) -> None:
+        """Refresh the leader's snapshot after another worker changes jobs."""
+        self._load(force=True)
+        self._wake.set()
+
+    def _changed(self) -> None:
+        self._loaded_revision = self.repository.revision()
+        self._wake.set()
+        if self.change_notifier is not None:
+            self.change_notifier()
 
     # ── job management ────────────────────────────────────────────
 
@@ -251,8 +256,8 @@ class CronService:
         )
         job.state.next_run_at_ms = compute_next_run(schedule, _now_ms())
         self._jobs[job.id] = job
-        self._save()
-        self._wake.set()
+        self.repository.upsert(asdict(job))
+        self._changed()
         return job
 
     def list_jobs(self, owner_key: str | None = None) -> list[CronJob]:
@@ -274,21 +279,22 @@ class CronService:
             return False
         if owner_key is not None and job.owner.key != owner_key:
             return False
-        del self._jobs[job_id]
-        self._save()
-        self._wake.set()
-        return True
+        removed = self.repository.delete(job_id, owner_key=owner_key)
+        if removed:
+            self._jobs.pop(job_id, None)
+            self._changed()
+        return removed
 
     def remove_owner_jobs(self, owner_key: str) -> int:
         """Drop every job belonging to *owner_key* (e.g. a destroyed partner)."""
         self._load()
         doomed = [job_id for job_id, job in self._jobs.items() if job.owner.key == owner_key]
+        removed = self.repository.delete_owner(owner_key)
         for job_id in doomed:
             del self._jobs[job_id]
-        if doomed:
-            self._save()
-            self._wake.set()
-        return len(doomed)
+        if removed:
+            self._changed()
+        return removed
 
     # ── scheduler ─────────────────────────────────────────────────
 
@@ -304,9 +310,10 @@ class CronService:
         for job in list(self._jobs.values()):
             if job.schedule.kind == "at" and (job.schedule.at_ms or 0) <= now:
                 del self._jobs[job.id]
+                self.repository.delete(job.id)
                 changed = True
         if changed:
-            self._save()
+            self._changed()
         self._running = True
         self._timer_task = asyncio.create_task(self._loop(), name="cron:scheduler")
         logger.info("Cron service started (%d jobs)", len(self._jobs))
@@ -348,6 +355,7 @@ class CronService:
         return max(0.05, min(delta_s, _MAX_SLEEP_SECONDS))
 
     async def _tick(self) -> None:
+        self._load()
         now = _now_ms()
         for job in list(self._jobs.values()):
             if not job.enabled or not job.state.next_run_at_ms:
@@ -381,11 +389,15 @@ class CronService:
 
         if job.delete_after_run or job.schedule.kind == "at":
             self._jobs.pop(job.id, None)
+            self.repository.delete(job.id)
         else:
             job.state.next_run_at_ms = compute_next_run(job.schedule, _now_ms())
             if job.state.next_run_at_ms is None:
                 self._jobs.pop(job.id, None)
-        self._save()
+                self.repository.delete(job.id)
+            else:
+                self.repository.upsert(asdict(job))
+        self._changed()
 
 
 _service: CronService | None = None
@@ -398,8 +410,12 @@ def get_cron_service() -> CronService:
         from deeptutor.multi_user.paths import get_admin_path_service
         from deeptutor.services.cron.executor import execute_job
 
-        store = get_admin_path_service().workspace_root / "cron" / "jobs.json"
-        _service = CronService(store_path=store, on_job=execute_job)
+        root = get_admin_path_service().workspace_root / "cron"
+        _service = CronService(
+            store_path=root / "jobs.sqlite3",
+            legacy_store_path=root / "jobs.json",
+            on_job=execute_job,
+        )
     return _service
 
 

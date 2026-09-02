@@ -68,7 +68,7 @@ def test_run_command_json_mode(monkeypatch) -> None:
     assert captured_requests[0].tools == ["rag"]
     assert captured_requests[0].knowledge_bases == ["demo-kb"]
     assert captured_requests[0].history_references == ["session-old"]
-    assert captured_requests[0].notebook_references == [
+    assert [ref.model_dump() for ref in captured_requests[0].notebook_references] == [
         {"notebook_id": "nb1", "record_ids": ["rec1", "rec2"]}
     ]
     assert {request.capability for request in captured_requests} == set(capabilities)

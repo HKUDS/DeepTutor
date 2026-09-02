@@ -16,8 +16,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from deeptutor.core.i18n import t
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
+from deeptutor.services.i18n import t
 from deeptutor.tools.prompting import load_prompt_hints
 
 # NOTE: ``deeptutor.services.sandbox`` is imported lazily inside ``execute``

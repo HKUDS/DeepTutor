@@ -79,6 +79,7 @@ class Run:
     error: str | None = None
     events: list[RunEvent] = field(default_factory=list)
     undo_stack: list[UndoCheckpoint] = field(default_factory=list)
+    _next_seq: int = field(default=0, repr=False)
     _waiters: list[asyncio.Event] = field(default_factory=list, repr=False)
     _task: asyncio.Task | None = field(default=None, repr=False)
     _cancel_flag: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
@@ -240,8 +241,9 @@ class RunManager:
         if since < 0:
             since = 0
         # Fast path: events already buffered past cursor.
-        if since < len(run.events):
-            return run.events[since:]
+        buffered = [event for event in run.events if event.seq >= since]
+        if buffered:
+            return buffered
         if not run.active:
             return []
         waiter = asyncio.Event()
@@ -253,9 +255,7 @@ class RunManager:
                 run._waiters.remove(waiter)
             except ValueError:
                 pass
-        if since < len(run.events):
-            return run.events[since:]
-        return []
+        return [event for event in run.events if event.seq >= since]
 
     # ── Drive ──────────────────────────────────────────────────────────
 
@@ -301,14 +301,13 @@ class RunManager:
             _current_run.reset(token)
 
     async def _emit(self, run: Run, payload: dict[str, Any]) -> RunEvent:
-        event = RunEvent(seq=len(run.events), ts=_now_iso(), payload=payload)
+        event = RunEvent(seq=run._next_seq, ts=_now_iso(), payload=payload)
+        run._next_seq += 1
         run.events.append(event)
         if len(run.events) > _MAX_EVENTS_PER_RUN:
-            # Drop the oldest non-meta event but renumber tail to keep
-            # monotonic seq stable — clients use seq to resume.
+            # Cursors are absolute. Never renumber retained events: a client
+            # may reconnect with a cursor issued before this ring wrapped.
             run.events.pop(0)
-            for i, ev in enumerate(run.events):
-                run.events[i] = RunEvent(seq=i, ts=ev.ts, payload=ev.payload)
         for w in list(run._waiters):
             w.set()
         return event

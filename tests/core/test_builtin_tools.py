@@ -94,12 +94,12 @@ async def test_exec_tool_reports_generated_public_artifacts(
     # raw download URL is delivered out-of-band (sources/metadata), never in the
     # model-facing text, so the model can't paste it.
     assert "clickable link" in result.content
-    assert "/api/outputs/" not in result.content
+    assert "/files/outputs/" not in result.content
     assert "build_pdf.py" not in result.content
     assert result.metadata["artifacts"][0]["filename"] == "report.pdf"
     assert (
         result.metadata["artifacts"][0]["url"]
-        == "/api/outputs/workspace/chat/chat/turn_1/exec/report.pdf"
+        == "/files/outputs/workspace/chat/chat/turn_1/exec/report.pdf"
     )
     assert result.sources[0]["url"].endswith("/report.pdf")
 

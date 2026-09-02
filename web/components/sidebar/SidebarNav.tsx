@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 /**
  * The workspace feature list — the part of the sidebar a learner owns.
  *
@@ -99,7 +101,7 @@ export function SidebarNav({
     if (typeof window === "undefined") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayout(readNavLayout());
-    setMoreExpanded(window.localStorage.getItem(MORE_EXPANDED_KEY) === "1");
+    setMoreExpanded(browserStorage.readRaw("local", MORE_EXPANDED_KEY) === "1");
   }, []);
 
   const resolved = useMemo(
@@ -120,7 +122,7 @@ export function SidebarNav({
   const showMore = useCallback((next: boolean) => {
     setMoreExpanded(next);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(MORE_EXPANDED_KEY, next ? "1" : "0");
+      browserStorage.writeRaw("local", MORE_EXPANDED_KEY, next ? "1" : "0");
     }
   }, []);
 
@@ -258,7 +260,7 @@ export function SidebarNav({
                       href={href}
                       onClick={(event) => {
                         closeMenus();
-                        if (href === "/home") onHomeClick(event);
+                        if (href === "/chat") onHomeClick(event);
                         else onNavigate(event);
                       }}
                       role="menuitem"
@@ -351,7 +353,7 @@ export function SidebarNav({
             key={`${href}-destination`}
             href={href}
             draggable={false}
-            onClick={href === "/home" ? onHomeClick : onNavigate}
+            onClick={href === "/chat" ? onHomeClick : onNavigate}
             className={`${rowClass} ${
               active
                 ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
@@ -551,7 +553,7 @@ function RailRow({
     <Tooltip label={label} description={description} side="right">
       <Link
         href={href}
-        onClick={href === "/home" ? onHomeClick : undefined}
+        onClick={href === "/chat" ? onHomeClick : undefined}
         aria-label={label}
         className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
           active

@@ -3,11 +3,12 @@
 import { useTranslation } from "react-i18next";
 
 import MemoryUsageItem from "@/components/settings/MemoryUsageItem";
-import { useSettings } from "@/components/settings/SettingsContext";
+import { useSettings } from "@/features/settings/store/SettingsStore";
 import { statusDotClass } from "@/components/settings/shared";
+import { RuntimeHealthCard, useRuntimeStatus } from "@/features/runtime-status";
 
 /**
- * Resident status module on the settings hub — the old `/settings/status` page
+ * Resident status module on the settings hub — the old `/settings#status` page
  * demoted to an always-visible strip.
  *
  * Scope is deliberately narrow: is the backend up, and what is it costing.
@@ -21,6 +22,7 @@ import { statusDotClass } from "@/components/settings/shared";
 export default function SettingsStatusPanel() {
   const { t } = useTranslation();
   const { status } = useSettings();
+  const runtime = useRuntimeStatus();
 
   const online = status?.backend.status === "online";
 
@@ -42,6 +44,7 @@ export default function SettingsStatusPanel() {
           </span>
         </div>
       </div>
+      <RuntimeHealthCard snapshot={runtime} compact />
       <MemoryUsageItem />
     </section>
   );

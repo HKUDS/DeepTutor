@@ -7,7 +7,7 @@ import {
 
 // Issue #912: a session fetch that never settled left the overlay spinning
 // with no way out but abandoning the conversation, and one that failed
-// replaced the URL with /home — dropping the session id, so a transient
+// replaced the URL with /chat — dropping the session id, so a transient
 // error read as "my history is gone". Both must end in a retryable state.
 
 test("a plain failure on a cold open surfaces", () => {

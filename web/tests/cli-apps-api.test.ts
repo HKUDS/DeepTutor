@@ -137,7 +137,7 @@ test("an app id with URL-significant characters is escaped in the path", async (
     await setCliAppEnabled("a b/c", true);
     assert.equal(
       stub.calls[0].url,
-      "/api/v1/space/cli-apps/apps/a%20b%2Fc/enabled",
+      "/api/space/cli-apps/apps/a%20b%2Fc/enabled",
     );
     assert.deepEqual(stub.calls[0].body, { enabled: true });
   } finally {

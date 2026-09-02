@@ -3,16 +3,24 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+import {
+  PENDING_SETTINGS_ACCESS,
+  settingsAccessFromAuthStatus,
+} from "../features/settings/navigation/settings-access";
+import {
+  isSettingsCategoryVisible,
+  SETTINGS_CATEGORIES,
+} from "../features/settings/navigation/settings-nav";
+
 const readWebFile = (...parts: string[]) =>
   readFileSync(path.join(process.cwd(), ...parts), "utf8");
 
 const api = readWebFile("lib", "guardian-api.ts");
 const page = readWebFile(
-  "app",
-  "(utility)",
+  "features",
   "settings",
-  "guardian",
-  "page.tsx",
+  "sections",
+  "GuardianSettingsSection.tsx",
 );
 const adminEditor = readWebFile(
   "features",
@@ -24,8 +32,14 @@ const adminEditor = readWebFile(
 test("guardian credential reset never returns or renders a plaintext credential", () => {
   assert.match(api, /JSON\.stringify\(\{ new_password: newPassword \}\)/);
   assert.doesNotMatch(api, /temporary_password/);
-  assert.doesNotMatch(page, /Temporary password|setTemporaryPassword|clipboard/);
-  assert.doesNotMatch(adminEditor, /Temporary password|setTemporaryPassword|clipboard/);
+  assert.doesNotMatch(
+    page,
+    /Temporary password|setTemporaryPassword|clipboard/,
+  );
+  assert.doesNotMatch(
+    adminEditor,
+    /Temporary password|setTemporaryPassword|clipboard/,
+  );
   assert.match(page, /type="password"/);
   assert.match(adminEditor, /type="password"/);
 });
@@ -50,11 +64,72 @@ test("administrators can create, review, revoke, and reset guardian access", () 
   assert.match(adminEditor, /PERMISSIONS/);
 });
 
-test("settings visibility uses the account preset rather than policy presence", () => {
+test("settings visibility is shared by the navigator and continuous document", () => {
   const nav = readWebFile("components", "settings", "SettingsNav.tsx");
-  assert.match(nav, /showLearnerOnly: authStatus\.preset === "learner"/);
-  assert.match(nav, /authStatus\.preset === "standard"/);
-  assert.match(nav, /authStatus\.preset === "custom"/);
+  const settingsPage = readWebFile("app", "(utility)", "settings", "page.tsx");
+  const layout = readWebFile("app", "(utility)", "settings", "layout.tsx");
+
+  assert.match(nav, /useSettingsAccess/);
+  assert.match(nav, /isSettingsCategoryVisible/);
+  assert.match(settingsPage, /useSettingsAccess/);
+  assert.match(settingsPage, /isSettingsCategoryVisible/);
+  assert.match(settingsPage, /if \(!access\.resolved\)/);
+  assert.match(layout, /<SettingsAccessProvider>/);
+});
+
+test("learner and guardian sections follow the resolved account type", () => {
+  const learner = SETTINGS_CATEGORIES.find(
+    (category) => category.key === "learner-profile",
+  )!;
+  const guardian = SETTINGS_CATEGORIES.find(
+    (category) => category.key === "guardian",
+  )!;
+  const agents = SETTINGS_CATEGORIES.find(
+    (category) => category.key === "agents",
+  )!;
+
+  assert.equal(
+    isSettingsCategoryVisible(learner, PENDING_SETTINGS_ACCESS),
+    false,
+  );
+  assert.equal(
+    isSettingsCategoryVisible(guardian, PENDING_SETTINGS_ACCESS),
+    false,
+  );
+  assert.equal(
+    isSettingsCategoryVisible(agents, PENDING_SETTINGS_ACCESS),
+    false,
+  );
+
+  const localAdmin = settingsAccessFromAuthStatus({
+    enabled: false,
+    authenticated: true,
+    is_admin: true,
+    preset: "standard",
+  });
+  assert.equal(isSettingsCategoryVisible(learner, localAdmin), false);
+  assert.equal(isSettingsCategoryVisible(guardian, localAdmin), false);
+  assert.equal(isSettingsCategoryVisible(agents, localAdmin), true);
+
+  const learnerAccount = settingsAccessFromAuthStatus({
+    enabled: true,
+    authenticated: true,
+    is_admin: false,
+    preset: "learner",
+  });
+  assert.equal(isSettingsCategoryVisible(learner, learnerAccount), true);
+  assert.equal(isSettingsCategoryVisible(guardian, learnerAccount), false);
+  assert.equal(isSettingsCategoryVisible(agents, learnerAccount), false);
+
+  const guardianAccount = settingsAccessFromAuthStatus({
+    enabled: true,
+    authenticated: true,
+    is_admin: false,
+    preset: "standard",
+  });
+  assert.equal(isSettingsCategoryVisible(learner, guardianAccount), false);
+  assert.equal(isSettingsCategoryVisible(guardian, guardianAccount), true);
+  assert.equal(isSettingsCategoryVisible(agents, guardianAccount), false);
 });
 
 test("guardian management copy is localized", () => {

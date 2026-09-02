@@ -4,14 +4,13 @@
  * A mastery study conversation is an ordinary chat session that happens to
  * carry `mastery_path_id` in its preferences. Two surfaces need to read that:
  * the sidebar, to file the conversation under its topic, and the click
- * handler, to open it on `/mastery/<path>/study/<session>` instead of `/home`.
+ * handler, to open it on `/mastery/<path>/sessions/<session>` instead of `/chat`.
  * If those two ever disagreed, a conversation would render under a topic and
  * then navigate somewhere else — so the rule lives here and neither owns it.
  *
- * Workspace mode and path id are both required. The capability is now a
- * per-turn action (Chat, Quiz, Research, ...), so it must not decide which
- * product surface owns the conversation. Legacy sessions that predate
- * `workspace_mode` still fall back to their old capability value.
+ * Workspace mode and path id are both required. The capability is a per-turn
+ * action (Chat, Quiz, Research, ...), so it never decides which product
+ * surface owns the conversation.
  *
  * Immersive Reading conversations answer the same question with their own
  * pair of signals, and land on their collection instead. They are here rather
@@ -25,11 +24,7 @@ import type { SessionSummary } from "@/lib/session-api";
 export function masteryPathIdOf(session: SessionSummary): string {
   const preferences = session.preferences;
   if (!preferences) return "";
-  if (
-    preferences.workspace_mode !== "mastery_path" &&
-    preferences.capability !== "mastery_path"
-  )
-    return "";
+  if (preferences.workspace_mode !== "mastery_path") return "";
   return String(preferences.mastery_path_id || "");
 }
 
@@ -44,11 +39,7 @@ export function masteryPathIdOf(session: SessionSummary): string {
 export function readingWorkspaceIdOf(session: SessionSummary): string {
   const preferences = session.preferences;
   if (!preferences) return "";
-  if (
-    preferences.workspace_mode !== "immersive_reading" &&
-    preferences.session_kind !== "immersive_reading"
-  )
-    return "";
+  if (preferences.workspace_mode !== "immersive_reading") return "";
   return String(preferences.reading_workspace_id || "");
 }
 
@@ -57,14 +48,14 @@ export function sessionRoute(session: SessionSummary): string {
   const sessionId = encodeURIComponent(session.session_id);
   const pathId = masteryPathIdOf(session);
   if (pathId) {
-    return `/mastery/${encodeURIComponent(pathId)}/study/${sessionId}`;
+    return `/mastery/${encodeURIComponent(pathId)}/sessions/${sessionId}`;
   }
   // The reader, its outline and the material are the context this was held
-  // in; /home would drop all three and leave the citations pointing at a
+  // in; /chat would drop all three and leave the citations pointing at a
   // document that is not open.
   const workspaceId = readingWorkspaceIdOf(session);
   if (workspaceId) {
-    return `/reading/${encodeURIComponent(workspaceId)}/${sessionId}`;
+    return `/reading/${encodeURIComponent(workspaceId)}/sessions/${sessionId}`;
   }
-  return `/home/${sessionId}`;
+  return `/chat/${sessionId}`;
 }

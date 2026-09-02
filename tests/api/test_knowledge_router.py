@@ -40,7 +40,7 @@ def _build_app() -> FastAPI:
     if FastAPI is None or router is None:  # pragma: no cover - guarded by pytestmark
         raise RuntimeError("fastapi is not installed")
     app = FastAPI()
-    app.include_router(router, prefix="/api/v1/knowledge")
+    app.include_router(router, prefix="/api")
     return app
 
 
@@ -142,7 +142,7 @@ def _upload_payload() -> list[tuple[str, tuple[str, bytes, str]]]:
 
 
 def _invalid_upload_payload() -> list[tuple[str, tuple[str, bytes, str]]]:
-    return [("files", ("archive.zip", b"PK\x03\x04", "application/zip"))]
+    return [("files", ("archive.unsupported", b"binary", "application/octet-stream"))]
 
 
 def _uppercase_upload_payload() -> list[tuple[str, tuple[str, bytes, str]]]:
@@ -163,7 +163,7 @@ def _write_ready_llamaindex_version(kb_dir: Path) -> None:
 def test_rag_providers_lists_llamaindex_and_pageindex(monkeypatch) -> None:
     monkeypatch.setattr(ima_config_module, "is_ima_configured", lambda: True)
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/rag-providers")
+        response = client.get("/api/knowledge-bases/rag-providers")
 
     assert response.status_code == 200
     payload = response.json()
@@ -239,7 +239,7 @@ def test_list_ima_returns_normalized_page(monkeypatch) -> None:
     monkeypatch.setattr(knowledge_router_module, "ImaClient", build_client, raising=False)
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/list-ima",
+            "/api/knowledge-bases/list-ima",
             json={
                 "client_id": " private-client ",
                 "api_key": " private-key ",
@@ -264,7 +264,7 @@ def test_list_ima_returns_an_empty_final_page(monkeypatch) -> None:
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/list-ima",
+            "/api/knowledge-bases/list-ima",
             json={"client_id": "cid", "api_key": "key"},
         )
 
@@ -287,7 +287,7 @@ def test_list_ima_returns_an_empty_final_page(monkeypatch) -> None:
 )
 def test_list_ima_rejects_missing_credentials(payload: dict) -> None:
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/list-ima", json=payload)
+        response = client.post("/api/knowledge-bases/list-ima", json=payload)
 
     assert response.status_code == 400
     assert "required" in response.json()["detail"]
@@ -297,7 +297,7 @@ def test_list_ima_rejects_missing_credentials(payload: dict) -> None:
 def test_list_ima_validates_official_page_limit(limit: int) -> None:
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/list-ima",
+            "/api/knowledge-bases/list-ima",
             json={"client_id": "cid", "api_key": "key", "limit": limit},
         )
 
@@ -324,7 +324,7 @@ def test_list_ima_maps_upstream_errors_without_leaking_credentials(
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/list-ima",
+            "/api/knowledge-bases/list-ima",
             json={"client_id": "private-client", "api_key": "private-key"},
         )
 
@@ -353,7 +353,7 @@ def test_list_ima_falls_back_to_the_account_credentials(monkeypatch, ima_account
 
     monkeypatch.setattr(knowledge_router_module, "ImaClient", build_client, raising=False)
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/list-ima", json={})
+        response = client.post("/api/knowledge-bases/list-ima", json={})
 
     assert response.status_code == 200
     assert captured["config"].client_id == "account-client"
@@ -366,7 +366,7 @@ def test_list_ima_does_not_complete_half_a_supplied_pair(monkeypatch, ima_accoun
     ima_account.save_ima({"client_id": "account-client", "api_key": "account-key"})
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/list-ima", json={"client_id": "other"})
+        response = client.post("/api/knowledge-bases/list-ima", json={"client_id": "other"})
 
     assert response.status_code == 400
     assert "required" in response.json()["detail"]
@@ -374,14 +374,14 @@ def test_list_ima_does_not_complete_half_a_supplied_pair(monkeypatch, ima_accoun
 
 def test_ima_config_reports_state_without_echoing_the_key(ima_account) -> None:
     with TestClient(_build_app()) as client:
-        assert client.get("/api/v1/knowledge/rag-pipelines/ima/config").json() == {
+        assert client.get("/api/knowledge-bases/rag-pipelines/ima/config").json() == {
             "client_id": "",
             "api_key_set": False,
             "configured": False,
         }
 
         response = client.put(
-            "/api/v1/knowledge/rag-pipelines/ima/config",
+            "/api/knowledge-bases/rag-pipelines/ima/config",
             json={"client_id": " account-client ", "api_key": " private-key "},
         )
 
@@ -400,7 +400,7 @@ def test_ima_config_keeps_the_stored_key_when_omitted(ima_account) -> None:
 
     with TestClient(_build_app()) as client:
         response = client.put(
-            "/api/v1/knowledge/rag-pipelines/ima/config",
+            "/api/knowledge-bases/rag-pipelines/ima/config",
             json={"client_id": "renamed-client"},
         )
 
@@ -415,7 +415,7 @@ def test_ima_config_clears_the_key_on_an_empty_string(ima_account) -> None:
 
     with TestClient(_build_app()) as client:
         response = client.put(
-            "/api/v1/knowledge/rag-pipelines/ima/config",
+            "/api/knowledge-bases/rag-pipelines/ima/config",
             json={"api_key": ""},
         )
 
@@ -467,7 +467,7 @@ def test_connect_ima_uses_the_account_pair_without_copying_it(
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/connect-ima",
+            "/api/knowledge-bases/connect-ima",
             json={"name": "IMA", "knowledge_base_id": "kb-1"},
         )
 
@@ -489,7 +489,7 @@ def test_connect_ima_pins_supplied_credentials_to_the_kb(
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/connect-ima",
+            "/api/knowledge-bases/connect-ima",
             json={
                 "name": "Other",
                 "client_id": "other-client",
@@ -507,24 +507,24 @@ def test_connect_ima_pins_supplied_credentials_to_the_kb(
 
 def test_set_rag_provider_mode_persists_validates_and_reflects() -> None:
     with TestClient(_build_app()) as client:
-        ok = client.put("/api/v1/knowledge/rag-providers/lightrag/mode", json={"mode": "MIX"})
+        ok = client.put("/api/knowledge-bases/rag-providers/lightrag/mode", json={"mode": "MIX"})
         assert ok.status_code == 200
         assert ok.json()["mode"] == "mix"  # normalized
 
-        providers = client.get("/api/v1/knowledge/rag-providers").json()["providers"]
+        providers = client.get("/api/knowledge-bases/rag-providers").json()["providers"]
         by_id = {p["id"]: p for p in providers}
         assert by_id["lightrag"]["default_mode"] == "mix"
 
         # Invalid mode for the engine → 400; mode-less engine → 404.
         assert (
             client.put(
-                "/api/v1/knowledge/rag-providers/lightrag/mode", json={"mode": "bogus"}
+                "/api/knowledge-bases/rag-providers/lightrag/mode", json={"mode": "bogus"}
             ).status_code
             == 400
         )
         assert (
             client.put(
-                "/api/v1/knowledge/rag-providers/llamaindex/mode", json={"mode": "x"}
+                "/api/knowledge-bases/rag-providers/llamaindex/mode", json={"mode": "x"}
             ).status_code
             == 404
         )
@@ -532,7 +532,7 @@ def test_set_rag_provider_mode_persists_validates_and_reflects() -> None:
 
 def test_supported_file_types_returns_upload_policy() -> None:
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/supported-file-types")
+        response = client.get("/api/knowledge-bases/supported-file-types")
 
     assert response.status_code == 200
     payload = response.json()
@@ -542,12 +542,40 @@ def test_supported_file_types_returns_upload_policy() -> None:
     assert ".pptx" in payload["extensions"]
     assert ".md" in payload["extensions"]
     assert ".png" in payload["extensions"]
+    assert ".pages" in payload["extensions"]
+    assert ".mp4" in payload["extensions"]
+    assert ".dclg.xml" in payload["extensions"]
+    assert ".tar.gz" in payload["extensions"]
+    assert ".ipynb" in payload["extensions"]
+    assert ".cbz" in payload["extensions"]
+    assert ".key" in payload["extensions"]
+    assert ".vsdx" in payload["extensions"]
+    assert ".sqlite3" in payload["extensions"]
     assert payload["max_file_size_bytes"] > 0
     assert "max_pdf_size_bytes" not in payload
     assert ".pdf" in payload["accept"]
     assert ".docx" in payload["accept"]
     assert ".png" in payload["accept"]
+    assert ".tar.gz" in payload["accept"]
     assert "image/png" in payload["accept"]
+    assert payload["allow_any_extension"] is False
+
+
+def test_supported_file_types_can_delegate_all_extensions(monkeypatch) -> None:
+    monkeypatch.setattr(
+        knowledge_router_module.FileTypeRouter,
+        "active_parser_accepts_any_format",
+        classmethod(lambda cls: True),
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/knowledge-bases/supported-file-types")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["allow_any_extension"] is True
+    assert payload["extensions"] == []
+    assert payload["accept"] == ""
 
 
 def test_graphrag_model_compatibility_probes_candidate_without_switching(
@@ -576,7 +604,7 @@ def test_graphrag_model_compatibility_probes_candidate_without_switching(
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/rag-pipelines/graphrag/model-compatibility",
+            "/api/knowledge-bases/rag-pipelines/graphrag/model-compatibility",
             json={"profile_id": "profile-a", "model_id": "model-b"},
         )
 
@@ -608,7 +636,7 @@ def test_graphrag_model_compatibility_hides_unexpected_provider_details(
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/rag-pipelines/graphrag/model-compatibility",
+            "/api/knowledge-bases/rag-pipelines/graphrag/model-compatibility",
             json={"profile_id": "profile-a", "model_id": "model-b"},
         )
 
@@ -638,7 +666,7 @@ def test_create_kb_does_not_require_llm_precheck(monkeypatch, tmp_path: Path) ->
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={"name": "kb-new", "rag_provider": "llamaindex"},
             files=_upload_payload(),
         )
@@ -664,7 +692,7 @@ def test_create_coerces_legacy_provider_to_llamaindex(monkeypatch, tmp_path: Pat
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={"name": "kb-legacy", "rag_provider": "raganything"},
             files=_upload_payload(),
         )
@@ -689,7 +717,7 @@ def test_create_preserves_known_nondefault_provider(monkeypatch, tmp_path: Path)
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={"name": "kb-page", "rag_provider": "pageindex"},
             files=[("files", ("demo.pdf", b"%PDF-1.4\n", "application/pdf"))],
         )
@@ -705,7 +733,7 @@ def test_create_rejects_invalid_files_before_registering_kb(monkeypatch, tmp_pat
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={"name": "kb-invalid", "rag_provider": "llamaindex"},
             files=_invalid_upload_payload(),
         )
@@ -722,7 +750,7 @@ def test_create_rejects_invalid_kb_name_before_registering_kb(monkeypatch, tmp_p
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={"name": "bad/name", "rag_provider": "llamaindex"},
             files=_upload_payload(),
         )
@@ -745,7 +773,7 @@ def test_create_normalizes_uploaded_extension_to_lowercase(monkeypatch, tmp_path
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={"name": "kb-uppercase", "rag_provider": "llamaindex"},
             files=_uppercase_upload_payload(),
         )
@@ -766,7 +794,7 @@ def test_upload_returns_409_when_kb_needs_reindex(monkeypatch, tmp_path: Path) -
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/legacy-kb/upload", files=_upload_payload())
+        response = client.post("/api/knowledge-bases/legacy-kb/upload", files=_upload_payload())
 
     assert response.status_code == 409
     assert "needs reindex" in response.json()["detail"].lower()
@@ -789,7 +817,7 @@ def test_upload_ready_kb_returns_task_id(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/ready-kb/upload", files=_upload_payload())
+        response = client.post("/api/knowledge-bases/ready-kb/upload", files=_upload_payload())
 
     assert response.status_code == 200
     body = response.json()
@@ -815,7 +843,7 @@ def test_upload_flips_ready_kb_to_processing_before_dispatch(monkeypatch, tmp_pa
     monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/ready-kb/upload", files=_upload_payload())
+        response = client.post("/api/knowledge-bases/ready-kb/upload", files=_upload_payload())
 
     assert response.status_code == 200
     entry = manager.config["knowledge_bases"]["ready-kb"]
@@ -948,7 +976,7 @@ def test_list_files_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/default/files")
+        response = client.get("/api/knowledge-bases/default/files")
 
     assert response.status_code == 200
     assert response.json()["files"][0]["name"] == "demo.txt"
@@ -964,7 +992,7 @@ def test_list_fallback_reports_error_status(monkeypatch, tmp_path: Path) -> None
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/list")
+        response = client.get("/api/knowledge-bases")
 
     assert response.status_code == 200
     [item] = response.json()
@@ -1015,7 +1043,7 @@ def test_list_reuses_manager_config_snapshot(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(knowledge_router_module, "list_visible_kb_access", lambda: [])
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/list")
+        response = client.get("/api/knowledge-bases")
 
     assert response.status_code == 200
     assert [item["name"] for item in response.json()] == manager.names
@@ -1042,7 +1070,7 @@ def test_create_folder_makes_subdir(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/kb/folders", json={"path": "Papers/2024"})
+        response = client.post("/api/knowledge-bases/kb/folders", json={"path": "Papers/2024"})
 
     assert response.status_code == 200
     assert response.json()["path"] == "Papers/2024"
@@ -1055,7 +1083,7 @@ def test_create_folder_rejects_traversal(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/kb/folders", json={"path": "../escape"})
+        response = client.post("/api/knowledge-bases/kb/folders", json={"path": "../escape"})
 
     assert response.status_code == 400
 
@@ -1070,7 +1098,7 @@ def test_list_files_returns_nested_tree(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/kb/files")
+        response = client.get("/api/knowledge-bases/kb/files")
 
     assert response.status_code == 200
     entries = {e["name"]: e for e in response.json()["files"]}
@@ -1088,7 +1116,7 @@ def test_remote_kb_file_listing_is_empty_without_creating_local_storage(
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/remote/files")
+        response = client.get("/api/knowledge-bases/remote/files")
 
     assert response.status_code == 200
     assert response.json() == {"files": []}
@@ -1098,16 +1126,16 @@ def test_remote_kb_file_listing_is_empty_without_creating_local_storage(
 @pytest.mark.parametrize(
     ("method", "url", "kwargs"),
     [
-        ("get", "/api/v1/knowledge/remote/files/demo.txt", {}),
-        ("get", "/api/v1/knowledge/remote/file-preview-text/demo.txt", {}),
-        ("delete", "/api/v1/knowledge/remote/files/demo.txt", {}),
-        ("post", "/api/v1/knowledge/remote/folders", {"json": {"path": "notes"}}),
+        ("get", "/api/knowledge-bases/remote/files/demo.txt", {}),
+        ("get", "/api/knowledge-bases/remote/file-preview-text/demo.txt", {}),
+        ("delete", "/api/knowledge-bases/remote/files/demo.txt", {}),
+        ("post", "/api/knowledge-bases/remote/folders", {"json": {"path": "notes"}}),
         (
             "post",
-            "/api/v1/knowledge/remote/files/move",
+            "/api/knowledge-bases/remote/files/move",
             {"json": {"source": "demo.txt", "dest_folder": "notes"}},
         ),
-        ("post", "/api/v1/knowledge/remote/upload", {"files": _upload_payload()}),
+        ("post", "/api/knowledge-bases/remote/upload", {"files": _upload_payload()}),
     ],
 )
 def test_remote_kb_rejects_local_file_operations_without_creating_storage(
@@ -1132,7 +1160,7 @@ def test_list_files_returns_404_for_unknown_kb_without_creating_storage(
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/missing/files")
+        response = client.get("/api/knowledge-bases/missing/files")
 
     assert response.status_code == 404
     assert not (manager.base_dir / "missing").exists()
@@ -1144,7 +1172,7 @@ def test_raw_file_download_rejects_traversal(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/kb/files/%2E%2E/secret.txt")
+        response = client.get("/api/knowledge-bases/kb/files/%2E%2E/secret.txt")
 
     assert response.status_code == 403
 
@@ -1161,7 +1189,7 @@ def test_upload_preserves_folder_structure(monkeypatch, tmp_path: Path) -> None:
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/kb/upload",
+            "/api/knowledge-bases/kb/upload",
             files=[("files", ("note.txt", b"hi", "text/plain"))],
             data={"rel_paths": "MyFolder/sub/note.txt"},
         )
@@ -1182,7 +1210,7 @@ def test_upload_allows_same_filename_in_different_folders(monkeypatch, tmp_path:
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/kb/upload",
+            "/api/knowledge-bases/kb/upload",
             files=[
                 ("files", ("note.txt", b"one", "text/plain")),
                 ("files", ("note.txt", b"two", "text/plain")),
@@ -1210,7 +1238,7 @@ def test_upload_places_a_batch_under_dest_subdir(monkeypatch, tmp_path: Path) ->
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/kb/upload",
+            "/api/knowledge-bases/kb/upload",
             files=[("files", ("README.txt", b"cli", "text/plain"))],
             data={
                 "rel_paths": "DingTalkCLI/README.txt",
@@ -1238,7 +1266,7 @@ def test_upload_dest_subdir_refuses_traversal(monkeypatch, tmp_path: Path) -> No
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/kb/upload",
+            "/api/knowledge-bases/kb/upload",
             files=[("files", ("note.txt", b"hi", "text/plain"))],
             data={"dest_subdir": "../../escaped"},
         )
@@ -1260,7 +1288,7 @@ def test_upload_without_dest_subdir_is_unchanged(monkeypatch, tmp_path: Path) ->
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/kb/upload",
+            "/api/knowledge-bases/kb/upload",
             files=[("files", ("note.txt", b"hi", "text/plain"))],
             data={"rel_paths": "Folder/note.txt"},
         )
@@ -1279,7 +1307,7 @@ def test_move_file_into_folder(monkeypatch, tmp_path: Path) -> None:
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/kb/files/move",
+            "/api/knowledge-bases/kb/files/move",
             json={"source": "demo.txt", "dest_folder": "Papers"},
         )
 
@@ -1307,7 +1335,7 @@ def test_list_files_preserves_kb_named_default(monkeypatch, tmp_path: Path) -> N
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/default/files")
+        response = client.get("/api/knowledge-bases/default/files")
 
     assert response.status_code == 200
     assert response.json()["files"][0]["name"] == "default.txt"
@@ -1334,7 +1362,7 @@ def test_file_preview_text_accepts_default_alias(monkeypatch, tmp_path: Path) ->
     monkeypatch.setattr(knowledge_router_module, "extract_text_from_path", _fake_extract)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/default/file-preview-text/slides.pptx")
+        response = client.get("/api/knowledge-bases/default/file-preview-text/slides.pptx")
 
     assert response.status_code == 200
     assert response.text == "--- Slide 1 ---\nTitle"
@@ -1360,7 +1388,7 @@ def test_file_preview_text_returns_422_for_extraction_errors(monkeypatch, tmp_pa
     monkeypatch.setattr(knowledge_router_module, "extract_text_from_path", _fake_extract)
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/actual-kb/file-preview-text/slides.pptx")
+        response = client.get("/api/knowledge-bases/actual-kb/file-preview-text/slides.pptx")
 
     assert response.status_code == 422
     assert "no extractable text" in response.json()["detail"]
@@ -1392,7 +1420,7 @@ def test_reindex_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/default/reindex")
+        response = client.post("/api/knowledge-bases/default/reindex")
 
     assert response.status_code == 200
     body = response.json()
@@ -1432,7 +1460,7 @@ def test_reindex_error_status_bypasses_existing_match_noop(monkeypatch, tmp_path
     monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/failed-kb/reindex")
+        response = client.post("/api/knowledge-bases/failed-kb/reindex")
 
     assert response.status_code == 200
     body = response.json()
@@ -1511,7 +1539,7 @@ def test_reindex_task_persists_completed_progress(monkeypatch, tmp_path: Path) -
         lambda _name: SimpleNamespace(name="kb", base_dir=base_dir),
     )
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/knowledge/kb/progress")
+        response = client.get("/api/knowledge-bases/kb/progress")
     assert response.status_code == 200
     assert response.json() == progress
 
@@ -1645,7 +1673,7 @@ def test_retry_error_status_queues_reindex(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/failed-kb/retry")
+        response = client.post("/api/knowledge-bases/failed-kb/retry")
 
     assert response.status_code == 200
     body = response.json()
@@ -1664,7 +1692,7 @@ def test_retry_rejects_non_error_kb(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/ready-kb/retry")
+        response = client.post("/api/knowledge-bases/ready-kb/retry")
 
     assert response.status_code == 409
     assert "not in an error state" in response.json()["detail"]
@@ -1710,7 +1738,7 @@ def test_reindex_bypasses_existing_match_when_vectors_are_invalid(
     monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/bad-index-kb/reindex")
+        response = client.post("/api/knowledge-bases/bad-index-kb/reindex")
 
     assert response.status_code == 200
     body = response.json()
@@ -1742,7 +1770,7 @@ def test_update_config_coerces_legacy_provider_to_llamaindex() -> None:
         monkeypatch.setattr(config_module, "get_kb_config_service", lambda: fake_service)
         with TestClient(app) as client:
             response = client.put(
-                "/api/v1/knowledge/demo/config",
+                "/api/knowledge-bases/demo/config",
                 json={"rag_provider": "raganything"},
             )
 
@@ -1771,7 +1799,7 @@ def test_update_config_preserves_known_provider() -> None:
         monkeypatch.setattr(config_module, "get_kb_config_service", lambda: fake_service)
         with TestClient(app) as client:
             response = client.put(
-                "/api/v1/knowledge/demo/config",
+                "/api/knowledge-bases/demo/config",
                 json={"rag_provider": "pageindex"},
             )
 
@@ -1803,7 +1831,7 @@ def test_update_config_rejects_provider_change_for_ready_index(monkeypatch, tmp_
 
     with TestClient(_build_app()) as client:
         response = client.put(
-            "/api/v1/knowledge/demo/config",
+            "/api/knowledge-bases/demo/config",
             json={"rag_provider": "pageindex"},
         )
 
@@ -1814,7 +1842,7 @@ def test_update_config_rejects_provider_change_for_ready_index(monkeypatch, tmp_
 
 def test_rag_providers_marks_linkable() -> None:
     with TestClient(_build_app()) as client:
-        providers = client.get("/api/v1/knowledge/rag-providers").json()["providers"]
+        providers = client.get("/api/knowledge-bases/rag-providers").json()["providers"]
     by_id = {p["id"]: p for p in providers}
     # Self-contained local indexes can be linked in place; PageIndex (cloud) and
     # LightRAG Server (remote, no local folder) can't.
@@ -1837,7 +1865,7 @@ def test_probe_folder_endpoint_finds_ready_index(tmp_path: Path) -> None:
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/probe-folder",
+            "/api/knowledge-bases/probe-folder",
             json={"folder_path": str(tmp_path), "rag_provider": "llamaindex"},
         )
 
@@ -1850,7 +1878,7 @@ def test_probe_folder_endpoint_finds_ready_index(tmp_path: Path) -> None:
 def test_probe_folder_endpoint_rejects_pageindex(tmp_path: Path) -> None:
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/probe-folder",
+            "/api/knowledge-bases/probe-folder",
             json={"folder_path": str(tmp_path), "rag_provider": "pageindex"},
         )
     assert response.status_code == 200
@@ -1879,7 +1907,7 @@ def test_probe_lightrag_server_endpoint_reports_verdict(monkeypatch) -> None:
     _patch_server_probe(monkeypatch, ok=True)
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/probe-lightrag-server",
+            "/api/knowledge-bases/probe-lightrag-server",
             json={"server_url": "http://localhost:9621", "api_key": "k"},
         )
     assert response.status_code == 200
@@ -1895,7 +1923,7 @@ def test_connect_lightrag_server_registers_pointer(monkeypatch, tmp_path: Path) 
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/connect-lightrag-server",
+            "/api/knowledge-bases/connect-lightrag-server",
             json={
                 "name": "remote-kb",
                 "server_url": "http://localhost:9621/",
@@ -1920,7 +1948,7 @@ def test_connect_lightrag_server_rejects_unreachable(monkeypatch, tmp_path: Path
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/connect-lightrag-server",
+            "/api/knowledge-bases/connect-lightrag-server",
             json={"name": "bad", "server_url": "http://nope:9621"},
         )
 
@@ -1955,7 +1983,7 @@ def test_weknora_probe_and_connect_endpoints(monkeypatch, tmp_path: Path) -> Non
 
     with TestClient(_build_app()) as client:
         probe = client.post(
-            "/api/v1/knowledge/probe-weknora",
+            "/api/knowledge-bases/probe-weknora",
             json={
                 "server_url": "http://localhost:8080/",
                 "api_key": "secret",
@@ -1963,7 +1991,7 @@ def test_weknora_probe_and_connect_endpoints(monkeypatch, tmp_path: Path) -> Non
             },
         )
         connected = client.post(
-            "/api/v1/knowledge/connect-weknora",
+            "/api/knowledge-bases/connect-weknora",
             json={
                 "name": "weknora-kb",
                 "server_url": "http://localhost:8080/",
@@ -1989,9 +2017,12 @@ def test_weknora_connection_routes_are_admin_gated() -> None:
     routes = {
         route.path: route
         for route in knowledge_router_module.router.routes
-        if route.path in {"/probe-weknora", "/connect-weknora"}
+        if route.path in {"/knowledge-bases/probe-weknora", "/knowledge-bases/connect-weknora"}
     }
-    assert set(routes) == {"/probe-weknora", "/connect-weknora"}
+    assert set(routes) == {
+        "/knowledge-bases/probe-weknora",
+        "/knowledge-bases/connect-weknora",
+    }
     for route in routes.values():
         assert any(dependency.call is require_admin for dependency in route.dependant.dependencies)
 
@@ -2003,7 +2034,7 @@ def test_connect_weknora_rejects_failed_probe(monkeypatch, tmp_path: Path) -> No
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/connect-weknora",
+            "/api/knowledge-bases/connect-weknora",
             json={
                 "name": "bad",
                 "server_url": "http://localhost:8080",
@@ -2065,7 +2096,7 @@ def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path
     monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={
                 "name": "kb-oss",
                 "rag_provider": "pageindex-oss",
@@ -2096,7 +2127,7 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
     monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={
                 "name": "kb-light",
                 "rag_provider": "lightrag",
@@ -2118,7 +2149,7 @@ def test_create_pageindex_oss_rejects_non_pdf(monkeypatch, tmp_path: Path) -> No
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={"name": "kb-oss-docx", "rag_provider": "pageindex-oss"},
             files=[
                 (
@@ -2219,13 +2250,13 @@ def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
 
     client = TestClient(_build_app())
 
-    initial = client.get("/api/v1/knowledge/rag-pipelines/lightrag/config")
+    initial = client.get("/api/knowledge-bases/rag-pipelines/lightrag/config")
     assert initial.status_code == 200
     for key in ("top_k", "response_type", "max_concurrent_files", "llm_model_max_async"):
         assert key in initial.json(), f"{key} missing from the payload the UI reads"
 
     saved = client.put(
-        "/api/v1/knowledge/rag-pipelines/lightrag/config",
+        "/api/knowledge-bases/rag-pipelines/lightrag/config",
         json={
             "top_k": 42,
             "response_type": "Single Paragraph",
@@ -2240,7 +2271,7 @@ def test_lightrag_config_endpoint_round_trips_the_indexing_knobs(
     assert saved.json()["entity_extract_max_gleaning"] == 2
 
     # And they survive a reload rather than living only in the response.
-    again = client.get("/api/v1/knowledge/rag-pipelines/lightrag/config").json()
+    again = client.get("/api/knowledge-bases/rag-pipelines/lightrag/config").json()
     assert again["max_concurrent_files"] == 4
     assert again["entity_extract_max_gleaning"] == 2
     assert again["top_k"] == 42
@@ -2281,7 +2312,7 @@ def test_lightrag_server_defaults_are_redacted_and_reused_for_probe(
 
     with TestClient(_build_app()) as client:
         saved = client.put(
-            "/api/v1/knowledge/rag-pipelines/lightrag-server/config",
+            "/api/knowledge-bases/rag-pipelines/lightrag-server/config",
             json={"server_url": "http://localhost:9621/", "api_key": "private-key"},
         )
         assert saved.status_code == 200
@@ -2293,7 +2324,7 @@ def test_lightrag_server_defaults_are_redacted_and_reused_for_probe(
         assert "private-key" not in saved.text
 
         probed = client.post(
-            "/api/v1/knowledge/probe-lightrag-server",
+            "/api/knowledge-bases/probe-lightrag-server",
             json={
                 "server_url": "http://localhost:9621",
                 "use_saved_api_key": True,
@@ -2312,12 +2343,12 @@ def test_llamaindex_config_endpoint_round_trips_vector_index_knobs(
     monkeypatch.setattr(config_module, "get_runtime_settings_service", lambda: service)
 
     client = TestClient(_build_app())
-    initial = client.get("/api/v1/knowledge/rag-pipelines/llamaindex/config")
+    initial = client.get("/api/knowledge-bases/rag-pipelines/llamaindex/config")
     assert initial.status_code == 200
     assert initial.json()["vector_index_type"] == "flat"
 
     saved = client.put(
-        "/api/v1/knowledge/rag-pipelines/llamaindex/config",
+        "/api/knowledge-bases/rag-pipelines/llamaindex/config",
         json={
             "vector_index_type": "hnsw",
             "hnsw_m": 24,
@@ -2331,7 +2362,7 @@ def test_llamaindex_config_endpoint_round_trips_vector_index_knobs(
     assert saved.json()["hnsw_ef_construction"] == 128
     assert saved.json()["hnsw_ef_search"] == 48
 
-    again = client.get("/api/v1/knowledge/rag-pipelines/llamaindex/config").json()
+    again = client.get("/api/knowledge-bases/rag-pipelines/llamaindex/config").json()
     assert again["vector_index_type"] == "hnsw"
     assert again["hnsw_ef_search"] == 48
 
@@ -2342,13 +2373,13 @@ def test_llamaindex_config_endpoint_round_trips_reranker_knobs(monkeypatch, tmp_
     monkeypatch.setattr(config_module, "get_runtime_settings_service", lambda: service)
 
     client = TestClient(_build_app())
-    initial = client.get("/api/v1/knowledge/rag-pipelines/llamaindex/config")
+    initial = client.get("/api/knowledge-bases/rag-pipelines/llamaindex/config")
     assert initial.status_code == 200
     assert initial.json()["reranker_model"] == ""
     assert initial.json()["rerank_top_k"] == 50
 
     saved = client.put(
-        "/api/v1/knowledge/rag-pipelines/llamaindex/config",
+        "/api/knowledge-bases/rag-pipelines/llamaindex/config",
         json={
             "reranker_model": " BAAI/bge-reranker-base ",
             "rerank_top_k": 25,
@@ -2358,7 +2389,7 @@ def test_llamaindex_config_endpoint_round_trips_reranker_knobs(monkeypatch, tmp_
     assert saved.json()["reranker_model"] == "BAAI/bge-reranker-base"
     assert saved.json()["rerank_top_k"] == 25
 
-    again = client.get("/api/v1/knowledge/rag-pipelines/llamaindex/config").json()
+    again = client.get("/api/knowledge-bases/rag-pipelines/llamaindex/config").json()
     assert again["reranker_model"] == "BAAI/bge-reranker-base"
     assert again["rerank_top_k"] == 25
 
@@ -2393,19 +2424,19 @@ def test_lightrag_config_validates_dedicated_llm_selection(monkeypatch, tmp_path
 
     client = TestClient(_build_app())
     saved = client.put(
-        "/api/v1/knowledge/rag-pipelines/lightrag/config",
+        "/api/knowledge-bases/rag-pipelines/lightrag/config",
         json={"llm_profile_id": "profile-1", "llm_model_id": "model-1"},
     )
     assert saved.status_code == 200
 
     unknown = client.put(
-        "/api/v1/knowledge/rag-pipelines/lightrag/config",
+        "/api/knowledge-bases/rag-pipelines/lightrag/config",
         json={"llm_model_id": "missing"},
     )
     assert unknown.status_code == 422
 
     cleared = client.put(
-        "/api/v1/knowledge/rag-pipelines/lightrag/config",
+        "/api/knowledge-bases/rag-pipelines/lightrag/config",
         json={"llm_profile_id": "", "llm_model_id": ""},
     )
     assert cleared.status_code == 200

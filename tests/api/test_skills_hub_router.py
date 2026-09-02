@@ -1,6 +1,6 @@
 """API tests for the in-app EduHub skill browser endpoints.
 
-``GET /api/v1/skills/hub/catalog`` and ``/hub/detail`` proxy a hub's public
+``GET /api/skills/hub/catalog`` and ``/hub/detail`` proxy a hub's public
 catalog so the web panel can render it in DeepTutor's own UI (no iframe, no
 login). The hub provider is mocked over an ``httpx`` transport.
 """
@@ -77,14 +77,14 @@ def _mock_provider() -> ClawHubProvider:
 def _build_app() -> FastAPI:
     router = importlib.import_module("deeptutor.api.routers.skills").router
     app = FastAPI()
-    app.include_router(router, prefix="/api/v1/skills")
+    app.include_router(router, prefix="/api/skills")
     return app
 
 
 def test_hub_catalog_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hub_module, "get_hub_provider", lambda name: _mock_provider())
     client = TestClient(_build_app())
-    resp = client.get("/api/v1/skills/hub/catalog")
+    resp = client.get("/api/skills/hub/catalog")
     assert resp.status_code == 200
     data = resp.json()
     assert data["hub"] == "eduhub"
@@ -98,7 +98,7 @@ def test_hub_catalog_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_hub_detail_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hub_module, "get_hub_provider", lambda name: _mock_provider())
     client = TestClient(_build_app())
-    resp = client.get("/api/v1/skills/hub/detail", params={"slug": "socratic-tutor"})
+    resp = client.get("/api/skills/hub/detail", params={"slug": "socratic-tutor"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["version"] == "1.0.0"

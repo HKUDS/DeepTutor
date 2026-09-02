@@ -9,7 +9,7 @@ const EDITOR = path.resolve(
 );
 const CONTEXT = path.resolve(
   process.cwd(),
-  "components/settings/SettingsContext.tsx",
+  "features/settings/store/SettingsStore.tsx",
 );
 const MAIN = path.resolve(
   process.cwd(),

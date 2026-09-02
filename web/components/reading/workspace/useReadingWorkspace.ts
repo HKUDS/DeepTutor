@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useReading } from "@/context/ReadingContext";
-import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import { courseSessionConfiguration } from "@/lib/course-session-scope";
 import { getMaterial, getUnitText } from "@/lib/reading-api";
 import {
@@ -54,7 +54,7 @@ export function useReadingWorkspace(
     loadSession,
     newSession,
     cancelStreamingTurn,
-  } = useUnifiedChat();
+  } = useChatStateAdapter();
 
   const [workspace, setWorkspace] = useState<ReadingWorkspace | null>(null);
   const [conversations, setConversations] = useState<ReadingConversation[]>([]);
@@ -178,7 +178,7 @@ export function useReadingWorkspace(
     void (async () => {
       try {
         // The URL is the truth about which conversation is open, the same
-        // rule /home follows: `/reading/<ws>/<id>` opens that conversation,
+        // rule /chat follows: `/reading/<ws>/sessions/<id>` opens that conversation,
         // `/reading/<ws>` is a *new* one. This used to reopen the most recent
         // conversation instead, so arriving from the library — which links to
         // the bare collection URL — dropped the reader into an old transcript
@@ -323,7 +323,7 @@ export function useReadingWorkspace(
     [workspace],
   );
 
-  // The same gesture /home's "new chat" makes: stop whatever is streaming,
+  // The same gesture /chat's "new chat" makes: stop whatever is streaming,
   // reset to a local draft, and navigate to the URL that *means* "new". No
   // row is written until the learner actually says something, and the title
   // is then the one the model writes from that first turn rather than a
@@ -343,11 +343,11 @@ export function useReadingWorkspace(
 
   // When the first turn assigns a session id, put it in the URL and let the
   // conversation menu see the row the backend just attached. Mirrors the
-  // binding effect on /home; without it a draft conversation would stay on
+  // binding effect on /chat; without it a draft conversation would stay on
   // the bare collection URL and a refresh would silently start over.
   useEffect(() => {
     if (!state.sessionId || sessionIdParam) return;
-    router.replace(`/reading/${workspaceId}/${state.sessionId}`, {
+    router.replace(`/reading/${workspaceId}/sessions/${state.sessionId}`, {
       scroll: false,
     });
     void listReadingConversations(workspaceId)
@@ -363,7 +363,7 @@ export function useReadingWorkspace(
     [workspaceId],
   );
 
-  // Mirrors /home's delete: drop the row, and if it was the conversation on
+  // Mirrors /chat's delete: drop the row, and if it was the conversation on
   // screen, fall back to a fresh draft rather than leaving the reader looking
   // at a transcript that no longer exists.
   const deleteConversation = useCallback(
@@ -388,7 +388,7 @@ export function useReadingWorkspace(
 
   const openConversation = useCallback(
     async (sessionId: string) => {
-      router.push(`/reading/${workspaceId}/${sessionId}`);
+      router.push(`/reading/${workspaceId}/sessions/${sessionId}`);
       await loadSession(sessionId);
       configureSession(sessionConfiguration, sessionId);
     },

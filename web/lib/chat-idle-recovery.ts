@@ -1,4 +1,4 @@
-import type { ResumeTurnMessage } from "./unified-ws";
+import { buildResumeTurn } from "@/contracts/parse/turn-command";
 
 interface IdleTurnRecoveryInput {
   isStreaming: boolean;
@@ -12,8 +12,8 @@ interface IdleTurnRecoveryInput {
 
 export type IdleTurnRecoveryDecision =
   | { kind: "none" }
-  | { kind: "resume"; message: ResumeTurnMessage }
-  | { kind: "fail" };
+  | { kind: "resubscribe"; message: ReturnType<typeof buildResumeTurn> }
+  | { kind: "reconcile" };
 
 /**
  * Decide what the client-side idle watchdog should do.
@@ -31,13 +31,12 @@ export function decideIdleTurnRecovery(
   if (input.now - input.updatedAt <= input.idleTimeoutMs) {
     return { kind: "none" };
   }
-  if (!input.activeTurnId) return { kind: "fail" };
+  if (!input.activeTurnId) return { kind: "reconcile" };
   return {
-    kind: "resume",
-    message: {
-      type: "resume_from",
-      turn_id: input.activeTurnId,
-      seq: input.lastSeq,
-    },
+    kind: "resubscribe",
+    message: buildResumeTurn({
+      turnId: input.activeTurnId,
+      afterSeq: input.lastSeq,
+    }),
   };
 }

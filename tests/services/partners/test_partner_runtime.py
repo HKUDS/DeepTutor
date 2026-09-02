@@ -231,7 +231,7 @@ class TestTurnExecution:
         class SavedAnswerOrchestrator:
             async def handle(self, context):
                 seen_contexts.append(context)
-                context.metadata["_partner_group_formal_answer"] = "The formal answer"
+                context.extension("partner_group")["formal_answer"] = "The formal answer"
                 for item in finish("NO_INVOKE"):
                     yield item
 

@@ -17,7 +17,7 @@ import { useCallback } from "react";
 import StandaloneComposer, {
   type StandaloneComposerSubmission,
 } from "@/components/chat/home/StandaloneComposer";
-import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
 
@@ -43,7 +43,7 @@ export function MasteryComposer({
     setKBs,
     setLLMSelection,
     setPersonaSelection,
-  } = useUnifiedChat();
+  } = useChatStateAdapter();
   const { capabilities, activeCapabilityValue, selectCapability } =
     useWorkspaceChatActions();
 

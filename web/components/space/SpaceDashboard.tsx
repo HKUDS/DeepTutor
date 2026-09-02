@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
-import { useCapabilityFilter } from "@/lib/capabilities-api";
+import { useCapabilityFilter } from "@/features/capabilities/useCapabilityCatalog";
 import {
   ArrowUpRight,
   ClipboardList,
@@ -100,7 +100,7 @@ const GROUPS: DashboardGroup[] = [
       },
       {
         key: "notebooks",
-        href: "/notebook",
+        href: "/notebooks",
         icon: NotebookPen,
         title: { zh: "笔记本", en: "Notebooks" },
         blurb: {

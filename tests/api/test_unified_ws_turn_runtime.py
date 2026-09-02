@@ -285,7 +285,7 @@ async def test_turn_runtime_persists_private_provider_response_state(
     class FakeOrchestrator:
         async def handle(self, context):
             captured["metadata"] = context.metadata
-            context.metadata["_provider_response_state"] = state
+            context.runtime.provider_response_state = state
             yield StreamEvent(
                 type=StreamEventType.CONTENT,
                 source="chat",

@@ -59,7 +59,7 @@ def test_owner_bound_profile_is_withheld_from_granted_users(tmp_path, monkeypatc
 
 def test_owner_bound_profile_is_not_offered_as_assignable(tmp_path, monkeypatch):
     """Admins must not be shown a grant the server would silently discard."""
-    from deeptutor.multi_user import router as multi_user_router
+    from deeptutor.api.routers import multi_user as multi_user_router
 
     monkeypatch.setattr(
         multi_user_router,

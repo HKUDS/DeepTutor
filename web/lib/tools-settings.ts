@@ -7,7 +7,7 @@ export interface ToolSettingsResponse {
 let cached: Promise<string[]> | null = null;
 
 async function fetchEnabledOptionalTools(): Promise<string[]> {
-  const res = await apiFetch(apiUrl("/api/v1/tools"));
+  const res = await apiFetch(apiUrl("/api/tools"));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const payload = (await res.json()) as ToolSettingsResponse;
   return Array.isArray(payload.enabled_optional_tools)

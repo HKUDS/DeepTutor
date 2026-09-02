@@ -1,7 +1,7 @@
 """Tika engine adapter implementing the ``Parser`` protocol.
 
-Remote-only: a Tika server extracts text, which is written as Markdown for the
-canonical IR. There is no local package or model download.
+Remote-only: a Tika 4 server emits Markdown, which is written to the canonical
+IR. There is no local package or model download.
 """
 
 from __future__ import annotations
@@ -12,37 +12,7 @@ from typing import Callable, Optional
 from ...base import ReadinessReport
 from ...signature import ParserSignature
 from .config import TikaConfig, resolve_tika_config
-
-_SUPPORTED = frozenset(
-    {
-        ".pdf",
-        ".docx",
-        ".doc",
-        ".pptx",
-        ".ppt",
-        ".xlsx",
-        ".xls",
-        ".odt",
-        ".ods",
-        ".odp",
-        ".html",
-        ".htm",
-        ".csv",
-        ".json",
-        ".xml",
-        ".txt",
-        ".md",
-        ".rtf",
-        ".epub",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".webp",
-        ".tif",
-        ".tiff",
-    }
-)
+from .formats import MIN_TIKA_VERSION
 
 
 class TikaParser:
@@ -57,10 +27,15 @@ class TikaParser:
         return resolve_tika_config()
 
     def supported_formats(self) -> frozenset[str]:
-        return _SUPPORTED
+        # Tika content-sniffs more than a thousand formats and deployments may
+        # add custom parsers. Empty means “delegate support detection to the
+        # engine” in the Parser protocol, avoiding a stale DeepTutor whitelist.
+        return frozenset()
 
     def signature(self, config: TikaConfig) -> ParserSignature:
-        return ParserSignature.build("tika", f"remote:{config.server_url}", {})
+        # Include the server compatibility floor so caches created by the old
+        # plain-text Tika path are not reused after the Tika 4 Markdown switch.
+        return ParserSignature.build("tika", f"remote-{MIN_TIKA_VERSION}:{config.server_url}", {})
 
     def is_ready(self, config: TikaConfig) -> ReadinessReport:
         if not (config.server_url or "").strip():

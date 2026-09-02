@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import type { RagProviderSummary } from "../lib/knowledge-api";
+import type { RagProviderSummary } from "../features/knowledge/model/types";
 import {
   canConnectIma,
   createProviders,

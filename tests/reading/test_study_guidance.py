@@ -138,7 +138,7 @@ def _client(monkeypatch, extension) -> TestClient:
         lambda: registry,
     )
     app = FastAPI()
-    app.include_router(reading_extensions.router, prefix="/api/v1/reading")
+    app.include_router(reading_extensions.router, prefix="/api/reading")
     return TestClient(app)
 
 
@@ -163,7 +163,7 @@ def test_study_guidance_crosses_the_api_boundary_with_verified_text(monkeypatch,
     client = _client(monkeypatch, StudyGuidanceExtension())
     try:
         response = client.post(
-            f"/api/v1/reading/materials/{material.material_id}"
+            f"/api/reading/materials/{material.material_id}"
             "/extensions/guided_learning/actions/guide",
             json={
                 "locator": 1,
@@ -195,7 +195,7 @@ def test_forged_selection_is_rejected_before_the_extension_runs(monkeypatch, tmp
     client = _client(monkeypatch, StudyGuidanceExtension())
     try:
         response = client.post(
-            f"/api/v1/reading/materials/{material.material_id}"
+            f"/api/reading/materials/{material.material_id}"
             "/extensions/guided_learning/actions/guide",
             json={"locator": 1, "selection": "forged phrase"},
         )

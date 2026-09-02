@@ -99,7 +99,7 @@ def test_moonshot_kimi_drops_external_url_only_attachment(caplog) -> None:
 
 
 def test_moonshot_kimi_resolves_local_attachment_url(tmp_path, monkeypatch) -> None:
-    """A ``/api/attachments/...`` URL is read from the AttachmentStore and
+    """A ``/files/attachments/...`` URL is read from the AttachmentStore and
     re-encoded as inline base64 before being sent to Moonshot."""
     monkeypatch.setenv("CHAT_ATTACHMENT_DIR", str(tmp_path))
     attachment_store.reset_attachment_store()
@@ -110,7 +110,7 @@ def test_moonshot_kimi_resolves_local_attachment_url(tmp_path, monkeypatch) -> N
     session_dir.mkdir(parents=True)
     (session_dir / f"{aid}_{name}").write_bytes(raw_bytes)
 
-    url = f"/api/attachments/{quote(sid)}/{quote(aid)}/{quote(name)}"
+    url = f"/files/attachments/{quote(sid)}/{quote(aid)}/{quote(name)}"
     att = SimpleNamespace(type="image", url=url, base64="")
 
     try:

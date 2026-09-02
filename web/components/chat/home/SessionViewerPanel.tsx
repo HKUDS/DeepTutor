@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 /**
  * SessionViewerPanel — full right-side sidebar with browser-style tabs that
  * can hold (a) attachment previews and (b) embedded web pages clicked from
@@ -56,8 +58,8 @@ import SubagentTabBody from "@/components/chat/home/SubagentTabBody";
 import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
-import type { MessageAttachment } from "@/context/UnifiedChatContext";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 import {
   normalizeSelectedText,
   selectionTutorKey,
@@ -126,7 +128,7 @@ function clampViewerWidth(px: number): number {
 
 function readStoredViewerWidth(): number {
   if (typeof window === "undefined") return VIEWER_WIDTH_DEFAULT;
-  const raw = window.localStorage.getItem(VIEWER_WIDTH_KEY);
+  const raw = browserStorage.readRaw("local", VIEWER_WIDTH_KEY);
   const parsed = raw ? Number(raw) : NaN;
   return Number.isFinite(parsed)
     ? clampViewerWidth(parsed)
@@ -308,7 +310,11 @@ function SessionViewerPanelInner(
       document.body.style.cursor = "";
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      window.localStorage.setItem(VIEWER_WIDTH_KEY, String(widthRef.current));
+      browserStorage.writeRaw(
+        "local",
+        VIEWER_WIDTH_KEY,
+        String(widthRef.current),
+      );
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -374,9 +380,7 @@ function SessionViewerPanelInner(
 
   const openMarkdownNoteTab = useCallback(() => {
     setTabs((prev) => {
-      const existingIdx = prev.findIndex(
-        (tab) => tab.id === markdownNoteTabId,
-      );
+      const existingIdx = prev.findIndex((tab) => tab.id === markdownNoteTabId);
       if (existingIdx >= 0) {
         setActiveTabId(markdownNoteTabId);
         return prev;
@@ -777,12 +781,12 @@ function TabBar({
               : tab.kind === "markdown-note"
                 ? NotebookPen
                 : tab.kind === "selection-tutor"
-                ? GraduationCap
-                : tab.kind === "quiz-followup"
-                  ? MessageSquarePlus
-                  : tab.kind === "geogebra"
-                    ? Compass
-                    : Paperclip;
+                  ? GraduationCap
+                  : tab.kind === "quiz-followup"
+                    ? MessageSquarePlus
+                    : tab.kind === "geogebra"
+                      ? Compass
+                      : Paperclip;
           return (
             <div
               key={tab.id}

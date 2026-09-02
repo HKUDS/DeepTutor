@@ -14,11 +14,12 @@ test("an idle live turn is resumed instead of being marked failed", () => {
       idleTimeoutMs: 180_000,
     }),
     {
-      kind: "resume",
+      kind: "resubscribe",
       message: {
         type: "resume_from",
         turn_id: "turn_research",
         seq: 42,
+        protocol_version: "2.0",
       },
     },
   );
@@ -39,7 +40,7 @@ test("a paused ask-user turn is not touched by the idle watchdog", () => {
   );
 });
 
-test("a stale stream without a server turn id still fails locally", () => {
+test("a stale stream without a server turn id requests reconciliation", () => {
   const decision = decideIdleTurnRecovery({
     isStreaming: true,
     hasPendingUserInput: false,
@@ -50,5 +51,5 @@ test("a stale stream without a server turn id still fails locally", () => {
     idleTimeoutMs: 180_000,
   });
 
-  assert.equal(decision.kind, "fail");
+  assert.equal(decision.kind, "reconcile");
 });

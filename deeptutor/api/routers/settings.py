@@ -59,6 +59,10 @@ from deeptutor.services.settings.interface_settings import (
 from deeptutor.services.settings.interface_settings import (
     atomic_update,
     resolve_languages,
+    sanitize_enabled_tools,
+)
+from deeptutor.services.settings.interface_settings import (
+    get_enabled_optional_tools as _get_enabled_optional_tools,
 )
 from deeptutor.services.settings.starter_settings import (
     TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
@@ -67,7 +71,7 @@ from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 router = APIRouter()
 # Public UI-settings router. The app shell bootstraps the interface language
-# from GET /api/v1/settings/ui, and auth pages (/register, /login) must be
+# from GET /api/settings/ui, and auth pages (/register, /login) must be
 # able to do the same *before* a session exists — so this one read endpoint
 # is intentionally mounted outside the ``_auth`` dependency (see main.py).
 # It only exposes non-sensitive UI preferences (theme/language), never the
@@ -75,6 +79,12 @@ router = APIRouter()
 public_router = APIRouter()
 
 TOUR_CACHE = None
+
+
+def get_enabled_optional_tools() -> list[str]:
+    """Compatibility export; the source of truth lives in the service layer."""
+
+    return _get_enabled_optional_tools()
 
 
 def _settings_file():
@@ -88,7 +98,7 @@ def _tour_cache_file():
 
 
 DEFAULT_SIDEBAR_NAV_ORDER = {
-    "start": ["/", "/history", "/knowledge", "/notebook"],
+    "start": ["/", "/history", "/knowledge-bases", "/notebooks"],
     "learnResearch": ["/question", "/solver", "/research", "/co_writer"],
 }
 
@@ -137,7 +147,7 @@ class UISettings(BaseModel):
 
 
 class UISettingsUpdate(BaseModel):
-    """Partial UI settings for user-initiated PATCH/PUT updates via /api/v1/settings/ui.
+    """Partial UI settings for user-initiated PATCH/PUT updates via /api/settings/ui.
 
     All fields have None defaults so `model_dump(exclude_unset=True)` naturally
     excludes fields not provided in the frontend payload, while explicitly provided
@@ -356,42 +366,13 @@ def load_ui_settings() -> dict[str, Any]:
                 # Filter persisted enabled_optional_tools to current
                 # toggleable set so retired tool names can't leak into
                 # the per-turn payload.
-                merged["enabled_optional_tools"] = _sanitize_enabled_tools(
+                merged["enabled_optional_tools"] = sanitize_enabled_tools(
                     merged.get("enabled_optional_tools")
                 )
                 return merged
         except Exception:
             pass
     return DEFAULT_UI_SETTINGS.copy()
-
-
-def _sanitize_enabled_tools(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return list(USER_TOGGLEABLE_TOOL_NAMES)
-    allowed = set(USER_TOGGLEABLE_TOOL_NAMES)
-    seen: set[str] = set()
-    out: list[str] = []
-    for name in value:
-        if isinstance(name, str) and name in allowed and name not in seen:
-            seen.add(name)
-            out.append(name)
-    return out
-
-
-def get_enabled_optional_tools() -> list[str]:
-    """Return the user's currently-enabled toggleable tool names.
-
-    Source of truth for the chat pipeline when a turn doesn't ship an
-    explicit ``tools`` list. Intersected with the admin grant whitelist so
-    a restricted user's saved toggles can't resurrect a revoked tool.
-    """
-    from deeptutor.multi_user.tool_access import allowed_optional_tools
-
-    enabled = _sanitize_enabled_tools(load_ui_settings().get("enabled_optional_tools"))
-    allowed = allowed_optional_tools()
-    if allowed is not None:
-        enabled = [name for name in enabled if name in allowed]
-    return enabled
 
 
 def save_ui_settings(settings: dict[str, Any]) -> None:
@@ -1264,12 +1245,13 @@ async def start_mineru_models_download(payload: MinerUModelDownloadPayload):
             message = (
                 f"mineru-models-download not found next to the configured CLI "
                 f"(expected {resolved['path']}). The configured install may be "
-                "magic-pdf 1.x — upgrade to MinerU 2.x for one-click downloads."
+                "legacy magic-pdf — upgrade to MinerU >= 3.4.5 for one-click downloads."
             )
         else:
             message = (
                 "mineru-models-download not found on the server PATH. Install "
-                'MinerU 2.x first (uv pip install -U "mineru[core]") or set the CLI path.'
+                'current MinerU first (uv pip install -U "mineru[all]>=3.4.5") or set '
+                "the CLI path."
             )
         return {"ok": False, "message": message}
 
@@ -1313,6 +1295,10 @@ async def test_mineru_connection(payload: MinerUSettingsUpdate):
             local_cli_probe,
             local_cli_version,
         )
+        from deeptutor.services.parsing.engines.mineru.formats import (
+            MIN_MINERU_VERSION,
+            mineru_version_is_current,
+        )
 
         probe = local_cli_probe(payload.local_cli_path)
         if not probe["found"]:
@@ -1328,7 +1314,7 @@ async def test_mineru_connection(payload: MinerUSettingsUpdate):
                 "ok": False,
                 "message": (
                     "MinerU CLI not found on the server PATH. Install it "
-                    '(uv pip install -U "mineru[core]"), set an explicit CLI path, '
+                    '(uv pip install -U "mineru[all]>=3.4.5"), set an explicit CLI path, '
                     "or switch to cloud mode."
                 ),
             }
@@ -1338,10 +1324,19 @@ async def test_mineru_connection(payload: MinerUSettingsUpdate):
             probe["path"] if probe.get("source") == "configured" else str(probe["command"])
         )
         version = await asyncio.to_thread(local_cli_version, version_target)
-        detail = version or f"at {probe['path']}"
+        if not mineru_version_is_current(version):
+            detail = version or "an unknown version"
+            return {
+                "ok": False,
+                "message": (
+                    f"Local MinerU CLI reported {detail}. DeepTutor needs MinerU >= "
+                    f"{MIN_MINERU_VERSION}; upgrade with "
+                    f"`pip install -U 'mineru[all]>={MIN_MINERU_VERSION}'`."
+                ),
+            }
         return {
             "ok": True,
-            "message": f"Local MinerU CLI detected: {probe['command']} ({detail})",
+            "message": f"Local MinerU CLI detected: {probe['command']} ({version})",
         }
 
     service = get_runtime_settings_service()
@@ -1626,7 +1621,7 @@ async def update_sidebar_nav_order(update: SidebarNavOrderUpdate):
 
 @router.put("/enabled-tools")
 async def update_enabled_tools(update: EnabledToolsUpdate):
-    sanitized = _sanitize_enabled_tools(update.enabled_tools)
+    sanitized = sanitize_enabled_tools(update.enabled_tools)
     patch_ui_settings(enabled_optional_tools=sanitized)
     return {"enabled_optional_tools": sanitized}
 

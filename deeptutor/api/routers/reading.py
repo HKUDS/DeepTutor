@@ -54,6 +54,7 @@ from deeptutor.reading.knowledge_capture import (
     send_workspace_to_notebook,
 )
 from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS
+from deeptutor.services.session.workspace_preferences import WORKSPACE_MODE_READING
 from deeptutor.utils.document_validator import DocumentValidator
 
 logger = logging.getLogger(__name__)
@@ -747,6 +748,7 @@ async def create_reading_session(
             session["id"],
             {
                 "capability": "immersive_reading",
+                "workspace_mode": WORKSPACE_MODE_READING,
                 "session_kind": "immersive_reading",
                 "reading_workspace_id": workspace_id,
                 "reading_material_id": active_material_id or "",

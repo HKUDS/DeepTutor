@@ -9,6 +9,8 @@
  * ``window``.
  */
 
+import { browserStorage } from "@/shared/storage";
+
 export interface SidebarNavLayout {
   /**
    * Flat top-to-bottom order of every known feature, folded ones included.
@@ -237,7 +239,7 @@ export function mergeManualOrder(
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = browserStorage.readRaw("local", key);
     if (!raw) return fallback;
     return JSON.parse(raw) as T;
   } catch {
@@ -248,7 +250,7 @@ function readJson<T>(key: string, fallback: T): T {
 function writeJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(key, JSON.stringify(value));
+    browserStorage.writeRaw("local", key, JSON.stringify(value));
   } catch {
     // A full or disabled store costs the preference, never the sidebar.
   }

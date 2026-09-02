@@ -1,5 +1,5 @@
 import { apiFetch, apiUrl } from "@/lib/api";
-import { readErrorDetail } from "@/lib/knowledge-api";
+import { readErrorDetail } from "@/features/knowledge/api/catalog";
 
 /**
  * Device bridge for a connected MarginNote 4 library.
@@ -15,7 +15,7 @@ import { readErrorDetail } from "@/lib/knowledge-api";
  * `PairResponse` rather than restating them in another casing.
  */
 
-const BASE = "/api/v1/marginnote4";
+const BASE = "/api/marginnote4";
 
 export interface MarginNoteDevice {
   device_id: string;

@@ -9,13 +9,11 @@ build-backend = "setuptools.build_meta"
 name = "deeptutor"
 dynamic = ["version"]
 description = "An agent-native intelligent learning companion with multi-agent collaboration and RAG"
-# Capped below 3.14 on purpose (issue #664): on 3.14 pip can't find wheels for
-# some compiled base deps (e.g. faiss-cpu) and silently backtracks into a
-# doomed source build that dies with "subprocess-exited-with-error". The heavy
-# GraphRAG also carries a `python_version < '3.14'` marker; capping the project
-# itself makes every install, including LightRAG, refuse 3.14 with a
-# readable "Requires a different Python" message instead of a build failure.
-requires-python = ">=3.11,<3.14"
+# Python 3.14 is supported by the core app now that compiled base dependencies
+# such as FAISS publish compatible wheels. Keep a forward cap so a future
+# interpreter is not advertised before the compiled dependency stack is ready.
+# Individual optional integrations may carry tighter markers below.
+requires-python = ">=3.11,<3.15"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 dependencies = [
@@ -49,12 +47,16 @@ dependencies = [
     "perplexityai>=0.1.0",
     "oauth-cli-kit>=0.1.1",
     "llama-index>=0.14.12",
-    "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
+    # The current BM25 integration pins PyStemmer <3, whose 2.x line has no
+    # Python 3.14 wheels. Skip it there so ordinary installs never require a C
+    # compiler; the retriever already falls back to vector search when absent.
+    "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
     # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
     # brute-force per-query scan for large knowledge bases (issue #552). The
     # pipeline imports it lazily and falls back to SimpleVectorStore if absent.
     "llama-index-vector-stores-faiss>=0.4.0,<1.0.0",
-    "faiss-cpu>=1.8.0,<2.0.0",
+    "faiss-cpu>=1.8.0,<2.0.0; python_version < '3.14'",
+    "faiss-cpu>=1.12.0,<2.0.0; python_version >= '3.14'",
     "PyMuPDF>=1.26.0",
     "numpy>=1.24.0,<3.0.0",
     "arxiv>=2.0.0",
@@ -73,9 +75,10 @@ dependencies = [
     "bcrypt>=4.0.0",
     "python-jose[cryptography]>=3.3.0",
     "pocketbase>=0.12.0",
+    "redis>=5.0.0,<7.0.0",
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
-    # Process-tree memory readings for /api/v1/system/memory. Soft dependency:
+    # Process-tree memory readings for /api/system/memory. Soft dependency:
     # deeptutor.runtime.memory_probe imports it lazily and falls back to /proc,
     # so a missing wheel costs the settings strip, not the app.
     "psutil>=5.9.0,<8.0.0",
@@ -83,6 +86,7 @@ dependencies = [
 
 [project.scripts]
 deeptutor = "deeptutor_cli.main:main"
+deeptutor-export-frontend-contracts = "deeptutor.api.contracts.export:main"
 
 [project.entry-points."deeptutor.reading_extensions"]
 read_aloud = "deeptutor.reading.read_aloud:ReadAloudExtension"
@@ -104,12 +108,13 @@ cli = [
     "pageindex>=0.2.10,<0.3.0",
     # RAG (LlamaIndex)
     "llama-index>=0.14.12",
-    "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
+    "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
     # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
     # brute-force per-query scan for large knowledge bases (issue #552). The
     # pipeline imports it lazily and falls back to SimpleVectorStore if absent.
     "llama-index-vector-stores-faiss>=0.4.0,<1.0.0",
-    "faiss-cpu>=1.8.0,<2.0.0",
+    "faiss-cpu>=1.8.0,<2.0.0; python_version < '3.14'",
+    "faiss-cpu>=1.12.0,<2.0.0; python_version >= '3.14'",
     "PyMuPDF>=1.26.0",
     "numpy>=1.24.0,<3.0.0",
     "arxiv>=2.0.0",
@@ -152,6 +157,7 @@ server = [
     "bcrypt>=4.0.0",
     "python-jose[cryptography]>=3.3.0",
     "pocketbase>=0.12.0",
+    "redis>=5.0.0,<7.0.0",
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
     "croniter>=6.0.0,<7.0.0",
@@ -192,18 +198,20 @@ partners = [
 # (deeptutor/services/parsing). MinerU is an external CLI / hosted API and is
 # not a pip dependency. Engines import lazily, so these stay opt-in and an
 # absent engine simply reports unavailable in Settings → Document Parsing.
-parse-markitdown = ["markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2"]
-parse-docling = ["docling>=2.0.0"]
-# PyMuPDF4LLM rides on PyMuPDF (already a core dep); the extra adds only the
-# thin Markdown layer, so it is the lightest image-capable engine. Pinned to the
-# pre-1.0 line on purpose: 1.x defaults to an onnxruntime layout-AI path that
-# pulls a heavy dep, downloads a model, and can't extract images — defeating the
-# "lightweight, runs on a Pi, extracts images" point of this engine.
-parse-pymupdf4llm = ["pymupdf4llm>=0.0.17,<1.0"]
-# LiteParse ships its parser as a compiled Rust extension, so a major bump
-# can change both the Python API and the Markdown it emits (which the parse
-# cache keys on). Pin the major like parse-pymupdf4llm does.
-parse-liteparse = ["liteparse>=2.11.1,<3.0"]
+parse-markitdown = ["markitdown[all]>=0.1.7"]
+# Docling's base package intentionally leaves some format backends as extras.
+# Install all input-format dependencies so DeepTutor can honor the complete
+# upstream format list. Legacy Office needs LibreOffice and video needs ffmpeg
+# on the host in addition to these Python packages.
+parse-docling = [
+    "docling[xbrl]>=2.123.1",
+    "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1",
+]
+# Current PyMuPDF4LLM includes CPU-only layout/OCR and image extraction on its
+# public conversion path. Keep it upgradeable so format and layout gains land
+# without a DeepTutor-side major-version ceiling.
+parse-pymupdf4llm = ["pymupdf4llm>=1.28.2"]
+parse-liteparse = ["liteparse>=2.14.2"]
 parse = [
     "deeptutor[parse-markitdown]",
     "deeptutor[parse-docling]",
@@ -262,6 +270,7 @@ dev = [
     "pre-commit>=3.0.0",
     "safety<3.0.0",
     "bandit>=1.8.0",
+    "import-linter>=2.1.0,<3.0.0",
     # Test fixture builders for document-loader tests. Runtime pulls these via
     # cli/server, but dev keeps them explicit for pytest collection.
     "python-docx>=1.1.0",
@@ -463,6 +472,7 @@ testpaths = ["tests", "deeptutor/learning/tests"]
 pythonpath = ["."]
 markers = [
     "asyncio: mark async tests that require pytest-asyncio",
+    "redis_integration: requires DEEPTUTOR_TEST_REDIS_URL",
 ]
 asyncio_default_fixture_loop_scope = "function"
 addopts = [

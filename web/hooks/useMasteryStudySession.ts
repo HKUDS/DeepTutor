@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
-  useUnifiedChat,
+  useChatStateAdapter,
   type SessionConfiguration,
-} from "@/context/UnifiedChatContext";
+} from "@/features/chat/ChatStateAdapter";
 import { useMasteryPathActivity } from "@/hooks/useMasteryPathActivity";
 import {
   fetchMasteryTopic,
@@ -24,7 +24,7 @@ import { MASTERY_WORKSPACE_MODE } from "@/lib/workspace-mode";
 /**
  * Resolves which topic and which chat session a study route is showing.
  *
- * Route → session is a small state machine: a bare `/study` route opens a
+ * Route → session is a small state machine: a bare `/sessions` route opens a
  * draft and rewrites the URL once the session exists, while a route that
  * names a session must first prove that session belongs to this topic. Both
  * paths key their bookkeeping on the route so a fast topic switch can never
@@ -43,7 +43,7 @@ export function useMasteryStudySession(
     configureSession,
     loadSession,
     showCachedSession,
-  } = useUnifiedChat();
+  } = useChatStateAdapter();
 
   const [topic, setTopic] = useState<MasteryTopic | null>(null);
   const [topicError, setTopicError] = useState<string | null>(null);
@@ -190,7 +190,7 @@ export function useMasteryStudySession(
       ? `?course=${encodeURIComponent(courseId)}`
       : "";
     router.replace(
-      `/mastery/${encodeURIComponent(pathId)}/study/${encodeURIComponent(
+      `/mastery/${encodeURIComponent(pathId)}/sessions/${encodeURIComponent(
         newSessionId,
       )}${courseQuery}`,
       { scroll: false },

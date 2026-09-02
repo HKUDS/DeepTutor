@@ -27,7 +27,7 @@ test("text reader exposes persistent display preferences", () => {
     [DEFAULT_LINE_WIDTH, MIN_LINE_WIDTH, MAX_LINE_WIDTH],
     [84, 48, 104],
   );
-  assert.match(reader, /window\.localStorage\.setItem/);
+  assert.match(reader, /browserStorage\.writeRaw\(\s*"local"/);
 });
 
 test("reset includes typography and theme preferences", () => {

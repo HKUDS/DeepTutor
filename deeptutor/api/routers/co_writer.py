@@ -31,7 +31,7 @@ from deeptutor.co_writer.storage import (
     CoWriterDocumentSummary,
     get_co_writer_storage,
 )
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
@@ -417,7 +417,7 @@ async def _stream_react_edit(request: ReactEditRequest) -> AsyncGenerator[str, N
             task.cancel()
 
 
-@router.post("/edit", response_model=EditResponse)
+@router.post("/documents/actions/edit", response_model=EditResponse)
 async def edit_text(request: EditRequest):
     try:
         # Get agent with refreshed LLM configuration from Settings
@@ -441,7 +441,7 @@ async def edit_text(request: EditRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/edit_react", response_model=ReactEditResponse)
+@router.post("/documents/actions/edit-react", response_model=ReactEditResponse)
 async def edit_text_react(request: ReactEditRequest):
     try:
         return await _run_react_edit(request, language=_current_language())
@@ -452,7 +452,7 @@ async def edit_text_react(request: ReactEditRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/edit_react/stream")
+@router.post("/documents/actions/edit-react/stream")
 async def edit_text_react_stream(request: ReactEditRequest):
     try:
         _prepare_react_edit_request(request, _current_language())
@@ -465,7 +465,7 @@ async def edit_text_react_stream(request: ReactEditRequest):
     )
 
 
-@router.post("/automark", response_model=AutoMarkResponse)
+@router.post("/documents/actions/automark", response_model=AutoMarkResponse)
 async def auto_mark_text(request: AutoMarkRequest):
     """AI auto-mark text"""
     try:
@@ -483,7 +483,7 @@ async def auto_mark_text(request: AutoMarkRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/history")
+@router.get("/documents/history")
 async def get_history():
     """Get all operation history"""
     try:
@@ -493,7 +493,7 @@ async def get_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/history/{operation_id}")
+@router.get("/documents/history/{operation_id}")
 async def get_operation(operation_id: str):
     """Get single operation details"""
     try:
@@ -508,7 +508,7 @@ async def get_operation(operation_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tool_calls/{operation_id}")
+@router.get("/documents/tool-calls/{operation_id}")
 async def get_tool_call(operation_id: str):
     """Get tool call details"""
     try:

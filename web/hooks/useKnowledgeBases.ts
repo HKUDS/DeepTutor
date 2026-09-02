@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   connectImaKnowledgeBase as connectImaApi,
-  connectLightRagServer as connectLightRagServerApi,
   connectWeKnora as connectWeKnoraApi,
   connectLinkedFolder as connectLinkedFolderApi,
   connectMarginNote4Library as connectMarginNote4Api,
@@ -17,11 +16,12 @@ import {
   reindexKnowledgeBase as reindexKbApi,
   retryKnowledgeBase as retryKbApi,
   setDefaultKnowledgeBase as setDefaultKbApi,
-  uploadKnowledgeBaseFiles as uploadKbApi,
   type KnowledgeTaskResponse,
   type KnowledgeUploadPolicy,
   type RagProviderSummary,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/catalog";
+import { connectLightRagServer as connectLightRagServerApi } from "@/features/knowledge/api/engines";
+import { uploadKnowledgeBaseFiles as uploadKbApi } from "@/features/knowledge/api/files";
 import {
   DEFAULT_UPLOAD_POLICY,
   type KnowledgeBase,

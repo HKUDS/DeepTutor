@@ -2,7 +2,7 @@ import type {
   CatalogProfile,
   ProviderOption,
   ServiceName,
-} from "./SettingsContext";
+} from "@/features/settings/store/SettingsStore";
 
 /** The tag the backend stamps on the profile its Codex OAuth service owns. */
 export const CODEX_MANAGED_BY = "openai_codex_oauth";

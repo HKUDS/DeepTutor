@@ -59,9 +59,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export async function listGuardianRelationships(): Promise<GuardianRelationship[]> {
+export async function listGuardianRelationships(): Promise<
+  GuardianRelationship[]
+> {
   const data = await request<{ relationships: GuardianRelationship[] }>(
-    "/api/v1/multi-user/me/guardianships",
+    "/api/multi-user/me/guardianships",
   );
   return data.relationships;
 }
@@ -70,7 +72,7 @@ export async function listAdminGuardianRelationships(): Promise<
   GuardianRelationship[]
 > {
   const data = await request<{ relationships: GuardianRelationship[] }>(
-    "/api/v1/multi-user/guardians",
+    "/api/multi-user/guardians",
   );
   return data.relationships;
 }
@@ -81,7 +83,7 @@ export async function authorizeGuardianRelationship(
   permissions: string[],
 ): Promise<GuardianRelationship> {
   const data = await request<{ relationship: GuardianRelationship }>(
-    "/api/v1/multi-user/guardians",
+    "/api/multi-user/guardians",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -99,7 +101,7 @@ export async function revokeGuardianRelationship(
   relationshipId: string,
 ): Promise<void> {
   await request(
-    `/api/v1/multi-user/guardians/${encodeURIComponent(relationshipId)}`,
+    `/api/multi-user/guardians/${encodeURIComponent(relationshipId)}`,
     { method: "DELETE" },
   );
 }
@@ -108,14 +110,14 @@ export async function revokeMyGuardianRelationship(
   relationshipId: string,
 ): Promise<void> {
   await request(
-    `/api/v1/multi-user/me/guardianships/${encodeURIComponent(relationshipId)}`,
+    `/api/multi-user/me/guardianships/${encodeURIComponent(relationshipId)}`,
     { method: "DELETE" },
   );
 }
 
 export function getGuardianReport(learnerId: string): Promise<GuardianReport> {
   return request<GuardianReport>(
-    `/api/v1/multi-user/learners/${encodeURIComponent(learnerId)}/guardian-report`,
+    `/api/multi-user/learners/${encodeURIComponent(learnerId)}/guardian-report`,
   );
 }
 
@@ -124,7 +126,7 @@ export async function resetLearnerCredentials(
   newPassword: string,
 ): Promise<void> {
   await request(
-    `/api/v1/multi-user/learners/${encodeURIComponent(learnerId)}/credentials/reset`,
+    `/api/multi-user/learners/${encodeURIComponent(learnerId)}/credentials/reset`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -137,7 +139,7 @@ export async function getGuardianMaterials(
   learnerId: string,
 ): Promise<GuardianMaterial[]> {
   const data = await request<{ materials: GuardianMaterial[] }>(
-    `/api/v1/multi-user/learners/${encodeURIComponent(learnerId)}/materials`,
+    `/api/multi-user/learners/${encodeURIComponent(learnerId)}/materials`,
   );
   return data.materials;
 }
@@ -147,7 +149,7 @@ export async function saveGuardianMaterials(
   bookIds: string[],
 ): Promise<void> {
   await request(
-    `/api/v1/multi-user/learners/${encodeURIComponent(learnerId)}/materials`,
+    `/api/multi-user/learners/${encodeURIComponent(learnerId)}/materials`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -161,7 +163,7 @@ export async function getGuardianRestrictions(learnerId: string): Promise<{
   available_extensions: GuardianExtension[];
 }> {
   return request(
-    `/api/v1/multi-user/learners/${encodeURIComponent(learnerId)}/restrictions`,
+    `/api/multi-user/learners/${encodeURIComponent(learnerId)}/restrictions`,
   );
 }
 
@@ -170,7 +172,7 @@ export async function saveGuardianRestrictions(
   restrictions: GuardianRestrictions,
 ): Promise<GuardianRestrictions> {
   const data = await request<{ restrictions: GuardianRestrictions }>(
-    `/api/v1/multi-user/learners/${encodeURIComponent(learnerId)}/restrictions`,
+    `/api/multi-user/learners/${encodeURIComponent(learnerId)}/restrictions`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

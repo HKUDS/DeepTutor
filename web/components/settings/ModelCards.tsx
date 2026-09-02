@@ -8,7 +8,7 @@ import type {
   CatalogModel,
   CatalogProfile,
   ServiceName,
-} from "./SettingsContext";
+} from "@/features/settings/store/SettingsStore";
 
 /**
  * The two levels of a model settings page, as cards.

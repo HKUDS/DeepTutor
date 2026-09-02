@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import { useCallback, useState } from "react";
 import { Archive, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -18,14 +20,14 @@ export default function MemoryArchivedBanner({
   const { t } = useTranslation();
   const [dismissed, setDismissed] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(STORAGE_KEY);
+    return browserStorage.readRaw("local", STORAGE_KEY);
   });
   const [expanded, setExpanded] = useState(false);
 
   const dismiss = useCallback(() => {
     if (!latestBackup) return;
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY, latestBackup);
+      browserStorage.writeRaw("local", STORAGE_KEY, latestBackup);
     }
     setDismissed(latestBackup);
   }, [latestBackup]);

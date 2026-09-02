@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 
-const URL = "http://localhost:3784/home";
+const URL = "http://localhost:3784/chat";
 const VW = 1440;
 const VH = 900;
 

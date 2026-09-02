@@ -53,6 +53,6 @@ async def test_localizes_safe_images_and_never_leaves_failed_hotlinks() -> None:
     )
 
     assert "https://cdn.example.com" not in markdown
-    assert "/api/v1/reading/materials/0123456789abcdef/assets/" in markdown
+    assert "/api/reading/materials/0123456789abcdef/assets/" in markdown
     assert "Image unavailable: Tracker" in markdown
     assert list(assets.values()) == [png]

@@ -62,7 +62,7 @@ class ProposePartnerTool(BaseTool):
         except ValueError as exc:
             return ToolResult(content=str(exc), success=False)
         if isinstance(context, UnifiedContext):
-            context.metadata["_partner_draft_created"] = draft.draft_id
+            context.extension("partner_authoring")["draft_created"] = draft.draft_id
         payload = draft.to_dict()
         return ToolResult(
             content=json.dumps(

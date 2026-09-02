@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8001";
+import { resolveBackendApiBase } from "./backend-runtime-config";
 
 // HTTP/1.1 hop-by-hop headers describe one transport connection and must not
 // be replayed on the independent frontend -> backend connection.
@@ -13,7 +13,7 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
-type StreamingRequestInit = RequestInit & { duplex: "half" };
+type StreamingRequestInit = RequestInit & { duplex?: "half" };
 
 export interface UploadProxyDependencies {
   apiBaseUrl?: string;
@@ -43,10 +43,7 @@ export async function forwardBackendUpload(
   request: Request,
   dependencies: UploadProxyDependencies = {},
 ): Promise<Response> {
-  const apiBaseUrl =
-    dependencies.apiBaseUrl ||
-    process.env.DEEPTUTOR_API_BASE_URL ||
-    DEFAULT_API_BASE_URL;
+  const apiBaseUrl = dependencies.apiBaseUrl || resolveBackendApiBase();
   const fetchImpl = dependencies.fetchImpl || globalThis.fetch;
   const incomingUrl = new URL(request.url);
   const upstreamUrl = new URL(
@@ -57,11 +54,17 @@ export async function forwardBackendUpload(
   const init: StreamingRequestInit = {
     method: request.method,
     headers: forwardedHeaders(request.headers, { request: true }),
-    body: request.body,
     signal: request.signal,
     redirect: "manual",
-    duplex: "half",
   };
+  if (
+    request.body !== null &&
+    request.method !== "GET" &&
+    request.method !== "HEAD"
+  ) {
+    init.body = request.body;
+    init.duplex = "half";
+  }
   const upstream = await fetchImpl(upstreamUrl, init);
 
   return new Response(upstream.body, {

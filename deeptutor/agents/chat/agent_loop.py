@@ -38,13 +38,13 @@ from typing import TYPE_CHECKING, Any
 from deeptutor.agents._shared.capability_result import emit_capability_result
 from deeptutor.agents.chat.context_budget import LLMRequestSnapshot
 from deeptutor.agents.chat.dsml_tool_calls import DSMLStreamFilter, extract_dsml_tool_calls
-from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
-from deeptutor.core.agentic.tool_call_stream import ToolCallAccumulator
-from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
-from deeptutor.core.agentic.usage import message_content_chars, record_streamed_usage
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
+from deeptutor.runtime.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
+from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
+from deeptutor.runtime.agentic.usage import message_content_chars, record_streamed_usage
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm import LLMProviderTransportError, clean_thinking_tags
 from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
@@ -272,7 +272,7 @@ class AgentLoop:
                 checkpoint_boundary=len(messages),
             )
         if outcome.provider_response_state is not None:
-            self.context.metadata["_provider_response_state"] = outcome.provider_response_state
+            self.context.runtime.provider_response_state = outcome.provider_response_state
 
         if state.sources:
             await self.stream.sources(
@@ -481,11 +481,11 @@ class AgentLoop:
                 )
                 if final_override is not None:
                     await self._discard_deferred_output(result)
-                    if not self.context.metadata.get("_capability_answer_published"):
+                    if not self.context.capability_output.answer_published:
                         await self.pipeline._emit_protocol_fallback_final_response(
                             self.stream, final_override
                         )
-                        self.context.metadata["_capability_answer_published"] = True
+                        self.context.capability_output.answer_published = True
                     return await self._finalize_finish(
                         final_override,
                         continued_answer_parts=continued_answer_parts,
@@ -560,11 +560,11 @@ class AgentLoop:
 
             final_override = self.pipeline._capability_final_text_override(self.context, "")
             if final_override is not None:
-                if not self.context.metadata.get("_capability_answer_published"):
+                if not self.context.capability_output.answer_published:
                     await self.pipeline._emit_protocol_fallback_final_response(
                         self.stream, final_override
                     )
-                    self.context.metadata["_capability_answer_published"] = True
+                    self.context.capability_output.answer_published = True
                 return await self._finalize_finish(
                     final_override,
                     continued_answer_parts=continued_answer_parts,

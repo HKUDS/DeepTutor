@@ -10,7 +10,7 @@ import {
   syncGitHubSources,
   type GitHubSource,
   type GitHubSyncResult,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/sources";
 import { formatKnowledgeTimestamp } from "@/lib/knowledge-helpers";
 
 interface KbGitHubSourcesSectionProps {

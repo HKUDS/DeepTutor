@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import PartnerAvatar from "@/components/partners/PartnerAvatar";
-import { AssistantActivity } from "@/components/chat/home/TracePanels";
+import { AssistantActivity } from "@/features/chat/trace";
 import type {
   PartnerGroupMember,
   WhiteboardEntry,

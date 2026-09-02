@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  getImaConfig,
   listImaKnowledgeBases,
   probeImaKnowledgeBase,
   type ImaProbe,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/catalog";
+import { getImaConfig } from "@/features/knowledge/api/engines";
 import {
   canConnectIma,
   emptyImaLookupState,

@@ -1,0 +1,154 @@
+{
+  "commands": [
+    {
+      "name": "start",
+      "payload": {
+        "type": "start_turn",
+        "content": "Explain replay-safe turns",
+        "session_id": null,
+        "capability": "chat"
+      }
+    },
+    {
+      "name": "subscribe",
+      "payload": {
+        "type": "subscribe_turn",
+        "turn_id": "turn-1",
+        "after_seq": 2
+      }
+    },
+    {
+      "name": "resume",
+      "payload": {
+        "type": "resume_from",
+        "turn_id": "turn-1",
+        "seq": 2
+      }
+    },
+    {
+      "name": "regenerate",
+      "payload": {
+        "type": "regenerate",
+        "session_id": "session-1",
+        "overrides": {
+          "language": "en"
+        }
+      }
+    },
+    {
+      "name": "cancel",
+      "payload": {
+        "type": "cancel_turn",
+        "turn_id": "turn-1"
+      }
+    },
+    {
+      "name": "submit_user_reply",
+      "payload": {
+        "type": "submit_user_reply",
+        "turn_id": "turn-1",
+        "answers": [
+          {
+            "questionId": "scope",
+            "text": "Use the multi-worker path"
+          }
+        ]
+      }
+    }
+  ],
+  "successfulEvents": [
+    {
+      "type": "session",
+      "source": "chat",
+      "stage": "",
+      "content": "",
+      "metadata": {
+        "status": "running"
+      },
+      "session_id": "session-1",
+      "turn_id": "turn-1",
+      "seq": 1,
+      "timestamp": 1788249600
+    },
+    {
+      "type": "content",
+      "source": "chat",
+      "stage": "responding",
+      "content": "A turn can be resumed",
+      "metadata": {},
+      "session_id": "session-1",
+      "turn_id": "turn-1",
+      "seq": 2,
+      "timestamp": 1788249601
+    },
+    {
+      "type": "wait_for_input",
+      "source": "chat",
+      "stage": "responding",
+      "content": "Which scope should I use?",
+      "metadata": {
+        "status": "waiting_input"
+      },
+      "session_id": "session-1",
+      "turn_id": "turn-1",
+      "seq": 3,
+      "timestamp": 1788249602
+    },
+    {
+      "type": "content",
+      "source": "chat",
+      "stage": "responding",
+      "content": " through another worker.",
+      "metadata": {},
+      "session_id": "session-1",
+      "turn_id": "turn-1",
+      "seq": 4,
+      "timestamp": 1788249603
+    },
+    {
+      "type": "done",
+      "source": "chat",
+      "stage": "responding",
+      "content": "",
+      "metadata": {
+        "turn_terminal": true,
+        "status": "completed"
+      },
+      "session_id": "session-1",
+      "turn_id": "turn-1",
+      "seq": 5,
+      "timestamp": 1788249604
+    }
+  ],
+  "failedEvents": [
+    {
+      "type": "session",
+      "source": "chat",
+      "stage": "",
+      "content": "",
+      "metadata": {
+        "status": "running"
+      },
+      "session_id": "session-2",
+      "turn_id": "turn-2",
+      "seq": 1,
+      "timestamp": 1788249610
+    },
+    {
+      "type": "error",
+      "source": "chat",
+      "stage": "responding",
+      "content": "The owning worker was lost.",
+      "metadata": {
+        "turn_terminal": true,
+        "status": "failed",
+        "error_code": "worker_lost",
+        "retryable": true
+      },
+      "session_id": "session-2",
+      "turn_id": "turn-2",
+      "seq": 2,
+      "timestamp": 1788249611
+    }
+  ]
+}

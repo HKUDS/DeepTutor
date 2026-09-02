@@ -14,10 +14,10 @@ from typing import Any
 
 import pytest
 
-from deeptutor.core.agentic.tool_dispatch import dispatch_tool_calls
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
+from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 class _Tool(BaseTool):

@@ -1,8 +1,9 @@
 /** Typed client for first-class Partner Groups. */
 
 import { apiFetch, apiUrl } from "@/lib/api";
+import { browserStorage } from "@/shared/storage";
 import type { PartnerInfo } from "@/lib/partners-api";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 export interface PartnerGroupMember extends Pick<
   PartnerInfo,
@@ -99,14 +100,14 @@ async function json<T>(response: Response): Promise<T> {
 
 export async function listPartnerGroups(): Promise<PartnerGroup[]> {
   return json(
-    await apiFetch(apiUrl("/api/v1/partner-groups"), { cache: "no-store" }),
+    await apiFetch(apiUrl("/api/partner-groups"), { cache: "no-store" }),
   );
 }
 
 export async function getPartnerGroup(groupId: string): Promise<PartnerGroup> {
   return json(
     await apiFetch(
-      apiUrl(`/api/v1/partner-groups/${encodeURIComponent(groupId)}`),
+      apiUrl(`/api/partner-groups/${encodeURIComponent(groupId)}`),
       {
         cache: "no-store",
       },
@@ -118,7 +119,7 @@ export async function createPartnerGroup(
   payload: CreatePartnerGroupPayload,
 ): Promise<PartnerGroup> {
   return json(
-    await apiFetch(apiUrl("/api/v1/partner-groups"), {
+    await apiFetch(apiUrl("/api/partner-groups"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -132,7 +133,7 @@ export async function updatePartnerGroup(
 ): Promise<PartnerGroup> {
   return json(
     await apiFetch(
-      apiUrl(`/api/v1/partner-groups/${encodeURIComponent(groupId)}`),
+      apiUrl(`/api/partner-groups/${encodeURIComponent(groupId)}`),
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -145,7 +146,7 @@ export async function updatePartnerGroup(
 export async function deletePartnerGroup(groupId: string): Promise<void> {
   await json(
     await apiFetch(
-      apiUrl(`/api/v1/partner-groups/${encodeURIComponent(groupId)}`),
+      apiUrl(`/api/partner-groups/${encodeURIComponent(groupId)}`),
       {
         method: "DELETE",
       },
@@ -161,7 +162,7 @@ export async function getPartnerGroupHistory(
   return json(
     await apiFetch(
       apiUrl(
-        `/api/v1/partner-groups/${encodeURIComponent(groupId)}/history?${query}`,
+        `/api/partner-groups/${encodeURIComponent(groupId)}/history?${query}`,
       ),
       { cache: "no-store" },
     ),
@@ -173,9 +174,7 @@ export async function getPartnerGroupWhiteboard(
 ): Promise<WhiteboardEntry[]> {
   return json(
     await apiFetch(
-      apiUrl(
-        `/api/v1/partner-groups/${encodeURIComponent(groupId)}/whiteboard`,
-      ),
+      apiUrl(`/api/partner-groups/${encodeURIComponent(groupId)}/whiteboard`),
       { cache: "no-store" },
     ),
   );
@@ -189,7 +188,7 @@ export async function getPartnerGroupInvocations(
   return json(
     await apiFetch(
       apiUrl(
-        `/api/v1/partner-groups/${encodeURIComponent(groupId)}/invocations?${query}`,
+        `/api/partner-groups/${encodeURIComponent(groupId)}/invocations?${query}`,
       ),
       { cache: "no-store" },
     ),
@@ -199,10 +198,10 @@ export async function getPartnerGroupInvocations(
 export function partnerGroupSessionKey(groupId: string): string {
   const storageKey = `deeptutor:partner-group:${groupId}:session`;
   if (typeof window === "undefined") return "default";
-  const existing = window.localStorage.getItem(storageKey);
+  const existing = browserStorage.readRaw("local", storageKey);
   if (existing) return existing;
   const created = `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  window.localStorage.setItem(storageKey, created);
+  browserStorage.writeRaw("local", storageKey, created);
   return created;
 }
 
@@ -219,7 +218,7 @@ export async function listPartnerGroupSessions(
 ): Promise<PartnerGroupSession[]> {
   return json(
     await apiFetch(
-      apiUrl(`/api/v1/partner-groups/${encodeURIComponent(groupId)}/sessions`),
+      apiUrl(`/api/partner-groups/${encodeURIComponent(groupId)}/sessions`),
       { cache: "no-store" },
     ),
   );
@@ -232,7 +231,7 @@ export async function deletePartnerGroupSession(
   await json(
     await apiFetch(
       apiUrl(
-        `/api/v1/partner-groups/${encodeURIComponent(groupId)}/sessions/${encodeURIComponent(sessionKey)}`,
+        `/api/partner-groups/${encodeURIComponent(groupId)}/sessions/${encodeURIComponent(sessionKey)}`,
       ),
       { method: "DELETE" },
     ),
@@ -242,7 +241,8 @@ export async function deletePartnerGroupSession(
 /** Point this group at another (or brand new) discussion thread. */
 export function setPartnerGroupSessionKey(groupId: string, key: string): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(
+  browserStorage.writeRaw(
+    "local",
     `deeptutor:partner-group:${groupId}:session`,
     key,
   );
@@ -262,7 +262,7 @@ export interface DiscussionMode {
 
 export async function listDiscussionModes(): Promise<DiscussionMode[]> {
   return json(
-    await apiFetch(apiUrl("/api/v1/partner-groups/discussion-modes"), {
+    await apiFetch(apiUrl("/api/partner-groups/discussion-modes"), {
       cache: "no-store",
     }),
   );

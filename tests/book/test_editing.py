@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from deeptutor.book.engine import BookEngine
-from deeptutor.book.models import Block, BlockStatus, BlockType, Page, PageStatus
+from deeptutor.book.models import Block, BlockStatus, BlockType, Book, Page, PageStatus
 
 
 class _Storage:
@@ -19,7 +19,11 @@ class _Storage:
 
     def __init__(self, page: Page) -> None:
         self.page = page
+        self.book = Book(id=page.book_id or "bk")
         self.logs: list[str] = []
+
+    def load_book(self, book_id: str) -> Book | None:
+        return self.book if book_id == self.book.id else None
 
     def load_page(self, book_id: str, page_id: str) -> Page | None:
         return self.page if page_id == self.page.id else None

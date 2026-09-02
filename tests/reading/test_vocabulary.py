@@ -182,7 +182,7 @@ def _client(monkeypatch) -> TestClient:
         lambda: registry,
     )
     app = FastAPI()
-    app.include_router(reading_extensions.router, prefix="/api/v1/reading")
+    app.include_router(reading_extensions.router, prefix="/api/reading")
     return TestClient(app)
 
 
@@ -202,8 +202,7 @@ def test_vocabulary_crosses_the_api_boundary_with_verified_text(monkeypatch, tmp
     client = _client(monkeypatch)
     try:
         response = client.post(
-            f"/api/v1/reading/materials/{material.material_id}"
-            "/extensions/vocabulary/actions/explain",
+            f"/api/reading/materials/{material.material_id}/extensions/vocabulary/actions/explain",
             json={
                 "locator": 1,
                 "selection": "verified phrase",

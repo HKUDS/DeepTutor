@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.core.agentic import client as agentic_client
-from deeptutor.core.agentic.client import (
+from deeptutor.runtime.agentic import client as agentic_client
+from deeptutor.runtime.agentic.client import (
     _NATIVE_ADAPTER_BUILDERS,
     _NATIVE_TOOL_BACKENDS,
     LLMClientConfig,

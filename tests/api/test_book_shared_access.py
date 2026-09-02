@@ -86,10 +86,10 @@ def shared_env(tmp_path, monkeypatch):
     )
 
     app = FastAPI()
-    app.include_router(auth_router.router, prefix="/api/v1/auth")
+    app.include_router(auth_router.router, prefix="/api/auth")
     app.include_router(
         book_router.router,
-        prefix="/api/v1/book",
+        prefix="/api",
         dependencies=[Depends(auth_router.require_auth)],
     )
     return TestClient(app), shared
@@ -98,32 +98,32 @@ def shared_env(tmp_path, monkeypatch):
 def test_shared_learning_state_is_isolated_per_reader(shared_env) -> None:
     client, canonical = shared_env
     visit = client.post(
-        "/api/v1/book/books/progress/visit",
+        "/api/books/progress/visit",
         headers=_headers("alice"),
         json={"book_id": "bk_shared", "page_id": "pg_1"},
     )
     assert visit.status_code == 200
     capture = client.post(
-        "/api/v1/book/books/bk_shared/learning-captures",
+        "/api/books/bk_shared/learning-captures",
         headers=_headers("alice"),
         json={"page_id": "pg_1", "source_text": "Alice note"},
     )
     assert capture.status_code == 200
     chat = client.post(
-        "/api/v1/book/books/page-chat-session",
+        "/api/books/page-chat-session",
         headers=_headers("alice"),
         json={"book_id": "bk_shared", "page_id": "pg_1", "session_id": "alice-chat"},
     )
     assert chat.status_code == 200
 
-    alice = client.get("/api/v1/book/books/bk_shared", headers=_headers("alice")).json()
-    bob = client.get("/api/v1/book/books/bk_shared", headers=_headers("bob")).json()
+    alice = client.get("/api/books/bk_shared", headers=_headers("alice")).json()
+    bob = client.get("/api/books/bk_shared", headers=_headers("bob")).json()
     assert alice["progress"]["current_page_id"] == "pg_1"
     assert alice["book"]["metadata"]["page_chat_sessions"] == {"pg_1": "alice-chat"}
     assert bob["progress"]["current_page_id"] == ""
     assert bob["book"]["metadata"]["page_chat_sessions"] == {}
     assert client.get(
-        "/api/v1/book/books/bk_shared/learning-captures",
+        "/api/books/bk_shared/learning-captures",
         headers=_headers("bob"),
     ).json() == {"captures": []}
 
@@ -136,7 +136,7 @@ def test_shared_learning_state_is_isolated_per_reader(shared_env) -> None:
 def test_shared_read_user_cannot_edit_or_delete(shared_env) -> None:
     client, canonical = shared_env
     update = client.post(
-        "/api/v1/book/books/update-block",
+        "/api/books/update-block",
         headers=_headers("alice"),
         json={
             "book_id": "bk_shared",
@@ -149,7 +149,7 @@ def test_shared_read_user_cannot_edit_or_delete(shared_env) -> None:
     assert update.status_code == 404
     assert (
         client.delete(
-            "/api/v1/book/books/bk_shared",
+            "/api/books/bk_shared",
             headers=_headers("alice"),
         ).status_code
         == 404
@@ -166,7 +166,7 @@ def test_shared_read_health_check_does_not_mutate_canonical_book(shared_env) -> 
     updated_at = canonical.load_book("bk_shared").updated_at
 
     response = client.get(
-        "/api/v1/book/books/bk_shared/health",
+        "/api/books/bk_shared/health",
         headers=_headers("alice"),
     )
 
@@ -179,7 +179,7 @@ def test_shared_read_health_check_does_not_mutate_canonical_book(shared_env) -> 
 def test_shared_editor_requires_current_revision(shared_env) -> None:
     client, canonical = shared_env
     missing = client.post(
-        "/api/v1/book/books/update-block",
+        "/api/books/update-block",
         headers=_headers("editor"),
         json={
             "book_id": "bk_shared",
@@ -192,7 +192,7 @@ def test_shared_editor_requires_current_revision(shared_env) -> None:
     assert missing.json()["detail"]["code"] == "book_revision_required"
 
     success = client.post(
-        "/api/v1/book/books/update-block",
+        "/api/books/update-block",
         headers=_headers("editor"),
         json={
             "book_id": "bk_shared",
@@ -207,7 +207,7 @@ def test_shared_editor_requires_current_revision(shared_env) -> None:
     assert canonical.load_page("bk_shared", "pg_1").blocks[0].payload["body"] == "Edited"
 
     stale = client.post(
-        "/api/v1/book/books/update-block",
+        "/api/books/update-block",
         headers=_headers("editor"),
         json={
             "book_id": "bk_shared",
@@ -224,14 +224,14 @@ def test_shared_editor_requires_current_revision(shared_env) -> None:
 
 def test_shared_capabilities_are_returned_in_list_and_detail(shared_env) -> None:
     client, _ = shared_env
-    listing = client.get("/api/v1/book/books", headers=_headers("alice")).json()
+    listing = client.get("/api/books", headers=_headers("alice")).json()
     assert listing["can_create"] is True
     assert listing["books"][0]["source"] == "shared"
     assert listing["books"][0]["permission"] == "read"
     assert listing["books"][0]["can_edit"] is False
     assert listing["books"][0]["can_delete"] is False
 
-    detail = client.get("/api/v1/book/books/bk_shared", headers=_headers("editor")).json()
+    detail = client.get("/api/books/bk_shared", headers=_headers("editor")).json()
     assert detail["book"]["revision"] == 1
     assert detail["book"]["can_edit"] is True
     assert detail["book"]["can_delete"] is False
@@ -243,7 +243,7 @@ def test_admin_delete_cleans_explicit_book_permissions(shared_env) -> None:
 
     client, canonical = shared_env
     response = client.delete(
-        "/api/v1/book/books/bk_shared",
+        "/api/books/bk_shared",
         headers=_headers("root"),
     )
 

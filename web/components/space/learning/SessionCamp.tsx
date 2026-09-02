@@ -29,8 +29,8 @@ export function SessionCamp({
   const openStudy = (sessionId?: string) =>
     router.push(
       sessionId
-        ? `/mastery/${encodeURIComponent(pathId)}/study/${encodeURIComponent(sessionId)}`
-        : `/mastery/${encodeURIComponent(pathId)}/study`,
+        ? `/mastery/${encodeURIComponent(pathId)}/sessions/${encodeURIComponent(sessionId)}`
+        : `/mastery/${encodeURIComponent(pathId)}/sessions`,
     );
 
   return (

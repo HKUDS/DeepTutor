@@ -38,7 +38,7 @@ function mockWindow() {
 
 mockWindow();
 
-import * as settingsContext from "../components/settings/SettingsContext";
+import * as settingsContext from "../features/settings/store/SettingsStore";
 import {
   CODE_BLOCK_SETTINGS_EVENT,
   readStoredCodeBlockShowLineNumbers,
@@ -48,9 +48,10 @@ import {
 
 const settingsContextPath = path.join(
   process.cwd(),
-  "components",
+  "features",
   "settings",
-  "SettingsContext.tsx",
+  "store",
+  "SettingsStore.tsx",
 );
 
 function readSettingsContextSource() {
@@ -105,7 +106,7 @@ test("settings-context: persistUiSettingsPatch sends only the changed code-block
     },
   );
 
-  assert.match(String(capturedInput), /\/api\/v1\/settings\/ui$/);
+  assert.match(String(capturedInput), /\/api\/settings\/ui$/);
   assert.equal(capturedInit?.method, "PUT");
   assert.deepEqual(JSON.parse(String(capturedInit?.body)), {
     code_block_theme: "dracula",

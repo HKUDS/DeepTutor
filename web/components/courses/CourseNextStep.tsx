@@ -64,7 +64,7 @@ function decide(
         // Chat, not the question-bank list: this is a request to be taught, and
         // the list has no composer to receive it.
         label: t("Work through them"),
-        href: `/home?course=${encodeURIComponent(courseId)}&capability=course_study`,
+        href: `/chat?course=${encodeURIComponent(courseId)}&capability=course_study`,
         scope: "chat",
         prompt: t("Take me through my {{name}} mistakes one at a time.", {
           name: weakest.name,
@@ -89,7 +89,7 @@ function decide(
       detail: stalled.weak_points[0] ?? t("Pick up where the path left off"),
       action: {
         label: t("Keep going"),
-        href: `/mastery/${encodeURIComponent(stalled.path_id)}/study`,
+        href: `/mastery/${encodeURIComponent(stalled.path_id)}/sessions`,
         scope: "mastery_path",
         prompt: t("Continue this path from where I stopped."),
       },
@@ -124,7 +124,7 @@ function decide(
     ),
     action: {
       label: t("Plan this course"),
-      href: `/home?course=${encodeURIComponent(courseId)}&capability=course_study`,
+      href: `/chat?course=${encodeURIComponent(courseId)}&capability=course_study`,
       scope: "chat",
       prompt: t(
         "Look at what this course has and plan what I should do first.",

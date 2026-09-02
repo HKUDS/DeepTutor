@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import {
   createContext,
   useCallback,
@@ -60,16 +62,16 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
     setWatchingMaterial(next.material_id);
     setWatchingViewport(next.playback.start_seconds || 0);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(LAST_MATERIAL_KEY, next.material_id);
-      window.localStorage.setItem(LAST_URL_KEY, next.source.url);
+      browserStorage.writeRaw("local", LAST_MATERIAL_KEY, next.material_id);
+      browserStorage.writeRaw("local", LAST_URL_KEY, next.source.url);
     }
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const materialId = window.localStorage.getItem(LAST_MATERIAL_KEY);
+    const materialId = browserStorage.readRaw("local", LAST_MATERIAL_KEY);
     if (!materialId) return;
-    const sourceUrl = window.localStorage.getItem(LAST_URL_KEY) || "";
+    const sourceUrl = browserStorage.readRaw("local", LAST_URL_KEY) || "";
     setLastUrl(sourceUrl);
     setLoading(true);
     void getVideoMaterial(materialId)
@@ -80,7 +82,7 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
             ? caught.message
             : t("The player provider is unavailable."),
         );
-        window.localStorage.removeItem(LAST_MATERIAL_KEY);
+        browserStorage.removeRaw("local", LAST_MATERIAL_KEY);
       })
       .finally(() => setLoading(false));
   }, [accept, t]);
@@ -145,8 +147,8 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
     setWatchingMaterial(null);
     setError(null);
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem(LAST_MATERIAL_KEY);
-      window.localStorage.removeItem(LAST_URL_KEY);
+      browserStorage.removeRaw("local", LAST_MATERIAL_KEY);
+      browserStorage.removeRaw("local", LAST_URL_KEY);
     }
   }, []);
   const reportTime = useCallback(

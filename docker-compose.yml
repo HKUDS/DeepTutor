@@ -19,6 +19,24 @@
 # ============================================
 
 services:
+  # Redis is internal-only runtime coordination state. AOF keeps unflushed
+  # event/command streams available across a sidecar restart; business data
+  # remains in SQLite/PocketBase.
+  redis:
+    image: redis:7.4-alpine
+    container_name: deeptutor-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - deeptutor-network
+
   # ============================================
   # PocketBase — optional auth + storage sidecar
   # Set integrations.pocketbase_url=http://pocketbase:8090 to activate.
@@ -92,13 +110,15 @@ services:
       # - DEEPTUTOR_APT_PACKAGES=ffmpeg
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]
+      test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
     depends_on:
+      redis:
+        condition: service_healthy
       pocketbase:
         condition: service_healthy
       sandbox-runner:

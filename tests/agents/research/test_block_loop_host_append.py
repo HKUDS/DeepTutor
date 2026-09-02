@@ -27,9 +27,9 @@ from deeptutor.agents.research.pipeline import (
     _BlockLoopHost,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
-from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _make_pipeline(monkeypatch: pytest.MonkeyPatch) -> ResearchPipeline:

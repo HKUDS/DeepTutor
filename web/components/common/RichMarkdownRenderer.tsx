@@ -25,7 +25,7 @@ import {
   parseAttachmentHref,
   useInlineFileCardContext,
 } from "@/components/common/InlineFileCard";
-import type { MarkdownRendererProps } from "./MarkdownRenderer";
+import type { MarkdownRendererProps } from "./markdown-renderer-types";
 
 function MermaidLoading() {
   const { t } = useTranslation();

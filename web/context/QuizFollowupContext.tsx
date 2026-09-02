@@ -33,8 +33,8 @@ import {
   type ChatMessage,
   type LLMSelection,
   type StreamEvent,
-  UnifiedWSClient,
-} from "@/lib/unified-ws";
+} from "@/features/chat/model/protocol";
+import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import type { QuizQuestion } from "@/lib/quiz-types";
 import type { SelectionTutorContext } from "@/lib/selection-tutor";
 
@@ -127,7 +127,7 @@ export interface SendMessageInput {
   language?: string;
   /** Selected knowledge bases (names) for this turn. */
   knowledgeBases?: string[];
-  /** Notebook/book/history/question references — same shape the
+  /** Notebook/books/history/question references — same shape the
    *  main ChatPage builds for ``sendMessage``. */
   notebookReferences?: { notebook_id: string; record_ids: string[] }[];
   historyReferences?: string[];
@@ -221,7 +221,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
   );
   const threadsRef = useRef<Record<string, FollowupThreadState>>({});
   const runnersRef = useRef<
-    Map<string, { questionKey: string; client: UnifiedWSClient }>
+    Map<string, { questionKey: string; client: UnifiedTurnClient }>
   >(new Map());
   // Notebook entry ids per question — captured from sendMessage so the
   // ``session`` event handler can persist ``followup_session_id`` on the
@@ -356,7 +356,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       }
       const record = {
         questionKey: key,
-        client: new UnifiedWSClient(
+        client: new UnifiedTurnClient(
           (event) => handleThreadEvent(key, event),
           () => {
             const current = threadsRef.current[key];
@@ -419,6 +419,13 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         messages: [...prev.messages, { role: "user", content }],
       }));
 
+      const {
+        followup_question_context: followupQuestionContext,
+        selection_tutor_context: selectionTutorContext,
+        subagent_consult_budget: subagentConsultBudget,
+        auto_route: autoRoute,
+        ...capabilityConfig
+      } = input.config ?? {};
       sendThroughRunner(input.questionKey, {
         type: "start_turn",
         content,
@@ -428,7 +435,30 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         session_id: current.sessionId,
         attachments: input.attachments,
         language: input.language,
-        config: input.config,
+        ...(Object.keys(capabilityConfig).length
+          ? { config: capabilityConfig }
+          : {}),
+        ...(followupQuestionContext &&
+        typeof followupQuestionContext === "object"
+          ? {
+              followup_question_context: followupQuestionContext as Record<
+                string,
+                unknown
+              >,
+            }
+          : {}),
+        ...(selectionTutorContext && typeof selectionTutorContext === "object"
+          ? {
+              selection_tutor_context: selectionTutorContext as Record<
+                string,
+                unknown
+              >,
+            }
+          : {}),
+        ...(typeof subagentConsultBudget === "number"
+          ? { subagent_consult_budget: subagentConsultBudget }
+          : {}),
+        ...(typeof autoRoute === "boolean" ? { auto_route: autoRoute } : {}),
         notebook_references: input.notebookReferences,
         history_references: input.historyReferences,
         book_references: input.bookReferences,
@@ -466,10 +496,11 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       );
       if (!current.isStreaming && !pendingAskUser) return;
 
-      const message: import("@/lib/unified-ws").SubmitUserReplyMessage = {
-        type: "submit_user_reply",
-        turn_id: turnId,
-      };
+      const message: import("@/features/chat/model/protocol").SubmitUserReplyMessage =
+        {
+          type: "submit_user_reply",
+          turn_id: turnId,
+        };
       if (typeof reply === "string") {
         message.text = reply;
       } else {

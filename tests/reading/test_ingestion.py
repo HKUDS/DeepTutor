@@ -104,7 +104,7 @@ async def test_web_import_is_rich_localizes_images_and_preserves_old_revision(st
     assert manifest.source_url == "https://example.com/final/article"
     assert manifest.revision == 2
     assert "<!-- source:" not in current
-    assert "/api/v1/reading/materials/" in current
+    assert "/api/reading/materials/" in current
     assert (
         reading.asset_path(
             ready.material_id,

@@ -399,8 +399,8 @@ export default function MasteryTopicPage() {
             <Link
               href={
                 continuationSessionId
-                  ? `/mastery/${encodeURIComponent(pathId)}/study/${encodeURIComponent(continuationSessionId)}`
-                  : `/mastery/${encodeURIComponent(pathId)}/study`
+                  ? `/mastery/${encodeURIComponent(pathId)}/sessions/${encodeURIComponent(continuationSessionId)}`
+                  : `/mastery/${encodeURIComponent(pathId)}/sessions`
               }
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[13px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
             >

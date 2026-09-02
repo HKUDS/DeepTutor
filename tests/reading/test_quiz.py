@@ -169,7 +169,7 @@ def _client(monkeypatch) -> TestClient:
         lambda: registry,
     )
     app = FastAPI()
-    app.include_router(reading_extensions.router, prefix="/api/v1/reading")
+    app.include_router(reading_extensions.router, prefix="/api/reading")
     return TestClient(app)
 
 
@@ -192,7 +192,7 @@ def test_quiz_crosses_the_api_boundary_with_stored_text(monkeypatch, tmp_path):
     client = _client(monkeypatch)
     try:
         response = client.post(
-            f"/api/v1/reading/materials/{material.material_id}/extensions/quiz/actions/start",
+            f"/api/reading/materials/{material.material_id}/extensions/quiz/actions/start",
             json={
                 "locator": 1,
                 "selection": "verified phrase supports the answer",

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { testGraphRagModelCompatibility } from "../lib/knowledge-api";
+import { testGraphRagModelCompatibility } from "../features/knowledge/api/engines";
 import { canApplyGraphRagModelCandidate } from "../lib/graphrag-model-compatibility";
 
 test("GraphRAG candidate probe sends catalog IDs without activating the model", async () => {
@@ -30,7 +30,7 @@ test("GraphRAG candidate probe sends catalog IDs without activating the model", 
 
     assert.equal(
       requestUrl,
-      "/api/v1/knowledge/rag-pipelines/graphrag/model-compatibility",
+      "/api/knowledge-bases/rag-pipelines/graphrag/model-compatibility",
     );
     assert.equal(requestInit?.method, "POST");
     assert.deepEqual(JSON.parse(String(requestInit?.body)), {

@@ -97,6 +97,12 @@ const nextConfig = {
   // process while it is running.
   distDir: process.env.DEEPTUTOR_NEXT_DIST_DIR || ".next",
 
+  // Build/typecheck wrappers can point Next at a process-local config so a
+  // production build never rewrites the tsconfig watched by a live dev server.
+  typescript: {
+    tsconfigPath: process.env.DEEPTUTOR_NEXT_TSCONFIG || "tsconfig.json",
+  },
+
   // Expose the build-time version to the browser so the sidebar badge
   // can compare it against GitHub's latest release.
   env: {
@@ -124,24 +130,6 @@ const nextConfig = {
     // Agentic reads and full-draft edits routinely exceed Next's 30-second
     // rewrite default; the browser remains responsible for cancelling them.
     proxyTimeout: 30 * 60 * 1000,
-  },
-
-  // Mastery Path moved out of the Space hub to its own top-level route.
-  // Bookmarks, links pasted into a chat, and the browser history of anyone
-  // who used the feature before the move all still point at the old path.
-  async redirects() {
-    return [
-      {
-        source: "/space/learning",
-        destination: "/mastery",
-        permanent: false,
-      },
-      {
-        source: "/space/learning/:path*",
-        destination: "/mastery/:path*",
-        permanent: false,
-      },
-    ];
   },
 
   // Move dev indicator to bottom-right corner

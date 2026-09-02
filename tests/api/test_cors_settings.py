@@ -59,7 +59,7 @@ def test_cors_preflight_allows_partner_patch_save() -> None:
     client = TestClient(api_main.app)
 
     response = client.options(
-        "/api/v1/partners/partner",
+        "/api/partners/partner",
         headers={
             "Origin": "http://localhost:3000",
             "Access-Control-Request-Method": "PATCH",

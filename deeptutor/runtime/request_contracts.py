@@ -14,25 +14,35 @@ from deeptutor.agents.research.request_config import (
     DeepResearchRequestConfig,
     validate_research_request_config,
 )
-
-_RUNTIME_ONLY_KEYS = {
-    "_persist_user_message",
-    "followup_question_context",
-    "selection_tutor_context",
-    "_course_id",
-    # Per-turn subagent consult budget (composer stepper). Not part of any
-    # capability's public config schema; stripped here so it never trips
-    # ``extra="forbid"`` (turn_runtime carries it through to the turn config).
-    "subagent_consult_budget",
-}
+from deeptutor.runtime.capability_catalog import EmptyConfig
 
 
-class ChatRequestConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class ChatRequestConfig(EmptyConfig):
+    pass
 
 
-class DeepSolveRequestConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class AskQuestionsRequestConfig(EmptyConfig):
+    pass
+
+
+class DeepSolveRequestConfig(EmptyConfig):
+    pass
+
+
+class MasteryPathRequestConfig(EmptyConfig):
+    pass
+
+
+class ImmersiveReadingRequestConfig(EmptyConfig):
+    pass
+
+
+class CourseStudyRequestConfig(EmptyConfig):
+    pass
+
+
+class ImmersiveWatchingRequestConfig(EmptyConfig):
+    pass
 
 
 class DeepQuestionRequestConfig(BaseModel):
@@ -83,10 +93,7 @@ def _clean_public_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
         return {}
     if not isinstance(raw_config, dict):
         raise ValueError("Capability config must be an object.")
-    cleaned = dict(raw_config)
-    for key in _RUNTIME_ONLY_KEYS:
-        cleaned.pop(key, None)
-    return cleaned
+    return dict(raw_config)
 
 
 def _validate_model(
@@ -141,13 +148,44 @@ CAPABILITY_CONFIG_VALIDATORS: dict[str, Callable[[dict[str, Any] | None], Any]] 
     "visualize": validate_visualize_request_config,
 }
 
+CAPABILITY_CONFIG_MODELS: dict[str, type[BaseModel]] = {
+    "chat": ChatRequestConfig,
+    "ask_questions": AskQuestionsRequestConfig,
+    "deep_solve": DeepSolveRequestConfig,
+    "deep_question": DeepQuestionRequestConfig,
+    "deep_research": DeepResearchRequestConfig,
+    "math_animator": MathAnimatorRequestConfig,
+    "visualize": VisualizeRequestConfig,
+    "mastery_path": MasteryPathRequestConfig,
+    "immersive_reading": ImmersiveReadingRequestConfig,
+    "course_study": CourseStudyRequestConfig,
+    "immersive_watching": ImmersiveWatchingRequestConfig,
+}
+
+
+def _model_validator(
+    model_type: type[BaseModel],
+    capability_name: str,
+) -> Callable[[dict[str, Any] | None], BaseModel]:
+    def validate(raw_config: dict[str, Any] | None) -> BaseModel:
+        return _validate_model(
+            model_type,
+            raw_config,
+            label=capability_name.replace("_", " "),
+        )
+
+    return validate
+
+
+# Every built-in has an explicit validator, including no-options capabilities.
+for _capability_name, _model_type in CAPABILITY_CONFIG_MODELS.items():
+    CAPABILITY_CONFIG_VALIDATORS.setdefault(
+        _capability_name,
+        _model_validator(_model_type, _capability_name),
+    )
+
 CAPABILITY_REQUEST_SCHEMAS: dict[str, dict[str, Any]] = {
-    "chat": build_request_schema(ChatRequestConfig),
-    "deep_solve": build_request_schema(DeepSolveRequestConfig),
-    "deep_question": build_request_schema(DeepQuestionRequestConfig),
-    "deep_research": build_request_schema(DeepResearchRequestConfig),
-    "math_animator": build_request_schema(MathAnimatorRequestConfig),
-    "visualize": build_request_schema(VisualizeRequestConfig),
+    name: build_request_schema(model_type) for name, model_type in CAPABILITY_CONFIG_MODELS.items()
 }
 
 
@@ -169,10 +207,16 @@ def get_capability_request_schema(capability: str) -> dict[str, Any]:
 
 __all__ = [
     "CAPABILITY_CONFIG_VALIDATORS",
+    "CAPABILITY_CONFIG_MODELS",
     "CAPABILITY_REQUEST_SCHEMAS",
+    "AskQuestionsRequestConfig",
     "ChatRequestConfig",
+    "CourseStudyRequestConfig",
     "DeepQuestionRequestConfig",
     "DeepSolveRequestConfig",
+    "ImmersiveReadingRequestConfig",
+    "ImmersiveWatchingRequestConfig",
+    "MasteryPathRequestConfig",
     "VisualizeRequestConfig",
     "build_request_schema",
     "get_capability_request_schema",

@@ -54,7 +54,14 @@ from deeptutor.agents.research.data_structures import (
     TopicStatus,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
-from deeptutor.core.agentic import (
+from deeptutor.core.context import Attachment, UnifiedContext
+from deeptutor.core.trace import (
+    build_trace_metadata,
+    derive_trace_metadata,
+    merge_trace_metadata,
+    new_call_id,
+)
+from deeptutor.runtime.agentic import (
     DispatchOutcome,
     LabeledStepResult,
     LabelProtocol,
@@ -68,18 +75,11 @@ from deeptutor.core.agentic import (
     run_agentic_loop,
     run_labeled_step,
 )
-from deeptutor.core.agentic.tool_dispatch import (
+from deeptutor.runtime.agentic.tool_dispatch import (
     MAX_PARALLEL_TOOL_CALLS,
 )
-from deeptutor.core.context import Attachment, UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
-from deeptutor.core.trace import (
-    build_trace_metadata,
-    derive_trace_metadata,
-    merge_trace_metadata,
-    new_call_id,
-)
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
 from deeptutor.services.path_service import get_path_service
@@ -292,7 +292,7 @@ class ResearchPipeline:
     """One-shot orchestrator: instantiate per turn, call :meth:`run` once.
 
     The pipeline owns control flow and per-phase prompt assembly; every
-    LLM call goes through :mod:`deeptutor.core.agentic` primitives. The
+    LLM call goes through :mod:`deeptutor.runtime.agentic` primitives. The
     legacy ``DynamicTopicQueue`` + :class:`CitationManager` are reused
     verbatim as the in-flight scratchpad and citation registry.
     """
@@ -2954,7 +2954,7 @@ class _RephraseLoopHost:
         )
 
         ask_user = (dispatch.pause_payload or {}).get("ask_user") or {}
-        waiter = self._context.metadata.get("wait_for_user_reply")
+        waiter = self._context.runtime.wait_for_user_reply
         if not callable(waiter):
             return False
         raw_reply = await waiter()

@@ -167,7 +167,7 @@ export interface ReadingExtensionResult {
   payload: Record<string, unknown>;
 }
 
-const BASE = "/api/v1/reading";
+const BASE = "/api/reading";
 
 /** Surface the server's own message — it explains what the user can do next. */
 async function unwrap<T>(response: Response): Promise<T> {

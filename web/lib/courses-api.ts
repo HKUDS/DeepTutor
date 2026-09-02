@@ -158,7 +158,7 @@ export async function listCourses(options?: {
   return withClientCache<StudyCourse[]>(
     "courses:list",
     async () => {
-      const response = await apiFetch(apiUrl("/api/v1/courses"), {
+      const response = await apiFetch(apiUrl("/api/courses"), {
         cache: "no-store",
       });
       const courses =
@@ -178,7 +178,7 @@ export async function createCourse(input: {
   default_capability?: string;
   default_persona?: string;
 }): Promise<StudyCourse> {
-  const response = await apiFetch(apiUrl("/api/v1/courses"), {
+  const response = await apiFetch(apiUrl("/api/courses"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -204,7 +204,7 @@ export async function updateCourse(
     >
   >,
 ): Promise<StudyCourse> {
-  const response = await apiFetch(apiUrl(`/api/v1/courses/${courseId}`), {
+  const response = await apiFetch(apiUrl(`/api/courses/${courseId}`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -216,7 +216,7 @@ export async function updateCourse(
 }
 
 export async function deleteCourse(courseId: string): Promise<void> {
-  const response = await apiFetch(apiUrl(`/api/v1/courses/${courseId}`), {
+  const response = await apiFetch(apiUrl(`/api/courses/${courseId}`), {
     method: "DELETE",
   });
   await expectJson<{ deleted: boolean }>(response);
@@ -228,7 +228,7 @@ export async function attachCourseResource(
   input: { kind: CourseResourceKind; ref_id: string; label?: string },
 ): Promise<CourseResource> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/courses/${courseId}/resources`),
+    apiUrl(`/api/courses/${courseId}/resources`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -246,7 +246,7 @@ export async function detachCourseResource(
   resourceId: string,
 ): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/courses/${courseId}/resources/${resourceId}`),
+    apiUrl(`/api/courses/${courseId}/resources/${resourceId}`),
     { method: "DELETE" },
   );
   await expectJson<{ deleted: boolean }>(response);
@@ -261,7 +261,7 @@ export async function getCourseState(
     `courses:state:${courseId}`,
     async () => {
       const response = await apiFetch(
-        apiUrl(`/api/v1/courses/${courseId}/state`),
+        apiUrl(`/api/courses/${courseId}/state`),
         { cache: "no-store" },
       );
       const state = await expectJson<CourseState>(response);
@@ -282,7 +282,7 @@ export async function listCourseResourceCandidates(options?: {
     "courses:candidates",
     async () => {
       const response = await apiFetch(
-        apiUrl("/api/v1/courses/resource-candidates"),
+        apiUrl("/api/courses/resource-candidates"),
         { cache: "no-store" },
       );
       return (
@@ -298,14 +298,11 @@ export async function setCourseSyllabus(
   courseId: string,
   units: { id?: string; title: string; topics?: string[]; covered?: boolean }[],
 ): Promise<StudyCourse> {
-  const response = await apiFetch(
-    apiUrl(`/api/v1/courses/${courseId}/syllabus`),
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ units }),
-    },
-  );
+  const response = await apiFetch(apiUrl(`/api/courses/${courseId}/syllabus`), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ units }),
+  });
   const course = (await expectJson<{ course: Partial<StudyCourse> }>(response))
     .course;
   invalidateClientCache("courses:");
@@ -318,7 +315,7 @@ export async function setSyllabusUnitCovered(
   covered: boolean,
 ): Promise<SyllabusUnit> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/courses/${courseId}/syllabus/${unitId}`),
+    apiUrl(`/api/courses/${courseId}/syllabus/${unitId}`),
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

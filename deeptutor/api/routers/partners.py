@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from deeptutor.api.routers.auth import require_admin
-from deeptutor.core.i18n import t
+from deeptutor.app.container import get_application_container
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.partner_access import (
     assert_partner_manageable,
@@ -33,6 +33,8 @@ from deeptutor.multi_user.partner_access import (
 )
 from deeptutor.partners.config.paths import get_partner_media_dir
 from deeptutor.partners.helpers import safe_filename
+from deeptutor.runtime.coordination import BackgroundCommandKind
+from deeptutor.services.i18n import t
 from deeptutor.services.partners import (
     get_partner_manager,
     slugify_partner_id,
@@ -50,6 +52,9 @@ from deeptutor.services.partners.manager import (
     mask_channel_secrets,
     strip_legacy_global_delivery,
 )
+from deeptutor.services.partners.runtime_status import (
+    get_partner_runtime_status_repository,
+)
 from deeptutor.services.partners.workspace import (
     list_assets,
     provision_assets,
@@ -61,6 +66,7 @@ from deeptutor.services.partners.workspace import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+ws_router = APIRouter()
 
 
 # ── Access guards ──────────────────────────────────────────────
@@ -115,6 +121,53 @@ async def _get_draft_confirm_lock(draft_id: str) -> asyncio.Lock:
             lock = asyncio.Lock()
             _draft_confirm_locks[key] = lock
         return lock
+
+
+async def _request_partner_control(
+    kind: BackgroundCommandKind,
+    partner_id: str,
+    **payload: Any,
+) -> dict[str, Any] | None:
+    """Send lifecycle work to the leader in multi-worker mode.
+
+    ``None`` means this process may execute the operation locally. Otherwise
+    the returned shared status was written by the leader after the command.
+    """
+
+    container = get_application_container()
+    if container.settings.backend_workers <= 1:
+        return None
+    if await container.coordinator.leader_id() == container.worker_id:
+        return None
+    command = await container.coordinator.submit_background_command(
+        kind,
+        {"partner_id": partner_id, **payload},
+    )
+    if command is None:
+        raise HTTPException(status_code=409, detail="Duplicate Partner lifecycle command")
+
+    deadline = asyncio.get_running_loop().time() + 20.0
+    repository = get_partner_runtime_status_repository()
+    while asyncio.get_running_loop().time() < deadline:
+        status = repository.get(partner_id)
+        if status and float(status.get("runtime_updated_at") or 0) >= command.created_at:
+            state = str(status.get("runtime_state") or "")
+            if kind == BackgroundCommandKind.PARTNER_START and status.get("running"):
+                return status
+            if kind == BackgroundCommandKind.PARTNER_STOP and not status.get("running"):
+                return status
+            if kind == BackgroundCommandKind.PARTNER_RELOAD and state in {
+                "running",
+                "reload_failed",
+            }:
+                if state == "reload_failed":
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to reload channels: {status.get('last_reload_error')}",
+                    )
+                return status
+        await asyncio.sleep(0.05)
+    raise HTTPException(status_code=503, detail="Partner leader did not process the command")
 
 
 async def _ensure_running_partner(
@@ -713,13 +766,21 @@ async def _create_partner(payload: CreatePartnerRequest) -> dict[str, Any]:
         )
 
     if payload.start:
-        try:
-            instance = await mgr.start_partner(partner_id, config)
-            result = instance.to_dict(mask_secrets=True)
-        except Exception:
-            logger.exception("Partner '%s' created but failed to start", partner_id)
+        remote = await _request_partner_control(
+            BackgroundCommandKind.PARTNER_START,
+            partner_id,
+            persist_auto_start=True,
+        )
+        if remote is not None:
             result = _stopped_partner_dict(partner_id, config)
-            result["start_error"] = "Partner created but failed to start"
+        else:
+            try:
+                instance = await mgr.start_partner(partner_id, config)
+                result = instance.to_dict(mask_secrets=True)
+            except Exception:
+                logger.exception("Partner '%s' created but failed to start", partner_id)
+                result = _stopped_partner_dict(partner_id, config)
+                result["start_error"] = "Partner created but failed to start"
     else:
         result = _stopped_partner_dict(partner_id, config)
 
@@ -803,7 +864,7 @@ def _stopped_partner_dict(
         channels: object = strip_legacy_global_delivery(cfg.channels)
     else:
         channels = mask_channel_secrets(strip_legacy_global_delivery(cfg.channels))
-    return {
+    result = {
         "partner_id": partner_id,
         "name": cfg.name,
         "description": cfg.description,
@@ -823,6 +884,27 @@ def _stopped_partner_dict(
         "started_at": None,
         "last_reload_error": None,
     }
+    from deeptutor.services.partners.runtime_status import (
+        get_partner_runtime_status_repository,
+    )
+
+    status = get_partner_runtime_status_repository().get(partner_id)
+    if status:
+        result.update(
+            {
+                key: status[key]
+                for key in (
+                    "running",
+                    "started_at",
+                    "last_reload_error",
+                    "runtime_owner_id",
+                    "runtime_state",
+                    "runtime_updated_at",
+                )
+                if key in status
+            }
+        )
+    return result
 
 
 @router.get("/{partner_id}", dependencies=_USABLE)
@@ -896,7 +978,7 @@ async def update_partner(partner_id: str, payload: UpdatePartnerRequest):
 
     mgr = get_partner_manager()
     instance = mgr.get_partner(partner_id)
-    if instance:
+    if instance and instance.running:
         _apply_update(instance.config, payload)
         mgr.save_config(partner_id, instance.config)
         if payload.channels is not None:
@@ -920,11 +1002,27 @@ async def update_partner(partner_id: str, payload: UpdatePartnerRequest):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
     _apply_update(cfg, payload)
     mgr.save_config(partner_id, cfg)
+    status = get_partner_runtime_status_repository().get(partner_id) or {}
+    if status.get("running"):
+        await _request_partner_control(
+            BackgroundCommandKind.PARTNER_RELOAD,
+            partner_id,
+        )
     return _stopped_partner_dict(partner_id, cfg)
 
 
 @router.post("/{partner_id}/start", dependencies=_MANAGEABLE)
 async def start_partner(partner_id: str):
+    remote = await _request_partner_control(
+        BackgroundCommandKind.PARTNER_START,
+        partner_id,
+        persist_auto_start=True,
+    )
+    if remote is not None:
+        cfg = get_partner_manager().load_config(partner_id)
+        if cfg is None:
+            raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+        return _stopped_partner_dict(partner_id, cfg)
     instance = await _ensure_running_partner(partner_id, allow_stopped=True)
     # An explicit start is a persisted "run on boot" intent — so the partner
     # comes back in this state after a DeepTutor restart (a manual /stop clears
@@ -935,6 +1033,13 @@ async def start_partner(partner_id: str):
 
 @router.post("/{partner_id}/stop", dependencies=_MANAGEABLE)
 async def stop_partner(partner_id: str):
+    remote = await _request_partner_control(
+        BackgroundCommandKind.PARTNER_STOP,
+        partner_id,
+        preserve_auto_start=False,
+    )
+    if remote is not None:
+        return {"partner_id": partner_id, "stopped": True}
     stopped = await get_partner_manager().stop_partner(partner_id)
     if not stopped:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found_or_not_running"))
@@ -943,6 +1048,11 @@ async def stop_partner(partner_id: str):
 
 @router.delete("/{partner_id}", dependencies=_MANAGEABLE)
 async def destroy_partner(partner_id: str):
+    await _request_partner_control(
+        BackgroundCommandKind.PARTNER_STOP,
+        partner_id,
+        preserve_auto_start=False,
+    )
     destroyed = await get_partner_manager().destroy_partner(partner_id)
     if not destroyed:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
@@ -953,6 +1063,13 @@ async def destroy_partner(partner_id: str):
 async def reload_partner_channels(partner_id: str):
     mgr = get_partner_manager()
     instance = mgr.get_partner(partner_id)
+    status = get_partner_runtime_status_repository().get(partner_id) or {}
+    if (not instance or not instance.running) and status.get("running"):
+        await _request_partner_control(
+            BackgroundCommandKind.PARTNER_RELOAD,
+            partner_id,
+        )
+        return {"partner_id": partner_id, "reloaded": True}
     if not instance or not instance.running:
         raise HTTPException(status_code=404, detail=t("api.partner_not_running"))
     try:
@@ -1188,7 +1305,8 @@ async def get_partner_sessions(partner_id: str):
 async def archive_partner_session(partner_id: str, payload: SessionKeyBody):
     """Soft-archive a session (web /new) — it stays resumable, file untouched."""
     mgr = get_partner_manager()
-    mgr.archive_session(partner_id, payload.session_key)
+    if not mgr.archive_session(partner_id, payload.session_key):
+        raise HTTPException(status_code=404, detail="Session not found")
     return {"partner_id": partner_id, "archived": True, "session_key": payload.session_key}
 
 
@@ -1323,7 +1441,10 @@ async def partner_chat_http(partner_id: str, payload: ChatMessageRequest) -> dic
     content = payload.content.strip()
     if not content and not payload.attachments:
         raise HTTPException(status_code=400, detail=t("api.content_required"))
-    await _ensure_running_partner(partner_id)
+    # Web chat is a first-class entry point. Start the partner runtime on
+    # demand even when external channel listeners are not configured for boot;
+    # ``auto_start`` controls restart persistence, not chat access.
+    await _ensure_running_partner(partner_id, allow_stopped=True)
     media_paths = _materialize_partner_attachments(partner_id, payload.attachments)
     if not content and media_paths:
         content = _default_attachment_prompt(payload.attachments)
@@ -1413,7 +1534,7 @@ async def partner_chat_http_stream(partner_id: str, payload: ChatMessageRequest)
     """Stream one HTTP message to a partner as server-sent events."""
     if not payload.content.strip() and not payload.attachments:
         raise HTTPException(status_code=400, detail=t("api.content_required"))
-    await _ensure_running_partner(partner_id)
+    await _ensure_running_partner(partner_id, allow_stopped=True)
     return StreamingResponse(
         _partner_chat_stream(partner_id, payload),
         media_type="text/event-stream",
@@ -1421,7 +1542,7 @@ async def partner_chat_http_stream(partner_id: str, payload: ChatMessageRequest)
     )
 
 
-@router.websocket("/{partner_id}/ws")
+@ws_router.websocket("/{partner_id}")
 async def partner_chat_ws(ws: WebSocket, partner_id: str):
     """Web chat socket.
 
@@ -1433,6 +1554,7 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
       StreamEvent (content/thinking/tool_call/progress/sources/result),
       letting the UI render the same live trace as product chat;
     * ``{"type": "content", "content": str}`` — the final reply;
+    * ``{"type": "ready"}`` — the runtime is ready to accept a web turn;
     * ``{"type": "done"}`` / ``{"type": "error"}`` / ``{"type": "proactive"}``.
     """
     from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
@@ -1467,12 +1589,15 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
 
     await ws.accept()
     try:
-        instance = await _ensure_running_partner(partner_id)
+        instance = await _ensure_running_partner(partner_id, allow_stopped=True)
     except HTTPException as exc:
         message = str(exc.detail)
         await _safe_send({"type": "error", "content": message})
         code = 4004 if exc.status_code == 404 else 4003
         await ws.close(code=code, reason=message[:120])
+        return
+
+    if not await _safe_send({"type": "ready"}):
         return
 
     logger.info("WebSocket connected for partner '%s'", partner_id)

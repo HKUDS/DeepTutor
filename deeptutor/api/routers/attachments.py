@@ -8,7 +8,7 @@ sanitised to defend against directory traversal.
 
 URL shape::
 
-    GET /api/attachments/{session_id}/{attachment_id}/{filename}
+    GET /files/attachments/{session_id}/{attachment_id}/{filename}
 
 The session id functions as the ACL boundary, mirroring how the rest of
 the app treats sessions today (single-tenant, session ownership is local

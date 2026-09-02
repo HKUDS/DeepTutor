@@ -55,6 +55,16 @@ def test_dockerfile_launch_points_wire_serving_flags() -> None:
             assert flag in line, f"Dockerfile launches uvicorn without {flag}: {line.strip()[:80]}"
 
 
+def test_production_container_wires_configured_worker_count() -> None:
+    lines = [
+        line
+        for line in (_REPO / "Dockerfile").read_text(encoding="utf-8").splitlines()
+        if line.startswith("exec python -m uvicorn deeptutor.api.main:app")
+    ]
+    assert len(lines) == 1
+    assert "--workers ${BACKEND_WORKERS}" in lines[0]
+
+
 def test_keep_alive_outlasts_the_proxy_socket_reaper() -> None:
     """Must stay clear of the 5s idle timer on Node's ``http.globalAgent``.
 

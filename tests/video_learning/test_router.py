@@ -2,17 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 import httpx
 import pytest
 
 from deeptutor.api.routers import video_learning
-from deeptutor.api.routers.auth import (
-    require_admin,
-    require_auth,
-    require_learning_surface,
-)
+from deeptutor.api.routers.auth import require_admin, require_auth, require_learning_surface
 from deeptutor.services.notebook.service import NotebookManager
 from deeptutor.video_learning import notes as video_notes
 from deeptutor.video_learning import service
@@ -25,22 +21,6 @@ class _Paths:
     def get_workspace_feature_dir(self, feature: str) -> Path:
         assert feature == "timed_media"
         return self.root / feature
-
-
-def _dependency_calls(route: object) -> set[object]:
-    pending: list[object] = list(getattr(route, "dependencies", ()) or ())
-    if hasattr(route, "dependant"):
-        pending.extend(route.dependant.dependencies)
-
-    calls: set[object] = set()
-    while pending:
-        dependency = pending.pop()
-        call = getattr(dependency, "dependency", None) or dependency.call
-        if call in calls:
-            continue
-        calls.add(call)
-        pending.extend(getattr(dependency, "dependencies", ()) or ())
-    return calls
 
 
 @pytest.fixture
@@ -60,7 +40,7 @@ def client(
     )
     monkeypatch.setattr(video_notes, "get_notebook_manager", lambda: notebook_manager)
     app = FastAPI()
-    app.include_router(video_learning.router, prefix="/api/v1/video-learning")
+    app.include_router(video_learning.router, prefix="/api/video-learning")
     return TestClient(app)
 
 
@@ -90,27 +70,38 @@ def _material(*, duration: int = 100) -> dict[str, object]:
 def test_main_mounts_settings_as_admin_only_and_learning_policy_scoped() -> None:
     from deeptutor.api.main import app
 
-    mounts: dict[str, set[object]] = {}
-    routes: list[object] = []
-    for route in app.routes:
-        effective_candidates = getattr(route, "effective_candidates", None)
-        if callable(effective_candidates):
-            routes.extend(effective_candidates())
-        else:
-            routes.append(route)
+    async def reject_admin() -> None:
+        raise HTTPException(status_code=418, detail="admin dependency called")
 
-    for route in routes:
-        path = str(getattr(route, "path", ""))
-        if path.startswith("/api/v1/settings/video-learning"):
-            key = "/api/v1/settings/video-learning"
-        elif path.startswith("/api/v1/video-learning"):
-            key = "/api/v1/video-learning"
-        else:
-            continue
-        mounts.setdefault(key, set()).update(_dependency_calls(route))
-    assert require_admin in mounts["/api/v1/settings/video-learning"]
-    assert require_learning_surface in mounts["/api/v1/video-learning"]
-    assert require_auth in mounts["/api/v1/video-learning"]
+    async def reject_learning_surface() -> None:
+        raise HTTPException(status_code=419, detail="learning policy dependency called")
+
+    async def reject_auth() -> None:
+        raise HTTPException(status_code=417, detail="nested auth dependency called")
+
+    original_overrides = app.dependency_overrides.copy()
+    app.dependency_overrides[require_admin] = reject_admin
+    app.dependency_overrides[require_learning_surface] = reject_learning_surface
+    try:
+        # Assert through HTTP instead of inspecting ``app.routes``. FastAPI
+        # 0.141 keeps included routers nested, but dependency overrides remain
+        # the public, representation-independent way to observe each gate.
+        with TestClient(app) as app_client:
+            settings_response = app_client.get("/api/settings/video-learning")
+            learning_response = app_client.get("/api/video-learning/materials/not-a-material")
+            app.dependency_overrides.clear()
+            app.dependency_overrides[require_auth] = reject_auth
+            nested_auth_response = app_client.get("/api/video-learning/materials/not-a-material")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(original_overrides)
+
+    assert settings_response.status_code == 418
+    assert settings_response.json()["detail"] == "admin dependency called"
+    assert learning_response.status_code == 419
+    assert learning_response.json()["detail"] == "learning policy dependency called"
+    assert nested_auth_response.status_code == 417
+    assert nested_auth_response.json()["detail"] == "nested auth dependency called"
 
 
 def test_progress_clamps_to_duration_and_unknown_material_is_404(client: TestClient) -> None:
@@ -119,14 +110,14 @@ def test_progress_clamps_to_duration_and_unknown_material_is_404(client: TestCli
     material_id = str(material["material_id"])
 
     response = client.put(
-        f"/api/v1/video-learning/materials/{material_id}/progress",
+        f"/api/video-learning/materials/{material_id}/progress",
         json={"time_seconds": 125, "duration_seconds": 100},
     )
     assert response.status_code == 200
     assert response.json() == {"time_seconds": 100.0, "duration_seconds": 100.0}
     assert service.get_timed_media_store().get(material_id)["learning"]["last_position"] == 100
 
-    missing = client.get("/api/v1/video-learning/materials/0123456789abcdef")
+    missing = client.get("/api/video-learning/materials/0123456789abcdef")
     assert missing.status_code == 404
 
 
@@ -138,7 +129,7 @@ def test_video_notes_use_notebook_storage_and_stay_material_scoped(
     material = _material()
     service.get_timed_media_store().save(material)
     material_id = str(material["material_id"])
-    notes_url = f"/api/v1/video-learning/materials/{material_id}/notes"
+    notes_url = f"/api/video-learning/materials/{material_id}/notes"
 
     created_response = client.post(
         notes_url, json={"body": "  Revisit the opening idea.  ", "time_seconds": 2}
@@ -198,12 +189,12 @@ def test_video_notes_use_notebook_storage_and_stay_material_scoped(
 def test_video_note_errors_are_bounded_and_useful(client: TestClient) -> None:
     material = _material(duration=100)
     service.get_timed_media_store().save(material)
-    notes_url = f"/api/v1/video-learning/materials/{material['material_id']}/notes"
+    notes_url = f"/api/video-learning/materials/{material['material_id']}/notes"
 
     assert client.post(notes_url, json={"body": " ", "time_seconds": 2}).status_code == 400
     assert client.post(notes_url, json={"body": "Note", "time_seconds": 101}).status_code == 400
     assert client.post(notes_url, json={"body": "", "time_seconds": 2}).status_code == 422
-    assert client.get("/api/v1/video-learning/materials/0123456789abcdef/notes").status_code == 404
+    assert client.get("/api/video-learning/materials/0123456789abcdef/notes").status_code == 404
     assert client.put(f"{notes_url}/missing-note", json={"body": "Note"}).status_code == 404
 
 
@@ -211,7 +202,7 @@ def test_progress_does_not_replace_known_duration_with_client_value(client: Test
     material = _material(duration=100)
     service.get_timed_media_store().save(material)
     response = client.put(
-        f"/api/v1/video-learning/materials/{material['material_id']}/progress",
+        f"/api/video-learning/materials/{material['material_id']}/progress",
         json={"time_seconds": 50, "duration_seconds": 10},
     )
     assert response.json() == {"time_seconds": 50.0, "duration_seconds": 100.0}
@@ -226,7 +217,7 @@ def test_refresh_transcript_returns_refreshed_material(client: TestClient, monke
 
     monkeypatch.setattr(video_learning, "refresh_invidious_transcript", refresh)
     response = client.post(
-        f"/api/v1/video-learning/materials/{material['material_id']}/transcript/refresh"
+        f"/api/video-learning/materials/{material['material_id']}/transcript/refresh"
     )
 
     assert response.status_code == 200
@@ -234,7 +225,7 @@ def test_refresh_transcript_returns_refreshed_material(client: TestClient, monke
 
 
 def test_refresh_transcript_returns_404_for_unknown_material(client: TestClient) -> None:
-    response = client.post("/api/v1/video-learning/materials/0123456789abcdef/transcript/refresh")
+    response = client.post("/api/video-learning/materials/0123456789abcdef/transcript/refresh")
 
     assert response.status_code == 404
 
@@ -243,9 +234,7 @@ def test_subtitles_are_valid_vtt_and_escape_markup(client: TestClient) -> None:
     material = _material()
     service.get_timed_media_store().save(material)
 
-    response = client.get(
-        f"/api/v1/video-learning/materials/{material['material_id']}/subtitles.vtt"
-    )
+    response = client.get(f"/api/video-learning/materials/{material['material_id']}/subtitles.vtt")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/vtt")
@@ -314,7 +303,7 @@ async def test_live_stream_rejects_invalid_invidious_metadata(
 
 def test_stream_rejects_multi_range_before_contacting_upstream(client: TestClient) -> None:
     response = client.get(
-        f"/api/v1/video-learning/materials/{service.material_id_for('dQw4w9WgXcQ')}/stream/18",
+        f"/api/video-learning/materials/{service.material_id_for('dQw4w9WgXcQ')}/stream/18",
         headers={"Range": "bytes=0-1,4-5"},
     )
     assert response.status_code == 416
@@ -351,7 +340,7 @@ def test_stream_forwards_a_206_range_response(
     monkeypatch.setattr(video_learning, "_open_upstream", open_upstream)
 
     response = client.get(
-        f"/api/v1/video-learning/materials/{material['material_id']}/stream/18",
+        f"/api/video-learning/materials/{material['material_id']}/stream/18",
         headers={"Range": "bytes=0-10"},
     )
 

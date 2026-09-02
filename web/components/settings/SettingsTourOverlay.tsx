@@ -5,7 +5,10 @@ import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { TOUR_STEPS, useSettings } from "./SettingsContext";
+import {
+  TOUR_STEPS,
+  useSettings,
+} from "@/features/settings/store/SettingsStore";
 
 // Cross-route guided tour. Mounted in the settings layout so the same
 // instance survives navigation between sub-pages. After each step

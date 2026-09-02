@@ -40,7 +40,7 @@ def _client(monkeypatch, extension) -> TestClient:
         lambda: registry,
     )
     app = FastAPI()
-    app.include_router(reading_extensions.router, prefix="/api/v1/reading")
+    app.include_router(reading_extensions.router, prefix="/api/reading")
     return TestClient(app)
 
 
@@ -72,7 +72,7 @@ def test_action_receives_only_server_verified_visible_text(material, monkeypatch
 
     client = _client(monkeypatch, _extension(run))
     response = client.post(
-        f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
         json={"locator": 1, "selection": "forged text", "locale": "en"},
     )
     assert response.status_code == 200, response.text
@@ -93,7 +93,7 @@ def test_source_anchor_is_loaded_from_server_position(material, monkeypatch):
 
     client = _client(monkeypatch, _extension(run))
     response = client.post(
-        f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
         json={"locator": 1, "source_anchor": "forged-anchor"},
     )
 
@@ -107,7 +107,7 @@ def test_selection_requirement_rejects_unverified_text(material, monkeypatch):
         _extension(lambda *_: pytest.fail("must not run"), requires=("selection",)),
     )
     response = client.post(
-        f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
         json={"locator": 1, "selection": "not in the material"},
     )
     assert response.status_code == 400
@@ -122,7 +122,7 @@ def test_oversized_unit_returns_protocol_error(material, monkeypatch):
     )
 
     response = client.post(
-        f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
         json={"locator": 1},
     )
 
@@ -140,7 +140,7 @@ def test_oversized_unit_returns_protocol_error(material, monkeypatch):
 def test_extension_failures_are_isolated(material, monkeypatch, run_action):
     client = _client(monkeypatch, _extension(run_action))
     response = client.post(
-        f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
         json={"locator": 1},
     )
     assert response.status_code == 503
@@ -155,7 +155,7 @@ def test_hanging_extension_action_times_out(material, monkeypatch):
     client = _client(monkeypatch, _extension(run))
 
     response = client.post(
-        f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+        f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
         json={"locator": 1},
     )
 
@@ -178,11 +178,11 @@ def test_timed_out_sync_extension_opens_circuit_without_queueing(material, monke
 
     try:
         first = client.post(
-            f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+            f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
             json={"locator": 1},
         )
         second = client.post(
-            f"/api/v1/reading/materials/{material.material_id}/extensions/sample/actions/open",
+            f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
             json={"locator": 1},
         )
 

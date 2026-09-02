@@ -4,7 +4,7 @@ import {
   hasPendingAskUser,
   hasPendingAskUserInMessages,
 } from "../lib/ask-user-state";
-import type { StreamEvent } from "../lib/unified-ws";
+import type { StreamEvent } from "../features/chat/model/protocol";
 
 function event(
   type: StreamEvent["type"],

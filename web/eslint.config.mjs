@@ -24,6 +24,11 @@ const config = [
       ".next-*/**",
       "dist/**",
       "out/**",
+      "tmp/**",
+      "coverage/**",
+      "playwright-report/**",
+      "test-results/**",
+      "contracts/generated/.tmp/**",
     ],
   },
 ];

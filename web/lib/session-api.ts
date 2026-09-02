@@ -1,6 +1,7 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
-import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
+import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
+import { browserReturnPath, loginHref } from "@/shared/auth/return-url";
 
 export interface SessionMessage {
   id: number;
@@ -123,8 +124,7 @@ export interface QuizResultItem {
 
 async function expectJson<T>(response: Response): Promise<T> {
   if (response.status === 401 && typeof window !== "undefined") {
-    const next = encodeURIComponent(window.location.pathname);
-    window.location.href = `/login?next=${next}`;
+    window.location.href = loginHref(browserReturnPath(window.location));
     return new Promise(() => {});
   }
   if (!response.ok) {
@@ -146,7 +146,7 @@ export async function listSessions(
     `sessions:${limit}:${offset}`,
     async () => {
       const response = await apiFetch(
-        apiUrl(`/api/v1/sessions?${qs.toString()}`),
+        apiUrl(`/api/sessions?${qs.toString()}`),
         {
           cache: "no-store",
         },
@@ -178,7 +178,7 @@ export async function getSession(
   sessionId: string,
   signal?: AbortSignal,
 ): Promise<SessionDetail> {
-  const response = await apiFetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
+  const response = await apiFetch(apiUrl(`/api/sessions/${sessionId}`), {
     cache: "no-store",
     signal,
   });
@@ -196,7 +196,7 @@ export async function fetchSessionAskHint(
 ): Promise<string> {
   try {
     const response = await apiFetch(
-      apiUrl(`/api/v1/sessions/${sessionId}/ask-hint`),
+      apiUrl(`/api/sessions/${sessionId}/ask-hint`),
       { cache: "no-store", ...init },
     );
     const result = await expectJson<{ hint?: string }>(response);
@@ -211,7 +211,7 @@ export async function updateSessionTitle(
   sessionId: string,
   title: string,
 ): Promise<SessionDetail> {
-  const response = await apiFetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
+  const response = await apiFetch(apiUrl(`/api/sessions/${sessionId}`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
@@ -234,7 +234,7 @@ export async function updateSessionOrganization(
   patch: SessionOrganizationPatch,
 ): Promise<SessionDetail> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/sessions/${sessionId}/organization`),
+    apiUrl(`/api/sessions/${sessionId}/organization`),
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -247,7 +247,7 @@ export async function updateSessionOrganization(
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  const response = await apiFetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
+  const response = await apiFetch(apiUrl(`/api/sessions/${sessionId}`), {
     method: "DELETE",
   });
   await expectJson<{ deleted: boolean }>(response);
@@ -260,7 +260,7 @@ export async function recordQuizResults(
   turnId?: string | null,
 ): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/sessions/${sessionId}/quiz-results`),
+    apiUrl(`/api/sessions/${sessionId}/quiz-results`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -275,7 +275,7 @@ export async function deleteMessage(
   messageId: number,
 ): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/sessions/${sessionId}/messages/${messageId}`),
+    apiUrl(`/api/sessions/${sessionId}/messages/${messageId}`),
     { method: "DELETE" },
   );
   await expectJson<{ deleted: boolean }>(response);
@@ -286,7 +286,7 @@ export async function updateBranchSelection(
   selectedBranches: Record<string, number>,
 ): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/sessions/${sessionId}/branch-selection`),
+    apiUrl(`/api/sessions/${sessionId}/branch-selection`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
