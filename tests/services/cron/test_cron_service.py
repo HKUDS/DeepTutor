@@ -8,6 +8,7 @@ import time
 
 import pytest
 
+import deeptutor.services.cron.repository as repository
 from deeptutor.services.cron.service import (
     CronOwner,
     CronSchedule,
@@ -64,6 +65,9 @@ class TestValidateSchedule:
 
 
 class TestJobManagement:
+    def test_repository_does_not_bind_posix_lock_at_import(self):
+        assert "fcntl" not in repository.__dict__
+
     def test_add_list_cancel_persist(self, tmp_path):
         store = tmp_path / "jobs.json"
         service = CronService(store_path=store)
