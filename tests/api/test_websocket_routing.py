@@ -19,9 +19,7 @@ def test_websocket_routes_share_one_canonical_namespace() -> None:
         "/ws/partner-groups/{group_id}",
     }
     websocket_routes = {
-        route.path: route
-        for route in app.routes
-        if isinstance(route, APIWebSocketRoute)
+        route.path: route for route in app.routes if isinstance(route, APIWebSocketRoute)
     }
 
     assert set(websocket_routes) == expected_paths
