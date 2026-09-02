@@ -3505,6 +3505,8 @@ async def update_pending_indexing_policy(
     kb_entry["pending_indexing_policy"] = policy
     manager._save_config()
     return {"indexing_policy": policy}
+
+
 @router.post("/knowledge-bases/{kb_name}/retry")
 async def retry_knowledge_base(
     kb_name: str,
