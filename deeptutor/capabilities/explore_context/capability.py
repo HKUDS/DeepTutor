@@ -24,7 +24,7 @@ Why it exists:
 
 The capability owns no answer-loop tools and contributes no system block — it
 works purely through the optional async ``pre_loop`` hook (see
-:class:`LoopCapability`). ``read_source`` lives inside the pre-pass's own tool
+:class:`LoopExtension`). ``read_source`` lives inside the pre-pass's own tool
 loop, not on the answer loop's surface.
 """
 
@@ -38,7 +38,7 @@ import yaml
 
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 logger = logging.getLogger(__name__)
 

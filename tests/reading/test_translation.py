@@ -188,7 +188,7 @@ def _client(monkeypatch) -> TestClient:
         lambda: registry,
     )
     app = FastAPI()
-    app.include_router(reading_extensions.router, prefix="/api/v1/reading")
+    app.include_router(reading_extensions.router, prefix="/api/reading")
     return TestClient(app)
 
 
@@ -208,7 +208,7 @@ def test_translation_crosses_the_api_boundary_with_stored_unit_text(monkeypatch,
     client = _client(monkeypatch)
     try:
         response = client.post(
-            f"/api/v1/reading/materials/{material.material_id}"
+            f"/api/reading/materials/{material.material_id}"
             "/extensions/translation/actions/translate_en",
             json={
                 "locator": 1,
@@ -241,7 +241,7 @@ def test_forged_translation_selection_is_rejected_before_the_llm(monkeypatch, tm
     client = _client(monkeypatch)
     try:
         response = client.post(
-            f"/api/v1/reading/materials/{material.material_id}"
+            f"/api/reading/materials/{material.material_id}"
             "/extensions/translation/actions/translate_en",
             json={"locator": 1, "selection": "not in the material", "locale": "en"},
         )

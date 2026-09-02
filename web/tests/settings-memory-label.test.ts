@@ -7,14 +7,11 @@ const readWebFile = (...parts: string[]) =>
   readFileSync(path.join(process.cwd(), ...parts), "utf8");
 
 test("runtime RAM and long-term memory use distinct Chinese labels", () => {
-  const usage = readWebFile(
-    "components",
-    "settings",
-    "MemoryUsageItem.tsx",
-  );
-  const zh = JSON.parse(
-    readWebFile("locales", "zh", "app.json"),
-  ) as Record<string, string>;
+  const usage = readWebFile("components", "settings", "MemoryUsageItem.tsx");
+  const zh = JSON.parse(readWebFile("locales", "zh", "app.json")) as Record<
+    string,
+    string
+  >;
 
   assert.match(usage, /t\("System memory"\)/);
   assert.doesNotMatch(usage, /t\("Memory"\)/);

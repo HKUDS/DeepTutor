@@ -8,7 +8,7 @@ books". Sits parallel to ``ChatOrchestrator`` and reuses the existing
 ``ToolRegistry`` / ``CapabilityRegistry`` / ``StreamBus`` plumbing.
 """
 
-from .engine import BookEngine, get_book_engine
+from .engine import BookEngine, BookPausedError, get_book_engine
 from .models import (
     Block,
     BlockStatus,
@@ -26,6 +26,7 @@ from .models import (
 
 __all__ = [
     "BookEngine",
+    "BookPausedError",
     "get_book_engine",
     "Book",
     "BookInputs",

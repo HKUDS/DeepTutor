@@ -6,7 +6,7 @@ import { FolderInput, Loader2, RefreshCw, Upload } from "lucide-react";
 import {
   listKnowledgeBaseFiles,
   type KnowledgeUploadPolicy,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/files";
 import {
   kbIsUploadable,
   kbNeedsReindex,

@@ -199,6 +199,8 @@ export interface Book {
     page_chat_sessions?: Record<string, string>;
     /** Why compilation paused — set alongside `status: "paused"`. */
     pause_reason?: string;
+    /** Whether the user paused it or the provider-failure breaker did. */
+    pause_kind?: "user" | "provider";
   };
   /** Present on list responses only. */
   reading?: ReadingSummary;

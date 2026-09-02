@@ -74,7 +74,7 @@ export default function UtilitySidebar() {
     async (sessionId: string) => {
       setActiveSessionId(sessionId);
       const session = sessions.find((item) => item.session_id === sessionId);
-      router.push(session ? sessionRoute(session) : `/home/${sessionId}`);
+      router.push(session ? sessionRoute(session) : `/chat/${sessionId}`);
     },
     [router, sessions, setActiveSessionId],
   );

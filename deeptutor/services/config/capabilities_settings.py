@@ -1,6 +1,6 @@
 """Read/write the per-capability tunables surfaced by the Settings UI.
 
-This is the source of truth for the ``/api/v1/capabilities/settings``
+This is the source of truth for the ``/api/capabilities/settings``
 endpoint. It bridges two on-disk files:
 
 * ``data/user/settings/agents.yaml`` — per-capability LLM params

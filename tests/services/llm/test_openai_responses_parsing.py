@@ -10,6 +10,7 @@ import pytest
 from deeptutor.services.llm.provider_core.openai_responses.parsing import (
     consume_sdk_stream,
     consume_sse,
+    parse_response_output,
 )
 
 
@@ -99,6 +100,76 @@ async def test_sdk_arguments_can_be_correlated_by_item_id() -> None:
     assert len(tool_calls) == 1
     assert tool_calls[0].id == "call_1|fc_1"
     assert tool_calls[0].arguments == {"topic": "geometry"}
+
+
+@pytest.mark.asyncio
+async def test_sdk_preserves_deepseek_reasoning_text_for_next_tool_round() -> None:
+    reasoning_item = SimpleNamespace(
+        type="reasoning",
+        id="rs_1",
+        status="completed",
+        content=[{"type": "reasoning_text", "text": "Need to inspect the MCP status."}],
+        summary=[],
+    )
+    function_call = SimpleNamespace(
+        type="function_call",
+        id="fc_1",
+        call_id="call_1",
+        name="check_mcp",
+        arguments="{}",
+    )
+    events = [
+        SimpleNamespace(type="response.reasoning_text.delta", delta="Need to inspect "),
+        SimpleNamespace(type="response.reasoning_text.delta", delta="the MCP status."),
+        SimpleNamespace(type="response.output_item.done", item=reasoning_item),
+        SimpleNamespace(type="response.output_item.added", item=function_call),
+        SimpleNamespace(type="response.output_item.done", item=function_call),
+    ]
+    provider_events: list[tuple[str, dict]] = []
+
+    _, tool_calls, _, _, reasoning = await consume_sdk_stream(
+        _sdk_events(events),
+        on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
+    )
+
+    assert reasoning == "Need to inspect the MCP status."
+    assert tool_calls[0].name == "check_mcp"
+    assert provider_events == [
+        ("output_item", vars(reasoning_item)),
+        ("output_item", vars(function_call)),
+    ]
+
+
+def test_nonstream_response_preserves_deepseek_reasoning_text_and_native_items() -> None:
+    reasoning_item = {
+        "type": "reasoning",
+        "id": "rs_1",
+        "status": "completed",
+        "content": [{"type": "reasoning_text", "text": "Need to inspect the MCP status."}],
+        "summary": [],
+    }
+    message_item = {
+        "type": "message",
+        "id": "msg_1",
+        "status": "completed",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": "MCP is healthy."}],
+    }
+
+    result = parse_response_output(
+        {
+            "status": "completed",
+            "output": [reasoning_item, message_item],
+            "usage": {"input_tokens": 10, "output_tokens": 8},
+        }
+    )
+
+    assert result.content == "MCP is healthy."
+    assert result.reasoning_content == "Need to inspect the MCP status."
+    assert result.provider_specific_fields["native_output_items"] == [
+        reasoning_item,
+        message_item,
+    ]
 
 
 @pytest.mark.asyncio

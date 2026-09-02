@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BookOpen, Database, NotebookPen } from "lucide-react";
-import { listKnowledgeBases } from "@/lib/knowledge-api";
+import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { listSkills } from "@/lib/skills-api";
 import { listNotebooks } from "@/lib/notebook-api";
 

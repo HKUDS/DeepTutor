@@ -330,7 +330,7 @@ export default function SaveToNotebookModal({
 
     try {
       const response = await apiFetch(
-        apiUrl("/api/v1/notebook/add_record_with_summary"),
+        apiUrl("/api/notebooks/actions/add-record-with-summary"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

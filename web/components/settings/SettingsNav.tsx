@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -13,24 +13,29 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { fetchAuthStatus } from "@/lib/auth";
 import {
+  isSettingsCategoryVisible,
+  isSettingsLeafVisible,
   SETTINGS_CATEGORIES,
   SETTINGS_HUB_HREF,
   settingsAnchorHref,
   type Lang,
   type SettingsLeaf,
-} from "@/lib/settings-nav";
-import { serviceReadiness, useSettings } from "./SettingsContext";
+} from "@/features/settings/navigation/settings-nav";
+import { useSettingsAccess } from "@/features/settings/navigation/SettingsAccessProvider";
+import type { SettingsAccess } from "@/features/settings/navigation/settings-access";
+import {
+  requestSettingsSection,
+  scrollToSettingsSection,
+} from "@/features/settings/navigation/settings-scroll";
+import {
+  serviceReadiness,
+  useSettings,
+} from "@/features/settings/store/SettingsStore";
 
 /**
- * Same-page anchor vs. a real route change. A merged category's children
- * point at `${categoryHref}#${key}` — if we are already on that category
- * page, clicking one is a scroll, not a navigation; History's own
- * `pushState` is enough and `router.push` would be a same-URL no-op anyway.
- * Coming from anywhere else, it is a normal route change, and the category
- * page's own mount effect (`CategoryScroll`) scrolls to the hash once it
- * lands.
+ * Same-document settings navigation. When already on `/settings`, update the
+ * fragment and scroll; otherwise navigate to the canonical document first.
  */
 function goToLeaf(
   href: string,
@@ -49,11 +54,11 @@ function goToLeaf(
     router.push(href);
     return false;
   }
-  document.getElementById(key)?.scrollIntoView({
-    behavior: "smooth",
-    block: "start",
-  });
   window.history.replaceState(null, "", href);
+  // This document can be tens of thousands of pixels tall. Jumping directly
+  // avoids tracking every intermediate section and overwriting the target hash.
+  scrollToSettingsSection(key, "auto");
+  requestSettingsSection(key);
   setActiveSection(key);
   return true;
 }
@@ -89,17 +94,11 @@ type Group = {
  * leaves; one without is itself a row, so a single-page category never costs
  * an extra level of nesting.
  */
-function useGroups(
-  hideAdminOnly: boolean,
-  showLearnerOnly: boolean,
-  showGuardianOnly: boolean,
-): Group[] {
+function useGroups(access: SettingsAccess): Group[] {
   return useMemo(
     () =>
-      SETTINGS_CATEGORIES.filter(
-        (category) =>
-          (!category.learnerOnly || showLearnerOnly) &&
-          (!category.guardianOnly || showGuardianOnly),
+      SETTINGS_CATEGORIES.filter((category) =>
+        isSettingsCategoryVisible(category, access),
       ).map((category) => ({
         key: category.key,
         label: category.label,
@@ -117,44 +116,12 @@ function useGroups(
             } satisfies SettingsLeaf,
           ]
         )
-          .filter((leaf) => !(leaf.adminOnly && hideAdminOnly))
+          .filter((leaf) => isSettingsLeafVisible(leaf, access))
           .map((leaf) => ({ leaf, category: category.label }) satisfies Row),
         standalone: !category.children,
       })),
-    [hideAdminOnly, showGuardianOnly, showLearnerOnly],
+    [access],
   );
-}
-
-function useSettingsVisibility(): {
-  hideAdminOnly: boolean;
-  showLearnerOnly: boolean;
-  showGuardianOnly: boolean;
-} {
-  const [visibility, setVisibility] = useState({
-    hideAdminOnly: false,
-    showLearnerOnly: false,
-    showGuardianOnly: false,
-  });
-  useEffect(() => {
-    let cancelled = false;
-    fetchAuthStatus().then((authStatus) => {
-      if (cancelled || !authStatus) return;
-      setVisibility({
-        hideAdminOnly: Boolean(authStatus.enabled) && !authStatus.is_admin,
-        showLearnerOnly: authStatus.preset === "learner",
-        showGuardianOnly: Boolean(
-          authStatus.enabled &&
-            authStatus.authenticated &&
-            !authStatus.is_admin &&
-            (authStatus.preset === "standard" || authStatus.preset === "custom"),
-        ),
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return visibility;
 }
 
 /**
@@ -171,12 +138,8 @@ export function SettingsNavCompact() {
   const { t, i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = (value: Lang) => (zh ? value.zh : value.en);
-  const visibility = useSettingsVisibility();
-  const groups = useGroups(
-    visibility.hideAdminOnly,
-    visibility.showLearnerOnly,
-    visibility.showGuardianOnly,
-  );
+  const access = useSettingsAccess();
+  const groups = useGroups(access);
   const { activeSection, setActiveSection } = useSettings();
   const currentValue =
     pathname === SETTINGS_HUB_HREF
@@ -233,12 +196,8 @@ export default function SettingsNav() {
   } = useSettings();
 
   const [query, setQuery] = useState("");
-  const visibility = useSettingsVisibility();
-  const groups = useGroups(
-    visibility.hideAdminOnly,
-    visibility.showLearnerOnly,
-    visibility.showGuardianOnly,
-  );
+  const access = useSettingsAccess();
+  const groups = useGroups(access);
 
   const needle = query.trim().toLowerCase();
   const matches = useCallback(
@@ -270,20 +229,16 @@ export default function SettingsNav() {
     [catalog, catalogEditable, diagnosticsResults],
   );
 
-  // A category page opens with its own children already visible, and a
-  // search match forces every matching group open regardless of state —
-  // otherwise the row you searched for could be hidden behind a collapse.
+  // The active section opens its group. A search match also opens every
+  // matching group so the requested row is never hidden by a collapse.
   const [manualExpanded, setManualExpanded] = useState<Record<string, boolean>>(
     {},
   );
   const groupIsActive = useCallback(
     (group: Group) =>
-      (pathname === SETTINGS_HUB_HREF &&
-        (activeSection === group.key ||
-          group.rows.some(({ leaf }) => leaf.key === activeSection))) ||
-      pathname === group.href ||
-      group.rows.some(({ leaf }) => leaf.href.split("#", 1)[0] === pathname),
-    [activeSection, pathname],
+      activeSection === group.key ||
+      group.rows.some(({ leaf }) => leaf.key === activeSection),
+    [activeSection],
   );
   const isExpanded = useCallback(
     (group: Group) =>
@@ -354,11 +309,7 @@ export default function SettingsNav() {
               href={settingsAnchorHref(group.rows[0]!.leaf.key)}
               label={tr(group.rows[0]!.leaf.label)}
               icon={group.rows[0]!.leaf.icon}
-              active={
-                (pathname === SETTINGS_HUB_HREF &&
-                  activeSection === group.rows[0]!.leaf.key) ||
-                pathname === group.rows[0]!.leaf.href
-              }
+              active={activeSection === group.rows[0]!.leaf.key}
               failing={failing(group.rows[0]!.leaf)}
               hint={tr(group.rows[0]!.leaf.blurb)}
               tourId={`tour-nav-${group.key}`}
@@ -392,11 +343,7 @@ export default function SettingsNav() {
                     href={settingsAnchorHref(leaf.key)}
                     label={tr(leaf.label)}
                     icon={leaf.icon}
-                    active={
-                      (pathname === SETTINGS_HUB_HREF &&
-                        activeSection === leaf.key) ||
-                      (pathname === group.href && activeSection === leaf.key)
-                    }
+                    active={activeSection === leaf.key}
                     failing={failing(leaf)}
                     hint={tr(leaf.blurb)}
                     onClick={(event) => navigateInDocument(leaf.key, event)}

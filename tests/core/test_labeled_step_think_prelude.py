@@ -1,5 +1,5 @@
 """Tests for the pre-label ``<think>...</think>`` prelude handling in
-:func:`deeptutor.core.agentic.labeled_step.run_labeled_step`.
+:func:`deeptutor.runtime.agentic.labeled_step.run_labeled_step`.
 
 Reasoning models (Qwen, Deepseek-R1 via certain proxies, …) sometimes
 emit a literal ``<think>...</think>`` block *before* the protocol label.
@@ -24,9 +24,9 @@ from typing import Any
 
 import pytest
 
-from deeptutor.core.agentic.labeled_step import run_labeled_step
 from deeptutor.core.stream import StreamEventType
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.agentic.labeled_step import run_labeled_step
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _chunk(content: str | None = None, tool_calls: Any = None) -> SimpleNamespace:

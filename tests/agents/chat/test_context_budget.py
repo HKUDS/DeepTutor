@@ -25,8 +25,8 @@ from deeptutor.agents.chat.context_budget import (
 from deeptutor.capabilities import PromptBlock
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import ToolResult
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _chars(text: str) -> int:

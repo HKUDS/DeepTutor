@@ -31,7 +31,7 @@ export interface FilePreviewSource {
   /** Backend classification — "image" or anything else. Useful for
    *  attachments where the filename has no extension but the MIME is set. */
   type?: string;
-  /** Public URL served by /api/attachments. Preferred over base64. */
+  /** Public URL served by /files/attachments. Preferred over base64. */
   url?: string;
   /** Inline base64 payload — only present for pending (un-sent) attachments
    *  or messages that pre-date the storage rollout. */

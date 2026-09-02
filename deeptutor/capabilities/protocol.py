@@ -7,11 +7,11 @@ from typing import Any, Protocol
 
 from deeptutor.core.context import UnifiedContext
 
-# ── Keys a capability may write into ``context.metadata`` for the runtime ──────
+# ── Legacy completion keys ──────────────────────────────────────────────────────────
 #
-# Turn metadata is a shared scratchpad, so the handful of keys the runtime
-# itself reads back are named here, next to the interface a capability author is
-# already reading. Anything else in there is private to whoever put it.
+# New capabilities use the typed ``interaction`` and ``capability_output``
+# fields. These names remain for one-version compatibility with extensions that
+# still publish completion values through serializable metadata.
 
 #: Set truthy during ``on_user_resume`` to end the turn without another LLM
 #: round — the capability owns the final message from that point on. The user's
@@ -22,9 +22,8 @@ END_LOOP = "end_loop"
 #: event.
 AGENT_OUTPUT = "agent_output"
 
-#: A dict of extras to publish alongside it. Only this sub-dict is forwarded —
-#: never ``context.metadata`` whole, which holds live callables and the user's
-#: own answers — so a capability states exactly what may leave the turn.
+#: A dict of extras to publish alongside it. Only this sub-dict is forwarded,
+#: so a capability states exactly what may leave the turn.
 EVENT_METADATA = "event_metadata"
 
 
@@ -36,7 +35,7 @@ class PromptBlock:
     content: str
 
 
-class LoopCapability(Protocol):
+class LoopExtension(Protocol):
     """Optional per-turn extension point for the chat agent loop.
 
     A loop capability reuses the *full* chat tool surface — every built-in,
@@ -131,7 +130,7 @@ class LoopCapability(Protocol):
 class KnowledgeCapability:
     """Base for capabilities bound to an agentic knowledge base.
 
-    Unlike a plain :class:`LoopCapability` (which augments chat's full tool
+    Unlike a plain :class:`LoopExtension` (which augments chat's full tool
     surface), a knowledge capability *owns the turn*: when active it replaces
     the surface with its own :attr:`owned_tools` plus the ``ask_user`` floor —
     no chat built-ins, no user composer toggles. Its retrieval/authoring is the
@@ -139,7 +138,7 @@ class KnowledgeCapability:
 
     The exclusivity is decided by **category membership**, not a per-instance
     knob: subclassing this sets :attr:`exclusive_tools`. Subclasses still
-    satisfy :class:`LoopCapability` structurally (``name`` / ``owned_tools`` /
+    satisfy :class:`LoopExtension` structurally (``name`` / ``owned_tools`` /
     ``is_active`` / ``system_block`` / ``augment_kwargs`` / ``pre_loop_seed``).
     """
 
@@ -162,6 +161,19 @@ __all__ = [
     "END_LOOP",
     "EVENT_METADATA",
     "KnowledgeCapability",
-    "LoopCapability",
+    "LoopExtension",
     "PromptBlock",
 ]
+
+
+def __getattr__(name: str):
+    if name == "LoopCapability":
+        import warnings
+
+        warnings.warn(
+            "LoopCapability is deprecated; use LoopExtension. It will be removed in v3.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return LoopExtension
+    raise AttributeError(name)

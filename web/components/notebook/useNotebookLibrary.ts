@@ -92,6 +92,7 @@ export function useNotebookLibrary(
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const previousRouteIdRef = useRef(initialId ?? null);
 
   // Detail fetches are racy — clicking through the list fires several. Only
   // the newest one is allowed to write state, otherwise a slow earlier
@@ -135,6 +136,21 @@ export function useNotebookLibrary(
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // App Router can reuse this client component while only the dynamic segment
+  // changes. Treat that segment as authoritative so browser back/forward and
+  // direct notebook links update the open record without a remount.
+  useEffect(() => {
+    const routeId = initialId ?? null;
+    if (previousRouteIdRef.current === routeId) return;
+    previousRouteIdRef.current = routeId;
+    if (routeId) {
+      setSelectedId(routeId);
+      return;
+    }
+    const allowed = notebooks.filter((notebook) => inScope(notebook.id));
+    setSelectedId(allowed[0]?.id ?? null);
+  }, [initialId, inScope, notebooks]);
 
   useEffect(() => {
     if (!selectedId) {

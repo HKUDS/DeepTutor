@@ -96,15 +96,6 @@ def as_user(uid: str):
         reset_current_user(token)
 
 
-async def _drain_uploads(store: PocketBaseSessionStore) -> None:
-    """Wait for the store's background turn-event uploads to finish."""
-    tasks = list(store._event_upload_tasks)
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
-        # Let the done-callbacks (set discard) run before returning.
-        await asyncio.sleep(0)
-
-
 def _buffered(session_id: str, turn_id: str, count: int) -> list[dict]:
     return [
         {
@@ -136,7 +127,7 @@ def stub_workspace(monkeypatch, tmp_path):
             return tmp_path / "workspace" / feature / task_id
 
     monkeypatch.setattr(
-        "deeptutor.services.session.turn_runtime.get_path_service",
+        "deeptutor.services.session.turns.lifecycle.get_path_service",
         lambda: _StubPathService(),
     )
     return tmp_path / "workspace"
@@ -239,7 +230,10 @@ async def test_non_batch_flush_retry_continues_after_committed_prefix(
         payload={},
     )
     execution.events = _buffered(session["id"], turn["id"], 3)
-    real_append = store.append_turn_event
+
+    async def real_append(turn_id, payload):
+        return (await store._run(store._append_turn_events_sync, turn_id, [payload], None))[0]
+
     calls = 0
 
     async def flaky_append(turn_id, payload):
@@ -250,6 +244,7 @@ async def test_non_batch_flush_retry_continues_after_committed_prefix(
         return await real_append(turn_id, payload)
 
     monkeypatch.setattr(store, "append_turn_events", None)
+    monkeypatch.setattr(store, "append_events", None)
     monkeypatch.setattr(store, "append_turn_event", flaky_append)
 
     with pytest.raises(RuntimeError, match="transient persistence failure"):
@@ -279,11 +274,11 @@ async def test_flush_survives_turn_deleted_mid_drain(tmp_path, stub_workspace) -
 
 
 # ---------------------------------------------------------------------------
-# PocketBase path: background upload, no rglob, no update_turn_status hook
+# PocketBase path: synchronous durability, no rglob
 # ---------------------------------------------------------------------------
 
 
-async def test_pb_append_turn_events_uploads_in_background(fake_pb) -> None:
+async def test_pb_append_turn_events_is_durable_before_return(fake_pb) -> None:
     store = PocketBaseSessionStore()
     with as_user("alice"):
         events = _buffered("s1", "turn_1", 4)
@@ -293,7 +288,6 @@ async def test_pb_append_turn_events_uploads_in_background(fake_pb) -> None:
         # the runtime mirrors these to events.jsonl without waiting on HTTP.
         assert [payload["seq"] for payload in persisted] == [1, 2, 3, 4]
 
-        await _drain_uploads(store)
         rows = fake_pb.collection("turn_events").get_full_list()
         assert sorted(int(row.seq) for row in rows) == [1, 2, 3, 4]
         assert all(row.turn_id == "turn_1" for row in rows)
@@ -306,7 +300,6 @@ async def test_pb_append_turn_event_single_delegates_to_batch(fake_pb) -> None:
         payload = await store.append_turn_event("turn_9", {"type": "content", "content": "x"})
         assert payload["turn_id"] == "turn_9"
         assert payload["seq"]  # fallback seq assigned
-        await _drain_uploads(store)
         rows = fake_pb.collection("turn_events").get_full_list()
         assert len(rows) == 1
 
@@ -319,7 +312,6 @@ async def test_pb_update_turn_status_no_longer_flushes_events(fake_pb) -> None:
         await store.create_session(title="t", session_id="s_flush")
         turn = await store.create_turn("s_flush", capability="chat")
         assert await store.update_turn_status(turn["turn_id"], "completed") is True
-        await _drain_uploads(store)
         assert fake_pb.collection("turn_events").get_full_list() == []
 
 

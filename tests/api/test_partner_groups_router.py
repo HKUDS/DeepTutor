@@ -59,7 +59,8 @@ def client(tmp_path: Path, monkeypatch) -> TestClient:
     app = FastAPI()
     app.state.partner_groups = groups
     app.state.partners = partners
-    app.include_router(router_module.router, prefix="/api/v1/partner-groups")
+    app.include_router(router_module.router, prefix="/api/partner-groups")
+    app.include_router(router_module.ws_router, prefix="/ws/partner-groups")
     try:
         yield TestClient(app)
     finally:
@@ -68,7 +69,7 @@ def client(tmp_path: Path, monkeypatch) -> TestClient:
 
 def test_group_crud_and_extension_catalogs(client: TestClient) -> None:
     created = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={
             "name": "Study panel",
             "member_ids": ["ada", "bob"],
@@ -80,18 +81,18 @@ def test_group_crud_and_extension_catalogs(client: TestClient) -> None:
     group_id = created.json()["group_id"]
     assert [member["name"] for member in created.json()["members"]] == ["Ada", "Bob"]
 
-    listed = client.get("/api/v1/partner-groups")
+    listed = client.get("/api/partner-groups")
     assert listed.status_code == 200
     assert [group["group_id"] for group in listed.json()] == [group_id]
 
     patched = client.patch(
-        f"/api/v1/partner-groups/{group_id}",
+        f"/api/partner-groups/{group_id}",
         json={"name": "Renamed panel", "description": "A learning group"},
     )
     assert patched.status_code == 200
     assert patched.json()["name"] == "Renamed panel"
 
-    assert client.get("/api/v1/partner-groups/discussion-modes").json() == [
+    assert client.get("/api/partner-groups/discussion-modes").json() == [
         {
             "name": "panel_parallel",
             "label": "Parallel panel",
@@ -117,17 +118,15 @@ def test_group_crud_and_extension_catalogs(client: TestClient) -> None:
             ),
         },
     ]
-    assert client.get("/api/v1/partner-groups/shared-memory-types").json()[0]["name"] == (
-        "whiteboard"
-    )
+    assert client.get("/api/partner-groups/shared-memory-types").json()[0]["name"] == ("whiteboard")
 
-    assert client.delete(f"/api/v1/partner-groups/{group_id}").status_code == 200
-    assert client.get(f"/api/v1/partner-groups/{group_id}").status_code == 404
+    assert client.delete(f"/api/partner-groups/{group_id}").status_code == 200
+    assert client.get(f"/api/partner-groups/{group_id}").status_code == 404
 
 
 def test_group_requires_two_visible_partners(client: TestClient) -> None:
     response = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Too small", "member_ids": ["ada", "missing"]},
     )
     assert response.status_code == 422
@@ -150,12 +149,12 @@ def test_unknown_mentions_are_nonfatal_turn_metadata(
 
     monkeypatch.setattr(partners, "send_group_message", send_group_message)
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Mention panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
 
     response = client.post(
-        f"/api/v1/partner-groups/{group_id}/messages",
+        f"/api/partner-groups/{group_id}/messages",
         json={
             "content": "@ada @typo compare this",
             "session_key": "mention-session",
@@ -185,15 +184,15 @@ def test_session_and_whiteboard_resource_contracts(
 
     monkeypatch.setattr(partners, "send_group_message", send_group_message)
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Resource panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
     turn = client.post(
-        f"/api/v1/partner-groups/{group_id}/messages",
+        f"/api/partner-groups/{group_id}/messages",
         json={"content": "A first server-owned thread", "session_key": "thread-a"},
     ).json()
 
-    sessions = client.get(f"/api/v1/partner-groups/{group_id}/sessions")
+    sessions = client.get(f"/api/partner-groups/{group_id}/sessions")
     assert sessions.status_code == 200
     assert sessions.json() == [
         {
@@ -205,7 +204,7 @@ def test_session_and_whiteboard_resource_contracts(
         }
     ]
 
-    created_session = client.post(f"/api/v1/partner-groups/{group_id}/sessions")
+    created_session = client.post(f"/api/partner-groups/{group_id}/sessions")
     assert created_session.status_code == 201
     assert created_session.json()["session_key"].startswith("pg-")
     assert created_session.json()["message_count"] == 0
@@ -214,7 +213,7 @@ def test_session_and_whiteboard_resource_contracts(
 
     event_id = turn["replies"][0]["event_id"]
     pinned = client.post(
-        f"/api/v1/partner-groups/{group_id}/whiteboard/pins",
+        f"/api/partner-groups/{group_id}/whiteboard/pins",
         json={"event_id": event_id},
     )
     assert pinned.status_code == 200
@@ -223,31 +222,30 @@ def test_session_and_whiteboard_resource_contracts(
     assert pinned.json()["entry"]["author_name"] == "Ada"
     assert pinned.json()["entry"]["content"] == "ada curated answer"
     assert pinned.json()["entry"]["pinned_at"]
-    assert client.get(f"/api/v1/partner-groups/{group_id}/whiteboard").json() == [
+    assert client.get(f"/api/partner-groups/{group_id}/whiteboard").json() == [
         pinned.json()["entry"]
     ]
 
-    unpinned = client.delete(f"/api/v1/partner-groups/{group_id}/whiteboard/pins/{event_id}")
+    unpinned = client.delete(f"/api/partner-groups/{group_id}/whiteboard/pins/{event_id}")
     assert unpinned.json() == {"deleted": True, "event_id": event_id}
-    assert client.get(f"/api/v1/partner-groups/{group_id}/whiteboard").json() == []
+    assert client.get(f"/api/partner-groups/{group_id}/whiteboard").json() == []
 
     session_key = created_session.json()["session_key"]
-    deleted = client.delete(f"/api/v1/partner-groups/{group_id}/sessions/{session_key}")
+    deleted = client.delete(f"/api/partner-groups/{group_id}/sessions/{session_key}")
     assert deleted.json() == {"deleted": True, "session_key": session_key}
     assert (
-        client.delete(f"/api/v1/partner-groups/{group_id}/sessions/{session_key}").status_code
-        == 404
+        client.delete(f"/api/partner-groups/{group_id}/sessions/{session_key}").status_code == 404
     )
 
 
 def test_user_can_create_and_reject_partner_invocation(client: TestClient) -> None:
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Invocation panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
 
     created = client.post(
-        f"/api/v1/partner-groups/{group_id}/invocations",
+        f"/api/partner-groups/{group_id}/invocations",
         json={
             "session_key": "user-originated",
             "requester_partner_id": "ada",
@@ -276,12 +274,12 @@ def test_user_can_create_and_reject_partner_invocation(client: TestClient) -> No
         "error": "",
     }
     assert client.get(
-        f"/api/v1/partner-groups/{group_id}/invocations",
+        f"/api/partner-groups/{group_id}/invocations",
         params={"session_key": "user-originated"},
     ).json() == [invocation]
 
     rejected = client.post(
-        f"/api/v1/partner-groups/{group_id}/invocations/{invocation['invocation_id']}/reject",
+        f"/api/partner-groups/{group_id}/invocations/{invocation['invocation_id']}/reject",
         json={"session_key": "user-originated"},
     )
     assert rejected.status_code == 200
@@ -328,12 +326,12 @@ def test_user_created_invocation_validation_returns_422(
     payload: dict,
 ) -> None:
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Validation panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
 
     response = client.post(
-        f"/api/v1/partner-groups/{group_id}/invocations",
+        f"/api/partner-groups/{group_id}/invocations",
         json=payload,
     )
 
@@ -342,7 +340,7 @@ def test_user_created_invocation_validation_returns_422(
 
 def test_new_group_resources_preserve_owner_isolation(client: TestClient) -> None:
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Private panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
     config_path = client.app.state.partner_groups.store.group_dir(group_id) / "config.json"
@@ -350,10 +348,10 @@ def test_new_group_resources_preserve_owner_isolation(client: TestClient) -> Non
     config["owner_id"] = "another-owner"
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    assert client.get(f"/api/v1/partner-groups/{group_id}/sessions").status_code == 404
-    assert client.delete(f"/api/v1/partner-groups/{group_id}/sessions/hidden").status_code == 404
+    assert client.get(f"/api/partner-groups/{group_id}/sessions").status_code == 404
+    assert client.delete(f"/api/partner-groups/{group_id}/sessions/hidden").status_code == 404
     response = client.post(
-        f"/api/v1/partner-groups/{group_id}/invocations",
+        f"/api/partner-groups/{group_id}/invocations",
         json={
             "session_key": "hidden",
             "requester_partner_id": "ada",
@@ -383,11 +381,11 @@ def test_retry_failed_partner_seat_returns_to_the_original_turn(
 
     monkeypatch.setattr(partners, "send_group_message", first_attempt)
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Retry panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
     turn = client.post(
-        f"/api/v1/partner-groups/{group_id}/messages",
+        f"/api/partner-groups/{group_id}/messages",
         json={"content": "Compare", "session_key": "retry-thread"},
     ).json()
     failed = next(reply for reply in turn["replies"] if reply["author_id"] == "ada")
@@ -400,7 +398,7 @@ def test_retry_failed_partner_seat_returns_to_the_original_turn(
 
     monkeypatch.setattr(partners, "send_group_message", recovered)
     retried = client.post(
-        (f"/api/v1/partner-groups/{group_id}/turns/{turn['turn_id']}/partners/ada/retry"),
+        (f"/api/partner-groups/{group_id}/turns/{turn['turn_id']}/partners/ada/retry"),
         json={"session_key": "retry-thread"},
     )
     assert retried.status_code == 200
@@ -412,13 +410,13 @@ def test_retry_failed_partner_seat_returns_to_the_original_turn(
     assert retried.json()["message"]["error"] is False
 
     history = client.get(
-        f"/api/v1/partner-groups/{group_id}/history",
+        f"/api/partner-groups/{group_id}/history",
         params={"session_key": "retry-thread"},
     ).json()
     assert len(history) == 3
     assert next(row for row in history if row["author_id"] == "ada")["content"] == ("ada recovered")
     repeated = client.post(
-        (f"/api/v1/partner-groups/{group_id}/turns/{turn['turn_id']}/partners/ada/retry"),
+        (f"/api/partner-groups/{group_id}/turns/{turn['turn_id']}/partners/ada/retry"),
         json={"session_key": "retry-thread"},
     )
     assert repeated.status_code == 409
@@ -446,16 +444,16 @@ def test_round_summary_rest_contract_and_membership_validation(
 
     monkeypatch.setattr(partners, "send_group_message", send_group_message)
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Summary panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
     turn = client.post(
-        f"/api/v1/partner-groups/{group_id}/messages",
+        f"/api/partner-groups/{group_id}/messages",
         json={"content": "Compare both approaches", "session_key": "rest-summary"},
     ).json()
 
     response = client.post(
-        f"/api/v1/partner-groups/{group_id}/rounds/{turn['turn_id']}/summary",
+        f"/api/partner-groups/{group_id}/rounds/{turn['turn_id']}/summary",
         json={"session_key": "rest-summary", "partner_id": "ada"},
     )
 
@@ -489,14 +487,14 @@ def test_round_summary_rest_contract_and_membership_validation(
     assert "Bob: bob original answer" in summary_contexts[0]
     assert (
         client.post(
-            f"/api/v1/partner-groups/{group_id}/rounds/{turn['turn_id']}/summary",
+            f"/api/partner-groups/{group_id}/rounds/{turn['turn_id']}/summary",
             json={"session_key": "rest-summary", "partner_id": "missing"},
         ).status_code
         == 422
     )
     assert (
         client.post(
-            f"/api/v1/partner-groups/{group_id}/rounds/missing/summary",
+            f"/api/partner-groups/{group_id}/rounds/missing/summary",
             json={"session_key": "rest-summary", "partner_id": "ada"},
         ).status_code
         == 404
@@ -522,11 +520,11 @@ def test_round_summary_websocket_uses_standard_stream_frames(
 
     monkeypatch.setattr(partners, "send_group_message", original_answers)
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Socket summary", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
     turn = client.post(
-        f"/api/v1/partner-groups/{group_id}/messages",
+        f"/api/partner-groups/{group_id}/messages",
         json={"content": "Synthesize later", "session_key": "ws-summary"},
     ).json()
 
@@ -537,7 +535,7 @@ def test_round_summary_websocket_uses_standard_stream_frames(
         return "Bob's round summary"
 
     monkeypatch.setattr(partners, "send_group_message", streamed_summary)
-    with client.websocket_connect(f"/api/v1/partner-groups/{group_id}/ws") as ws:
+    with client.websocket_connect(f"/ws/partner-groups/{group_id}") as ws:
         ws.send_json(
             {
                 "action": "summarize_round",
@@ -578,7 +576,7 @@ def test_websocket_receives_commands_while_turn_is_streaming(
 ) -> None:
     groups = client.app.state.partner_groups
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Live panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
 
@@ -591,7 +589,7 @@ def test_websocket_receives_commands_while_turn_is_streaming(
     monkeypatch.setattr(groups, "send_message", hanging_send)
     monkeypatch.setattr(groups, "reject_invocation", lambda *args, **kwargs: rejected)
 
-    with client.websocket_connect(f"/api/v1/partner-groups/{group_id}/ws") as ws:
+    with client.websocket_connect(f"/ws/partner-groups/{group_id}") as ws:
         ws.send_json({"content": "first", "session_key": "live"})
         assert ws.receive_json()["type"] == "user_message"
 
@@ -617,11 +615,11 @@ def test_websocket_receives_commands_while_turn_is_streaming(
 
 def test_websocket_create_invocation_emits_immediate_update(client: TestClient) -> None:
     group_id = client.post(
-        "/api/v1/partner-groups",
+        "/api/partner-groups",
         json={"name": "Socket panel", "member_ids": ["ada", "bob"]},
     ).json()["group_id"]
 
-    with client.websocket_connect(f"/api/v1/partner-groups/{group_id}/ws") as ws:
+    with client.websocket_connect(f"/ws/partner-groups/{group_id}") as ws:
         ws.send_json(
             {
                 "action": "create_invocation",

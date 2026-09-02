@@ -33,10 +33,10 @@ def test_group_capability_saves_formal_answer_before_decision_round() -> None:
     assert capability.is_active(context) is True
     instruction = capability.finish_instruction(context, "My complete answer")
     assert "invoke_other" in instruction
-    assert context.metadata["_partner_group_formal_answer"] == "My complete answer"
+    assert context.extension("partner_group")["formal_answer"] == "My complete answer"
 
     assert capability.finish_instruction(context, "NO_INVOKE") == ""
-    assert context.metadata["_partner_group_invocation_decided"] is True
+    assert context.extension("partner_group")["invocation_decided"] is True
     assert PartnerGroupCapability().is_active(_context(allow=False)) is True
     assert PartnerGroupCapability().is_active(UnifiedContext()) is False
 
@@ -48,7 +48,7 @@ def test_trailing_prose_peer_question_is_removed_in_favor_of_tool_proposal() -> 
 
     instruction = capability.finish_instruction(context, answer)
 
-    assert context.metadata["_partner_group_formal_answer"] == "My actual conclusion."
+    assert context.extension("partner_group")["formal_answer"] == "My actual conclusion."
     assert "invoke_other" in instruction
     assert "@Bob" in instruction
 
@@ -83,7 +83,7 @@ def test_real_world_trailing_peer_request_shapes_are_removed(
 
     instruction = capability.finish_instruction(context, answer)
 
-    assert context.metadata["_partner_group_formal_answer"] == expected
+    assert context.extension("partner_group")["formal_answer"] == expected
     assert "only two valid actions" in instruction
 
 
@@ -114,8 +114,8 @@ def test_invoked_reply_keeps_cleanup_without_advertising_another_invocation() ->
     assert "NO_INVOKE" not in block.content
     assert "Eligible peers" not in block.content
     assert instruction == ""
-    assert context.metadata["_partner_group_invocation_decided"] is True
-    assert context.metadata["_partner_group_formal_answer"] == "My complete answer for the user."
+    assert context.extension("partner_group")["invocation_decided"] is True
+    assert context.extension("partner_group")["formal_answer"] == "My complete answer for the user."
     assert capability.final_text_override(context, answer) == "My complete answer for the user."
 
 
@@ -131,13 +131,13 @@ async def test_invoke_other_requires_saved_answer_and_records_only_a_proposal() 
     )
     assert early.success is False
     assert early.terminate_turn is False
-    assert early_context.metadata["_partner_group_invocation_decided"] is True
+    assert early_context.extension("partner_group")["invocation_decided"] is True
     capability = PartnerGroupCapability()
     assert capability.finish_instruction(early_context, "Recovered formal answer") == ""
     assert capability.final_text_override(early_context, "ignored") == "Recovered formal answer"
 
     context = _context()
-    context.metadata["_partner_group_formal_answer"] = "Finished"
+    context.extension("partner_group")["formal_answer"] = "Finished"
     result = await tool.execute(
         target_partner_id="bob",
         question="Which assumption would you challenge?",
@@ -149,7 +149,7 @@ async def test_invoke_other_requires_saved_answer_and_records_only_a_proposal() 
         "target_partner_name": "Bob",
         "question": "Which assumption would you challenge?",
     }
-    assert context.metadata["_partner_group_invocation_proposal"]["target_partner_id"] == "bob"
+    assert context.extension("partner_group")["invocation_proposal"]["target_partner_id"] == "bob"
 
     duplicate = await tool.execute(
         target_partner_id="bob",
@@ -186,7 +186,7 @@ async def test_repeated_answerless_invoke_other_is_terminal() -> None:
 @pytest.mark.asyncio
 async def test_invoke_other_rejects_self_and_unknown_targets() -> None:
     context = _context()
-    context.metadata["_partner_group_formal_answer"] = "Finished"
+    context.extension("partner_group")["formal_answer"] = "Finished"
     tool = InvokeOtherTool()
 
     self_call = await tool.execute(
@@ -208,7 +208,7 @@ async def test_invoke_other_rejects_self_and_unknown_targets() -> None:
 @pytest.mark.asyncio
 async def test_invoked_reply_tool_call_is_refused_and_cannot_chain() -> None:
     context = _context(allow=False)
-    context.metadata["_partner_group_formal_answer"] = "The invoked answer."
+    context.extension("partner_group")["formal_answer"] = "The invoked answer."
 
     result = await InvokeOtherTool().execute(
         target_partner_id="bob",
@@ -219,7 +219,7 @@ async def test_invoked_reply_tool_call_is_refused_and_cannot_chain() -> None:
     assert result.success is False
     assert result.terminate_turn is True
     assert "cannot create another Partner proposal" in result.content
-    assert "_partner_group_invocation_proposal" not in context.metadata
+    assert "invocation_proposal" not in context.extension("partner_group")
 
 
 def test_answer_and_invoke_in_one_tool_round_saves_and_publishes_answer_once() -> None:
@@ -233,8 +233,8 @@ def test_answer_and_invoke_in_one_tool_round_saves_and_publishes_answer_once() -
     )
 
     assert policy == "publish"
-    assert context.metadata["_partner_group_formal_answer"] == "My complete answer."
-    assert context.metadata["_capability_answer_published"] is True
+    assert context.extension("partner_group")["formal_answer"] == "My complete answer."
+    assert context.capability_output.answer_published is True
 
 
 def test_any_tool_call_consumes_the_single_private_decision_round() -> None:
@@ -249,7 +249,7 @@ def test_any_tool_call_consumes_the_single_private_decision_round() -> None:
     )
 
     assert policy == "discard"
-    assert context.metadata["_partner_group_invocation_decided"] is True
+    assert context.extension("partner_group")["invocation_decided"] is True
     assert capability.final_text_override(context, "anything") == "My complete answer."
 
 
@@ -264,8 +264,8 @@ def test_invoked_reply_can_still_use_ordinary_tools() -> None:
     )
 
     assert policy == ""
-    assert "_partner_group_formal_answer" not in context.metadata
-    assert "_partner_group_invocation_decided" not in context.metadata
+    assert "formal_answer" not in context.extension("partner_group")
+    assert "invocation_decided" not in context.extension("partner_group")
 
 
 def test_invoked_reply_combined_with_forbidden_invoke_is_canonicalized() -> None:
@@ -279,7 +279,7 @@ def test_invoked_reply_combined_with_forbidden_invoke_is_canonicalized() -> None
     )
 
     assert policy == "discard"
-    assert context.metadata["_partner_group_formal_answer"] == "The invoked answer."
-    assert context.metadata["_partner_group_invocation_decided"] is True
+    assert context.extension("partner_group")["formal_answer"] == "The invoked answer."
+    assert context.extension("partner_group")["invocation_decided"] is True
     assert capability.final_text_override(context, "ignored") == "The invoked answer."
-    assert "_partner_group_invocation_proposal" not in context.metadata
+    assert "invocation_proposal" not in context.extension("partner_group")

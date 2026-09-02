@@ -23,6 +23,7 @@ export interface QuizJudgeRequest {
 
 export interface QuizJudgeHandle {
   close: () => void;
+  cancel: () => void;
 }
 
 export interface QuizJudgeHandlers {
@@ -36,13 +37,27 @@ export function startQuizJudge(
   payload: QuizJudgeRequest,
   handlers: QuizJudgeHandlers,
 ): QuizJudgeHandle {
-  const ws = new WebSocket(wsUrl("/api/v1/question/judge"));
+  const ws = new WebSocket(wsUrl("/ws/questions/judge"));
   let buffer = "";
   let finished = false;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const clearIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = undefined;
+  };
+
+  const armIdleTimer = () => {
+    clearIdleTimer();
+    idleTimer = setTimeout(() => {
+      finalize("error", "AI judge timed out. Please try again.");
+    }, 2 * 60_000);
+  };
 
   const finalize = (kind: "done" | "error", message?: string) => {
     if (finished) return;
     finished = true;
+    clearIdleTimer();
     if (kind === "done") {
       handlers.onDone(buffer);
     } else {
@@ -56,6 +71,7 @@ export function startQuizJudge(
   };
 
   ws.onopen = () => {
+    armIdleTimer();
     try {
       ws.send(JSON.stringify(payload));
     } catch (err) {
@@ -64,6 +80,7 @@ export function startQuizJudge(
   };
 
   ws.onmessage = (ev) => {
+    armIdleTimer();
     let frame: { type?: string; content?: string };
     try {
       frame = JSON.parse(ev.data);
@@ -103,12 +120,14 @@ export function startQuizJudge(
       if (!finished) {
         finished = true;
       }
+      clearIdleTimer();
       try {
         ws.close();
       } catch {
         /* ignore */
       }
     },
+    cancel: () => finalize("error", "AI judgment stopped."),
   };
 }
 

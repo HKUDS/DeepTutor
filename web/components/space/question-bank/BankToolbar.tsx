@@ -8,7 +8,11 @@ import {
   Settings2,
   X,
 } from "lucide-react";
-import type { AssessmentSource, QuestionBankMaterial, ScoreTrend } from "@/lib/notebook-api";
+import type {
+  AssessmentSource,
+  QuestionBankMaterial,
+  ScoreTrend,
+} from "@/lib/notebook-api";
 import type { BankSort, ReviewFilters } from "./useQuestionBank";
 
 interface BankToolbarProps {

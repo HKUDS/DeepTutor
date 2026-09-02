@@ -21,7 +21,7 @@ DEFAULT_INTERFACE_SETTINGS = {
     "language": "en",
     "sidebar_description": "✨ Data Intelligence Lab @ HKU",
     "sidebar_nav_order": {
-        "start": ["/", "/history", "/knowledge", "/notebook"],
+        "start": ["/", "/history", "/knowledge-bases", "/notebooks"],
         "learnResearch": ["/question", "/solver", "/research", "/co_writer"],
     },
 }

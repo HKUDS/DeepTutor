@@ -1,4 +1,4 @@
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 /** Versioned payload emitted by the Chat engine's `propose_partner` tool. */
 export interface PartnerDraftData {

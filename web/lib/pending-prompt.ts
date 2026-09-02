@@ -18,6 +18,8 @@
  * written for a mastery path would be nonsense in the reader, so a hand-off the
  * learner declined must not leak into whichever surface they open next.
  */
+import { browserStorage } from "@/shared/storage";
+
 const PENDING_PROMPT_KEY = "deeptutor.pendingPrompt";
 
 function keyFor(scope: string): string {
@@ -28,7 +30,7 @@ function keyFor(scope: string): string {
 export function setPendingPrompt(text: string, scope = ""): void {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(keyFor(scope), text);
+    browserStorage.writeRaw("session", keyFor(scope), text);
   } catch {
     // Private-mode browsers reject sessionStorage; the user still lands on the
     // destination, just with an empty composer.
@@ -39,8 +41,8 @@ export function consumePendingPrompt(scope = ""): string {
   if (typeof window === "undefined") return "";
   try {
     const key = keyFor(scope);
-    const value = window.sessionStorage.getItem(key);
-    if (value) window.sessionStorage.removeItem(key);
+    const value = browserStorage.readRaw("session", key);
+    if (value) browserStorage.removeRaw("session", key);
     return value ?? "";
   } catch {
     return "";

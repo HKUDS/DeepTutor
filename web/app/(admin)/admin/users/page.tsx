@@ -15,6 +15,7 @@ import {
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
 import { BookPermissionEditor } from "@/features/multi-user/components/BookPermissionEditor";
 import { LearnerProfileEditor } from "@/features/multi-user/components/LearnerProfileEditor";
+import { GuardianRelationshipsEditor } from "@/features/multi-user/components/GuardianRelationshipsEditor";
 import { UserAvatar } from "@/components/UserAvatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { filterUsersByQuery } from "@/lib/admin-users";
@@ -391,7 +392,13 @@ export default function AdminUsersPage() {
                           {!isAdmin && user.preset && (
                             <span className="mt-1 block text-[11px] text-[var(--muted-foreground)]">
                               {t("Preset: {{preset}}", {
-                                preset: t(user.preset === "learner" ? "Learner" : user.preset === "custom" ? "Custom" : "Standard"),
+                                preset: t(
+                                  user.preset === "learner"
+                                    ? "Learner"
+                                    : user.preset === "custom"
+                                      ? "Custom"
+                                      : "Standard",
+                                ),
                               })}
                             </span>
                           )}
@@ -472,7 +479,16 @@ export default function AdminUsersPage() {
                             />
                             <BookPermissionEditor userId={user.id} />
                             {user.preset === "learner" && (
-                              <LearnerProfileEditor username={user.username} />
+                              <>
+                                <GuardianRelationshipsEditor
+                                  learnerId={user.id}
+                                  learnerUsername={user.username}
+                                  users={users}
+                                />
+                                <LearnerProfileEditor
+                                  username={user.username}
+                                />
+                              </>
                             )}
                           </td>
                         </tr>
@@ -646,10 +662,16 @@ export default function AdminUsersPage() {
               </div>
               <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
                 {createPreset === "learner"
-                  ? t("Chat and Immersive Reading only, with uploads and tools disabled until assigned.")
+                  ? t(
+                      "Chat and Immersive Reading only, with uploads and tools disabled until assigned.",
+                    )
                   : createPreset === "custom"
-                    ? t("Create an ordinary account, then customize its assignments.")
-                    : t("Create an ordinary account with the default workspace behavior.")}
+                    ? t(
+                        "Create an ordinary account, then customize its assignments.",
+                      )
+                    : t(
+                        "Create an ordinary account with the default workspace behavior.",
+                      )}
               </p>
             </fieldset>
 

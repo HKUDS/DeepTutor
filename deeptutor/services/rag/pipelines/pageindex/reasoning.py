@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from deeptutor.core.agentic import (
+from deeptutor.core.context import UnifiedContext
+from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.runtime.agentic import (
     DispatchOutcome,
     LabelProtocol,
     LLMClientConfig,
@@ -16,11 +18,9 @@ from deeptutor.core.agentic import (
     dispatch_tool_calls,
     run_agentic_loop,
 )
-from deeptutor.core.agentic.labeled_step import run_labeled_step
-from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
-from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.runtime.agentic.labeled_step import run_labeled_step
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm import get_llm_config
 
 from .tools import PageIndexToolContext, build_pageindex_tool_context

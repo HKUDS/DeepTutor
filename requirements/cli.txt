@@ -39,11 +39,14 @@ aiosqlite>=0.19.0
 
 # --- RAG (LlamaIndex) ---
 llama-index>=0.14.12
-llama-index-retrievers-bm25>=0.7.1,<0.8.0
+# PyStemmer 2.x has no Python 3.14 wheels. LlamaIndex falls back to vector
+# retrieval when this optional BM25 integration is unavailable.
+llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < "3.14"
 # FAISS vector store: ANN retrieval replacing SimpleVectorStore brute force for
 # large KBs (issue #552); imported lazily with SimpleVectorStore fallback.
 llama-index-vector-stores-faiss>=0.4.0,<1.0.0
-faiss-cpu>=1.8.0,<2.0.0
+faiss-cpu>=1.8.0,<2.0.0; python_version < "3.14"
+faiss-cpu>=1.12.0,<2.0.0; python_version >= "3.14"
 PyMuPDF>=1.26.0
 numpy>=1.24.0,<3.0.0
 arxiv>=2.0.0

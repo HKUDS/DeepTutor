@@ -39,10 +39,26 @@ test("the build wrapper restores every generated checked-in input", () => {
     /\[nextBin, "build", "--webpack", \.\.\.process\.argv\.slice\(2\)\]/,
     "source production builds must use Webpack so Next emits standalone/server.js",
   );
+  assert.match(
+    source,
+    /restore\(buildTsconfigPath, configureTypeIncludes\(tsconfig\[1\], distDir\)\)/,
+    "the build must isolate generated route types to its active dist directory",
+  );
+  assert.match(
+    source,
+    /DEEPTUTOR_NEXT_TSCONFIG:\s*path\.basename\(buildTsconfigPath\)/,
+    "Next must consume the process-local build config rather than shared tsconfig.json",
+  );
+  assert.match(
+    source,
+    /finally\s*{\s*if \(buildTsconfigPath\) rmSync/,
+    "generated inputs must be restored even when the build fails",
+  );
 });
 
 test("the standalone bundle is rooted where the Python launcher expects it", () => {
   const source = read("next.config.js");
   assert.match(source, /output:\s*"standalone"/);
   assert.match(source, /outputFileTracingRoot:\s*__dirname/);
+  assert.match(source, /tsconfigPath:\s*process\.env\.DEEPTUTOR_NEXT_TSCONFIG/);
 });

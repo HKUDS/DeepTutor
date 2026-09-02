@@ -6,13 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import UnifiedContext
 import deeptutor.core.entry_points as ep_module
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 
-class _DemoCapability(BaseCapability):
+class _DemoCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="demo_cap",
         description="Demo capability from a plugin EP.",

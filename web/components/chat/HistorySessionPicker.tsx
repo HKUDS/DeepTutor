@@ -250,7 +250,10 @@ export default function HistorySessionPicker({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
-                            {displaySessionTitle(session.title, placeholderLabel)}
+                            {displaySessionTitle(
+                              session.title,
+                              placeholderLabel,
+                            )}
                           </span>
                           <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]/85">
                             <MessageSquare size={11} strokeWidth={1.8} />

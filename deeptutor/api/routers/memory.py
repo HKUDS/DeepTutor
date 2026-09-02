@@ -408,11 +408,11 @@ async def list_runs(layer: str | None = None, key: str | None = None):
 
 @router.get("/runs/{run_id}/events")
 async def stream_run_events(run_id: str, since: int = 0):
-    """SSE-replay events from ``since`` (exclusive) until the run ends.
+    """SSE-replay events from the next sequence cursor until the run ends.
 
-    Reconnecting after a refresh: pass the largest ``seq`` previously
-    observed. The manager replays the buffered tail, then blocks on
-    new events until the run reaches a terminal state.
+    Reconnecting after a refresh: pass ``last_seen_seq + 1``. The manager
+    replays the buffered tail, then blocks on new events until the run reaches
+    a terminal state.
     """
     from deeptutor.services.memory.consolidator.runs import get_run_manager
 
@@ -435,10 +435,10 @@ async def stream_run_events(run_id: str, since: int = 0):
                     )
                     + "\n\n"
                 )
-            cursor = max(cursor, run.events[-1].seq + 1 if run.events else cursor)
+                cursor = max(cursor, ev.seq + 1)
             if not run.active:
                 # Drain any final events that arrived between wait return and now.
-                final = run.events[cursor:]
+                final = [event for event in run.events if event.seq >= cursor]
                 for ev in final:
                     yield (
                         "data: "

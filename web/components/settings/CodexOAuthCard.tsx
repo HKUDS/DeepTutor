@@ -26,7 +26,7 @@ import {
   type CodexReasoningModel,
 } from "@/lib/codex-oauth";
 
-import { useSettings } from "./SettingsContext";
+import { useSettings } from "@/features/settings/store/SettingsStore";
 
 export function CodexOAuthCard() {
   const { t } = useTranslation();

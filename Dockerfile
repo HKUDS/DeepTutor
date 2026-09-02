@@ -267,6 +267,7 @@ set -e
 
 BACKEND_PORT=${BACKEND_PORT:-8001}
 BACKEND_HOST=${BACKEND_HOST:-0.0.0.0}
+BACKEND_WORKERS=${BACKEND_WORKERS:-1}
 
 echo "[Backend]  🚀 Starting FastAPI backend on ${BACKEND_HOST}:${BACKEND_PORT}..."
 
@@ -289,7 +290,7 @@ echo "[Backend]  🚀 Starting FastAPI backend on ${BACKEND_HOST}:${BACKEND_PORT
 # reaper so the client is the only side retiring idle connections.
 WS_MAX_SIZE=$(python -c "from deeptutor.services.config import get_ws_max_size; print(get_ws_max_size())" 2>/dev/null || echo 16777216)
 KEEP_ALIVE=$(python -c "from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT; print(HTTP_KEEP_ALIVE_TIMEOUT)" 2>/dev/null || echo 300)
-exec python -m uvicorn deeptutor.api.main:app --host ${BACKEND_HOST} --port ${BACKEND_PORT} --no-access-log --ws-max-size ${WS_MAX_SIZE} --timeout-keep-alive ${KEEP_ALIVE}
+exec python -m uvicorn deeptutor.api.main:app --host ${BACKEND_HOST} --port ${BACKEND_PORT} --workers ${BACKEND_WORKERS} --no-access-log --ws-max-size ${WS_MAX_SIZE} --timeout-keep-alive ${KEEP_ALIVE}
 EOF
 
 RUN sed -i 's/\r$//' /app/start-backend.sh && chmod +x /app/start-backend.sh
@@ -330,6 +331,8 @@ export DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES=1
 # data/user/settings/*.json below.
 for key in \
     BACKEND_PORT \
+    BACKEND_WORKERS \
+    DEEPTUTOR_BACKEND_WORKERS \
     FRONTEND_PORT \
     NEXT_PUBLIC_API_BASE_EXTERNAL \
     NEXT_PUBLIC_API_BASE \
@@ -460,7 +463,7 @@ try:
 except Exception:
     pass
 
-urllib.request.urlopen(f"http://localhost:{port}/", timeout=5).close()
+urllib.request.urlopen(f"http://localhost:{port}/health/ready", timeout=5).close()
 EOF
 
 # Expose ports

@@ -25,7 +25,7 @@ test("extractMathAnimatorResult keeps actual math animator payloads", () => {
     artifacts: [
       {
         type: "image",
-        url: "/api/v1/files/frame-1.png",
+        url: "/api/files/frame-1.png",
         filename: "frame-1.png",
       },
     ],

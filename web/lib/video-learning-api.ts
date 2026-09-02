@@ -100,20 +100,16 @@ async function unwrap<T>(response: Response): Promise<T> {
             "string"
           ? (detail as { message: string }).message
           : null;
-    throw new Error(
-      message || `Request failed (${response.status})`,
-    );
+    throw new Error(message || `Request failed (${response.status})`);
   }
   return (await response.json()) as T;
 }
 
-export async function listVideoNotes(
-  materialId: string,
-): Promise<VideoNote[]> {
+export async function listVideoNotes(materialId: string): Promise<VideoNote[]> {
   return unwrap(
     await apiFetch(
       apiUrl(
-        `/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/notes`,
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/notes`,
       ),
       { cache: "no-store" },
     ),
@@ -128,7 +124,7 @@ export async function createVideoNote(
   return unwrap(
     await apiFetch(
       apiUrl(
-        `/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/notes`,
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/notes`,
       ),
       {
         method: "POST",
@@ -147,7 +143,7 @@ export async function updateVideoNote(
   return unwrap(
     await apiFetch(
       apiUrl(
-        `/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/notes/${encodeURIComponent(noteId)}`,
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/notes/${encodeURIComponent(noteId)}`,
       ),
       {
         method: "PUT",
@@ -165,7 +161,7 @@ export async function deleteVideoNote(
   await unwrap(
     await apiFetch(
       apiUrl(
-        `/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/notes/${encodeURIComponent(noteId)}`,
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/notes/${encodeURIComponent(noteId)}`,
       ),
       { method: "DELETE" },
     ),
@@ -178,7 +174,7 @@ export async function resolveVideo(
   providerOverride?: VideoProvider,
 ): Promise<TimedMediaMaterial> {
   return unwrap(
-    await apiFetch(apiUrl("/api/v1/video-learning/materials/resolve"), {
+    await apiFetch(apiUrl("/api/video-learning/materials/resolve"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -195,9 +191,7 @@ export async function getVideoMaterial(
 ): Promise<TimedMediaMaterial> {
   return unwrap(
     await apiFetch(
-      apiUrl(
-        `/api/v1/video-learning/materials/${encodeURIComponent(materialId)}`,
-      ),
+      apiUrl(`/api/video-learning/materials/${encodeURIComponent(materialId)}`),
       {
         cache: "no-store",
       },
@@ -210,7 +204,7 @@ export async function listRecentVideoMaterials(
 ): Promise<RecentVideoMaterial[]> {
   return unwrap(
     await apiFetch(
-      apiUrl(`/api/v1/video-learning/materials?limit=${encodeURIComponent(limit)}`),
+      apiUrl(`/api/video-learning/materials?limit=${encodeURIComponent(limit)}`),
       { cache: "no-store" },
     ),
   );
@@ -222,7 +216,7 @@ export async function refreshInvidiousTranscript(
   return unwrap(
     await apiFetch(
       apiUrl(
-        `/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/transcript/refresh`,
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/transcript/refresh`,
       ),
       { method: "POST" },
     ),
@@ -237,7 +231,7 @@ export async function saveVideoProgress(
   await unwrap(
     await apiFetch(
       apiUrl(
-        `/api/v1/video-learning/materials/${encodeURIComponent(materialId)}/progress`,
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/progress`,
       ),
       {
         method: "PUT",
@@ -253,7 +247,7 @@ export async function saveVideoProgress(
 
 export async function getVideoLearningSettings(): Promise<VideoLearningSettings> {
   return unwrap(
-    await apiFetch(apiUrl("/api/v1/settings/video-learning"), {
+    await apiFetch(apiUrl("/api/settings/video-learning"), {
       cache: "no-store",
     }),
   );
@@ -263,7 +257,7 @@ export async function saveVideoLearningSettings(
   settings: VideoLearningSettings,
 ): Promise<VideoLearningSettings> {
   return unwrap(
-    await apiFetch(apiUrl("/api/v1/settings/video-learning"), {
+    await apiFetch(apiUrl("/api/settings/video-learning"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
@@ -275,7 +269,7 @@ export async function testInvidious(
   settings: VideoLearningSettings,
 ): Promise<{ ok: boolean; message: string }> {
   return unwrap(
-    await apiFetch(apiUrl("/api/v1/settings/video-learning/test-invidious"), {
+    await apiFetch(apiUrl("/api/settings/video-learning/test-invidious"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),

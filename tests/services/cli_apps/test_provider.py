@@ -320,7 +320,7 @@ def test_a_file_the_app_wrote_is_surfaced_as_a_link(
                 filename="out.png",
                 path=str(workdir / "out.png"),
                 relative_path="out.png",
-                url="/api/outputs/out.png",
+                url="/files/outputs/out.png",
                 size_bytes=8,
                 mime_type="image/png",
             )
@@ -518,8 +518,8 @@ def test_an_abi_mismatch_refuses_with_an_actionable_message(monkeypatch) -> None
 
 
 def test_an_app_whose_files_are_gone_reports_that_rather_than_a_spawn_error() -> None:
-    from deeptutor.core.i18n import t
     from deeptutor.services.cli_apps.runner import run_app
+    from deeptutor.services.i18n import t
 
     app = _install()
     result = asyncio.run(run_app(app, ["--help"], user_id="u_ada"))

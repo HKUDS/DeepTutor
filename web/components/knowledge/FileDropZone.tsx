@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, FileText, Files, X } from "lucide-react";
-import type { KnowledgeUploadPolicy } from "@/lib/knowledge-api";
+import type { KnowledgeUploadPolicy } from "@/features/knowledge/model/types";
 import {
   formatFileSize,
   mergeSelectedFiles,

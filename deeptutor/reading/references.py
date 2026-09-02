@@ -105,8 +105,8 @@ def resolve_reading_sources(
                 )
                 outline = []
                 unit_refs = []
-                read_unit = lambda mid, locator: active_store.revision_unit_text(  # noqa: E731
-                    mid, revision, locator
+                read_unit = lambda material_id, locator: active_store.revision_unit_text(  # noqa: E731
+                    material_id, revision, locator
                 )
         except Exception:
             # Missing, deleted, corrupt, or unknown revisions are not sources.

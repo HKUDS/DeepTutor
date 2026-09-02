@@ -20,7 +20,7 @@ Phase shape:
 
 The orchestrator owns control flow (per-question iteration, repair pass,
 incremental emission) and prompt assembly; everything else is delegated
-to :mod:`deeptutor.core.agentic` and the shared tool-composition policy.
+to :mod:`deeptutor.runtime.agentic` and the shared tool-composition policy.
 """
 
 from __future__ import annotations
@@ -42,7 +42,14 @@ from deeptutor.agents._shared.tool_composition import (
     user_has_notebooks,
     user_has_question_bank,
 )
-from deeptutor.core.agentic import (
+from deeptutor.core.context import Attachment, UnifiedContext
+from deeptutor.core.trace import (
+    build_trace_metadata,
+    derive_trace_metadata,
+    merge_trace_metadata,
+    new_call_id,
+)
+from deeptutor.runtime.agentic import (
     DispatchOutcome,
     LabeledStepResult,
     LabelProtocol,
@@ -55,18 +62,11 @@ from deeptutor.core.agentic import (
     run_agentic_loop,
     run_labeled_step,
 )
-from deeptutor.core.agentic.labels import find_inline_labels
-from deeptutor.core.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
-from deeptutor.core.agentic.usage import record_streamed_usage
-from deeptutor.core.context import Attachment, UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
-from deeptutor.core.trace import (
-    build_trace_metadata,
-    derive_trace_metadata,
-    merge_trace_metadata,
-    new_call_id,
-)
+from deeptutor.runtime.agentic.labels import find_inline_labels
+from deeptutor.runtime.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
+from deeptutor.runtime.agentic.usage import record_streamed_usage
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
 from deeptutor.services.path_service import get_path_service

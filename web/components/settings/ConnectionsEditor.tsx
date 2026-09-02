@@ -23,7 +23,7 @@ import {
   type ConnectionTarget,
   type ServiceName,
   useSettings,
-} from "./SettingsContext";
+} from "@/features/settings/store/SettingsStore";
 import { inputClass, selectClass, selectOptionClass } from "./shared";
 
 /**
@@ -52,14 +52,14 @@ const SERVICE_LABEL: Record<ServiceName, { en: string; zh: string }> = {
 };
 
 const SERVICE_HREF: Record<ServiceName, string> = {
-  llm: "/settings/models#llm",
-  task: "/settings/models#task-models",
-  embedding: "/settings/models#embedding",
-  search: "/settings/models#search",
-  tts: "/settings/models#tts",
-  stt: "/settings/models#stt",
-  imagegen: "/settings/models#imagegen",
-  videogen: "/settings/models#videogen",
+  llm: "/settings#llm",
+  task: "/settings#task-models",
+  embedding: "/settings#embedding",
+  search: "/settings#search",
+  tts: "/settings#tts",
+  stt: "/settings#stt",
+  imagegen: "/settings#imagegen",
+  videogen: "/settings#videogen",
 };
 
 type ServiceLink = { service: ServiceName; profileId: string };
@@ -542,7 +542,7 @@ function AddConnectionPanel({
     setFetching(true);
     setFetchError("");
     try {
-      const response = await apiFetch(apiUrl("/api/v1/settings/fetch-models"), {
+      const response = await apiFetch(apiUrl("/api/settings/fetch-models"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

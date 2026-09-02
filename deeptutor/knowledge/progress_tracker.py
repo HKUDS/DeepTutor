@@ -74,13 +74,11 @@ class ProgressTracker:
 
         if is_server():
             try:
-                from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
-
-                broadcaster = ProgressBroadcaster.get_instance()
+                from deeptutor.knowledge.progress_events import broadcast_progress
 
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.create_task(broadcaster.broadcast(self.kb_name, progress))
+                    loop.create_task(broadcast_progress(self.kb_name, progress))
                 except RuntimeError:
                     pass
             except (ImportError, Exception):
@@ -244,9 +242,9 @@ class ProgressTracker:
 
         if self.task_id:
             try:
-                from deeptutor.api.utils.task_log_stream import get_task_stream_manager
+                from deeptutor.knowledge.progress_events import emit_task_progress
 
-                get_task_stream_manager().emit(self.task_id, "progress", progress)
+                emit_task_progress(self.task_id, progress)
             except Exception as e:
                 _logger_instance().debug("Failed to emit task progress event: %s", e)
 

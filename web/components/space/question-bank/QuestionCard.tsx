@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { NotebookCategory, NotebookEntry } from "@/lib/notebook-api";
+import { bookRoute } from "@/lib/resource-routes";
 import CategoryMenu from "./CategoryMenu";
 
 const MarkdownRenderer = dynamic(
@@ -89,6 +90,7 @@ function AnswerBlock({
             }
             variant="prose"
             className="text-[13px] leading-relaxed"
+            enableMath
           />
         ) : (
           <span className="text-[var(--muted-foreground)]">—</span>
@@ -198,6 +200,7 @@ export default function QuestionCard({
               content={entry.question}
               variant="prose"
               className="text-[14px] leading-relaxed"
+              enableMath
             />
           </div>
         </div>
@@ -290,15 +293,20 @@ export default function QuestionCard({
                   >
                     {key}.
                   </span>
-                  <span
+                  <div
                     className={`flex-1 ${
                       isCorrectAnswer || isWrongPick
                         ? "text-[var(--foreground)]"
                         : "text-[var(--muted-foreground)]"
                     }`}
                   >
-                    {text}
-                  </span>
+                    <MarkdownRenderer
+                      content={text}
+                      variant="compact"
+                      className="font-sans text-[13px] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
+                      enableMath
+                    />
+                  </div>
                   {isCorrectAnswer && (
                     <span className="mt-px shrink-0 text-[10px] font-medium text-green-600 dark:text-green-400">
                       ✓ {t("Correct")}
@@ -342,6 +350,7 @@ export default function QuestionCard({
                 content={entry.explanation}
                 variant="prose"
                 className="text-[13px] leading-relaxed"
+                enableMath
               />
             </div>
           </div>
@@ -367,7 +376,7 @@ export default function QuestionCard({
               </span>
             ))}
             <Link
-              href={`/?session=${encodeURIComponent(entry.session_id)}`}
+              href={`/chat/${encodeURIComponent(entry.session_id)}`}
               className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             >
               <ExternalLink size={10} />
@@ -375,11 +384,7 @@ export default function QuestionCard({
             </Link>
             {entry.source === "book" && entry.material_id && (
               <Link
-                href={`/book?book=${encodeURIComponent(entry.material_id)}${
-                  entry.section_id
-                    ? `&page=${encodeURIComponent(entry.section_id)}`
-                    : ""
-                }`}
+                href={bookRoute(entry.material_id, entry.section_id)}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
                 <ExternalLink size={10} />
@@ -394,7 +399,7 @@ export default function QuestionCard({
             )}
             {entry.followup_session_id && (
               <Link
-                href={`/?session=${encodeURIComponent(entry.followup_session_id)}`}
+                href={`/chat/${encodeURIComponent(entry.followup_session_id)}`}
                 className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
                 <MessageSquare size={10} />

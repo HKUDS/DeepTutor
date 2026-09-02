@@ -11,7 +11,7 @@ import { Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PartnerModelSelect from "@/components/partners/PartnerModelSelect";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
-import type { LLMSelection } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
   addPartnerAssets,
   getPartnerAssets,

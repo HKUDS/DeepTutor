@@ -73,12 +73,12 @@ def test_admin_profile_api_is_learner_only_and_can_clear_profile(
     monkeypatch.setattr(auth_router, "decode_token", lambda token: tokens.get(token))
 
     app = FastAPI()
-    app.include_router(auth_router.router, prefix="/api/v1/auth")
+    app.include_router(auth_router.router, prefix="/api/auth")
     client = TestClient(app)
     headers = {"Authorization": "Bearer admin-token"}
 
     updated = client.put(
-        "/api/v1/auth/users/learner/learner-profile",
+        "/api/auth/users/learner/learner-profile",
         headers=headers,
         json={"age": 8, "language": "zh-CN"},
     )
@@ -90,15 +90,14 @@ def test_admin_profile_api_is_learner_only_and_can_clear_profile(
     )
 
     cleared = client.put(
-        "/api/v1/auth/users/learner/learner-profile",
+        "/api/auth/users/learner/learner-profile",
         headers=headers,
         json={},
     )
     assert cleared.status_code == 200
     assert cleared.json()["learner_profile"] is None
     assert (
-        client.get("/api/v1/auth/users/standard/learner-profile", headers=headers).status_code
-        == 404
+        client.get("/api/auth/users/standard/learner-profile", headers=headers).status_code == 404
     )
 
     from deeptutor.services.auth import get_learner_profile

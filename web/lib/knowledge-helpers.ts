@@ -4,12 +4,14 @@ export interface KnowledgeUploadPolicy {
   extensions: string[];
   accept: string;
   max_file_size_bytes: number;
+  allow_any_extension?: boolean;
 }
 
 export const DEFAULT_UPLOAD_POLICY: KnowledgeUploadPolicy = {
   extensions: [],
   accept: "",
   max_file_size_bytes: 200 * 1024 * 1024,
+  allow_any_extension: false,
 };
 
 const PAGEINDEX_UPLOAD_EXTENSIONS: Record<string, string[]> = {
@@ -35,7 +37,12 @@ export function uploadPolicyForProvider(
 ): KnowledgeUploadPolicy {
   const extensions = PAGEINDEX_UPLOAD_EXTENSIONS[provider || ""];
   return extensions
-    ? { ...policy, extensions, accept: extensions.join(",") }
+    ? {
+        ...policy,
+        extensions,
+        accept: extensions.join(","),
+        allow_any_extension: false,
+      }
     : policy;
 }
 
@@ -188,7 +195,19 @@ export const formatFileSize = (bytes: number): string => {
   return `${bytes} B`;
 };
 
-export const getFileExtension = (filename: string): string => {
+export const getFileExtension = (
+  filename: string,
+  allowedExtensions: Iterable<string> = [],
+): string => {
+  const lowerName = filename.toLowerCase();
+  const matches = Array.from(allowedExtensions, (extension) =>
+    extension.toLowerCase(),
+  ).filter((extension) => lowerName.endsWith(extension));
+  if (matches.length > 0) {
+    return matches.reduce((longest, extension) =>
+      extension.length > longest.length ? extension : longest,
+    );
+  }
   const index = filename.lastIndexOf(".");
   return index >= 0 ? filename.slice(index).toLowerCase() : "";
 };
@@ -329,9 +348,9 @@ export const resolveKnowledgeIndexFailure = (
     retryable: progress?.retryable ?? storedProgress?.retryable,
     requiresModelChange: requiresEmbeddingChange || requiresCompletionChange,
     settingsHref: requiresEmbeddingChange
-      ? "/settings/models#embedding"
+      ? "/settings#embedding"
       : requiresCompletionChange
-        ? "/settings/models"
+        ? "/settings#models"
         : undefined,
   };
 };
@@ -400,10 +419,14 @@ export function validateFiles(
   );
 
   const items = files.map((file) => {
-    const extension = getFileExtension(file.name);
+    const extension = getFileExtension(file.name, allowedExtensions);
     let error: string | null = null;
 
-    if (allowedExtensions.size > 0 && !allowedExtensions.has(extension)) {
+    if (
+      !uploadPolicy.allow_any_extension &&
+      allowedExtensions.size > 0 &&
+      !allowedExtensions.has(extension)
+    ) {
       error = t("Unsupported file type");
     } else if (file.size > uploadPolicy.max_file_size_bytes) {
       error = t("This file exceeds the maximum size of {{size}}.", {

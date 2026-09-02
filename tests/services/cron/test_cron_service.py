@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import pytest
@@ -120,6 +121,64 @@ class TestJobManagement:
         assert service.list_jobs() == []
         # The corrupt original was moved aside, not overwritten.
         assert any(p.name.startswith("jobs") and "corrupt" in p.name for p in tmp_path.iterdir())
+
+    def test_two_service_instances_observe_each_others_changes(self, tmp_path):
+        store = tmp_path / "jobs.sqlite3"
+        first = CronService(store_path=store)
+        second = CronService(store_path=store)
+        one = first.add_job(
+            name="one",
+            message="first",
+            schedule=CronSchedule(kind="every", every_seconds=60),
+            owner=_chat_owner(),
+        )
+        two = second.add_job(
+            name="two",
+            message="second",
+            schedule=CronSchedule(kind="every", every_seconds=60),
+            owner=_chat_owner(),
+        )
+
+        assert {job.id for job in first.list_jobs()} == {one.id, two.id}
+        assert first.cancel_job(two.id) is True
+        assert [job.id for job in second.list_jobs()] == [one.id]
+        assert store.read_bytes().startswith(b"SQLite format 3\x00")
+
+    def test_legacy_json_is_migrated_once_and_archived(self, tmp_path):
+        legacy = tmp_path / "jobs.json"
+        database = tmp_path / "jobs.sqlite3"
+        future = _now_ms() + 60_000
+        legacy.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "jobs": [
+                        {
+                            "id": "legacy-job",
+                            "name": "legacy",
+                            "message": "remember",
+                            "schedule": {"kind": "at", "at_ms": future},
+                            "owner": {
+                                "kind": "chat",
+                                "user_id": "local-admin",
+                                "session_id": "s1",
+                            },
+                            "enabled": True,
+                            "delete_after_run": True,
+                            "created_at_ms": _now_ms(),
+                            "state": {"next_run_at_ms": future, "run_history": []},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        service = CronService(store_path=database, legacy_store_path=legacy)
+        assert [job.id for job in service.list_jobs()] == ["legacy-job"]
+        assert not legacy.exists()
+        assert len(list(tmp_path.glob("jobs.legacy-*.json"))) == 1
+        assert [job.id for job in CronService(store_path=database).list_jobs()] == ["legacy-job"]
 
 
 class TestSchedulerLoop:

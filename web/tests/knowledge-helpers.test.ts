@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getFileExtension,
   isMarginNoteKb,
   kbCanReindex,
   kbDetailSections,
@@ -10,9 +11,17 @@ import {
   resolveKnowledgeIndexFailure,
   taskFailureMessage,
   uploadPolicyForProvider,
+  validateFiles,
   providerConnectionStatus,
   type KnowledgeBase,
 } from "../lib/knowledge-helpers";
+
+test("knowledge upload extension matching supports compound Docling suffixes", () => {
+  const allowed = [".gz", ".tar.gz", ".xml", ".dclg.xml"];
+  assert.equal(getFileExtension("BOOK.TAR.GZ", allowed), ".tar.gz");
+  assert.equal(getFileExtension("document.DCLG.XML", allowed), ".dclg.xml");
+  assert.equal(getFileExtension("plain.XML", allowed), ".xml");
+});
 
 test("PageIndex providers do not expose embedding metadata", () => {
   assert.equal(providerUsesEmbeddingMetadata("pageindex"), false);
@@ -31,8 +40,26 @@ test("PageIndex OSS upload policy accepts PDF only", () => {
     extensions: [".pdf"],
     accept: ".pdf",
     max_file_size_bytes: 100,
+    allow_any_extension: false,
   });
   assert.equal(uploadPolicyForProvider(base, "llamaindex"), base);
+});
+
+test("unbounded parser policy delegates unknown extensions", () => {
+  const custom = new File(["payload"], "document.vendor-format");
+  const result = validateFiles(
+    [custom],
+    {
+      extensions: [],
+      accept: "",
+      max_file_size_bytes: 100,
+      allow_any_extension: true,
+    },
+    ((key: string) => key) as never,
+  );
+
+  assert.deepEqual(result.validFiles, [custom]);
+  assert.equal(result.invalidFiles.length, 0);
 });
 
 function kb(overrides: Partial<KnowledgeBase>): KnowledgeBase {
@@ -101,7 +128,7 @@ test("resolveKnowledgeIndexFailure preserves actionable backend metadata", () =>
       message: "Choose a chat model that supports structured output.",
       retryable: false,
       requiresModelChange: true,
-      settingsHref: "/settings/models",
+      settingsHref: "/settings#models",
     },
   );
 });
@@ -129,7 +156,7 @@ test("resolveKnowledgeIndexFailure distinguishes configuration from transient fa
   );
 
   assert.equal(authentication?.requiresModelChange, true);
-  assert.equal(authentication?.settingsHref, "/settings/models");
+  assert.equal(authentication?.settingsHref, "/settings#models");
   assert.equal(rateLimit?.requiresModelChange, false);
   assert.equal(rateLimit?.settingsHref, undefined);
   assert.equal(rateLimit?.retryable, true);
@@ -148,7 +175,7 @@ test("resolveKnowledgeIndexFailure routes embedding configuration failures to em
   );
 
   assert.equal(endpointFailure?.requiresModelChange, true);
-  assert.equal(endpointFailure?.settingsHref, "/settings/models#embedding");
+  assert.equal(endpointFailure?.settingsHref, "/settings#embedding");
 });
 
 test("taskFailureMessage keeps trace details out of the primary error", () => {

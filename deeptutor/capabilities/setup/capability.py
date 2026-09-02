@@ -1,6 +1,6 @@
 """Setup loop capability — DeepTutor configuring its own install.
 
-A *plain* :class:`~deeptutor.capabilities.protocol.LoopCapability`, not a
+A *plain* :class:`~deeptutor.capabilities.protocol.LoopExtension`, not a
 :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`: configuring the
 app is something the user asks for in the middle of ordinary work ("switch to
 Chinese and use a better PDF parser"), so the turn keeps its normal tool

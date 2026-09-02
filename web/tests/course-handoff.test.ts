@@ -8,10 +8,7 @@ import {
   stripLeakedHandoffJson,
   targetAcceptsPrompt,
 } from "../lib/course-handoff";
-import {
-  courseSessionConfiguration,
-  courseTurnConfiguration,
-} from "../lib/course-session-scope";
+import { courseSessionConfiguration } from "../lib/course-session-scope";
 
 function toolResult(handoff: Record<string, unknown>, nested = true) {
   const payload = { course_handoff: handoff };
@@ -103,7 +100,7 @@ test("mastery hand-offs land on the study route, which has a composer", () => {
       label: "",
       course_id: "c1",
     }),
-    "/mastery/path%201%2Fa/study?course=c1",
+    "/mastery/path%201%2Fa/sessions?course=c1",
   );
 });
 
@@ -123,7 +120,7 @@ test("specific reading hand-offs keep the course scope", () => {
   );
 });
 
-test("study sessions and turns carry the course scope", () => {
+test("study sessions carry the course scope", () => {
   const session = courseSessionConfiguration(
     { capability: "mastery_path", masteryPathId: "path_1" },
     " course_os ",
@@ -133,14 +130,6 @@ test("study sessions and turns carry the course scope", () => {
     masteryPathId: "path_1",
     courseId: "course_os",
   });
-
-  assert.deepEqual(
-    courseTurnConfiguration({ subagent_consult_budget: 2 }, " course_os "),
-    { subagent_consult_budget: 2, _course_id: "course_os" },
-  );
-  // An empty id is sent explicitly so the backend clears stale scope rather
-  // than silently inheriting a previous session preference.
-  assert.deepEqual(courseTurnConfiguration(undefined, "  "), { _course_id: "" });
 });
 
 test("a hand-off with no ref falls back to the surface's index, still scoped", () => {
@@ -174,14 +163,13 @@ test("global surfaces are handed the course so they can scope themselves", () =>
     }),
     "/space/questions?course=course%20a%2Fb",
   );
-  // The console's own route, not the `/space/notebooks` redirect in front of it.
   assert.equal(
     courseHandoffHref({ ...base, target: "notebook", course_id: "c1" }),
-    "/notebook?course=c1",
+    "/notebooks?course=c1",
   );
   assert.equal(
     courseHandoffHref({ ...base, target: "chat", course_id: "c1" }),
-    "/home?course=c1",
+    "/chat?course=c1",
   );
 });
 

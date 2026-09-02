@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import {
   AlertCircle,
   ExternalLink,
@@ -98,10 +93,7 @@ export default function ChatMarkdownNoteTab({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (
-        event.key.toLowerCase() === "s" &&
-        (event.metaKey || event.ctrlKey)
-      ) {
+      if (event.key.toLowerCase() === "s" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         void save();
       }
@@ -167,8 +159,15 @@ export default function ChatMarkdownNoteTab({
           role="alert"
           className="flex shrink-0 items-start gap-2 border-b border-[var(--border)]/30 bg-[var(--destructive)]/8 px-3 py-2 text-[11px] leading-snug text-[var(--destructive)]"
         >
-          <AlertCircle size={12} strokeWidth={1.9} className="mt-[1px] shrink-0" />
-          <span>{t("Save failed")}{error ? `: ${error}` : ""}</span>
+          <AlertCircle
+            size={12}
+            strokeWidth={1.9}
+            className="mt-[1px] shrink-0"
+          />
+          <span>
+            {t("Save failed")}
+            {error ? `: ${error}` : ""}
+          </span>
         </div>
       ) : null}
       <textarea

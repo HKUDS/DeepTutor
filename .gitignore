@@ -86,6 +86,8 @@ web/.next/
 web/.next-deeptutor/
 # Custom distDir builds (DEEPTUTOR_NEXT_DIST_DIR / parallel dev servers)
 web/.next-*/
+# Per-process TypeScript configs used by isolated build/typecheck wrappers
+web/tsconfig.deeptutor-*.json
 # Temporary Next.js dist roots created by isolated build/test runs
 web/tmp/
 out/

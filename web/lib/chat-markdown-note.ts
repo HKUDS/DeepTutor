@@ -82,9 +82,7 @@ export function loadChatMarkdownNoteDraft(
 
   // A note started before a new chat receives its session id is adopted by
   // that session instead of leaking into the next new chat.
-  const pending = parseDraft(
-    storage.getItem(storageKey(ownerId, null)),
-  );
+  const pending = parseDraft(storage.getItem(storageKey(ownerId, null)));
   if (!draft && pending) {
     try {
       storage.setItem(key, JSON.stringify(pending));

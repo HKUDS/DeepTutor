@@ -12,9 +12,9 @@ from types import SimpleNamespace
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
 from deeptutor.runtime.registry.deferred_tools import render_deferred_tools_manifest
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 class FakeMCPTool(BaseTool):

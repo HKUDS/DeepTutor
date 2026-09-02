@@ -5,7 +5,7 @@ Covers:
 * ``inline_refs``: flattens nested model ``$ref``s (slack ``dm`` subtree).
 * ``collect_secret_fields``: only flags **string-typed** secret-looking keys
   (so e.g. ``user_token_read_only: bool`` is excluded).
-* ``GET /api/v1/partners/channels/schema`` integration: shape, snake_case
+* ``GET /api/partners/channels/schema`` integration: shape, snake_case
   property names, and that telegram/slack/discord schemas survive the trip.
 """
 
@@ -184,11 +184,11 @@ class TestEndpoint:
         from deeptutor.api.routers import partners as partners_router
 
         app = FastAPI()
-        app.include_router(partners_router.router, prefix="/api/v1/partners")
+        app.include_router(partners_router.router, prefix="/api/partners")
         return TestClient(app)
 
     def test_returns_channels_only(self, client: TestClient) -> None:
-        res = client.get("/api/v1/partners/channels/schema")
+        res = client.get("/api/partners/channels/schema")
         assert res.status_code == 200
         body = res.json()
         assert set(body.keys()) == {"channels"}
@@ -196,13 +196,13 @@ class TestEndpoint:
         assert "telegram" in body["channels"]
 
     def test_telegram_entry_has_secret_fields(self, client: TestClient) -> None:
-        res = client.get("/api/v1/partners/channels/schema")
+        res = client.get("/api/partners/channels/schema")
         tg = res.json()["channels"]["telegram"]
         assert tg["secret_fields"] == ["token"]
         assert "token" in tg["json_schema"]["properties"]
 
     def test_delivery_flags_are_per_channel(self, client: TestClient) -> None:
-        res = client.get("/api/v1/partners/channels/schema")
+        res = client.get("/api/partners/channels/schema")
         props = res.json()["channels"]["telegram"]["json_schema"]["properties"]
         assert "send_progress" in props
         assert "send_tool_hints" in props

@@ -17,7 +17,7 @@ import type { CourseState } from "@/lib/courses-api";
  * These replaced four bare shortcuts that linked to the global notebook,
  * question bank, and mastery-path surfaces with no course scope at all — the
  * page promised "this course's three things" and delivered site-wide
- * navigation. Every figure below comes from `GET /api/v1/courses/{id}/state`,
+ * navigation. Every figure below comes from `GET /api/courses/{id}/state`,
  * which counts only what this course references or produced, and every link
  * carries the course through so the destination can scope itself too.
  *
@@ -120,7 +120,7 @@ export default function CourseProgress({
         }
       />
       <Tile
-        href={`/notebook?course=${course}`}
+        href={`/notebooks?course=${course}`}
         icon={NotebookPen}
         label={t("Notebooks")}
         value={notebooks.length > 0 ? String(notebooks.length) : "—"}

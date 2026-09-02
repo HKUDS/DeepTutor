@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 def _client_with_failing_route() -> TestClient:
     from deeptutor.api.main import app
 
-    @app.get("/api/v1/__test_unhandled_exception__")
+    @app.get("/api/__test_unhandled_exception__")
     def _raise_unhandled() -> None:
         raise RuntimeError("intentional test failure")
 
@@ -14,7 +14,7 @@ def _client_with_failing_route() -> TestClient:
 
 
 def test_unhandled_exception_returns_json_error() -> None:
-    response = _client_with_failing_route().get("/api/v1/__test_unhandled_exception__")
+    response = _client_with_failing_route().get("/api/__test_unhandled_exception__")
 
     assert response.status_code == 500
     assert response.headers["content-type"].startswith("application/json")
@@ -36,8 +36,8 @@ def test_unhandled_exception_response_carries_cors_headers() -> None:
     client = _client_with_failing_route()
     origin = "http://cross-origin.test"
 
-    ok = client.get("/api/v1/health", headers={"Origin": origin})
-    error = client.get("/api/v1/__test_unhandled_exception__", headers={"Origin": origin})
+    ok = client.get("/api/health", headers={"Origin": origin})
+    error = client.get("/api/__test_unhandled_exception__", headers={"Origin": origin})
 
     assert error.status_code == 500
     # Whatever the CORS policy grants a normal response, it must also grant this one.

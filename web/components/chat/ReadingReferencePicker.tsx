@@ -31,7 +31,11 @@ function materialRevision(material: MaterialInfo): number {
   return material.revision ?? 1;
 }
 
-function unitKey(materialId: string, revision: number, locator: number): string {
+function unitKey(
+  materialId: string,
+  revision: number,
+  locator: number,
+): string {
   return `${materialId}:${revision}:${locator}`;
 }
 
@@ -256,8 +260,7 @@ export default function ReadingReferencePicker({
     setSelected((previous) =>
       previous
         .map((reference) =>
-          reference.materialId === materialId &&
-          reference.revision === revision
+          reference.materialId === materialId && reference.revision === revision
             ? {
                 ...reference,
                 units: reference.units.filter(
@@ -279,7 +282,11 @@ export default function ReadingReferencePicker({
         unitKey(activeMaterial.material_id, revision, unit.locator),
       )
     ) {
-      removeUnits(activeMaterial.material_id, revision, new Set([unit.locator]));
+      removeUnits(
+        activeMaterial.material_id,
+        revision,
+        new Set([unit.locator]),
+      );
       return;
     }
     addUnits(activeMaterial, [unit]);

@@ -16,7 +16,7 @@ import {
   Star,
   Upload,
 } from "lucide-react";
-import type { KnowledgeUploadPolicy } from "@/lib/knowledge-api";
+import type { KnowledgeUploadPolicy } from "@/features/knowledge/model/types";
 import {
   formatKnowledgeTimestamp,
   isMarginNoteKb,

@@ -32,6 +32,7 @@ from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.utils.json_parser import parse_json_response
 
 router = APIRouter()
+ws_router = APIRouter()
 
 
 def get_learning_service() -> LearningService:
@@ -509,7 +510,7 @@ async def get_topic_ask_hint(path_id: str, session_id: str = ""):
     return await get_ask_hint(path_id, session_id)
 
 
-@router.websocket("/ws")
+@ws_router.websocket("/mastery-paths")
 async def mastery_topic_websocket(ws: WebSocket) -> None:
     """Subscribe to one living topic with durable revision replay."""
 

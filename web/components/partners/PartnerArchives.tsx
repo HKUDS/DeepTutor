@@ -69,7 +69,9 @@ export default function PartnerArchives({
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
-      const next = await getPartnerSessions(partnerId);
+      const next = (await getPartnerSessions(partnerId)).filter(
+        (session) => session.archived,
+      );
       setSessions(next);
       setSelectedKey((current) => {
         if (
@@ -164,7 +166,7 @@ export default function PartnerArchives({
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-[13px] font-medium text-[var(--foreground)]">
-              {t("Conversations")}
+              {t("Archived conversations")}
             </h2>
             <p className="text-[11.5px] text-[var(--muted-foreground)]">
               {sessions.length

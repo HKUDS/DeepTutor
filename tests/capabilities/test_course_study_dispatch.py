@@ -21,7 +21,7 @@ from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.course_study import CourseStudyLoopCapability
 from deeptutor.capabilities.course_study.capability import COURSE_ID_KEY
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 COURSE_ID = "course-1"
 
@@ -86,7 +86,7 @@ def _handoff_payloads(events: list[Any]) -> list[dict[str, Any]]:
 async def test_handoff_reaches_the_browser_where_the_card_reader_looks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from deeptutor.core.agentic.tool_dispatch import dispatch_tool_calls
+    from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
 
     _stub_llm_config(monkeypatch)
     _bind_course(monkeypatch)
@@ -149,7 +149,7 @@ async def test_handoff_is_refused_when_the_turn_has_no_course(
     raising, so what matters is that no hand-off payload reaches the stream —
     a card pointing into a course that was never opened is worse than none.
     """
-    from deeptutor.core.agentic.tool_dispatch import dispatch_tool_calls
+    from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
 
     _stub_llm_config(monkeypatch)
     _bind_course(monkeypatch)

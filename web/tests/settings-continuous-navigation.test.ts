@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { settingsAnchorHref, storagePathFor } from "../lib/settings-nav";
+import {
+  settingsAnchorHref,
+  storagePathFor,
+} from "../features/settings/navigation/settings-nav";
 
 const readWebFile = (...parts: string[]) =>
   readFileSync(path.join(process.cwd(), ...parts), "utf8");
@@ -14,7 +17,7 @@ test("settings navigation: every label targets the unified settings document", (
   assert.equal(settingsAnchorHref("about"), "/settings#about");
 
   const nav = readWebFile("components", "settings", "SettingsNav.tsx");
-  assert.match(nav, /settingsAnchorHref\("overview"\)/);
+  assert.match(nav, /settingsAnchorHref\(['"]overview['"]\)/);
   assert.match(nav, /settingsAnchorHref\(group\.key\)/);
   assert.match(nav, /settingsAnchorHref\(leaf\.key\)/);
 });
@@ -29,29 +32,62 @@ test("settings page: stacks every first-level section from overview to about", (
     "knowledge",
     "chat",
     "agents",
+    "learner-profile",
+    "guardian",
     "memory",
     "about",
   ];
 
   let previousIndex = -1;
   for (const key of keys) {
-    const index = page.indexOf(`key: "${key}"`);
-    assert.ok(index > previousIndex, `${key} should follow the previous section`);
+    const index = Math.max(
+      page.indexOf(`key: '${key}'`),
+      page.indexOf(`key: "${key}"`),
+    );
+    assert.ok(
+      index > previousIndex,
+      `${key} should follow the previous section`,
+    );
     previousIndex = index;
   }
 });
 
 test("settings scroll: the outer document tracks nested section anchors", () => {
-  const source = readWebFile(
-    "components",
+  const source = readWebFile("components", "settings", "CategoryScroll.tsx");
+  const scrollHelper = readWebFile(
+    "features",
     "settings",
-    "CategoryScroll.tsx",
+    "navigation",
+    "settings-scroll.ts",
   );
 
   assert.match(source, /data-settings-section-list/);
-  assert.match(source, /querySelectorAll<HTMLElement>\("\[data-settings-section\]"\)/);
-  assert.match(source, /scrollIntoView/);
+  assert.match(
+    source,
+    /querySelectorAll<HTMLElement>\(['"]\[data-settings-section\]['"]\)/,
+  );
+  assert.match(source, /scrollToSettingsSection/);
+  assert.match(source, /ResizeObserver/);
+  assert.match(source, /pendingAnchorRef/);
+  assert.match(source, /SETTINGS_ANCHOR_EVENT/);
   assert.match(source, /setActiveSection\(current\)/);
+  assert.match(source, /requested && !validRequested/);
+  assert.doesNotMatch(source, /scrollIntoView/);
+  assert.match(
+    scrollHelper,
+    /closest<HTMLElement>\(SETTINGS_SCROLL_SELECTOR\)/,
+  );
+  assert.match(scrollHelper, /scroller\.scrollTo/);
+  assert.match(scrollHelper, /window\.scrollTo/);
+});
+
+test("sidebar version badge targets the canonical in-document About section", () => {
+  const source = readWebFile("components", "sidebar", "VersionBadge.tsx");
+
+  assert.match(source, /href="\/settings#about"/);
+  assert.match(source, /scroll={false}/);
+  assert.match(source, /requestSettingsSection\(["']about["']\)/);
+  assert.doesNotMatch(source, /\/settings\/about/);
 });
 
 test("settings toolbar: resolves storage paths while scrolling the unified page", () => {

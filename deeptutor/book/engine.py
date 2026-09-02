@@ -3,7 +3,7 @@ BookEngine
 ==========
 
 Top-level orchestrator for the Book Engine. Sits **parallel** to
-``ChatOrchestrator`` (i.e. it is **not** a ``BaseCapability``) and is the
+``ChatOrchestrator`` (i.e. it is **not** a ``TurnCapability``) and is the
 single public entry point used by the API router, CLI, and SDK.
 
 Lifecycle
@@ -47,7 +47,7 @@ import logging
 import time
 from typing import Any
 
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 from . import progress as progress_ops
 from .agents.ideation_agent import IdeationAgent
@@ -102,6 +102,10 @@ logger = logging.getLogger(__name__)
 # half-generated pages. Ungenerated pages are an asset; half-generated ones are
 # debris the user has to clean up.
 CONSECUTIVE_PAGE_FAILURE_LIMIT = 2
+
+
+class BookPausedError(RuntimeError):
+    """Raised when a compile request targets a durably paused book."""
 
 
 # Statuses that mean "this page still has work owed to it". PARTIAL is
@@ -304,6 +308,16 @@ class BookEngine:
 
     def load_book(self, book_id: str) -> Book | None:
         return self.storage.load_book(book_id)
+
+    def _require_generation_allowed(self, book_id: str, book: Book | None = None) -> Book:
+        current = book or self.storage.load_book(book_id)
+        if current is None:
+            raise ValueError(f"Book {book_id} not found")
+        if current.status == BookStatus.PAUSED:
+            raise BookPausedError(
+                "Book generation is paused. Resume it explicitly before generating content."
+            )
+        return current
 
     def reading_summary(self, book: Book) -> dict[str, Any]:
         """How far the reader has got, cheap enough to compute for a whole shelf.
@@ -912,7 +926,11 @@ class BookEngine:
 
         book.page_count = len(pages)
         book.status = BookStatus.COMPILING
-        metadata = {k: v for k, v in (book.metadata or {}).items() if k != "pause_reason"}
+        metadata = {
+            k: v
+            for k, v in (book.metadata or {}).items()
+            if k not in {"pause_reason", "pause_kind"}
+        }
         metadata["lazy_compile"] = not auto_compile
         book.metadata = metadata
         self.storage.save_book(book)
@@ -931,13 +949,21 @@ class BookEngine:
         runtime = self._runtimes.get(book_id)
         if runtime is None:
             return
+        current = asyncio.current_task()
+        cancelled: list[asyncio.Task[Any]] = []
         async with runtime.lock:
-            if runtime.worker is not None and not runtime.worker.done():
+            if (
+                runtime.worker is not None
+                and runtime.worker is not current
+                and not runtime.worker.done()
+            ):
                 runtime.worker.cancel()
-                runtime.worker = None
+                cancelled.append(runtime.worker)
+            runtime.worker = None
             for task in runtime.in_flight.values():
-                if not task.done():
+                if task is not current and not task.done():
                     task.cancel()
+                    cancelled.append(task)
             runtime.in_flight.clear()
             runtime.queued.clear()
             runtime.consecutive_page_failures = 0
@@ -946,6 +972,57 @@ class BookEngine:
                     runtime.queue.get_nowait()
                 except asyncio.QueueEmpty:
                     break
+        if cancelled:
+            await asyncio.gather(*cancelled, return_exceptions=True)
+        async with self._global_lock:
+            if self._runtimes.get(book_id) is runtime:
+                self._runtimes.pop(book_id, None)
+
+    async def pause_book(
+        self,
+        *,
+        book_id: str,
+        reason: str = "Paused by user.",
+    ) -> list[Page]:
+        """Durably pause generation and cancel all work already in flight.
+
+        The manifest is written first, so even a process termination during
+        cancellation cannot make the next ``deeptutor start`` auto-resume the
+        book. Generated blocks remain intact; only pages stranded in transient
+        in-flight states are reset to ``PENDING`` for an explicit resume.
+        """
+        book = self.storage.load_book(book_id)
+        if book is None:
+            raise ValueError(f"Book {book_id} not found")
+        if self.storage.load_spine(book_id) is None:
+            raise ValueError(f"No spine for book {book_id}")
+
+        book.status = BookStatus.PAUSED
+        book.metadata = {
+            **(book.metadata or {}),
+            "pause_reason": reason,
+            "pause_kind": "user",
+        }
+        book.updated_at = time.time()
+        self.storage.save_book(book)
+
+        await self._halt_compilation(book_id)
+
+        pages = self.storage.list_pages(book_id)
+        for page in pages:
+            if page.status in (PageStatus.PLANNING, PageStatus.GENERATING):
+                page.status = PageStatus.PENDING
+                page.error = ""
+                page.updated_at = time.time()
+                self.storage.save_page(page)
+
+        self.storage.append_log(book_id, "compilation paused by user", op="paused")
+        await BookStream(get_book_bus(book_id)).book_event(
+            "compilation_paused",
+            {"book_id": book_id, "reason": reason, "manual": True},
+            stage=STAGE_COMPILATION,
+        )
+        return self.storage.list_pages(book_id)
 
     async def resume_book(
         self,
@@ -986,7 +1063,11 @@ class BookEngine:
             return pages
 
         book.status = BookStatus.COMPILING
-        book.metadata = {k: v for k, v in (book.metadata or {}).items() if k != "pause_reason"}
+        book.metadata = {
+            k: v
+            for k, v in (book.metadata or {}).items()
+            if k not in {"pause_reason", "pause_kind"}
+        }
         book.updated_at = time.time()
         self.storage.save_book(book)
         self.storage.append_log(
@@ -1096,6 +1177,7 @@ class BookEngine:
         for that run to finish and then starts a clean pass, so a regenerate
         never interleaves with the generation it is meant to replace.
         """
+        self._require_generation_allowed(book_id)
         runtime = await self._get_or_create_runtime(book_id)
 
         while True:
@@ -1155,6 +1237,7 @@ class BookEngine:
         page = self.storage.load_page(book_id, page_id)
         if book is None or spine is None or page is None:
             raise ValueError(f"Cannot compile page – missing book/spine/page ({book_id}/{page_id})")
+        self._require_generation_allowed(book_id, book)
         if page.status == PageStatus.READY and not force:
             return page
 
@@ -1325,6 +1408,17 @@ class BookEngine:
                 tripped = await self._record_page_outcome(runtime, book_id, compiled)
             except asyncio.CancelledError:
                 raise
+            except BookPausedError:
+                if page is not None and page.status in (
+                    PageStatus.PLANNING,
+                    PageStatus.GENERATING,
+                ):
+                    page.status = PageStatus.PENDING
+                    page.error = ""
+                    page.updated_at = time.time()
+                    self.storage.save_page(page)
+                runtime.worker = None
+                return
             except Exception as exc:
                 logger.warning(
                     f"Background compilation failed for {book_id}/{page_id}: {exc}",
@@ -1378,24 +1472,21 @@ class BookEngine:
         ``PENDING`` so ``resume_book`` can pick them up verbatim once the user
         has fixed their quota or credentials.
         """
-        async with runtime.lock:
-            runtime.queued.clear()
-            while not runtime.queue.empty():
-                try:
-                    runtime.queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-
+        failure_count = runtime.consecutive_page_failures
         book = self.storage.load_book(book_id)
         if book is not None:
             book.status = BookStatus.PAUSED
-            book.metadata = {**(book.metadata or {}), "pause_reason": reason}
+            book.metadata = {
+                **(book.metadata or {}),
+                "pause_reason": reason,
+                "pause_kind": "provider",
+            }
             book.updated_at = time.time()
             self.storage.save_book(book)
+        await self._halt_compilation(book_id)
         self.storage.append_log(
             book_id,
-            f"compilation paused after {runtime.consecutive_page_failures} "
-            f"consecutive provider failures: {reason}",
+            f"compilation paused after {failure_count} consecutive provider failures: {reason}",
             op="paused",
         )
         await BookStream(get_book_bus(book_id)).book_event(
@@ -1417,7 +1508,9 @@ class BookEngine:
             if book.status != BookStatus.READY:
                 book.status = BookStatus.READY
                 book.metadata = {
-                    k: v for k, v in (book.metadata or {}).items() if k != "pause_reason"
+                    k: v
+                    for k, v in (book.metadata or {}).items()
+                    if k not in {"pause_reason", "pause_kind"}
                 }
                 self.storage.save_book(book)
                 self.storage.append_log(book_id, "all pages ready → status=READY", op="finalize")
@@ -1446,6 +1539,7 @@ class BookEngine:
         page = self.storage.load_page(book_id, page_id)
         if book is None or spine is None or page is None:
             return None
+        self._require_generation_allowed(book_id, book)
         chapter = spine.chapter_by_id(page.chapter_id)
         if chapter is None:
             return None
@@ -1612,6 +1706,8 @@ class BookEngine:
         book = self.storage.load_book(book_id)
         if spine is None or page is None or book is None:
             return None
+        if compile_now and block_type != BlockType.USER_NOTE:
+            self._require_generation_allowed(book_id, book)
         chapter = spine.chapter_by_id(page.chapter_id)
         if chapter is None:
             return None
@@ -1754,6 +1850,7 @@ class BookEngine:
         params_override: dict[str, Any] | None = None,
         stream: StreamBus | None = None,
     ) -> Block | None:
+        self._require_generation_allowed(book_id)
         spine = self.storage.load_spine(book_id)
         page = self.storage.load_page(book_id, page_id)
         if spine is None or page is None:
@@ -1794,6 +1891,7 @@ class BookEngine:
         parent = self.storage.load_page(book_id, parent_page_id)
         if book is None or spine is None or parent is None:
             return None
+        self._require_generation_allowed(book_id, book)
 
         # Add a synthetic chapter so the planner has a target
         chapter = Chapter(
@@ -1914,6 +2012,7 @@ class BookEngine:
         blocks per request is expensive enough that a double-click, a retry, or
         a second reader hitting the same wall must not pay for it twice.
         """
+        self._require_generation_allowed(book_id)
         page = self.storage.load_page(book_id, page_id)
         if page is None:
             return None

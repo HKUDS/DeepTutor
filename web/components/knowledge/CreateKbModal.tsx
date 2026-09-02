@@ -23,14 +23,16 @@ import {
   getLlamaIndexConfig,
   getPageIndexConfig,
   probeLightRagServer,
+  type LightRagServerProbe,
+} from "@/features/knowledge/api/engines";
+import {
   probeLinkedFolder,
   probeWeKnora,
   type KnowledgeUploadPolicy,
-  type LightRagServerProbe,
   type LinkedFolderProbe,
   type RagProviderSummary,
   type WeKnoraProbe,
-} from "@/lib/knowledge-api";
+} from "@/features/knowledge/api/catalog";
 import {
   createProviders,
   IMA_PROVIDER,

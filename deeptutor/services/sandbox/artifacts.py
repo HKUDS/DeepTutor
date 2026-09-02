@@ -36,7 +36,7 @@ def collect_public_artifacts(
     path_service: PathService | None = None,
     max_files: int = 50,
 ) -> list[SandboxArtifact]:
-    """Return files under *workdir* that are safe to expose via /api/outputs."""
+    """Return files under *workdir* that are safe to expose via /files/outputs."""
 
     root = Path(workdir).expanduser().resolve()
     if not root.exists() or not root.is_dir():
@@ -62,7 +62,7 @@ def collect_public_artifacts(
                 filename=file_path.name,
                 path=str(file_path.resolve()),
                 relative_path=rel_posix,
-                url="/api/outputs/" + quote(rel_posix, safe="/"),
+                url="/files/outputs/" + quote(rel_posix, safe="/"),
                 size_bytes=file_path.stat().st_size,
                 mime_type=mime_type,
             )

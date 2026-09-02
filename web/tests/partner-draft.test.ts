@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { extractPartnerDraft } from "@/lib/partner-draft";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 function toolResult(partnerDraft: Record<string, unknown>): StreamEvent {
   return {

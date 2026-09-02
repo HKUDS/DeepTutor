@@ -2,7 +2,7 @@
 
 This replaces the deleted TutorBot engine. A partner has NO engine of its
 own: every inbound message becomes one chat turn executed by
-``ChatOrchestrator`` → ``AgenticChatPipeline`` (the exact loop the product
+``TurnEngine`` → ``AgenticChatPipeline`` (the exact loop the product
 chat uses), run inside the partner's synthetic user scope so rag / skills /
 notebook tools read the partner workspace natively.
 
@@ -391,7 +391,7 @@ class PartnerRunner:
         becomes the reply (the final outbound is then marked ``_streamed``
         so the channel doesn't send it twice).
         """
-        from deeptutor.runtime.orchestrator import ChatOrchestrator
+        from deeptutor.runtime.turn_engine import get_turn_engine
         from deeptutor.services.model_selection.runtime import (
             activate_llm_selection,
             reset_llm_selection,
@@ -451,8 +451,7 @@ class PartnerRunner:
                     legacy_own_memory=get_current_path_service(),
                 )
                 with partner_turn_context(turn_context):
-                    orchestrator = ChatOrchestrator()
-                    event_stream = orchestrator.handle(context)
+                    event_stream = get_turn_engine().execute(context)
                     async for event in event_stream:
                         if on_event is not None:
                             await on_event(event)
@@ -544,7 +543,9 @@ class PartnerRunner:
         # round. The protocol acknowledgement from that later round is never the
         # user's answer; restore the saved text at the Partner boundary.
         if context is not None:
-            group_answer = str(context.metadata.get("_partner_group_formal_answer") or "").strip()
+            group_answer = str(
+                context.extension("partner_group").get("formal_answer") or ""
+            ).strip()
             if group_answer:
                 final_text = group_answer
 

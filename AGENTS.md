@@ -10,7 +10,7 @@ through three entry points: CLI, WebSocket API, and Python SDK.
 ## Architecture
 
 ```
-Entry Points:  CLI (Typer)  |  WebSocket /api/v1/ws  |  Python SDK
+Entry Points:  CLI (Typer)  |  WebSocket /ws  |  Python SDK
                     ↓                   ↓                   ↓
               ┌─────────────────────────────────────────────────┐
               │              ChatOrchestrator                    │

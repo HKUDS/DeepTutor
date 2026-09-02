@@ -11,7 +11,7 @@ import {
 } from "@/context/app-shell-storage";
 import { setTheme, type Theme } from "@/lib/theme";
 import { collectAppliedSettingIds } from "@/lib/setup-signals";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 const THEMES: readonly Theme[] = ["light", "dark", "glass", "snow"];
 
@@ -56,7 +56,7 @@ export function useSetupSync(
     let cancelled = false;
     void (async () => {
       try {
-        const res = await apiFetch(apiUrl("/api/v1/settings/ui"));
+        const res = await apiFetch(apiUrl("/api/settings/ui"));
         if (!res.ok || cancelled) return;
         const payload = (await res.json()) as {
           language?: unknown;

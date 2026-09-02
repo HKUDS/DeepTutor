@@ -79,8 +79,7 @@ export default function ChannelRuntimeStatus({
   if (!setup?.status || !label) return null;
 
   const isError = setup.status === "error" || setup.status === "unavailable";
-  const isBusy =
-    setup.status === "connecting" || setup.status === "starting";
+  const isBusy = setup.status === "connecting" || setup.status === "starting";
   const isConnected =
     setup.status === "connected" || setup.status === "running";
 
@@ -102,7 +101,9 @@ export default function ChannelRuntimeStatus({
         ) : (
           <QrCode className="h-3.5 w-3.5 text-[var(--primary)]" aria-hidden />
         )}
-        <span>{t("Status")}: {label}</span>
+        <span>
+          {t("Status")}: {label}
+        </span>
       </div>
       {setup.message && (
         <p className="mt-1.5 leading-relaxed">{t(setup.message)}</p>
@@ -117,7 +118,9 @@ export default function ChannelRuntimeStatus({
           className="mt-2 h-[148px] w-[148px] rounded-md bg-white p-1.5"
         />
       ) : setup.qr_payload ? (
-        <p className="mt-2 break-all font-mono text-[10px]">{setup.qr_payload}</p>
+        <p className="mt-2 break-all font-mono text-[10px]">
+          {setup.qr_payload}
+        </p>
       ) : null}
     </div>
   );

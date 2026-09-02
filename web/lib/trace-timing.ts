@@ -14,7 +14,7 @@
  * state that resets on remount.
  */
 
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 /**
  * Elapsed seconds for the turn the ``events`` belong to.

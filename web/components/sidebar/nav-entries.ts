@@ -35,7 +35,7 @@ export interface NavEntry {
  */
 export const PRIMARY_NAV: NavEntry[] = [
   {
-    href: "/home",
+    href: "/chat",
     label: "Home",
     icon: House,
     tooltipKey: "Home tooltip",
@@ -66,7 +66,7 @@ export const PRIMARY_NAV: NavEntry[] = [
     requires: "llm",
   },
   {
-    href: "/book",
+    href: "/books",
     label: "Book",
     icon: Library,
     tooltipKey: "Book tooltip",
@@ -112,7 +112,7 @@ export const SECONDARY_NAV: NavEntry[] = [
     // Knowledge Center sits just above Settings: it's a console for managing
     // KBs and retrieval engines, not a daily workspace. Never gated — embedding
     // / search are shared admin infrastructure, no per-user model grant needed.
-    href: "/knowledge",
+    href: "/knowledge-bases",
     label: "Knowledge Center",
     icon: BookOpen,
     tooltipKey: "Knowledge tooltip",

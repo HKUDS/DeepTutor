@@ -9,13 +9,14 @@ Run this once after starting PocketBase for the first time:
 Requires integrations.pocketbase_url, integrations.pocketbase_admin_email, and
 integrations.pocketbase_admin_password in data/user/settings/integrations.json.
 
-Safe to re-run — existing collections are left untouched.
+Safe to re-run — existing collections receive missing fields and indexes.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 import sys
+import time
 
 # Allow running from project root without installing the package.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -63,9 +64,72 @@ def _existing_collections(pb) -> set[str]:
         return set()
 
 
+def _public_dict(value):
+    if isinstance(value, dict):
+        return dict(value)
+    return {key: item for key, item in vars(value).items() if not key.startswith("_")}
+
+
+def _sync_existing_collection(pb, schema: dict) -> None:
+    """Idempotently append v2 fields/indexes to an existing collection."""
+    record = next(item for item in pb.collections.get_full_list() if item.name == schema["name"])
+    current_fields = [_public_dict(item) for item in getattr(record, "schema", [])]
+    field_names = {field.get("name") for field in current_fields}
+    merged_fields = current_fields + [
+        field for field in schema.get("schema", []) if field["name"] not in field_names
+    ]
+    current_indexes = list(getattr(record, "indexes", []) or [])
+
+    # Add fields first: duplicate cleanup below writes the new failure columns
+    # before the partial unique index can be installed.
+    if len(merged_fields) != len(current_fields):
+        pb.collections.update(record.id, {"schema": merged_fields, "indexes": current_indexes})
+
+    if schema["name"] == "turns":
+        active = {"queued", "running", "waiting_input"}
+        rows = pb.collection("turns").get_full_list()
+        grouped: dict[str, list] = {}
+        for row in rows:
+            if getattr(row, "status", "") in active:
+                grouped.setdefault(getattr(row, "session_id", ""), []).append(row)
+        now = time.time()
+        for rows_for_session in grouped.values():
+            rows_for_session.sort(
+                key=lambda item: (
+                    float(getattr(item, "turn_updated_at", 0) or 0),
+                    getattr(item, "id", ""),
+                ),
+                reverse=True,
+            )
+            for duplicate in rows_for_session[1:]:
+                pb.collection("turns").update(
+                    duplicate.id,
+                    {
+                        "status": "failed",
+                        "error": "Duplicate active turn resolved during migration",
+                        "failure_code": "migration_duplicate_running",
+                        "turn_updated_at": now,
+                        "finished_at": now,
+                        "state_version": int(getattr(duplicate, "state_version", 1) or 1) + 1,
+                    },
+                )
+
+    desired_indexes = schema.get("indexes", [])
+    merged_indexes = current_indexes + [
+        index for index in desired_indexes if index not in current_indexes
+    ]
+    if merged_indexes != current_indexes:
+        pb.collections.update(record.id, {"schema": merged_fields, "indexes": merged_indexes})
+
+
 def _create_if_missing(pb, name: str, schema: dict, existing: set[str]):
     if name in existing:
-        print(f"  skip  {name} (already exists)")
+        try:
+            _sync_existing_collection(pb, schema)
+            print(f"  sync  {name}")
+        except Exception as exc:
+            print(f"  ERROR syncing {name}: {exc}")
+            raise
         return
     try:
         pb.collections.create(schema)
@@ -106,6 +170,8 @@ def main():
                 {"name": "preferences_json", "type": "json", "required": False},
                 {"name": "capability", "type": "text", "required": False},
                 {"name": "status", "type": "text", "required": False},
+                {"name": "session_created_at", "type": "number", "required": False},
+                {"name": "session_updated_at", "type": "number", "required": False},
             ],
             "listRule": "",
             "viewRule": "",
@@ -126,6 +192,7 @@ def main():
                 {"name": "capability", "type": "text", "required": False},
                 {"name": "events_json", "type": "json", "required": False},
                 {"name": "attachments_json", "type": "json", "required": False},
+                {"name": "metadata_json", "type": "json", "required": False},
                 {"name": "msg_created_at", "type": "number", "required": False},
             ],
             "listRule": "",
@@ -149,6 +216,16 @@ def main():
                 {"name": "turn_created_at", "type": "number", "required": False},
                 {"name": "turn_updated_at", "type": "number", "required": False},
                 {"name": "finished_at", "type": "number", "required": False},
+                {"name": "owner_id", "type": "text", "required": False},
+                {"name": "fencing_token", "type": "number", "required": False},
+                {"name": "state_version", "type": "number", "required": False},
+                {"name": "failure_code", "type": "text", "required": False},
+                {"name": "retryable", "type": "bool", "required": False},
+            ],
+            "indexes": [
+                "CREATE UNIQUE INDEX idx_turns_turn_id ON turns (turn_id)",
+                "CREATE UNIQUE INDEX idx_turns_one_active_session ON turns (session_id) "
+                "WHERE status IN ('queued', 'running', 'waiting_input')",
             ],
             "listRule": "",
             "viewRule": "",
@@ -172,6 +249,9 @@ def main():
                 {"name": "content", "type": "text", "required": False},
                 {"name": "metadata_json", "type": "json", "required": False},
                 {"name": "event_timestamp", "type": "number", "required": False},
+            ],
+            "indexes": [
+                "CREATE UNIQUE INDEX idx_turn_events_turn_seq ON turn_events (turn_id, seq)"
             ],
             "listRule": "",
             "viewRule": "",

@@ -12,7 +12,7 @@ import {
   sameLLMSelection,
   type LLMOption,
 } from "@/lib/llm-options";
-import type { LLMSelection } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 
 function formatContext(tokens?: number): string {
   if (!tokens || tokens <= 0) return "";

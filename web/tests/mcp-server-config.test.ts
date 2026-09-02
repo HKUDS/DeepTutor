@@ -109,8 +109,8 @@ test("a hand-written disabled_tools blocklist survives GET → edit → PUT", as
 test("the request path comes from the caller's surface, not a hardcoded base", async () => {
   const stub = stubFetch([{ servers: {}, status: [] }]);
   try {
-    await getMcpSettings("/api/v1/space/mcp/servers");
-    assert.equal(stub.calls[0].url, "/api/v1/space/mcp/servers");
+    await getMcpSettings("/api/space/mcp/servers");
+    assert.equal(stub.calls[0].url, "/api/space/mcp/servers");
   } finally {
     stub.restore();
   }

@@ -14,6 +14,7 @@ def test_normalize_accepts_only_bounded_known_provider_state() -> None:
             "reasoning_content": "private reasoning",
             "responses_output_items": [
                 {"type": "reasoning", "id": "rs_1", "summary": []},
+                {"type": "web_search_call", "id": "ws_1", "status": "completed"},
                 {
                     "type": "function_call",
                     "id": "fc_1",
@@ -30,6 +31,7 @@ def test_normalize_accepts_only_bounded_known_provider_state() -> None:
         "reasoning_content": "private reasoning",
         "responses_output_items": [
             {"type": "reasoning", "id": "rs_1", "summary": []},
+            {"type": "web_search_call", "id": "ws_1", "status": "completed"},
             {
                 "type": "function_call",
                 "id": "fc_1",

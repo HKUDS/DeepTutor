@@ -15,6 +15,7 @@ from deeptutor.services.partner_groups import (
 )
 
 router = APIRouter()
+ws_router = APIRouter()
 
 
 class CreatePartnerGroupRequest(BaseModel):
@@ -334,7 +335,7 @@ async def reject_partner_invocation(
     return invocation.to_dict()
 
 
-@router.websocket("/{group_id}/ws")
+@ws_router.websocket("/{group_id}")
 async def partner_group_ws(ws: WebSocket, group_id: str):
     """Stream Group messages plus owner-visible, speaker-scoped traces.
 

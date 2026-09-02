@@ -29,7 +29,6 @@ import {
   Square,
   UserRound,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import {
   ATTACHMENT_ACCEPT,
@@ -44,7 +43,7 @@ import type { StudyCourse } from "@/lib/courses-api";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
-import type { LLMSelection } from "@/lib/unified-ws";
+import type { LLMSelection } from "@/features/chat/model/protocol";
 import type { LLMOption } from "@/lib/llm-options";
 import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
@@ -73,6 +72,7 @@ import ContextReferenceTree, {
 } from "./ContextReferenceTree";
 import { ComposerInput, type ComposerInputHandle } from "./ComposerInput";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import type { CapabilityDef } from "@/features/capabilities/presentation";
 
 interface PendingAttachment {
   type: string;
@@ -85,24 +85,6 @@ interface PendingAttachment {
 
 interface KnowledgeBase {
   name: string;
-}
-
-/**
- * The picker's view of a capability. The authoritative list — including
- * `defaultTools` and the prose — lives with the capabilities themselves in
- * `app/(workspace)/home/[[...sessionId]]/page.tsx`; this is the subset the
- * composer renders, so the two must stay in step.
- */
-export interface CapabilityDef {
-  value: string;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  allowedTools: string[];
-  /** Collapse into the "More" flyout instead of listing directly. */
-  secondary?: boolean;
-  /** Still resolvable for existing sessions, but never offered as a new one. */
-  legacy?: boolean;
 }
 
 /** One row in the capability picker — shared by the built-in list and the
@@ -609,50 +591,62 @@ export default memo(function ChatComposer({
   // toolbar KnowledgeSelector chip instead — same lifecycle class as
   // the persona selector.
   const contextTreeItems: ContextTreeItem[] = [
-    ...selectedBookReferences.map((book): ContextTreeItem => ({
-      key: `book-${book.bookId}`,
-      icon: BookOpen,
-      kind: t("Book"),
-      label: `${book.bookTitle} (${book.pages.length})`,
-      onRemove: () => onRemoveBookReference(book.bookId),
-    })),
-    ...selectedReadingReferences.map((material): ContextTreeItem => ({
-      key: `reading-${material.materialId}-r${material.revision}`,
-      icon: BookMarked,
-      kind: t("Reading"),
-      label: `${material.materialTitle} (${material.units.length})`,
-      onRemove: onRemoveReadingReference
-        ? () => onRemoveReadingReference(material.materialId)
-        : undefined,
-    })),
-    ...notebookReferenceGroups.map((group): ContextTreeItem => ({
-      key: `nb-${group.notebookId}`,
-      icon: BookOpen,
-      kind: t("Notebook"),
-      label: `${group.notebookName} (${group.count})`,
-      onRemove: () => onRemoveNotebook(group.notebookId),
-    })),
-    ...selectedHistorySessions.map((session): ContextTreeItem => ({
-      key: `hist-${session.sessionId}`,
-      icon: MessageSquare,
-      kind: t("Chat History"),
-      label: session.title,
-      onRemove: () => onRemoveHistory(session.sessionId),
-    })),
-    ...selectedAgentSessions.map((session): ContextTreeItem => ({
-      key: `agent-${session.sessionId}`,
-      icon: Bot,
-      kind: t("My Agents"),
-      label: session.title,
-      onRemove: () => onRemoveAgent(session.sessionId),
-    })),
-    ...selectedQuestionEntries.map((entry): ContextTreeItem => ({
-      key: `q-${entry.id}`,
-      icon: ClipboardList,
-      kind: t("Question Bank"),
-      label: entry.question,
-      onRemove: () => onRemoveQuestion(entry.id),
-    })),
+    ...selectedBookReferences.map(
+      (book): ContextTreeItem => ({
+        key: `book-${book.bookId}`,
+        icon: BookOpen,
+        kind: t("Book"),
+        label: `${book.bookTitle} (${book.pages.length})`,
+        onRemove: () => onRemoveBookReference(book.bookId),
+      }),
+    ),
+    ...selectedReadingReferences.map(
+      (material): ContextTreeItem => ({
+        key: `reading-${material.materialId}-r${material.revision}`,
+        icon: BookMarked,
+        kind: t("Reading"),
+        label: `${material.materialTitle} (${material.units.length})`,
+        onRemove: onRemoveReadingReference
+          ? () => onRemoveReadingReference(material.materialId)
+          : undefined,
+      }),
+    ),
+    ...notebookReferenceGroups.map(
+      (group): ContextTreeItem => ({
+        key: `nb-${group.notebookId}`,
+        icon: BookOpen,
+        kind: t("Notebook"),
+        label: `${group.notebookName} (${group.count})`,
+        onRemove: () => onRemoveNotebook(group.notebookId),
+      }),
+    ),
+    ...selectedHistorySessions.map(
+      (session): ContextTreeItem => ({
+        key: `hist-${session.sessionId}`,
+        icon: MessageSquare,
+        kind: t("Chat History"),
+        label: session.title,
+        onRemove: () => onRemoveHistory(session.sessionId),
+      }),
+    ),
+    ...selectedAgentSessions.map(
+      (session): ContextTreeItem => ({
+        key: `agent-${session.sessionId}`,
+        icon: Bot,
+        kind: t("My Agents"),
+        label: session.title,
+        onRemove: () => onRemoveAgent(session.sessionId),
+      }),
+    ),
+    ...selectedQuestionEntries.map(
+      (entry): ContextTreeItem => ({
+        key: `q-${entry.id}`,
+        icon: ClipboardList,
+        kind: t("Question Bank"),
+        label: entry.question,
+        onRemove: () => onRemoveQuestion(entry.id),
+      }),
+    ),
     ...(selectedPersona
       ? [
           {
@@ -664,13 +658,15 @@ export default memo(function ChatComposer({
           } satisfies ContextTreeItem,
         ]
       : []),
-    ...selectedMemoryFiles.map((file): ContextTreeItem => ({
-      key: `mem-${file}`,
-      icon: Brain,
-      kind: t("Memory"),
-      label: file === "summary" ? t("Summary") : t("Profile"),
-      onRemove: () => onToggleMemoryFile(file),
-    })),
+    ...selectedMemoryFiles.map(
+      (file): ContextTreeItem => ({
+        key: `mem-${file}`,
+        icon: Brain,
+        kind: t("Memory"),
+        label: file === "summary" ? t("Summary") : t("Profile"),
+        onRemove: () => onToggleMemoryFile(file),
+      }),
+    ),
   ];
 
   const handleManualSend = useCallback(() => {
@@ -948,7 +944,7 @@ export default memo(function ChatComposer({
                       className="dt-popup-up absolute bottom-full left-0 z-50 mb-1.5 w-[260px] overflow-visible rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                     >
                       {capabilities
-                        .filter((cap) => !cap.secondary && !cap.legacy)
+                        .filter((cap) => !cap.secondary)
                         .map((cap) => (
                           <CapMenuItem
                             key={cap.value}
@@ -959,7 +955,7 @@ export default memo(function ChatComposer({
                         ))}
                       {(() => {
                         const loopCaps = capabilities.filter(
-                          (cap) => cap.secondary && !cap.legacy,
+                          (cap) => cap.secondary,
                         );
                         if (loopCaps.length === 0) return null;
                         const loopSelected = loopCaps.some(

@@ -4,7 +4,7 @@
  * The marker format (persisted in the user record) is:
  *   ""                    — deterministic icon+color derived from the username
  *   "icon:<name>:<color>" — an explicitly picked icon and color (keys below)
- *   "img:<version>"       — an uploaded image served from /api/v1/auth/avatar
+ *   "img:<version>"       — an uploaded image served from /api/auth/avatar
  *
  * Kept free of React/lucide imports so node unit tests can pin the behavior;
  * the UserAvatar component maps icon names to lucide components on top.

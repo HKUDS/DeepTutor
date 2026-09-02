@@ -11,7 +11,7 @@ import {
   selectChildBranch,
   tipMessageId,
 } from "../lib/message-branches";
-import type { MessageItem } from "../context/UnifiedChatContext";
+import type { MessageItem } from "../features/chat/ChatStateAdapter";
 
 test("optimistic ids are negative and strictly decreasing", () => {
   const ids = Array.from({ length: 50 }, () => nextOptimisticId());
