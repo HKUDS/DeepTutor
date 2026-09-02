@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import {
   GraduationCap,
+  LayoutGrid,
+  List,
   Loader2,
   RotateCcw,
   Trash2,
@@ -13,17 +15,23 @@ import {
 
 import {
   fetchAllProgress,
+  fetchLearningBoard,
   fetchMasteryMap,
   deleteProgress,
   redoProgress,
   renameProgress,
   skipPendingQuestion,
+  type BoardResult,
   type ProgressSummary,
   type MasteryMapResult,
 } from "@/lib/learning-api";
-import { newMasteryPathChatUrl } from "@/lib/chat-launch-intent";
+import {
+  newMasteryPathChatUrl,
+  newObjectiveTutoringChatUrl,
+} from "@/lib/chat-launch-intent";
 import { useMasteryPathActivity } from "@/hooks/useMasteryPathActivity";
 import { ActivityTimeline } from "@/components/space/learning/ActivityTimeline";
+import { LearningBoard } from "@/components/space/learning/LearningBoard";
 import { PathMap } from "@/components/space/learning/PathMap";
 import { PathTitle } from "@/components/space/learning/PathTitle";
 import { formatRelative } from "@/components/space/learning/format";
@@ -48,6 +56,8 @@ export default function MasteryPathPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<MasteryMapResult | null>(null);
   const [loadingList, setLoadingList] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "board">("list");
+  const [board, setBoard] = useState<BoardResult | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [tab, setTab] = useState<"map" | "activity">("map");
 
@@ -94,6 +104,22 @@ export default function MasteryPathPage() {
     // it would refetch the map every time the map arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, revision]);
+
+  /* Board is fetched only when the learner switches to it; the same
+     revision signal keeps it current during live tutoring. */
+  useEffect(() => {
+    if (!selected || viewMode !== "board") {
+      setBoard(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchLearningBoard(selected, { signal: controller.signal })
+      .then(setBoard)
+      .catch(() => {
+        if (!controller.signal.aborted) setBoard(null);
+      });
+    return () => controller.abort();
+  }, [selected, revision, viewMode]);
 
   /* Objective id → name, so the activity feed reads in the learner's terms. */
   const objectiveNames = useMemo(() => {
@@ -268,9 +294,15 @@ export default function MasteryPathPage() {
             objectiveNames={objectiveNames}
             tab={tab}
             onTabChange={setTab}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            board={board}
             zh={zh}
             tr={tr}
             onContinue={() => router.push(newMasteryPathChatUrl(selected))}
+            onStartTutoring={(kpName) =>
+              router.push(newObjectiveTutoringChatUrl(selected, kpName))
+            }
             onSkipQuestion={() => handleSkipQuestion(selected)}
             onRedo={() => handleRedo(selected)}
             onDelete={() => handleDelete(selected)}
@@ -301,9 +333,13 @@ function PathView({
   objectiveNames,
   tab,
   onTabChange,
+  viewMode,
+  onViewModeChange,
+  board,
   zh,
   tr,
   onContinue,
+  onStartTutoring,
   onRename,
   onSkipQuestion,
   onRedo,
@@ -316,9 +352,13 @@ function PathView({
   objectiveNames: Record<string, string>;
   tab: "map" | "activity";
   onTabChange: (tab: "map" | "activity") => void;
+  viewMode: "list" | "board";
+  onViewModeChange: (mode: "list" | "board") => void;
+  board: BoardResult | null;
   zh: boolean;
   tr: (cn: string, en: string) => string;
   onContinue: () => void;
+  onStartTutoring: (knowledgePointName: string) => void;
   onRename: (name: string) => Promise<void>;
   onSkipQuestion: () => void;
   onRedo: () => void;
@@ -425,44 +465,88 @@ function PathView({
       </div>
 
       {/* Map / activity */}
-      <div className="mt-5 flex items-center gap-4 border-b border-[var(--border)]">
-        {(
-          [
-            ["map", tr("地图", "Map")],
-            ["activity", tr("活动", "Activity")],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            onClick={() => onTabChange(value)}
-            className={`-mb-px cursor-pointer border-b-2 pb-1.5 text-xs transition-colors ${
-              tab === value
-                ? "border-[var(--primary)] text-[var(--foreground)]"
-                : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-            }`}
-          >
-            {label}
-            {value === "activity" && events.length > 0 && (
-              <span className="ml-1 text-[var(--muted-foreground)]">
-                {events.length}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="mt-5 flex items-center justify-between border-b border-[var(--border)]">
+        <div className="flex items-center gap-4">
+          {(
+            [
+              ["map", tr("地图", "Map")],
+              ["activity", tr("活动", "Activity")],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => onTabChange(value)}
+              className={`-mb-px cursor-pointer border-b-2 pb-1.5 text-xs transition-colors ${
+                tab === value
+                  ? "border-[var(--primary)] text-[var(--foreground)]"
+                  : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {label}
+              {value === "activity" && events.length > 0 && (
+                <span className="ml-1 text-[var(--muted-foreground)]">
+                  {events.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {tab === "map" && (
+          <div className="flex items-center gap-0.5 rounded-md bg-[var(--accent)] p-0.5">
+            {(
+              [
+                ["list", <List key="list" className="h-3.5 w-3.5" />, tr("列表", "List")],
+                ["board", <LayoutGrid key="board" className="h-3.5 w-3.5" />, tr("看板", "Board")],
+              ] as const
+            ).map(([value, icon, label]) => (
+              <button
+                key={value}
+                onClick={() => onViewModeChange(value)}
+                className={`flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                  viewMode === value
+                    ? "bg-[var(--background)] text-[var(--foreground)] shadow-sm"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mt-4">
         {tab === "map" ? (
-          /* Keyed by path: switching paths must drop whichever objective was
-             open, since its id belongs to the path that is going away. */
-          <PathMap
-            key={pathId}
-            pathId={pathId}
-            map={map}
-            revision={revision}
-            tr={tr}
-            zh={zh}
-          />
+          viewMode === "board" ? (
+            board ? (
+              <LearningBoard
+                key={pathId}
+                pathId={pathId}
+                modules={board.modules}
+                revision={revision}
+                tr={tr}
+                zh={zh}
+                onStartTutoring={onStartTutoring}
+              />
+            ) : (
+              <div className="flex items-center justify-center py-8 text-[var(--muted-foreground)]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            )
+          ) : (
+            /* Keyed by path: switching paths must drop whichever objective was
+               open, since its id belongs to the path that is going away. */
+            <PathMap
+              key={pathId}
+              pathId={pathId}
+              map={map}
+              revision={revision}
+              tr={tr}
+              zh={zh}
+            />
+          )
         ) : (
           <ActivityTimeline
             events={events}

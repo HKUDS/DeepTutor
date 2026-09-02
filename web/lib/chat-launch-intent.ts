@@ -1,3 +1,5 @@
+import { setPendingPrompt } from "./pending-prompt";
+
 /**
  * The `/home` launch-URL contract — both ends in one place.
  *
@@ -41,6 +43,21 @@ export function readChatLaunchIntent(search: string): ChatLaunchIntent {
 
 /** Build a fresh chat URL associated with existing persistent mastery state. */
 export function newMasteryPathChatUrl(masteryPathId: string): string {
+  const params = new URLSearchParams({
+    capability: "mastery_path",
+    mastery_path_id: masteryPathId,
+  });
+  return `/home?${params.toString()}`;
+}
+
+/** Build a fresh chat URL scoped to a specific objective on a mastery path. */
+export function newObjectiveTutoringChatUrl(
+  masteryPathId: string,
+  knowledgePointName: string,
+): string {
+  setPendingPrompt(
+    `Please tutor me on: ${knowledgePointName}. Start with a quick check of what I already know, then guide me step by step.`,
+  );
   const params = new URLSearchParams({
     capability: "mastery_path",
     mastery_path_id: masteryPathId,
