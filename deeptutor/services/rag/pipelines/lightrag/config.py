@@ -191,6 +191,56 @@ def constructor_kwargs_from_settings() -> dict:
         return {}
 
 
+def _lightrag_llm_selection_from_settings(*, strict: bool) -> dict[str, str] | None:
+    try:
+        from deeptutor.services.config import load_lightrag_settings
+
+        settings = load_lightrag_settings()
+        profile_id = str(settings.get("llm_profile_id") or "").strip()
+        model_id = str(settings.get("llm_model_id") or "").strip()
+        if not profile_id and not model_id:
+            return None
+        if not profile_id or not model_id:
+            if strict:
+                raise ValueError("The LightRAG LLM selection is incomplete.")
+            logger.warning("Ignoring incomplete LightRAG LLM selection; using the active model")
+            return None
+        return {"profile_id": profile_id, "model_id": model_id}
+    except Exception:
+        if strict:
+            raise
+        logger.warning(
+            "Could not read LightRAG LLM selection; using the active model",
+            exc_info=True,
+        )
+        return None
+
+
+def lightrag_llm_selection_from_settings() -> dict[str, str] | None:
+    """Return the released query-model selection with its fallback semantics."""
+    return _lightrag_llm_selection_from_settings(strict=False)
+
+
+def lightrag_indexing_selection_from_settings() -> dict[str, str] | None:
+    """Return the indexing default, rejecting unreadable or partial settings."""
+    return _lightrag_llm_selection_from_settings(strict=True)
+
+
+def resolve_lightrag_query_llm_config():
+    """Resolve the current LightRAG query model with the released fallback contract."""
+    from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+
+    selection = lightrag_llm_selection_from_settings()
+    try:
+        return resolve_llm_config_for_selection(selection)
+    except ValueError:
+        logger.warning(
+            "LightRAG LLM selection %s no longer exists in the catalog; using the active model",
+            selection,
+        )
+        return resolve_llm_config_for_selection(None)
+
+
 def build_llm_model_func(
     *,
     io_bridge: OwnerLoopBridge | None = None,
@@ -359,6 +409,8 @@ __all__ = [
     "query_kwargs_from_settings",
     "indexing_kwargs_from_settings",
     "constructor_kwargs_from_settings",
+    "lightrag_llm_selection_from_settings",
+    "resolve_lightrag_query_llm_config",
     "build_llm_model_func",
     "build_vision_model_func",
     "vision_model_available",

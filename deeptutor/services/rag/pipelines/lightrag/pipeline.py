@@ -17,9 +17,15 @@ from deeptutor.services.rag.index_versioning import (
 )
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
-from . import block_policy, engine, ingress, storage
+from . import block_policy, engine, indexing_policy, ingress, storage
 from . import config as lr_config
-from .indexing_policy import IndexingLLMSnapshot, IndexingPolicyError, resolve_write_snapshot
+from .indexing_policy import (
+    IndexingLLMSnapshot,
+    IndexingPolicyError,
+    effective_policy,
+    freeze_default_snapshot,
+    resolve_write_snapshot,
+)
 from .worker import OwnerLoopBridge, run_in_worker_loop
 
 logger = logging.getLogger(__name__)
@@ -276,9 +282,7 @@ class LightRagPipeline:
         snapshot: IndexingLLMSnapshot | None = None,
     ) -> BatchOutcome:
         if snapshot is None:
-            from .indexing_policy import freeze_legacy_snapshot
-
-            snapshot = freeze_legacy_snapshot()
+            snapshot = freeze_default_snapshot()
 
         async def job(io_bridge: OwnerLoopBridge) -> BatchOutcome:
             io_bridge.raise_if_cancelled()
@@ -365,12 +369,17 @@ class LightRagPipeline:
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self._ensure_available()
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        snapshot = resolve_write_snapshot(
-            kb_dir,
-            base_dir=self.kb_base_dir,
-            kb_name=kb_name,
-            explicit=kwargs.get("indexing_snapshot"),
-        )
+        snapshot = kwargs.get("indexing_snapshot")
+        if snapshot is None:
+            policy = effective_policy(
+                kb_dir,
+                base_dir=self.kb_base_dir,
+                kb_name=kb_name,
+            )
+            if policy is not None and policy.get("policy") == "pending_pinned":
+                snapshot = indexing_policy.snapshot_from_persisted(policy)
+            else:
+                snapshot = freeze_default_snapshot()
         root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
         try:
             outcome = await self._run_indexing(
@@ -404,6 +413,11 @@ class LightRagPipeline:
                 "An explicit LightRAG indexing model cannot override an existing index; "
                 "run a full re-index."
             )
+        if existing is None and versions:
+            raise LightRagNeedsReindexError(
+                "This LightRAG index is legacy, unpublished, or corrupt and must be rebuilt "
+                "before appending."
+            )
         snapshot = resolve_write_snapshot(
             kb_dir,
             base_dir=self.kb_base_dir,
@@ -413,11 +427,6 @@ class LightRagPipeline:
         if existing is not None:
             root_dir = existing
             is_update = True
-        elif versions:
-            raise LightRagNeedsReindexError(
-                "This LightRAG index is legacy, unpublished, or corrupt and must be rebuilt "
-                "before appending."
-            )
         else:
             root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
             is_update = False

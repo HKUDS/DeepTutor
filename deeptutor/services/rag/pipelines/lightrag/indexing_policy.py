@@ -49,10 +49,8 @@ def _endpoint_identity(value: str | None) -> str:
     return urlunsplit((parsed.scheme.lower(), host.lower(), parsed.path.rstrip("/"), "", ""))
 
 
-def _canonical_identity(selection: LLMSelection, config: LLMConfig) -> dict[str, Any]:
-    return {
-        "profile_id": selection.profile_id,
-        "model_id": selection.model_id,
+def _canonical_identity(selection: LLMSelection | None, config: LLMConfig) -> dict[str, Any]:
+    identity = {
         "binding": config.binding,
         "provider_mode": config.provider_mode,
         "endpoint": _endpoint_identity(config.effective_url or config.base_url),
@@ -60,6 +58,10 @@ def _canonical_identity(selection: LLMSelection, config: LLMConfig) -> dict[str,
         "model": config.model,
         "reasoning_effort": config.reasoning_effort,
     }
+    if selection is not None:
+        identity["profile_id"] = selection.profile_id
+        identity["model_id"] = selection.model_id
+    return identity
 
 
 def _fingerprint(identity: dict[str, Any]) -> str:
@@ -93,11 +95,12 @@ def freeze_snapshot(
     selection_value: Any = None,
     *,
     policy: str | None = None,
+    require_explicit_user: bool = True,
 ) -> IndexingLLMSnapshot:
     """Resolve and freeze one access-checked indexing model in the caller scope."""
     selection = LLMSelection.from_payload(selection_value)
     explicit_user = get_current_user_or_none()
-    if selection is not None and explicit_user is None:
+    if selection is not None and explicit_user is None and require_explicit_user:
         raise IndexingPolicyError(
             "Pinned indexing models require an explicit initiating user scope."
         )
@@ -114,7 +117,7 @@ def freeze_snapshot(
         )
     owner = explicit_user or get_current_user()
     resolved_policy = policy or (POLICY_PINNED if selection is not None else POLICY_LEGACY)
-    if selection is None or resolved_policy == POLICY_LEGACY:
+    if resolved_policy == POLICY_LEGACY:
         descriptor = {
             "model": config.model,
             "binding": config.binding,
@@ -141,15 +144,41 @@ def pending_policy_for_selection(selection_value: Any) -> dict[str, Any]:
     return snapshot.persisted_policy()
 
 
-def freeze_legacy_snapshot() -> IndexingLLMSnapshot:
-    """Freeze the active global chat model once for one legacy write."""
-    return freeze_snapshot(policy=POLICY_LEGACY)
+def _active_catalog_selection() -> dict[str, str] | None:
+    from deeptutor.services.config import get_model_catalog_service
+
+    catalog = get_model_catalog_service().load()
+    service = catalog.get("services", {}).get("llm", {})
+    profile_id = str(service.get("active_profile_id") or "").strip()
+    model_id = str(service.get("active_model_id") or "").strip()
+    if not profile_id or not model_id:
+        return None
+    return {"profile_id": profile_id, "model_id": model_id}
+
+
+def freeze_default_snapshot() -> IndexingLLMSnapshot:
+    """Freeze the released LightRAG model, or the active model when it is unset."""
+    from .config import lightrag_indexing_selection_from_settings
+
+    try:
+        selection = lightrag_indexing_selection_from_settings()
+    except Exception as exc:
+        raise IndexingPolicyError(
+            "The LightRAG indexing-model setting could not be resolved."
+        ) from exc
+    if selection is None:
+        selection = _active_catalog_selection()
+    return freeze_snapshot(
+        selection,
+        policy=POLICY_PINNED,
+        require_explicit_user=False,
+    )
 
 
 def snapshot_from_persisted(policy: dict[str, Any]) -> IndexingLLMSnapshot:
     selection = policy.get("selection")
-    if not isinstance(selection, dict):
-        raise IndexingPolicyError("Pinned LightRAG metadata is missing its model selection.")
+    if selection is not None and not isinstance(selection, dict):
+        raise IndexingPolicyError("Pinned LightRAG metadata has an invalid model selection.")
     snapshot = freeze_snapshot(selection, policy=POLICY_PINNED)
     expected = str(policy.get("fingerprint") or "")
     if not expected or snapshot.fingerprint != expected:
@@ -183,12 +212,17 @@ def resolve_write_snapshot(
     base_dir: str,
     kb_name: str,
     explicit: IndexingLLMSnapshot | None = None,
-) -> IndexingLLMSnapshot | None:
+) -> IndexingLLMSnapshot:
     if explicit is not None:
         return explicit
     policy = effective_policy(kb_dir, base_dir=base_dir, kb_name=kb_name)
-    if policy is None or policy.get("policy") == POLICY_LEGACY:
-        return None
+    if policy is None:
+        return freeze_default_snapshot()
+    if policy.get("policy") == POLICY_LEGACY:
+        raise IndexingModelChangedError(
+            "This LightRAG index has no verified indexing model; run a full re-index "
+            "before appending documents."
+        )
     return snapshot_from_persisted(policy)
 
 
@@ -205,6 +239,11 @@ def cache_identity(snapshot: IndexingLLMSnapshot) -> str:
     return _fingerprint(identity)
 
 
+def cache_identity_for_config(config: LLMConfig) -> str:
+    """Return a credential-free cache identity for a resolved query model."""
+    return _fingerprint(_canonical_identity(None, config))
+
+
 __all__ = [
     "IndexingLLMSnapshot",
     "IndexingModelChangedError",
@@ -213,9 +252,10 @@ __all__ = [
     "POLICY_PENDING",
     "POLICY_PINNED",
     "cache_identity",
+    "cache_identity_for_config",
     "effective_policy",
+    "freeze_default_snapshot",
     "freeze_snapshot",
-    "freeze_legacy_snapshot",
     "pending_policy_for_selection",
     "resolve_write_snapshot",
     "snapshot_from_persisted",

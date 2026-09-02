@@ -61,7 +61,7 @@ class _Bridge:
 def _indexing_snapshot():
     return types.SimpleNamespace(
         vision_available=True,
-        persisted_policy=lambda: {"policy": "legacy_unpinned"},
+        persisted_policy=lambda: {"policy": "pinned", "fingerprint": "a" * 64},
     )
 
 
@@ -94,6 +94,58 @@ def test_availability_checks_native_lightrag_module(monkeypatch) -> None:
     monkeypatch.setattr(config.importlib.util, "find_spec", find_spec)
     assert config.is_lightrag_available() is False
     assert seen == ["lightrag"]
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected"),
+    [
+        ({}, None),
+        (
+            {"llm_profile_id": " profile ", "llm_model_id": " model "},
+            {"profile_id": "profile", "model_id": "model"},
+        ),
+        ({"llm_profile_id": "profile", "llm_model_id": ""}, None),
+    ],
+)
+def test_released_lightrag_query_selection_keeps_fallback_contract(
+    monkeypatch, settings, expected
+) -> None:
+    monkeypatch.setattr("deeptutor.services.config.load_lightrag_settings", lambda: settings)
+
+    assert config.lightrag_llm_selection_from_settings() == expected
+
+
+def test_indexing_selection_rejects_partial_released_setting(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deeptutor.services.config.load_lightrag_settings",
+        lambda: {"llm_profile_id": "profile", "llm_model_id": ""},
+    )
+
+    with pytest.raises(ValueError, match="incomplete"):
+        config.lightrag_indexing_selection_from_settings()
+
+
+def test_query_model_resolver_falls_back_only_when_selected_entry_is_missing(
+    monkeypatch,
+) -> None:
+    selection = {"profile_id": "profile", "model_id": "model"}
+    fallback = object()
+    calls: list[object] = []
+    monkeypatch.setattr(config, "lightrag_llm_selection_from_settings", lambda: selection)
+
+    def resolve(value):
+        calls.append(value)
+        if value is selection:
+            raise ValueError("missing")
+        return fallback
+
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.runtime.resolve_llm_config_for_selection",
+        resolve,
+    )
+
+    assert config.resolve_lightrag_query_llm_config() is fallback
+    assert calls == [selection, None]
 
 
 def test_lightrag_llm_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
@@ -188,7 +240,12 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
     fake_lightrag = types.ModuleType("lightrag")
     fake_lightrag.__path__ = []  # type: ignore[attr-defined]
     fake_roles = types.ModuleType("lightrag.llm_roles")
-    fake_roles.RoleLLMConfig = object  # type: ignore[attr-defined]
+
+    class RoleLLMConfig:
+        def __init__(self, **kwargs) -> None:
+            self.__dict__.update(kwargs)
+
+    fake_roles.RoleLLMConfig = RoleLLMConfig  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
     monkeypatch.setitem(sys.modules, "lightrag.llm_roles", fake_roles)
     monkeypatch.setattr(engine, "_require_exact_version", lambda: None)
@@ -196,6 +253,9 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
     monkeypatch.setattr(engine, "_controlled_class", lambda: NativeLightRag)
     monkeypatch.setattr(engine, "indexing_kwargs_from_settings", dict)
     monkeypatch.setattr(engine, "constructor_kwargs_from_settings", dict)
+    query_config = types.SimpleNamespace(binding="openai")
+    monkeypatch.setattr(engine, "resolve_lightrag_query_llm_config", lambda: query_config)
+    monkeypatch.setattr(indexing_policy, "cache_identity_for_config", lambda _config: "query-id")
     llm_calls: list[dict[str, object]] = []
     embedding_calls: list[object] = []
 
@@ -212,7 +272,7 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
 
     rag = engine.build_rag(tmp_path)
 
-    assert llm_calls == [{}]
+    assert llm_calls == [{"llm_config": query_config}]
     assert embedding_calls == [None]
     assert rag.kwargs["embedding_func"] == "embedding"
 
@@ -565,7 +625,7 @@ def test_flat_schema_two_candidate_fails_closed_until_published(tmp_path: Path) 
     assert list_kb_versions(tmp_path)[0]["ready"] is True
 
 
-def _write_published_version(root: Path) -> None:
+def _write_published_version(root: Path, *, indexing_policy_value: dict | None = None) -> None:
     root.mkdir(parents=True)
     (root / "kv_store_doc_status.json").write_text(
         json.dumps({"doc": {"status": "processed", "chunks_list": ["chunk"]}}),
@@ -579,7 +639,7 @@ def _write_published_version(root: Path) -> None:
                 "lightrag_adapter_schema": storage.ADAPTER_SCHEMA,
                 "parser_bridge_schema": 1,
                 "state": "published",
-                "indexing_policy": {"policy": "legacy_unpinned"},
+                "indexing_policy": indexing_policy_value or {"policy": "legacy_unpinned"},
             }
         ),
         encoding="utf-8",
@@ -646,7 +706,14 @@ def test_append_metadata_refresh_failure_preserves_published_success(
 ) -> None:
     kb_dir = tmp_path / "kb"
     published = kb_dir / "version-1"
-    _write_published_version(published)
+    _write_published_version(
+        published,
+        indexing_policy_value={
+            "policy": "pinned",
+            "selection": {"profile_id": "profile", "model_id": "model"},
+            "fingerprint": "a" * 64,
+        },
+    )
     original_meta = (published / "meta.json").read_bytes()
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
     monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
@@ -661,6 +728,11 @@ def test_append_metadata_refresh_failure_preserves_published_success(
 
     monkeypatch.setattr(pipeline, "_run_indexing", finish_index)
     monkeypatch.setattr(
+        indexing_policy,
+        "snapshot_from_persisted",
+        lambda _policy: _indexing_snapshot(),
+    )
+    monkeypatch.setattr(
         storage,
         "write_meta",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("metadata unavailable")),
@@ -668,6 +740,21 @@ def test_append_metadata_refresh_failure_preserves_published_success(
 
     assert asyncio.run(pipeline.add_documents("kb", [str(tmp_path / "doc.md")])) is True
     assert (published / "meta.json").read_bytes() == original_meta
+
+
+def test_append_rejects_legacy_unpinned_index_before_mutation(tmp_path: Path, monkeypatch) -> None:
+    published = tmp_path / "kb" / "version-1"
+    _write_published_version(published)
+    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+
+    async def unexpected(*_args, **_kwargs):
+        raise AssertionError("legacy append must not reach indexing")
+
+    monkeypatch.setattr(pipeline, "_run_indexing", unexpected)
+
+    with pytest.raises(indexing_policy.IndexingModelChangedError, match="full re-index"):
+        asyncio.run(pipeline.add_documents("kb", [str(tmp_path / "doc.md")]))
 
 
 def test_append_rejects_explicit_indexing_snapshot_before_mutation(
@@ -810,7 +897,7 @@ def test_indexing_initializes_processes_reconciles_and_finalizes(
     snapshot = _indexing_snapshot()
     freeze_calls = 0
 
-    def freeze_legacy():
+    def freeze_default():
         nonlocal freeze_calls
         freeze_calls += 1
         return snapshot
@@ -823,7 +910,10 @@ def test_indexing_initializes_processes_reconciles_and_finalizes(
         assert kwargs["indexing_snapshot"] is snapshot
         return rag
 
-    monkeypatch.setattr(indexing_policy, "freeze_legacy_snapshot", freeze_legacy)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.pipeline.freeze_default_snapshot",
+        freeze_default,
+    )
     monkeypatch.setattr(pipeline, "_stage_documents", stage)
     monkeypatch.setattr(engine, "build_rag", build)
 
@@ -846,7 +936,7 @@ def test_indexing_initializes_processes_reconciles_and_finalizes(
 
     assert outcome.complete is True
     assert freeze_calls == 1
-    assert outcome.indexing_policy == {"policy": "legacy_unpinned"}
+    assert outcome.indexing_policy == {"policy": "pinned", "fingerprint": "a" * 64}
     assert events == ["initialize", "enqueue", "process", ("finalize", False)]
 
 

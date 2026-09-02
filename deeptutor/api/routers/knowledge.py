@@ -672,6 +672,19 @@ def _freeze_indexing_llm_form(raw: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _freeze_default_indexing_llm():
+    """Freeze the released LightRAG model default for one create or rebuild."""
+    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+        IndexingPolicyError,
+        freeze_default_snapshot,
+    )
+
+    try:
+        return freeze_default_snapshot()
+    except (ValueError, PermissionError, IndexingPolicyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _assert_provider_ready(provider: str) -> None:
     """Block creating/using a KB whose engine isn't ready.
 
@@ -1468,6 +1481,30 @@ class LightRagConfigUpdate(BaseModel):
     max_concurrent_files: int | None = None
     llm_model_max_async: int | None = None
     entity_extract_max_gleaning: int | None = None
+    llm_profile_id: str | None = None
+    llm_model_id: str | None = None
+
+
+def _validate_lightrag_llm_selection(profile_id: str, model_id: str) -> None:
+    """Keep stored LightRAG references inside the configured model catalog."""
+    if bool(profile_id) != bool(model_id):
+        raise HTTPException(
+            status_code=422,
+            detail="LightRAG model selection requires both profile_id and model_id.",
+        )
+    if not profile_id:
+        return
+    try:
+        from deeptutor.services.config import get_model_catalog_service
+        from deeptutor.services.model_selection import (
+            LLMSelection,
+            apply_llm_selection_to_catalog,
+        )
+
+        selection = LLMSelection.from_payload({"profile_id": profile_id, "model_id": model_id})
+        apply_llm_selection_to_catalog(get_model_catalog_service().load(), selection)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
 @router.get("/knowledge-bases/rag-pipelines/lightrag/config")
@@ -1496,6 +1533,11 @@ async def update_lightrag_pipeline_config(payload: LightRagConfigUpdate):
         service = get_runtime_settings_service()
         current = service.load_lightrag()
         updates = payload.model_dump(exclude_none=True)
+        candidate = {**current, **updates}
+        _validate_lightrag_llm_selection(
+            str(candidate.get("llm_profile_id") or ""),
+            str(candidate.get("llm_model_id") or ""),
+        )
         return service.save_lightrag({**current, **updates})
     except HTTPException:
         raise
@@ -2911,15 +2953,17 @@ async def create_knowledge_base(
             raise HTTPException(status_code=400, detail=f"Knowledge base '{name}' already exists")
 
         rag_provider = _validate_registered_provider(rag_provider)
-        indexing_selection = None
         indexing_snapshot = None
-        if indexing_llm:
-            if rag_provider != LIGHTRAG_PROVIDER:
-                raise HTTPException(
-                    status_code=400,
-                    detail="indexing_llm is supported only for built-in LightRAG.",
-                )
-            indexing_selection, indexing_snapshot = _freeze_indexing_llm_form(indexing_llm)
+        if rag_provider == LIGHTRAG_PROVIDER:
+            if indexing_llm:
+                _, indexing_snapshot = _freeze_indexing_llm_form(indexing_llm)
+            else:
+                indexing_snapshot = _freeze_default_indexing_llm()
+        elif indexing_llm:
+            raise HTTPException(
+                status_code=400,
+                detail="indexing_llm is supported only for built-in LightRAG.",
+            )
         pageindex_mode = str(pageindex_mode or "").strip().lower()
         if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode not in {
             "",
@@ -2983,7 +3027,7 @@ async def create_knowledge_base(
                 manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
             if search_mode:
                 manager.config["knowledge_bases"][name]["search_mode"] = search_mode
-            if indexing_selection is not None:
+            if indexing_snapshot is not None:
                 pending_policy = indexing_snapshot.persisted_policy()
                 pending_policy["policy"] = "pending_pinned"
                 manager.config["knowledge_bases"][name]["pending_indexing_policy"] = pending_policy
@@ -3291,13 +3335,16 @@ async def reindex_knowledge_base(
         )
         _assert_provider_ready(kb_provider)
         indexing_snapshot = None
-        if indexing_llm:
-            if kb_provider != LIGHTRAG_PROVIDER:
-                raise HTTPException(
-                    status_code=400,
-                    detail="indexing_llm is supported only for built-in LightRAG.",
-                )
-            _, indexing_snapshot = _freeze_indexing_llm_form(indexing_llm)
+        if kb_provider == LIGHTRAG_PROVIDER:
+            if indexing_llm:
+                _, indexing_snapshot = _freeze_indexing_llm_form(indexing_llm)
+            else:
+                indexing_snapshot = _freeze_default_indexing_llm()
+        elif indexing_llm:
+            raise HTTPException(
+                status_code=400,
+                detail="indexing_llm is supported only for built-in LightRAG.",
+            )
 
         kb_dir = kb_base_dir / kb_name
         signature_hash = kb_provider

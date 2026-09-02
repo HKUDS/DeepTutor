@@ -2299,7 +2299,7 @@ def test_create_empty_lightrag_kb_persists_redacted_pending_policy(
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={
                 "name": "kb-pending",
                 "rag_provider": "lightrag",
@@ -2325,7 +2325,7 @@ def test_create_rejects_indexing_selection_for_other_provider_before_registratio
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/create",
+            "/api/knowledge-bases",
             data={
                 "name": "wrong-provider",
                 "rag_provider": "llamaindex",
@@ -2365,7 +2365,7 @@ def test_reindex_passes_frozen_lightrag_snapshot_to_background_task(
 
     with TestClient(_build_app()) as client:
         response = client.post(
-            "/api/v1/knowledge/kb/reindex",
+            "/api/knowledge-bases/kb/reindex",
             data={"indexing_llm": json.dumps({"profile_id": "profile-1", "model_id": "model-1"})},
         )
 
@@ -2625,6 +2625,8 @@ def test_llamaindex_config_endpoint_round_trips_reranker_knobs(monkeypatch, tmp_
     again = client.get("/api/knowledge-bases/rag-pipelines/llamaindex/config").json()
     assert again["reranker_model"] == "BAAI/bge-reranker-base"
     assert again["rerank_top_k"] == 25
+
+
 def test_lightrag_config_validates_dedicated_llm_selection(monkeypatch, tmp_path: Path) -> None:
     from deeptutor.services.config.model_catalog import ModelCatalogService
 

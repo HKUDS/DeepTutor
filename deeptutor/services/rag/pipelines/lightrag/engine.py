@@ -19,6 +19,7 @@ from .config import (
     indexing_kwargs_from_settings,
     normalize_mode,
     query_kwargs_from_settings,
+    resolve_lightrag_query_llm_config,
 )
 from .ingress import IngressError, StagedDocument, pending_root
 from .worker import OwnerLoopBridge
@@ -199,17 +200,33 @@ def build_rag(
     if io_bridge is not None:
         llm_adapter_kwargs["io_bridge"] = io_bridge
         embedding_adapter_kwargs["io_bridge"] = io_bridge
+    from .indexing_policy import cache_identity_for_config
+
+    query_config = resolve_lightrag_query_llm_config()
+    query_func = build_llm_model_func(
+        **llm_adapter_kwargs,
+        llm_config=query_config,
+    )
+    query_identity = cache_identity_for_config(query_config)
+    query_metadata = {
+        "binding": query_config.binding,
+        "model": query_identity,
+    }
     constructor = {
         "working_dir": str(Path(working_dir)),
         "workspace": workspace_for(working_dir),
-        "llm_model_func": build_llm_model_func(**llm_adapter_kwargs),
+        "llm_model_func": query_func,
+        "llm_model_name": query_identity,
         "embedding_func": build_embedding_func(**embedding_adapter_kwargs),
         "auto_manage_storages_states": False,
         "vlm_process_enable": bool(enable_vlm),
         **indexing_kwargs_from_settings(),
         **constructor_kwargs_from_settings(),
     }
-    role_configs: dict[str, Any] = {}
+    role_configs: dict[str, Any] = {
+        "keyword": RoleLLMConfig(func=query_func, metadata=query_metadata),
+        "query": RoleLLMConfig(func=query_func, metadata=query_metadata),
+    }
     if indexing_snapshot is not None:
         from .indexing_policy import cache_identity
 
@@ -227,6 +244,10 @@ def build_rag(
             func=build_llm_model_func(**snapshot_kwargs), metadata=metadata
         )
     if enable_vlm:
+        if indexing_snapshot is None:
+            raise LightRagContractError(
+                "LightRAG vision indexing requires a frozen indexing-model policy."
+            )
         vision_kwargs = llm_adapter_kwargs
         metadata = None
         if indexing_snapshot is not None:

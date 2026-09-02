@@ -145,6 +145,37 @@ def test_owner_bound_model_requires_explicit_scope(monkeypatch) -> None:
         indexing_policy.freeze_snapshot({"profile_id": "personal", "model_id": "gpt"})
 
 
+def test_default_snapshot_prefers_released_lightrag_selection(monkeypatch) -> None:
+    from deeptutor.services.rag.pipelines.lightrag import config
+
+    selection = {"profile_id": "dedicated", "model_id": "indexer"}
+    expected = object()
+    calls: list[tuple[object, str | None, bool]] = []
+    monkeypatch.setattr(config, "lightrag_indexing_selection_from_settings", lambda: selection)
+    monkeypatch.setattr(
+        indexing_policy,
+        "freeze_snapshot",
+        lambda value, *, policy=None, require_explicit_user=True: (
+            calls.append((value, policy, require_explicit_user)) or expected
+        ),
+    )
+
+    assert indexing_policy.freeze_default_snapshot() is expected
+    assert calls == [(selection, indexing_policy.POLICY_PINNED, False)]
+
+
+def test_default_snapshot_rejects_unreadable_released_setting(monkeypatch) -> None:
+    from deeptutor.services.rag.pipelines.lightrag import config
+
+    def fail():
+        raise OSError("settings unreadable")
+
+    monkeypatch.setattr(config, "lightrag_indexing_selection_from_settings", fail)
+
+    with pytest.raises(indexing_policy.IndexingPolicyError, match="could not be resolved"):
+        indexing_policy.freeze_default_snapshot()
+
+
 def test_latest_published_root_ignores_newer_unpublished_candidate(tmp_path: Path) -> None:
     kb_dir = tmp_path / "kb"
     published = kb_dir / "version-1"
