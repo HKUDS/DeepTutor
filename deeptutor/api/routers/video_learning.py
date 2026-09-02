@@ -7,16 +7,18 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
+from deeptutor.multi_user.paths import current_owner_id
 from deeptutor.services.notebook.service import NotebookCorruptedError
 from deeptutor.video_learning import (
     TimedMediaError,
     TimedMediaNotFound,
     get_timed_media_store,
+    invidious_account,
     load_video_learning_settings,
     material_with_playback,
     refresh_invidious_transcript,
@@ -109,6 +111,52 @@ async def test_invidious(payload: VideoLearningSettingsRequest) -> dict[str, Any
         return await test_invidious_connection(payload.model_dump())
     except Exception as exc:
         raise _http_error(exc) from exc
+
+
+@router.post("/invidious/account/authorize")
+async def authorize_invidious_account(request: Request) -> dict[str, str]:
+    try:
+        url = invidious_account.begin_invidious_account_authorization(
+            owner_id=current_owner_id(),
+            redirect_uri=invidious_account.invidious_redirect_uri(_request_origin(request)),
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return {"authorize_url": url}
+
+
+@router.get("/invidious/account/callback")
+async def invidious_account_callback(token: str = "", state: str = "") -> JSONResponse:
+    try:
+        status = await invidious_account.complete_invidious_account_authorization(
+            owner_id=current_owner_id(),
+            state=state,
+            token=token,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return JSONResponse(status, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/invidious/account/status")
+async def get_invidious_account_status() -> dict[str, Any]:
+    return invidious_account.invidious_account_status(current_owner_id())
+
+
+@router.post("/invidious/account/disconnect")
+async def disconnect_invidious_account() -> dict[str, Any]:
+    try:
+        return await invidious_account.disconnect_invidious_account(owner_id=current_owner_id())
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+def _request_origin(request: Request) -> str:
+    """The origin this request arrived on, honouring a reverse proxy's headers."""
+    headers = request.headers
+    proto = headers.get("x-forwarded-proto", "").split(",")[0].strip() or request.url.scheme
+    host = headers.get("x-forwarded-host", "").split(",")[0].strip() or headers.get("host", "")
+    return f"{proto}://{host}" if host else ""
 
 
 @router.post("/materials/resolve")
