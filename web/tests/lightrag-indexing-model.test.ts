@@ -12,8 +12,10 @@ import {
   selectionFromLightRagDefault,
   selectionFromLLMOption,
 } from "../components/knowledge/IndexingModelSelector";
+import { selectionForLightRagModelDialog } from "../components/knowledge/KbIndexVersionsSection";
 import {
   currentLightRagBuildCandidate,
+  kbCanUploadDocuments,
   kbCanReindex,
   kbIsUploadable,
   lightRagVersionDisplayState,
@@ -176,6 +178,36 @@ test("indexing defaults prefer the released LightRAG query model", () => {
   );
 });
 
+test("late catalog loading preserves an empty knowledge base's saved pending model", () => {
+  const option = {
+    profile_id: "saved-profile",
+    model_id: "saved-model",
+    profile_name: "Saved",
+    model_name: "Saved model",
+    model: "saved",
+    provider: "openai",
+    is_active_default: false,
+  };
+  assert.deepEqual(
+    selectionForLightRagModelDialog(
+      [option],
+      { llm_profile_id: "current-profile", llm_model_id: "current-model" },
+      null,
+      {
+        profile_id: "saved-profile",
+        model_id: "saved-model",
+        reasoning_effort: "none",
+      },
+      true,
+    ),
+    {
+      profile_id: "saved-profile",
+      model_id: "saved-model",
+      reasoning_effort: "none",
+    },
+  );
+});
+
 test("healthy LightRAG knowledge bases retain a full re-index entry", () => {
   const kb: KnowledgeBase = {
     name: "graph",
@@ -198,7 +230,19 @@ test("legacy LightRAG indexes stay queryable but are not uploadable", () => {
     statistics: { rag_provider: "lightrag", raw_documents: 1 },
   };
   assert.equal(kbIsUploadable(kb), false);
+  assert.equal(kbCanUploadDocuments(kb, false), false);
+  assert.equal(kbCanUploadDocuments({ ...kb, status: "error" }, false), false);
   assert.equal(kbCanReindex(kb), true);
+});
+
+test("ordinary error-state knowledge bases can replace failed files unless indexing is active", () => {
+  const kb: KnowledgeBase = {
+    name: "vectors",
+    status: "error",
+    statistics: { rag_provider: "llamaindex", raw_documents: 1 },
+  };
+  assert.equal(kbCanUploadDocuments(kb, false), true);
+  assert.equal(kbCanUploadDocuments(kb, true), false);
 });
 
 test("LightRAG candidates distinguish active builds from failures", () => {

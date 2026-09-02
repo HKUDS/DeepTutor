@@ -8,7 +8,7 @@ import {
   type KnowledgeUploadPolicy,
 } from "@/features/knowledge/api/files";
 import {
-  kbIsUploadable,
+  kbCanUploadDocuments,
   kbNeedsReindex,
   kbRequiresLightRagRebuildBeforeAppend,
   providerUsesEmbeddingMetadata,
@@ -81,7 +81,6 @@ export default function KbDocumentsSection({
     };
   }, [kb.name]);
 
-  const uploadable = kbIsUploadable(kb);
   const needsReindex = kbNeedsReindex(kb);
   const requiresLightRagRebuild = kbRequiresLightRagRebuildBeforeAppend(kb);
   const status = resolveKbStatus(kb);
@@ -105,7 +104,7 @@ export default function KbDocumentsSection({
   // (Files tab) and upload replacements here, instead of being forced to
   // delete and rebuild the whole base. Uploads stay open unless a rebuild is
   // actively running; legacy/transition states remain genuinely blocked.
-  const canUpload = uploadable || (isError && !isIndexingHere);
+  const canUpload = kbCanUploadDocuments(kb, isIndexingHere);
 
   const blockedReason = canUpload
     ? null

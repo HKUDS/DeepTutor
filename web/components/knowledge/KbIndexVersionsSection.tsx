@@ -29,6 +29,7 @@ import ProcessLogs from "@/components/common/ProcessLogs";
 import Modal from "@/components/common/Modal";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
 import { getLightRagConfig } from "@/features/knowledge/api/engines";
+import type { LLMOption } from "@/lib/llm-options";
 import type {
   IndexingLLMSelection,
   LightRagConfig,
@@ -39,6 +40,31 @@ import IndexingModelSelector, {
   selectionFromLLMOption,
 } from "./IndexingModelSelector";
 import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
+
+export function selectionForLightRagModelDialog(
+  options: LLMOption[],
+  config: Pick<LightRagConfig, "llm_profile_id" | "llm_model_id">,
+  activeDefault: {
+    profile_id?: string | null;
+    model_id?: string | null;
+  } | null,
+  savedPending: IndexingLLMSelection | undefined,
+  preserveSavedPending: boolean,
+): IndexingLLMSelection | null {
+  const savedOption = preserveSavedPending
+    ? options.find(
+        (option) =>
+          option.profile_id === savedPending?.profile_id &&
+          option.model_id === savedPending?.model_id,
+      )
+    : undefined;
+  return savedOption
+    ? selectionFromLLMOption(
+        savedOption,
+        savedPending?.reasoning_effort || "",
+      )
+    : selectionFromLightRagDefault(options, config, activeDefault);
+}
 
 interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
@@ -127,14 +153,18 @@ export default function KbIndexVersionsSection({
       return;
     if (!lightRagConfigLoaded || !lightRagConfig) return;
     setIndexingLLM(
-      selectionFromLightRagDefault(
+      selectionForLightRagModelDialog(
         llmCatalog.options,
         lightRagConfig,
         llmCatalog.activeDefault,
+        kb.metadata?.indexing_policy?.selection,
+        emptyPendingEligible,
       ),
     );
   }, [
+    emptyPendingEligible,
     indexingLLM,
+    kb.metadata?.indexing_policy?.selection,
     llmCatalog.activeDefault,
     llmCatalog.options,
     lightRagConfig,
@@ -143,24 +173,7 @@ export default function KbIndexVersionsSection({
   ]);
 
   const openModelDialog = () => {
-    const saved = kb.metadata?.indexing_policy?.selection;
-    const savedOption = llmCatalog.options.find(
-      (option) =>
-        option.profile_id === saved?.profile_id &&
-        option.model_id === saved?.model_id,
-    );
-    const defaultSelection = lightRagConfig
-      ? selectionFromLightRagDefault(
-          llmCatalog.options,
-          lightRagConfig,
-          llmCatalog.activeDefault,
-        )
-      : null;
-    setIndexingLLM(
-      emptyPendingEligible && savedOption
-        ? selectionFromLLMOption(savedOption, saved?.reasoning_effort || "")
-        : defaultSelection,
-    );
+    setIndexingLLM(null);
     setDialogError(null);
     setModelDialogOpen(true);
   };
