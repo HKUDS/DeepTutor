@@ -49,7 +49,12 @@ def _endpoint_identity(value: str | None) -> str:
     return urlunsplit((parsed.scheme.lower(), host.lower(), parsed.path.rstrip("/"), "", ""))
 
 
-def _canonical_identity(selection: LLMSelection | None, config: LLMConfig) -> dict[str, Any]:
+def _canonical_identity(
+    selection: LLMSelection | None,
+    config: LLMConfig,
+    *,
+    vision_available: bool | None = None,
+) -> dict[str, Any]:
     identity = {
         "binding": config.binding,
         "provider_mode": config.provider_mode,
@@ -61,6 +66,8 @@ def _canonical_identity(selection: LLMSelection | None, config: LLMConfig) -> di
     if selection is not None:
         identity["profile_id"] = selection.profile_id
         identity["model_id"] = selection.model_id
+    if vision_available is not None:
+        identity["vision_available"] = vision_available
     return identity
 
 
@@ -117,6 +124,7 @@ def freeze_snapshot(
         )
     owner = explicit_user or get_current_user()
     resolved_policy = policy or (POLICY_PINNED if selection is not None else POLICY_LEGACY)
+    vision_available = supports_vision(config.binding, config.model)
     if resolved_policy == POLICY_LEGACY:
         descriptor = {
             "model": config.model,
@@ -125,7 +133,11 @@ def freeze_snapshot(
         }
         fingerprint = None
     else:
-        identity = _canonical_identity(selection, config)
+        identity = _canonical_identity(
+            selection,
+            config,
+            vision_available=vision_available,
+        )
         descriptor = identity
         fingerprint = _fingerprint(identity)
     return IndexingLLMSnapshot(
@@ -135,7 +147,7 @@ def freeze_snapshot(
         selection=None if resolved_policy == POLICY_LEGACY else selection,
         descriptor=descriptor,
         fingerprint=fingerprint,
-        vision_available=supports_vision(config.binding, config.model),
+        vision_available=vision_available,
     )
 
 

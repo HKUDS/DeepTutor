@@ -79,6 +79,18 @@ def test_reasoning_none_and_literal_none_have_distinct_identity(
     assert literal_none.descriptor["reasoning_effort"] == "none"
 
 
+def test_vision_capability_drift_changes_fingerprint_and_blocks_append(
+    monkeypatch, tmp_path: Path
+) -> None:
+    original = _freeze(monkeypatch, tmp_path, _config())
+    assert original.vision_available is True
+    assert original.descriptor["vision_available"] is True
+    monkeypatch.setattr(indexing_policy, "supports_vision", lambda _binding, _model: False)
+
+    with pytest.raises(indexing_policy.IndexingModelChangedError, match="full re-index"):
+        indexing_policy.snapshot_from_persisted(original.persisted_policy())
+
+
 def test_published_policy_wins_over_residual_pending(tmp_path: Path) -> None:
     kb_dir = tmp_path / "kb"
     version = kb_dir / "version-1"
