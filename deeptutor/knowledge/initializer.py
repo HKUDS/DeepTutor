@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import Callable
 from datetime import datetime
 import json
 import logging
@@ -262,16 +263,23 @@ async def initialize_knowledge_base(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     rag_provider: Optional[str] = None,
+    *,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
 ) -> bool:
     """Convenience initializer used by CLI wrappers."""
     from deeptutor.knowledge.manager import KnowledgeBaseManager
 
     manager = KnowledgeBaseManager(base_dir=base_dir)
+    progress_tracker = ProgressTracker(kb_name, Path(base_dir))
+    if progress_callback is not None:
+        progress_tracker.set_callback(progress_callback)
+
     initializer = KnowledgeBaseInitializer(
         kb_name=kb_name,
         base_dir=base_dir,
         api_key=api_key,
         base_url=base_url,
+        progress_tracker=progress_tracker,
         rag_provider=rag_provider,
     )
     try:

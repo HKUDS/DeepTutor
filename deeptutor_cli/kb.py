@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import sys
 from typing import Optional
 
 from rich.console import Console
@@ -23,6 +24,18 @@ from deeptutor.services.rag.factory import DEFAULT_PROVIDER
 from deeptutor.services.rag.file_routing import FileTypeRouter
 
 console = Console()
+
+
+def _cli_progress(progress: dict[str, object]) -> None:
+    """Render one progress-tracker event for a synchronous CLI user."""
+    stage = str(progress.get("stage") or "?")
+    message = str(progress.get("message") or "")
+    percent = progress.get("progress_percent")
+    if isinstance(percent, (int, float)):
+        prefix = f"[{stage}] {percent:5.1f}%"
+    else:
+        prefix = f"[{stage}]"
+    print(f"{prefix} {message}".rstrip(), file=sys.stderr, flush=True)
 
 
 def _get_kb_manager() -> KnowledgeBaseManager:
@@ -175,6 +188,7 @@ def register(app: typer.Typer) -> None:
                     kb_name=name,
                     source_files=doc_paths,
                     base_dir=str(mgr.base_dir),
+                    progress_callback=_cli_progress,
                 )
             )
         except Exception as exc:
