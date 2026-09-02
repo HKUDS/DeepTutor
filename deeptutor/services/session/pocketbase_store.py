@@ -26,6 +26,7 @@ from typing import Any
 import uuid
 
 from .ask_user_trace import filter_ask_user_events
+from .event_preview import compact_trace_preview
 from .provider_response_state import redact_private_message_metadata
 from .scope import StoreScope
 from .workspace_preferences import upgrade_workspace_preferences
@@ -648,7 +649,62 @@ class PocketBaseSessionStore:
 
         try:
             records = await asyncio.to_thread(_get)
-            return [self._message_record_to_dict(r) for r in records]
+            turns = await asyncio.to_thread(
+                lambda: _pb()
+                .collection("turns")
+                .get_full_list(query_params={"filter": f'session_id="{sid}"'})
+            )
+            turns_by_message = {
+                str(getattr(turn, "assistant_message_id", "") or ""): turn
+                for turn in turns
+                if getattr(turn, "assistant_message_id", None)
+            }
+            event_rows = await asyncio.to_thread(
+                lambda: _pb()
+                .collection("turn_events")
+                .get_full_list(query_params={"filter": f'session_id="{sid}"', "sort": "seq"})
+            )
+            events_by_turn: dict[str, list[dict[str, Any]]] = {}
+            for row in event_rows:
+                turn_id = str(getattr(row, "turn_id", "") or "")
+                events_by_turn.setdefault(turn_id, []).append(
+                    {
+                        "type": getattr(row, "type", ""),
+                        "source": getattr(row, "source", "") or "",
+                        "stage": getattr(row, "stage", "") or "",
+                        "content": getattr(row, "content", "") or "",
+                        "metadata": _json_loads(getattr(row, "metadata_json", None), {}),
+                        "session_id": sid,
+                        "turn_id": turn_id,
+                        "seq": int(getattr(row, "seq", 0) or 0),
+                        "timestamp": _to_float(getattr(row, "event_timestamp", None)),
+                    }
+                )
+            result: list[dict[str, Any]] = []
+            for record in records:
+                message = self._message_record_to_dict(record)
+                turn = turns_by_message.get(str(record.id))
+                if record.role == "assistant" and turn is not None:
+                    turn_id = str(getattr(turn, "turn_id", turn.id) or "")
+                    events = events_by_turn.get(turn_id, [])
+                    message["events"], omitted = compact_trace_preview(events)
+                    message["trace"] = {
+                        "turn_id": turn_id,
+                        "total": len(events),
+                        "last_seq": int(events[-1]["seq"]) if events else 0,
+                        "truncated": omitted,
+                    }
+                elif record.role == "assistant":
+                    legacy_events = message["events"]
+                    message["events"], omitted = compact_trace_preview(legacy_events)
+                    message["trace"] = {
+                        "turn_id": None,
+                        "total": len(legacy_events),
+                        "last_seq": 0,
+                        "truncated": omitted,
+                    }
+                result.append(message)
+            return result
         except Exception as exc:
             logger.warning(f"get_messages failed: {exc}")
             return []
@@ -740,6 +796,7 @@ class PocketBaseSessionStore:
                         "state_version": 1,
                         "failure_code": "",
                         "retryable": False,
+                        "assistant_message_id": None,
                     }
                 )
             )
@@ -761,6 +818,7 @@ class PocketBaseSessionStore:
             "state_version": 1,
             "failure_code": "",
             "retryable": False,
+            "assistant_message_id": None,
         }
 
     async def create_turn(self, session_id: str, capability: str = "") -> dict[str, Any]:
@@ -914,7 +972,93 @@ class PocketBaseSessionStore:
             "state_version": int(getattr(record, "state_version", 1) or 1),
             "failure_code": getattr(record, "failure_code", "") or "",
             "retryable": bool(getattr(record, "retryable", False)),
+            "assistant_message_id": getattr(record, "assistant_message_id", None),
         }
+
+    async def link_turn_message(self, turn_id: str, assistant_message_id: int | str) -> bool:
+        tid = _validate_id(turn_id, "turn_id")
+
+        def _link() -> bool:
+            turns = (
+                _pb()
+                .collection("turns")
+                .get_full_list(query_params={"filter": f'turn_id="{tid}"'})
+            )
+            if not turns:
+                return False
+            record = turns[0]
+            if getattr(record, "assistant_message_id", None):
+                return False
+            _pb().collection("turns").update(
+                record.id,
+                {
+                    "assistant_message_id": str(assistant_message_id),
+                    "turn_updated_at": time.time(),
+                },
+            )
+            return True
+
+        return await asyncio.to_thread(_link)
+
+    async def get_message_trace(
+        self,
+        session_id: str,
+        message_id: int | str,
+        after_seq: int = 0,
+        limit: int | None = None,
+    ) -> dict[str, Any] | None:
+        sid = _validate_id(session_id, "session_id")
+        mid = str(message_id)
+        row_limit = 500 if limit is None else min(1000, max(1, int(limit)))
+
+        def _get():
+            messages = (
+                _pb()
+                .collection("messages")
+                .get_full_list(query_params={"filter": f'id="{mid}" && session_id="{sid}"'})
+            )
+            if not messages:
+                return None
+            turns = (
+                _pb()
+                .collection("turns")
+                .get_full_list(query_params={"filter": f'assistant_message_id="{mid}"'})
+            )
+            if not turns:
+                return None
+            turn = turns[0]
+            rows = _pb().collection("turn_events").get_full_list(
+                query_params={"filter": f'turn_id="{turn["turn_id"]}"', "sort": "seq"}
+            )
+            events = [
+                {
+                    "type": getattr(row, "type", ""),
+                    "source": getattr(row, "source", "") or "",
+                    "stage": getattr(row, "stage", "") or "",
+                    "content": getattr(row, "content", "") or "",
+                    "metadata": _json_loads(getattr(row, "metadata_json", None), {}),
+                    "session_id": sid,
+                    "turn_id": turn["turn_id"],
+                    "seq": int(getattr(row, "seq", 0) or 0),
+                    "timestamp": _to_float(getattr(row, "event_timestamp", None)),
+                }
+                for row in rows
+            ]
+            selected = [event for event in events if int(event.get("seq") or 0) > after_seq]
+            selected = selected[:row_limit]
+            complete = not events or int(selected[-1]["seq"]) >= int(events[-1]["seq"])
+            return {
+                "session_id": sid,
+                "message_id": message_id,
+                "turn_id": turn["turn_id"],
+                "events": selected,
+                "total": len(events),
+                "last_seq": int(events[-1]["seq"]) if events else 0,
+                "next_seq": None if complete else int(selected[-1]["seq"]),
+                "complete": complete,
+            }
+
+        return await asyncio.to_thread(_get)
 
     # ------------------------------------------------------------------
     # Turn events — synchronously durable before terminal transition

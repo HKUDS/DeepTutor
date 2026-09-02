@@ -28,11 +28,18 @@ import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import { buildStartTurnInput } from "@/features/chat/controllers/buildStartTurnInput";
 import {
   getSession,
+  getMessageTrace,
   deleteMessage,
   updateBranchSelection,
   updateSessionTitle,
+  type MessageTracePage,
   type SessionMessage,
 } from "@/lib/session-api";
+import {
+  TraceCache,
+  compactTracePreview,
+  type MessageTraceMetadata,
+} from "@/features/chat/trace/memory";
 import {
   normalizeMarkdownForDisplay,
   repairChineseEmphasis,
@@ -215,6 +222,7 @@ export interface MessageItem {
   events?: StreamEvent[];
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
+  trace?: MessageTraceMetadata;
   /** Edit-branching: id of the message this row continues. */
   parentMessageId?: number | null;
 }
@@ -306,6 +314,13 @@ type Action =
       turnId?: string | null;
       userMessageId?: number | null;
       assistantMessageId?: number | null;
+    }
+  | {
+      type: "SET_MESSAGE_TRACE";
+      key: string;
+      messageId: number;
+      events: StreamEvent[];
+      trace: MessageTraceMetadata;
     }
   | { type: "DELETE_TURN"; key: string; messageId: number }
   | {
@@ -868,6 +883,22 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         },
       };
     }
+    case "SET_MESSAGE_TRACE": {
+      const session = state.sessions[action.key];
+      if (!session) return state;
+      const messages = session.messages.map((message) =>
+        message.id === action.messageId && message.role === "assistant"
+          ? { ...message, events: action.events, trace: action.trace }
+          : message,
+      );
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: { ...session, messages, updatedAt: Date.now() },
+        },
+      };
+    }
     case "SET_SELECTED_BRANCH": {
       const session = state.sessions[action.key];
       if (!session) return state;
@@ -1067,6 +1098,10 @@ interface ChatContextValue {
   /** Select an already-loaded session without fetching. Returns false when
    *  it isn't in memory, i.e. the caller must load it. */
   showCachedSession: (sessionId: string) => boolean;
+  /** Lazily fetch one persisted turn trace and retain its compact preview. */
+  loadMessageTrace: (sessionId: string, messageId: number) => Promise<void>;
+  /** Restore the compact preview when a full trace is collapsed. */
+  releaseMessageTrace: (sessionId: string, messageId: number) => void;
   selectedSessionId: string | null;
   sessionStatuses: Record<string, SessionStatusSnapshot>;
   sidebarRefreshToken: number;
@@ -1262,6 +1297,7 @@ export function ChatStateAdapterProvider({
   // assistant message if the server rejects the request (e.g. ``regenerate_busy``
   // or ``nothing_to_regenerate``). Keyed by session entry key.
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
+  const traceCacheRef = useRef<TraceCache>(new TraceCache());
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
@@ -1272,6 +1308,21 @@ export function ChatStateAdapterProvider({
   useLayoutEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (!state.selectedKey) return;
+    const released = traceCacheRef.current.releaseExcept(state.selectedKey);
+    for (const [key, snapshot] of released) {
+      const [sessionId, messageId] = key.split(":");
+      dispatch({
+        type: "SET_MESSAGE_TRACE",
+        key: sessionId,
+        messageId: Number(messageId),
+        events: snapshot.events,
+        trace: snapshot.metadata ?? {},
+      });
+    }
+  }, [state.selectedKey]);
 
   useEffect(
     () => () => {
@@ -1324,6 +1375,7 @@ export function ChatStateAdapterProvider({
             capability: message.capability || "",
             events: Array.isArray(message.events) ? message.events : [],
             attachments,
+            trace: message.trace,
             parentMessageId:
               message.parent_message_id === undefined
                 ? null
@@ -1456,6 +1508,26 @@ export function ChatStateAdapterProvider({
               userMessageId: doneMeta?.user_message_id ?? null,
               assistantMessageId,
             });
+            const finished = stateRef.current.sessions[effectiveKey];
+            const finishedMessage = [...(finished?.messages ?? [])].reverse().find(
+              (item) => item.role === "assistant",
+            );
+            if (finishedMessage) {
+              const sourceEvents = finishedMessage.events ?? [];
+              const preview = compactTracePreview(sourceEvents);
+              dispatch({
+                type: "SET_MESSAGE_TRACE",
+                key: effectiveKey,
+                messageId: assistantMessageId,
+                events: preview.events,
+                trace: {
+                  turn_id: event.turn_id || null,
+                  total: sourceEvents.length,
+                  last_seq: Math.max(0, ...sourceEvents.map((item) => item.seq ?? 0)),
+                  truncated: preview.truncated,
+                },
+              });
+            }
           } else {
             // Older backend without ids on ``done`` — fall back to the
             // full session refetch.
@@ -1621,6 +1693,72 @@ export function ChatStateAdapterProvider({
     return true;
   }, []);
 
+  const releaseMessageTrace = useCallback((sessionId: string, messageId: number) => {
+    const key = `${sessionId}:${messageId}`;
+    const preview = traceCacheRef.current.release(key);
+    if (!preview) return;
+    dispatch({
+      type: "SET_MESSAGE_TRACE",
+      key: sessionId,
+      messageId,
+      events: preview.events,
+      trace: preview.metadata ?? {},
+    });
+  }, []);
+
+  const loadMessageTrace = useCallback(
+    async (sessionId: string, messageId: number) => {
+      const key = `${sessionId}:${messageId}`;
+      if (traceCacheRef.current.has(key)) return;
+      const session = stateRef.current.sessions[sessionId];
+      if (!session || session.isStreaming || session.status === "running") return;
+      const message = session.messages.find(
+        (item) => item.id === messageId && item.role === "assistant",
+      );
+      if (!message?.trace?.turn_id) return;
+
+      const events: StreamEvent[] = [];
+      let afterSeq = 0;
+      let page: MessageTracePage | null = null;
+      for (let page_count = 0; page_count < 1000; page_count += 1) {
+        page = await getMessageTrace(sessionId, messageId, afterSeq);
+        events.push(...page.events);
+        if (page.complete || page.next_seq == null) break;
+        afterSeq = page.next_seq;
+      }
+      if (!page) return;
+      const metadata: MessageTraceMetadata = {
+        turn_id: page.turn_id,
+        total: page.total,
+        last_seq: page.last_seq,
+        truncated: false,
+      };
+      const preview = compactTracePreview(message.events ?? []);
+      const evicted = traceCacheRef.current.retain(key, {
+        events: preview.events,
+        metadata: message.trace,
+      });
+      for (const [evictedKey, snapshot] of evicted) {
+        const [evictedSession, evictedMessage] = evictedKey.split(":");
+        dispatch({
+          type: "SET_MESSAGE_TRACE",
+          key: evictedSession,
+          messageId: Number(evictedMessage),
+          events: snapshot.events,
+          trace: snapshot.metadata ?? {},
+        });
+      }
+      dispatch({
+        type: "SET_MESSAGE_TRACE",
+        key: sessionId,
+        messageId,
+        events,
+        trace: metadata,
+      });
+    },
+    [],
+  );
+
   const loadSession = useCallback(
     async (
       sessionId: string,
@@ -1640,6 +1778,7 @@ export function ChatStateAdapterProvider({
         const local = stateRef.current.sessions[key];
         if (!local || local.isStreaming || local.status === "running") return;
       }
+      traceCacheRef.current.clear();
       const messages = hydrateMessages(session.messages ?? []);
       const loadedWorkspaceMode = normalizeWorkspaceMode(
         session.preferences?.workspace_mode,
@@ -2408,6 +2547,8 @@ export function ChatStateAdapterProvider({
       configureSession,
       loadSession,
       showCachedSession,
+      loadMessageTrace,
+      releaseMessageTrace,
       selectedSessionId: derivedState.sessionId,
       sessionStatuses,
       sidebarRefreshToken: state.sidebarRefreshToken,
@@ -2434,6 +2575,8 @@ export function ChatStateAdapterProvider({
       configureSession,
       loadSession,
       showCachedSession,
+      loadMessageTrace,
+      releaseMessageTrace,
       sessionStatuses,
       state.sidebarRefreshToken,
     ],
