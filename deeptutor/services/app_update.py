@@ -21,6 +21,7 @@ import httpx
 
 from deeptutor.__version__ import __version__
 from deeptutor.runtime.home import get_runtime_home
+from deeptutor.runtime.process import is_process_alive
 from deeptutor.services.file_io import atomic_write_json
 
 GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/HKUDS/DeepTutor/releases/latest"
@@ -545,15 +546,7 @@ def launcher_available() -> bool:
         pid = int(raw)
     except ValueError:
         return False
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return is_process_alive(pid)
 
 
 def launch_update_worker(store_root: Path, *, parent_pid: int) -> None:

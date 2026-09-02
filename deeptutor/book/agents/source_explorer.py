@@ -35,7 +35,7 @@ from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.utils.json_parser import parse_json_response
 
 from ..models import (

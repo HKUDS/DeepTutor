@@ -25,6 +25,7 @@ import { useNotebookLibrary } from "@/components/notebook/useNotebookLibrary";
 import { attachCourseResource } from "@/lib/courses-api";
 import { notify } from "@/lib/notifications";
 import { exportNotebookMarkdown } from "@/lib/notebook-api";
+import { notebookRoute } from "@/lib/resource-routes";
 
 const SWATCHES = [
   "#6366F1",
@@ -46,7 +47,7 @@ export interface NotebookCourseScope {
 }
 
 interface NotebookConsoleProps {
-  /** Notebook to open on arrival, e.g. from a `?notebook=<id>` deep link. */
+  /** Notebook to open on arrival from `/notebooks/<id>`. */
   initialNotebookId?: string | null;
   /** Present when arriving from a course; narrows the library to its notebooks. */
   courseScope?: NotebookCourseScope | null;
@@ -81,6 +82,14 @@ export default function NotebookConsole({
   const [deleting, setDeleting] = useState(false);
 
   const { notebooks, selected, selectedId } = library;
+  const courseId = courseScope?.id ?? null;
+
+  // Default selection, scope repair, create, and delete can all change the
+  // visible resource without a click. Keep the address bar canonical too.
+  useEffect(() => {
+    if (!selectedId || selectedId === initialNotebookId) return;
+    router.replace(notebookRoute(selectedId, courseId));
+  }, [courseId, initialNotebookId, router, selectedId]);
 
   // How many notebooks exist *for this visit*. Everything the console counts —
   // the badge, whether a filter box is worth showing, which empty state to use
@@ -146,13 +155,22 @@ export default function NotebookConsole({
         });
         onScopeChanged?.();
       }
+      if (createdId) router.push(notebookRoute(createdId, courseId));
       setNewName("");
       setNewDescription("");
       setCreating(false);
     } catch (err) {
       setBanner(err instanceof Error ? err.message : String(err));
     }
-  }, [courseScope, library, newName, newDescription, onScopeChanged]);
+  }, [
+    courseId,
+    courseScope,
+    library,
+    newName,
+    newDescription,
+    onScopeChanged,
+    router,
+  ]);
 
   const beginMetaEdit = useCallback(() => {
     if (!selected) return;
@@ -182,6 +200,7 @@ export default function NotebookConsole({
     setDeleting(true);
     try {
       await library.remove(selected.id);
+      router.replace(notebookRoute(null, courseId));
       notify(t('Deleted "{{name}}"', { name }), { tone: "success" });
       setConfirmingDelete(false);
     } catch (err) {
@@ -189,7 +208,7 @@ export default function NotebookConsole({
     } finally {
       setDeleting(false);
     }
-  }, [library, selected, t]);
+  }, [courseId, library, router, selected, t]);
 
   const handleExport = useCallback(async () => {
     if (!selected) return;
@@ -212,7 +231,7 @@ export default function NotebookConsole({
 
   const openSession = useCallback(
     (sessionId: string) => {
-      router.push(`/?session=${encodeURIComponent(sessionId)}`);
+      router.push(`/chat/${encodeURIComponent(sessionId)}`);
     },
     [router],
   );
@@ -314,7 +333,7 @@ export default function NotebookConsole({
                 {courseScope.name || t("This course")}
               </Link>
               <Link
-                href="/notebook"
+                href="/notebooks"
                 aria-label={t("Show every notebook")}
                 className="shrink-0 rounded p-0.5 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               >
@@ -346,7 +365,10 @@ export default function NotebookConsole({
               <button
                 key={notebook.id}
                 type="button"
-                onClick={() => library.select(notebook.id)}
+                onClick={() => {
+                  library.select(notebook.id);
+                  router.push(notebookRoute(notebook.id, courseId));
+                }}
                 aria-current={active ? "true" : undefined}
                 className={`group/nb relative mb-0.5 flex w-full items-start gap-2 rounded-lg py-2 pl-3 pr-2 text-left transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
                   active

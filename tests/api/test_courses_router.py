@@ -26,7 +26,7 @@ class _FailingSubsystem:
 
 def _build_app() -> FastAPI:
     app = FastAPI()
-    app.include_router(courses_router, prefix="/api/v1/courses")
+    app.include_router(courses_router, prefix="/api/courses")
     return app
 
 
@@ -76,7 +76,7 @@ def failing_subsystems(monkeypatch) -> None:
 
 def _create_course(client: TestClient, **overrides) -> dict:
     payload = {"name": "Calculus", "description": "Limits and derivatives"} | overrides
-    response = client.post("/api/v1/courses", json=payload)
+    response = client.post("/api/courses", json=payload)
     assert response.status_code == 200
     return response.json()["course"]
 
@@ -85,7 +85,7 @@ def test_attach_and_detach_resource_round_trip(course_service: CourseService) ->
     with TestClient(_build_app()) as client:
         course = _create_course(client)
         attached = client.post(
-            f"/api/v1/courses/{course['id']}/resources",
+            f"/api/courses/{course['id']}/resources",
             json={"kind": "book", "ref_id": "book-1", "label": "Analysis I"},
         )
 
@@ -95,22 +95,22 @@ def test_attach_and_detach_resource_round_trip(course_service: CourseService) ->
         assert resource["ref_id"] == "book-1"
         assert resource["label"] == "Analysis I"
 
-        listing = client.get("/api/v1/courses").json()["courses"]
+        listing = client.get("/api/courses").json()["courses"]
         assert listing[0]["resources"] == [resource]
 
-        detached = client.delete(f"/api/v1/courses/{course['id']}/resources/{resource['id']}")
+        detached = client.delete(f"/api/courses/{course['id']}/resources/{resource['id']}")
         assert detached.status_code == 200
         assert detached.json() == {"deleted": True}
-        assert client.get("/api/v1/courses").json()["courses"][0]["resources"] == []
+        assert client.get("/api/courses").json()["courses"][0]["resources"] == []
 
-        missing = client.delete(f"/api/v1/courses/{course['id']}/resources/{resource['id']}")
+        missing = client.delete(f"/api/courses/{course['id']}/resources/{resource['id']}")
         assert missing.status_code == 404
 
 
 def test_duplicate_resource_attach_is_idempotent(course_service: CourseService) -> None:
     with TestClient(_build_app()) as client:
         course = _create_course(client)
-        url = f"/api/v1/courses/{course['id']}/resources"
+        url = f"/api/courses/{course['id']}/resources"
         payload = {"kind": "notebook", "ref_id": "nb-1", "label": "Problem notes"}
 
         first = client.post(url, json=payload)
@@ -118,7 +118,7 @@ def test_duplicate_resource_attach_is_idempotent(course_service: CourseService) 
 
         assert first.status_code == second.status_code == 200
         assert first.json()["resource"]["id"] == second.json()["resource"]["id"]
-        stored = client.get("/api/v1/courses").json()["courses"][0]["resources"]
+        stored = client.get("/api/courses").json()["courses"][0]["resources"]
         assert len(stored) == 1
 
 
@@ -126,7 +126,7 @@ def test_unknown_resource_kind_returns_400(course_service: CourseService) -> Non
     with TestClient(_build_app()) as client:
         course = _create_course(client)
         response = client.post(
-            f"/api/v1/courses/{course['id']}/resources",
+            f"/api/courses/{course['id']}/resources",
             json={"kind": "video_library", "ref_id": "videos"},
         )
 
@@ -137,11 +137,11 @@ def test_unknown_resource_kind_returns_400(course_service: CourseService) -> Non
 def test_missing_course_returns_404(course_service: CourseService) -> None:
     with TestClient(_build_app()) as client:
         attach = client.post(
-            "/api/v1/courses/course_missing/resources",
+            "/api/courses/course_missing/resources",
             json={"kind": "book", "ref_id": "book-1"},
         )
-        detach = client.delete("/api/v1/courses/course_missing/resources/resource_missing")
-        state = client.get("/api/v1/courses/course_missing/state")
+        detach = client.delete("/api/courses/course_missing/resources/resource_missing")
+        state = client.get("/api/courses/course_missing/state")
 
     assert attach.status_code == 404
     assert detach.status_code == 404
@@ -156,11 +156,11 @@ def test_state_degrades_when_every_subsystem_fails(
         course = _create_course(client, instructions="Use epsilon-delta proofs.")
         for kind in COURSE_RESOURCE_KINDS:
             attached = client.post(
-                f"/api/v1/courses/{course['id']}/resources",
+                f"/api/courses/{course['id']}/resources",
                 json={"kind": kind, "ref_id": f"missing-{kind}"},
             )
             assert attached.status_code == 200
-        response = client.get(f"/api/v1/courses/{course['id']}/state")
+        response = client.get(f"/api/courses/{course['id']}/state")
 
     assert response.status_code == 200
     state = response.json()
@@ -189,7 +189,7 @@ def test_resource_candidates_literal_route_and_empty_fallbacks(
     failing_subsystems: None,
 ) -> None:
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/courses/resource-candidates")
+        response = client.get("/api/courses/resource-candidates")
 
     assert response.status_code == 200
     candidates = response.json()["candidates"]
@@ -201,7 +201,7 @@ def test_create_and_patch_course_learning_defaults(course_service: CourseService
     with TestClient(_build_app()) as client:
         course = _create_course(client, instructions="Show every algebra step.")
         response = client.patch(
-            f"/api/v1/courses/{course['id']}",
+            f"/api/courses/{course['id']}",
             json={
                 "instructions": "Prefer geometric intuition.",
                 "default_capability": "deep_solve",
@@ -221,22 +221,22 @@ def test_archive_round_trip_keeps_course_in_listing(course_service: CourseServic
     with TestClient(_build_app()) as client:
         course = _create_course(client)
         _create_course(client, name="Linear Algebra")
-        before = client.get("/api/v1/courses").json()["courses"]
+        before = client.get("/api/courses").json()["courses"]
         before_ids = {item["id"] for item in before}
 
         archived_response = client.patch(
-            f"/api/v1/courses/{course['id']}",
+            f"/api/courses/{course['id']}",
             json={"status": "archived"},
         )
         archived = archived_response.json()["course"]
-        during = client.get("/api/v1/courses").json()["courses"]
+        during = client.get("/api/courses").json()["courses"]
 
         restored_response = client.patch(
-            f"/api/v1/courses/{course['id']}",
+            f"/api/courses/{course['id']}",
             json={"status": "active"},
         )
         restored = restored_response.json()["course"]
-        after = client.get("/api/v1/courses").json()["courses"]
+        after = client.get("/api/courses").json()["courses"]
 
     assert archived_response.status_code == 200
     assert archived["status"] == "archived"
@@ -254,7 +254,7 @@ def test_invalid_course_status_returns_400(course_service: CourseService) -> Non
     with TestClient(_build_app()) as client:
         course = _create_course(client)
         response = client.patch(
-            f"/api/v1/courses/{course['id']}",
+            f"/api/courses/{course['id']}",
             json={"status": "finished"},
         )
 
@@ -267,7 +267,7 @@ def test_put_syllabus_replaces_drops_blanks_and_renumbers(
 ) -> None:
     with TestClient(_build_app()) as client:
         course = _create_course(client)
-        url = f"/api/v1/courses/{course['id']}/syllabus"
+        url = f"/api/courses/{course['id']}/syllabus"
         initial = client.put(
             url,
             json={"units": [{"title": "Limits"}, {"title": "Derivatives"}]},
@@ -296,7 +296,7 @@ def test_put_syllabus_preserves_covered_for_existing_id(
 ) -> None:
     with TestClient(_build_app()) as client:
         course = _create_course(client)
-        syllabus_url = f"/api/v1/courses/{course['id']}/syllabus"
+        syllabus_url = f"/api/courses/{course['id']}/syllabus"
         created = client.put(syllabus_url, json={"units": [{"title": "Limits"}]})
         unit_id = created.json()["course"]["syllabus"][0]["id"]
         toggled = client.patch(
@@ -328,7 +328,7 @@ def test_patch_syllabus_unit_toggles_and_unknown_is_404(
 ) -> None:
     with TestClient(_build_app()) as client:
         course = _create_course(client)
-        syllabus_url = f"/api/v1/courses/{course['id']}/syllabus"
+        syllabus_url = f"/api/courses/{course['id']}/syllabus"
         created = client.put(syllabus_url, json={"units": [{"title": "Limits"}]})
         unit_id = created.json()["course"]["syllabus"][0]["id"]
 
@@ -350,7 +350,7 @@ def test_state_reports_syllabus_progress_and_next_unit(
 ) -> None:
     with TestClient(_build_app()) as client:
         course = _create_course(client)
-        syllabus_url = f"/api/v1/courses/{course['id']}/syllabus"
+        syllabus_url = f"/api/courses/{course['id']}/syllabus"
         created = client.put(
             syllabus_url,
             json={
@@ -362,7 +362,7 @@ def test_state_reports_syllabus_progress_and_next_unit(
         )
         units = created.json()["course"]["syllabus"]
         client.patch(f"{syllabus_url}/{units[0]['id']}", json={"covered": True})
-        response = client.get(f"/api/v1/courses/{course['id']}/state")
+        response = client.get(f"/api/courses/{course['id']}/state")
 
     assert response.status_code == 200
     syllabus = response.json()["syllabus"]
@@ -400,7 +400,7 @@ def test_syllabus_wrong_questions_use_bidirectional_substring_matching(
     with TestClient(_build_app()) as client:
         course = _create_course(client)
         client.put(
-            f"/api/v1/courses/{course['id']}/syllabus",
+            f"/api/courses/{course['id']}/syllabus",
             json={
                 "units": [
                     {"title": "Vectors", "topics": ["algebra"]},
@@ -412,7 +412,7 @@ def test_syllabus_wrong_questions_use_bidirectional_substring_matching(
                 ]
             },
         )
-        response = client.get(f"/api/v1/courses/{course['id']}/state")
+        response = client.get(f"/api/courses/{course['id']}/state")
 
     assert response.status_code == 200
     assert [unit["wrong_questions"] for unit in response.json()["syllabus"]["units"]] == [
@@ -443,7 +443,7 @@ def test_legacy_six_field_courses_json_still_loads(course_service: CourseService
     )
 
     with TestClient(_build_app()) as client:
-        response = client.get("/api/v1/courses")
+        response = client.get("/api/courses")
 
     assert response.status_code == 200
     course = response.json()["courses"][0]

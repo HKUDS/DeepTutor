@@ -17,7 +17,7 @@ in fragments and must be concatenated. Both directions matter — assigning
 
 from __future__ import annotations
 
-from deeptutor.core.agentic.tool_call_stream import ToolCallAccumulator
+from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
 
 
 class _Fn:

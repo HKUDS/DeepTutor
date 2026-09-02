@@ -16,16 +16,16 @@ import tempfile
 from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
-from deeptutor.core.agentic.usage import UsageTracker
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import merge_trace_metadata
 from deeptutor.i18n import StatusI18n
+from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.stream_bus import StreamBus
 
 
-class DeepQuestionCapability(BaseCapability):
+class DeepQuestionCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="deep_question",
         description="Fast question generation (Template batches -> Generate).",

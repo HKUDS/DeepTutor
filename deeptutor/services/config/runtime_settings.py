@@ -20,6 +20,7 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # override for read-only settings volumes.
     "version_check_enabled": True,
     "backend_port": 8001,
+    "backend_workers": 1,
     "frontend_port": 3782,
     "next_public_api_base_external": "",
     "next_public_api_base": "",
@@ -75,12 +76,21 @@ DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
 }
 
 DEFAULT_INTEGRATIONS_SETTINGS: dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "pocketbase_url": "",
     "pocketbase_port": 8090,
     "pocketbase_external_url": "",
     "pocketbase_admin_email": "",
     "pocketbase_admin_password": "",
+    "turn_coordination": {
+        "backend": "memory",
+        "redis_url": "",
+        "key_prefix": "deeptutor",
+        "lease_ttl_seconds": 30,
+        "renew_interval_seconds": 10,
+        "recovery_interval_seconds": 10,
+        "stream_retention_seconds": 86_400,
+    },
 }
 
 # Document parsing settings. The parse layer (deeptutor/services/parsing)
@@ -639,6 +649,7 @@ class RuntimeSettingsService:
         return {
             "DEEPTUTOR_VERSION_CHECK_ENABLED": _bool_env(system["version_check_enabled"]),
             "BACKEND_PORT": str(system["backend_port"]),
+            "BACKEND_WORKERS": str(system["backend_workers"]),
             "FRONTEND_PORT": str(system["frontend_port"]),
             "NEXT_PUBLIC_API_BASE_EXTERNAL": system["next_public_api_base_external"],
             "NEXT_PUBLIC_API_BASE": system["next_public_api_base"],
@@ -766,6 +777,11 @@ class RuntimeSettingsService:
             payload["disable_ssl_verify"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_DIR"):
             payload["chat_attachment_dir"] = value
+        if value := (
+            self._process_env_value("DEEPTUTOR_BACKEND_WORKERS")
+            or self._process_env_value("BACKEND_WORKERS")
+        ):
+            payload["backend_workers"] = value
         if value := self._process_env_value("DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS"):
             payload["sandbox_allow_subprocess"] = value
         if value := self._process_env_value("DEEPTUTOR_CAPABILITY_ROUTING_ENABLED"):
@@ -809,6 +825,14 @@ class RuntimeSettingsService:
             payload["pocketbase_admin_email"] = value
         if value := self._process_env_value("POCKETBASE_ADMIN_PASSWORD"):
             payload["pocketbase_admin_password"] = value
+        coordination = dict(payload.get("turn_coordination") or {})
+        if value := self._process_env_value("DEEPTUTOR_TURN_COORDINATION_BACKEND"):
+            coordination["backend"] = value
+        if value := self._process_env_value("DEEPTUTOR_REDIS_URL"):
+            coordination["redis_url"] = value
+        if value := self._process_env_value("DEEPTUTOR_REDIS_KEY_PREFIX"):
+            coordination["key_prefix"] = value
+        payload["turn_coordination"] = coordination
         return self._normalize_integrations(payload)
 
     def _apply_mineru_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1122,6 +1146,7 @@ class RuntimeSettingsService:
             "version": 1,
             "version_check_enabled": _coerce_bool(settings.get("version_check_enabled"), True),
             "backend_port": _coerce_port(settings.get("backend_port"), 8001),
+            "backend_workers": _coerce_clamped_int(settings.get("backend_workers"), 1, 1, 64),
             "frontend_port": _coerce_port(settings.get("frontend_port"), 3782),
             "next_public_api_base_external": public_api_base,
             "next_public_api_base": _string(settings.get("next_public_api_base")),
@@ -1165,13 +1190,36 @@ class RuntimeSettingsService:
         }
 
     def _normalize_integrations(self, settings: dict[str, Any]) -> dict[str, Any]:
+        raw_coordination = settings.get("turn_coordination")
+        coordination = raw_coordination if isinstance(raw_coordination, dict) else {}
+        backend = _string(coordination.get("backend")).lower()
+        if backend not in {"memory", "redis"}:
+            backend = "memory"
+        key_prefix = _string(coordination.get("key_prefix")).strip(":") or "deeptutor"
         return {
-            "version": 1,
+            "version": 2,
             "pocketbase_url": _string(settings.get("pocketbase_url")).rstrip("/"),
             "pocketbase_port": _coerce_port(settings.get("pocketbase_port"), 8090),
             "pocketbase_external_url": _string(settings.get("pocketbase_external_url")).rstrip("/"),
             "pocketbase_admin_email": _string(settings.get("pocketbase_admin_email")),
             "pocketbase_admin_password": _string(settings.get("pocketbase_admin_password")),
+            "turn_coordination": {
+                "backend": backend,
+                "redis_url": _string(coordination.get("redis_url")),
+                "key_prefix": key_prefix,
+                "lease_ttl_seconds": _coerce_clamped_int(
+                    coordination.get("lease_ttl_seconds"), 30, 10, 300
+                ),
+                "renew_interval_seconds": _coerce_clamped_int(
+                    coordination.get("renew_interval_seconds"), 10, 1, 100
+                ),
+                "recovery_interval_seconds": _coerce_clamped_int(
+                    coordination.get("recovery_interval_seconds"), 10, 1, 300
+                ),
+                "stream_retention_seconds": _coerce_clamped_int(
+                    coordination.get("stream_retention_seconds"), 86_400, 60, 2_592_000
+                ),
+            },
         }
 
 

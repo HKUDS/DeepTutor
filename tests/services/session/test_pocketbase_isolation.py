@@ -135,6 +135,47 @@ async def test_list_sessions_only_returns_own(fake_pb) -> None:
     assert {s["session_id"] for s in alice_sessions} == {"s_a1", "s_a2"}
 
 
+async def test_legacy_workspace_preferences_are_normalized_at_repository_boundary(
+    fake_pb,
+) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(title="legacy mastery", session_id="s_mastery")
+        [record] = fake_pb.collection("sessions").get_full_list()
+        record.preferences_json = {
+            "capability": "mastery_path",
+            "mastery_path_id": "topic-1",
+        }
+
+        [session] = await store.list_sessions()
+
+    assert session["preferences"]["workspace_mode"] == "mastery_path"
+
+
+async def test_workspace_migration_persists_metadata_without_reordering(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(title="newer chat", session_id="s_newer")
+        await store.create_session(title="older mastery", session_id="s_mastery")
+        records = {
+            record.session_id: record for record in fake_pb.collection("sessions").get_full_list()
+        }
+        records["s_newer"].session_updated_at = 200.0
+        records["s_mastery"].session_updated_at = 100.0
+        records["s_mastery"].preferences_json = {
+            "capability": "mastery_path",
+            "mastery_path_id": "topic-1",
+        }
+
+        assert await store.migrate_workspace_preferences() == 1
+        assert await store.migrate_workspace_preferences() == 0
+        listed = await store.list_sessions()
+
+    assert [session["session_id"] for session in listed] == ["s_newer", "s_mastery"]
+    assert records["s_mastery"].session_updated_at == 100.0
+    assert records["s_mastery"].preferences_json["workspace_mode"] == "mastery_path"
+
+
 async def test_session_summaries_count_messages_without_loading_transcripts(fake_pb) -> None:
     store = PocketBaseSessionStore()
     with as_user("alice"):

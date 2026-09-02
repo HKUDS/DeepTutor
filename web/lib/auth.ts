@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl, setRuntimeAuthEnabled } from "@/lib/api";
 
-// Auth state is resolved at runtime from the backend (`/api/v1/auth/status`),
+// Auth state is resolved at runtime from the backend (`/api/auth/status`),
 // not from a build-time/env constant: the browser bundle never sees
 // `DEEPTUTOR_AUTH_ENABLED` (not a `NEXT_PUBLIC_` var), and auth is runtime
 // config that must not be baked into the bundle. Components observe it via the
@@ -38,7 +38,7 @@ export interface AuthStatus {
  */
 export async function fetchAuthStatus(): Promise<AuthStatus | null> {
   try {
-    const res = await apiFetch(apiUrl("/api/v1/auth/status"));
+    const res = await apiFetch(apiUrl("/api/auth/status"));
     if (!res.ok) return null;
     const status: AuthStatus = await res.json();
     // Record the real auth state so apiFetch's in-session 401 → /login redirect
@@ -58,7 +58,7 @@ export async function login(
   password: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await apiFetch(apiUrl("/api/v1/auth/login"), {
+    const res = await apiFetch(apiUrl("/api/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
@@ -104,7 +104,7 @@ export async function register(
   error?: string;
 }> {
   try {
-    const res = await apiFetch(apiUrl("/api/v1/auth/register"), {
+    const res = await apiFetch(apiUrl("/api/auth/register"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
@@ -127,7 +127,7 @@ export async function register(
  */
 export async function checkIsFirstUser(): Promise<boolean> {
   try {
-    const res = await apiFetch(apiUrl("/api/v1/auth/is_first_user"));
+    const res = await apiFetch(apiUrl("/api/auth/is_first_user"));
     if (!res.ok) return false;
     const data = await res.json();
     return Boolean(data.is_first_user);
@@ -141,7 +141,7 @@ export async function checkIsFirstUser(): Promise<boolean> {
  */
 export async function logout(): Promise<void> {
   try {
-    await apiFetch(apiUrl("/api/v1/auth/logout"), {
+    await apiFetch(apiUrl("/api/auth/logout"), {
       method: "POST",
     });
   } catch {

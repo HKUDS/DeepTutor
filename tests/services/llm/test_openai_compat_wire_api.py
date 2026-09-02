@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.core.agentic import client as agentic_client
+from deeptutor.runtime.agentic import client as agentic_client
 from deeptutor.services.config.provider_runtime import resolve_llm_runtime_config
 from deeptutor.services.llm import provider_factory
 from deeptutor.services.llm.config import LLMConfig

@@ -19,7 +19,7 @@ test("search provider readiness has actionable bilingual copy", () => {
     {
       badge: "未配置",
       detail: "请先在搜索设置中选择提供商。DuckDuckGo 无需 API 密钥。",
-      href: "/settings/search",
+      href: "/settings#search",
     },
   );
   assert.deepEqual(
@@ -28,7 +28,7 @@ test("search provider readiness has actionable bilingual copy", () => {
       badge: "Not configured",
       detail:
         "Choose a provider in Search settings first. DuckDuckGo needs no API key.",
-      href: "/settings/search",
+      href: "/settings#search",
     },
   );
 });

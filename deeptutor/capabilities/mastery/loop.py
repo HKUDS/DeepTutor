@@ -195,7 +195,7 @@ class MasteryLoopCapability:
             return kwargs
         path_id = str(context.metadata.get("mastery_path_id") or "").strip()
         if tool_name == "ask_user":
-            context.metadata["_mastery_quiz_needs_card"] = False
+            context.extension("mastery")["quiz_needs_card"] = False
             # Strip hints last, so a card rebound from persisted state is
             # cleaned too — the persisted options were model-authored as well.
             return _strip_answer_hints(_bind_pending_ask_user_args(kwargs, path_id))
@@ -209,9 +209,9 @@ class MasteryLoopCapability:
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":
-                context.metadata["_mastery_quiz_needs_card"] = True
+                context.extension("mastery")["quiz_needs_card"] = True
             elif tool_name == "mastery_grade":
-                context.metadata["_mastery_quiz_needs_card"] = False
+                context.extension("mastery")["quiz_needs_card"] = False
             updated["_mastery_path_id"] = path_id
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
@@ -228,7 +228,7 @@ class MasteryLoopCapability:
         """Redirect a quantitative assessment away from a plain-text finish."""
         if not self.is_active(context):
             return None
-        needs_card = bool(context.metadata.get("_mastery_quiz_needs_card"))
+        needs_card = bool(context.extension("mastery").get("quiz_needs_card"))
         if not needs_card and not _looks_like_plain_choice_quiz(final_text):
             return None
 

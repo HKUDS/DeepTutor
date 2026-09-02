@@ -22,7 +22,8 @@ def _install(monkeypatch, engine: _RecordingEngine) -> FastAPI:
     monkeypatch.setattr(book_router, "get_book_engine", lambda: engine)
     monkeypatch.setattr(book_router, "can_create_book", lambda: True)
     app = FastAPI()
-    app.include_router(book_router.router, prefix="/api/v1/book")
+    app.include_router(book_router.router, prefix="/api")
+    app.include_router(book_router.ws_router, prefix="/ws")
     return app
 
 
@@ -31,7 +32,7 @@ def test_rest_create_passes_requested_and_fallback_language(monkeypatch) -> None
     app = _install(monkeypatch, engine)
 
     response = TestClient(app).post(
-        "/api/v1/book/books",
+        "/api/books",
         json={
             "user_intent": "Create a book",
             "language": "auto",
@@ -49,7 +50,7 @@ def test_websocket_create_passes_fallback_language(monkeypatch) -> None:
     engine = _RecordingEngine()
     app = _install(monkeypatch, engine)
 
-    with TestClient(app).websocket_connect("/api/v1/book/ws") as ws:
+    with TestClient(app).websocket_connect("/ws/books") as ws:
         ws.send_json(
             {
                 "type": "create",

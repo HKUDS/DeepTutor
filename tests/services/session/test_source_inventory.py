@@ -464,9 +464,7 @@ async def test_build_inventory_adds_server_resolved_reading_units(
         ],
     )
 
-    assert seen == [
-        {"material_id": "abcdef0123456789", "revision": 3, "locators": [2]}
-    ]
+    assert seen == [{"material_id": "abcdef0123456789", "revision": 3, "locators": [2]}]
     assert inv.entries[0].sid == "rd-abcdef0123456789-r3-2"
     assert inv.entries[0].kind == "reading"
     assert inv.entries[0].fresh is True

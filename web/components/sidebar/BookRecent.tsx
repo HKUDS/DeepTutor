@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { bookApi } from "@/lib/book-api";
 import type { Book } from "@/lib/book-types";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { bookRoute } from "@/lib/resource-routes";
 
 const STATUS_DOT: Record<string, string> = {
   ready: "bg-emerald-400",
@@ -56,7 +57,7 @@ export function BookRecent({ collapsed = false, limit = 4 }: BookRecentProps) {
         return (
           <Link
             key={book.id}
-            href={`/book?book=${encodeURIComponent(book.id)}`}
+            href={bookRoute(book.id)}
             className="group flex items-center gap-2 rounded-r-lg py-1 pl-3 pr-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
           >
             <span

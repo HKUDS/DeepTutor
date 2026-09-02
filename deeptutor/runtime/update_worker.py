@@ -10,6 +10,7 @@ import sys
 import time
 from typing import Callable
 
+from deeptutor.runtime.process import is_process_alive
 from deeptutor.services.app_update import UpdateJob, UpdateJobStore
 
 
@@ -49,13 +50,7 @@ def build_restart_command(job: UpdateJob) -> tuple[list[str], Path]:
 
 
 def _pid_is_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return is_process_alive(pid)
 
 
 def wait_for_process_exit(pid: int, *, timeout: float = 60.0) -> None:

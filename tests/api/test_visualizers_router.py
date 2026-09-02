@@ -29,7 +29,7 @@ def _client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         lambda: registry,
     )
     app = FastAPI()
-    app.include_router(visualizers_router.router, prefix="/api/v1/visualizers")
+    app.include_router(visualizers_router.router, prefix="/api/visualizers")
     return TestClient(app)
 
 
@@ -60,29 +60,29 @@ def test_visualizer_catalog_install_import_and_asset_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _client(tmp_path, monkeypatch)
-    initial = client.get("/api/v1/visualizers/list").json()["visualizers"]
+    initial = client.get("/api/visualizers/list").json()["visualizers"]
     assert next(item for item in initial if item["id"] == "geogebra")["installed"] is False
 
-    response = client.post("/api/v1/visualizers/bundled/geogebra/install")
+    response = client.post("/api/visualizers/bundled/geogebra/install")
     assert response.status_code == 200
     assert response.json()["status"] == "installed"
 
     imported = client.post(
-        "/api/v1/visualizers/import",
+        "/api/visualizers/import",
         files={"file": ("fraction-tiles.zip", _archive(), "application/zip")},
     )
     assert imported.status_code == 200
     assert imported.json()["visualizer"] == "fraction_tiles"
 
-    asset = client.get("/api/v1/visualizers/fraction_tiles/assets/index.html")
+    asset = client.get("/api/visualizers/fraction_tiles/assets/index.html")
     assert asset.status_code == 200
     assert "Fraction Tiles" in asset.text
     assert "connect-src 'none'" in asset.headers["content-security-policy"]
     assert asset.headers["cross-origin-resource-policy"] == "same-origin"
 
-    disabled = client.post("/api/v1/visualizers/fraction_tiles/disable")
+    disabled = client.post("/api/visualizers/fraction_tiles/disable")
     assert disabled.status_code == 200
-    assert client.get("/api/v1/visualizers/fraction_tiles/assets/index.html").status_code == 404
+    assert client.get("/api/visualizers/fraction_tiles/assets/index.html").status_code == 404
 
-    assert client.post("/api/v1/visualizers/fraction_tiles/enable").status_code == 200
-    assert client.delete("/api/v1/visualizers/fraction_tiles").status_code == 200
+    assert client.post("/api/visualizers/fraction_tiles/enable").status_code == 200
+    assert client.delete("/api/visualizers/fraction_tiles").status_code == 200

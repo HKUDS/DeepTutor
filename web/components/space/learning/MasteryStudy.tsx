@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -14,19 +16,22 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ChatMessageList } from "@/components/chat/home/ChatMessages";
+import { ChatMessageList } from "@/features/chat/messages";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
 } from "@/components/chat/home/SessionViewerPanel";
-import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import { TurnStatusBar } from "@/features/chat/components/turn";
+import { turnViewState } from "@/features/chat/model/turn-state";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import { fetchMasteryAskHint, type MasteryTopic } from "@/lib/learning-api";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
+import { hasPendingAskUser } from "@/lib/ask-user-state";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
 
 import { topicDisplayName, type Translate } from "./format";
@@ -81,11 +86,12 @@ export function MasteryStudy({
     state,
     sendMessage,
     submitUserReply,
+    cancelStreamingTurn,
     regenerateLastMessage,
     deleteTurn,
     editMessage,
     switchBranch,
-  } = useUnifiedChat();
+  } = useChatStateAdapter();
   const confirmResearchOutline = useResearchOutlineContinuation();
   const { topic, topicError, knowledgeBases, sessionError, sessionLoading } =
     useMasteryStudySession(pathId, routeSessionId, courseId);
@@ -101,6 +107,14 @@ export function MasteryStudy({
   const { ref: composerBoxRef, height: composerHeight } =
     useMeasuredHeight<HTMLDivElement>();
   const lastMessage = state.messages[state.messages.length - 1];
+  const awaitingUserReply = hasPendingAskUser(lastMessage?.events);
+  const activeTurnViewState = turnViewState({
+    status: awaitingUserReply
+      ? "waiting_input"
+      : state.isStreaming
+        ? "running"
+        : undefined,
+  });
   const {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
@@ -130,7 +144,9 @@ export function MasteryStudy({
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOutlineOpen(localStorage.getItem(OUTLINE_STORAGE_KEY) !== "0");
+      setOutlineOpen(
+        browserStorage.readRaw("local", OUTLINE_STORAGE_KEY) !== "0",
+      );
     } catch {
       // Private mode / blocked storage: the default (open) stands.
     }
@@ -139,7 +155,7 @@ export function MasteryStudy({
     setOutlineOpen((open) => {
       const next = !open;
       try {
-        localStorage.setItem(OUTLINE_STORAGE_KEY, next ? "1" : "0");
+        browserStorage.writeRaw("local", OUTLINE_STORAGE_KEY, next ? "1" : "0");
       } catch {
         // Preference is best-effort; the session still honours the toggle.
       }
@@ -398,7 +414,7 @@ export function MasteryStudy({
                     {sessionError}
                   </p>
                   <Link
-                    href={`/mastery/${encodeURIComponent(pathId)}/study`}
+                    href={`/mastery/${encodeURIComponent(pathId)}/sessions`}
                     className="mt-4 inline-flex rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)]"
                   >
                     {t("Start a new session")}
@@ -467,6 +483,13 @@ export function MasteryStudy({
               ref={composerBoxRef}
               className="shrink-0 bg-[var(--background)]"
             >
+              <TurnStatusBar
+                state={activeTurnViewState}
+                stage={state.currentStage || undefined}
+                onCancel={cancelStreamingTurn}
+                onAnswer={() => prefillInputRef.current?.("")}
+                className="mx-4 mb-2"
+              />
               <MasteryComposer
                 placeholder={t("Ask your tutor about “{{waypoint}}”…", {
                   waypoint: waypoint.name,

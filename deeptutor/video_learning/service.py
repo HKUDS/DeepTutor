@@ -706,7 +706,7 @@ def public_material(material: dict[str, Any], *, provider: str) -> dict[str, Any
         formats = material.get("provider_cache", {}).get("invidious_formats") or []
         best = formats[0] if formats else {}
         revision = str(material.get("updated_at") or "")
-        subtitles_url = f"/api/v1/video-learning/materials/{payload['material_id']}/subtitles.vtt"
+        subtitles_url = f"/api/video-learning/materials/{payload['material_id']}/subtitles.vtt"
         if revision:
             subtitles_url = f"{subtitles_url}?{urlencode({'revision': revision})}"
         payload["playback"] = {
@@ -714,7 +714,7 @@ def public_material(material: dict[str, Any], *, provider: str) -> dict[str, Any
             "kind": "html5",
             "format_id": str(best.get("format_id") or ""),
             "mime_type": str(best.get("mime_type") or "video/mp4"),
-            "stream_url": f"/api/v1/video-learning/materials/{payload['material_id']}/stream/{best.get('format_id', '')}",
+            "stream_url": f"/api/video-learning/materials/{payload['material_id']}/stream/{best.get('format_id', '')}",
             "subtitles_url": subtitles_url,
             "start_seconds": start,
         }

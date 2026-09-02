@@ -5,7 +5,7 @@ import {
   isNarrationMarker,
   recomputeAnswerContent,
 } from "../lib/stream";
-import type { StreamEvent } from "../lib/unified-ws";
+import type { StreamEvent } from "../features/chat/model/protocol";
 
 function event(
   type: StreamEvent["type"],

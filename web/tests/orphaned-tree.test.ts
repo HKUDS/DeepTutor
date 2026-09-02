@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildVisiblePath } from "../lib/message-branches";
-import type { MessageItem } from "../context/UnifiedChatContext";
+import type { MessageItem } from "../features/chat/ChatStateAdapter";
 
 // Issue #912: deleting a turn left descendants pointing at deleted rows, so
 // buildVisiblePath found no root message and rendered a blank chat while

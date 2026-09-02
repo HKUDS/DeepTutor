@@ -16,7 +16,7 @@ import {
   parseAttachmentHref,
   useInlineFileCardContext,
 } from "@/components/common/InlineFileCard";
-import type { MarkdownRendererProps } from "./MarkdownRenderer";
+import type { MarkdownRendererProps } from "./markdown-renderer-types";
 
 function extractText(children: React.ReactNode): string {
   return React.Children.toArray(children)

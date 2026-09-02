@@ -21,9 +21,7 @@ def test_reference_normalization_rejects_paths_and_deduplicates_locators() -> No
             },
             {"material_id": "abcdef0123456789", "revision": 2, "locators": [4]},
         ]
-    ) == [
-        {"material_id": "abcdef0123456789", "revision": 2, "locators": [2, 3, 4]}
-    ]
+    ) == [{"material_id": "abcdef0123456789", "revision": 2, "locators": [2, 3, 4]}]
 
 
 def test_reference_normalization_bounds_the_total_unit_count() -> None:
@@ -42,8 +40,7 @@ def test_reference_normalization_bounds_the_total_unit_count() -> None:
 
 def test_empty_rows_do_not_consume_the_material_limit() -> None:
     empty_rows = [
-        {"material_id": f"{index:016x}", "revision": 1, "locators": []}
-        for index in range(20)
+        {"material_id": f"{index:016x}", "revision": 1, "locators": []} for index in range(20)
     ]
 
     assert normalize_reading_references(
@@ -118,8 +115,5 @@ def test_references_resolve_the_persisted_revision_not_current_content(tmp_path:
 
 def test_references_fail_closed_without_a_content_revision() -> None:
     assert (
-        normalize_reading_references(
-            [{"material_id": "abcdef0123456789", "locators": [1]}]
-        )
-        == []
+        normalize_reading_references([{"material_id": "abcdef0123456789", "locators": [1]}]) == []
     )

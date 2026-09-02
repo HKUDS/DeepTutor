@@ -14,7 +14,10 @@
  * persisted positive id).
  */
 
-import type { MessageItem } from "@/context/UnifiedChatContext";
+export interface BranchMessage {
+  id?: number;
+  parentMessageId?: number | null;
+}
 
 const ROOT_KEY = "null";
 
@@ -28,7 +31,7 @@ function parentKey(id: number | null | undefined): string {
 // ample headroom and stays well under ``Number.MAX_SAFE_INTEGER``.
 const OPTIMISTIC_RANK_OFFSET = 1e15;
 
-function siblingRank(message: MessageItem): number {
+function siblingRank(message: BranchMessage): number {
   // Optimistic, in-flight messages get a negative ``id`` on the client
   // (``-Date.now()``) and must be treated as the freshest sibling so the
   // bubble the user just submitted stays visible. Among optimistic rows,
@@ -47,9 +50,9 @@ function siblingRank(message: MessageItem): number {
  *  Those rows are still real history, so the walk starts from the dangling
  *  parent of the oldest orphan rather than rendering a blank page (#912).
  */
-function walkStartKey(
-  allMessages: MessageItem[],
-  childrenByParent: Map<string, MessageItem[]>,
+function walkStartKey<T extends BranchMessage>(
+  allMessages: T[],
+  childrenByParent: Map<string, T[]>,
 ): string {
   if ((childrenByParent.get(ROOT_KEY)?.length ?? 0) > 0) return ROOT_KEY;
 
@@ -87,20 +90,20 @@ export interface SiblingInfo {
   parentId: number | null;
 }
 
-export interface VisiblePathResult {
+export interface VisiblePathResult<T extends BranchMessage> {
   /** The flat message list to render, in chronological order. */
-  messages: MessageItem[];
+  messages: T[];
   /** Sibling info keyed by message id. Only present for messages whose
    *  parent has more than one child (i.e. branching points). */
   siblingsByMessageId: Map<number, SiblingInfo>;
 }
 
-export function buildVisiblePath(
-  allMessages: MessageItem[],
+export function buildVisiblePath<T extends BranchMessage>(
+  allMessages: T[],
   selectedBranches: Record<string, number> | undefined,
-): VisiblePathResult {
+): VisiblePathResult<T> {
   // Group by parent.
-  const childrenByParent = new Map<string, MessageItem[]>();
+  const childrenByParent = new Map<string, T[]>();
   for (const msg of allMessages) {
     if (msg.id === undefined) continue;
     const key = parentKey(msg.parentMessageId);
@@ -113,7 +116,7 @@ export function buildVisiblePath(
   }
 
   const selection = selectedBranches ?? {};
-  const visible: MessageItem[] = [];
+  const visible: T[] = [];
   const siblingsByMessageId = new Map<number, SiblingInfo>();
   const guard = new Set<string>();
   let currentParent = walkStartKey(allMessages, childrenByParent);
@@ -126,7 +129,7 @@ export function buildVisiblePath(
     const children = childrenByParent.get(currentParent);
     if (!children || children.length === 0) break;
 
-    let chosen: MessageItem;
+    let chosen: T;
     if (children.length === 1) {
       chosen = children[0];
     } else {
@@ -190,7 +193,7 @@ export function selectChildBranch(
  * useful as a persisted selection target.
  */
 export function latestChildId(
-  allMessages: MessageItem[],
+  allMessages: BranchMessage[],
   parentId: number | null,
 ): number | null {
   const key = parentKey(parentId);
@@ -215,7 +218,7 @@ export function latestChildId(
  * when no server reload has reconciled real ids yet. ``null`` for an
  * empty session.
  */
-export function tipMessageId(visible: MessageItem[]): number | null {
+export function tipMessageId(visible: BranchMessage[]): number | null {
   for (let i = visible.length - 1; i >= 0; i -= 1) {
     const id = visible[i].id;
     if (id !== undefined) return id;

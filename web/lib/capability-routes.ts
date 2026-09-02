@@ -19,10 +19,10 @@ export const ROUTE_CAPABILITIES: ReadonlyArray<{
   prefix: string;
   capability: Capability;
 }> = [
-  { prefix: "/home", capability: "llm" },
+  { prefix: "/chat", capability: "llm" },
   { prefix: "/partners", capability: "llm" },
   { prefix: "/co-writer", capability: "llm" },
-  { prefix: "/book", capability: "llm" },
+  { prefix: "/books", capability: "llm" },
   { prefix: "/reading", capability: "llm" },
   { prefix: "/mastery", capability: "llm" }, // Mastery Path
 ];
@@ -30,7 +30,7 @@ export const ROUTE_CAPABILITIES: ReadonlyArray<{
 /**
  * Returns the capability required for a pathname, or null if none is needed.
  * Matches on a path-segment boundary (exact, or prefix followed by "/") so a
- * sibling route like "/booket" can never be swallowed by the "/book" prefix.
+ * sibling route like "/booket" can never be swallowed by the "/books" prefix.
  */
 export function capabilityForPath(pathname: string): Capability | null {
   const match = ROUTE_CAPABILITIES.find(

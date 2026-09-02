@@ -237,7 +237,7 @@ class ManimRenderService:
         return RenderedArtifact(
             type=artifact_type,
             filename=artifact_path.name,
-            url=f"/api/outputs/{rel_path.as_posix()}",
+            url=f"/files/outputs/{rel_path.as_posix()}",
             content_type=content_type,
             label=label,
         )

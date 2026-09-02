@@ -5,6 +5,8 @@
  * the filename stem and the id used by resume / delete / branch).
  */
 
+import { browserStorage } from "@/shared/storage";
+
 function storageKey(partnerId: string): string {
   return `partner-session:${partnerId}`;
 }
@@ -15,10 +17,10 @@ export function freshPartnerSessionKey(): string {
 
 export function loadPartnerSessionKey(partnerId: string): string {
   try {
-    const existing = window.localStorage.getItem(storageKey(partnerId));
+    const existing = browserStorage.readRaw("local", storageKey(partnerId));
     if (existing) return existing;
     const fresh = freshPartnerSessionKey();
-    window.localStorage.setItem(storageKey(partnerId), fresh);
+    browserStorage.writeRaw("local", storageKey(partnerId), fresh);
     return fresh;
   } catch {
     return freshPartnerSessionKey();
@@ -27,7 +29,7 @@ export function loadPartnerSessionKey(partnerId: string): string {
 
 export function persistPartnerSessionKey(partnerId: string, key: string): void {
   try {
-    window.localStorage.setItem(storageKey(partnerId), key);
+    browserStorage.writeRaw("local", storageKey(partnerId), key);
   } catch {
     /* private mode / storage disabled — in-memory only */
   }

@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import {
   Fragment,
   useCallback,
@@ -124,7 +126,7 @@ export function TextUnitView({
   useEffect(() => {
     try {
       const value = normaliseReaderDisplayPreferences(
-        JSON.parse(window.localStorage.getItem(READER_PREFS_KEY) || "{}"),
+        JSON.parse(browserStorage.readRaw("local", READER_PREFS_KEY) || "{}"),
       );
       setFontSize(value.fontSize);
       setLineWidth(value.lineWidth);
@@ -150,7 +152,11 @@ export function TextUnitView({
       setSerif(merged.serif);
       setReaderTheme(merged.readerTheme);
       try {
-        window.localStorage.setItem(READER_PREFS_KEY, JSON.stringify(merged));
+        browserStorage.writeRaw(
+          "local",
+          READER_PREFS_KEY,
+          JSON.stringify(merged),
+        );
       } catch {
         // Preferences still apply for the current session.
       }

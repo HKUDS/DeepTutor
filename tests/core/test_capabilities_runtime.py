@@ -19,8 +19,8 @@ from deeptutor.capabilities.ask_questions.capability import AskQuestionsCapabili
 from deeptutor.capabilities.solve.capability import DeepSolveCapability
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 def _install_module(

@@ -18,9 +18,9 @@ from collections.abc import Sequence
 import logging
 import os
 
-from deeptutor.core.i18n import t
 from deeptutor.services.cli_apps.paths import abi_stamp, bin_dir, executable_path, runtime_dir
 from deeptutor.services.cli_apps.state import InstalledApp
+from deeptutor.services.i18n import t
 from deeptutor.services.sandbox.spec import ExecRequest, ExecResult, Mount, ResourceLimits
 
 logger = logging.getLogger(__name__)

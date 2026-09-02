@@ -9,9 +9,9 @@ import pytest
 
 @pytest.fixture
 def preset_client(mu_isolated_root, monkeypatch, as_user):
+    from deeptutor.api.routers import multi_user as multi_user_router
     import deeptutor.api.routers.auth as auth_router
     from deeptutor.api.routers.auth import require_admin
-    from deeptutor.multi_user import router as multi_user_router
     from deeptutor.multi_user.identity import save_user
     from deeptutor.services.auth import TokenPayload
 
@@ -21,8 +21,8 @@ def preset_client(mu_isolated_root, monkeypatch, as_user):
     monkeypatch.setattr(auth_router, "decode_token", lambda token: tokens.get(token))
 
     app = FastAPI()
-    app.include_router(auth_router.router, prefix="/api/v1/auth")
-    app.include_router(multi_user_router.router, prefix="/api/v1/multi-user")
+    app.include_router(auth_router.router, prefix="/api/auth")
+    app.include_router(multi_user_router.router, prefix="/api/multi-user")
     app.dependency_overrides[require_admin] = lambda: tokens["admin-token"]
     return TestClient(app), admin, tokens
 
@@ -35,10 +35,10 @@ def test_legacy_and_new_standard_users_default_to_standard(seed_user):
 def test_learning_surface_routing_matches_complete_path_segments():
     from deeptutor.api.routers.auth import _learning_surface_for_path
 
-    assert _learning_surface_for_path("/api/v1/reading/materials") == "reading"
-    assert _learning_surface_for_path("/api/v1/question-notebook/entries") == "chat"
-    assert _learning_surface_for_path("/api/v1/reading-private") == ""
-    assert _learning_surface_for_path("/api/v1/questions") == ""
+    assert _learning_surface_for_path("/api/reading/materials") == "reading"
+    assert _learning_surface_for_path("/api/question-notebook/entries") == "chat"
+    assert _learning_surface_for_path("/api/reading-private") == ""
+    assert _learning_surface_for_path("/api/questions") == ""
 
 
 @pytest.mark.parametrize("preset", ["standard", "custom"])
@@ -46,7 +46,7 @@ def test_non_learner_presets_do_not_install_a_learning_grant(preset_client, pres
     client, _admin, _tokens = preset_client
 
     response = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         headers={"Authorization": "Bearer admin-token"},
         json={
             "username": f"{preset}-user",
@@ -69,7 +69,7 @@ def test_learner_preset_expands_to_a_conservative_grant(preset_client):
     client, _admin, _tokens = preset_client
 
     response = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         headers={"Authorization": "Bearer admin-token"},
         json={
             "username": "student",
@@ -113,7 +113,7 @@ def test_learner_creation_rolls_back_when_grant_initialization_fails(preset_clie
 
     monkeypatch.setattr(grants, "save_grant", fail_save_grant)
     response = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         headers={"Authorization": "Bearer admin-token"},
         json={
             "username": "student",
@@ -130,7 +130,7 @@ def test_learner_creation_rolls_back_when_grant_initialization_fails(preset_clie
 def test_learner_accounts_cannot_disable_the_learning_policy(preset_client):
     client, _admin, _tokens = preset_client
     created = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         headers={"Authorization": "Bearer admin-token"},
         json={
             "username": "student",
@@ -140,7 +140,7 @@ def test_learner_accounts_cannot_disable_the_learning_policy(preset_client):
     ).json()
 
     response = client.put(
-        f"/api/v1/multi-user/users/{created['user_id']}/grants",
+        f"/api/multi-user/users/{created['user_id']}/grants",
         headers={"Authorization": "Bearer admin-token"},
         json={"grant": {"learning_policy": None}},
     )
@@ -156,7 +156,7 @@ def test_pocketbase_rejects_presets_it_cannot_enforce(preset_client, monkeypatch
     client, _admin, _tokens = preset_client
     monkeypatch.setattr(auth_router, "POCKETBASE_ENABLED", True)
     response = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         headers={"Authorization": "Bearer admin-token"},
         json={
             "username": "remote-student",
@@ -172,7 +172,7 @@ def test_pocketbase_rejects_presets_it_cannot_enforce(preset_client, monkeypatch
 def test_auth_status_returns_the_effective_learning_policy(preset_client):
     client, _admin, tokens = preset_client
     created = client.post(
-        "/api/v1/auth/users",
+        "/api/auth/users",
         headers={"Authorization": "Bearer admin-token"},
         json={
             "username": "student",
@@ -186,7 +186,7 @@ def test_auth_status_returns_the_effective_learning_policy(preset_client):
         username="student", role="user", user_id=created["user_id"]
     )
     response = client.get(
-        "/api/v1/auth/status",
+        "/api/auth/status",
         headers={"Authorization": "Bearer learner-token"},
     )
 
@@ -227,7 +227,7 @@ def test_assigning_a_material_copies_the_admin_material_once(
         },
     }
     response = client.put(
-        f"/api/v1/multi-user/users/{learner['id']}/grants",
+        f"/api/multi-user/users/{learner['id']}/grants",
         headers={"Authorization": "Bearer admin-token"},
         json={"grant": grant},
     )

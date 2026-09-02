@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+const WORKSPACE_ID = "w3c-workspace";
+
 const material = {
   material_id: "w3c-material",
   filename: "W3C Annotation Sample.txt",
@@ -14,6 +16,47 @@ const material = {
   annotation_count: 1,
   outline: [],
   outline_text: "",
+};
+
+const libraryMaterial = {
+  material_id: material.material_id,
+  content_id: material.material_id,
+  filename: material.filename,
+  title: material.title,
+  source_kind: "file",
+  source_url: "",
+  mime: material.mime,
+  render_mode: "text",
+  cover_url: "",
+  duration_seconds: 0,
+  status: "ready",
+  progress: 0,
+  error_code: "",
+  error_detail: "",
+  created_at: 1,
+  updated_at: 2,
+  last_opened_at: 2,
+  size_bytes: material.byte_size,
+  unit_count: material.unit_count,
+  collections: [],
+};
+
+const workspace = {
+  workspace_id: WORKSPACE_ID,
+  title: "W3C annotation regression",
+  description: "",
+  active_material_id: material.material_id,
+  created_at: 1,
+  updated_at: 2,
+  tabs: [
+    {
+      material: libraryMaterial,
+      tab_order: 0,
+      pinned: false,
+      opened: true,
+      added_at: 1,
+    },
+  ],
 };
 
 const annotation = {
@@ -34,12 +77,12 @@ const annotation = {
 };
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/v1/**", async (route) => {
+  await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });
 
-    if (path === "/api/v1/auth/status") {
+    if (path === "/api/auth/status") {
       return json({
         enabled: false,
         authenticated: true,
@@ -49,11 +92,11 @@ test.beforeEach(async ({ page }) => {
         is_admin: false,
       });
     }
-    if (path === "/api/v1/settings/ui") return json({ language: "en" });
-    if (path === "/api/v1/dashboard/suggestions") {
+    if (path === "/api/settings/ui") return json({ language: "en" });
+    if (path === "/api/dashboard/suggestions") {
       return json({ suggestions: [], stale: false });
     }
-    if (path === "/api/v1/settings/llm-options") {
+    if (path === "/api/settings/llm-options") {
       return json({
         active: { profile_id: "p", model_id: "m" },
         options: [
@@ -69,22 +112,28 @@ test.beforeEach(async ({ page }) => {
         ],
       });
     }
-    if (path === "/api/v1/reading/supported-formats") {
+    if (path === "/api/reading/supported-formats") {
       return json({
         extensions: [".txt"],
         max_bytes: 1024,
         raw_view_extensions: [],
       });
     }
-    if (path === "/api/v1/reading/extensions") return json([]);
-    if (path === "/api/v1/reading/materials") return json([material]);
-    if (path === "/api/v1/reading/materials/w3c-material") {
+    if (path === "/api/reading/extensions") return json([]);
+    if (path === `/api/reading/workspaces/${WORKSPACE_ID}`) {
+      return json({ workspace, sessions: [] });
+    }
+    if (path === `/api/reading/workspaces/${WORKSPACE_ID}/sessions`) {
+      return json({ sessions: [] });
+    }
+    if (path === "/api/reading/materials") return json([material]);
+    if (path === "/api/reading/materials/w3c-material") {
       return json(material);
     }
-    if (path === "/api/v1/reading/materials/w3c-material/annotations") {
+    if (path === "/api/reading/materials/w3c-material/annotations") {
       return json([annotation]);
     }
-    if (path === "/api/v1/reading/materials/w3c-material/units/1") {
+    if (path === "/api/reading/materials/w3c-material/units/1") {
       return json({
         locator: 1,
         unit: "section",
@@ -98,15 +147,7 @@ test.beforeEach(async ({ page }) => {
 test("a rich text annotation reflows and activates its sidebar entry", async ({
   page,
 }) => {
-  await page.goto("/home");
-
-  await page.getByRole("button", { name: "Chat", exact: true }).click();
-  await page
-    .getByRole("button", { name: /Immersive Reading/ })
-    .last()
-    .click();
-  await page.getByRole("button", { name: "Open a document to read" }).click();
-  await page.getByText("W3C Annotation Sample.txt").click();
+  await page.goto(`/reading/${WORKSPACE_ID}`);
 
   const highlight = page.locator(".r6o-annotation").first();
   await expect(highlight).toBeVisible();
@@ -127,6 +168,9 @@ test("a rich text annotation reflows and activates its sidebar entry", async ({
     .getByRole("button")
     .filter({ hasText: "Wave behavior" });
   await expect(sidebarEntry).toBeVisible();
+  await page.getByRole("button", { name: "Close reading companion" }).click();
+  await page.getByRole("button", { name: "Collapse contents" }).first().click();
+  await expect(page.getByRole("button", { name: "Close panels" })).toBeHidden();
   const article = page.locator("article.r6o-annotatable");
   const articleBox = await article.boundingBox();
   const highlightBox = await highlight.boundingBox();

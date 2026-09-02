@@ -1,4 +1,4 @@
-from deeptutor.core.agentic.labels import classify_label, find_inline_labels
+from deeptutor.runtime.agentic.labels import classify_label, find_inline_labels
 
 _ALLOWED = ("FINISH", "TOOL", "THINK", "PAUSE")
 

@@ -245,7 +245,7 @@ export default function CourseDetailPage() {
           </div>
           <div className="relative flex shrink-0 items-center gap-2">
             <Link
-              href={`/home?course=${encodeURIComponent(course.id)}&capability=course_study`}
+              href={`/chat?course=${encodeURIComponent(course.id)}&capability=course_study`}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-[12px] font-medium text-[var(--background)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <Signpost size={14} />
@@ -267,7 +267,7 @@ export default function CourseDetailPage() {
                   // Carries the course's declared starting mode, so "a new chat
                   // in this course" opens the way this course is studied rather
                   // than in whatever mode the composer was last left in.
-                  href={`/home?course=${encodeURIComponent(course.id)}${
+                  href={`/chat?course=${encodeURIComponent(course.id)}${
                     course.default_capability
                       ? `&capability=${encodeURIComponent(course.default_capability)}`
                       : ""
@@ -364,7 +364,7 @@ export default function CourseDetailPage() {
           courses={courses}
           activeSessionId={null}
           emptyLabel={t("No conversations in this course")}
-          onSelect={(sessionId) => router.push(`/home/${sessionId}`)}
+          onSelect={(sessionId) => router.push(`/chat/${sessionId}`)}
           onRename={renameSession}
           onDelete={removeSession}
           onOrganize={patchSession}
@@ -384,7 +384,7 @@ export default function CourseDetailPage() {
             sessions={archivedSessions}
             courses={courses}
             activeSessionId={null}
-            onSelect={(sessionId) => router.push(`/home/${sessionId}`)}
+            onSelect={(sessionId) => router.push(`/chat/${sessionId}`)}
             onRename={renameSession}
             onDelete={removeSession}
             onOrganize={patchSession}

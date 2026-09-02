@@ -7,7 +7,7 @@ import { SidebarShell } from "@/components/sidebar/SidebarShell";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
 import { ProfileLink } from "@/components/auth/ProfileLink";
-import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import {
   deleteSession,
   listSessions,
@@ -36,7 +36,7 @@ export default function WorkspaceSidebar() {
     selectedSessionId,
     sessionStatuses,
     sidebarRefreshToken,
-  } = useUnifiedChat();
+  } = useChatStateAdapter();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [courses, setCourses] = useState<StudyCourse[]>([]);
   const [masteryTopics, setMasteryTopics] = useState<MasteryTopicLabel[]>([]);
@@ -109,16 +109,16 @@ export default function WorkspaceSidebar() {
   const handleNewChat = useCallback(() => {
     cancelStreamingTurn();
     newSession();
-    router.push("/home");
+    router.push("/chat");
   }, [cancelStreamingTurn, newSession, router]);
 
   // A study conversation opens on its own path, not in the main chat: the
   // outline, the waypoint header and the tutor's own composer are the context
-  // it was held in, and /home would drop all three.
+  // it was held in, and /chat would drop all three.
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
       const session = sessions.find((item) => item.session_id === sessionId);
-      router.push(session ? sessionRoute(session) : `/home/${sessionId}`);
+      router.push(session ? sessionRoute(session) : `/chat/${sessionId}`);
     },
     [router, sessions],
   );
@@ -151,7 +151,7 @@ export default function WorkspaceSidebar() {
       if (selectedSessionId === sessionId) {
         cancelStreamingTurn();
         newSession();
-        router.push("/home");
+        router.push("/chat");
       }
     },
     [cancelStreamingTurn, newSession, router, selectedSessionId, t],

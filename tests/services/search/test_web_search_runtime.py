@@ -40,9 +40,7 @@ def _patch_runtime(
     )
     monkeypatch.setattr(
         "deeptutor.services.search.load_system_settings",
-        lambda: {
-            "web_search_source_filtering": (config or {}).get("source_filtering", {})
-        },
+        lambda: {"web_search_source_filtering": (config or {}).get("source_filtering", {})},
     )
     monkeypatch.setattr(
         "deeptutor.services.search.resolve_search_runtime_config",

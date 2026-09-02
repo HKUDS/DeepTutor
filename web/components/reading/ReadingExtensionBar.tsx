@@ -262,7 +262,9 @@ function ExtensionResult({
         </p>
       ) : null}
       {translation.note ? (
-        <p className="mt-1 text-[var(--muted-foreground)]">{translation.note}</p>
+        <p className="mt-1 text-[var(--muted-foreground)]">
+          {translation.note}
+        </p>
       ) : null}
       {translation.alternatives.length ? (
         <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--muted-foreground)]">

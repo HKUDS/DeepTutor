@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 import sqlite3
 import time
@@ -123,6 +124,106 @@ def test_store_migrates_legacy_notebook_review_columns(tmp_path: Path) -> None:
     assert "idx_notebook_entries_review" in indexes
 
 
+def test_store_migrates_legacy_workspace_ownership_without_reordering(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "legacy-workspaces.db"
+    rows = [
+        (
+            "mastery",
+            50.0,
+            {"capability": "mastery_path", "mastery_path_id": "topic-1"},
+        ),
+        (
+            "reading",
+            40.0,
+            {
+                "capability": "immersive_reading",
+                "session_kind": "immersive_reading",
+                "reading_workspace_id": "reading-1",
+            },
+        ),
+        (
+            "stale-chat",
+            30.0,
+            {"capability": "chat", "mastery_path_id": "topic-stale"},
+        ),
+        (
+            "left-workspace",
+            20.0,
+            {
+                "capability": "mastery_path",
+                "mastery_path_id": "topic-old",
+                "workspace_mode": "",
+            },
+        ),
+    ]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT 'New conversation',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                compressed_summary TEXT DEFAULT '',
+                summary_up_to_msg_id INTEGER DEFAULT 0,
+                preferences_json TEXT DEFAULT '{}'
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO sessions (id, title, created_at, updated_at, preferences_json)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (session_id, session_id, updated_at, updated_at, json.dumps(preferences))
+                for session_id, updated_at, preferences in rows
+            ],
+        )
+
+    store = SQLiteSessionStore(db_path=db_path)
+    listed = asyncio.run(store.list_sessions())
+    by_id = {row["id"]: row for row in listed}
+
+    assert [row["id"] for row in listed] == [row[0] for row in rows]
+    assert by_id["mastery"]["preferences"]["workspace_mode"] == "mastery_path"
+    assert by_id["reading"]["preferences"]["workspace_mode"] == "immersive_reading"
+    assert "workspace_mode" not in by_id["stale-chat"]["preferences"]
+    assert by_id["left-workspace"]["preferences"]["workspace_mode"] == ""
+    with sqlite3.connect(db_path) as conn:
+        timestamps = dict(conn.execute("SELECT id, updated_at FROM sessions").fetchall())
+    assert timestamps == {session_id: updated_at for session_id, updated_at, _ in rows}
+
+
+@pytest.mark.asyncio
+async def test_explicit_workspace_migration_is_idempotent(tmp_path: Path) -> None:
+    store = SQLiteSessionStore(db_path=tmp_path / "startup-migration.db")
+    with sqlite3.connect(store.db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO sessions (id, title, created_at, updated_at, preferences_json)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "late-legacy",
+                "late-legacy",
+                10.0,
+                20.0,
+                json.dumps({"capability": "mastery_path", "mastery_path_id": "topic-late"}),
+            ),
+        )
+
+    assert await store.migrate_workspace_preferences() == 1
+    assert await store.migrate_workspace_preferences() == 0
+    session = await store.get_session("late-legacy")
+
+    assert session is not None
+    assert session["preferences"]["workspace_mode"] == "mastery_path"
+    assert session["updated_at"] == 20.0
+
+
 @pytest.fixture
 def store(tmp_path: Path) -> SQLiteSessionStore:
     return SQLiteSessionStore(db_path=tmp_path / "test.db")
@@ -196,6 +297,7 @@ def test_generic_history_lists_immersive_reading_sessions_with_their_collection(
     row = next(row for row in listed if row["id"] == reading["id"])
     assert row["preferences"]["session_kind"] == "immersive_reading"
     assert row["preferences"]["reading_workspace_id"] == "rw_private"
+    assert row["preferences"]["workspace_mode"] == "immersive_reading"
 
 
 # ── Notebook entries ──────────────────────────────────────────────

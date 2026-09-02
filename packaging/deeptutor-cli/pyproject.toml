@@ -6,10 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "deeptutor-cli"
 dynamic = ["version"]
 description = "CLI-only distribution for DeepTutor"
-# Capped below 3.14 to match the main `deeptutor` package (issue #664): 3.14
-# lacks wheels for some compiled base deps (e.g. faiss-cpu), so pip falls back
-# to a source build that fails. Refuse 3.14 cleanly instead.
-requires-python = ">=3.11,<3.14"
+# Match the main package: Python 3.14 is supported, while the forward cap keeps
+# future interpreters out until compiled dependencies publish compatible wheels.
+requires-python = ">=3.11,<3.15"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 dependencies = [
@@ -44,11 +43,14 @@ dependencies = [
     "perplexityai>=0.1.0",
     "oauth-cli-kit>=0.1.1",
     "llama-index>=0.14.12",
-    "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
+    # PyStemmer 2.x has no Python 3.14 wheel; the runtime falls back to vector
+    # retrieval when this optional BM25 integration is absent.
+    "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",
     # FAISS vector store: ANN retrieval replacing SimpleVectorStore brute force for
     # large KBs (issue #552); imported lazily with SimpleVectorStore fallback.
     "llama-index-vector-stores-faiss>=0.4.0,<1.0.0",
-    "faiss-cpu>=1.8.0,<2.0.0",
+    "faiss-cpu>=1.8.0,<2.0.0; python_version < '3.14'",
+    "faiss-cpu>=1.12.0,<2.0.0; python_version >= '3.14'",
     "PyMuPDF>=1.26.0",
     "numpy>=1.24.0,<3.0.0",
     "arxiv>=2.0.0",

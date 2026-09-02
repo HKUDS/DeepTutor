@@ -81,7 +81,7 @@ def _normalize_learning_policy(value: Any) -> dict[str, Any] | None:
     # A policy without explicit surfaces/reading keeps the original learner
     # behavior while persisting the complete contract for API clients.
     surfaces = _normalize_tool_list(value.get("allowed_surfaces"))
-    normalized = {
+    normalized: dict[str, Any] = {
         "age_band": str(value.get("age_band") or "").strip(),
         "locked_persona": str(value.get("locked_persona") or "").strip(),
         "allowed_capabilities": capabilities,

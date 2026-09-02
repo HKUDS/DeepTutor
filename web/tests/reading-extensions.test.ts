@@ -15,8 +15,14 @@ const api = readFileSync(
   path.resolve(process.cwd(), "lib/reading-api.ts"),
   "utf8",
 );
-const english = readFileSync(path.resolve(process.cwd(), "locales/en/app.json"), "utf8");
-const chinese = readFileSync(path.resolve(process.cwd(), "locales/zh/app.json"), "utf8");
+const english = readFileSync(
+  path.resolve(process.cwd(), "locales/en/app.json"),
+  "utf8",
+);
+const chinese = readFileSync(
+  path.resolve(process.cwd(), "locales/zh/app.json"),
+  "utf8",
+);
 
 test("the Reader toolbar is empty when no extension is installed", () => {
   assert.match(component, /if \(actions\.length === 0\) return null/);
@@ -42,7 +48,10 @@ test("a malformed extension catalog cannot crash the whole reader", () => {
 });
 
 test("browser speech is stoppable and cannot continue after navigation", () => {
-  assert.match(component, /const \[speaking, setSpeaking\] = useState\(false\)/);
+  assert.match(
+    component,
+    /const \[speaking, setSpeaking\] = useState\(false\)/,
+  );
   assert.match(component, /function stopSpeaking\(\)/);
   assert.match(component, /window\.speechSynthesis\?\.cancel\(\)/);
   assert.match(component, /utterance\.onend = \(\) => setSpeaking\(false\)/);
@@ -82,7 +91,10 @@ test("study-guidance steps are visible in the result card", () => {
 });
 
 test("the built-in vocabulary action is localized", () => {
-  assert.match(component, /extensionId === "vocabulary" && actionId === "explain"/);
+  assert.match(
+    component,
+    /extensionId === "vocabulary" && actionId === "explain"/,
+  );
   assert.match(english, /"Explain vocabulary": "Explain vocabulary"/);
   assert.match(chinese, /"Explain vocabulary": "解释词汇"/);
 });

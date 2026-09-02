@@ -1,6 +1,9 @@
 "use client";
 
-import type { CatalogProfile, ServiceName } from "./SettingsContext";
+import type {
+  CatalogProfile,
+  ServiceName,
+} from "@/features/settings/store/SettingsStore";
 
 export const fieldControlClass =
   "w-full rounded-lg border border-[var(--border)] px-3 py-2 text-[14px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)]";

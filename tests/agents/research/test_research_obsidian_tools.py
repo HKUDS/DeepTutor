@@ -29,9 +29,9 @@ from deeptutor.agents.research.pipeline import (
     _BlockLoopHost,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
-from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
+from deeptutor.runtime.stream_bus import StreamBus
 
 OBSIDIAN_TOOLS = ("obsidian_search", "obsidian_read", "obsidian_list")
 ALL_TOOLS = frozenset(

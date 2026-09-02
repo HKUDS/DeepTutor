@@ -27,12 +27,16 @@ export interface LearnerProfile {
   explanation_style?: string;
 }
 
-export async function getLearnerProfile(username: string): Promise<LearnerProfile | null> {
+export async function getLearnerProfile(
+  username: string,
+): Promise<LearnerProfile | null> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}/learner-profile`),
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}/learner-profile`),
   );
   if (!res.ok) throw new Error("Failed to fetch learner profile");
-  const data = (await res.json()) as { learner_profile?: LearnerProfile | null };
+  const data = (await res.json()) as {
+    learner_profile?: LearnerProfile | null;
+  };
   return data.learner_profile ?? null;
 }
 
@@ -41,7 +45,7 @@ export async function setLearnerProfile(
   profile: LearnerProfile,
 ): Promise<LearnerProfile | null> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}/learner-profile`),
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}/learner-profile`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -52,19 +56,21 @@ export async function setLearnerProfile(
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail ?? "Failed to save learner profile");
   }
-  const data = (await res.json()) as { learner_profile?: LearnerProfile | null };
+  const data = (await res.json()) as {
+    learner_profile?: LearnerProfile | null;
+  };
   return data.learner_profile ?? null;
 }
 
 export async function listUsers(): Promise<UserRecord[]> {
-  const res = await apiFetch(apiUrl("/api/v1/auth/users"));
+  const res = await apiFetch(apiUrl("/api/auth/users"));
   if (!res.ok) throw new Error("Failed to fetch users");
   return res.json();
 }
 
 export async function deleteUser(username: string): Promise<void> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}`),
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}`),
     {
       method: "DELETE",
     },
@@ -80,7 +86,7 @@ export async function setUserRole(
   role: "admin" | "user",
 ): Promise<void> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/auth/users/${encodeURIComponent(username)}/role`),
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}/role`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -106,7 +112,7 @@ export async function createUser(
   password: string,
   preset: AccountPreset = "standard",
 ): Promise<CreatedUser> {
-  const res = await apiFetch(apiUrl("/api/v1/auth/users"), {
+  const res = await apiFetch(apiUrl("/api/auth/users"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password, preset }),

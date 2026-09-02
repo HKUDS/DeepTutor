@@ -84,7 +84,8 @@ export default function ResearchOutlineEditor({
 
   const statusLabel = (() => {
     if (externalStatus === "done") return t("Research Complete");
-    if (externalStatus === "failed") return t("Research failed. You can retry.");
+    if (externalStatus === "failed")
+      return t("Research failed. You can retry.");
     if (externalStatus === "researching" || localConfirmed)
       return t("Researching");
     return null;
@@ -232,7 +233,11 @@ export default function ResearchOutlineEditor({
                 className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[11px] font-medium text-[var(--primary-foreground)] transition-all hover:opacity-90 disabled:opacity-40"
               >
                 <Play size={11} />
-                {t(externalStatus === "failed" ? "Retry Research" : "Start Research")}
+                {t(
+                  externalStatus === "failed"
+                    ? "Retry Research"
+                    : "Start Research",
+                )}
               </button>
             </div>
           )}

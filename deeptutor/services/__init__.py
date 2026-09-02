@@ -55,7 +55,6 @@ __all__ = [
     "config",
     "PathService",
     "get_path_service",
-    "BaseSessionManager",
 ]
 
 
@@ -79,8 +78,4 @@ def __getattr__(name: str):
         return importlib.import_module("deeptutor.services.rag")
     if name == "embedding":
         return importlib.import_module("deeptutor.services.embedding")
-    if name == "BaseSessionManager":
-        from .session import BaseSessionManager
-
-        return BaseSessionManager
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

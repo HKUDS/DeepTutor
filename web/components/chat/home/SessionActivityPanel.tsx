@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
-import type { MessageAttachment } from "@/context/UnifiedChatContext";
+import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { listSessions, type SessionSummary } from "@/lib/session-api";
 import { listNotebooks, type NotebookSummary } from "@/lib/notebook-api";
 import { bookApi } from "@/lib/book-api";
@@ -156,13 +156,13 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
   },
   books: {
     key: "books",
-    href: "/space/books",
+    href: "/books",
     label: "Books",
     icon: BookOpen,
   },
   notebooks: {
     key: "notebooks",
-    href: "/notebook",
+    href: "/notebooks",
     label: "Notebooks",
     icon: NotebookPen,
   },

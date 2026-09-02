@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { wsUrl } from "@/lib/api";
 import type { BookWsEvent } from "@/lib/book-ws-operation";
 
-const BOOK_WS_PATH = "/api/v1/book/ws";
+const BOOK_WS_PATH = "/ws/books";
 
 // Backs off quickly at first — a dropped socket is usually a transient blip —
 // then settles so a backend that is genuinely down isn't hammered.
@@ -38,6 +38,7 @@ export function useBookStream(
     let disposed = false;
     let socket: WebSocket | null = null;
     let retry = 0;
+    let cursor = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connect = () => {
@@ -55,7 +56,13 @@ export function useBookStream(
       next.onopen = () => {
         retry = 0;
         try {
-          next.send(JSON.stringify({ type: "subscribe", book_id: bookId }));
+          next.send(
+            JSON.stringify({
+              type: "subscribe",
+              book_id: bookId,
+              after_seq: cursor,
+            }),
+          );
         } catch {
           // The close handler will schedule a reconnect.
         }
@@ -67,6 +74,25 @@ export function useBookStream(
           event = JSON.parse(message.data) as BookWsEvent;
         } catch {
           return;
+        }
+        if (event.type === "subscribed") {
+          const ack = event as BookWsEvent & {
+            latest_seq?: number;
+            reset?: boolean;
+          };
+          if (ack.reset) {
+            // The server replays from the beginning when its in-memory stream
+            // was recreated. Reset locally before those replayed events arrive;
+            // using latest_seq here would incorrectly discard the replay.
+            cursor = 0;
+            handlerRef.current({ type: "__reset" } as BookWsEvent);
+          }
+          return;
+        }
+        const seq = Number((event as BookWsEvent & { seq?: number }).seq);
+        if (Number.isFinite(seq) && seq > 0) {
+          if (seq <= cursor) return;
+          cursor = seq;
         }
         handlerRef.current(event);
       };

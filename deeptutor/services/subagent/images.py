@@ -19,7 +19,7 @@ from urllib.parse import unquote, urlparse
 
 logger = logging.getLogger(__name__)
 
-_LOCAL_ATTACHMENT_PREFIX = "/api/attachments/"
+_LOCAL_ATTACHMENT_PREFIX = "/files/attachments/"
 _EXT_BY_MIME = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -66,7 +66,7 @@ def _image_bytes(att: Any) -> bytes | None:
 
 
 def _local_store_bytes(url: str) -> bytes | None:
-    """Resolve a ``/api/attachments/<sid>/<aid>/<name>`` URL to its bytes."""
+    """Resolve a ``/files/attachments/<sid>/<aid>/<name>`` URL to its bytes."""
     if not url:
         return None
     path = urlparse(url).path or url

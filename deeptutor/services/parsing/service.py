@@ -25,6 +25,21 @@ from .types import ParsedDocument, ParserError
 logger = logging.getLogger(__name__)
 
 
+def _matches_supported_format(source_path: str | Path, supported: frozenset[str]) -> bool:
+    """Match simple or compound parser suffixes case-insensitively."""
+    name = Path(source_path).name.lower()
+    return any(name.endswith(str(extension).lower()) for extension in supported)
+
+
+def _display_extension(source_path: str | Path, supported: frozenset[str]) -> str:
+    """Return the most specific advertised suffix for an error message."""
+    name = Path(source_path).name.lower()
+    matches = [extension for extension in supported if name.endswith(extension.lower())]
+    if matches:
+        return max(matches, key=len)
+    return Path(source_path).suffix.lower() or "this"
+
+
 class ParseService:
     """Cache-aware, engine-pluggable document parsing."""
 
@@ -53,7 +68,7 @@ class ParseService:
         """
         engine_name = (engine or self.active_engine()).strip().lower()
         supported = get_parser(engine_name).supported_formats()
-        return not supported or Path(source_path).suffix.lower() in supported
+        return not supported or _matches_supported_format(source_path, supported)
 
     def parse(
         self,
@@ -77,11 +92,11 @@ class ParseService:
         parser = get_parser(engine_name)
         config = parser.resolve_config()
 
-        suffix = source_path.suffix.lower()
         supported = parser.supported_formats()
-        if supported and suffix not in supported:
+        if supported and not _matches_supported_format(source_path, supported):
+            suffix = _display_extension(source_path, supported)
             raise ParserError(
-                f"The '{engine_name}' parsing engine doesn't support {suffix or 'this'} "
+                f"The '{engine_name}' parsing engine doesn't support {suffix} "
                 f"files. Choose a different engine in Settings → Document Parsing."
             )
 

@@ -88,13 +88,10 @@ export default function StarterSuggestions({
   const load = useCallback(
     async (signal?: AbortSignal): Promise<SuggestionPayload | null> => {
       try {
-        const response = await apiFetch(
-          apiUrl("/api/v1/dashboard/suggestions"),
-          {
-            signal,
-            cache: "no-store",
-          },
-        );
+        const response = await apiFetch(apiUrl("/api/dashboard/suggestions"), {
+          signal,
+          cache: "no-store",
+        });
         if (!response.ok) return null;
         return (await response.json()) as SuggestionPayload;
       } catch {
@@ -149,7 +146,7 @@ export default function StarterSuggestions({
     setView({ kind: "working" });
     try {
       const response = await apiFetch(
-        apiUrl("/api/v1/dashboard/suggestions/refresh"),
+        apiUrl("/api/dashboard/suggestions/refresh"),
         { method: "POST" },
       );
       if (!response.ok) {

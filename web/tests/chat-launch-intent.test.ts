@@ -1,26 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  newMasteryPathChatUrl,
-  readChatLaunchIntent,
-} from "../lib/chat-launch-intent";
-
-test("continuing a mastery path opens its dedicated topic surface", () => {
-  assert.equal(
-    newMasteryPathChatUrl("calculus/path 1"),
-    "/mastery/calculus%2Fpath%201",
-  );
-});
-
-test("legacy mastery chat links still parse for forwarding", () => {
-  const intent = readChatLaunchIntent(
-    "?capability=mastery_path&mastery_path_id=calculus%2Fpath+1",
-  );
-  assert.equal(intent.capability, "mastery_path");
-  assert.equal(intent.masteryPathId, "calculus/path 1");
-  assert.deepEqual(intent.tools, []);
-});
+import { readChatLaunchIntent } from "../lib/chat-launch-intent";
 
 test("an absent capability stays unspecified, an empty one means plain chat", () => {
   assert.equal(readChatLaunchIntent("?tool=web_search").capability, null);
@@ -34,14 +15,9 @@ test("tools are collected verbatim for the caller to validate", () => {
   );
 });
 
-test("a blank mastery path id is dropped rather than bound", () => {
-  assert.equal(
-    readChatLaunchIntent("?mastery_path_id=%20%20").masteryPathId,
-    null,
-  );
+test("an empty search has no launch intent", () => {
   assert.deepEqual(readChatLaunchIntent(""), {
     capability: null,
     tools: [],
-    masteryPathId: null,
   });
 });

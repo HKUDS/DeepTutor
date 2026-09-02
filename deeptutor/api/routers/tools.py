@@ -16,10 +16,10 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from deeptutor.api.routers.settings import get_enabled_optional_tools
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolPromptHints
 from deeptutor.i18n.metadata_i18n import tool_description_i18n
 from deeptutor.services.config import resolve_search_runtime_config
+from deeptutor.services.settings.interface_settings import get_enabled_optional_tools
 from deeptutor.tools.builtin import (
     BUILTIN_TOOL_TYPES,
     COMING_SOON_TOOL_TYPES,

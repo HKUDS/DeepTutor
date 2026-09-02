@@ -4,6 +4,8 @@ module.exports = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./features/**/*.{js,ts,jsx,tsx,mdx}",
+    "./shared/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
@@ -68,6 +70,21 @@ module.exports = {
         card: {
           DEFAULT: "var(--card)",
           foreground: "var(--card-foreground)",
+        },
+        success: {
+          DEFAULT: "var(--success)",
+          foreground: "var(--success-foreground)",
+          surface: "var(--success-surface)",
+        },
+        warning: {
+          DEFAULT: "var(--warning)",
+          foreground: "var(--warning-foreground)",
+          surface: "var(--warning-surface)",
+        },
+        info: {
+          DEFAULT: "var(--info)",
+          foreground: "var(--info-foreground)",
+          surface: "var(--info-surface)",
         },
       },
       backgroundImage: {

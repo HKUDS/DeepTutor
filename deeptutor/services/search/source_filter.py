@@ -22,6 +22,7 @@ def _as_bool(value: Any, default: bool = False) -> bool:
 
 def _domains(value: Any) -> tuple[str, ...]:
     """Normalize a YAML domain list into lowercase registry-compatible hosts."""
+    rows: list[Any] | tuple[Any, ...]
     if isinstance(value, str):
         rows = value.replace(",", " ").split()
     elif isinstance(value, (list, tuple)):

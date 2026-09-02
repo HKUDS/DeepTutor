@@ -5,7 +5,7 @@ import {
   extractMessageSegments,
   leadingTraceEvents,
 } from "../components/chat/home/AskUserOptions";
-import type { StreamEvent } from "../lib/unified-ws";
+import type { StreamEvent } from "../features/chat/model/protocol";
 import { decodeEscapedUnicodeForDisplay } from "../lib/markdown-display";
 
 function event(

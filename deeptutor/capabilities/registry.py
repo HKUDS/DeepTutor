@@ -1,11 +1,13 @@
-"""Built-in loop-capability registry plus optional entry-point plugins."""
+"""Factory registry for built-in and external chat-loop extensions."""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator, Sequence
 from functools import cache
 import inspect
 import logging
 from typing import Any, cast
+import warnings
 
 from deeptutor.capabilities.ask_questions import AskQuestionsLoopCapability
 from deeptutor.capabilities.course_study import CourseStudyLoopCapability
@@ -16,7 +18,7 @@ from deeptutor.capabilities.mastery import MasteryLoopCapability
 from deeptutor.capabilities.obsidian import ObsidianCapability
 from deeptutor.capabilities.partner_authoring import PartnerAuthoringCapability
 from deeptutor.capabilities.partner_group import PartnerGroupCapability
-from deeptutor.capabilities.protocol import LoopCapability
+from deeptutor.capabilities.protocol import LoopExtension
 from deeptutor.capabilities.reading import ReadingCapability
 from deeptutor.capabilities.setup import SetupCapability
 from deeptutor.capabilities.solve import SolveLoopCapability
@@ -24,160 +26,173 @@ from deeptutor.capabilities.subagent import SubagentCapability
 from deeptutor.capabilities.watching import WatchingCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.entry_points import load_entry_point_group
+from deeptutor.runtime.capability_catalog import EmptyConfig, get_capability_catalog
 from deeptutor.visualizers.loop_capability import VisualizationLoopCapability
 
 logger = logging.getLogger(__name__)
 
+EXTENSIONS_GROUP = "deeptutor.extensions"
 LOOP_CAPABILITIES_GROUP = "deeptutor.loop_capabilities"
 
-LOOP_CAPABILITIES = cast(
-    tuple[LoopCapability, ...],
+LoopFactory = Callable[[], LoopExtension]
+
+LOOP_EXTENSION_FACTORIES: tuple[LoopFactory, ...] = cast(
+    tuple[LoopFactory, ...],
     (
-        AskQuestionsLoopCapability(),
-        MasteryLoopCapability(),
-        SolveLoopCapability(),
-        ObsidianCapability(),
-        MarginNoteCapability(),
-        SubagentCapability(),
-        # Additive (not a KnowledgeCapability): an IMA library is searchable over
-        # HTTP, so ``rag`` keeps serving it and these tools only add what retrieval
-        # cannot do. See ``capabilities/ima/capability.py``.
-        ImaCapability(),
-        # Additive: reading material is addressed by locator through this
-        # capability's own store, so chat keeps its whole surface (web search, code,
-        # rag over other KBs) while gaining the five reading tools on top.
-        ReadingCapability(),
-        # Additive: Course Study retains chat's RAG/web/code surface while adding
-        # state sensing and closed-set hand-offs. Its strict mode + course-id gate
-        # keeps these tools out of every other mode.
-        CourseStudyLoopCapability(),
-        WatchingCapability(),
-        ExploreContextCapability(),
-        # Additive as well: configuring the app is something the user asks for in
-        # the middle of other work, so the turn keeps its normal surface. Activation
-        # is gated on objective signals, not on the model's sense of relevance —
-        # see ``capabilities/setup/binding.py``.
-        SetupCapability(),
-        # Additive: a natural-language request becomes a reviewable Partner draft;
-        # the actual create remains behind an explicit user confirmation in the UI.
-        PartnerAuthoringCapability(),
-        # Additive and Group-only: saves the Partner's complete answer first, then
-        # permits one user-approved proposal to ask exactly one peer.
-        PartnerGroupCapability(),
-        # Reuses the shared chat loop while committing a typed canvas envelope
-        # through submit_visualization. Activation is explicit and turn-local.
-        VisualizationLoopCapability(),
+        AskQuestionsLoopCapability,
+        MasteryLoopCapability,
+        SolveLoopCapability,
+        ObsidianCapability,
+        MarginNoteCapability,
+        SubagentCapability,
+        ImaCapability,
+        ReadingCapability,
+        CourseStudyLoopCapability,
+        WatchingCapability,
+        ExploreContextCapability,
+        SetupCapability,
+        PartnerAuthoringCapability,
+        PartnerGroupCapability,
+        VisualizationLoopCapability,
     ),
 )
 
 
-def _coerce_loop_capability(loaded: object) -> LoopCapability | None:
-    """Turn an entry-point target into a loop-capability instance, or None."""
+def _builtin_loop_extensions() -> tuple[LoopExtension, ...]:
+    return tuple(factory() for factory in LOOP_EXTENSION_FACTORIES)
+
+
+class _LegacyLoopCapabilitiesView(Sequence[LoopExtension]):
+    """Deprecated sequence view that never retains extension instances."""
+
+    def __len__(self) -> int:
+        return len(LOOP_EXTENSION_FACTORIES)
+
+    def __iter__(self) -> Iterator[LoopExtension]:
+        return iter(_builtin_loop_extensions())
+
+    def __getitem__(self, index):  # noqa: ANN001, ANN204
+        return _builtin_loop_extensions()[index]
+
+
+LOOP_CAPABILITIES: Sequence[LoopExtension] = _LegacyLoopCapabilitiesView()
+
+
+def _coerce_loop_factory(loaded: object) -> tuple[LoopExtension, LoopFactory] | None:
     obj: Any = loaded
     if inspect.isclass(obj):
-        try:
-            obj = obj()
-        except Exception:
-            return None
+        factory = obj
+        instance = obj()
     elif callable(obj) and getattr(obj, "owned_tools", None) is None:
-        try:
-            obj = obj()
-        except Exception:
-            return None
-        if inspect.isclass(obj):
-            try:
-                obj = obj()
-            except Exception:
-                return None
-    name = getattr(obj, "name", None)
-    if not isinstance(name, str) or not name.strip():
+        produced = obj()
+        if inspect.isclass(produced):
+            factory = produced
+            instance = produced()
+        else:
+            instance = produced
+            factory = type(produced)
+    else:
+        instance = obj
+        factory = type(obj)
+    name = getattr(instance, "name", None)
+    tools = getattr(instance, "owned_tools", None)
+    if not isinstance(name, str) or not name.strip() or tools is None:
         return None
-    tools = getattr(obj, "owned_tools", None)
     try:
-        if tools is None:
-            return None
         tuple(tools)
     except TypeError:
         return None
-    if not callable(getattr(obj, "is_active", None)):
+    if not callable(getattr(instance, "is_active", None)):
         return None
-    return obj
+    return cast(LoopExtension, instance), cast(LoopFactory, factory)
 
 
 @cache
-def discover_external_loop_capabilities() -> tuple[LoopCapability, ...]:
-    """Load third-party loop capabilities from ``deeptutor.loop_capabilities``.
+def discover_external_loop_capabilities() -> tuple[tuple[str, LoopFactory], ...]:
+    """Discover factory specs from canonical and one-version legacy groups."""
 
-    Built-in names (and earlier plugins) win. Broken or invalid entry points are
-    skipped with a warning so a bad plugin cannot take down the chat loop.
+    seen = {cap.name for cap in _builtin_loop_extensions()}
 
-    Cached for the life of the process, for two reasons. Built-in capabilities
-    are module-level singletons, so plugins must be too — re-running discovery
-    per call would hand every caller a fresh instance and silently discard any
-    per-instance state. And ``active_loop_capabilities`` runs on every turn
-    while ``capability_tool_owners`` runs on every settings read, so an
-    uncached ``entry_points()`` would rescan installed distribution metadata
-    from disk on both hot paths. Installing a plugin means restarting the
-    server; tests reset the cache with ``discover_external_loop_capabilities
-    .cache_clear()``.
-    """
-    seen = {cap.name for cap in LOOP_CAPABILITIES}
-
-    def _accept(ep_name: str, loaded: object) -> LoopCapability | None:
-        cap = _coerce_loop_capability(loaded)
-        if cap is None:
+    def _accept(ep_name: str, loaded: object) -> tuple[str, LoopFactory] | None:
+        resolved = _coerce_loop_factory(loaded)
+        if resolved is None:
+            logger.warning("Ignoring loop extension plugin '%s': invalid class or factory", ep_name)
+            return None
+        extension, factory = resolved
+        if extension.name in seen:
             logger.warning(
-                "Ignoring loop capability plugin '%s': not a LoopCapability class or factory",
-                ep_name,
+                "Loop extension plugin '%s' shadowed by built-in or earlier plugin (ignored)",
+                extension.name,
             )
             return None
-        if cap.name in seen:
-            logger.warning(
-                "Loop capability plugin '%s' shadowed by built-in or earlier plugin (ignored)",
-                cap.name,
-            )
-            return None
-        seen.add(cap.name)
-        return cap
+        seen.add(extension.name)
+        return extension.name, factory
 
-    return tuple(load_entry_point_group(LOOP_CAPABILITIES_GROUP, _accept, log=logger))
-
-
-def all_loop_capabilities() -> tuple[LoopCapability, ...]:
-    """Built-ins first, then external entry-point plugins (no name shadowing)."""
-    return LOOP_CAPABILITIES + discover_external_loop_capabilities()
+    canonical = load_entry_point_group(EXTENSIONS_GROUP, _accept, log=logger)
+    legacy = load_entry_point_group(LOOP_CAPABILITIES_GROUP, _accept, log=logger)
+    if legacy:
+        warnings.warn(
+            f"{LOOP_CAPABILITIES_GROUP} is deprecated; register under {EXTENSIONS_GROUP}",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    return tuple([*canonical, *legacy])
 
 
-def active_loop_capabilities(context: UnifiedContext) -> tuple[LoopCapability, ...]:
-    """Return the loop capabilities active for this turn in stable registry order."""
-    return tuple(cap for cap in all_loop_capabilities() if cap.is_active(context))
+def _register_loop_entry(name: str, factory: LoopFactory) -> None:
+    preview = factory()
+    get_capability_catalog().register(
+        name=name,
+        kind="loop_extension",
+        manifest={"name": name, "owned_tools": tuple(preview.owned_tools)},
+        factory=factory,
+        config_model=EmptyConfig,
+        replace=True,
+    )
+
+
+def all_loop_capabilities() -> tuple[LoopExtension, ...]:
+    """Create an isolated extension set for the caller's turn."""
+
+    specs: list[tuple[str, LoopFactory]] = []
+    for factory in LOOP_EXTENSION_FACTORIES:
+        preview = factory()
+        specs.append((preview.name, factory))
+    specs.extend(discover_external_loop_capabilities())
+    for name, factory in specs:
+        _register_loop_entry(name, factory)
+    catalog = get_capability_catalog()
+    return tuple(
+        cast(LoopExtension, catalog.create("loop_extension", name)) for name, _factory in specs
+    )
+
+
+def active_loop_capabilities(context: UnifiedContext) -> tuple[LoopExtension, ...]:
+    return tuple(extension for extension in all_loop_capabilities() if extension.is_active(context))
 
 
 def any_exclusive_capability_active(context: UnifiedContext) -> bool:
-    """Whether an active capability *replaces* the tool surface (knowledge category).
-
-    Drives the pipeline's exclusive-tools branch and the suppression of rag
-    scaffolding (KB seed / kb note) — the turn runs only on the capability's
-    own tools. ``getattr`` default keeps plain capabilities (solve / mastery)
-    out of this path.
-    """
-    return any(getattr(cap, "exclusive_tools", False) for cap in active_loop_capabilities(context))
+    return any(
+        getattr(extension, "exclusive_tools", False)
+        for extension in active_loop_capabilities(context)
+    )
 
 
 def capability_tool_owners() -> dict[str, str]:
-    """Map each capability-owned tool name to its owning capability name.
-
-    Static (independent of any turn) so the settings UI can group capability
-    tools under their owner. Built-in/system tools are absent from the map.
-    """
-    return {name: cap.name for cap in all_loop_capabilities() for name in cap.owned_tools}
+    return {
+        name: extension.name
+        for extension in all_loop_capabilities()
+        for name in extension.owned_tools
+    }
 
 
 __all__ = [
+    "EXTENSIONS_GROUP",
     "LOOP_CAPABILITIES",
     "LOOP_CAPABILITIES_GROUP",
-    "all_loop_capabilities",
+    "LOOP_EXTENSION_FACTORIES",
     "active_loop_capabilities",
+    "all_loop_capabilities",
     "any_exclusive_capability_active",
     "capability_tool_owners",
     "discover_external_loop_capabilities",

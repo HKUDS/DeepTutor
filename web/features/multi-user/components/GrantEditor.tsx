@@ -12,7 +12,11 @@ import { useTranslation } from "react-i18next";
 import McpToolGroups from "@/components/common/McpToolGroups";
 import { toggleToolName as toggleName } from "@/lib/mcp-tool-groups";
 import { fetchAdminResources, fetchUserGrant, saveUserGrant } from "../api";
-import type { GrantPayload, LearningPolicy, MultiUserResources } from "../types";
+import type {
+  GrantPayload,
+  LearningPolicy,
+  MultiUserResources,
+} from "../types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -338,8 +342,10 @@ export function GrantEditor({
         ...current,
         learning_policy: {
           ...current.learning_policy,
-          allowed_surfaces:
-            current.learning_policy.allowed_surfaces ?? ["chat", "reading"],
+          allowed_surfaces: current.learning_policy.allowed_surfaces ?? [
+            "chat",
+            "reading",
+          ],
           reading: update(reading),
         },
       };
@@ -472,7 +478,9 @@ export function GrantEditor({
               <div className="rounded-lg border border-[var(--border)]/60 p-3">
                 <CheckRow
                   label={t("Enable learning policy")}
-                  description={t("Teacher persona; Chat and Immersive Reading only")}
+                  description={t(
+                    "Teacher persona; Chat and Immersive Reading only",
+                  )}
                   checked={Boolean(grant.learning_policy)}
                   disabled={controlsDisabled || lockLearningPolicy}
                   onToggle={() =>
@@ -534,22 +542,24 @@ export function GrantEditor({
                           {t("Assigned reading materials")}
                         </div>
                         <div className="grid gap-1 sm:grid-cols-2">
-                          {(resources?.reading_materials ?? []).map((material) => (
-                            <CheckRow
-                              key={material.material_id}
-                              label={material.title || material.filename}
-                              description={material.filename}
-                              checked={Boolean(
-                                grant.learning_policy?.reading.material_ids.includes(
-                                  material.material_id,
-                                ),
-                              )}
-                              disabled={controlsDisabled}
-                              onToggle={() =>
-                                toggleReadingMaterial(material.material_id)
-                              }
-                            />
-                          ))}
+                          {(resources?.reading_materials ?? []).map(
+                            (material) => (
+                              <CheckRow
+                                key={material.material_id}
+                                label={material.title || material.filename}
+                                description={material.filename}
+                                checked={Boolean(
+                                  grant.learning_policy?.reading.material_ids.includes(
+                                    material.material_id,
+                                  ),
+                                )}
+                                disabled={controlsDisabled}
+                                onToggle={() =>
+                                  toggleReadingMaterial(material.material_id)
+                                }
+                              />
+                            ),
+                          )}
                           {(resources?.reading_materials ?? []).length === 0 ? (
                             <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
                               {t(

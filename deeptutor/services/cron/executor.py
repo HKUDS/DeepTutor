@@ -127,7 +127,7 @@ async def _execute_chat_job(job: CronJob) -> tuple[str, str | None]:
     from deeptutor.core.stream import StreamEventType
     from deeptutor.multi_user.models import CurrentUser
     from deeptutor.multi_user.paths import local_admin_user, scope_for_user, user_context
-    from deeptutor.runtime.orchestrator import ChatOrchestrator
+    from deeptutor.runtime.turn_engine import get_turn_engine
     from deeptutor.services.session import get_sqlite_session_store
 
     if job.owner.is_admin:
@@ -167,7 +167,7 @@ async def _execute_chat_job(job: CronJob) -> tuple[str, str | None]:
 
         final_text = ""
         errors: list[str] = []
-        async for event in ChatOrchestrator().handle(context):
+        async for event in get_turn_engine().execute(context):
             meta: dict[str, Any] = event.metadata or {}
             if event.type == StreamEventType.RESULT and event.source == "chat":
                 final_text = str(meta.get("response") or "")

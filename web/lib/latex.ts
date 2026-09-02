@@ -6,6 +6,31 @@
  * This utility converts between formats.
  */
 
+// A single-dollar math span must be tight at both ends. This mirrors the
+// delimiter rule used by remark-math and avoids treating ordinary prices such
+// as "$5 and $10" as one formula. The body accepts escaped characters so an
+// escaped dollar does not terminate the span.
+const INLINE_MARKDOWN_MATH_RE =
+  /(?:^|[^$\\])\$(?![$\s])(?:\\.|[^$\n])*?(?<!\s)\$(?!\$)/m;
+
+/**
+ * Detect Markdown/LaTeX math that needs the rich KaTeX renderer.
+ *
+ * Display-math and backslash delimiters are detected from their opening token
+ * so streaming content switches to the rich renderer as early as possible.
+ * Single-dollar math waits for a valid closing delimiter because a lone `$`
+ * is common in currency. Once a match exists, appending streamed text cannot
+ * make it disappear, so the Simple -> Rich transition remains one-way.
+ */
+export function hasMarkdownMath(content: string): boolean {
+  if (!content) return false;
+  const value = String(content);
+
+  if (/(^|[^\\])\$\$/.test(value)) return true;
+  if (/\\\(|\\\[/.test(value)) return true;
+  return INLINE_MARKDOWN_MATH_RE.test(value);
+}
+
 /**
  * Convert LaTeX delimiters from \(...\) and \[...\] to $...$ and $$...$$
  * This makes the content compatible with remark-math for ReactMarkdown rendering.

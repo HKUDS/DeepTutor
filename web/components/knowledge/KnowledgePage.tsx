@@ -1,21 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
-import { updateRagProviderMode } from "@/lib/knowledge-api";
+import { updateRagProviderMode } from "@/features/knowledge/api/engines";
 import KnowledgeBaseDetail from "./KnowledgeBaseDetail";
 import KnowledgeHome, { type KnowledgeHomeSection } from "./KnowledgeHome";
-import EngineDetail from "./EngineDetail";
+import EngineDetail from "@/features/knowledge/components/engines/EngineDetail";
 import CreateKbModal from "./CreateKbModal";
+import { knowledgeBaseRoute } from "@/lib/resource-routes";
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
   const router = useRouter();
+  const routeParams = useParams<{ kbName?: string }>();
   const searchParams = useSearchParams();
-  const initialKb = searchParams.get("kb");
+  const initialKb = routeParams.kbName?.trim() || null;
   const initialEngine = searchParams.get("engine");
   const initialHomeSection: KnowledgeHomeSection =
     initialEngine || searchParams.get("section") === "engines"
@@ -82,6 +84,21 @@ export default function KnowledgePage() {
     initialEngine ? "engine" : initialKb ? "kb" : "home",
   );
 
+  // Dynamic segment changes do not necessarily remount this client page.
+  // Follow the route on browser history navigation instead of restoring a
+  // stale in-memory selection over it.
+  useEffect(() => {
+    if (initialKb) {
+      setExplicitSelection(initialKb);
+      setView("kb");
+    } else if (view === "kb") {
+      setExplicitSelection(null);
+      setView("home");
+    }
+    // Only a route transition should drive this synchronization.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKb]);
+
   const openKb = useCallback((name: string) => {
     setHomeSection("knowledge-bases");
     setExplicitSelection(name);
@@ -98,12 +115,16 @@ export default function KnowledgePage() {
   // exists, otherwise fall back to the default KB (or the first one). No
   // useEffect chains — keeps state out of effects.
   const selectedKbName = useMemo<string | null>(() => {
+    // Do not erase a direct `/knowledge-bases/<name>` visit while the catalog
+    // request is still in flight. Once loading finishes, the normal existence
+    // check below may repair an actually stale name to the default KB.
+    if (loading && explicitSelection) return explicitSelection;
     if (explicitSelection && kbs.some((kb) => kb.name === explicitSelection)) {
       return explicitSelection;
     }
     if (!kbs.length) return null;
     return kbs.find((kb) => kb.is_default)?.name ?? kbs[0].name;
-  }, [explicitSelection, kbs]);
+  }, [explicitSelection, kbs, loading]);
 
   const selectedKb = useMemo(
     () => kbs.find((kb) => kb.name === selectedKbName) ?? null,
@@ -116,8 +137,8 @@ export default function KnowledgePage() {
     [providers, selectedEngineId],
   );
 
-  // Keep ?kb / ?engine in sync with the effective selection so deep links work.
-  // The Overview view carries neither, so reloading the console stays on it.
+  // Keep the KB identity in the path. Engine selection and overview section
+  // remain query state because they are views/filters, not KB resources.
   const urlKb = view === "kb" ? (selectedKbName ?? null) : null;
   const urlEngine = view === "engine" ? (selectedProvider?.id ?? null) : null;
   const urlSection =
@@ -125,22 +146,24 @@ export default function KnowledgePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (
-      searchParams.get("kb") === urlKb &&
+      initialKb === urlKb &&
       searchParams.get("engine") === urlEngine &&
       searchParams.get("section") === urlSection
     ) {
       return;
     }
     const params = new URLSearchParams(Array.from(searchParams.entries()));
-    if (urlKb) params.set("kb", urlKb);
-    else params.delete("kb");
+    params.delete("kb");
     if (urlEngine) params.set("engine", urlEngine);
     else params.delete("engine");
     if (urlSection) params.set("section", urlSection);
     else params.delete("section");
     const search = params.toString();
-    router.replace(search ? `?${search}` : "?", { scroll: false });
-  }, [router, searchParams, urlKb, urlEngine, urlSection]);
+    const pathname = knowledgeBaseRoute(urlKb);
+    router.replace(search ? `${pathname}?${search}` : pathname, {
+      scroll: false,
+    });
+  }, [initialKb, router, searchParams, urlKb, urlEngine, urlSection]);
 
   const handleCreate = useCallback(
     async (params: {

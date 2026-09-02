@@ -26,7 +26,7 @@ test("watching pane exposes a public Invidious browse path", () => {
   assert.doesNotMatch(browse, /Subscriptions/);
   assert.match(browse, /Popular/);
   assert.match(browse, /Trending/);
-  assert.match(api, /\/api\/v1\/video-learning\/invidious\/home/);
+  assert.match(api, /\/api\/video-learning\/invidious\/home/);
   assert.match(api, /export function youtubeWatchUrl/);
   assert.doesNotMatch(api, /youtube-session/);
 });

@@ -96,6 +96,7 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+ws_router = APIRouter()
 
 # Constants for byte conversions
 BYTES_PER_GB = 1024**3
@@ -193,6 +194,7 @@ class SupportedFileTypesInfo(BaseModel):
     extensions: list[str]
     accept: str
     max_file_size_bytes: int
+    allow_any_extension: bool = False
 
 
 IMAGE_ACCEPT_MIME_TYPES = {
@@ -1113,7 +1115,7 @@ async def run_upload_processing_task(
             task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
-@router.get("/health")
+@router.get("/knowledge-bases/health")
 async def health_check():
     """Health check endpoint"""
     try:
@@ -1132,7 +1134,7 @@ async def health_check():
         return {"status": "error", "error": str(e), "traceback": traceback.format_exc()}
 
 
-@router.get("/rag-providers")
+@router.get("/knowledge-bases/rag-providers")
 async def get_rag_providers():
     """Get list of available RAG providers (with the active per-engine mode)."""
     try:
@@ -1162,7 +1164,7 @@ class ProviderModeUpdate(BaseModel):
     mode: str
 
 
-@router.put("/rag-providers/{provider}/mode")
+@router.put("/knowledge-bases/rag-providers/{provider}/mode")
 async def set_rag_provider_mode(provider: str, payload: ProviderModeUpdate):
     """Persist the default retrieval mode for a mode-aware engine.
 
@@ -1205,7 +1207,7 @@ def _pageindex_config_payload() -> dict:
     }
 
 
-@router.get("/rag-pipelines/pageindex/config")
+@router.get("/knowledge-bases/rag-pipelines/pageindex/config")
 async def get_pageindex_pipeline_config():
     """Read the PageIndex credential state (key redacted to a boolean)."""
     try:
@@ -1215,7 +1217,7 @@ async def get_pageindex_pipeline_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/rag-pipelines/pageindex/config")
+@router.put("/knowledge-bases/rag-pipelines/pageindex/config")
 async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
     """Persist the deployment-level PageIndex Cloud credential."""
     try:
@@ -1258,7 +1260,7 @@ def _ima_config_payload() -> dict:
     }
 
 
-@router.get("/rag-pipelines/ima/config")
+@router.get("/knowledge-bases/rag-pipelines/ima/config")
 async def get_ima_pipeline_config():
     """Read the account-level IMA credentials (key redacted to a boolean)."""
     try:
@@ -1268,7 +1270,7 @@ async def get_ima_pipeline_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/rag-pipelines/ima/config")
+@router.put("/knowledge-bases/rag-pipelines/ima/config")
 async def update_ima_pipeline_config(payload: ImaConfigUpdate):
     """Persist the account-level IMA Client ID / API key."""
     try:
@@ -1311,7 +1313,7 @@ class LlamaIndexConfigUpdate(BaseModel):
     image_description_timeout_seconds: int | None = None
 
 
-@router.get("/rag-pipelines/llamaindex/config")
+@router.get("/knowledge-bases/rag-pipelines/llamaindex/config")
 async def get_llamaindex_pipeline_config():
     """Read the LlamaIndex engine's retrieval + chunking knobs."""
     try:
@@ -1323,7 +1325,7 @@ async def get_llamaindex_pipeline_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/rag-pipelines/llamaindex/config")
+@router.put("/knowledge-bases/rag-pipelines/llamaindex/config")
 async def update_llamaindex_pipeline_config(payload: LlamaIndexConfigUpdate):
     """Persist the LlamaIndex engine knobs.
 
@@ -1351,7 +1353,7 @@ class GraphRagConfigUpdate(BaseModel):
     dynamic_community_selection: bool | None = None
 
 
-@router.get("/rag-pipelines/graphrag/config")
+@router.get("/knowledge-bases/rag-pipelines/graphrag/config")
 async def get_graphrag_pipeline_config():
     """Read GraphRAG's query knobs (response style, community granularity)."""
     try:
@@ -1363,7 +1365,7 @@ async def get_graphrag_pipeline_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/rag-pipelines/graphrag/config")
+@router.put("/knowledge-bases/rag-pipelines/graphrag/config")
 async def update_graphrag_pipeline_config(payload: GraphRagConfigUpdate):
     """Persist GraphRAG's query knobs. Takes effect on the next query."""
     try:
@@ -1412,7 +1414,7 @@ def _validate_lightrag_llm_selection(profile_id: str, model_id: str) -> None:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
-@router.get("/rag-pipelines/lightrag/config")
+@router.get("/knowledge-bases/rag-pipelines/lightrag/config")
 async def get_lightrag_pipeline_config():
     """Read LightRAG's query knobs plus its indexing concurrency/extraction knobs."""
     try:
@@ -1424,7 +1426,7 @@ async def get_lightrag_pipeline_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/rag-pipelines/lightrag/config")
+@router.put("/knowledge-bases/rag-pipelines/lightrag/config")
 async def update_lightrag_pipeline_config(payload: LightRagConfigUpdate):
     """Persist LightRAG's knobs.
 
@@ -1471,7 +1473,7 @@ def _lightrag_server_config_payload() -> dict:
     }
 
 
-@router.get("/rag-pipelines/lightrag-server/config")
+@router.get("/knowledge-bases/rag-pipelines/lightrag-server/config")
 async def get_lightrag_server_pipeline_config():
     """Read reusable server defaults with the API key redacted."""
     try:
@@ -1481,7 +1483,7 @@ async def get_lightrag_server_pipeline_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/rag-pipelines/lightrag-server/config")
+@router.put("/knowledge-bases/rag-pipelines/lightrag-server/config")
 async def update_lightrag_server_pipeline_config(payload: LightRagServerConfigUpdate):
     """Persist reusable defaults without changing existing KB bindings."""
     try:
@@ -1503,7 +1505,7 @@ async def update_lightrag_server_pipeline_config(payload: LightRagServerConfigUp
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/rag-pipelines/{provider}/preflight")
+@router.get("/knowledge-bases/rag-pipelines/{provider}/preflight")
 async def get_rag_pipeline_preflight(provider: str):
     """Check whether ``provider`` can run in the current environment.
 
@@ -1566,7 +1568,7 @@ def _model_options_payload(kinds: list[str]) -> dict:
     return out
 
 
-@router.get("/rag-pipelines/model-options")
+@router.get("/knowledge-bases/rag-pipelines/model-options")
 async def get_rag_model_options(kinds: str = "llm,embedding"):
     """List configured models (secret-free) for the requested model kinds."""
     try:
@@ -1595,7 +1597,7 @@ async def _probe_graphrag_model_compatibility(profile_id: str, model_id: str) ->
     return await probe_configured_completion_model(profile_id, model_id)
 
 
-@router.post("/rag-pipelines/graphrag/model-compatibility")
+@router.post("/knowledge-bases/rag-pipelines/graphrag/model-compatibility")
 async def test_graphrag_model_compatibility(payload: GraphRagModelCompatibilityRequest):
     """Test GraphRAG structured output without changing the active chat model."""
     try:
@@ -1618,7 +1620,7 @@ class ActiveModelUpdate(BaseModel):
     model_id: str
 
 
-@router.put("/rag-pipelines/active-model")
+@router.put("/knowledge-bases/rag-pipelines/active-model")
 async def set_rag_active_model(payload: ActiveModelUpdate):
     """Set the active model for an engine's required kind, applied immediately.
 
@@ -1656,23 +1658,30 @@ async def set_rag_active_model(payload: ActiveModelUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/supported-file-types", response_model=SupportedFileTypesInfo)
+@router.get("/knowledge-bases/supported-file-types", response_model=SupportedFileTypesInfo)
 async def get_supported_file_types():
     """Return the current upload policy so the web client stays in sync."""
-    extensions = sorted(FileTypeRouter.get_supported_extensions())
-    accept_items = extensions + [
-        mime
-        for extension, mime in sorted(IMAGE_ACCEPT_MIME_TYPES.items())
-        if extension in FileTypeRouter.IMAGE_EXTENSIONS
-    ]
+    allow_any_extension = FileTypeRouter.active_parser_accepts_any_format()
+    extensions = [] if allow_any_extension else sorted(FileTypeRouter.get_supported_extensions())
+    accept_items = (
+        []
+        if allow_any_extension
+        else extensions
+        + [
+            mime
+            for extension, mime in sorted(IMAGE_ACCEPT_MIME_TYPES.items())
+            if extension in FileTypeRouter.IMAGE_EXTENSIONS
+        ]
+    )
     return SupportedFileTypesInfo(
         extensions=extensions,
         accept=",".join(dict.fromkeys(accept_items)),
         max_file_size_bytes=DocumentValidator.MAX_FILE_SIZE,
+        allow_any_extension=allow_any_extension,
     )
 
 
-@router.get("/configs")
+@router.get("/knowledge-bases/configs")
 async def get_all_kb_configs():
     """Get all knowledge base configurations from centralized config file."""
     try:
@@ -1685,7 +1694,7 @@ async def get_all_kb_configs():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{kb_name}/config")
+@router.get("/knowledge-bases/{kb_name}/config")
 async def get_kb_config(kb_name: str):
     """Get configuration for a specific knowledge base."""
     try:
@@ -1699,7 +1708,7 @@ async def get_kb_config(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{kb_name}/config")
+@router.put("/knowledge-bases/{kb_name}/config")
 async def update_kb_config(kb_name: str, config: dict):
     """Update configuration for a specific knowledge base."""
     try:
@@ -1749,7 +1758,7 @@ async def update_kb_config(kb_name: str, config: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/configs/sync")
+@router.post("/knowledge-bases/configs/sync")
 async def sync_configs_from_metadata():
     """Sync all KB configurations from their metadata.json files to centralized config."""
     try:
@@ -1763,7 +1772,7 @@ async def sync_configs_from_metadata():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/default")
+@router.get("/knowledge-bases/default")
 async def get_default_kb():
     """Get the default knowledge base."""
     try:
@@ -1775,7 +1784,7 @@ async def get_default_kb():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/default/{kb_name}")
+@router.put("/knowledge-bases/default/{kb_name}")
 async def set_default_kb(kb_name: str):
     """Set the default knowledge base."""
     try:
@@ -1799,7 +1808,7 @@ class ConnectObsidianRequest(BaseModel):
     vault_path: str
 
 
-@router.post("/connect-obsidian")
+@router.post("/knowledge-bases/connect-obsidian")
 async def connect_obsidian_vault(payload: ConnectObsidianRequest):
     """Connect an existing Obsidian vault as a knowledge base.
 
@@ -1832,7 +1841,7 @@ class ConnectMarginNote4Request(BaseModel):
     description: str = ""
 
 
-@router.post("/connect-marginnote4")
+@router.post("/knowledge-bases/connect-marginnote4")
 async def connect_marginnote4(payload: ConnectMarginNote4Request):
     """Register a connected MarginNote 4 library as a knowledge base.
 
@@ -1872,7 +1881,7 @@ class ConnectFolderRequest(BaseModel):
     rag_provider: str = DEFAULT_PROVIDER
 
 
-@router.post("/probe-folder")
+@router.post("/knowledge-bases/probe-folder")
 async def probe_linked_folder_route(payload: ProbeFolderRequest):
     """Inspect a local folder for a ready engine index before linking it.
 
@@ -1891,7 +1900,7 @@ async def probe_linked_folder_route(payload: ProbeFolderRequest):
     return result.to_dict()
 
 
-@router.post("/connect-folder")
+@router.post("/knowledge-bases/connect-folder")
 async def connect_linked_folder_route(payload: ConnectFolderRequest):
     """Mount an existing engine index as a read-only ``linked`` knowledge base.
 
@@ -1968,7 +1977,7 @@ class ConnectWeKnoraRequest(BaseModel):
     knowledge_base_id: str
 
 
-@router.post("/probe-lightrag-server")
+@router.post("/knowledge-bases/probe-lightrag-server")
 async def probe_lightrag_server_route(payload: ProbeLightRagServerRequest):
     """Test-connect to an external LightRAG server before binding a KB to it.
 
@@ -1992,7 +2001,7 @@ async def probe_lightrag_server_route(payload: ProbeLightRagServerRequest):
     return result.to_dict()
 
 
-@router.post("/connect-lightrag-server")
+@router.post("/knowledge-bases/connect-lightrag-server")
 async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
     """Connect an external LightRAG server as a retrieval-only knowledge base.
 
@@ -2051,7 +2060,7 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
     }
 
 
-@router.post("/probe-weknora", dependencies=[Depends(require_admin)])
+@router.post("/knowledge-bases/probe-weknora", dependencies=[Depends(require_admin)])
 async def probe_weknora_route(payload: ProbeWeKnoraRequest):
     """Validate a WeKnora server and knowledge-base binding without registering."""
     from deeptutor.services.rag.pipelines.weknora.probe import probe_weknora
@@ -2071,7 +2080,7 @@ async def probe_weknora_route(payload: ProbeWeKnoraRequest):
     return result.to_dict()
 
 
-@router.post("/connect-weknora", dependencies=[Depends(require_admin)])
+@router.post("/knowledge-bases/connect-weknora", dependencies=[Depends(require_admin)])
 async def connect_weknora_route(payload: ConnectWeKnoraRequest):
     """Connect a self-hosted WeKnora knowledge base for retrieval only."""
     from deeptutor.services.rag.pipelines.weknora.probe import probe_weknora
@@ -2157,7 +2166,7 @@ def _resolve_ima_credentials(client_id: str, api_key: str) -> ImaCredentials:
     return get_account_credentials()
 
 
-@router.post("/list-ima", response_model=ListImaResponse)
+@router.post("/knowledge-bases/list-ima", response_model=ListImaResponse)
 async def list_ima_route(payload: ListImaRequest):
     """List IMA knowledge bases without storing or echoing credentials."""
     credentials = _resolve_ima_credentials(payload.client_id, payload.api_key)
@@ -2200,7 +2209,7 @@ class ConnectImaRequest(BaseModel):
     knowledge_base_id: str
 
 
-@router.post("/probe-ima")
+@router.post("/knowledge-bases/probe-ima")
 async def probe_ima_route(payload: ProbeImaRequest):
     """Test-connect to a Tencent IMA knowledge base before binding a KB to it.
 
@@ -2219,7 +2228,7 @@ async def probe_ima_route(payload: ProbeImaRequest):
     return result.to_dict()
 
 
-@router.post("/connect-ima")
+@router.post("/knowledge-bases/connect-ima")
 async def connect_ima_route(payload: ConnectImaRequest):
     """Connect a Tencent IMA knowledge base as a retrieval-only knowledge base.
 
@@ -2279,7 +2288,7 @@ async def connect_ima_route(payload: ConnectImaRequest):
     }
 
 
-@router.get("/list", response_model=list[KnowledgeBaseInfo])
+@router.get("/knowledge-bases", response_model=list[KnowledgeBaseInfo])
 async def list_knowledge_bases():
     """List all available knowledge bases with their details."""
     try:
@@ -2451,7 +2460,7 @@ async def list_knowledge_bases():
         raise HTTPException(status_code=500, detail=f"Failed to list knowledge bases: {e!s}")
 
 
-@router.get("/{kb_name}")
+@router.get("/knowledge-bases/{kb_name}")
 async def get_knowledge_base_details(kb_name: str):
     """Get detailed info for a specific KB."""
     try:
@@ -2531,7 +2540,7 @@ def _resolve_kb_raw_file_or_404(kb_name: str, filename: str) -> Path:
     return target
 
 
-@router.get("/{kb_name}/files")
+@router.get("/knowledge-bases/{kb_name}/files")
 async def list_kb_raw_files(kb_name: str):
     """List raw documents under <kb>/raw/, recursing into folders.
 
@@ -2581,7 +2590,7 @@ class MoveFilePayload(BaseModel):
     dest_folder: str = ""
 
 
-@router.post("/{kb_name}/folders")
+@router.post("/knowledge-bases/{kb_name}/folders")
 async def create_kb_folder(kb_name: str, payload: CreateFolderPayload):
     """Create an (organizational) folder under <kb>/raw/. No retrieval effect."""
     manager, kb_name, _ = _writable_kb(kb_name)
@@ -2595,7 +2604,7 @@ async def create_kb_folder(kb_name: str, payload: CreateFolderPayload):
     return {"status": "ok", "path": subdir}
 
 
-@router.post("/{kb_name}/files/move")
+@router.post("/knowledge-bases/{kb_name}/files/move")
 async def move_kb_file(kb_name: str, payload: MoveFilePayload):
     """Move a file/folder between organizational folders (display only).
 
@@ -2632,7 +2641,7 @@ async def move_kb_file(kb_name: str, payload: MoveFilePayload):
     return {"status": "ok", "path": dest.relative_to(raw_dir.resolve()).as_posix()}
 
 
-@router.get("/{kb_name}/file-preview-text/{filename:path}")
+@router.get("/knowledge-bases/{kb_name}/file-preview-text/{filename:path}")
 async def serve_kb_raw_file_text_preview(kb_name: str, filename: str):
     """Serve extracted plain text for a raw KB document preview."""
     target = _resolve_kb_raw_file_or_404(kb_name, filename)
@@ -2650,7 +2659,7 @@ async def serve_kb_raw_file_text_preview(kb_name: str, filename: str):
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
-@router.get("/{kb_name}/files/{filename:path}")
+@router.get("/knowledge-bases/{kb_name}/files/{filename:path}")
 async def serve_kb_raw_file(kb_name: str, filename: str):
     """Serve a single raw document for inline preview / download.
 
@@ -2667,7 +2676,7 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
     )
 
 
-@router.delete("/{kb_name}/files/{filename:path}")
+@router.delete("/knowledge-bases/{kb_name}/files/{filename:path}")
 async def delete_kb_file(kb_name: str, filename: str):
     """Remove a single raw document from a knowledge base.
 
@@ -2700,7 +2709,7 @@ async def delete_kb_file(kb_name: str, filename: str):
     }
 
 
-@router.delete("/{kb_name}")
+@router.delete("/knowledge-bases/{kb_name}")
 async def delete_knowledge_base(kb_name: str):
     """Delete a knowledge base."""
     try:
@@ -2716,7 +2725,7 @@ async def delete_knowledge_base(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/tasks/{task_id}/stream")
+@router.get("/knowledge-bases/tasks/{task_id}/stream")
 async def stream_task_logs(task_id: str):
     """Stream task-specific logs for knowledge-base operations."""
     manager = get_task_stream_manager()
@@ -2728,7 +2737,7 @@ async def stream_task_logs(task_id: str):
     )
 
 
-@router.post("/{kb_name}/upload")
+@router.post("/knowledge-bases/{kb_name}/upload")
 async def upload_files(
     kb_name: str,
     background_tasks: BackgroundTasks,
@@ -2769,11 +2778,15 @@ async def upload_files(
             )
         _assert_provider_ready(kb_provider)
         _enforce_provider_formats(kb_provider, files)
-        allowed_extensions = FileTypeRouter.get_supported_extensions()
+        allowed_extensions = (
+            set()
+            if FileTypeRouter.active_parser_accepts_any_format()
+            else FileTypeRouter.get_supported_extensions()
+        )
         # ``.zip`` is accepted as an upload container; its members are
         # validated against ``allowed_extensions`` during extraction and the
         # archive itself is never indexed (``safe_extract_zip`` skips ``.zip``).
-        upload_extensions = allowed_extensions | {".zip"}
+        upload_extensions = allowed_extensions | {".zip"} if allowed_extensions else set()
         _validate_upload_batch(files, allowed_extensions=upload_extensions, rel_paths=rel_paths)
         uploaded_files, uploaded_file_paths = await _save_uploaded_files_off_loop(
             files,
@@ -2818,7 +2831,7 @@ async def upload_files(
         raise HTTPException(status_code=500, detail=formatted_error) from e
 
 
-@router.post("/create")
+@router.post("/knowledge-bases")
 async def create_knowledge_base(
     background_tasks: BackgroundTasks,
     name: str = Form(...),
@@ -2870,7 +2883,11 @@ async def create_knowledge_base(
                     ),
                 )
         _enforce_provider_formats(rag_provider, files)
-        allowed_extensions = FileTypeRouter.get_supported_extensions()
+        allowed_extensions = (
+            set()
+            if FileTypeRouter.active_parser_accepts_any_format()
+            else FileTypeRouter.get_supported_extensions()
+        )
         _validate_upload_batch(files, allowed_extensions=allowed_extensions, rel_paths=rel_paths)
 
         logger.info(f"Creating KB: {name} (provider={rag_provider})")
@@ -3147,7 +3164,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
-@router.post("/{kb_name}/reindex")
+@router.post("/knowledge-bases/{kb_name}/reindex")
 async def reindex_knowledge_base(
     kb_name: str,
     background_tasks: BackgroundTasks,
@@ -3233,7 +3250,7 @@ async def reindex_knowledge_base(
         raise HTTPException(status_code=500, detail=format_exception_message(e))
 
 
-@router.post("/{kb_name}/retry")
+@router.post("/knowledge-bases/{kb_name}/retry")
 async def retry_knowledge_base(
     kb_name: str,
     background_tasks: BackgroundTasks,
@@ -3261,7 +3278,7 @@ async def retry_knowledge_base(
         raise HTTPException(status_code=500, detail=format_exception_message(e))
 
 
-@router.get("/{kb_name}/progress")
+@router.get("/knowledge-bases/{kb_name}/progress")
 async def get_progress(kb_name: str):
     """Get initialization progress for a knowledge base"""
     try:
@@ -3279,7 +3296,7 @@ async def get_progress(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{kb_name}/progress/clear")
+@router.post("/knowledge-bases/{kb_name}/progress/clear")
 async def clear_progress(kb_name: str):
     """Clear progress file for a knowledge base (useful for stuck states)"""
     try:
@@ -3293,7 +3310,7 @@ async def clear_progress(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.websocket("/{kb_name}/progress/ws")
+@ws_router.websocket("/knowledge-bases/{kb_name}/progress")
 async def websocket_progress(websocket: WebSocket, kb_name: str):
     """WebSocket endpoint for real-time progress updates"""
     from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
@@ -3314,12 +3331,98 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
         progress_tracker = ProgressTracker(kb_name, base_dir)
         initial_progress = progress_tracker.get_progress()
         expected_task_id = websocket.query_params.get("task_id")
+        task_manager = TaskIDManager.get_instance()
 
         try:
             kb_info = KnowledgeBaseManager(base_dir=str(base_dir)).get_info(kb_name)
             kb_is_ready = bool(kb_info.get("statistics", {}).get("rag_initialized"))
         except Exception:
             kb_is_ready = False
+
+        if expected_task_id:
+            progress_task_id = initial_progress.get("task_id") if initial_progress else None
+            stage = initial_progress.get("stage") if initial_progress else None
+            task_metadata = task_manager.get_task_metadata(expected_task_id)
+
+            # A terminal snapshot is durable and authoritative. Always replay
+            # it, including completed snapshots for already-ready KBs.
+            if progress_task_id == expected_task_id and stage in {"completed", "error"}:
+                await websocket.send_json({"type": "progress", "data": initial_progress})
+                return
+
+            if not task_metadata:
+                # Task IDs and background asyncio tasks are process-local. If
+                # the browser reconnects with an expected id that this process
+                # does not know, the server was restarted (or the task was
+                # evicted) and it cannot ever produce another event. Convert
+                # that orphan into a durable, retryable terminal state so both
+                # SSE and WebSocket consumers settle immediately.
+                error_message = (
+                    "Knowledge-base processing was interrupted by a server restart. "
+                    "Retry the operation to continue."
+                )
+                if progress_task_id == expected_task_id and stage not in {
+                    "completed",
+                    "error",
+                }:
+                    progress_tracker.task_id = expected_task_id
+                    progress_tracker.update(
+                        ProgressStage.ERROR,
+                        message=error_message,
+                        error=error_message,
+                        error_code="knowledge_task_interrupted",
+                        retryable=True,
+                    )
+                    initial_progress = progress_tracker.get_progress()
+                else:
+                    initial_progress = {
+                        "kb_name": kb_name,
+                        "task_id": expected_task_id,
+                        "stage": "error",
+                        "message": error_message,
+                        "error": error_message,
+                        "error_code": "knowledge_task_interrupted",
+                        "retryable": True,
+                        "progress_percent": 0,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                get_task_stream_manager().emit_failed(
+                    expected_task_id,
+                    error_message,
+                    error_code="knowledge_task_interrupted",
+                    retryable=True,
+                )
+                await websocket.send_json({"type": "progress", "data": initial_progress})
+                return
+
+            task_status = str(task_metadata.get("status") or "")
+            if task_status in {"completed", "error", "cancelled"}:
+                is_completed = task_status == "completed"
+                message = (
+                    "Knowledge-base processing completed."
+                    if is_completed
+                    else str(task_metadata.get("error") or "Knowledge-base processing failed.")
+                )
+                terminal_progress = {
+                    "kb_name": kb_name,
+                    "task_id": expected_task_id,
+                    "stage": "completed" if is_completed else "error",
+                    "message": message,
+                    "progress_percent": 100 if is_completed else 0,
+                    "timestamp": str(
+                        task_metadata.get("finished_at") or datetime.now().isoformat()
+                    ),
+                }
+                if not is_completed:
+                    terminal_progress.update(
+                        {
+                            "error": message,
+                            "error_code": "knowledge_task_failed",
+                            "retryable": True,
+                        }
+                    )
+                await websocket.send_json({"type": "progress", "data": terminal_progress})
+                return
 
         # Fast path: no active task — send current state and close immediately
         # This prevents infinite polling loops for ready or legacy KBs.
@@ -3370,6 +3473,8 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
             should_send = False
             if expected_task_id and progress_task_id and progress_task_id != expected_task_id:
                 should_send = False
+            elif expected_task_id and progress_task_id == expected_task_id:
+                should_send = True
             elif stage == "error" or not kb_is_ready:
                 should_send = True
             elif stage != "completed" and timestamp:
@@ -3413,6 +3518,41 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
                             if current_progress.get("stage") in ["completed", "error"]:
                                 await asyncio.sleep(3)
                                 break
+                    if expected_task_id:
+                        task_metadata = task_manager.get_task_metadata(expected_task_id)
+                        task_status = str((task_metadata or {}).get("status") or "")
+                        if task_status in {"completed", "error", "cancelled"}:
+                            is_completed = task_status == "completed"
+                            message = (
+                                "Knowledge-base processing completed."
+                                if is_completed
+                                else str(
+                                    (task_metadata or {}).get("error")
+                                    or "Knowledge-base processing failed."
+                                )
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "progress",
+                                    "data": {
+                                        "kb_name": kb_name,
+                                        "task_id": expected_task_id,
+                                        "stage": "completed" if is_completed else "error",
+                                        "message": message,
+                                        "error": None if is_completed else message,
+                                        "error_code": (
+                                            None if is_completed else "knowledge_task_failed"
+                                        ),
+                                        "retryable": False if is_completed else True,
+                                        "progress_percent": 100 if is_completed else 0,
+                                        "timestamp": str(
+                                            (task_metadata or {}).get("finished_at")
+                                            or datetime.now().isoformat()
+                                        ),
+                                    },
+                                }
+                            )
+                            break
                     continue
 
             except WebSocketDisconnect:
@@ -3439,7 +3579,7 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
                 pass
 
 
-@router.post("/{kb_name}/link-folder", response_model=LinkedFolderInfo)
+@router.post("/knowledge-bases/{kb_name}/link-folder", response_model=LinkedFolderInfo)
 async def link_folder(kb_name: str, request: LinkFolderRequest):
     """
     Link a local folder to a knowledge base.
@@ -3469,7 +3609,7 @@ async def link_folder(kb_name: str, request: LinkFolderRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{kb_name}/linked-folders", response_model=list[LinkedFolderInfo])
+@router.get("/knowledge-bases/{kb_name}/linked-folders", response_model=list[LinkedFolderInfo])
 async def get_linked_folders(kb_name: str):
     """Get list of linked folders for a knowledge base."""
     try:
@@ -3485,7 +3625,7 @@ async def get_linked_folders(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{kb_name}/linked-folders/{folder_id}")
+@router.delete("/knowledge-bases/{kb_name}/linked-folders/{folder_id}")
 async def unlink_folder(kb_name: str, folder_id: str):
     """Unlink a folder from a knowledge base."""
     try:
@@ -3503,7 +3643,7 @@ async def unlink_folder(kb_name: str, folder_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{kb_name}/sync-folder/{folder_id}")
+@router.post("/knowledge-bases/{kb_name}/sync-folder/{folder_id}")
 async def sync_folder(kb_name: str, folder_id: str, background_tasks: BackgroundTasks):
     """
     Sync files from a linked folder to the knowledge base.
@@ -3622,7 +3762,7 @@ class WebSourceInfo(BaseModel):
     navigation: dict | None = None
 
 
-@router.post("/{kb_name}/github-source", response_model=GitHubSourceInfo)
+@router.post("/knowledge-bases/{kb_name}/github-source", response_model=GitHubSourceInfo)
 async def add_github_source(kb_name: str, request: AddGitHubSourceRequest):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -3640,7 +3780,7 @@ async def add_github_source(kb_name: str, request: AddGitHubSourceRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{kb_name}/github-sources", response_model=list[GitHubSourceInfo])
+@router.get("/knowledge-bases/{kb_name}/github-sources", response_model=list[GitHubSourceInfo])
 async def get_github_sources(kb_name: str):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -3653,7 +3793,7 @@ async def get_github_sources(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{kb_name}/github-source/{source_id}")
+@router.delete("/knowledge-bases/{kb_name}/github-source/{source_id}")
 async def remove_github_source(kb_name: str, source_id: str):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -3668,7 +3808,7 @@ async def remove_github_source(kb_name: str, source_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{kb_name}/sync-github")
+@router.post("/knowledge-bases/{kb_name}/sync-github")
 async def sync_github_sources(kb_name: str):
     try:
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
@@ -3703,7 +3843,7 @@ async def sync_github_sources(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{kb_name}/web-source", response_model=WebSourceInfo)
+@router.post("/knowledge-bases/{kb_name}/web-source", response_model=WebSourceInfo)
 async def add_web_source(kb_name: str, request: AddWebSourceRequest):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -3721,7 +3861,7 @@ async def add_web_source(kb_name: str, request: AddWebSourceRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{kb_name}/web-sources", response_model=list[WebSourceInfo])
+@router.get("/knowledge-bases/{kb_name}/web-sources", response_model=list[WebSourceInfo])
 async def get_web_sources(kb_name: str):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -3734,7 +3874,7 @@ async def get_web_sources(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{kb_name}/web-source/{source_id}")
+@router.delete("/knowledge-bases/{kb_name}/web-source/{source_id}")
 async def remove_web_source(kb_name: str, source_id: str):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -3749,7 +3889,7 @@ async def remove_web_source(kb_name: str, source_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{kb_name}/sync-web")
+@router.post("/knowledge-bases/{kb_name}/sync-web")
 async def sync_web_sources(kb_name: str):
     """Run one bounded crawl-and-sync pass for every enabled web source."""
     try:

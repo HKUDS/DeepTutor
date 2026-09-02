@@ -1,13 +1,10 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-
 import SettingsNav, {
   SettingsNavCompact,
 } from "@/components/settings/SettingsNav";
 import { SettingsToolbar } from "@/components/settings/SettingsToolbar";
 import { SettingsLoadStatusBanner } from "@/components/settings/SettingsLoadStatusBanner";
-import { isNavOnlyRoute } from "@/lib/settings-nav";
 
 /**
  * Settings shell: a persistent navigator on the left, one page on the right.
@@ -20,9 +17,6 @@ import { isNavOnlyRoute } from "@/lib/settings-nav";
 export default function SettingsMain({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const pathname = usePathname() ?? "";
-  const showToolbar = !isNavOnlyRoute(pathname);
-
   return (
     <div className="flex h-full min-w-0 bg-[var(--background)]">
       <div className="hidden h-full shrink-0 border-r border-[var(--border)]/60 py-5 pl-6 pr-3 md:block">
@@ -35,7 +29,7 @@ export default function SettingsMain({
           <div className="mb-2">
             <SettingsNavCompact />
           </div>
-          {showToolbar && <SettingsToolbar />}
+          <SettingsToolbar />
           <SettingsLoadStatusBanner />
         </div>
         {/* Inner scroll container. Sticky elements inside (e.g. the profile-list

@@ -6,6 +6,7 @@ import asyncio
 
 import pytest
 
+import deeptutor.services.memory.consolidator.runs as runs_module
 from deeptutor.services.memory.consolidator.runs import (
     RunBusyError,
     RunManager,
@@ -91,6 +92,27 @@ async def test_wait_for_events_replays_from_cursor(manager: RunManager) -> None:
 
     tail = await manager.wait_for_events(run, since=3)
     assert tail[0].seq == 3
+
+
+@pytest.mark.asyncio
+async def test_event_cursor_remains_stable_when_ring_wraps(
+    manager: RunManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runs_module, "_MAX_EVENTS_PER_RUN", 3)
+
+    async def runner(on_event):
+        for i in range(5):
+            await on_event({"stage": "progress", "turn": i})
+
+    run = await manager.start(layer="L2", key="chat", mode="update", runner=runner)
+    if run._task is not None:
+        await run._task
+
+    assert [event.seq for event in run.events] == [4, 5, 6]
+    assert run.events[-1].payload["stage"] == "run_ended"
+
+    tail = await manager.wait_for_events(run, since=5)
+    assert [event.seq for event in tail] == [5, 6]
 
 
 @pytest.mark.asyncio

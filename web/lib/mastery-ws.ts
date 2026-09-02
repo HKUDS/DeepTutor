@@ -5,7 +5,7 @@ import {
 } from "@/lib/reconnecting-websocket";
 import type { MasteryEvent } from "@/lib/learning-api";
 
-export const MASTERY_WS_PATH = "/api/v1/learning/ws";
+export const MASTERY_WS_PATH = "/ws/mastery-paths";
 
 export interface MasterySubscribedMessage {
   type: "subscribed";

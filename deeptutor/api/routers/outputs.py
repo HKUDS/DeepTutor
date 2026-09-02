@@ -45,7 +45,7 @@ def _resolve_partner_output(relative_path: str) -> Path | None:
     Partner web chats run inside a synthetic workspace under
     ``data/partners/<id>/workspace``, so generated files are not beneath the
     human caller's own ``data/users/<uid>`` tree. The public artifact URL shape
-    is still ``/api/outputs/<relative path>``, which means the download surface
+    is still ``/files/outputs/<relative path>``, which means the download surface
     has to search the caller's visible partner workspaces when their own
     workspace misses (#1012).
 
@@ -68,7 +68,8 @@ def _resolve_partner_output(relative_path: str) -> Path | None:
     return matches[0] if matches else None
 
 
-@router.api_route("/{output_path:path}", methods=["GET", "HEAD"])
+@router.get("/{output_path:path}", operation_id="read_output_get")
+@router.head("/{output_path:path}", operation_id="read_output_head")
 async def read_output(
     output_path: str,
     _auth: TokenPayload | None = Depends(require_auth),

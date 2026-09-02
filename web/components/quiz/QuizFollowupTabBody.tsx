@@ -30,7 +30,7 @@ import {
   extractMessageSegments,
   leadingTraceEvents,
 } from "@/components/chat/home/AskUserOptions";
-import { StreamingStatus, TraceFlow } from "@/components/chat/home/TracePanels";
+import { StreamingStatus, TraceFlow } from "@/features/chat/trace";
 import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 import {
   type QuizFollowupTabContext,
@@ -326,7 +326,7 @@ function AssistantThreadMessage({
   message: {
     role: "user" | "assistant" | "system";
     content: string;
-    events?: import("@/lib/unified-ws").StreamEvent[];
+    events?: import("@/features/chat/model/protocol").StreamEvent[];
   };
   isStreaming: boolean;
   onSubmitUserReply: (reply: {

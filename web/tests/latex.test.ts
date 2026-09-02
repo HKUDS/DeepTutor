@@ -4,9 +4,32 @@ import {
   convertFlowFenceToMermaid,
   convertLatexDelimiters,
   convertSequenceFenceToMermaid,
+  hasMarkdownMath,
   processLatexContent,
   processMarkdownContent,
 } from "../lib/latex";
+
+// ---------------------------------------------------------------------------
+// hasMarkdownMath — shared Simple/Rich renderer routing
+// ---------------------------------------------------------------------------
+
+test("hasMarkdownMath: detects plain inline formulas from chat prose", () => {
+  const content = "假设有一个函数 $f(x)$，在 $x=2$ 这个点上，函数值趋近 $5$。";
+
+  assert.equal(hasMarkdownMath(content), true);
+  assert.equal(hasMarkdownMath("The limit is $2$."), true);
+});
+
+test("hasMarkdownMath: detects display and backslash delimiters while streaming", () => {
+  assert.equal(hasMarkdownMath("Working... $$"), true);
+  assert.equal(hasMarkdownMath("Solve \\(x=2"), true);
+  assert.equal(hasMarkdownMath("Then \\[x^2"), true);
+});
+
+test("hasMarkdownMath: does not confuse ordinary currency or escaped dollars", () => {
+  assert.equal(hasMarkdownMath("Tickets cost $5 and $10 respectively."), false);
+  assert.equal(hasMarkdownMath("Write \\$5 and \\$10 literally."), false);
+});
 
 // ---------------------------------------------------------------------------
 // convertLatexDelimiters

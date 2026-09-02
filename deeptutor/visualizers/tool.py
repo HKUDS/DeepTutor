@@ -109,7 +109,7 @@ class SubmitVisualizationTool(BaseTool):
         entry_url = ""
         if plugin.manifest.render_target == "iframe":
             entry_url = (
-                f"/api/v1/visualizers/{plugin.manifest.id}/assets/{plugin.manifest.renderer_entry}"
+                f"/api/visualizers/{plugin.manifest.id}/assets/{plugin.manifest.renderer_entry}"
             )
         envelope = VisualizationEnvelope(
             render_type=plugin.manifest.id,

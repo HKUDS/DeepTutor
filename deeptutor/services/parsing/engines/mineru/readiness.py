@@ -72,7 +72,7 @@ def mineru_readiness(config) -> ReadinessReport:
             ready=False,
             reason="cli_missing",
             message=(
-                "MinerU CLI not found. Install it (`pip install mineru`), set its "
+                "MinerU CLI not found. Install it (`pip install -U 'mineru[all]>=3.4.5'`), set its "
                 "path in Settings → Document Parsing, or switch to text-only / "
                 "cloud / markitdown."
             ),

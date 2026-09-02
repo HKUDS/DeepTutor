@@ -1,5 +1,7 @@
 "use client";
 
+import { browserStorage } from "@/shared/storage";
+
 import { useCallback, useEffect, useState } from "react";
 import type { TaskKind } from "@/hooks/useKnowledgeProgress";
 
@@ -29,7 +31,7 @@ interface HistoryStore {
 function readStore(): HistoryStore {
   if (typeof window === "undefined") return { byKb: {} };
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = browserStorage.readRaw("local", STORAGE_KEY);
     if (!raw) return { byKb: {} };
     const parsed = JSON.parse(raw) as HistoryStore;
     if (parsed && typeof parsed === "object" && parsed.byKb) {
@@ -44,7 +46,7 @@ function readStore(): HistoryStore {
 function writeStore(store: HistoryStore) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    browserStorage.writeRaw("local", STORAGE_KEY, JSON.stringify(store));
   } catch {
     // quota exceeded; ignore
   }

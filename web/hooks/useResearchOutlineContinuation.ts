@@ -4,13 +4,13 @@ import { useCallback } from "react";
 
 import {
   type MessageRequestSnapshot,
-  useUnifiedChat,
-} from "@/context/UnifiedChatContext";
+  useChatStateAdapter,
+} from "@/features/chat/ChatStateAdapter";
 import type { OutlineItem } from "@/lib/research-types";
 
 /** Resume Deep Research after its editable outline, on any chat surface. */
 export function useResearchOutlineContinuation() {
-  const { sendMessage } = useUnifiedChat();
+  const { sendMessage } = useChatStateAdapter();
   return useCallback(
     (
       outline: OutlineItem[],

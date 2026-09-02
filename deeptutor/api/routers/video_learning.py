@@ -342,7 +342,14 @@ async def _open_upstream(
     raise TimedMediaError("Video stream returned too many redirects.")
 
 
-@router.api_route("/materials/{material_id}/stream/{format_id}", methods=["GET", "HEAD"])
+@router.get(
+    "/materials/{material_id}/stream/{format_id}",
+    operation_id="stream_video_get",
+)
+@router.head(
+    "/materials/{material_id}/stream/{format_id}",
+    operation_id="stream_video_head",
+)
 async def stream_video(material_id: str, format_id: str, request: Request):
     try:
         range_header = request.headers.get("range")

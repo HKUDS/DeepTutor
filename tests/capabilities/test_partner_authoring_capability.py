@@ -30,7 +30,7 @@ def test_capability_forces_a_draft_before_finishing() -> None:
     capability = PartnerAuthoringCapability()
     context = _context("创建一个伙伴")
     assert "propose_partner" in capability.finish_instruction(context, "好的")
-    context.metadata["_partner_draft_created"] = "draft"
+    context.extension("partner_authoring")["draft_created"] = "draft"
     assert capability.finish_instruction(context, "完成") == ""
 
 
@@ -59,5 +59,5 @@ async def test_propose_partner_persists_user_scoped_reviewable_draft(tmp_path: P
     assert draft["name"] == "欧拉"
     assert draft["color"] == "#3366aa"
     assert draft["owner_id"] == "u-alice"
-    assert context.metadata["_partner_draft_created"] == draft["draft_id"]
+    assert context.extension("partner_authoring")["draft_created"] == draft["draft_id"]
     assert (tmp_path / "alice" / "user" / "partner_drafts" / f"{draft['draft_id']}.json").exists()

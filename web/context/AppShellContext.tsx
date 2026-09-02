@@ -125,7 +125,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) setLanguageReady(true);
       }, 1_500);
       try {
-        const response = await apiFetch(apiUrl("/api/v1/settings/ui"), {
+        const response = await apiFetch(apiUrl("/api/settings/ui"), {
           signal: controller.signal,
           skipAuthRedirect: true,
         });

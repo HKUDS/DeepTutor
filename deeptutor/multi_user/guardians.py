@@ -15,7 +15,9 @@ from .identity import get_user_by_id
 from .paths import SYSTEM_ROOT
 
 GUARDIANS_FILE = SYSTEM_ROOT / "guardians.json"
-GUARDIAN_PERMISSIONS = frozenset({"assign_materials", "view_reports", "reset_credentials"})
+GUARDIAN_PERMISSIONS = frozenset(
+    {"assign_materials", "manage_restrictions", "view_reports", "reset_credentials"}
+)
 
 _GUARDIANS_WRITE_LOCK = threading.Lock()
 

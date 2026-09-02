@@ -11,7 +11,7 @@ import {
   getActiveModel,
   getActiveProfile,
   useSettings,
-} from "./SettingsContext";
+} from "@/features/settings/store/SettingsStore";
 import { selectClass, selectOptionClass } from "./shared";
 
 /**
@@ -140,7 +140,7 @@ export function TaskModelsEditor() {
               <span>{t("No language model is configured yet.")}</span>
             )}
             <Link
-              href="/settings/models#llm"
+              href="/settings#llm"
               className="inline-flex items-center gap-0.5 underline-offset-2 hover:text-[var(--foreground)] hover:underline"
             >
               {t("LLM")}

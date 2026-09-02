@@ -31,7 +31,7 @@ from deeptutor.capabilities.course_study.tools import (
 )
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.stream_bus import StreamBus
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def resolve_course_id(context: UnifiedContext) -> str:
     metadata_id = str((context.metadata or {}).get(COURSE_ID_KEY) or "").strip()
     if metadata_id:
         return metadata_id
-    return str((context.config_overrides or {}).get("_course_id") or "").strip()
+    return str((context.metadata or {}).get("course_id") or "").strip()
 
 
 def _row(value: Any) -> dict[str, Any]:
@@ -456,8 +456,8 @@ class CourseStudyLoopCapability:
             # so leave the loop alone: the model still gets its ordinary finish
             # round to write one.
             return ""
-        context.metadata[COURSE_ANSWER_KEY] = answer
-        # Deliberately *not* setting ``_capability_answer_published``. That flag
+        context.extension(self.name)[COURSE_ANSWER_KEY] = answer
+        # Deliberately *not* setting ``capability_output.answer_published``. That flag
         # means "the learner has already been shown this text, do not emit it
         # again as the answer", and it is true for capabilities that buffer
         # their output behind a protocol. This mode buffers nothing: the prose
@@ -477,7 +477,7 @@ class CourseStudyLoopCapability:
         del final_text
         if not self.is_active(context):
             return None
-        return str(context.metadata.get(COURSE_ANSWER_KEY) or "").strip() or None
+        return str(context.extension(self.name).get(COURSE_ANSWER_KEY) or "").strip() or None
 
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         _ = context

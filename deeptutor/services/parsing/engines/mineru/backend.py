@@ -178,7 +178,8 @@ def _parse_local(
     ):
         raise MinerUError(
             "The legacy magic-pdf CLI only accepts PDF files. Install the current "
-            "MinerU CLI (`pip install mineru`) to parse images, DOCX, PPTX, or XLSX."
+            "MinerU CLI (`pip install -U 'mineru[all]>=3.4.5'`) to parse images, "
+            "DOCX, PPTX, or XLSX."
         )
 
     # A lazy first-parse model download must honor the configured source and
@@ -199,7 +200,8 @@ def _parse_local(
     if not ok:
         raise MinerUError(
             "Local MinerU parsing failed. Ensure MinerU is installed "
-            "(`pip install mineru`) or switch to cloud mode in Settings → MinerU."
+            "(`pip install -U 'mineru[all]>=3.4.5'`) or switch to cloud mode in "
+            "Settings → MinerU."
         )
     working_dir = output_base / source_path.stem
     if not working_dir.is_dir():

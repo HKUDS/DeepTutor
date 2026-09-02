@@ -9,10 +9,3 @@ export function courseSessionConfiguration<T extends object>(
     ? { ...configuration, courseId: cleanCourseId }
     : configuration;
 }
-
-export function courseTurnConfiguration(
-  configuration: Record<string, unknown> | undefined,
-  courseId: string,
-): Record<string, unknown> {
-  return { ...(configuration || {}), _course_id: courseId.trim() };
-}

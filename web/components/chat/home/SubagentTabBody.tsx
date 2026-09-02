@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, Loader2 } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 
 import SubagentRunTranscript from "@/components/chat/home/SubagentRunTranscript";
-import { getTraceMeta } from "@/components/chat/home/TracePanels";
+import { getTraceMeta } from "@/features/chat/trace";
 import { streamSubagentMessage } from "@/lib/subagents-api";
-import type { StreamEvent } from "@/lib/unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 /**
  * A connected subagent's run tab: the streamed transcript plus an input box to
@@ -32,6 +32,15 @@ export default function SubagentTabBody({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seqRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    [],
+  );
 
   // The connection's name/kind come from the streamed events' metadata.
   const { name } = useMemo(() => {
@@ -75,20 +84,49 @@ export default function SubagentTabBody({
     setDraft("");
     setError(null);
     setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const armIdleTimeout = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (abortRef.current !== controller) return;
+        setError(t("Agent response timed out. Please try again."));
+        controller.abort();
+      }, 5 * 60_000);
+    };
+    armIdleTimeout();
     try {
-      for await (const line of streamSubagentMessage(name, {
-        chat_session_id: sessionId ?? "",
-        message,
-      })) {
+      for await (const line of streamSubagentMessage(
+        name,
+        {
+          chat_session_id: sessionId ?? "",
+          message,
+        },
+        controller.signal,
+      )) {
+        armIdleTimeout();
         if (line.done) break;
         if (line.channel) append(line.channel, line.text ?? "", line.merge_id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if ((err as Error).name !== "AbortError") {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setBusy(false);
+      if (idleTimer) clearTimeout(idleTimer);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setBusy(false);
+      }
     }
-  }, [draft, busy, name, sessionId, append]);
+  }, [draft, busy, name, sessionId, append, t]);
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setBusy(false);
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
@@ -122,13 +160,13 @@ export default function SubagentTabBody({
           />
           <button
             type="button"
-            onClick={() => void send()}
-            disabled={busy || !draft.trim() || !name}
-            aria-label={t("Send")}
+            onClick={busy ? stop : () => void send()}
+            disabled={!busy && (!draft.trim() || !name)}
+            aria-label={busy ? t("Stop") : t("Send")}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--foreground)] text-[var(--background)] transition-opacity disabled:opacity-40"
           >
             {busy ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Square size={13} fill="currentColor" />
             ) : (
               <ArrowUp size={16} />
             )}

@@ -157,8 +157,44 @@ async def test_subscribe_turn_does_not_synthesize_done_for_running_turn(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_subscribe_turn_marks_orphan_running_turn_failed(tmp_path) -> None:
-    """A DB-running turn with no in-process execution is stale after restart."""
+async def test_replacing_subscription_does_not_synthesize_duplicate_done(tmp_path) -> None:
+    """Cancelling an old replay subscription must leave termination to its replacement."""
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    execution = _TurnExecution(
+        turn_id=turn["id"],
+        session_id=session["id"],
+        capability="chat",
+        payload={},
+    )
+    runtime._executions[turn["id"]] = execution
+    events: list[dict] = []
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
+            events.append(event)
+
+    task = asyncio.create_task(_collect())
+    for _ in range(200):
+        if execution.subscribers:
+            break
+        await asyncio.sleep(0.01)
+
+    assert execution.subscribers
+    assert await store.update_turn_status(turn["id"], "completed") is True
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_subscribe_turn_does_not_mutate_remote_running_turn(tmp_path) -> None:
+    """A subscriber may be on a different worker from the turn owner."""
 
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
@@ -171,17 +207,89 @@ async def test_subscribe_turn_marks_orphan_running_turn_failed(tmp_path) -> None
 
     persisted = await store.get_turn(turn["id"])
     assert persisted is not None
-    assert persisted["status"] == "failed"
-    assert "restart" in persisted["error"].lower()
-    assert [event["type"] for event in events] == ["error", "done"]
-    assert events[-1]["metadata"]["status"] == "failed"
+    assert persisted["status"] == "running"
+    assert persisted["error"] == ""
+    assert events == []
 
 
 @pytest.mark.asyncio
-async def test_start_turn_clears_orphan_running_turn_before_create(
+async def test_subscribe_terminal_turn_synthesizes_protocol_valid_done(tmp_path) -> None:
+    """A recovered terminal turn must emit a consumable monotonic DONE."""
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    assert await store.update_turn_status(turn["id"], "completed") is True
+
+    events = [event async for event in runtime.subscribe_turn(turn["id"], after_seq=0)]
+
+    assert len(events) == 1
+    done = events[0]
+    assert done["type"] == "done"
+    assert done["turn_id"] == turn["id"]
+    assert done["session_id"] == session["id"]
+    assert done["seq"] == 1
+    assert isinstance(done["timestamp"], float)
+    assert done["metadata"] == {"status": "completed", "synthesized": True}
+
+
+@pytest.mark.asyncio
+async def test_subscribe_failed_turn_synthesizes_ordered_error_and_done(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    assert await store.update_turn_status(turn["id"], "failed", "provider failed") is True
+
+    events = [event async for event in runtime.subscribe_turn(turn["id"], after_seq=0)]
+
+    assert [event["type"] for event in events] == ["error", "done"]
+    assert [event["seq"] for event in events] == [1, 2]
+    assert events[0]["metadata"]["turn_terminal"] is True
+    assert events[1]["metadata"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_close_cancels_local_turns_and_wakes_subscribers(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    execution = _TurnExecution(
+        turn_id=turn["id"],
+        session_id=session["id"],
+        capability="chat",
+        payload={},
+    )
+    execution.task = asyncio.create_task(asyncio.Event().wait())
+    runtime._executions[turn["id"]] = execution
+
+    collected: list[dict] = []
+
+    async def _collect() -> None:
+        async for event in runtime.subscribe_turn(turn["id"]):
+            collected.append(event)
+
+    subscriber_task = asyncio.create_task(_collect())
+    for _ in range(100):
+        if execution.subscribers:
+            break
+        await asyncio.sleep(0.01)
+
+    await runtime.close()
+    await asyncio.wait_for(subscriber_task, timeout=1)
+
+    assert execution.task.cancelled()
+    assert collected == []
+    assert await runtime.has_live_executions() is False
+
+
+@pytest.mark.asyncio
+async def test_start_turn_does_not_mutate_apparently_orphaned_turn(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """A stale active turn should not block the next user message after restart."""
+    """Only the recovery service may resolve a persisted active turn."""
 
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
@@ -193,24 +301,24 @@ async def test_start_turn_clears_orphan_running_turn_before_create(
 
     monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
 
-    _, new_turn = await runtime.start_turn(
-        {
-            "type": "start_turn",
-            "session_id": session["id"],
-            "capability": "chat",
-            "content": "hello",
-            "tools": [],
-            "knowledge_bases": [],
-            "attachments": [],
-            "language": "en",
-            "config": {},
-        }
-    )
+    with pytest.raises(RuntimeError, match="active turn"):
+        await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "session_id": session["id"],
+                "capability": "chat",
+                "content": "hello",
+                "tools": [],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+            }
+        )
 
-    assert new_turn["id"] != stale["id"]
     persisted = await store.get_turn(stale["id"])
     assert persisted is not None
-    assert persisted["status"] == "failed"
+    assert persisted["status"] == "running"
 
 
 @pytest.mark.asyncio
@@ -255,7 +363,7 @@ async def test_start_turn_preserves_selection_tutor_runtime_context(
     )
 
     execution = runtime._executions[turn["id"]]
-    resolved = execution.payload["config"]["selection_tutor_context"]
+    resolved = execution.payload["selection_tutor_context"]
     assert resolved["selected_text"] == selected_context["selected_text"]
     assert resolved["source_message_text"] == source_text
 
@@ -611,7 +719,7 @@ async def test_racing_mastery_start_does_not_steal_pre_task_lease(
 
 
 @pytest.mark.asyncio
-async def test_mastery_path_recovers_restart_orphan_lease(
+async def test_mastery_path_does_not_steal_apparently_orphaned_lease(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     _isolate_learning_store(monkeypatch, tmp_path)
@@ -632,17 +740,16 @@ async def test_mastery_path_recovers_restart_orphan_lease(
         await hold.wait()
 
     monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
-    _, new_turn = await runtime.start_turn(_mastery_payload(new_session["id"], "shared"))
+    with pytest.raises(RuntimeError, match="mastery_path_busy"):
+        await runtime.start_turn(_mastery_payload(new_session["id"], "shared"))
 
-    recovered = await store.get_turn(stale_turn["id"])
+    persisted = await store.get_turn(stale_turn["id"])
     lease = LearningStore().get_path_lease("shared")
-    assert recovered is not None
-    assert recovered["status"] == "failed"
+    assert persisted is not None
+    assert persisted["status"] == "running"
     assert lease is not None
-    assert lease.turn_id == new_turn["id"]
-
-    await runtime.cancel_turn(new_turn["id"])
-    LearningStore().release_path_lease("shared", turn_id=new_turn["id"])
+    assert lease.turn_id == stale_turn["id"]
+    LearningStore().release_path_lease("shared", turn_id=stale_turn["id"])
 
 
 @pytest.mark.asyncio

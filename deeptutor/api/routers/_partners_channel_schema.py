@@ -1,6 +1,6 @@
 """Channel-schema introspection — bridges Pydantic channel configs to the Web UI.
 
-Used by ``GET /api/v1/partners/channels/schema`` so the front-end can render
+Used by ``GET /api/partners/channels/schema`` so the front-end can render
 generic forms for ANY channel (built-in or plugin) without hard-coding fields.
 
 Why live here vs inside ``deeptutor.partners.channels``?

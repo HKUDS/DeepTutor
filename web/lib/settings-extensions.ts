@@ -14,12 +14,12 @@ import { apiFetch, apiUrl } from "@/lib/api";
  * two paths cannot drift apart.
  */
 export const EXTENSION_ENDPOINTS = {
-  "chat-starters": "/api/v1/settings/chat-starters",
-  "chat-attachments": "/api/v1/settings/chat-attachments",
-  "chat-timeout": "/api/v1/settings/chat-response-timeout",
-  capabilities: "/api/v1/capabilities/settings",
-  memory: "/api/v1/memory/settings",
-  network: "/api/v1/settings/network",
+  "chat-starters": "/api/settings/chat-starters",
+  "chat-attachments": "/api/settings/chat-attachments",
+  "chat-timeout": "/api/settings/chat-response-timeout",
+  capabilities: "/api/capabilities/settings",
+  memory: "/api/memory/settings",
+  network: "/api/settings/network",
 } as const;
 
 export type ExtensionKey = keyof typeof EXTENSION_ENDPOINTS;

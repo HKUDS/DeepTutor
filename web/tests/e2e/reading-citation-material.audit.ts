@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const MATERIAL_A = "aaaaaaaaaaaaaaaa";
 const MATERIAL_B = "bbbbbbbbbbbbbbbb";
 const SESSION_ID = "citation-material-regression";
+const WORKSPACE_ID = "citation-material-workspace";
 
 function material(materialId: string, title: string) {
   return {
@@ -28,20 +29,70 @@ function material(materialId: string, title: string) {
 const materialA = material(MATERIAL_A, "Source material A");
 const materialB = material(MATERIAL_B, "Current material B");
 
+function libraryMaterial(materialId: string, title: string) {
+  return {
+    material_id: materialId,
+    content_id: materialId,
+    filename: `${title}.md`,
+    title,
+    source_kind: "file",
+    source_url: "",
+    mime: "text/markdown",
+    render_mode: "text",
+    cover_url: "",
+    duration_seconds: 0,
+    status: "ready",
+    progress: 0,
+    error_code: "",
+    error_detail: "",
+    created_at: 1,
+    updated_at: 2,
+    last_opened_at: 2,
+    size_bytes: 256,
+    unit_count: 2,
+    collections: [],
+  };
+}
+
+const workspace = {
+  workspace_id: WORKSPACE_ID,
+  title: "Citation material regression",
+  description: "",
+  active_material_id: MATERIAL_B,
+  created_at: 1,
+  updated_at: 2,
+  tabs: [
+    {
+      material: libraryMaterial(MATERIAL_A, "Source material A"),
+      tab_order: 0,
+      pinned: false,
+      opened: true,
+      added_at: 1,
+    },
+    {
+      material: libraryMaterial(MATERIAL_B, "Current material B"),
+      tab_order: 1,
+      pinned: false,
+      opened: true,
+      added_at: 2,
+    },
+  ],
+};
+
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/v1/**", async (route) => {
+  await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });
 
-    if (path === "/api/v1/auth/status") {
+    if (path === "/api/auth/status") {
       return json({ enabled: false, authenticated: true });
     }
-    if (path === "/api/v1/settings/ui") return json({ language: "en" });
-    if (path === "/api/v1/dashboard/suggestions") {
+    if (path === "/api/settings/ui") return json({ language: "en" });
+    if (path === "/api/dashboard/suggestions") {
       return json({ suggestions: [], stale: false });
     }
-    if (path === "/api/v1/settings/llm-options") {
+    if (path === "/api/settings/llm-options") {
       return json({
         active: { profile_id: "p", model_id: "m" },
         options: [
@@ -57,7 +108,7 @@ test.beforeEach(async ({ page }) => {
         ],
       });
     }
-    if (path === `/api/v1/sessions/${SESSION_ID}`) {
+    if (path === `/api/sessions/${SESSION_ID}`) {
       return json({
         id: SESSION_ID,
         session_id: SESSION_ID,
@@ -120,26 +171,28 @@ test.beforeEach(async ({ page }) => {
         ],
       });
     }
-    if (path === "/api/v1/sessions") return json({ sessions: [] });
-    if (path === "/api/v1/reading/supported-formats") {
+    if (path === "/api/sessions") return json({ sessions: [] });
+    if (path === "/api/reading/supported-formats") {
       return json({
         extensions: [".md"],
         max_bytes: 1024,
         raw_view_extensions: [],
       });
     }
-    if (path === "/api/v1/reading/extensions") return json([]);
-    if (path === "/api/v1/reading/materials") {
+    if (path === "/api/reading/extensions") return json([]);
+    if (path === `/api/reading/workspaces/${WORKSPACE_ID}`) {
+      return json({ workspace, sessions: [] });
+    }
+    if (path === `/api/reading/workspaces/${WORKSPACE_ID}/sessions`) {
+      return json({ sessions: [] });
+    }
+    if (path === "/api/reading/materials") {
       return json([materialB, materialA]);
     }
-    if (path === `/api/v1/reading/materials/${MATERIAL_A}`)
-      return json(materialA);
-    if (path === `/api/v1/reading/materials/${MATERIAL_B}`)
-      return json(materialB);
+    if (path === `/api/reading/materials/${MATERIAL_A}`) return json(materialA);
+    if (path === `/api/reading/materials/${MATERIAL_B}`) return json(materialB);
     if (path.endsWith("/annotations")) return json([]);
-    const unit = /\/api\/v1\/reading\/materials\/([^/]+)\/units\/(\d+)/.exec(
-      path,
-    );
+    const unit = /\/api\/reading\/materials\/([^/]+)\/units\/(\d+)/.exec(path);
     if (unit) {
       const [, materialId, locator] = unit;
       return json({
@@ -158,7 +211,7 @@ test.beforeEach(async ({ page }) => {
 test("historical citation reopens its turn material and unsupported locator stays plain", async ({
   page,
 }) => {
-  await page.goto(`/home/${SESSION_ID}`);
+  await page.goto(`/reading/${WORKSPACE_ID}/sessions/${SESSION_ID}`);
 
   await expect(page.getByRole("link", { name: "p.2" })).toHaveAttribute(
     "href",
@@ -166,12 +219,6 @@ test("historical citation reopens its turn material and unsupported locator stay
   );
   await expect(page.getByRole("link", { name: "p.1" })).toHaveCount(0);
 
-  await page
-    .getByRole("button", { name: /Immersive Reading/ })
-    .last()
-    .click();
-  await page.getByRole("button", { name: "Open a document to read" }).click();
-  await page.getByText("Current material B.md").click();
   await expect(page.getByText("Wrong material text.")).toBeVisible();
 
   await page.getByRole("link", { name: "p.2" }).click();

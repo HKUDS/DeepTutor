@@ -20,7 +20,7 @@ from deeptutor.capabilities.subagent import (
     connection_for_turn,
 )
 from deeptutor.capabilities.subagent import binding as subagent_binding
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import TurnRuntimeContext, UnifiedContext
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.services.subagent.config import BackendConfig
 from deeptutor.services.subagent.types import ConsultResult, SubagentEvent
@@ -60,7 +60,7 @@ def test_active_injects_spec_and_min_rounds(monkeypatch) -> None:
     assert block is not None and "myagent" in block.content
     # The loop budget floor is lifted so the full consult budget + a finish
     # round always fit.
-    assert ctx.metadata.get("_min_loop_rounds", 0) >= 2
+    assert ctx.runtime.min_loop_rounds >= 2
 
     spec = cap.augment_kwargs("consult_subagent", {"question": "q"}, ctx)["_subagent"]
     assert spec["kind"] == "codex"
@@ -72,14 +72,14 @@ def test_active_injects_spec_and_min_rounds(monkeypatch) -> None:
     assert "_subagent" not in cap.augment_kwargs("rag", {}, ctx)
 
 
-def test_consult_budget_override_from_config(monkeypatch) -> None:
+def test_consult_budget_override_from_runtime_context(monkeypatch) -> None:
     _bind(monkeypatch)
     cap = SubagentCapability()
-    # Per-turn override from the composer (request config) wins over the default.
+    # Typed per-turn override from the composer wins over the default.
     ctx = UnifiedContext(
         user_message="hi",
         knowledge_bases=["myagent"],
-        config_overrides={"subagent_consult_budget": 3},
+        runtime=TurnRuntimeContext(subagent_consult_budget=3),
     )
     assert (
         cap.augment_kwargs("consult_subagent", {"question": "q"}, ctx)["_subagent"]["budget"] == 3
@@ -88,7 +88,7 @@ def test_consult_budget_override_from_config(monkeypatch) -> None:
     ctx_hi = UnifiedContext(
         user_message="hi",
         knowledge_bases=["myagent"],
-        config_overrides={"subagent_consult_budget": 999},
+        runtime=TurnRuntimeContext(subagent_consult_budget=999),
     )
     assert (
         cap.augment_kwargs("consult_subagent", {"question": "q"}, ctx_hi)["_subagent"]["budget"]

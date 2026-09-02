@@ -18,6 +18,7 @@ from deeptutor.services.embedding import client as embedding_client_module
 from deeptutor.services.embedding import config as embedding_config_module
 from deeptutor.services.llm import client as llm_client_module
 from deeptutor.services.llm import config as llm_config_module
+from deeptutor.services.settings import interface_settings
 
 
 def test_load_ui_settings_migrates_legacy_language_to_response_language(
@@ -469,12 +470,20 @@ async def test_mineru_test_connection_local_mode(monkeypatch: pytest.MonkeyPatch
         "local_cli_probe",
         lambda *a: {"found": True, "command": "mineru", "path": "/env/bin/mineru"},
     )
-    monkeypatch.setattr(mineru_backend, "local_cli_version", lambda cmd: "mineru, version 2.5.0")
+    monkeypatch.setattr(mineru_backend, "local_cli_version", lambda cmd: "mineru, version 3.4.5")
     result = await settings_router.test_mineru_connection(
         settings_router.MinerUSettingsUpdate(mode="local")
     )
     assert result["ok"] is True
-    assert "2.5.0" in result["message"]
+    assert "3.4.5" in result["message"]
+
+    # An old CLI is present but cannot provide the current format/API surface.
+    monkeypatch.setattr(mineru_backend, "local_cli_version", lambda cmd: "mineru, version 2.5.0")
+    result = await settings_router.test_mineru_connection(
+        settings_router.MinerUSettingsUpdate(mode="local")
+    )
+    assert result["ok"] is False
+    assert "3.4.5" in result["message"]
 
     # CLI absent → actionable failure message.
     monkeypatch.setattr(
@@ -980,6 +989,7 @@ async def test_incomplete_catalog_write_preserves_the_current_managed_codex_prof
 async def test_enabled_tools_roundtrip(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     settings_file = tmp_path / "interface.json"
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
 
     # Default state — no file yet, so the loader emits the full toggleable set.
     assert set(settings_router.get_enabled_optional_tools()) == set(
@@ -1401,7 +1411,7 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
 def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Auth pages bootstrap the interface language *before* a session exists.
 
-    Regression for #760: the app shell fetches GET /api/v1/settings/ui on the
+    Regression for #760: the app shell fetches GET /api/settings/ui on the
     /register and /login pages, which have no session. When the endpoint sat
     behind the ``_auth`` dependency it returned 401, the bootstrap silently
     bailed out, and the auth pages stayed English even with the persisted
@@ -1422,10 +1432,10 @@ def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch,
     )
 
     app = FastAPI()
-    app.include_router(settings_router.public_router, prefix="/api/v1/settings")
+    app.include_router(settings_router.public_router, prefix="/api/settings")
 
     client = TestClient(app)
-    response = client.get("/api/v1/settings/ui")
+    response = client.get("/api/settings/ui")
 
     assert response.status_code == 200
     payload = response.json()
@@ -1460,11 +1470,11 @@ def test_auth_disabled_settings_endpoint_does_not_expose_provider_secrets(
     app = FastAPI()
     app.include_router(
         settings_router.router,
-        prefix="/api/v1/settings",
+        prefix="/api/settings",
         dependencies=[Depends(auth_router.require_auth)],
     )
 
-    response = TestClient(app).get("/api/v1/settings")
+    response = TestClient(app).get("/api/settings")
 
     assert response.status_code == 200
     serialized = response.text
@@ -1498,9 +1508,9 @@ def test_public_ui_read_omits_deployment_configuration(
     )
 
     app = FastAPI()
-    app.include_router(settings_router.public_router, prefix="/api/v1/settings")
+    app.include_router(settings_router.public_router, prefix="/api/settings")
 
-    payload = TestClient(app).get("/api/v1/settings/ui").json()
+    payload = TestClient(app).get("/api/settings/ui").json()
 
     assert set(payload) == set(settings_router.PRESESSION_UI_FIELDS)
     assert "enabled_optional_tools" not in payload

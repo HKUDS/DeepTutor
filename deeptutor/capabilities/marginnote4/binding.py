@@ -3,7 +3,7 @@
 Mirrors the Obsidian binding pattern: the first selected KB whose metadata is
 ``type == marginnote4`` wins. The KB's ``db_path`` (or a computed default)
 becomes the live store the MarginNote tools query. The result is cached on
-``context.metadata`` so ``is_active`` / ``augment_kwargs`` / ``system_block``
+the extension namespace so ``is_active`` / ``augment_kwargs`` / ``system_block``
 share a single resolution.
 """
 
@@ -18,11 +18,12 @@ _UNSET = object()
 
 def marginnote_binding(context: UnifiedContext) -> dict[str, str] | None:
     """Return ``{"name", "db_path"}`` of the selected MN4 KB, or ``None``."""
-    cached = context.metadata.get(_CACHE_KEY, _UNSET)
+    state = context.extension("marginnote4")
+    cached = state.get(_CACHE_KEY, _UNSET)
     if cached is not _UNSET:
         return cached or None
     resolved = _resolve(context)
-    context.metadata[_CACHE_KEY] = resolved or ""
+    state[_CACHE_KEY] = resolved or ""
     return resolved
 
 

@@ -3,7 +3,7 @@
 /**
  * Schema-driven channel config form, shared by the partner Channels panel.
  * Renders a generic editor for ANY channel (built-in or plugin) from the
- * Pydantic JSON schema served by `GET /api/v1/partners/channels/schema`.
+ * Pydantic JSON schema served by `GET /api/partners/channels/schema`.
  */
 
 import { useState } from "react";

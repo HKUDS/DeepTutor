@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from deeptutor.core.capability_protocol import BaseCapability, CapabilityManifest
+from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
 from deeptutor.runtime.orchestrator import ChatOrchestrator
+from deeptutor.runtime.stream_bus import StreamBus
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +31,7 @@ def _patch_event_bus():
 # ---------------------------------------------------------------------------
 
 
-class _EchoCapability(BaseCapability):
+class _EchoCapability(TurnCapability):
     """Minimal capability that echoes the user message."""
 
     manifest = CapabilityManifest(
@@ -44,7 +44,7 @@ class _EchoCapability(BaseCapability):
         await stream.content(context.user_message, source=self.name)
 
 
-class _FailingCapability(BaseCapability):
+class _FailingCapability(TurnCapability):
     """Capability that raises."""
 
     manifest = CapabilityManifest(name="fail", description="Always fails.")
@@ -54,7 +54,7 @@ class _FailingCapability(BaseCapability):
 
 
 def _make_orchestrator(
-    capabilities: dict[str, BaseCapability] | None = None,
+    capabilities: dict[str, TurnCapability] | None = None,
 ) -> ChatOrchestrator:
     """Build an orchestrator with fake registries."""
     cap_reg = MagicMock()

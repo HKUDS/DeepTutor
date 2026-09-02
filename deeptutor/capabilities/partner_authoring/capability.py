@@ -49,7 +49,7 @@ class PartnerAuthoringCapability:
 
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str:
         _ = final_text
-        if context.metadata.get("_partner_draft_created"):
+        if context.extension(self.name).get("draft_created"):
             return ""
         return (
             "The user asked to create a Partner, but no reviewable draft exists yet. "

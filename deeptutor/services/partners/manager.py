@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import logging
+import os
 from pathlib import Path
 import re
 import shutil
@@ -30,6 +31,9 @@ from deeptutor.partners.config.paths import (
 from deeptutor.services.partners.interaction import forget_partner_stores
 from deeptutor.services.partners.links import forget_partner_links
 from deeptutor.services.partners.runtime import PartnerRunner
+from deeptutor.services.partners.runtime_status import (
+    get_partner_runtime_status_repository,
+)
 from deeptutor.services.partners.sessions import PartnerSessionStore
 from deeptutor.services.partners.workspace import (
     DEFAULT_SOUL,
@@ -401,6 +405,30 @@ class PartnerManager:
         self._partners: dict[str, PartnerInstance] = {}
         self._migrated_legacy = False
         self._rehomed_channel_state = False
+        self.runtime_owner_id = f"process:{os.getpid()}"
+
+    def configure_runtime_owner(self, owner_id: str) -> None:
+        self.runtime_owner_id = str(owner_id or self.runtime_owner_id)
+
+    def _publish_runtime_status(
+        self,
+        partner_id: str,
+        *,
+        running: bool,
+        state: str,
+        instance: PartnerInstance | None = None,
+        last_reload_error: str | None = None,
+    ) -> None:
+        payload = instance.to_dict(mask_secrets=True) if instance is not None else {}
+        get_partner_runtime_status_repository().set(
+            partner_id,
+            owner_id=self.runtime_owner_id,
+            running=running,
+            state=state,
+            payload=payload,
+            started_at=(instance.started_at.isoformat() if instance is not None else None),
+            last_reload_error=last_reload_error,
+        )
 
     # ── Path helpers ──────────────────────────────────────────────
 
@@ -641,6 +669,7 @@ class PartnerManager:
         # lazy start (web chat) of an auto_start:false partner must not
         # silently re-enable auto-start.
         self.save_config(partner_id, config)
+        self._publish_runtime_status(partner_id, running=True, state="running", instance=instance)
         logger.info("Partner '%s' started", partner_id)
         return instance
 
@@ -705,6 +734,8 @@ class PartnerManager:
         the persisted intent so host restarts bring the same partners back."""
         instance = self._partners.get(partner_id)
         if not instance:
+            if self.partner_exists(partner_id):
+                self._publish_runtime_status(partner_id, running=False, state="stopped")
             return False
         auto_start = (
             self._load_auto_start(partner_id, default=True) if preserve_auto_start else False
@@ -727,6 +758,7 @@ class PartnerManager:
 
         self.save_config(partner_id, instance.config, auto_start=auto_start)
         del self._partners[partner_id]
+        self._publish_runtime_status(partner_id, running=False, state="stopped")
         logger.info("Partner '%s' stopped (auto_start=%s)", partner_id, auto_start)
         return True
 
@@ -780,6 +812,13 @@ class PartnerManager:
                 logger.exception("Failed to reload channels for partner '%s'", partner_id)
                 instance.channel_manager = None
                 instance.last_reload_error = f"{type(exc).__name__}: {exc}"
+                self._publish_runtime_status(
+                    partner_id,
+                    running=True,
+                    state="reload_failed",
+                    instance=instance,
+                    last_reload_error=instance.last_reload_error,
+                )
                 raise
 
             instance.channel_manager = channel_manager
@@ -797,6 +836,9 @@ class PartnerManager:
                     partner_id,
                     list(channel_manager.channels.keys()),
                 )
+            self._publish_runtime_status(
+                partner_id, running=True, state="running", instance=instance
+            )
 
     async def _teardown_channel_listeners(
         self,
@@ -872,6 +914,24 @@ class PartnerManager:
                 "started_at": None,
             }
 
+        statuses = get_partner_runtime_status_repository().list()
+        for partner_id, status in statuses.items():
+            if partner_id not in result:
+                continue
+            result[partner_id].update(
+                {
+                    key: status[key]
+                    for key in (
+                        "running",
+                        "started_at",
+                        "last_reload_error",
+                        "runtime_owner_id",
+                        "runtime_state",
+                        "runtime_updated_at",
+                    )
+                    if key in status
+                }
+            )
         return list(result.values())
 
     def get_partner(self, partner_id: str) -> PartnerInstance | None:
@@ -1150,8 +1210,8 @@ class PartnerManager:
     ) -> dict[str, Any] | None:
         return self.session_store(partner_id).branch(source_key, new_key)
 
-    def archive_session(self, partner_id: str, session_key: str) -> None:
-        self.session_store(partner_id).set_archived(session_key, True)
+    def archive_session(self, partner_id: str, session_key: str) -> bool:
+        return self.session_store(partner_id).set_archived(session_key, True)
 
     # ── Boot / shutdown ───────────────────────────────────────────
 
@@ -1168,6 +1228,7 @@ class PartnerManager:
                 await self.start_partner(pid, config)
                 logger.info("Auto-started partner '%s'", pid)
             except Exception:
+                self._publish_runtime_status(pid, running=False, state="start_failed")
                 logger.exception("Failed to auto-start partner '%s'", pid)
 
     async def stop_all(self, *, preserve_auto_start: bool = True) -> None:
@@ -1178,6 +1239,7 @@ class PartnerManager:
         await self.stop_partner(partner_id, preserve_auto_start=False)
         forget_partner_stores(partner_id)
         forget_partner_links(partner_id)
+        get_partner_runtime_status_repository().delete(partner_id)
         try:
             from deeptutor.services.cron import get_cron_service
 

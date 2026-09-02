@@ -66,7 +66,7 @@ export async function listPersonas(options?: {
   return withClientCache<PersonaInfo[]>(
     `${PERSONAS_CACHE_PREFIX}list`,
     async () => {
-      const response = await apiFetch(apiUrl("/api/v1/personas/list"), {
+      const response = await apiFetch(apiUrl("/api/personas"), {
         cache: "no-store",
       });
       const data = await asJson(response);
@@ -79,7 +79,7 @@ export async function listPersonas(options?: {
 
 export async function getPersona(name: string): Promise<PersonaDetail> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/personas/${encodeURIComponent(name)}`),
+    apiUrl(`/api/personas/${encodeURIComponent(name)}`),
     {
       cache: "no-store",
     },
@@ -94,7 +94,7 @@ export async function getPersona(name: string): Promise<PersonaDetail> {
 export async function createPersona(
   payload: CreatePersonaPayload,
 ): Promise<PersonaInfo> {
-  const response = await apiFetch(apiUrl("/api/v1/personas/create"), {
+  const response = await apiFetch(apiUrl("/api/personas"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -113,7 +113,7 @@ export async function updatePersona(
   payload: UpdatePersonaPayload,
 ): Promise<PersonaInfo> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/personas/${encodeURIComponent(name)}`),
+    apiUrl(`/api/personas/${encodeURIComponent(name)}`),
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -127,7 +127,7 @@ export async function updatePersona(
 
 export async function deletePersona(name: string): Promise<void> {
   const response = await apiFetch(
-    apiUrl(`/api/v1/personas/${encodeURIComponent(name)}`),
+    apiUrl(`/api/personas/${encodeURIComponent(name)}`),
     {
       method: "DELETE",
     },

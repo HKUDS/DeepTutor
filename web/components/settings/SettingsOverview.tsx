@@ -14,14 +14,14 @@ import {
   settingsAnchorHref,
   type Lang,
   type SettingsLeaf,
-} from "@/lib/settings-nav";
+} from "@/features/settings/navigation/settings-nav";
 import {
   getActiveModel,
   getActiveProfile,
   serviceReadiness,
   useSettings,
   type ServiceReadiness,
-} from "./SettingsContext";
+} from "@/features/settings/store/SettingsStore";
 
 /**
  * The settings landing page.
@@ -137,7 +137,7 @@ export default function SettingsOverview() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch(apiUrl("/api/v1/settings/network"));
+        const res = await apiFetch(apiUrl("/api/settings/network"));
         if (!res.ok) return;
         const data = (await res.json()) as {
           effective?: { browser_api_base?: string };

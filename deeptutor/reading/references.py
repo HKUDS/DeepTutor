@@ -57,8 +57,7 @@ def normalize_reading_references(value: Any) -> list[dict[str, Any]]:
         key = (material_id, revision)
         target = by_reference.get(key)
         if target is None and (
-            material_id not in material_ids
-            and len(material_ids) >= MAX_READING_REFERENCE_MATERIALS
+            material_id not in material_ids and len(material_ids) >= MAX_READING_REFERENCE_MATERIALS
         ):
             continue
         for candidate in locators:
@@ -106,8 +105,8 @@ def resolve_reading_sources(
                 )
                 outline = []
                 unit_refs = []
-                read_unit = lambda mid, locator: active_store.revision_unit_text(  # noqa: E731
-                    mid, revision, locator
+                read_unit = lambda material_id, locator: active_store.revision_unit_text(  # noqa: E731
+                    material_id, revision, locator
                 )
         except Exception:
             # Missing, deleted, corrupt, or unknown revisions are not sources.

@@ -4,7 +4,7 @@ Active whenever one of the turn's selected knowledge bases is a connected Tencen
 IMA library (resolved by :mod:`deeptutor.capabilities.ima.binding`).
 
 Unlike the Obsidian and subagent capabilities this is a *plain*
-:class:`~deeptutor.capabilities.protocol.LoopCapability`, not a
+:class:`~deeptutor.capabilities.protocol.LoopExtension`, not a
 :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`: it **adds** its
 tools to chat's normal surface instead of replacing it. That difference is not
 stylistic — it follows from what the KB actually is. An Obsidian vault has no

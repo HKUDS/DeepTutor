@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { browserStorage } from "@/shared/storage";
 
 /**
  * Persisted, per-key collapsed/expanded state for side panels.
@@ -17,7 +18,8 @@ export function useCollapsiblePanel(
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const stored = window.localStorage.getItem(
+      const stored = browserStorage.readRaw(
+        "local",
         `panel:${storageKey}:collapsed`,
       );
       if (stored != null) {
@@ -35,7 +37,8 @@ export function useCollapsiblePanel(
         const next = typeof value === "function" ? value(prev) : value;
         try {
           if (typeof window !== "undefined") {
-            window.localStorage.setItem(
+            browserStorage.writeRaw(
+              "local",
               `panel:${storageKey}:collapsed`,
               next ? "1" : "0",
             );

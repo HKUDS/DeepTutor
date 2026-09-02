@@ -13,8 +13,8 @@ from deeptutor.agents.research.pipeline import (
     ResearchPipeline,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
-from deeptutor.core.agentic import LabeledStepResult
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.agentic import LabeledStepResult
+from deeptutor.runtime.stream_bus import StreamBus
 
 pytestmark = pytest.mark.asyncio
 

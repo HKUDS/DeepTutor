@@ -10,7 +10,7 @@ import { StatusStripDivider } from "@/components/settings/shared";
  * Live resident-memory readout — the whole point of the settings status strip
  * now that the model/search items moved into their own pages.
  *
- * Backed by `/api/v1/system/memory` (deeptutor/runtime/memory_probe.py), which
+ * Backed by `/api/system/memory` (deeptutor/runtime/memory_probe.py), which
  * walks the whole DeepTutor process tree — backend, the Next.js server, and
  * whatever sandboxes and subagent CLIs are alive — rather than just this
  * process. Its own endpoint, not part of `/system/status`: that snapshot
@@ -83,7 +83,7 @@ export default function MemoryUsageItem() {
 
     const poll = async () => {
       try {
-        const res = await apiFetch(apiUrl("/api/v1/system/memory"));
+        const res = await apiFetch(apiUrl("/api/system/memory"));
         if (cancelled) return;
         if (res.ok) setUsage((await res.json()) as MemoryUsage);
       } catch {

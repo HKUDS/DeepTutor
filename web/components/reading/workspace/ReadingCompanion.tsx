@@ -7,9 +7,9 @@
  * conversation needs is imported from the main chat page's own components
  * rather than reimplemented at 380 px: `ChatMessageList` renders the
  * transcript, `useChatAutoScroll` pins it while a reply streams,
- * `ReadingComposer` wraps the same composer /home uses, `SessionViewerPanel`
+ * `ReadingComposer` wraps the same composer /chat uses, `SessionViewerPanel`
  * is the same activity drawer, and the transcript outline comes from the same
- * `buildChatOutline`. When those change on /home, they change here.
+ * `buildChatOutline`. When those change on /chat, they change here.
  *
  * What is genuinely local to reading is the small part that is left: which
  * material is open, the passage the learner has selected, the conversations
@@ -37,14 +37,16 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ChatMessageList } from "@/components/chat/home/ChatMessages";
+import { ChatMessageList } from "@/features/chat/messages";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
 } from "@/components/chat/home/SessionViewerPanel";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import Tooltip from "@/components/common/Tooltip";
-import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import { TurnStatusBar } from "@/features/chat/components/turn";
+import { turnViewState } from "@/features/chat/model/turn-state";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
@@ -52,6 +54,7 @@ import { buildChatOutline } from "@/lib/chat-outline";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import { setReadingViewport } from "@/lib/reading-turn-state";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
+import { hasPendingAskUser } from "@/lib/ask-user-state";
 import {
   fetchReadingAskHint,
   fetchReadingOpeners,
@@ -113,11 +116,12 @@ export function ReadingCompanion({
   const {
     state,
     submitUserReply,
+    cancelStreamingTurn,
     regenerateLastMessage,
     deleteTurn,
     editMessage,
     switchBranch,
-  } = useUnifiedChat();
+  } = useChatStateAdapter();
   const confirmResearchOutline = useResearchOutlineContinuation();
 
   const [showSessions, setShowSessions] = useState(false);
@@ -144,12 +148,20 @@ export function ReadingCompanion({
   );
 
   /* ── Transcript scrolling ────────────────────────────────────────────
-     The pin-to-bottom hook /home uses. The companion used to be a bare
+     The pin-to-bottom hook /chat uses. The companion used to be a bare
      `overflow-y-auto`, so a streaming reply grew below the fold while the
      viewport sat still and the answer looked like it had stopped. */
   const { ref: composerBoxRef, height: composerHeight } =
     useMeasuredHeight<HTMLDivElement>();
   const lastMessage = state.messages[state.messages.length - 1];
+  const awaitingUserReply = hasPendingAskUser(lastMessage?.events);
+  const activeTurnViewState = turnViewState({
+    status: awaitingUserReply
+      ? "waiting_input"
+      : state.isStreaming
+        ? "running"
+        : undefined,
+  });
   const {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
@@ -165,7 +177,7 @@ export function ReadingCompanion({
   });
 
   // Binding a session id mid-answer changes the URL from `/reading/<ws>` to
-  // `/reading/<ws>/<id>`, which remounts this panel: the new instance
+  // `/reading/<ws>/sessions/<id>`, which remounts this panel: the new instance
   // inherits a turn that is already streaming, but its scrollport starts at
   // the top, so the reply the learner just asked for renders below the fold.
   // Arming the pin at the start of every turn is right on its own terms too —
@@ -178,7 +190,7 @@ export function ReadingCompanion({
   }, [messagesContainerRef, shouldAutoScrollRef, state.isStreaming]);
 
   /* ── Going back through a long conversation ──────────────────────────
-     Same model as /home's turn rail, different presentation: that rail
+     Same model as /chat's turn rail, different presentation: that rail
      needs a 52 px gutter it will never get in a 380 px panel, so the
      questions are listed in the header menu instead. */
   const chatOutline = useMemo(
@@ -264,7 +276,7 @@ export function ReadingCompanion({
     };
   }, [activeLocator, hasMessages, workspaceId]);
 
-  /* ── Session-level actions, the same three /home puts in its header ── */
+  /* ── Session-level actions, the same three /chat puts in its header ── */
   const chatSaveMessages = useMemo(
     () =>
       state.messages.map((message) => ({
@@ -569,6 +581,13 @@ export function ReadingCompanion({
         ref={composerBoxRef}
         className="shrink-0 border-t border-[var(--border)] bg-[var(--card)] pt-3 dark:border-[var(--border)] dark:bg-[var(--secondary)]"
       >
+        <TurnStatusBar
+          state={activeTurnViewState}
+          stage={state.currentStage || undefined}
+          onCancel={cancelStreamingTurn}
+          onAnswer={() => prefillInputRef.current?.("")}
+          className="mx-4 mb-2"
+        />
         {selection && (
           <div className="mx-4 mb-2 flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2.5 py-2 dark:border-[var(--border)] dark:bg-[var(--card)]">
             <Highlighter
@@ -616,7 +635,7 @@ export function ReadingCompanion({
         onClose={() => setShowSaveModal(false)}
       />
 
-      {/* Fixed right-hand drawer, the same component /home opens. It overlays
+      {/* Fixed right-hand drawer, the same component /chat opens. It overlays
           the companion rather than squeezing it: at this width a third column
           would leave nothing readable. */}
       <SessionViewerPanel

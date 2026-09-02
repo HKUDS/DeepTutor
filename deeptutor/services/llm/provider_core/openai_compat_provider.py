@@ -307,9 +307,7 @@ class OpenAICompatProvider(LLMProvider):
                     clean["_provider_response_state"] = {"responses_output_items": output_items}
             else:
                 state = normalize_provider_response_state(message.get("_provider_response_state"))
-                reasoning_content = (
-                    state.get("reasoning_content") if state is not None else None
-                )
+                reasoning_content = state.get("reasoning_content") if state is not None else None
                 if (
                     isinstance(reasoning_content, str)
                     and reasoning_content
@@ -320,6 +318,13 @@ class OpenAICompatProvider(LLMProvider):
             prepared.append(clean)
 
         sanitized = LLMProvider._sanitize_request_messages(prepared, _ALLOWED_MSG_KEYS)
+        if responses_api:
+            # Responses function calls use the provider-issued ``call_id`` as
+            # a protocol identity. The converter splits DeepTutor's compound
+            # ``call_id|item_id`` form itself; hashing it here would make the
+            # later function_call_output point at a different call than the
+            # replayed native function_call item.
+            return sanitized
         id_map: dict[str, str] = {}
 
         def map_id(value: Any) -> Any:
@@ -956,6 +961,12 @@ class OpenAICompatProvider(LLMProvider):
                         on_reasoning_delta=on_reasoning_delta,
                         on_provider_event=_collect_provider_event,
                     )
+                    if not any(item.get("type") == "reasoning" for item in native_output_items):
+                        native_output_items = [
+                            item
+                            for item in native_output_items
+                            if item.get("type") in {"web_search_call", "web_search"}
+                        ]
                     self._record_responses_success(model, reasoning_effort)
                     return LLMResponse(
                         content=content or None,

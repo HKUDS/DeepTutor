@@ -52,11 +52,12 @@ class InvokeOtherTool(BaseTool):
             return ToolResult(
                 content="This Group turn cannot propose another Partner.", success=False
             )
+        state = context.extension("partner_group")
         if not group.get("allow_invoke_other"):
-            repeated = bool(context.metadata.get("_partner_group_disallowed_invocation_attempted"))
-            context.metadata["_partner_group_disallowed_invocation_attempted"] = True
-            context.metadata["_partner_group_invocation_decided"] = True
-            has_answer = bool(context.metadata.get("_partner_group_formal_answer"))
+            repeated = bool(state.get("disallowed_invocation_attempted"))
+            state["disallowed_invocation_attempted"] = True
+            state["invocation_decided"] = True
+            has_answer = bool(state.get("formal_answer"))
             return ToolResult(
                 content=(
                     "This invoked reply cannot create another Partner proposal. Complete the "
@@ -65,14 +66,14 @@ class InvokeOtherTool(BaseTool):
                 success=False,
                 terminate_turn=has_answer or repeated,
             )
-        if not context.metadata.get("_partner_group_formal_answer"):
-            if context.metadata.get("_partner_group_invocation_decided"):
+        if not state.get("formal_answer"):
+            if state.get("invocation_decided"):
                 return self._terminal_result(
                     "The collaboration decision was already consumed. End this turn immediately; "
                     "do not call invoke_other or rewrite an answer.",
                     success=False,
                 )
-            context.metadata["_partner_group_invocation_decided"] = True
+            state["invocation_decided"] = True
             return ToolResult(
                 content=(
                     "This collaboration decision is consumed. Write the complete user-facing "
@@ -83,14 +84,14 @@ class InvokeOtherTool(BaseTool):
         # Reaching the tool consumes the capability's single private decision
         # round. Every outcome terminates so malformed or duplicate proposals
         # cannot send the model back through another full-answer generation.
-        if context.metadata.get("_partner_group_invocation_decided"):
+        if state.get("invocation_decided"):
             return self._terminal_result(
                 "The collaboration decision was already consumed. End this turn immediately; "
                 "do not rewrite the answer.",
                 success=False,
             )
-        context.metadata["_partner_group_invocation_decided"] = True
-        if context.metadata.get("_partner_group_invocation_proposal"):
+        state["invocation_decided"] = True
+        if state.get("invocation_proposal"):
             return self._terminal_result(
                 "A proposal is already recorded. End this turn immediately; do not rewrite the answer.",
                 success=False,
@@ -134,7 +135,7 @@ class InvokeOtherTool(BaseTool):
             "target_partner_name": members[target_id],
             "question": question,
         }
-        context.metadata["_partner_group_invocation_proposal"] = proposal
+        state["invocation_proposal"] = proposal
         return ToolResult(
             content=json.dumps(
                 {

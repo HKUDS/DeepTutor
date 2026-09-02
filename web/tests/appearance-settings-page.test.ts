@@ -7,11 +7,10 @@ import { CODE_BLOCK_THEME_OPTIONS } from "../components/common/code-block-themes
 
 const appearancePagePath = path.join(
   process.cwd(),
-  "app",
-  "(utility)",
+  "features",
   "settings",
-  "appearance",
-  "page.tsx",
+  "sections",
+  "AppearanceSettingsSection.tsx",
 );
 
 function readAppearancePage() {

@@ -16,7 +16,7 @@ notebook_router = importlib.import_module("deeptutor.api.routers.question_notebo
 
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
-PREFIX = "/api/v1/question-notebook"
+PREFIX = "/api/question-notebook"
 
 
 @pytest.fixture

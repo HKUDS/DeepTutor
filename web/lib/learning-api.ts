@@ -37,14 +37,14 @@ export interface ProgressDetail {
 }
 
 export async function fetchProgress(bookId: string): Promise<ProgressDetail> {
-  const res = await apiFetch(apiUrl(`/api/v1/learning/progress/${bookId}`));
+  const res = await apiFetch(apiUrl(`/api/mastery-paths/progress/${bookId}`));
   if (!res.ok) throw new Error(`Failed to fetch progress: ${res.status}`);
   return res.json() as Promise<ProgressDetail>;
 }
 
 export async function initModules(bookId: string, modules: ModuleInit[]) {
   const res = await apiFetch(
-    apiUrl(`/api/v1/learning/progress/${bookId}/init-modules`),
+    apiUrl(`/api/mastery-paths/progress/${bookId}/init-modules`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -117,7 +117,7 @@ export async function fetchMasteryMap(
   init?: RequestInit,
 ): Promise<MasteryMapResult> {
   const res = await apiFetch(
-    apiUrl(`/api/v1/learning/progress/${encodeURIComponent(pathId)}/map`),
+    apiUrl(`/api/mastery-paths/progress/${encodeURIComponent(pathId)}/map`),
     init,
   );
   if (!res.ok) throw new Error(`Failed to fetch mastery map: ${res.status}`);
@@ -127,7 +127,7 @@ export async function fetchMasteryMap(
 /** Rename a path. An empty name restores the derived display name. */
 export async function renameProgress(pathId: string, name: string) {
   const res = await apiFetch(
-    apiUrl(`/api/v1/learning/progress/${encodeURIComponent(pathId)}`),
+    apiUrl(`/api/mastery-paths/progress/${encodeURIComponent(pathId)}`),
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -160,7 +160,7 @@ export async function fetchProgressEvents(
 ): Promise<MasteryEvent[]> {
   const res = await apiFetch(
     apiUrl(
-      `/api/v1/learning/progress/${encodeURIComponent(pathId)}/events?after_revision=${afterRevision}`,
+      `/api/mastery-paths/progress/${encodeURIComponent(pathId)}/events?after_revision=${afterRevision}`,
     ),
     init,
   );
@@ -223,7 +223,7 @@ export async function fetchObjectiveReport(
 ): Promise<ObjectiveReport> {
   const res = await apiFetch(
     apiUrl(
-      `/api/v1/learning/progress/${encodeURIComponent(pathId)}/objectives/${encodeURIComponent(objectiveId)}`,
+      `/api/mastery-paths/progress/${encodeURIComponent(pathId)}/objectives/${encodeURIComponent(objectiveId)}`,
     ),
     init,
   );
@@ -247,14 +247,14 @@ export interface ProgressListResult {
 }
 
 export async function fetchAllProgress(): Promise<ProgressListResult> {
-  const res = await apiFetch(apiUrl("/api/v1/learning/progress"));
+  const res = await apiFetch(apiUrl("/api/mastery-paths/progress"));
   if (!res.ok) throw new Error(`Failed to fetch all progress: ${res.status}`);
   return res.json();
 }
 
 export async function deleteProgress(bookId: string) {
   const res = await apiFetch(
-    apiUrl(`/api/v1/learning/progress/${encodeURIComponent(bookId)}`),
+    apiUrl(`/api/mastery-paths/progress/${encodeURIComponent(bookId)}`),
     { method: "DELETE" },
   );
   if (!res.ok) throw new Error(`Failed to delete progress: ${res.status}`);
@@ -263,7 +263,7 @@ export async function deleteProgress(bookId: string) {
 
 export async function redoProgress(bookId: string) {
   const res = await apiFetch(
-    apiUrl(`/api/v1/learning/progress/${encodeURIComponent(bookId)}/redo`),
+    apiUrl(`/api/mastery-paths/progress/${encodeURIComponent(bookId)}/redo`),
     { method: "POST" },
   );
   if (!res.ok) throw new Error(`Failed to redo progress: ${res.status}`);
@@ -274,7 +274,7 @@ export async function redoProgress(bookId: string) {
 export async function skipPendingQuestion(bookId: string) {
   const res = await apiFetch(
     apiUrl(
-      `/api/v1/learning/progress/${encodeURIComponent(bookId)}/skip-question`,
+      `/api/mastery-paths/progress/${encodeURIComponent(bookId)}/skip-question`,
     ),
     { method: "POST" },
   );
@@ -288,7 +288,7 @@ export async function importFromBook(
 ) {
   const res = await apiFetch(
     apiUrl(
-      `/api/v1/learning/progress/${encodeURIComponent(bookId)}/import-from-book`,
+      `/api/mastery-paths/progress/${encodeURIComponent(bookId)}/import-from-book`,
     ),
     {
       method: "POST",
@@ -307,7 +307,7 @@ export async function generateModulesFromNotebook(
 ): Promise<{ modules: ModuleInit[] }> {
   const res = await apiFetch(
     apiUrl(
-      `/api/v1/learning/progress/${encodeURIComponent(bookId)}/generate-from-notebook`,
+      `/api/mastery-paths/progress/${encodeURIComponent(bookId)}/generate-from-notebook`,
     ),
     {
       method: "POST",
@@ -442,7 +442,7 @@ export async function fetchMasteryTopics(
   init?: RequestInit,
 ): Promise<MasteryTopic[]> {
   const result = await masteryJson<{ topics: MasteryTopic[] }>(
-    "/api/v1/learning/topics",
+    "/api/mastery-paths/topics",
     init,
     "load topics",
   );
@@ -472,7 +472,7 @@ export async function fetchMasteryTopicIndex(
   init?: RequestInit,
 ): Promise<MasteryTopicLabel[]> {
   const result = await masteryJson<{ topics: MasteryTopicLabel[] }>(
-    "/api/v1/learning/topics/index",
+    "/api/mastery-paths/topics/index",
     init,
     "load topic index",
   );
@@ -487,7 +487,7 @@ export async function fetchMasteryAskHint(
 ): Promise<string> {
   const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
   const result = await masteryJson<{ hint?: string }>(
-    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/ask-hint${query}`,
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/ask-hint${query}`,
     init,
     "load ask hint",
   );
@@ -499,7 +499,7 @@ export function fetchMasteryTopic(
   init?: RequestInit,
 ): Promise<MasteryTopic> {
   return masteryJson(
-    `/api/v1/learning/topics/${encodeURIComponent(pathId)}`,
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}`,
     init,
     "load topic",
   );
@@ -509,7 +509,7 @@ export function generateMasteryTopicDraft(
   input: GenerateTopicInput,
 ): Promise<TopicDraft> {
   return masteryJson(
-    "/api/v1/learning/topics/draft",
+    "/api/mastery-paths/topics/draft",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -523,7 +523,7 @@ export function createMasteryTopic(
   input: CreateTopicInput,
 ): Promise<MasteryTopic> {
   return masteryJson(
-    "/api/v1/learning/topics",
+    "/api/mastery-paths/topics",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -538,7 +538,7 @@ export function updateMasteryTopicMap(
   modules: ModuleInit[],
 ): Promise<MasteryTopic> {
   return masteryJson(
-    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/map`,
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/map`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -555,7 +555,7 @@ export function setMasteryObjectiveOverride(
   note = "",
 ): Promise<{ status: string; path_revision: number; map: MasteryMap }> {
   return masteryJson(
-    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/objectives/${encodeURIComponent(objectiveId)}/override`,
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/objectives/${encodeURIComponent(objectiveId)}/override`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -573,7 +573,7 @@ export async function fetchMasteryTopicSessions(
     path_id: string;
     sessions: TopicSession[];
   }>(
-    `/api/v1/learning/topics/${encodeURIComponent(pathId)}/sessions`,
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/sessions`,
     init,
     "load topic sessions",
   );

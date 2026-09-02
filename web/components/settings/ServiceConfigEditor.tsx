@@ -42,7 +42,7 @@ import {
   getActiveModel,
   getActiveProfile,
   useSettings,
-} from "./SettingsContext";
+} from "@/features/settings/store/SettingsStore";
 import { DimensionField } from "./DimensionField";
 import {
   AddCard,
@@ -283,7 +283,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     const profileId = activeProfile.id;
     setModelsSyncing(true);
     try {
-      const response = await apiFetch(apiUrl("/api/v1/settings/fetch-models"), {
+      const response = await apiFetch(apiUrl("/api/settings/fetch-models"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1432,7 +1432,7 @@ function ProfileFields({
           </span>
           <span className="flex items-center gap-3">
             <Link
-              href="/settings/models#connections"
+              href="/settings#connections"
               className="inline-flex items-center gap-1 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
             >
               {t("Edit connection")}

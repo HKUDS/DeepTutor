@@ -96,6 +96,12 @@ LABELS: dict[str, dict[str, str]] = {
         "start.workspace": "Workspace",
         "start.frontend_runtime": "Frontend runtime",
         "start.press_ctrl_c": "Press Ctrl+C to stop.",
+        "start.detached_started": "DeepTutor is starting in the background (launcher PID {pid}).",
+        "start.detached_already_running": (
+            "A detached DeepTutor launcher is already running (PID {pid}). Log: {log}"
+        ),
+        "start.detached_log": "Log: {path}",
+        "start.detached_stop_hint": 'Stop it with `deeptutor stop --home "{home}"`.',
         "start.starting_backend": "Starting backend ...",
         "start.starting_frontend": "Starting frontend ...",
         "start.reusing_frontend": "Reusing existing frontend at {url} (PID {pid}).",
@@ -112,6 +118,10 @@ LABELS: dict[str, dict[str, str]] = {
         "start.received_signal": "Received {signal}; shutting down ...",
         "start.stopping": "Stopping {name} (PID {pid})",
         "start.exited": "{name} exited with code {code}",
+        "stop.not_running": "No detached DeepTutor launcher is running.",
+        "stop.requested": "Requested a graceful stop from launcher PID {pid}.",
+        "stop.complete": "DeepTutor stopped.",
+        "stop.timeout": "Launcher PID {pid} did not stop in time. Check {log}.",
         "start.not_ready": "{name} did not become ready within {timeout}s",
         "start.port_in_use": (
             "DeepTutor cannot start because port(s) already in use: {ports}. "
@@ -202,6 +212,12 @@ LABELS: dict[str, dict[str, str]] = {
         "start.workspace": "工作目录",
         "start.frontend_runtime": "前端运行模式",
         "start.press_ctrl_c": "按 Ctrl+C 停止。",
+        "start.detached_started": "DeepTutor 正在后台启动（launcher PID {pid}）。",
+        "start.detached_already_running": (
+            "已有后台 DeepTutor launcher 正在运行（PID {pid}）。日志：{log}"
+        ),
+        "start.detached_log": "日志：{path}",
+        "start.detached_stop_hint": '运行 `deeptutor stop --home "{home}"` 停止。',
         "start.starting_backend": "正在启动后端服务 ...",
         "start.starting_frontend": "正在启动前端服务 ...",
         "start.reusing_frontend": "复用已运行的前端 {url} (PID {pid})。",
@@ -216,6 +232,10 @@ LABELS: dict[str, dict[str, str]] = {
         "start.received_signal": "收到 {signal} 信号,正在关闭 ...",
         "start.stopping": "正在停止 {name} (PID {pid})",
         "start.exited": "{name} 已退出 (退出码 {code})",
+        "stop.not_running": "当前没有后台 DeepTutor launcher 在运行。",
+        "stop.requested": "已请求 launcher PID {pid} 正常停止。",
+        "stop.complete": "DeepTutor 已停止。",
+        "stop.timeout": "launcher PID {pid} 未能及时停止，请检查 {log}。",
         "start.not_ready": "{name} 在 {timeout} 秒内未就绪",
         "start.port_in_use": (
             "无法启动 DeepTutor,端口已被占用: {ports}。"

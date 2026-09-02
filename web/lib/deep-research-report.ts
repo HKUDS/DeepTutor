@@ -1,4 +1,4 @@
-import type { StreamEvent } from "./unified-ws";
+import type { StreamEvent } from "@/features/chat/model/protocol";
 
 export type DeepResearchFollowupStatus = "researching" | "done" | "failed";
 
@@ -13,7 +13,8 @@ export function isConfirmedResearchFollowup(
   if (
     events.some(
       (event) =>
-        event.type === "result" && eventMetadata(event).outline_preview === true,
+        event.type === "result" &&
+        eventMetadata(event).outline_preview === true,
     )
   ) {
     return false;

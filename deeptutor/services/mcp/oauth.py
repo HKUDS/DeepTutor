@@ -204,7 +204,7 @@ class OwnerTokenStorage:
 
 
 #: Path the provider sends the browser back to. Mounted by the API router.
-CALLBACK_PATH = "/api/v1/space/mcp/oauth/callback"
+CALLBACK_PATH = "/api/space/mcp/oauth/callback"
 
 #: Where the app believes it is reachable. Overridable because a reverse proxy
 #: terminates on a hostname the app never sees, and the redirect URI has to be

@@ -1,6 +1,9 @@
 name: Tests
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
   push:
     branches:
       - main
@@ -45,13 +48,18 @@ jobs:
       - name: Install lint tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff==0.16.0
+          pip install ruff==0.16.0 import-linter==2.11
 
       - name: Run Ruff lint
         run: ruff check .
 
       - name: Run Ruff format check
         run: ruff format --check .
+
+      - name: Enforce dependency boundaries
+        run: |
+          lint-imports
+          python scripts/check_architecture.py
 
   web-tests:
     name: Web Node Tests
@@ -72,30 +80,97 @@ jobs:
         working-directory: web
         run: npm ci --legacy-peer-deps
 
-      - name: Run frontend node tests
+      - name: Run complete deterministic frontend gate
         working-directory: web
-        run: npm run test:node
+        run: npm run check
 
-      # eslint was not a gate, so #921 landed two real React violations: a
-      # predicate named like a hook (tripping rules-of-hooks) and a synchronous
-      # setState inside an effect. Errors only — the repo still carries i18n
-      # literal warnings, and turning those red is a separate cleanup.
-      - name: Lint frontend
+      - name: Install Playwright Chromium
         working-directory: web
-        run: npx eslint .
+        run: npx playwright install --with-deps chromium
+
+      - name: Run interaction, accessibility, and visual matrix audits
+        working-directory: web
+        run: |
+          npm start -- --hostname 127.0.0.1 --port 3000 > /tmp/deeptutor-web-audit.log 2>&1 &
+          audit_server_pid=$!
+          trap 'kill "$audit_server_pid"' EXIT
+          for attempt in $(seq 1 100); do
+            if curl --fail --silent http://127.0.0.1:3000/ > /dev/null; then
+              break
+            fi
+            if ! kill -0 "$audit_server_pid" 2>/dev/null; then
+              cat /tmp/deeptutor-web-audit.log
+              exit 1
+            fi
+            sleep 0.1
+          done
+          WEB_BASE_URL=http://127.0.0.1:3000 npm run audit
+
+  multi-worker-web:
+    name: Four-worker browser acceptance
+    if: vars.DEEPTUTOR_MULTI_WORKER_E2E_URL != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run desktop and mobile four-worker scenarios
+        working-directory: web
+        run: >-
+          npx playwright test
+          --project=multi-worker-turns-desktop
+          --project=multi-worker-turns-mobile
+        env:
+          DEEPTUTOR_MULTI_WORKER_E2E: "1"
+          WEB_BASE_URL: ${{ vars.DEEPTUTOR_MULTI_WORKER_E2E_URL }}
+          NEXT_PUBLIC_API_BASE: ${{ vars.DEEPTUTOR_MULTI_WORKER_E2E_URL }}
+          DEEPTUTOR_MULTI_WORKER_CONTROL_URL: ${{ vars.DEEPTUTOR_MULTI_WORKER_CONTROL_URL || vars.DEEPTUTOR_MULTI_WORKER_E2E_URL }}
+
+      - name: Upload browser traces and videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-worker-browser-evidence
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore
 
   import-check:
-    name: Import Check (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.experimental == true }}
+    name: Import Check (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-        experimental: [false]
         include:
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
           - python-version: "3.14"
-            experimental: true
+            os: ubuntu-latest
+          - python-version: "3.14"
+            os: macos-latest
+          - python-version: "3.14"
+            os: windows-latest
 
     steps:
       - name: Checkout code
@@ -118,6 +193,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements/server.txt
+          # Exercise project metadata too, especially `requires-python`.
+          pip install -e . --no-deps
 
       - name: Check module imports
         run: |
@@ -136,15 +213,20 @@ jobs:
     name: Python Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     needs: import-check
-    continue-on-error: ${{ matrix.experimental == true }}
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-        experimental: [false]
-        include:
-          - python-version: "3.14"
-            experimental: true
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout code
@@ -191,11 +273,12 @@ jobs:
           pytest -q tests deeptutor/learning/tests
         env:
           PYTHONPATH: ${{ github.workspace }}
+          DEEPTUTOR_TEST_REDIS_URL: redis://127.0.0.1:6379/0
 
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [lint, web-tests, import-check, python-tests]
+    needs: [lint, web-tests, multi-worker-web, import-check, python-tests]
     if: always()
 
     steps:
@@ -207,9 +290,10 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Lint and format | ${{ needs.lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Web node tests | ${{ needs.web-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Import check (3.11/3.12/3.13; 3.14 best-effort) | ${{ needs.import-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Python tests (3.11/3.12/3.13; 3.14 best-effort) | ${{ needs.python-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Four-worker browser acceptance | ${{ needs.multi-worker-web.result == 'success' && '✅ Passed' || needs.multi-worker-web.result == 'skipped' && '⏭️ Fixture not configured' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Import check (3.11–3.14; 3.14 on Linux/macOS/Windows) | ${{ needs.import-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python tests (3.11/3.12/3.13/3.14) | ${{ needs.python-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Fail if tests failed
-        if: needs.lint.result == 'failure' || needs.web-tests.result == 'failure' || needs.import-check.result == 'failure' || needs.python-tests.result == 'failure'
+        if: needs.lint.result == 'failure' || needs.web-tests.result == 'failure' || needs.multi-worker-web.result == 'failure' || needs.import-check.result == 'failure' || needs.python-tests.result == 'failure'
         run: exit 1
