@@ -43,11 +43,26 @@ export type ServiceName =
   | "imagegen"
   | "videogen";
 
+/**
+ * What the user declared about a model, overriding the built-in capability
+ * tables. A missing key means "let DeepTutor decide".
+ */
+export type ModelCapabilities = {
+  tools?: boolean;
+  vision?: boolean;
+  json_output?: boolean;
+  reasoning?: boolean;
+};
+export type ModelCapabilityKey = keyof ModelCapabilities;
+
+export type ApiFormat = "auto" | "openai_chat" | "openai_responses" | "anthropic";
+
 export type CatalogModel = {
   id: string;
   name: string;
   model: string;
   managed_by?: string;
+  capabilities?: ModelCapabilities;
   dimension?: string;
   send_dimensions?: boolean;
   supported_dimensions?: string;
@@ -95,6 +110,8 @@ export type CatalogProfile = {
   api_version: string;
   extra_headers?: Record<string, string> | string;
   wire_api?: "auto" | "responses" | "chat_completions";
+  /** The protocol this endpoint speaks; the backend derives wire_api from it. */
+  api_format?: ApiFormat;
   proxy?: string;
   max_results?: number;
   /** Set when this profile's credentials come from a catalog connection. */
@@ -225,13 +242,18 @@ export type ProviderOption = {
   default_voice?: string;
   auth_mode?: "api_key" | "oauth";
   supports_wire_api_selection?: boolean;
+  // LLM-shaped services: which API formats a profile may pick, the one a new
+  // profile starts on, and the vendor endpoint per format where it differs.
+  api_formats?: string[];
+  default_api_format?: string;
+  base_urls?: Record<string, string>;
   // Search providers only, from the backend SEARCH_PROVIDERS spec table:
   // which connection fields the provider consumes, whether missing ones fall
   // back to a free provider or fail hard, and whether it is still offered.
   requires_api_key?: boolean;
   requires_base_url?: boolean;
   soft_fallback?: boolean;
-  status?: "supported" | "deprecated";
+  status?: "supported" | "deprecated" | "legacy";
 };
 
 export type SystemStatus = {
@@ -592,6 +614,14 @@ export type SettingsContextValue = {
   ) => void;
   updateReasoningEffort: (
     value: string,
+    profileId?: string,
+    modelId?: string,
+  ) => void;
+  /** `null` clears the override so the built-in tables decide again. */
+  updateModelCapability: (
+    service: ServiceName,
+    key: ModelCapabilityKey,
+    value: boolean | null,
     profileId?: string,
     modelId?: string,
   ) => void;
@@ -1016,6 +1046,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           api_version: "",
           extra_headers: service === "search" ? undefined : {},
           wire_api: service === "llm" ? "auto" : undefined,
+          api_format: service === "llm" || service === "task" ? "auto" : undefined,
           proxy: service === "search" ? "" : undefined,
           models: [],
         };
@@ -1438,6 +1469,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const model = targetModel(next, "llm", profileId, modelId);
         if (!model) return;
         setModelReasoningEffort(model, value);
+      });
+    },
+    [mutateCatalog, targetModel],
+  );
+
+  const updateModelCapability = useCallback(
+    (
+      service: ServiceName,
+      key: ModelCapabilityKey,
+      value: boolean | null,
+      profileId?: string,
+      modelId?: string,
+    ) => {
+      if (service === "search") return;
+      mutateCatalog((next) => {
+        const model = targetModel(next, service, profileId, modelId);
+        if (!model) return;
+        const capabilities = { ...(model.capabilities ?? {}) };
+        if (value === null) delete capabilities[key];
+        else capabilities[key] = value;
+        if (Object.keys(capabilities).length === 0) delete model.capabilities;
+        else model.capabilities = capabilities;
       });
     },
     [mutateCatalog, targetModel],
@@ -1872,6 +1925,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateModelBoolField,
       updateContextWindowField,
       updateReasoningEffort,
+      updateModelCapability,
       connectionTargets,
       connectionTarget,
       addConnection,
@@ -1964,6 +2018,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateCodeBlockWrapLongLines,
       updateContextWindowField,
       updateReasoningEffort,
+      updateModelCapability,
       updateLanguage,
       updateResponseLanguage,
       updateModelBoolField,

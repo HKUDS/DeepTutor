@@ -17,63 +17,13 @@ import {
   useInlineFileCardContext,
 } from "@/components/common/InlineFileCard";
 import type { MarkdownRendererProps } from "./markdown-renderer-types";
-
-function extractText(children: React.ReactNode): string {
-  return React.Children.toArray(children)
-    .map((child) => {
-      if (typeof child === "string" || typeof child === "number") {
-        return String(child);
-      }
-
-      if (React.isValidElement<{ children?: React.ReactNode }>(child)) {
-        return extractText(child.props.children);
-      }
-
-      return "";
-    })
-    .join("");
-}
-
-function headingId(children: React.ReactNode): string | undefined {
-  const text = extractText(children)
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-");
-  return text || undefined;
-}
-
-function hasRenderableChildren(children: React.ReactNode): boolean {
-  return (
-    extractText(children).replace(/[\s\u200B-\u200D\uFEFF]/g, "").length > 0
-  );
-}
-
-function hasRenderableDetailsBody(children: React.ReactNode): boolean {
-  return React.Children.toArray(children).some((child) => {
-    if (typeof child === "string" || typeof child === "number") {
-      return String(child).replace(/[\s\u200B-\u200D\uFEFF]/g, "").length > 0;
-    }
-
-    if (!React.isValidElement(child)) return false;
-    if (
-      typeof child.type === "string" &&
-      child.type.toLowerCase() === "summary"
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-}
-
-function stripLeadingHashes(children: React.ReactNode): React.ReactNode {
-  const arr = React.Children.toArray(children);
-  if (arr.length > 0 && typeof arr[0] === "string") {
-    const cleaned = arr[0].replace(/^#{1,6}\s+/, "");
-    if (cleaned !== arr[0]) return [cleaned, ...arr.slice(1)];
-  }
-  return children;
-}
+import {
+  extractMarkdownText as extractText,
+  hasRenderableDetailsBody,
+  hasRenderableMarkdownChildren as hasRenderableChildren,
+  markdownHeadingId as headingId,
+  stripLeadingMarkdownHashes as stripLeadingHashes,
+} from "./markdown-renderer-core";
 
 export default function SimpleMarkdownRenderer({
   content,

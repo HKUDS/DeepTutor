@@ -38,10 +38,43 @@ from deeptutor.services.config import (
     resolve_search_runtime_config,
     supported_search_providers_hint,
 )
-from deeptutor.services.embedding import get_embedding_client, get_embedding_config
-from deeptutor.services.llm import complete as llm_complete
-from deeptutor.services.llm import get_llm_config, get_token_limit_kwargs
-from deeptutor.services.search import web_search
+
+
+def get_embedding_client(*args, **kwargs):
+    from deeptutor.services.embedding.client import get_embedding_client as resolve
+
+    return resolve(*args, **kwargs)
+
+
+def get_embedding_config(*args, **kwargs):
+    from deeptutor.services.embedding.config import get_embedding_config as resolve
+
+    return resolve(*args, **kwargs)
+
+
+def get_llm_config(*args, **kwargs):
+    from deeptutor.services.llm.config import get_llm_config as resolve
+
+    return resolve(*args, **kwargs)
+
+
+def get_token_limit_kwargs(*args, **kwargs):
+    from deeptutor.services.llm.config import get_token_limit_kwargs as resolve
+
+    return resolve(*args, **kwargs)
+
+
+async def llm_complete(*args, **kwargs):
+    from deeptutor.services.llm import complete
+
+    return await complete(*args, **kwargs)
+
+
+def web_search(*args, **kwargs):
+    from deeptutor.services.search import web_search as search
+
+    return search(*args, **kwargs)
+
 
 router = APIRouter()
 

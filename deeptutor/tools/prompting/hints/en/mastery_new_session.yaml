@@ -1,0 +1,6 @@
+short_description: "Hand the learner a card that starts a new study conversation on a topic, with the opening message already written."
+when_to_use: "When they want to work on a topic and no existing conversation fits — a fresh angle, a review of one lesson, or a topic with no conversations yet."
+input_format: "{\"path_id\": \"...\", \"opening_message\": \"first message in their voice\", \"module\": \"optional lesson id / name / number\", \"reason\": \"one line on why now\"}"
+guideline: "Same rules as mastery_open_session: the opening message is written in the learner's voice and names the lesson when they asked for one. The topic keeps every bit of its progress — only the conversation is new — so say that rather than warning them about starting over."
+note: "Produces a card the learner clicks; nothing navigates on its own and no progress changes."
+phase: "synthesis"

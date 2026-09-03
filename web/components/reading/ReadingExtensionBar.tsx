@@ -124,7 +124,7 @@ export function ReadingExtensionBar({
   if (actions.length === 0) return null;
   return (
     <>
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border)] bg-[var(--muted)]/25 px-2.5 py-2">
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2">
         {actions.map(({ extension, action }) => {
           const key = `${extension.id}:${action.id}`;
           const disabled =

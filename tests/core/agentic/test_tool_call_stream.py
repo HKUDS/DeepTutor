@@ -17,6 +17,8 @@ in fragments and must be concatenated. Both directions matter — assigning
 
 from __future__ import annotations
 
+from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
+
 from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
 
 
@@ -119,3 +121,28 @@ def test_absent_index_is_coerced_so_parts_stay_sortable() -> None:
     acc.feed(_Delta(index=1, id="call_2", name="web_search", arguments="{}"))
 
     assert [call["id"] for call in acc.collected()] == ["call_1", "call_2"]
+
+
+def test_gemini_thought_signature_survives_stream_accumulation() -> None:
+    """Gemini 3 rejects the next tool round unless its opaque extension is
+    replayed on the same function-call part (#1181)."""
+    delta = ChoiceDeltaToolCall.model_validate(
+        {
+            "index": 0,
+            "id": "function-call-1",
+            "type": "function",
+            "function": {"name": "mastery_status", "arguments": "{}"},
+            "extra_content": {"google": {"thought_signature": "signature-from-gemini"}},
+        }
+    )
+    acc = ToolCallAccumulator()
+    acc.feed(delta)
+
+    assert acc.collected() == [
+        {
+            "id": "function-call-1",
+            "name": "mastery_status",
+            "arguments": "{}",
+            "extra_content": {"google": {"thought_signature": "signature-from-gemini"}},
+        }
+    ]

@@ -53,6 +53,7 @@ export default function AgentsSettingsPage() {
   return (
     <CategoryScroll
       sections={AGENT_SECTIONS.filter(({ key }) => visibleKeys.has(key))}
+      deferSections
     />
   );
 }

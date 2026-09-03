@@ -171,6 +171,17 @@ def _finish_staging_archive(archive_root: Path, staging: Path) -> None:
     logger.info("Mastery migration archive finalized target=%s", final_dir)
 
 
+def mastery_v2_root(learning_root: Path) -> Path:
+    """Where the V2 store lives under *learning_root*, creating nothing.
+
+    Split out of the migration so a caller can ask "is there a mastery store
+    at all?" without running one. :func:`prepare_mastery_v2_root` is the only
+    thing allowed to create or move files.
+    """
+
+    return Path(learning_root) / _V2_DIR_NAME
+
+
 def _prepare_mastery_v2_root(learning_root: Path) -> Path:
     """Return the V2 store root, archiving/copying a V1 workspace once.
 
@@ -181,7 +192,7 @@ def _prepare_mastery_v2_root(learning_root: Path) -> Path:
     """
 
     root = Path(learning_root)
-    v2_root = root / _V2_DIR_NAME
+    v2_root = mastery_v2_root(root)
     v2_db = v2_root / _V1_DB_NAME
 
     with _migration_lock:
@@ -310,4 +321,4 @@ def prepare_mastery_v2_root(learning_root: Path) -> Path:
         raise
 
 
-__all__ = ["prepare_mastery_v2_root"]
+__all__ = ["mastery_v2_root", "prepare_mastery_v2_root"]

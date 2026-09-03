@@ -1,18 +1,45 @@
 "use client";
 
+import dynamic from "next/dynamic";
+
 import { CategoryScroll } from "@/components/settings/CategoryScroll";
 import { useSettingsAccess } from "@/features/settings/navigation/SettingsAccessProvider";
 import { visibleSettingsChildren } from "@/features/settings/navigation/settings-nav";
 
-import ConnectionsSettingsPage from "./models/ConnectionsSettingsSection";
-import LlmSettingsPage from "./models/LlmSettingsSection";
-import TaskModelsSettingsPage from "./models/TaskModelsSettingsSection";
-import EmbeddingSettingsPage from "./models/EmbeddingSettingsSection";
-import SearchSettingsPage from "./models/SearchSettingsSection";
-import TtsSettingsPage from "./models/TtsSettingsSection";
-import SttSettingsPage from "./models/SttSettingsSection";
-import ImageGenSettingsPage from "./models/ImageSettingsSection";
-import VideoGenSettingsPage from "./models/VideoSettingsSection";
+const loading = () => <div className="min-h-64" aria-hidden="true" />;
+const ConnectionsSettingsPage = dynamic(
+  () => import("./models/ConnectionsSettingsSection"),
+  { loading },
+);
+const LlmSettingsPage = dynamic(() => import("./models/LlmSettingsSection"), {
+  loading,
+});
+const TaskModelsSettingsPage = dynamic(
+  () => import("./models/TaskModelsSettingsSection"),
+  { loading },
+);
+const EmbeddingSettingsPage = dynamic(
+  () => import("./models/EmbeddingSettingsSection"),
+  { loading },
+);
+const SearchSettingsPage = dynamic(
+  () => import("./models/SearchSettingsSection"),
+  { loading },
+);
+const TtsSettingsPage = dynamic(() => import("./models/TtsSettingsSection"), {
+  loading,
+});
+const SttSettingsPage = dynamic(() => import("./models/SttSettingsSection"), {
+  loading,
+});
+const ImageGenSettingsPage = dynamic(
+  () => import("./models/ImageSettingsSection"),
+  { loading },
+);
+const VideoGenSettingsPage = dynamic(
+  () => import("./models/VideoSettingsSection"),
+  { loading },
+);
 
 const MODEL_SECTIONS = [
   { key: "connections", Component: ConnectionsSettingsPage },
@@ -40,6 +67,7 @@ export default function ModelsSettingsPage() {
   return (
     <CategoryScroll
       sections={MODEL_SECTIONS.filter(({ key }) => visibleKeys.has(key))}
+      deferSections
     />
   );
 }

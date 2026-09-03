@@ -197,6 +197,7 @@ def test_overview_reports_all_layers(tmp_memory: Path) -> None:
 
 def test_migrate_v1_moves_loose_files(tmp_memory: Path) -> None:
     (tmp_memory / "PROFILE.md").write_text("v1 profile content")
+    (tmp_memory / "SOUL.md").write_text("v1 soul content")
     (tmp_memory / "SUMMARY.md").write_text("v1 summary content")
     (tmp_memory / "stray.md").write_text("untracked")
 
@@ -204,9 +205,11 @@ def test_migrate_v1_moves_loose_files(tmp_memory: Path) -> None:
     assert backup is not None
     assert backup.parent == tmp_memory / "backup"
     assert (backup / "PROFILE.md").read_text() == "v1 profile content"
+    assert (backup / "SOUL.md").read_text() == "v1 soul content"
     assert (backup / "SUMMARY.md").read_text() == "v1 summary content"
     assert (backup / "stray.md").read_text() == "untracked"
     assert not (tmp_memory / "PROFILE.md").exists()
+    assert not (tmp_memory / "SOUL.md").exists()
     assert not (tmp_memory / "SUMMARY.md").exists()
 
 

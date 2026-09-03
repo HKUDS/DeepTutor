@@ -25,6 +25,17 @@ interface KbDrift {
   stale_page_ids?: string[];
 }
 
+/** Classifier slug → what to tell the reader. See `_generation_error_category`. */
+const FAILURE_CAUSES: Record<string, string> = {
+  quota: "Your model credit or quota ran out.",
+  authentication: "The model credentials were rejected.",
+  rate_limit: "The model provider was rate-limiting the requests.",
+  missing_dependency:
+    "Some block types need an optional package that is not installed. Leave those types out of the book, or install the extra.",
+  provider: "The model provider was unreachable or timed out.",
+  content: "The model returned something the block could not read.",
+};
+
 interface LogHealth {
   total_entries: number;
   error_entries: number;
@@ -97,9 +108,38 @@ export default function BookHealthBanner({
   const hasSourceIssues =
     !!sourceQuality &&
     (sourceQuality.status !== "ready" || sourceQuality.warnings.length > 0);
+  /**
+   * What actually went wrong, as opposed to what has not happened yet.
+   *
+   * Deliberately not `retryable_pages`: that counts chapters still *owed*
+   * work as well, so every book raised a warning triangle the moment it
+   * started generating — "3 chapters can be retried" on a run with zero
+   * failures. A queue is the activity panel's business; this banner is for
+   * breakage. `failed_pages` and `failed_blocks` only ever count real errors,
+   * and falling back to the block count keeps this honest against a backend
+   * that predates the split rather than relabelling the queue as failures.
+   */
+  const failedPages = generation?.failed_pages ?? 0;
+  const failedBlocksFromPages = generation?.failed_blocks || 0;
   const hasGenerationIssues =
-    (generation?.retryable_pages || 0) > 0 ||
+    failedPages > 0 ||
+    failedBlocksFromPages > 0 ||
     Object.keys(generation?.failure_categories || {}).length > 0;
+
+  /**
+   * Why generation failed, said in words.
+   *
+   * `unknown` is dropped rather than translated: "unknown: 4" tells the
+   * reader nothing they can act on, and the per-block error is already shown
+   * in the chapter itself. Anything the classifier *did* recognise is worth a
+   * sentence, because each one has a different answer — top up, wait, install
+   * an extra, or leave that block type out of the book.
+   */
+  const failureCauses = Object.entries(generation?.failure_categories || {})
+    .filter(([category]) => category !== "unknown")
+    .map(([category]) => FAILURE_CAUSES[category])
+    .filter((key): key is string => Boolean(key))
+    .map((key) => t(key));
 
   if (
     !hasDrift &&
@@ -176,15 +216,19 @@ export default function BookHealthBanner({
           {hasGenerationIssues && (
             <div className="text-xs">
               <strong>
-                {t("{{count}} chapters can be retried.", {
-                  count: generation?.retryable_pages || 0,
-                })}
+                {failedPages > 0
+                  ? t("{{count}} chapters failed to generate.", {
+                      count: failedPages,
+                    })
+                  : t("{{count}} blocks failed to generate.", {
+                      count: failedBlocksFromPages,
+                    })}
               </strong>{" "}
-              <span className="opacity-90">
-                {Object.entries(generation?.failure_categories || {})
-                  .map(([category, count]) => `${category}: ${count}`)
-                  .join(" · ")}
-              </span>
+              {/* The cause, in the reader's language. This used to print the
+                  classifier's own slugs and tallies — "unknown: 4" beside a
+                  count of 2 — which named nothing the reader could act on and
+                  disagreed with the number next to it. */}
+              <span className="opacity-90">{failureCauses.join(" · ")}</span>
             </div>
           )}
           {hasDrift && onRecompile && (

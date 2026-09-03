@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { bookApi } from "@/lib/book-api";
 import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
+import { listKnowledgeBaseFiles } from "@/features/knowledge/api/client";
 import { SUBAGENT_KB_TYPE } from "@/lib/knowledge-helpers";
 import type { TopicSourceInput, TopicSourceKind } from "@/lib/learning-api";
 import { getNotebook, listNotebooks } from "@/lib/notebook-api";
 
-export type SourceCandidateKind = Exclude<
-  TopicSourceKind,
-  "goal" | "file" | "chat"
->;
+export type SourceCandidateKind = Exclude<TopicSourceKind, "goal" | "chat">;
 
 export interface SourceCandidate {
   key: string;
@@ -20,6 +18,16 @@ export interface SourceCandidate {
   label: string;
   detail: string;
   available: boolean;
+  /**
+   * For a `file` candidate, the knowledge base it lives in.
+   *
+   * Both halves are needed to read it: the KB resolves access, the path
+   * resolves the document inside it. `parentKey` is what lets selecting a
+   * whole library and one of its files be mutually exclusive.
+   */
+  kbName?: string;
+  path?: string;
+  parentKey?: string;
 }
 
 export interface SourceLibrary {
@@ -27,6 +35,13 @@ export interface SourceLibrary {
   notebooks: SourceCandidate[];
   knowledgeBases: SourceCandidate[];
   failures: string[];
+}
+
+/** What one knowledge base's document list is doing right now. */
+export interface KnowledgeBaseFiles {
+  candidates: SourceCandidate[];
+  loading: boolean;
+  error: string;
 }
 
 const EMPTY_LIBRARY: SourceLibrary = {
@@ -121,12 +136,106 @@ export function useTopicSourceLibrary(tr: Translate) {
     };
   }, [tr]);
 
-  const candidates = useMemo(
-    () => [...library.books, ...library.notebooks, ...library.knowledgeBases],
-    [library],
+  // Document lists are fetched per knowledge base, only when the learner
+  // opens one: a workspace with a dozen libraries would otherwise pay for
+  // every listing to answer a question about one of them.
+  const [files, setFiles] = useState<Record<string, KnowledgeBaseFiles>>({});
+
+  const loadKnowledgeBaseFiles = useCallback(
+    async (candidate: SourceCandidate) => {
+      const parentKey = candidate.key;
+      const kbName = candidate.sourceId;
+      setFiles((previous) =>
+        previous[parentKey]?.candidates.length
+          ? previous
+          : {
+              ...previous,
+              [parentKey]: { candidates: [], loading: true, error: "" },
+            },
+      );
+      try {
+        const listed = await listKnowledgeBaseFiles(kbName);
+        setFiles((previous) => ({
+          ...previous,
+          [parentKey]: {
+            loading: false,
+            error: "",
+            candidates: listed
+              // Folders are organisational only — they hold no text to ground
+              // an outline in, and their files are listed by full path anyway.
+              .filter((entry) => entry.type !== "folder")
+              .map((entry) => ({
+                key: `file:${kbName}:${entry.name}`,
+                kind: "file" as const,
+                sourceId: entry.name,
+                label: entry.name,
+                detail: tr(
+                  `${kbName} 中的文件`,
+                  `File in ${kbName}`,
+                ),
+                available: true,
+                kbName,
+                path: entry.name,
+                parentKey,
+              })),
+          },
+        }));
+      } catch (reason) {
+        setFiles((previous) => ({
+          ...previous,
+          [parentKey]: {
+            candidates: [],
+            loading: false,
+            error:
+              reason instanceof Error
+                ? reason.message
+                : tr("无法读取文件列表", "Could not list files"),
+          },
+        }));
+      }
+    },
+    [tr],
   );
-  return { library, loading, candidates };
+
+  const candidates = useMemo(
+    () => [
+      ...library.books,
+      ...library.notebooks,
+      ...library.knowledgeBases,
+      ...Object.values(files).flatMap((entry) => entry.candidates),
+    ],
+    [library, files],
+  );
+  return { library, loading, candidates, files, loadKnowledgeBaseFiles };
 }
+
+/**
+ * Add or remove one source from the selection.
+ *
+ * The rule that needs stating: selecting a whole knowledge base drops the
+ * individual documents picked out of it. Sending both means the same material
+ * arrives twice — once as retrieval over the library, once as extracted file
+ * text — and is counted twice when the outline's coverage is measured.
+ *
+ * Pure, and exported, so the wizard and its test cannot disagree about it.
+ */
+export function toggleSourceSelection(
+  selected: Set<string>,
+  key: string,
+  candidates: readonly SourceCandidate[],
+): Set<string> {
+  const next = new Set(selected);
+  if (next.has(key)) {
+    next.delete(key);
+    return next;
+  }
+  next.add(key);
+  for (const candidate of candidates) {
+    if (candidate.parentKey === key) next.delete(candidate.key);
+  }
+  return next;
+}
+
 
 /** Resolve a selected source to bounded prompt context; failures stay visible. */
 export async function hydrateTopicSource(
@@ -171,6 +280,22 @@ export async function hydrateTopicSource(
           .slice(0, 8_000),
         available: true,
         metadata: { record_count: notebook.records.length },
+      };
+    }
+    if (candidate.kind === "file") {
+      // No excerpt: the browser cannot read a PDF out of the knowledge base,
+      // so the server extracts the text while grounding the outline (see
+      // `_ground_file_source`). What travels from here is the address.
+      return {
+        kind: "file",
+        source_id: candidate.path || candidate.sourceId,
+        label: candidate.label,
+        excerpt: "",
+        available: candidate.available,
+        metadata: {
+          kb_name: candidate.kbName || "",
+          path: candidate.path || candidate.sourceId,
+        },
       };
     }
     return {

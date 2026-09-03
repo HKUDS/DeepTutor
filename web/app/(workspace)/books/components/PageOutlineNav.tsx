@@ -90,20 +90,36 @@ export interface PageOutlineNavProps {
   blocks: Block[];
   scrollContainer?: HTMLElement | null;
   language?: string;
+  /** Parked (a slim handle) or open over the prose. Owned by `PageReader`. */
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 }
 
 export default function PageOutlineNav({
   blocks,
   scrollContainer,
   language: _language,
+  collapsed,
+  onCollapsedChange,
 }: PageOutlineNavProps) {
   const { t } = useTranslation();
   const headerText = t("On this page");
   const collapseTip = t("Hide outline");
   const expandTip = t("Show outline");
 
-  // Default: expanded; PageReader keys this component by page id.
-  const [collapsed, setCollapsed] = useState(false);
+  /**
+   * Parked unless the reader opens it, and the choice is theirs for the
+   * session.
+   *
+   * The panel floats over the right edge of the prose, and the prose is
+   * centred at 78ch — so on anything narrower than a very wide window it
+   * opened straight on top of the paragraph being read, unasked, on every
+   * chapter. A 24px handle is affordance enough. The state is owned by
+   * `PageReader` rather than here, because this component remounts on every
+   * chapter change and a preference that forgets itself each page is not a
+   * preference.
+   */
+  const setOutlineCollapsed = onCollapsedChange;
 
   // Track which block is currently in view for active highlight.
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -210,7 +226,7 @@ export default function PageOutlineNav({
             </div>
             <button
               type="button"
-              onClick={() => setCollapsed(true)}
+              onClick={() => setOutlineCollapsed(true)}
               title={collapseTip}
               aria-label={collapseTip}
               className="rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)] hover:text-[var(--foreground)]"
@@ -284,7 +300,7 @@ export default function PageOutlineNav({
         {/* ── Collapsed handle: chevron-only button overlays the same card  */}
         <button
           type="button"
-          onClick={() => setCollapsed(false)}
+          onClick={() => setOutlineCollapsed(false)}
           title={expandTip}
           aria-label={expandTip}
           aria-hidden={!collapsed}

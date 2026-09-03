@@ -1,123 +1,80 @@
-/** UI-facing aliases for the validated v2 turn protocol. */
-export type {
-  ClientCommand,
-  ServerEvent,
+/**
+ * UI-facing views of the generated v2 turn protocol.
+ *
+ * The wire schema remains the only field-level source of truth. The UI event
+ * alias only tightens fields that `parseTurnEvent()` normalizes before a
+ * surface sees them, while compatibility commands omit the envelope fields
+ * added by `UnifiedTurnClient`.
+ */
+import type {
+  CancelTurnCommand,
+  ClientCommand as GeneratedClientCommand,
+  LLMSelection as GeneratedLLMSelection,
+  RegenerateCommand,
+  ResumeTurnCommand,
+  ServerEvent as GeneratedServerEvent,
+  StartTurnCommand,
+  StreamEvent as GeneratedStreamEvent,
+  StreamEventType as GeneratedStreamEventType,
+  SubmitUserReplyCommand,
+  SubscribeSessionCommand,
+  SubscribeTurnCommand,
+  UnsubscribeCommand,
 } from "@/contracts/generated/turn-protocol";
 
-export type StreamEventType =
-  | "stage_start"
-  | "stage_end"
-  | "thinking"
-  | "observation"
-  | "content"
-  | "tool_call"
-  | "tool_result"
-  | "progress"
-  | "sources"
-  | "result"
-  | "error"
-  | "session"
-  | "session_meta"
-  | "wait_for_input"
-  | "done";
+export type ClientCommand = GeneratedClientCommand;
+export type ServerEvent = GeneratedServerEvent;
+export type StreamEventType = GeneratedStreamEventType;
+export type LLMSelection = GeneratedLLMSelection;
 
-export interface StreamEvent {
-  type: StreamEventType;
-  source: string;
-  stage: string;
+export type StreamEvent = Omit<
+  GeneratedStreamEvent,
+  "content" | "metadata" | "source" | "stage" | "session_id"
+> & {
   content: string;
   metadata: Record<string, unknown>;
+  source: string;
+  stage: string;
   session_id?: string;
-  turn_id?: string;
-  seq?: number;
-  timestamp: number;
-}
+};
 
-export interface LLMSelection {
-  profile_id: string;
-  model_id: string;
-}
+type UnversionedCommand<T, Kind extends string> = Omit<
+  T,
+  "protocol_version" | "type"
+> & { type: Kind };
 
-export interface StartTurnMessage {
-  type: "start_turn";
-  content: string;
-  tools?: string[];
-  capability?: string | null;
-  workspace_mode?: "immersive_reading" | "mastery_path" | "";
-  knowledge_bases?: string[];
-  session_id?: string | null;
-  attachments?: Array<{
-    type: string;
-    url?: string;
-    base64?: string;
-    filename?: string;
-    mime_type?: string;
-  }>;
-  language?: string;
-  config?: Record<string, unknown>;
-  notebook_references?: Array<{ notebook_id: string; record_ids: string[] }>;
-  history_references?: string[];
-  question_notebook_references?: number[];
-  book_references?: Array<{ book_id: string; page_ids: string[] }>;
-  reading_references?: Array<{
-    material_id: string;
-    revision: number;
-    locators: number[];
-  }>;
-  mastery_path_id?: string;
-  reading_workspace_id?: string;
-  reading_material_id?: string;
-  reading_material_revision?: number;
-  reading_viewport?: { locator?: number; selection?: string };
-  timed_media_id?: string;
-  timed_media_viewport?: { time_seconds: number };
-  persona?: string;
-  llm_selection?: LLMSelection | null;
-  parent_message_id?: number | null;
-  [key: string]: unknown;
-}
-
-export interface SubscribeTurnMessage {
-  type: "subscribe_turn";
-  turn_id: string;
-  after_seq?: number;
-}
-
-export interface SubscribeSessionMessage {
-  type: "subscribe_session";
-  session_id: string;
-  after_seq?: number;
-}
-
-export interface ResumeTurnMessage {
-  type: "resume_from";
-  turn_id: string;
-  seq?: number;
-}
-
-export interface UnsubscribeMessage {
-  type: "unsubscribe";
-  turn_id?: string;
-  session_id?: string;
-}
-
-export interface CancelTurnMessage {
-  type: "cancel_turn";
-  turn_id: string;
-}
-
-export interface RegenerateMessage {
-  type: "regenerate";
-  session_id: string;
-  overrides?: Record<string, unknown>;
-}
-
-export interface SubmitUserReplyMessage {
-  type: "submit_user_reply";
-  turn_id: string;
-  text?: string;
-  answers?: Array<{ questionId: string; text: string }>;
-}
+export type StartTurnMessage = UnversionedCommand<
+  StartTurnCommand,
+  "start_turn"
+>;
+export type SubscribeTurnMessage = UnversionedCommand<
+  SubscribeTurnCommand,
+  "subscribe_turn"
+>;
+export type SubscribeSessionMessage = UnversionedCommand<
+  SubscribeSessionCommand,
+  "subscribe_session"
+>;
+export type ResumeTurnMessage = UnversionedCommand<
+  ResumeTurnCommand,
+  "resume_from"
+>;
+export type UnsubscribeMessage = UnversionedCommand<
+  UnsubscribeCommand,
+  "unsubscribe"
+>;
+export type CancelTurnMessage = Omit<
+  UnversionedCommand<CancelTurnCommand, "cancel_turn">,
+  "command_id"
+> & { command_id?: string };
+export type RegenerateMessage = UnversionedCommand<
+  RegenerateCommand,
+  "regenerate"
+>;
+export type SubmitUserReplyMessage = Omit<
+  UnversionedCommand<SubmitUserReplyCommand, "submit_user_reply">,
+  "command_id"
+> & { command_id?: string };
 
 export type ChatMessage =
   | StartTurnMessage

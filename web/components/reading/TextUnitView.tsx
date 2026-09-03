@@ -122,6 +122,9 @@ export function TextUnitView({
   const [serif, setSerif] = useState(true);
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>("auto");
   const isWebMarkdown = contentFormat === "web_markdown";
+  // Sepia and Night are whole-surface paper: a sheet drawn on top of them
+  // would be a second, differently coloured page inside the first.
+  const paperSheet = readerTheme === "auto";
 
   useEffect(() => {
     try {
@@ -461,33 +464,43 @@ export function TextUnitView({
           ? { background: "#f4ecd8", color: "#473c2c" }
           : readerTheme === "night"
             ? { background: "#16181d", color: "#e8e5df" }
-            : { background: "var(--background)" }
+            // A desk, not a page — the page is the article below, the same
+            // relationship a scrolled PDF already has between its grey field
+            // and the white sheets on it. Sepia and Night are whole-surface
+            // paper by design, so they keep painting edge to edge.
+            : { background: "var(--secondary)" }
       }
     >
+      {/* Display controls on the left, position on the right.
+
+          This row used to also print "106%" and "84ch" between its buttons and
+          repeat the reader's position — "Section 1 of 74" — 44px under the
+          header's own "Section 1/74", in a monospace font. Three readouts of
+          state nobody had asked to see made a reading surface look like a
+          debug panel, and one of them said the same thing twice.
+
+          Each value is now where it belongs: the size and width live in the
+          label of the control that changes them (so a screen reader announces
+          the new value on press, which the silent spans never did), and the
+          position is the header's to state, since that is the one line that is
+          there in every render mode. What is left here is what you can *do*. */}
       <div className="flex items-center justify-between gap-2 overflow-x-auto border-b border-[var(--border)] px-2 py-2 sm:px-3">
         <div className="flex shrink-0 items-center gap-0.5">
           <PreferenceButton
-            label={t("Smaller text")}
+            label={t("Smaller text ({{percent}}%)", {
+              percent: Math.round((fontSize / 16) * 100),
+            })}
             icon={Minus}
             disabled={fontSize <= MIN_FONT_SIZE}
             onClick={() => changeFontSize(fontSize - 1)}
           />
-          <span
-            aria-live="polite"
-            className="min-w-[42px] text-center font-mono text-[11px] tabular-nums text-[var(--muted-foreground)]"
-          >
-            {Math.round((fontSize / 16) * 100)}%
-          </span>
           <PreferenceButton
-            label={t("Larger text")}
+            label={t("Larger text ({{percent}}%)", {
+              percent: Math.round((fontSize / 16) * 100),
+            })}
             icon={Plus}
             disabled={fontSize >= MAX_FONT_SIZE}
             onClick={() => changeFontSize(fontSize + 1)}
-          />
-          <PreferenceButton
-            label={t("Reset reading display")}
-            icon={RotateCcw}
-            onClick={resetPreferences}
           />
           <PreferenceButton
             label={serif ? t("Use sans-serif font") : t("Use serif font")}
@@ -496,13 +509,12 @@ export function TextUnitView({
             onClick={() => updatePreferences({ serif: !serif })}
           />
           <PreferenceButton
-            label={t("Change line width")}
+            label={t("Change line width ({{width}} characters)", {
+              width: lineWidth,
+            })}
             icon={Rows3}
             onClick={cycleLineWidth}
           />
-          <span className="hidden min-w-[44px] font-mono text-[11px] tabular-nums text-[var(--muted-foreground)] sm:inline">
-            {`${lineWidth}ch`}
-          </span>
           <PreferenceButton
             label={t("Change reading theme")}
             icon={SunMoon}
@@ -518,35 +530,27 @@ export function TextUnitView({
               })
             }
           />
+          <PreferenceButton
+            label={t("Reset reading display")}
+            icon={RotateCcw}
+            onClick={resetPreferences}
+          />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
+        <div className="flex shrink-0 items-center gap-0.5">
+          <PreferenceButton
+            label={t("Previous {{unit}}", { unit: t(unitLabel(unit)) })}
+            icon={ChevronLeft}
             disabled={!canPrev}
             onClick={() => setLocator((current) => Math.max(1, current - 1))}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
-            aria-label={t("Previous")}
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <span className="min-w-[120px] text-center font-mono text-[11px] tabular-nums text-[var(--muted-foreground)]">
-            {t("{{unit}} {{n}} of {{total}}", {
-              unit: t(unitLabel(unit)),
-              n: locator,
-              total: unitCount,
-            })}
-          </span>
-          <button
-            type="button"
+          />
+          <PreferenceButton
+            label={t("Next {{unit}}", { unit: t(unitLabel(unit)) })}
+            icon={ChevronRight}
             disabled={!canNext}
             onClick={() =>
               setLocator((current) => Math.min(unitCount, current + 1))
             }
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-35 disabled:hover:bg-transparent"
-            aria-label={t("Next")}
-          >
-            <ChevronRight size={15} />
-          </button>
+          />
         </div>
       </div>
 
@@ -555,7 +559,7 @@ export function TextUnitView({
         data-reader-unit={locator}
         onMouseUp={handlePointerUp}
         onScroll={handleContainerScroll}
-        className="dt-reader-scroll flex-1 overflow-y-auto overscroll-contain px-8 py-7"
+        className="dt-reader-scroll flex-1 overflow-y-auto overscroll-contain px-5 py-6 sm:px-8"
       >
         {loading ? (
           <div className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">
@@ -567,11 +571,31 @@ export function TextUnitView({
         ) : (
           <article
             ref={articleRef}
-            className={`mx-auto leading-[1.75] selection:bg-[var(--primary)]/20 ${
-              isWebMarkdown ? "" : "whitespace-pre-wrap "
-            }${serif ? "font-serif" : "font-sans"}`}
+            // The sheet. Text used to run edge to edge on the same white as
+            // everything around it, so the chosen line width was invisible and
+            // the reading column had no boundary to sit inside — four white
+            // panes separated by hairlines. A PDF already reads as pages on a
+            // desk; this gives the text modes the same surface.
+            //
+            // The edge is the border token rather than a black hairline
+            // because the desk is not reliably darker than the sheet: of the
+            // four palettes, Dark is the one whose --secondary sits above
+            // --card. `--border` is defined against each palette's own
+            // surfaces, so the boundary holds in all of them — and it is what
+            // the mastery cards draw themselves with.
+            className={`mx-auto leading-[1.75] selection:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)] ${
+              paperSheet
+                ? "rounded-2xl border border-[var(--border)] bg-[var(--card)] px-6 py-8 shadow-[0_1px_3px_rgba(0,0,0,0.06),0_10px_30px_-16px_rgba(0,0,0,0.14)] sm:px-10 "
+                : ""
+            }${isWebMarkdown ? "" : "whitespace-pre-wrap "}${
+              serif ? "font-serif" : "font-sans"
+            }`}
             style={{
-              maxWidth: `${lineWidth}ch`,
+              // The sheet's padding is added on top of the line width, so
+              // "84ch" stays 84 characters of text either way.
+              maxWidth: paperSheet
+                ? `calc(${lineWidth}ch + 5rem)`
+                : `${lineWidth}ch`,
               fontSize: `${fontSize}px`,
               color: readerTheme === "auto" ? "var(--foreground)" : "inherit",
             }}

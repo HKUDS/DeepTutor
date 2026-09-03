@@ -35,6 +35,29 @@ export function getTraceGroup(events: StreamEvent[]): string {
   return "";
 }
 
+/**
+ * The engine a retrieval or search call ran on, if it reported one.
+ *
+ * Two places to look, because the backend surfaces it two ways: the
+ * retrieval pipeline tags its own progress events at the top level, while a
+ * tool's `ToolResult.metadata` is nested under `tool_metadata` by
+ * `tool_dispatch`. Both are read here so callers do not have to know which
+ * kind of row they are holding.
+ */
+export function getCallProvider(events: StreamEvent[]): string {
+  for (const event of events) {
+    const meta = getTraceMeta(event);
+    const nested = meta.tool_metadata;
+    const value =
+      (nested && typeof nested.provider === "string" ? nested.provider : "") ||
+      meta.provider ||
+      "";
+    const trimmed = String(value).trim();
+    if (trimmed && trimmed !== "none") return trimmed;
+  }
+  return "";
+}
+
 export function getToolProvider(events: StreamEvent[]): ToolProvider | null {
   for (const event of events) {
     const meta = getTraceMeta(event);
@@ -208,7 +231,6 @@ export function detectStreamingMode(
     if (kind === "tool_result_reflection") return "reflecting";
     if (event.type === "content" && kind === "llm_final_response") {
       if (event.stage === "exploring") return "exploring";
-      if (event.stage === "reasoning") return "drafting";
       return "responding";
     }
     if (kind === "llm_planning") return "planning";

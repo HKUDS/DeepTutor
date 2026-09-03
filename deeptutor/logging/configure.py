@@ -7,6 +7,8 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
 
+from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
+
 from .config import LoggingConfig, load_logging_config
 from .formatters import ConsoleFormatter, ContextFilter, JsonlFormatter
 from .loguru_bridge import install_loguru_bridge
@@ -57,15 +59,17 @@ def configure_logging(force: bool = False) -> LoggingConfig:
 
     if config.file_output:
         log_dir = Path(config.log_dir) if config.log_dir else Path("data/user/logs")
-        log_dir.mkdir(parents=True, exist_ok=True)
+        ensure_private_directory(log_dir)
+        log_path = log_dir / "deeptutor.jsonl"
         file_handler = _managed(
             RotatingFileHandler(
-                log_dir / "deeptutor.jsonl",
+                log_path,
                 maxBytes=config.max_bytes,
                 backupCount=config.backup_count,
                 encoding="utf-8",
             )
         )
+        ensure_private_file(log_path)
         file_handler.setLevel(level)
         file_handler.setFormatter(JsonlFormatter())
         root.addHandler(file_handler)

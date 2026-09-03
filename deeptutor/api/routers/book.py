@@ -18,17 +18,17 @@ from fastapi import APIRouter, HTTPException, Query, Response, WebSocket, WebSoc
 from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.http_headers import content_disposition
-from deeptutor.book import (
-    BlockType,
-    BookPausedError,
-    BookProposal,
-    Spine,
-    get_book_engine,
-)
 from deeptutor.book import progress as progress_ops
-from deeptutor.book.estimate import chapter_basis
+from deeptutor.book.errors import BookPausedError
 from deeptutor.book.export import export_filename, render_book_markdown
-from deeptutor.book.models import ContentType, LearningCapture, LearningCaptureStatus
+from deeptutor.book.models import (
+    BlockType,
+    BookProposal,
+    ContentType,
+    LearningCapture,
+    LearningCaptureStatus,
+    Spine,
+)
 from deeptutor.book.storage import get_book_storage
 from deeptutor.book.streaming import SOURCE as BOOK_SOURCE
 from deeptutor.multi_user.audit import log_admin_action, log_usage
@@ -45,6 +45,14 @@ from deeptutor.runtime.stream_bus import StreamBus
 router = APIRouter()
 ws_router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def get_book_engine():
+    """Resolve the large compilation engine only when a book route uses it."""
+
+    from deeptutor.book.engine import get_book_engine as resolve
+
+    return resolve()
 
 
 def _book_paused_http(exc: BookPausedError) -> HTTPException:
@@ -82,6 +90,7 @@ class ConfirmSpineRequest(BaseModel):
     book_id: str
     spine: dict[str, Any] | None = None
     auto_compile: bool = True
+    block_types: list[str] | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -201,6 +210,7 @@ class PageChatSessionRequest(BaseModel):
 class RebuildBookRequest(BaseModel):
     book_id: str
     auto_compile: bool = True
+    block_types: list[str] | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -269,19 +279,30 @@ def _claim_content_mutation(
     action: str,
     *,
     extra: dict[str, Any] | None = None,
+    strict: bool = True,
 ) -> int:
     """Reserve the next canonical revision before a content mutation.
 
     Shared editors must prove which snapshot they edited. Personal books and
     admin operations stay backward compatible, but still advance the token so
     a later shared editor detects the intervening change.
+
+    ``strict=False`` is for *generation commands* — compile this chapter,
+    pause, resume. Those overwrite nobody's writing: a chapter shell fills
+    itself in, and two readers both asking for it is not a conflict (the
+    engine coalesces them onto one run). Guarding them was actively harmful,
+    because generation advances the revision itself: ``confirm_spine`` claims
+    a token and then queues the compile that the very next request has to
+    match, so the first chapter of every book failed with a conflict against
+    its own predecessor. They still claim a revision — a later shared edit
+    should know the book moved — they just do not refuse a stale one.
     """
 
     book = resolved.engine.load_book(book_id)
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
     current = max(1, int(book.revision or 1))
-    if resolved.is_shared and expected_revision is None:
+    if strict and resolved.is_shared and expected_revision is None:
         raise HTTPException(
             status_code=409,
             detail={
@@ -290,12 +311,19 @@ def _claim_content_mutation(
                 "current_revision": current,
             },
         )
-    if expected_revision is not None and expected_revision != current:
+    if strict and expected_revision is not None and expected_revision != current:
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "book_revision_conflict",
-                "message": "The book was updated by another collaborator.",
+                # A personal book has no collaborators, so blaming one was a
+                # lie the reader could not act on. Same guard, honest cause:
+                # their view is simply behind the book.
+                "message": (
+                    "The book was updated by another collaborator."
+                    if resolved.is_shared
+                    else "This book changed since your last action — reloading the latest version."
+                ),
                 "expected_revision": expected_revision,
                 "current_revision": current,
             },
@@ -321,6 +349,43 @@ def _claim_content_mutation(
     elif get_current_user().is_admin:
         log_admin_action("book_edit", summary=summary)
     return book.revision
+
+
+def _normalize_block_types(values: list[str]) -> list[str]:
+    normalized = [BlockType.SECTION.value]
+    seen = {BlockType.SECTION}
+    for value in values:
+        try:
+            block_type = BlockType(value.strip().lower())
+        except ValueError:
+            continue
+        if block_type in seen:
+            continue
+        seen.add(block_type)
+        normalized.append(block_type.value)
+    return normalized
+
+
+def _persist_requested_block_types(
+    resolved: ResolvedBook,
+    book_id: str,
+    requested: list[str] | None,
+) -> None:
+    if requested is None:
+        return
+
+    book = resolved.engine.load_book(book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Book not found")
+    metadata = dict(book.metadata or {})
+    if requested:
+        metadata["block_types"] = _normalize_block_types(requested)
+    else:
+        metadata.pop("block_types", None)
+    book.metadata = metadata
+    book.updated_at = time.time()
+    storage = getattr(resolved.engine, "storage", None) or get_book_storage()
+    storage.save_book(book)
 
 
 def _normalize_capture_text(value: str) -> str:
@@ -477,7 +542,27 @@ async def estimate_basis(depth: str = "standard") -> dict[str, Any]:
     and stays honest, because the numbers come from the same templates the
     architect plans from.
     """
+    from deeptutor.book.estimate import chapter_basis
+
     return {"depth": depth, "basis": chapter_basis(depth)}
+
+
+@router.get("/books/block-types")
+async def block_types() -> dict[str, list[dict[str, str | bool]]]:
+    from deeptutor.book.agents.page_planner import (
+        PLANNABLE_BLOCK_TYPES,
+        PLANNER_DEFAULT_BLOCK_TYPES,
+    )
+
+    return {
+        "block_types": [
+            {
+                "value": block_type.value,
+                "planner_default": block_type in PLANNER_DEFAULT_BLOCK_TYPES,
+            }
+            for block_type in sorted(PLANNABLE_BLOCK_TYPES, key=lambda item: item.value)
+        ]
+    }
 
 
 @router.get("/books")
@@ -774,6 +859,7 @@ async def confirm_spine(req: ConfirmSpineRequest) -> dict[str, Any]:
             edited = Spine.model_validate(req.spine)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid spine: {exc}")
+    _persist_requested_block_types(resolved, req.book_id, req.block_types)
     try:
         pages = await engine.confirm_spine(
             book_id=req.book_id,
@@ -799,6 +885,8 @@ async def compile_page(req: CompilePageRequest) -> dict[str, Any]:
         req.expected_revision,
         "compile_page",
         extra={"page_id": req.page_id, "force": req.force},
+        # Generation command, not an edit — see `_claim_content_mutation`.
+        strict=False,
     )
     try:
         page = await engine.compile_page(book_id=req.book_id, page_id=req.page_id, force=req.force)
@@ -1251,6 +1339,7 @@ async def resume_book(req: ResumeBookRequest) -> dict[str, Any]:
         req.book_id,
         req.expected_revision,
         "resume",
+        strict=False,
     )
     try:
         pages = await engine.resume_book(book_id=req.book_id)
@@ -1272,6 +1361,7 @@ async def pause_book(req: PauseBookRequest) -> dict[str, Any]:
         req.book_id,
         req.expected_revision,
         "pause",
+        strict=False,
     )
     try:
         pages = await engine.pause_book(book_id=req.book_id)
@@ -1293,6 +1383,7 @@ async def rebuild_book(req: RebuildBookRequest) -> dict[str, Any]:
         req.expected_revision,
         "rebuild",
     )
+    _persist_requested_block_types(resolved, req.book_id, req.block_types)
     try:
         pages = await engine.rebuild_book(book_id=req.book_id, auto_compile=req.auto_compile)
     except ValueError as exc:
@@ -1558,6 +1649,7 @@ async def book_websocket(ws: WebSocket) -> None:
                         data.get("expected_revision"),
                         "compile_page",
                         extra={"page_id": str(data.get("page_id") or "")},
+                        strict=False,
                     )
                     page = await engine.compile_page(
                         book_id=book_id,

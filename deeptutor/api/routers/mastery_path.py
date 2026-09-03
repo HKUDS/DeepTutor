@@ -28,6 +28,7 @@ from deeptutor.learning.models import (
 )
 from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
+from deeptutor.learning.topic_generation import MAX_MODULE_LIMIT
 from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.utils.json_parser import parse_json_response
 
@@ -185,16 +186,23 @@ class GenerateTopicDraftRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     goal: str = Field(..., min_length=1, max_length=2_000)
     sources: list[TopicSourceRequest] = Field(default_factory=list, max_length=16)
+    #: Documents a previous draft left out. Sent when the learner asks for
+    #: them to be covered, so the regeneration is told what was missed rather
+    #: than being asked the same question and expected to answer differently.
+    must_cover: list[str] = Field(default_factory=list, max_length=40)
 
 
 class ConfirmTopicRequest(GenerateTopicDraftRequest):
     description: str = Field(default="", max_length=500)
     emoji: str = Field(default="🧭", max_length=16)
-    modules: list[dict] = Field(..., min_length=1, max_length=8)
+    # The region ceiling is the generator's, not a second opinion: a route
+    # over a fourteen-document library legitimately has more than eight, and
+    # this used to reject the very draft the server had just produced.
+    modules: list[dict] = Field(..., min_length=1, max_length=MAX_MODULE_LIMIT)
 
 
 class EditTopicMapRequest(BaseModel):
-    modules: list[dict] = Field(..., min_length=1, max_length=8)
+    modules: list[dict] = Field(..., min_length=1, max_length=MAX_MODULE_LIMIT)
 
 
 class LearnerOverrideRequest(BaseModel):
@@ -345,6 +353,7 @@ async def generate_topic_route(body: GenerateTopicDraftRequest):
             goal=body.goal,
             sources=_topic_sources(body.sources),
             language=get_response_language(),
+            must_cover=body.must_cover,
         )
     except TopicGenerationError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -359,7 +368,9 @@ async def create_topic(body: ConfirmTopicRequest):
 
     path_id = f"topic_{uuid.uuid4().hex}"
     try:
-        modules = materialize_modules(path_id, body.modules, strict=True)
+        modules = materialize_modules(
+            path_id, body.modules, strict=True, module_limit=MAX_MODULE_LIMIT
+        )
     except TopicGenerationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     sources = _topic_sources(body.sources)
@@ -414,6 +425,7 @@ async def edit_topic_map(path_id: str, body: EditTopicMapRequest):
                 strict=True,
                 existing_module_ids=existing_module_ids,
                 existing_objective_ids=existing_objective_ids,
+                module_limit=MAX_MODULE_LIMIT,
             )
         except TopicGenerationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -461,40 +473,15 @@ async def list_topic_sessions(path_id: str):
     learning_store = LearningStore()
     if not await asyncio.to_thread(learning_store.exists, path_id):
         raise HTTPException(status_code=404, detail="Mastery topic not found")
-    session_ids = await asyncio.to_thread(learning_store.list_session_ids, path_id)
-    from deeptutor.services.session import get_session_store
+    # The same walk chat's navigation tools use (``learning.navigation``), so
+    # the atlas screen and a hand-off card can never disagree about which
+    # conversations a topic has.
+    from deeptutor.learning.navigation import topic_sessions
 
-    session_store = get_session_store()
-    active_interaction = await asyncio.to_thread(
-        learning_store.get_active_interaction,
-        path_id,
-    )
-    pending_session_id = active_interaction.session_id if active_interaction else ""
-    session_summaries = await session_store.get_session_summaries(session_ids)
-    sessions = []
-    for session in session_summaries:
-        session_id = str(session.get("session_id") or session.get("id") or "")
-        preferences = session.get("preferences") or {}
-        last_message = str(session.get("last_message") or "").strip()
-        sessions.append(
-            {
-                "session_id": session.get("session_id") or session.get("id") or session_id,
-                "title": session.get("title") or "",
-                "created_at": session.get("created_at") or 0,
-                "updated_at": session.get("updated_at") or 0,
-                "status": session.get("status") or "idle",
-                "active_turn_id": session.get("active_turn_id") or "",
-                "message_count": int(session.get("message_count") or 0),
-                "last_message": last_message[:240],
-                "pinned": bool(preferences.get("pinned")),
-                "archived": bool(preferences.get("archived")),
-                "has_pending_question": bool(
-                    pending_session_id and pending_session_id == session_id
-                ),
-            }
-        )
-    sessions.sort(key=lambda item: item["updated_at"], reverse=True)
-    return {"path_id": path_id, "sessions": sessions}
+    return {
+        "path_id": path_id,
+        "sessions": await topic_sessions(path_id, store=learning_store),
+    }
 
 
 @router.get("/topics/{path_id}/ask-hint")

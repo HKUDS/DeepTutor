@@ -6,8 +6,19 @@ of every reply, then the rest of the content. The parser detects that label
 up front, tolerates a few provider/model formatting slips, and routes the
 post-label stream accordingly.
 
-Label sets are caller-supplied: chat uses ``(FINISH, TOOL, THINK)``, a solve
-step uses ``(THINK, TOOL, FINISH, REPLAN)``, plan uses ``(PLAN,)``, etc.
+Label sets are caller-supplied: the research block loop uses
+``(THINK, TOOL, APPEND, FINISH)``, its report sub-phases take a single
+terminal label each (``(OUTLINE,)``, ``(INTRO,)``, ``(SECTION,)``, ...), and
+the question and PageIndex loops use ``(THINK, TOOL, FINISH)``.
+
+Chat is **not** one of those callers, and neither is anything else running on
+the chat loop (mastery, reading, ...). Chat carried this protocol until
+``46093e5e`` (2026-06-11) and now drives its rounds through native tool
+calling instead: a round that carries ``tool_calls`` is a tool round, a round
+without them finishes the turn, and no label is ever asked of the model.
+Reasoning the model writes into the *content* channel is recognised there
+only when tagged ``<think>``, which ``InlineThinkFilter`` in
+``deeptutor.agents.chat.agent_loop`` splits off at streaming time.
 """
 
 from __future__ import annotations

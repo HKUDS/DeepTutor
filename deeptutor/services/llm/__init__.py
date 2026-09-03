@@ -11,16 +11,19 @@ Architecture:
               ↓
          LLM Factory (complete / stream)
               ↓
-    ┌─────────┴─────────┐
-    ↓                   ↓
-CloudProvider      LocalProvider
-(cloud_provider)   (local_provider)
+         provider_factory.get_runtime_provider()
+              ↓
+    provider_core.* (one SDK-backed class per backend:
+    openai_compat / anthropic / azure_openai / openai_codex /
+    github_copilot / codebuddy)
 
 Features:
 - Unified interface for all LLM providers (cloud + local)
 - Automatic retry with exponential backoff
-- Smart routing based on URL detection
-- Provider capability detection
+- Provider capability detection, overridable per model in Settings
+
+``cloud_provider`` and ``local_provider`` remain only for listing models and
+as deprecated shims for out-of-tree callers of their old ``complete``/``stream``.
 
 Usage:
     # Simple completion (with automatic retry)

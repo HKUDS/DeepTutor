@@ -11,6 +11,7 @@ from deeptutor.agents._shared.tool_composition import (
     ToolMountFlags,
     compose_enabled_tools,
     default_optional_tools,
+    user_has_mastery_topics,
     user_has_memory,
     user_has_notebooks,
     user_has_question_bank,
@@ -283,6 +284,7 @@ class AgenticChatPipeline:
             extra_headers=self.extra_headers or None,
             reasoning_effort=self.reasoning_effort,
             wire_api=getattr(self.llm_config, "wire_api", None) or "auto",
+            api_format=getattr(self.llm_config, "api_format", None) or "auto",
         )
 
     @property
@@ -651,6 +653,16 @@ class AgenticChatPipeline:
                 has_deferred_tools=getattr(self, "_deferred_loader", None) is not None,
                 has_exec=getattr(self, "_exec_enabled", False),
                 has_code=getattr(self, "_exec_enabled", False),
+                # Reaching a mastery topic is a chat-wide affordance, not part
+                # of any capability: the learner names what they are studying
+                # and gets a card that opens the real study screen. Only the
+                # atlas listing is withheld from a mastery turn, which reads
+                # its own through ``mastery_paths``.
+                has_mastery_nav=self._mastery_nav_available(context),
+                has_mastery_topics=(
+                    self._mastery_nav_available(context)
+                    and not context.metadata.get("mastery_mode")
+                ),
             ),
             capability_owned=self._capability_owned_tools(context),
             exclusive=self._exclusive_capability_active(context),
@@ -667,6 +679,20 @@ class AgenticChatPipeline:
             suppressed=_PARTNER_SUPPRESSED_TOOLS if is_partner else (),
         )
         return _drop_unconfigured_generation_tools(composed)
+
+    def _mastery_nav_available(self, context: UnifiedContext) -> bool:
+        """Whether this turn should be able to point at a mastery topic.
+
+        Resolved once per turn and cached on the context: the gate opens a
+        SQLite connection, and the two flags derived from it are read
+        independently.
+        """
+        cached = context.metadata.get("_mastery_nav_available")
+        if isinstance(cached, bool):
+            return cached
+        available = user_has_mastery_topics()
+        context.metadata["_mastery_nav_available"] = available
+        return available
 
     def _active_loop_capabilities(self, context: UnifiedContext) -> tuple[LoopExtension, ...]:
         return active_loop_capabilities(context)
@@ -1112,7 +1138,6 @@ class AgenticChatPipeline:
         from deeptutor.services.path_service import get_path_service
 
         kwargs = dict(args)
-        turn_id = str(context.metadata.get("turn_id", "") or "").strip()
         workspace_key = self._workspace_key(context)
         task_dir = (
             get_path_service().get_task_workspace("chat", workspace_key) if workspace_key else None

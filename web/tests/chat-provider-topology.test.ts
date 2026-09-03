@@ -21,11 +21,9 @@ test("Mastery study receives its own runtime outside the workspace group", () =>
   );
 });
 
-test("the runtime provider owns store, actions, transport, and cleanup", () => {
+test("the runtime provider mounts one live state owner", () => {
   const provider = source("features/chat/ChatRuntimeProvider.tsx");
-  assert.match(provider, /createChatStore/);
-  assert.match(provider, /new ChatActions/);
-  assert.match(provider, /new TurnRuntimeClient/);
-  assert.match(provider, /actions\.close/);
+  assert.match(provider, /ChatStateAdapterProvider/);
+  assert.doesNotMatch(provider, /createChatStore|ChatActions|ChatStoreProvider/);
   assert.match(provider, /cannot be nested/);
 });

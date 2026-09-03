@@ -91,6 +91,19 @@ test("waiting-input replies stay commands and runtime config cannot leak into ca
   assert.equal("subagent_consult_budget" in (wire.config ?? {}), false);
 });
 
+test("optional routing fields preserve omitted versus explicit null", () => {
+  const omitted = buildStartTurnInput({ content: "append" });
+  const explicit = buildStartTurnInput({
+    content: "root edit",
+    capability: null,
+    parentMessageId: null,
+  });
+
+  assert.equal("parent_message_id" in omitted, false);
+  assert.equal(explicit.parent_message_id, null);
+  assert.equal(explicit.capability, null);
+});
+
 test("the positional compatibility adapter produces object-shaped input", () => {
   const input = legacySendMessageInput(
     { content: "legacy", config: { difficulty: "hard" } },

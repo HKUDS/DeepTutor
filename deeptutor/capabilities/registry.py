@@ -3,31 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from functools import cache
+import importlib
 import inspect
 import logging
 from typing import Any, cast
 import warnings
 
-from deeptutor.capabilities.ask_questions import AskQuestionsLoopCapability
-from deeptutor.capabilities.course_study import CourseStudyLoopCapability
-from deeptutor.capabilities.explore_context import ExploreContextCapability
-from deeptutor.capabilities.ima import ImaCapability
-from deeptutor.capabilities.marginnote4 import MarginNoteCapability
-from deeptutor.capabilities.mastery import MasteryLoopCapability
-from deeptutor.capabilities.obsidian import ObsidianCapability
-from deeptutor.capabilities.partner_authoring import PartnerAuthoringCapability
-from deeptutor.capabilities.partner_group import PartnerGroupCapability
 from deeptutor.capabilities.protocol import LoopExtension
-from deeptutor.capabilities.reading import ReadingCapability
-from deeptutor.capabilities.setup import SetupCapability
-from deeptutor.capabilities.solve import SolveLoopCapability
-from deeptutor.capabilities.subagent import SubagentCapability
-from deeptutor.capabilities.watching import WatchingCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.entry_points import load_entry_point_group
 from deeptutor.runtime.capability_catalog import EmptyConfig, get_capability_catalog
-from deeptutor.visualizers.loop_capability import VisualizationLoopCapability
 
 logger = logging.getLogger(__name__)
 
@@ -36,25 +23,80 @@ LOOP_CAPABILITIES_GROUP = "deeptutor.loop_capabilities"
 
 LoopFactory = Callable[[], LoopExtension]
 
-LOOP_EXTENSION_FACTORIES: tuple[LoopFactory, ...] = cast(
-    tuple[LoopFactory, ...],
-    (
-        AskQuestionsLoopCapability,
-        MasteryLoopCapability,
-        SolveLoopCapability,
-        ObsidianCapability,
-        MarginNoteCapability,
-        SubagentCapability,
-        ImaCapability,
-        ReadingCapability,
-        CourseStudyLoopCapability,
-        WatchingCapability,
-        ExploreContextCapability,
-        SetupCapability,
-        PartnerAuthoringCapability,
-        PartnerGroupCapability,
-        VisualizationLoopCapability,
+
+@dataclass(frozen=True, slots=True)
+class LoopCapabilitySpec:
+    """Import-free descriptor for a built-in chat-loop extension."""
+
+    name: str
+    class_path: str
+
+    def create(self) -> LoopExtension:
+        module_path, class_name = self.class_path.rsplit(":", 1)
+        factory = getattr(importlib.import_module(module_path), class_name)
+        extension = factory()
+        if getattr(extension, "name", None) != self.name:
+            raise RuntimeError(
+                f"Loop capability descriptor drift for {self.class_path}: "
+                f"expected {self.name!r}, got {getattr(extension, 'name', None)!r}"
+            )
+        return cast(LoopExtension, extension)
+
+    def __call__(self) -> LoopExtension:
+        return self.create()
+
+
+BUILTIN_LOOP_CAPABILITY_SPECS: tuple[LoopCapabilitySpec, ...] = (
+    LoopCapabilitySpec(
+        "ask_questions",
+        "deeptutor.capabilities.ask_questions.loop:AskQuestionsLoopCapability",
     ),
+    LoopCapabilitySpec("mastery", "deeptutor.capabilities.mastery.loop:MasteryLoopCapability"),
+    LoopCapabilitySpec("solve", "deeptutor.capabilities.solve.loop:SolveLoopCapability"),
+    LoopCapabilitySpec("obsidian", "deeptutor.capabilities.obsidian.capability:ObsidianCapability"),
+    LoopCapabilitySpec(
+        "marginnote4",
+        "deeptutor.capabilities.marginnote4.capability:MarginNoteCapability",
+    ),
+    LoopCapabilitySpec(
+        "subagent",
+        "deeptutor.capabilities.subagent.capability:SubagentCapability",
+    ),
+    LoopCapabilitySpec("ima", "deeptutor.capabilities.ima.capability:ImaCapability"),
+    LoopCapabilitySpec(
+        "immersive_reading",
+        "deeptutor.capabilities.reading.capability:ReadingCapability",
+    ),
+    LoopCapabilitySpec(
+        "course_study",
+        "deeptutor.capabilities.course_study.capability:CourseStudyLoopCapability",
+    ),
+    LoopCapabilitySpec(
+        "immersive_watching",
+        "deeptutor.capabilities.watching.capability:WatchingCapability",
+    ),
+    LoopCapabilitySpec(
+        "explore_context",
+        "deeptutor.capabilities.explore_context.capability:ExploreContextCapability",
+    ),
+    LoopCapabilitySpec("setup", "deeptutor.capabilities.setup.capability:SetupCapability"),
+    LoopCapabilitySpec(
+        "partner_authoring",
+        "deeptutor.capabilities.partner_authoring.capability:PartnerAuthoringCapability",
+    ),
+    LoopCapabilitySpec(
+        "partner_group",
+        "deeptutor.capabilities.partner_group.capability:PartnerGroupCapability",
+    ),
+    LoopCapabilitySpec(
+        "visualization_generation",
+        "deeptutor.visualizers.loop_capability:VisualizationLoopCapability",
+    ),
+)
+
+# Compatibility surface: the descriptors remain zero-argument callables.
+LOOP_EXTENSION_FACTORIES: tuple[LoopFactory, ...] = cast(
+    tuple[LoopFactory, ...], BUILTIN_LOOP_CAPABILITY_SPECS
 )
 
 
@@ -111,7 +153,7 @@ def _coerce_loop_factory(loaded: object) -> tuple[LoopExtension, LoopFactory] | 
 def discover_external_loop_capabilities() -> tuple[tuple[str, LoopFactory], ...]:
     """Discover factory specs from canonical and one-version legacy groups."""
 
-    seen = {cap.name for cap in _builtin_loop_extensions()}
+    seen = {spec.name for spec in BUILTIN_LOOP_CAPABILITY_SPECS}
 
     def _accept(ep_name: str, loaded: object) -> tuple[str, LoopFactory] | None:
         resolved = _coerce_loop_factory(loaded)
@@ -155,9 +197,7 @@ def all_loop_capabilities() -> tuple[LoopExtension, ...]:
     """Create an isolated extension set for the caller's turn."""
 
     specs: list[tuple[str, LoopFactory]] = []
-    for factory in LOOP_EXTENSION_FACTORIES:
-        preview = factory()
-        specs.append((preview.name, factory))
+    specs.extend((spec.name, spec) for spec in BUILTIN_LOOP_CAPABILITY_SPECS)
     specs.extend(discover_external_loop_capabilities())
     for name, factory in specs:
         _register_loop_entry(name, factory)
@@ -188,6 +228,7 @@ def capability_tool_owners() -> dict[str, str]:
 
 __all__ = [
     "EXTENSIONS_GROUP",
+    "BUILTIN_LOOP_CAPABILITY_SPECS",
     "LOOP_CAPABILITIES",
     "LOOP_CAPABILITIES_GROUP",
     "LOOP_EXTENSION_FACTORIES",

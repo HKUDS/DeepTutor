@@ -14,11 +14,14 @@ from deeptutor.services.provider_registry import (
     NANOBOT_LLM_PROVIDERS,
     PROVIDERS,
     ProviderSpec,
+    api_format_for_provider,
+    api_format_from_legacy,
     canonical_provider_name,
     find_by_model,
     find_by_name,
     find_gateway,
     wire_api_for_provider,
+    wire_api_from_api_format,
 )
 from deeptutor.services.videogen.config import VideogenConfig
 from deeptutor.services.voice.config import (
@@ -39,7 +42,12 @@ from .embedding_endpoint import (
     normalize_embedding_endpoint_for_display,
 )
 from .loader import load_config_with_main
-from .model_catalog import ModelCatalogService, get_model_catalog_service
+from .model_catalog import (
+    LLM_SHAPED_SERVICES,
+    MODEL_CAPABILITY_KEYS,
+    ModelCatalogService,
+    get_model_catalog_service,
+)
 
 
 @dataclass(frozen=True)
@@ -565,8 +573,11 @@ class ResolvedLLMConfig:
     api_version: str | None = None
     extra_headers: dict[str, str] = field(default_factory=dict)
     wire_api: str = "auto"
+    api_format: str = "auto"
     reasoning_effort: str | None = None
     context_window: int | None = None
+    # The active model's explicit capability overrides (see MODEL_CAPABILITY_KEYS).
+    capabilities: dict[str, bool] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -674,6 +685,38 @@ def _with_personal_llm_profiles(catalog: dict[str, Any]) -> dict[str, Any]:
         return merge_personal_llm_profiles(catalog)
     except Exception:
         return catalog
+
+
+def _model_capabilities(model: dict[str, Any] | None) -> dict[str, bool]:
+    raw = (model or {}).get("capabilities")
+    if not isinstance(raw, dict):
+        return {}
+    return {key: bool(raw[key]) for key in MODEL_CAPABILITY_KEYS if isinstance(raw.get(key), bool)}
+
+
+def _register_catalog_capabilities(catalog: dict[str, Any]) -> None:
+    """Publish every model's explicit capability overrides to the LLM tables.
+
+    Runs on each resolution so an override removed in Settings stops applying
+    without a restart. Imported lazily: ``deeptutor.services.llm`` imports this
+    module for its config, so a module-level import would close a cycle.
+    """
+    from deeptutor.services.llm.capabilities import set_catalog_capability_overrides
+
+    entries: list[tuple[str, str, dict[str, bool]]] = []
+    for service_name in LLM_SHAPED_SERVICES:
+        service = catalog.get("services", {}).get(service_name, {})
+        for profile in service.get("profiles", []) or []:
+            if not isinstance(profile, dict):
+                continue
+            binding = canonical_provider_name(_as_str(profile.get("binding"))) or ""
+            for model in profile.get("models", []) or []:
+                if not isinstance(model, dict):
+                    continue
+                overrides = _model_capabilities(model)
+                if overrides:
+                    entries.append((binding, _as_str(model.get("model")), overrides))
+    set_catalog_capability_overrides(entries)
 
 
 def _active_profile_and_model(
@@ -787,6 +830,7 @@ def resolve_llm_runtime_config(
     active_api_base = _as_str((profile or {}).get("base_url"))
     active_api_version = _as_str((profile or {}).get("api_version"))
     configured_wire_api = _as_str((profile or {}).get("wire_api")) or "auto"
+    configured_api_format = (profile or {}).get("api_format")
     reasoning_effort = _as_str((model or {}).get("reasoning_effort")) or None
     # Per-conversation override (#641): an explicit reasoning_effort on the
     # caller's LLMSelection takes precedence over the profile/model default
@@ -817,6 +861,14 @@ def resolve_llm_runtime_config(
     if not api_key and spec.is_local:
         api_key = "sk-no-key-required"
     extra_headers = active_extra_headers or ((mapped.extra_headers or {}) if mapped else {})
+    # Profiles written before ``api_format`` existed carry only ``wire_api``;
+    # derive the format from it so their requests are byte-for-byte unchanged.
+    if configured_api_format is None:
+        api_format = api_format_from_legacy(spec, configured_wire_api)
+    else:
+        api_format = api_format_for_provider(configured_api_format, spec)
+    wire_api = wire_api_for_provider(wire_api_from_api_format(api_format), spec)
+    _register_catalog_capabilities(loaded)
 
     return ResolvedLLMConfig(
         model=resolved_model,
@@ -829,9 +881,11 @@ def resolve_llm_runtime_config(
         effective_url=api_base or None,
         api_version=api_version or None,
         extra_headers=extra_headers,
-        wire_api=wire_api_for_provider(configured_wire_api, spec),
+        wire_api=wire_api,
+        api_format=api_format,
         reasoning_effort=reasoning_effort,
         context_window=context_window,
+        capabilities=_model_capabilities(model),
     )
 
 
@@ -1275,8 +1329,6 @@ def search_missing_credential(provider: str, api_key: str, base_url: str) -> str
 def search_fallback_candidates(
     requested: str,
     catalog: dict[str, Any] | None = None,
-    *,
-    service: ModelCatalogService | None = None,
 ) -> list[str]:
     """Ordered providers to try after *requested* fails at runtime.
 
@@ -1287,7 +1339,6 @@ def search_fallback_candidates(
     enter the chain, and ``none`` — an explicit "search is off" — is excluded.
     """
     name = (requested or "").strip().lower()
-    catalog_service = service or get_model_catalog_service()
     loaded = _load_catalog(catalog)
     candidates: list[str] = []
     for profile in _search_profiles(loaded):

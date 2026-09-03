@@ -32,22 +32,52 @@ export interface AuthStatus {
   } | null;
 }
 
+const AUTH_STATUS_CACHE_MS = 5_000;
+let authStatusRequest: Promise<AuthStatus | null> | null = null;
+let cachedAuthStatus: { value: AuthStatus | null; expiresAt: number } | null =
+  null;
+
+export function invalidateAuthStatusCache(): void {
+  authStatusRequest = null;
+  cachedAuthStatus = null;
+}
+
 /**
  * Call the backend to check whether the current session is authenticated.
  * Returns null on network error so callers can decide how to handle it.
  */
-export async function fetchAuthStatus(): Promise<AuthStatus | null> {
-  try {
-    const res = await apiFetch(apiUrl("/api/auth/status"));
-    if (!res.ok) return null;
-    const status: AuthStatus = await res.json();
-    // Record the real auth state so apiFetch's in-session 401 → /login redirect
-    // fires only when auth is actually enabled.
-    setRuntimeAuthEnabled(Boolean(status.enabled));
-    return status;
-  } catch {
-    return null;
+export function fetchAuthStatus(): Promise<AuthStatus | null> {
+  if (cachedAuthStatus && cachedAuthStatus.expiresAt > Date.now()) {
+    return Promise.resolve(cachedAuthStatus.value);
   }
+  if (!authStatusRequest) {
+    authStatusRequest = (async () => {
+      try {
+        const res = await apiFetch(apiUrl("/api/auth/status"));
+        if (!res.ok) return null;
+        const status: AuthStatus = await res.json();
+        // Record the real auth state so apiFetch's in-session 401 → /login redirect
+        // fires only when auth is actually enabled.
+        setRuntimeAuthEnabled(Boolean(status.enabled));
+        return status;
+      } catch {
+        return null;
+      }
+    })()
+      .then((status) => {
+        cachedAuthStatus = {
+          value: status,
+          // Retry unavailable backends quickly; stable answers can be shared
+          // across the shell and Settings providers for one navigation.
+          expiresAt: Date.now() + (status === null ? 1_000 : AUTH_STATUS_CACHE_MS),
+        };
+        return status;
+      })
+      .finally(() => {
+        authStatusRequest = null;
+      });
+  }
+  return authStatusRequest;
 }
 
 /**
@@ -67,7 +97,10 @@ export async function login(
       skipAuthRedirect: true,
     });
 
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      invalidateAuthStatusCache();
+      return { ok: true };
+    }
 
     const data = await res.json().catch(() => ({}));
     return { ok: false, error: extractDetail(data.detail) ?? "Login failed" };
@@ -114,8 +147,10 @@ export async function register(
     });
 
     const data = await res.json().catch(() => ({}));
-    if (res.ok)
+    if (res.ok) {
+      invalidateAuthStatusCache();
       return { ok: true, role: data.role, is_first_user: data.is_first_user };
+    }
     return { ok: false, error: extractDetail(data.detail) };
   } catch {
     return { ok: false, error: "Could not reach the server" };
@@ -146,5 +181,7 @@ export async function logout(): Promise<void> {
     });
   } catch {
     // Ignore — we'll redirect regardless
+  } finally {
+    invalidateAuthStatusCache();
   }
 }

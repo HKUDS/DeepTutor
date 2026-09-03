@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import stat
+
+import pytest
 
 from deeptutor.services.path_service import PathService
 
@@ -143,7 +147,7 @@ def test_task_workspace_maps_capabilities_into_workspace_chat(tmp_path: Path) ->
         service._user_data_dir = original_user_dir
 
 
-def test_memory_dir_migrates_missing_legacy_markdown_when_target_exists(
+def test_memory_dir_lookup_is_pure_and_explicit_migration_moves_legacy_markdown(
     tmp_path: Path,
 ) -> None:
     service = PathService.get_instance()
@@ -165,15 +169,19 @@ def test_memory_dir_migrates_missing_legacy_markdown_when_target_exists(
         new_dir.mkdir(parents=True, exist_ok=True)
 
         assert service.get_memory_dir() == new_dir
+        assert not (new_dir / "SUMMARY.md").exists()
+        assert service.migrate_legacy_memory_markdown() is True
         assert (new_dir / "SUMMARY.md").read_text(encoding="utf-8") == "legacy summary"
         assert (new_dir / "PROFILE.md").read_text(encoding="utf-8") == "legacy profile"
+        assert not (old_dir / "SUMMARY.md").exists()
+        assert service.migrate_legacy_memory_markdown() is False
     finally:
         service._project_root = original_root
         service._workspace_root = original_workspace_root
         service._user_data_dir = original_user_dir
 
 
-def test_memory_dir_migration_preserves_existing_target_files(tmp_path: Path) -> None:
+def test_memory_dir_migration_preserves_conflicting_target_files(tmp_path: Path) -> None:
     service = PathService.get_instance()
     original_root = service._project_root
     original_user_dir = service._user_data_dir
@@ -192,9 +200,28 @@ def test_memory_dir_migration_preserves_existing_target_files(tmp_path: Path) ->
         new_dir.mkdir(parents=True, exist_ok=True)
         (new_dir / "PROFILE.md").write_text("current profile", encoding="utf-8")
 
-        assert service.get_memory_dir() == new_dir
+        assert service.migrate_legacy_memory_markdown() is True
         assert (new_dir / "PROFILE.md").read_text(encoding="utf-8") == "current profile"
+        assert (new_dir / "backup" / "legacy-workspace" / "PROFILE.md").read_text(
+            encoding="utf-8"
+        ) == "legacy profile"
     finally:
         service._project_root = original_root
         service._workspace_root = original_workspace_root
         service._user_data_dir = original_user_dir
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not authoritative")
+def test_ensure_all_directories_keeps_private_roots_owner_only(tmp_path: Path) -> None:
+    service = PathService(workspace_root=tmp_path / "scope")
+
+    service.ensure_all_directories()
+
+    for path in (
+        service.get_user_root(),
+        service.get_settings_dir(),
+        service.get_workspace_dir(),
+        service.get_logs_dir(),
+        service.get_memory_dir(),
+    ):
+        assert stat.S_IMODE(path.stat().st_mode) == 0o700

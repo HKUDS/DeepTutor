@@ -78,6 +78,26 @@ export function reasoningEffortOptions(
   binding: string | null | undefined,
   model: string | null | undefined,
   current = "",
+  declaredReasoning?: boolean | null,
+): ReasoningEffortOption[] {
+  const fromTables = tableReasoningEffortOptions(binding, model, current);
+  // A user who declared the model's reasoning support in Settings overrides
+  // the tables: "yes" exposes the cross-gateway levels when the tables know
+  // nothing, "no" hides the control (a stored value stays visible so it can
+  // still be reset).
+  if (declaredReasoning === true && fromTables.length === 0) {
+    return options(["none", "low", "medium", "high"], current);
+  }
+  if (declaredReasoning === false) {
+    return options([], current);
+  }
+  return fromTables;
+}
+
+function tableReasoningEffortOptions(
+  binding: string | null | undefined,
+  model: string | null | undefined,
+  current: string,
 ): ReasoningEffortOption[] {
   const canonical = (binding ?? "").trim().toLowerCase().replaceAll("-", "_");
   const provider = PROVIDER_ALIASES[canonical] ?? canonical;

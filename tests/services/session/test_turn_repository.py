@@ -4,6 +4,7 @@ import asyncio
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import subprocess
 import sys
 
@@ -50,6 +51,17 @@ def test_sqlite_turn_store_enables_wal_and_busy_timeout(tmp_path) -> None:
         assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
     with store._connect() as conn:
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 30_000
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not authoritative")
+def test_sqlite_turn_store_uses_private_directory_and_database_modes(tmp_path) -> None:
+    private_dir = tmp_path / "private"
+    path = private_dir / "turns.db"
+
+    SQLiteSessionStore(path)
+
+    assert stat.S_IMODE(private_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 @pytest.mark.asyncio

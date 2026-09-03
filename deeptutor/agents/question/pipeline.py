@@ -414,6 +414,7 @@ class QuestionPipeline:
             extra_headers=getattr(self.llm_config, "extra_headers", None) or None,
             reasoning_effort=self.reasoning_effort,
             wire_api=getattr(self.llm_config, "wire_api", None) or "auto",
+            api_format=getattr(self.llm_config, "api_format", None) or "auto",
         )
 
         self.registry = get_tool_registry()

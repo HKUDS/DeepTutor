@@ -10,6 +10,7 @@ import React, {
   useReducer,
   useRef,
 } from "react";
+import type { ClientCommand } from "@/contracts/generated/turn-protocol";
 import {
   RESPONSE_LANGUAGE_EVENT,
   RESPONSE_LANGUAGE_STORAGE_KEY,
@@ -24,6 +25,7 @@ import type {
   LLMSelection,
 } from "@/features/chat/model/protocol";
 import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
+import { buildStartTurnInput } from "@/features/chat/controllers/buildStartTurnInput";
 import {
   getSession,
   deleteMessage,
@@ -55,7 +57,10 @@ import {
   readingTurnFields,
 } from "@/lib/reading-turn-state";
 import { watchingTurnFields } from "@/lib/watching-turn-state";
-import { decideIdleTurnRecovery } from "@/lib/chat-idle-recovery";
+import {
+  decideIdleTurnRecovery,
+  resolveLoadedRunStatus,
+} from "@/lib/chat-idle-recovery";
 import i18n from "i18next";
 import {
   normalizeBookReferences,
@@ -965,6 +970,24 @@ const initialState: ProviderState = {
 // pushes like the LLM-generated ``session_meta`` title update to land.
 const POST_DONE_DISCONNECT_DELAY_MS = 15_000;
 
+/**
+ * How long after DONE to refetch the sidebar so a post-turn title shows up.
+ *
+ * The title is written *after* the turn finishes (see `title_service`), so the
+ * sidebar refresh that `STREAM_END` already triggers necessarily runs before
+ * the title exists — it re-reads the list and gets the placeholder that was
+ * there all along, which is why a finished conversation could sit on "New
+ * conversation" forever.
+ *
+ * The backend publishes the title as a post-DONE `session_meta` frame and the
+ * client holds the socket open for it (above), so that is the primary path —
+ * it was broken until the subscription stopped closing itself on DONE
+ * (`TurnApplication.subscribe_turn`). This refetch stays as the belt to that
+ * brace: a socket dropped between DONE and the title would otherwise lose it
+ * with no second chance, and the cost is one list fetch per turn.
+ */
+const POST_DONE_TITLE_REFRESH_MS = 5_000;
+
 interface ChatContextValue {
   state: ChatState;
   setTools: (tools: string[]) => void;
@@ -1258,6 +1281,20 @@ export function ChatStateAdapterProvider({
     (messages: SessionMessage[]): MessageItem[] => {
       return messages
         .filter((message) => message.role !== "system")
+        // A row with no text, no attachments and no events has nothing to
+        // render — it comes out as an empty bubble. Worse, it still counts as
+        // a message, so a conversation holding only such a row shows neither
+        // a transcript nor the surface's own empty state: the reading
+        // companion went blank, the chat page lost its opening suggestions.
+        // A turn interrupted before its first token leaves exactly this
+        // behind. A streaming assistant message is not affected: it is built
+        // locally as events arrive, never hydrated from the server.
+        .filter(
+          (message) =>
+            normalizeMessageContent(message.content as unknown).trim() !== "" ||
+            (message.attachments?.length ?? 0) > 0 ||
+            (Array.isArray(message.events) && message.events.length > 0),
+        )
         .map((message) => {
           const raw = normalizeMessageContent(message.content as unknown);
           const attachments = hydrateMessageAttachments(message.attachments);
@@ -1379,6 +1416,11 @@ export function ChatStateAdapterProvider({
             runner.client.disconnect();
           }, POST_DONE_DISCONNECT_DELAY_MS);
         }
+        // Pick up a title written after this point — see
+        // POST_DONE_TITLE_REFRESH_MS.
+        window.setTimeout(() => {
+          dispatch({ type: "BUMP_SIDEBAR_REFRESH" });
+        }, POST_DONE_TITLE_REFRESH_MS);
         // Reconcile optimistic client-side message ids with the
         // server's real ids after the turn finishes. Without this the
         // Edit button (which needs a real id to attach the new branch
@@ -1519,7 +1561,11 @@ export function ChatStateAdapterProvider({
   );
 
   const sendThroughRunner = useCallback(
-    function dispatchToRunner(key: string, msg: ChatMessage, attempt = 0) {
+    function dispatchToRunner(
+      key: string,
+      msg: ChatMessage | ClientCommand,
+      attempt = 0,
+    ) {
       const runner = ensureRunner(key);
       if (!runner.client.connected) {
         if (attempt >= 10) {
@@ -1588,6 +1634,18 @@ export function ChatStateAdapterProvider({
         session.preferences?.workspace_mode,
         session.preferences?.capability,
       );
+      // A stored `running` is only believable while it is recent — see
+      // `resolveLoadedRunStatus`. A turn the backend never got to close out
+      // (crash, restart) would otherwise open the conversation into a
+      // permanent "answering" state: Stop instead of Send, with no stream to
+      // stop and no way back except starting a new conversation.
+      const loadedStatus = resolveLoadedRunStatus(
+        (session.status as SessionRuntimeStatus | undefined) ||
+          (activeTurn ? "running" : "idle"),
+        Number(session.updated_at) > 0 ? Number(session.updated_at) * 1000 : 0,
+        Date.now(),
+        readStoredChatResponseTimeout() * 1000,
+      );
       dispatch({
         type: options?.revalidate ? "REVALIDATE_SESSION" : "LOAD_SESSION",
         key,
@@ -1595,9 +1653,7 @@ export function ChatStateAdapterProvider({
         title: session.title || "",
         messages,
         activeTurnId: activeTurn?.turn_id || activeTurn?.id || null,
-        status:
-          (session.status as SessionRuntimeStatus | undefined) ||
-          (activeTurn ? "running" : "idle"),
+        status: loadedStatus,
         tools: Array.isArray(session.preferences?.tools)
           ? session.preferences.tools
           : [],
@@ -1636,10 +1692,12 @@ export function ChatStateAdapterProvider({
           session.preferences?.selected_branches,
         ),
       });
-      if (activeTurn?.turn_id || activeTurn?.id) {
+      if (loadedStatus === "running" && (activeTurn?.turn_id || activeTurn?.id)) {
         // Reached on a revalidate too, when the turn is live on the server but
         // not in this tab (started in another tab, or our socket dropped) —
-        // that is exactly the case that still needs a subscribe.
+        // that is exactly the case that still needs a subscribe. A turn we
+        // just judged stale is not one of them: subscribing would open a
+        // socket for a turn that will never speak again.
         sendThroughRunner(key, {
           type: "subscribe_turn",
           turn_id: activeTurn.turn_id || activeTurn.id,
@@ -1816,15 +1874,27 @@ export function ChatStateAdapterProvider({
         replaySnapshot?.questionNotebookReferences ??
         questionNotebookReferences;
       const liveReadingFields = readingTurnFields(effectiveWorkspaceMode);
+      const effectiveReadingTurnFields = replaySnapshot?.readingMaterialId
+        ? {
+            reading_material_id: replaySnapshot.readingMaterialId,
+            ...(replaySnapshot.readingMaterialRevision
+              ? {
+                  reading_material_revision:
+                    replaySnapshot.readingMaterialRevision,
+                }
+              : {}),
+          }
+        : liveReadingFields;
       const effectiveReadingMaterialId =
-        replaySnapshot?.readingMaterialId ??
-        liveReadingFields.reading_material_id;
+        effectiveReadingTurnFields.reading_material_id;
       const effectiveReadingMaterialRevision =
-        replaySnapshot?.readingMaterialRevision ??
-        liveReadingFields.reading_material_revision;
+        effectiveReadingTurnFields.reading_material_revision;
       const liveWatchingFields = watchingTurnFields(effectiveCapability);
+      const effectiveWatchingTurnFields = replaySnapshot?.timedMediaId
+        ? { timed_media_id: replaySnapshot.timedMediaId }
+        : liveWatchingFields;
       const effectiveTimedMediaId =
-        replaySnapshot?.timedMediaId ?? liveWatchingFields.timed_media_id;
+        effectiveWatchingTurnFields.timed_media_id;
       const requestSnapshot: MessageRequestSnapshot = replaySnapshot ?? {
         content,
         capability: effectiveCapability,
@@ -1924,106 +1994,70 @@ export function ChatStateAdapterProvider({
         legacyPersistUserMessage === false
           ? false
           : undefined;
-      sendThroughRunner(key, {
-        type: "start_turn",
+      sendThroughRunner(
+        key,
+        buildStartTurnInput({
         content,
         tools: effectiveTools,
         capability: effectiveCapability,
-        workspace_mode: effectiveWorkspaceMode ?? "",
-        knowledge_bases: effectiveKnowledgeBases,
-        session_id: session.sessionId,
-        ...(session.courseId.trim()
-          ? { course_id: session.courseId.trim() }
-          : {}),
-        ...(persistUserMessage === false
-          ? { persist_user_message: false }
-          : {}),
-        ...(followupQuestionContext &&
-        typeof followupQuestionContext === "object"
-          ? {
-              followup_question_context: followupQuestionContext as Record<
-                string,
-                unknown
-              >,
-            }
-          : {}),
-        ...(selectionTutorContext && typeof selectionTutorContext === "object"
-          ? {
-              selection_tutor_context: selectionTutorContext as Record<
-                string,
-                unknown
-              >,
-            }
-          : {}),
-        ...(typeof subagentConsultBudget === "number"
-          ? { subagent_consult_budget: subagentConsultBudget }
-          : {}),
-        ...(typeof autoRoute === "boolean" ? { auto_route: autoRoute } : {}),
+        workspaceMode: effectiveWorkspaceMode ?? "",
+        knowledgeBases: effectiveKnowledgeBases,
+        sessionId: session.sessionId,
+        courseId: session.courseId.trim() || null,
+        persistUserMessage,
+        followupQuestionContext:
+          followupQuestionContext && typeof followupQuestionContext === "object"
+            ? (followupQuestionContext as Record<string, unknown>)
+            : null,
+        selectionTutorContext:
+          selectionTutorContext && typeof selectionTutorContext === "object"
+            ? (selectionTutorContext as Record<string, unknown>)
+            : null,
+        subagentConsultBudget:
+          typeof subagentConsultBudget === "number"
+            ? subagentConsultBudget
+            : null,
+        autoRoute: typeof autoRoute === "boolean" ? autoRoute : null,
         attachments: effectiveAttachments,
         language: effectiveLanguage,
-        ...(effectiveNotebookReferences?.length
-          ? { notebook_references: effectiveNotebookReferences }
-          : {}),
-        ...(effectiveHistoryReferences?.length
-          ? { history_references: effectiveHistoryReferences }
-          : {}),
-        ...(effectiveQuestionNotebookReferences?.length
-          ? {
-              question_notebook_references: effectiveQuestionNotebookReferences,
-            }
-          : {}),
-        ...(effectiveBookReferences?.length
-          ? { book_references: effectiveBookReferences }
-          : {}),
-        ...(effectiveReadingReferences?.length
-          ? { reading_references: effectiveReadingReferences }
-          : {}),
-        ...(effectiveMasteryPathId
-          ? { mastery_path_id: effectiveMasteryPathId }
-          : {}),
+        notebookReferences: effectiveNotebookReferences,
+        historyReferences: effectiveHistoryReferences,
+        questionNotebookReferences: effectiveQuestionNotebookReferences,
+        bookReferences: effectiveBookReferences,
+        readingReferences: effectiveReadingReferences,
+        masteryPathId: effectiveMasteryPathId || null,
         // Immersive reading. Gated on the stable workspace mode as well as on
         // an open document: the reader outlives action switches and new
         // sessions, so Home must never inherit its source context.
         // Read from a module cell rather than context state so scrolling the
         // reader never re-renders the chat.
-        ...(replaySnapshot?.readingMaterialId
-          ? {
-              reading_material_id: replaySnapshot.readingMaterialId,
-              ...(replaySnapshot.readingMaterialRevision
-                ? {
-                    reading_material_revision:
-                      replaySnapshot.readingMaterialRevision,
-                  }
-                : {}),
-            }
-          : liveReadingFields),
-        ...(replaySnapshot?.timedMediaId
-          ? { timed_media_id: replaySnapshot.timedMediaId }
-          : liveWatchingFields),
+        readingWorkspaceId:
+          effectiveReadingTurnFields.reading_workspace_id ?? null,
+        readingMaterialId:
+          effectiveReadingTurnFields.reading_material_id ?? null,
+        readingMaterialRevision:
+          effectiveReadingTurnFields.reading_material_revision ?? null,
+        readingViewport: effectiveReadingTurnFields.reading_viewport ?? null,
+        timedMediaId: effectiveWatchingTurnFields.timed_media_id ?? null,
+        timedMediaViewport:
+          effectiveWatchingTurnFields.timed_media_viewport ?? null,
         // Always sent (possibly ""): an explicit key is the backend's signal
         // to persist the value into session.preferences — "" clears back to
         // Default. Omitting the key would make the backend fall back to the
         // stored preference, so a clear could never propagate.
         persona: effectivePersona,
-        ...(effectiveMemoryReferences?.length
-          ? { memory_references: effectiveMemoryReferences }
-          : {}),
-        ...(effectiveLLMSelection
-          ? { llm_selection: effectiveLLMSelection }
-          : {}),
-        ...(Object.keys(finalTurnConfig).length > 0
-          ? { config: finalTurnConfig }
-          : {}),
+        memoryReferences: effectiveMemoryReferences,
+        llmSelection: effectiveLLMSelection,
+        capabilityConfig: finalTurnConfig,
         // Send ``parent_message_id`` only when we have a real (positive)
         // server id to chain under, or when the caller explicitly pinned
         // a parent (incl. ``null`` for editing the session's first
         // message). When the visible tip is still an optimistic
         // negative id, omit the key and let the backend auto-append to
         // the latest persisted row.
-        ...(wireParentId !== undefined
-          ? { parent_message_id: wireParentId }
-          : {}),
-      });
+        parentMessageId: wireParentId,
+        }),
+      );
     },
     [makeDraftKey, sendThroughRunner],
   );

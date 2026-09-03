@@ -1,8 +1,8 @@
-"""Tests for the local LLM provider."""
+"""Tests for local-server model discovery and the deprecated call shims."""
 
 from __future__ import annotations
 
-import json
+from collections.abc import Callable
 from types import TracebackType
 
 from _pytest.monkeypatch import MonkeyPatch
@@ -11,27 +11,10 @@ import pytest
 from deeptutor.services.llm import local_provider
 
 
-class _AsyncIterator:
-    def __init__(self, items: list[bytes]) -> None:
-        self._items = items
-        self._index = 0
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self) -> bytes:
-        if self._index >= len(self._items):
-            raise StopAsyncIteration
-        item = self._items[self._index]
-        self._index += 1
-        return item
-
-
-class _FakeStreamResponse:
-    status = 200
-
-    def __init__(self, lines: list[bytes]) -> None:
-        self.content = _AsyncIterator(lines)
+class _FakeResponse:
+    def __init__(self, status: int, json_data: object) -> None:
+        self.status = status
+        self._json_data = json_data
 
     async def __aenter__(self):
         return self
@@ -43,11 +26,15 @@ class _FakeStreamResponse:
         tb: TracebackType | None,
     ) -> None:
         return None
+
+    async def json(self):
+        return self._json_data
 
 
 class _FakeSession:
-    def __init__(self, response: _FakeStreamResponse) -> None:
-        self._response = response
+    def __init__(self, route: Callable[[str], _FakeResponse]) -> None:
+        self._route = route
+        self.urls: list[str] = []
 
     async def __aenter__(self):
         return self
@@ -60,73 +47,63 @@ class _FakeSession:
     ) -> None:
         return None
 
-    def post(self, _url: str, **_kwargs: object) -> _FakeStreamResponse:
-        return self._response
+    def get(self, url: str, **_kwargs: object) -> _FakeResponse:
+        self.urls.append(url)
+        return self._route(url)
 
 
-def _json_line(content: str) -> bytes:
-    payload = {"choices": [{"delta": {"content": content}}]}
-    return json.dumps(payload).encode() + b"\n"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("chunks", "expected"),
-    [
-        (["before <think>hidden</think>after"], "before after"),
-        (["before <think>hidden</thi", "nk>after"], "before after"),
-        (["before <think>hidden"], "before "),
-    ],
-)
-async def test_non_sse_stream_filters_thinking_blocks(
-    monkeypatch: MonkeyPatch,
-    chunks: list[str],
-    expected: str,
-) -> None:
-    """Non-SSE JSON streams should never expose model reasoning tags."""
-    fake_response = _FakeStreamResponse([_json_line(chunk) for chunk in chunks])
-    monkeypatch.setattr(
-        local_provider.aiohttp,
-        "ClientSession",
-        lambda *args, **kwargs: _FakeSession(fake_response),
-    )
-
-    visible = [
-        chunk
-        async for chunk in local_provider.stream(
-            prompt="hello",
-            model="local-test",
-            base_url="http://localhost:8000/v1",
-        )
-    ]
-
-    assert "".join(visible) == expected
+def _install(monkeypatch: MonkeyPatch, route: Callable[[str], _FakeResponse]) -> _FakeSession:
+    session = _FakeSession(route)
+    monkeypatch.setattr(local_provider.aiohttp, "ClientSession", lambda *a, **kw: session)
+    return session
 
 
 @pytest.mark.asyncio
-async def test_sse_stream_uses_the_same_thinking_filter(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """The shared parser should preserve the existing SSE filtering behavior."""
-    lines = [
-        b'data: {"choices": [{"delta": {"content": "before <think>hidden"}}]}\n',
-        b'data: {"choices": [{"delta": {"content": "</think>after"}}]}\n',
-        b"data: [DONE]\n",
-    ]
-    fake_response = _FakeStreamResponse(lines)
-    monkeypatch.setattr(
-        local_provider.aiohttp,
-        "ClientSession",
-        lambda *args, **kwargs: _FakeSession(fake_response),
+async def test_ollama_models_come_from_api_tags(monkeypatch: MonkeyPatch) -> None:
+    session = _install(
+        monkeypatch,
+        lambda url: (
+            _FakeResponse(200, {"models": [{"name": "llama3"}, {"name": "qwen"}]})
+            if url.endswith("/api/tags")
+            else _FakeResponse(404, {})
+        ),
     )
 
-    visible = [
-        chunk
-        async for chunk in local_provider.stream(
-            prompt="hello",
-            model="local-test",
-            base_url="http://localhost:8000/v1",
-        )
-    ]
+    models = await local_provider.fetch_models("http://localhost:11434/v1")
 
-    assert "".join(visible) == "before after"
+    assert models == ["llama3", "qwen"]
+    assert session.urls == ["http://localhost:11434/api/tags"]
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_models_come_from_models_endpoint(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    session = _install(
+        monkeypatch,
+        lambda url: _FakeResponse(200, {"data": [{"id": "local-a"}, {"id": "local-b"}]}),
+    )
+
+    models = await local_provider.fetch_models("http://localhost:1234/v1")
+
+    assert models == ["local-a", "local-b"]
+    assert session.urls == ["http://localhost:1234/v1/models"]
+
+
+@pytest.mark.asyncio
+async def test_stream_shim_forwards_to_factory(monkeypatch: MonkeyPatch) -> None:
+    from deeptutor.services.llm import factory
+
+    async def fake_stream(prompt: str, **kwargs: object):
+        yield f"{prompt}:{kwargs['model']}"
+
+    monkeypatch.setattr(factory, "stream", fake_stream)
+    with pytest.warns(DeprecationWarning):
+        chunks = [
+            chunk
+            async for chunk in local_provider.stream(
+                "hello", model="local-test", base_url="http://localhost:8000/v1"
+            )
+        ]
+
+    assert chunks == ["hello:local-test"]

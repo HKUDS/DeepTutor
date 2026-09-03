@@ -58,12 +58,35 @@ def notebook_generation_prompts(language: str, records_json: str) -> tuple[str, 
     return system_prompt, user_template.format(records_json=records_json)
 
 
+#: What a regeneration says when the learner asked for specific documents to
+#: be included. Kept beside the templates rather than inside them because an
+#: ordinary first draft must not carry an empty header for it.
+_MUST_COVER_HEADERS = {
+    "zh": "上一版路线漏掉了下面这些文件，这一版必须为每一个都安排位置：",
+    "en": (
+        "The previous route left these documents out. This one must give every "
+        "single one of them a place:"
+    ),
+}
+
+
+def _must_cover_block(language: str, must_cover: list[str]) -> str:
+    if not must_cover:
+        return ""
+    zh = parse_language(language).lower().startswith("zh")
+    header = _MUST_COVER_HEADERS["zh" if zh else "en"]
+    listed = "\n".join(f"- {name}" for name in must_cover[:40])
+    return f"\n{header}\n{listed}\n"
+
+
 def topic_generation_prompts(
     language: str,
     *,
     name: str,
     goal: str,
     sources_json: str,
+    module_limit: int = 8,
+    must_cover: list[str] | None = None,
 ) -> tuple[str, str]:
     prompts = get_learning_prompts(language)
     system_prompt = _get_nested(
@@ -77,10 +100,15 @@ def topic_generation_prompts(
         "Design a route for {name}: {goal}. Sources: {sources_json}",
     )
     system_prompt = append_language_directive(system_prompt, parse_language(language))
+    # The cap travels in the prompt as well as being enforced after the fact:
+    # a model told "3-8 modules" will not offer fourteen, so raising the
+    # server-side limit alone would change nothing.
+    system_prompt = system_prompt.replace("{module_limit}", str(max(3, int(module_limit or 8))))
     return system_prompt, user_template.format(
         name=name,
         goal=goal,
         sources_json=sources_json,
+        must_cover_block=_must_cover_block(language, must_cover or []),
     )
 
 

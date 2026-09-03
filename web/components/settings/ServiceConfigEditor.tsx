@@ -37,6 +37,7 @@ import {
   type CatalogModel,
   type CatalogProfile,
   type LlmContextWindowDetection,
+  type ModelCapabilityKey,
   type ProviderOption,
   type ServiceName,
   getActiveModel,
@@ -44,6 +45,8 @@ import {
   useSettings,
 } from "@/features/settings/store/SettingsStore";
 import { DimensionField } from "./DimensionField";
+import { ModelCapabilityFields } from "./ModelCapabilityFields";
+import { ModelListPicker } from "./ModelListPicker";
 import {
   AddCard,
   CardAction,
@@ -63,6 +66,23 @@ import {
   selectOptionClass,
   stringifyExtraHeaders,
 } from "./shared";
+
+// The protocol an endpoint speaks. Labels and hints are keyed by the backend
+// value so the select never invents a format the registry does not know.
+const API_FORMAT_LABELS: Record<string, string> = {
+  auto: "Auto (recommended)",
+  openai_chat: "OpenAI Chat Completions",
+  openai_responses: "OpenAI Responses",
+  anthropic: "Anthropic Messages",
+};
+const API_FORMAT_HINTS: Record<string, string> = {
+  auto: "Chat Completions for most endpoints; Responses for OpenAI reasoning models, with fallback.",
+  openai_chat: "Send every request to /v1/chat/completions.",
+  openai_responses:
+    "Send every request to /v1/responses. Endpoint errors are returned without falling back.",
+  anthropic: "Send every request as Anthropic Messages (/v1/messages).",
+};
+const LLM_SHAPED = new Set<ServiceName>(["llm", "task"]);
 
 const SERVICE_LABEL: Record<ServiceName, string> = {
   llm: "LLM",
@@ -97,6 +117,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     updateModelBoolField: setModelBoolField,
     updateContextWindowField: setContextWindowField,
     updateReasoningEffort: setReasoningEffort,
+    updateModelCapability: setModelCapability,
     llmContextDetection,
     applyDetectedContextWindow,
     runDetailedTest,
@@ -156,6 +177,17 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
       setReasoningEffort(value, activeProfile?.id, activeModel?.id),
     [setReasoningEffort, activeProfile?.id, activeModel?.id],
   );
+  const updateModelCapability = useCallback(
+    (key: ModelCapabilityKey, value: boolean | null) =>
+      setModelCapability(
+        service,
+        key,
+        value,
+        activeProfile?.id,
+        activeModel?.id,
+      ),
+    [setModelCapability, service, activeProfile?.id, activeModel?.id],
+  );
 
   const activeProviderValue =
     service === "search"
@@ -209,6 +241,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editingProfileName, setEditingProfileName] = useState("");
   const [modelsSyncing, setModelsSyncing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Reset API-key visibility whenever we land on a different profile or
   // switch services — same effect the old code had, but using React's
@@ -268,13 +301,14 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
             activeProfile?.binding,
             activeModel.model,
             activeModel.reasoning_effort,
+            activeModel.capabilities?.reasoning,
           )
       : [];
 
   const syncProviderModels = async (
     connection?: Pick<CatalogProfile, "binding" | "base_url" | "api_key">,
   ) => {
-    if (service !== "llm" || !activeProfile || modelsSyncing) return;
+    if (!LLM_SHAPED.has(service) || !activeProfile || modelsSyncing) return;
     const binding = connection?.binding ?? activeProfile.binding ?? "";
     const baseUrl = connection?.base_url ?? activeProfile.base_url ?? "";
     const apiKey = connection?.api_key ?? activeProfile.api_key ?? "";
@@ -291,6 +325,8 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           base_url: baseUrl,
           api_key: apiKey || null,
           profile_id: profileId,
+          service,
+          api_format: activeProfile.api_format ?? "auto",
         }),
       });
       if (!response.ok) {
@@ -306,7 +342,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
       if (fetched.length === 0) throw new Error(t("No models returned"));
 
       mutateCatalog((next) => {
-        const target = next.services.llm;
+        const target = next.services[service];
         const profile = target.profiles.find((item) => item.id === profileId);
         if (!profile || profile.binding !== binding) return;
         const existing = new Map(
@@ -317,7 +353,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           return previous
             ? { ...previous, name: item.name || previous.name, model: item.id }
             : {
-                id: `llm-model-${Date.now()}-${index}`,
+                id: `${service}-model-${Date.now()}-${index}`,
                 name: item.name || item.id,
                 model: item.id,
               };
@@ -597,6 +633,17 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                                 {t("Sync models")}
                               </CardAction>
                             )}
+                          {LLM_SHAPED.has(service) &&
+                            !isCodexOAuth &&
+                            openedProfile.binding !== "codebuddy" &&
+                            Boolean(
+                              String(openedProfile.base_url || "").trim(),
+                            ) && (
+                              <CardAction onClick={() => setPickerOpen(true)}>
+                                <RefreshCw className="h-3 w-3" />
+                                {t("List models")}
+                              </CardAction>
+                            )}
                           <CardAction
                             onClick={() => addModel(service, openedProfile.id)}
                           >
@@ -755,6 +802,14 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                               </div>
                             )}
                           </>
+                        )}
+                        {LLM_SHAPED.has(service) && !isCodexOAuth && (
+                          <ModelCapabilityFields
+                            binding={activeProfile?.binding}
+                            model={activeModel}
+                            reasoningKnown={reasoningOptions.length > 0}
+                            onChange={updateModelCapability}
+                          />
                         )}
                         {service === "embedding" && (
                           <div>
@@ -990,6 +1045,49 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
               </div>
             </Modal>
           )}
+
+          {pickerOpen &&
+            openedProfile &&
+            (service === "llm" || service === "task") && (
+              <ModelListPicker
+                service={service}
+                profile={openedProfile}
+                existing={openedProfile.models.map((model) => model.model)}
+                onClose={() => setPickerOpen(false)}
+                onAdd={(ids) => {
+                  const profileId = openedProfile.id;
+                  mutateCatalog((next) => {
+                    const target = next.services[service];
+                    const profile = target.profiles.find(
+                      (item) => item.id === profileId,
+                    );
+                    if (!profile) return;
+                    const present = new Set(
+                      profile.models.map((model) => model.model),
+                    );
+                    ids
+                      .filter((id) => !present.has(id))
+                      .forEach((id, index) => {
+                        profile.models.push({
+                          id: `${service}-model-${Date.now()}-${index}`,
+                          name: id,
+                          model: id,
+                        });
+                      });
+                    if (
+                      profile.id === target.active_profile_id &&
+                      !profile.models.some(
+                        (model) => model.id === target.active_model_id,
+                      )
+                    ) {
+                      target.active_model_id = profile.models[0]?.id ?? null;
+                    }
+                  });
+                  setPickerOpen(false);
+                  setToast(t("Added {{count}} models.", { count: ids.length }));
+                }}
+              />
+            )}
 
           <div className="mt-7 min-w-0">
             {/* ── Diagnostics — per-service, inline ── */}
@@ -1267,10 +1365,23 @@ function ProfileFields({
   const {
     draft,
     providers,
-    updateProfileField,
-    updateModelField,
+    updateProfileField: setProfileField,
+    updateModelField: setModelField,
     unlinkProfile,
   } = useSettings();
+  // Bound to the profile on screen. The context mutators fall back to whatever
+  // is *in use* when no id is given, so editing an opened-but-inactive
+  // provider here used to rewrite the active one's fields instead.
+  const updateProfileField = useCallback(
+    (svc: ServiceName, field: keyof CatalogProfile, value: string) =>
+      setProfileField(svc, field, value, profile.id),
+    [setProfileField, profile.id],
+  );
+  const updateModelField = useCallback(
+    (svc: ServiceName, field: keyof CatalogModel, value: string) =>
+      setModelField(svc, field, value, profile.id),
+    [setModelField, profile.id],
+  );
   const [extraOpen, setExtraOpen] = useState(false);
 
   // A profile fed by a connection shows its credentials but does not let them
@@ -1295,9 +1406,30 @@ function ProfileFields({
     profile,
   );
   const isCodeBuddyAuth = service === "llm" && providerValue === "codebuddy";
-  const supportsWireApiSelection =
-    service === "llm" && providerOption?.supports_wire_api_selection === true;
-  const wireApi = profile.wire_api || "auto";
+  const apiFormats = LLM_SHAPED.has(service)
+    ? (providerOption?.api_formats ?? [])
+    : [];
+  const supportsApiFormatSelection = apiFormats.length > 1;
+  const apiFormat =
+    profile.api_format || providerOption?.default_api_format || "auto";
+  const changeApiFormat = (next: string) => {
+    updateProfileField(service, "api_format", next);
+    // A vendor may serve the new format at a different endpoint (MiniMax:
+    // /v1 vs /anthropic). Follow it only while the field still holds the old
+    // format's default — a hand-typed URL is the user's and stays.
+    const baseUrls = providerOption?.base_urls ?? {};
+    const previousDefault = baseUrls[apiFormat] ?? providerOption?.base_url ?? "";
+    const nextDefault = baseUrls[next] ?? providerOption?.base_url ?? "";
+    const current = String(profile.base_url || "").trim();
+    if (
+      !linkedConnection &&
+      nextDefault &&
+      nextDefault !== current &&
+      (!current || current === previousDefault)
+    ) {
+      updateProfileField(service, "base_url", nextDefault);
+    }
+  };
 
   const fields =
     isCodexOAuth || isCodeBuddyAuth
@@ -1334,6 +1466,18 @@ function ProfileFields({
                 options.find((p) => p.value === providerValue)?.label ?? "";
               const match = options.find((p) => p.value === val);
               updateProfileField(service, field, val);
+              // The new vendor may not speak the format the old one did.
+              if (
+                match &&
+                LLM_SHAPED.has(service) &&
+                !(match.api_formats ?? []).includes(profile.api_format ?? "auto")
+              ) {
+                updateProfileField(
+                  service,
+                  "api_format",
+                  match.default_api_format ?? "auto",
+                );
+              }
               // Keep an un-customized profile name tracking its provider.
               const renamed = nextProfileName(
                 profile.name,
@@ -1373,14 +1517,20 @@ function ProfileFields({
               {t("Select provider...")}
             </option>
             {(providers[service] || [])
-              .filter((p) => p.status !== "deprecated")
+              .filter(
+                (p) =>
+                  p.status !== "deprecated" &&
+                  (p.status !== "legacy" || p.value === providerValue),
+              )
               .map((p) => (
                 <option
                   className={selectOptionClass}
                   key={p.value}
                   value={p.value}
                 >
-                  {p.label}
+                  {p.status === "legacy"
+                    ? t("{{label}} (legacy)", { label: p.label })
+                    : p.label}
                 </option>
               ))}
           </select>
@@ -1516,42 +1666,34 @@ function ProfileFields({
           </div>
         </div>
       )}
-      {supportsWireApiSelection && (
+      {supportsApiFormatSelection && (
         <div className="sm:col-span-2">
           <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-            {t("API protocol")}
+            {t("API format")}
           </div>
           <div className="relative">
             <select
               className={selectClass}
-              value={wireApi}
-              onChange={(event) =>
-                updateProfileField(service, "wire_api", event.target.value)
-              }
+              value={apiFormats.includes(apiFormat) ? apiFormat : apiFormats[0]}
+              onChange={(event) => changeApiFormat(event.target.value)}
             >
-              <option className={selectOptionClass} value="auto">
-                {t("Auto (recommended)")}
-              </option>
-              <option className={selectOptionClass} value="responses">
-                {t("Responses API")}
-              </option>
-              <option className={selectOptionClass} value="chat_completions">
-                {t("Chat Completions")}
-              </option>
+              {apiFormats.map((format) => (
+                <option
+                  className={selectOptionClass}
+                  key={format}
+                  value={format}
+                >
+                  {t(API_FORMAT_LABELS[format] ?? format)}
+                </option>
+              ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
           </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
-            {wireApi === "responses"
-              ? t(
-                  "Require the Responses API. Endpoint errors are returned without falling back.",
-                )
-              : wireApi === "chat_completions"
-                ? t("Require the Chat Completions API.")
-                : t(
-                    "Automatically select the protocol and fall back when supported.",
-                  )}
-          </p>
+          {API_FORMAT_HINTS[apiFormat] && (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+              {t(API_FORMAT_HINTS[apiFormat])}
+            </p>
+          )}
         </div>
       )}
       {!isCodexOAuth && !isCodeBuddyAuth && (

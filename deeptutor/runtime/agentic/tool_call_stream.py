@@ -7,6 +7,9 @@ each field is stated here once instead of being restated per site:
 * ``id`` and ``name`` arrive **complete** on whichever delta carries them.
   A provider may repeat them on every subsequent chunk. Assign, never append.
 * ``arguments`` arrives as **fragments** that must be concatenated.
+* Provider extensions attached to the call arrive **complete** and must be
+  preserved. Gemini thinking models put the opaque signature required by the
+  next tool round in ``extra_content.google.thought_signature`` (#1181).
 
 Appending a complete field is issue #937: a router that re-sent ``id`` on
 every chunk grew it to 47241 characters, far past the 64-character limit the
@@ -33,7 +36,7 @@ class ToolCallAccumulator:
     """Fold a stream of ``delta.tool_calls`` entries into whole tool calls."""
 
     def __init__(self) -> None:
-        self._parts: dict[int, dict[str, str]] = {}
+        self._parts: dict[int, dict[str, Any]] = {}
 
     def feed(self, tc_delta: Any) -> int:
         """Fold one tool-call delta in; return the characters it contributed.
@@ -47,6 +50,15 @@ class ToolCallAccumulator:
         tcid = getattr(tc_delta, "id", None)
         if tcid:
             part["id"] = str(tcid)
+
+        # Gemini's OpenAI-compatible endpoint adds ``extra_content`` to the
+        # tool-call delta. The OpenAI SDK keeps unknown response fields on the
+        # model, so preserve the extension as an opaque object and replay it on
+        # the assistant tool-call message. Assign rather than merge: like the
+        # id/name fields, the provider sends this metadata as a complete value.
+        extra_content = getattr(tc_delta, "extra_content", None)
+        if isinstance(extra_content, dict) and extra_content:
+            part["extra_content"] = extra_content
 
         fn = getattr(tc_delta, "function", None)
         if fn is None:
@@ -63,22 +75,27 @@ class ToolCallAccumulator:
             chars += len(str(arguments))
         return chars
 
-    def ordered(self) -> list[dict[str, str]]:
+    def ordered(self) -> list[dict[str, Any]]:
         """Every accumulated part, in provider index order, unfiltered."""
         return [self._parts[key] for key in sorted(self._parts)]
 
-    def collected(self) -> list[dict[str, str]]:
+    def collected(self) -> list[dict[str, Any]]:
         """Dispatchable tool calls: named parts only, with defaults applied.
 
         A provider that streams arguments but never an ``id`` still needs one
         to correlate the result message, hence the positional fallback.
         """
-        return [
-            {
+        calls: list[dict[str, Any]] = []
+        for index, part in sorted(self._parts.items()):
+            if not part.get("name"):
+                continue
+            call: dict[str, Any] = {
                 "id": part.get("id") or f"call_{index}",
                 "name": part.get("name", ""),
                 "arguments": part.get("arguments") or "{}",
             }
-            for index, part in sorted(self._parts.items())
-            if part.get("name")
-        ]
+            extra_content = part.get("extra_content")
+            if isinstance(extra_content, dict) and extra_content:
+                call["extra_content"] = extra_content
+            calls.append(call)
+        return calls

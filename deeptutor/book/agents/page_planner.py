@@ -203,9 +203,24 @@ def _static_plan(
     *,
     phase: int,
     depth: str | None = None,
+    allowed: set[BlockType] | None = None,
 ) -> list[Block]:
     template = _TEMPLATES_V2.get(chapter.content_type) or _TEMPLATES_V2[ContentType.THEORY]
-    return [_build_block(bt, dict(params), chapter, depth=depth) for bt, params in template]
+    blocks = [
+        _build_block(bt, dict(params), chapter, depth=depth)
+        for bt, params in template
+        if allowed is None or bt == BlockType.SECTION or bt in allowed
+    ]
+    if blocks or allowed is None:
+        return blocks
+    return [
+        _build_block(
+            BlockType.SECTION,
+            {"role": "core", "target_words": 1700},
+            chapter,
+            depth=depth,
+        )
+    ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -213,18 +228,28 @@ def _static_plan(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-_ALLOWED_LLM_TYPES = {
-    BlockType.SECTION,
-    BlockType.TEXT,
-    BlockType.CALLOUT,
-    BlockType.QUIZ,
-    BlockType.FLASH_CARDS,
-    BlockType.FIGURE,
-    BlockType.INTERACTIVE,
-    BlockType.ANIMATION,
-    BlockType.CODE,
-    BlockType.TIMELINE,
-}
+PLANNABLE_BLOCK_TYPES = frozenset(
+    {
+        BlockType.SECTION,
+        BlockType.TEXT,
+        BlockType.CALLOUT,
+        BlockType.QUIZ,
+        BlockType.FLASH_CARDS,
+        BlockType.FIGURE,
+        BlockType.INTERACTIVE,
+        BlockType.ANIMATION,
+        BlockType.CODE,
+        BlockType.TIMELINE,
+    }
+)
+
+
+PLANNER_DEFAULT_BLOCK_TYPES = frozenset(
+    block_type for template in _TEMPLATES_V2.values() for block_type, _params in template
+)
+
+
+_ALLOWED_LLM_TYPES = PLANNABLE_BLOCK_TYPES
 
 
 def _architect_prompts(language: str) -> tuple[str, str]:
@@ -280,9 +305,15 @@ class SectionArchitect:
         self.llm_enabled = llm_enabled
 
     # ── Sync (legacy) ────────────────────────────────────────────────
-    def plan_blocks(self, chapter: Chapter, *, depth: str | None = None) -> list[Block]:
+    def plan_blocks(
+        self,
+        chapter: Chapter,
+        *,
+        depth: str | None = None,
+        allowed: set[BlockType] | None = None,
+    ) -> list[Block]:
         """Static-template plan. Always succeeds."""
-        return _static_plan(chapter, phase=self.phase, depth=depth)
+        return _static_plan(chapter, phase=self.phase, depth=depth, allowed=allowed)
 
     # ── Async (LLM-first) ────────────────────────────────────────────
     async def plan_blocks_async(
@@ -292,9 +323,10 @@ class SectionArchitect:
         exploration: ExplorationReport | None = None,
         language: str = "en",
         depth: str | None = None,
+        allowed: set[BlockType] | None = None,
     ) -> list[Block]:
         if not self.llm_enabled:
-            return self.plan_blocks(chapter, depth=depth)
+            return self.plan_blocks(chapter, depth=depth, allowed=allowed)
 
         try:
             system_prompt, user_template = _architect_prompts(language)
@@ -313,15 +345,15 @@ class SectionArchitect:
             )
         except Exception as exc:
             logger.warning(f"SectionArchitect LLM failed → fallback static: {exc}")
-            return self.plan_blocks(chapter, depth=depth)
+            return self.plan_blocks(chapter, depth=depth, allowed=allowed)
 
         payload = parse_json_response(raw, logger_instance=logger, fallback={})
         if not isinstance(payload, dict):
-            return self.plan_blocks(chapter, depth=depth)
+            return self.plan_blocks(chapter, depth=depth, allowed=allowed)
 
         items = payload.get("blocks")
         if not isinstance(items, list) or not items:
-            return self.plan_blocks(chapter, depth=depth)
+            return self.plan_blocks(chapter, depth=depth, allowed=allowed)
 
         blocks: list[Block] = []
         for raw_item in items[:12]:
@@ -334,6 +366,12 @@ class SectionArchitect:
                 continue
             if block_type not in _ALLOWED_LLM_TYPES:
                 continue
+            if (
+                allowed is not None
+                and block_type != BlockType.SECTION
+                and block_type not in allowed
+            ):
+                continue
 
             params = _safe_dict(raw_item.get("params"))
             if raw_item.get("transition_in"):
@@ -343,6 +381,15 @@ class SectionArchitect:
             blocks.append(_build_block(block_type, params, chapter, depth=depth))
 
         if not blocks:
+            if allowed is not None:
+                return [
+                    _build_block(
+                        BlockType.SECTION,
+                        {"role": "core", "target_words": 1700},
+                        chapter,
+                        depth=depth,
+                    )
+                ]
             return self.plan_blocks(chapter, depth=depth)
 
         # Coverage guarantee: ensure at least one SECTION block, otherwise we
@@ -374,4 +421,9 @@ class PagePlanner(SectionArchitect):
         super().__init__(phase=phase, llm_enabled=False)
 
 
-__all__ = ["PagePlanner", "SectionArchitect"]
+__all__ = [
+    "PLANNABLE_BLOCK_TYPES",
+    "PLANNER_DEFAULT_BLOCK_TYPES",
+    "PagePlanner",
+    "SectionArchitect",
+]
