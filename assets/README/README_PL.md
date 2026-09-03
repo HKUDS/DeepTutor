@@ -314,7 +314,7 @@ Gdy `trusted_domains` nie jest puste, odwołania są ograniczone do tych domen i
 
 Plik `.env` w katalogu głównym projektu **nie** jest czytany jako plik konfiguracyjny aplikacji. Dla minimalnej konfiguracji modelu otwórz **Settings → Models**, dodaj profil LLM (bazowy URL / klucz API / nazwa modelu) i zapisz. Dodaj profil osadzania tylko jeśli planujesz korzystać z funkcji Bazy wiedzy / RAG.
 
-Profile LLM zgodne z OpenAI udostępniają również ustawienie **protokołu API**. Pozostaw `Auto` dla normalnego wykrywania dostawcy i zgodnego mechanizmu awaryjnego, wybierz `Responses API` dla endpointów implementujących wyłącznie `/responses` albo `Chat Completions` dla endpointów wymagających `/chat/completions`. Wymuszony tryb Responses działa w sposób fail-closed: błędy endpointu są zwracane zamiast cichej ponownej próby przez Chat Completions. Odpowiadające pole profilu w `model_catalog.json` to `wire_api` (`auto`, `responses` lub `chat_completions`).
+Profile LLM i modeli zadaniowych udostępniają ustawienie **formatu API**, gdy ich dostawca umożliwia wybór. Pozostaw `Auto` dla zwykłego routingu i mechanizmu awaryjnego albo wybierz `OpenAI Chat Completions`, `OpenAI Responses` lub `Anthropic Messages`; wymuszony tryb Responses nadal działa w sposób fail-closed. Zapisywane pole to `api_format` (`auto`, `openai_chat`, `openai_responses` lub `anthropic`); `wire_api` jest pochodnym stanem kompatybilności. Nadpisania `Auto` / `Supported` / `Not supported` dla poszczególnych modeli obejmują wywoływanie narzędzi, dane wejściowe obrazów, dane wyjściowe JSON i sterowanie rozumowaniem.
 
 </details>
 
@@ -386,7 +386,7 @@ Narzędzia przełączalne przez użytkownika to `brainstorm`, `web_search`, `pap
 
 Kontekst dzieli się na dwa rodzaje: **trwały kontekst sesji** (możliwość, obszar roboczy lub kurs, narzędzia, bazy wiedzy, persona, model oraz stan Reading / Mastery) jest zachowany przez tury; **jednorazowe odwołania** (pliki, historia czatu, książki, sekcje do czytania, notatniki, bank pytań, zaimportowani agenci) pochodzą z menu `+` dla jednej tury. Przycisk głosowy jedynie transkrybuje bieżącą wiadomość.
 
-Home daje dostęp jednym kliknięciem do **Chat**, **Ask Questions**, **Quiz**, **Visualize** i **Immersive Watching**; **Research** do raportów z cytowaniami oraz **Solve** do rozumowania krok po kroku znajdują się w sekcji *More Capabilities*. **Mastery Path** i **Immersive Reading** mają dedykowane obszary robocze na pasku bocznym; Reading dodaje zweryfikowane, klikalne cytowania, zapisane cytowania i notatki, oparte na źródłach działania czytania na głos / wskazówek do nauki / słownictwa / quizu / tłumaczenia oraz przechwytywanie do notatnika, a Course Study zachowuje własny kontekst związany z kursem.
+Home daje dostęp jednym kliknięciem do **Chat**, **Ask Questions**, **Quiz** i **Visualize**; **Research** do raportów z cytowaniami, **Solve** do rozumowania krok po kroku oraz **Immersive Watching** znajdują się w sekcji *More Capabilities*. **Mastery Path** i **Immersive Reading** mają dedykowane obszary robocze na pasku bocznym; Reading dodaje zweryfikowane, klikalne cytowania, zapisane cytowania i notatki, oparte na źródłach działania czytania na głos / wskazówek do nauki / słownictwa / quizu / tłumaczenia oraz przechwytywanie do notatnika, a Course Study zachowuje własny kontekst związany z kursem.
 
 </details>
 

@@ -323,7 +323,7 @@ Cuando `trusted_domains` no está vacío, las referencias se limitan a esos domi
 
 El `.env` de la raíz del proyecto **no** se lee como archivo de configuración de la aplicación. Para una configuración mínima del modelo, abre **Settings → Models**, agrega un perfil LLM (URL Base / clave API / nombre del modelo) y guarda. Agrega un perfil de embeddings solo si planeas usar funciones de Base de Conocimiento / RAG.
 
-Los perfiles LLM compatibles con OpenAI también ofrecen una opción de **protocolo de API**. Mantén `Auto` para la detección normal del proveedor y el fallback compatible, elige `Responses API` para endpoints que solo implementan `/responses`, o elige `Chat Completions` para endpoints que requieren `/chat/completions`. El modo Responses forzado falla de forma cerrada: los errores del endpoint se devuelven en lugar de reintentarse silenciosamente mediante Chat Completions. El campo equivalente del perfil en `model_catalog.json` es `wire_api` (`auto`, `responses` o `chat_completions`).
+Los perfiles de LLM y de modelos de tareas ofrecen una opción de **formato de API** cuando su proveedor admite distintas alternativas. Mantén `Auto` para el enrutamiento y el fallback normales, o elige `OpenAI Chat Completions`, `OpenAI Responses` o `Anthropic Messages`; el modo Responses forzado sigue fallando de forma cerrada. El campo persistido es `api_format` (`auto`, `openai_chat`, `openai_responses` o `anthropic`); `wire_api` es un estado de compatibilidad derivado. Los ajustes por modelo `Auto` / `Supported` / `Not supported` abarcan las llamadas a herramientas, la entrada de imágenes, la salida JSON y los controles de razonamiento.
 
 </details>
 
@@ -395,7 +395,7 @@ Las herramientas activables por el usuario son `brainstorm`, `web_search`, `pape
 
 El contexto viene en dos tipos: el **contexto de sesión persistente** (capacidad, espacio de trabajo o curso, herramientas, bases de conocimiento, persona, modelo y estado de Reading / Mastery) persiste entre turnos; las **referencias de un solo uso** (archivos, historial de chat, libros, secciones de lectura, cuadernos, banco de preguntas, agentes importados) vienen del menú `+` para un único turno. El botón de voz solo transcribe el mensaje actual.
 
-Inicio mantiene **Chat**, **Ask Questions**, **Quiz**, **Visualize** e **Immersive Watching** a un clic; **Research** para informes con citas y **Solve** para razonamiento trabajado se encuentran bajo *More Capabilities*. **Mastery Path** e **Immersive Reading** son espacios de trabajo dedicados en la barra lateral; Reading añade citas verificadas en las que se puede hacer clic, citas y notas guardadas, acciones de lectura en voz alta / orientación de estudio / vocabulario / quiz / traducción fundamentadas en la fuente y captura en notebooks, mientras que Course Study mantiene su propio contexto vinculado al curso.
+Inicio mantiene **Chat**, **Ask Questions**, **Quiz** y **Visualize** a un clic; **Research** para informes con citas, **Solve** para razonamiento trabajado e **Immersive Watching** se encuentran bajo *More Capabilities*. **Mastery Path** e **Immersive Reading** son espacios de trabajo dedicados en la barra lateral; Reading añade citas verificadas en las que se puede hacer clic, citas y notas guardadas, acciones de lectura en voz alta / orientación de estudio / vocabulario / quiz / traducción fundamentadas en la fuente y captura en notebooks, mientras que Course Study mantiene su propio contexto vinculado al curso.
 
 </details>
 

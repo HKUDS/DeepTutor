@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover - exercised only on Windows
     fcntl = None  # type: ignore[assignment]
 
 from deeptutor.services.path_service import get_path_service
+from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
 
 from .ask_user_trace import select_ask_user_events
 from .provider_response_state import redact_private_message_metadata
@@ -197,11 +198,12 @@ class SQLiteSessionStore:
     def __init__(self, db_path: Path | None = None) -> None:
         path_service = get_path_service()
         self.db_path = db_path or path_service.get_chat_history_db()
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_private_directory(self.db_path.parent)
         self._migrate_legacy_db(path_service)
         self._lock = asyncio.Lock()
         with _migration_lock(self.db_path):
             self._initialize()
+        ensure_private_file(self.db_path)
 
     def _migrate_legacy_db(self, path_service) -> None:
         """Move the legacy ``data/chat_history.db`` into ``data/user/`` once."""

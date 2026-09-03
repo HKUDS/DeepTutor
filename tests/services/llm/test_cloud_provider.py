@@ -1,4 +1,4 @@
-"""Tests for cloud provider helpers."""
+"""Tests for hosted-endpoint model discovery and the deprecated call shims."""
 
 from __future__ import annotations
 
@@ -8,32 +8,13 @@ from types import TracebackType
 from _pytest.monkeypatch import MonkeyPatch
 import pytest
 
-from deeptutor.services.llm.exceptions import LLMAPIError
-
 cloud_provider = importlib.import_module("deeptutor.services.llm.cloud_provider")
 
 
-class _AsyncIterator:
-    def __init__(self, items: list[bytes]) -> None:
-        self._items = items
-        self._index = 0
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self) -> bytes:
-        if self._index >= len(self._items):
-            raise StopAsyncIteration
-        item = self._items[self._index]
-        self._index += 1
-        return item
-
-
 class _FakeResponse:
-    def __init__(self, status: int, json_data: dict[str, object]) -> None:
+    def __init__(self, status: int, json_data: object) -> None:
         self.status = status
         self._json_data = json_data
-        self.content = _AsyncIterator([])
 
     async def __aenter__(self):
         return self
@@ -49,19 +30,11 @@ class _FakeResponse:
     async def json(self):
         return self._json_data
 
-    async def text(self) -> str:
-        return ""
-
-
-class _FakeStreamResponse(_FakeResponse):
-    def __init__(self, status: int, lines: list[bytes]) -> None:
-        super().__init__(status, {})
-        self.content = _AsyncIterator(lines)
-
 
 class _FakeSession:
     def __init__(self, response: _FakeResponse) -> None:
         self._response = response
+        self.requests: list[tuple[str, dict[str, str]]] = []
 
     async def __aenter__(self):
         return self
@@ -74,98 +47,59 @@ class _FakeSession:
     ) -> None:
         return None
 
-    def post(self, _url: str, **_kwargs: object) -> _FakeResponse:
+    def get(self, url: str, **kwargs: object) -> _FakeResponse:
+        self.requests.append((url, dict(kwargs.get("headers") or {})))  # type: ignore[arg-type]
         return self._response
 
-    def get(self, _url: str, **_kwargs: object) -> _FakeResponse:
-        return self._response
+
+def _install_session(monkeypatch: MonkeyPatch, response: _FakeResponse) -> _FakeSession:
+    session = _FakeSession(response)
+    monkeypatch.setattr(cloud_provider.aiohttp, "ClientSession", lambda *a, **kw: session)
+    return session
 
 
 @pytest.mark.asyncio
-async def test_cloud_complete_fallback(monkeypatch: MonkeyPatch) -> None:
-    """Fallback path should parse JSON content from aiohttp responses."""
-    fake_response = _FakeResponse(
-        200,
-        {
-            "choices": [
-                {"message": {"content": "ok"}},
-            ]
-        },
+async def test_cloud_fetch_models(monkeypatch: MonkeyPatch) -> None:
+    """Fetch models should parse model lists from the response."""
+    session = _install_session(
+        monkeypatch, _FakeResponse(200, {"data": [{"id": "m1"}, {"id": "m2"}]})
     )
 
-    monkeypatch.setattr(
-        cloud_provider.aiohttp,
-        "ClientSession",
-        lambda *args, **kwargs: _FakeSession(fake_response),
-    )
+    models = await cloud_provider.fetch_models("https://api.openai.com/v1", "sk-test")
 
-    result = await cloud_provider.complete(
-        prompt="hello",
-        model="gpt-test",
-        api_key="",
-        base_url="https://api.openai.com/v1",
-        binding="openai",
-    )
-
-    assert result == "ok"
+    assert models == ["m1", "m2"]
+    url, headers = session.requests[0]
+    assert url == "https://api.openai.com/v1/models"
+    assert headers["Authorization"] == "Bearer sk-test"
+    assert "Content-Type" not in headers
 
 
 @pytest.mark.asyncio
-async def test_cloud_stream_yields_chunks(monkeypatch: MonkeyPatch) -> None:
-    """Streaming should yield delta content from SSE lines."""
-    lines = [
-        b'data: {"choices": [{"delta": {"content": "hi"}}]}\n\n',
-        b"data: [DONE]\n\n",
-    ]
-    fake_response = _FakeStreamResponse(200, lines)
+async def test_cloud_fetch_models_anthropic_format_uses_anthropic_headers(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A custom endpoint speaking Anthropic Messages is listed with x-api-key."""
+    session = _install_session(monkeypatch, _FakeResponse(200, {"data": [{"id": "claude"}]}))
 
-    monkeypatch.setattr(
-        cloud_provider.aiohttp,
-        "ClientSession",
-        lambda *args, **kwargs: _FakeSession(fake_response),
+    models = await cloud_provider.fetch_models(
+        "https://relay.example/anthropic", "ak", binding="custom", api_format="anthropic"
     )
 
-    chunks = []
-    async for chunk in cloud_provider.stream(
-        prompt="hello",
-        model="gpt-test",
-        api_key="",
-        base_url="https://api.openai.com/v1",
-        binding="openai",
-    ):
-        chunks.append(chunk)
-
-    assert "".join(chunks) == "hi"
+    assert models == ["claude"]
+    _, headers = session.requests[0]
+    assert headers["x-api-key"] == "ak"
+    assert "Authorization" not in headers
 
 
 @pytest.mark.asyncio
-async def test_cloud_complete_error(monkeypatch: MonkeyPatch) -> None:
-    """Non-200 responses should raise LLMAPIError."""
-    response = _FakeResponse(500, {})
+async def test_cloud_fetch_models_non_200_returns_empty(monkeypatch: MonkeyPatch) -> None:
+    _install_session(monkeypatch, _FakeResponse(401, {"error": "nope"}))
 
-    monkeypatch.setattr(
-        cloud_provider.aiohttp,
-        "ClientSession",
-        lambda *args, **kwargs: _FakeSession(response),
-    )
-
-    with pytest.raises(LLMAPIError):
-        await cloud_provider.complete(
-            prompt="hello",
-            model="gpt-test",
-            api_key="",
-            base_url="https://api.openai.com/v1",
-            binding="openai",
-        )
+    assert await cloud_provider.fetch_models("https://api.openai.com/v1", "bad") == []
 
 
-def test_cloud_helpers(monkeypatch: MonkeyPatch) -> None:
-    """Helper coercion and SSL connector paths should behave as expected."""
-    assert cloud_provider._coerce_float(True, 0.5) == 0.5
-    assert cloud_provider._coerce_float(2, 0.5) == 2.0
-    assert cloud_provider._coerce_int(True, None) is None
-    assert cloud_provider._coerce_int(3, None) == 3
-
+def test_ssl_connector(monkeypatch: MonkeyPatch) -> None:
+    """The aiohttp connector only appears when TLS verification is disabled."""
     monkeypatch.delenv("DISABLE_SSL_VERIFY", raising=False)
     assert cloud_provider._get_aiohttp_connector() is None
 
@@ -175,20 +109,24 @@ def test_cloud_helpers(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("DISABLE_SSL_VERIFY", "1")
     monkeypatch.setitem(cloud_provider.__dict__, "_ssl_warning_logged", False)
     monkeypatch.setattr(cloud_provider.aiohttp, "TCPConnector", lambda **_kw: _FakeConnector())
-    connector = cloud_provider._get_aiohttp_connector()
-    assert connector is not None
+    assert cloud_provider._get_aiohttp_connector() is not None
 
 
 @pytest.mark.asyncio
-async def test_cloud_fetch_models(monkeypatch: MonkeyPatch) -> None:
-    """Fetch models should parse model lists from the response."""
-    response = _FakeResponse(200, {"data": [{"id": "m1"}, {"id": "m2"}]})
-    monkeypatch.setattr(
-        cloud_provider.aiohttp,
-        "ClientSession",
-        lambda *args, **kwargs: _FakeSession(response),
-    )
+async def test_complete_shim_forwards_to_factory(monkeypatch: MonkeyPatch) -> None:
+    """The retired aiohttp path now forwards to the one real LLM entry point."""
+    from deeptutor.services.llm import factory
 
-    models = await cloud_provider.fetch_models("https://api.openai.com/v1")
+    captured: dict[str, object] = {}
 
-    assert models == ["m1", "m2"]
+    async def fake_complete(prompt: str, **kwargs: object) -> str:
+        captured["prompt"] = prompt
+        captured.update(kwargs)
+        return "ok"
+
+    monkeypatch.setattr(factory, "complete", fake_complete)
+    with pytest.warns(DeprecationWarning):
+        result = await cloud_provider.complete("hello", model="gpt-test", binding="openai")
+
+    assert result == "ok"
+    assert captured == {"prompt": "hello", "model": "gpt-test", "binding": "openai"}

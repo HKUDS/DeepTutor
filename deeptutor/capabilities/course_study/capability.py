@@ -76,10 +76,7 @@ def _load_prompts(language: str) -> dict[str, Any]:
 
 def resolve_course_id(context: UnifiedContext) -> str:
     """Resolve the server-validated course binding for this turn."""
-    metadata_id = str((context.metadata or {}).get(COURSE_ID_KEY) or "").strip()
-    if metadata_id:
-        return metadata_id
-    return str((context.metadata or {}).get("course_id") or "").strip()
+    return str((context.metadata or {}).get(COURSE_ID_KEY) or "").strip()
 
 
 def _row(value: Any) -> dict[str, Any]:

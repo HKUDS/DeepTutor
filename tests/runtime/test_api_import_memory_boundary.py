@@ -29,7 +29,16 @@ heavy_roots = {
     "pypdf",
 }
 loaded = sorted(name for name in heavy_roots if name in sys.modules)
-print(json.dumps(loaded))
+heavy_internal = {
+    "deeptutor.agents.chat.agentic_pipeline",
+    "deeptutor.agents.question.coordinator",
+    "deeptutor.book.agents.page_planner",
+    "deeptutor.book.engine",
+    "deeptutor.co_writer.edit_agent",
+    "deeptutor.services.embedding.client",
+}
+loaded_internal = sorted(name for name in heavy_internal if name in sys.modules)
+print(json.dumps({"third_party": loaded, "internal": loaded_internal}))
 """
 
     result = subprocess.run(
@@ -40,4 +49,4 @@ print(json.dumps(loaded))
         text=True,
     )
 
-    assert json.loads(result.stdout) == []
+    assert json.loads(result.stdout) == {"third_party": [], "internal": []}

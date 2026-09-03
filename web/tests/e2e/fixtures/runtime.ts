@@ -186,9 +186,9 @@ export async function sendPrompt(page: Page, prompt: string): Promise<void> {
   await composer.press("Enter");
 }
 
-export function lifecycleStatus(page: Page) {
-  return page.getByRole("status").filter({
+export function assistantActivity(page: Page) {
+  return page.locator('[aria-live="polite"]').filter({
     hasText:
-      /Connecting|Queued|Working|Waiting for your answer|Stopping|Reconnecting|Completed|Stopped|Response interrupted|Turn failed/i,
+      /DeepTutor (?:Exploring|Reasoning|Planning|Quizzing|Reflecting|responded)|Tool Calling/i,
   });
 }

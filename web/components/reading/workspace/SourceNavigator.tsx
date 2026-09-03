@@ -1,16 +1,22 @@
 "use client";
 
 import {
+  BookmarkCheck,
   ChevronDown,
   ChevronRight,
   ListTree,
   PanelLeftClose,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type OutlineRow, type UnitReference } from "@/lib/reading-api";
+import {
+  type OutlineRow,
+  type ReadingBookmark,
+  type UnitReference,
+} from "@/lib/reading-api";
 import {
   type OutlineNode,
   type ReaderHeading,
@@ -42,6 +48,8 @@ export function SourceNavigator({
   onMobileClose,
   onCollapse,
   onNavigate,
+  bookmarks,
+  onRemoveBookmark,
 }: {
   material: ReadingLibraryMaterial | null;
   outline: OutlineRow[];
@@ -62,6 +70,9 @@ export function SourceNavigator({
   onMobileClose: () => void;
   onCollapse: () => void;
   onNavigate: (locator: number, quote?: string) => void;
+  /** Places the reader kept, listed above the outline. */
+  bookmarks: ReadingBookmark[];
+  onRemoveBookmark: (bookmarkId: string) => void;
 }) {
   const { t } = useTranslation();
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set());
@@ -193,6 +204,59 @@ export function SourceNavigator({
         />
       </label>
       <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        {bookmarks.length > 0 && (
+          /* The reader's own short index, in front of the document's long
+             one. Above rather than below because it is the shorter list and
+             the one they came here for — scrolling past 74 outline rows to
+             reach three saved places would defeat the point. */
+          <div className="mb-2 border-b border-[var(--border)] pb-2">
+            <p className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+              <BookmarkCheck size={11} className="text-[var(--primary)]" />
+              {t("Bookmarks")}
+              <span className="tabular-nums opacity-70">
+                {bookmarks.length}
+              </span>
+            </p>
+            {bookmarks.map((row) => (
+              <div
+                key={row.bookmark_id}
+                className={`group flex items-center gap-1 rounded-lg transition ${
+                  activeLocator === row.locator
+                    ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]"
+                    : "text-[var(--foreground)] hover:bg-[var(--muted)]"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => onNavigate(row.locator)}
+                  className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-left"
+                >
+                  <span className="w-6 shrink-0 text-right text-[10px] tabular-nums text-[var(--muted-foreground)]">
+                    {row.locator}
+                  </span>
+                  {/* A bookmark saved without a label is "this page", so it
+                      borrows the outline's own heading for that locator
+                      rather than making the reader name a place before they
+                      are allowed to keep it. */}
+                  <span className="line-clamp-2 min-w-0 text-[10.5px] leading-[1.5]">
+                    {row.label ||
+                      outline.find((entry) => entry.locator === row.locator)
+                        ?.title ||
+                      t("p. {{page}}", { page: row.locator })}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemoveBookmark(row.bookmark_id)}
+                  aria-label={t("Remove this bookmark")}
+                  className="mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {!hasAnything ? (
           <div className="px-2 py-4 text-[10px] leading-relaxed text-[var(--muted-foreground)]">
             {mediaSource && transcriptUnavailable ? (
@@ -225,16 +289,18 @@ export function SourceNavigator({
                   !chaptersOnly && transcript.length ? row.text : undefined,
                 )
               }
-              className={`group mb-0.5 flex w-full gap-2 rounded-lg px-2 py-2 text-left transition ${
+              className={`group mb-0.5 flex w-full items-baseline gap-2 rounded-lg px-2 py-1.5 text-left transition ${
                 activeLocator === row.locator
-                  ? "bg-[var(--muted)] text-[var(--primary)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                  ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]"
+                  : "text-[var(--foreground)] hover:bg-[var(--muted)]"
               }`}
             >
-              <span className="mt-0.5 w-9 shrink-0 text-[10px] font-medium tabular-nums text-[var(--primary)]">
+              {/* Same weighting as the document outline: the line of speech is
+                  what is read, the timestamp is how you get back to it. */}
+              <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-[var(--muted-foreground)]">
                 {row.title || row.locator}
               </span>
-              <span className="line-clamp-3 text-[10.5px] leading-[1.45]">
+              <span className="line-clamp-3 min-w-0 text-[10.5px] leading-[1.5]">
                 {row.text}
               </span>
             </button>
@@ -333,21 +399,34 @@ export function WorkspaceOutlineBranch({
             <div
               className={`group flex items-center gap-1 rounded-lg transition ${
                 active
-                  ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]"
+                  : "text-[var(--foreground)] hover:bg-[var(--muted)]"
               }`}
             >
               <button
                 type="button"
                 onClick={() => onNavigate(node.row.locator)}
-                className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left"
+                // The spelled-out locator is the tooltip rather than the label:
+                // see the number column below.
+                title={t("p. {{page}}", { page: node.row.locator })}
+                className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-left"
               >
-                <span className="mt-0.5 w-8 shrink-0 text-[10px] font-medium tabular-nums text-[var(--primary)]">
-                  {pageFallback
-                    ? String(node.row.locator).padStart(2, "0")
-                    : t("p. {{page}}", { page: node.row.locator })}
+                {/* A table of contents is read by its titles, so the title
+                    carries the weight and the locator is the quiet column
+                    beside it — the other way round, 74 blue page numbers
+                    out-shouted the headings they were pointing at.
+
+                    It is also just the number. "p. 12" fits the 32px this
+                    column had, but every translation of it does not: in
+                    Chinese ("第 12 页") 65 of this document's 74 rows wrapped
+                    onto a second line, so the list had two different row
+                    heights and a ragged left edge for the titles. Right-
+                    aligned tabular digits are what a printed contents page
+                    does anyway, and no translation can outgrow them. */}
+                <span className="w-6 shrink-0 text-right text-[10px] tabular-nums text-[var(--muted-foreground)]">
+                  {node.row.locator}
                 </span>
-                <span className="line-clamp-3 min-w-0 text-[10.5px] leading-[1.45]">
+                <span className="line-clamp-3 min-w-0 text-[10.5px] leading-[1.5]">
                   {node.row.title}
                 </span>
               </button>

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { bookApi } from "@/lib/book-api";
 import { useTranslation } from "react-i18next";
+import { ActivityMark } from "@/components/activity";
+import type { ActivityState, MarkTone } from "@/components/activity";
 import type { Book, Page } from "@/lib/book-types";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -22,6 +24,31 @@ const STATUS_LABEL: Record<string, string> = {
   partial: "Partial",
   error: "Failed",
 };
+
+/**
+ * A chapter's status as the product's activity vocabulary.
+ *
+ * The list used to end every row with an uppercase tracked pill spelling the
+ * status out — six characters of shouting per row, in a column 232px wide,
+ * repeated down the whole chapter list. The mark says the same thing in 12px
+ * and animates while the chapter is actually being written, which is the one
+ * state a reader watches for.
+ *
+ * `tone` is what separates the two resting states, which the four-state
+ * vocabulary alone cannot: a written chapter and a queued one are both "not
+ * running", and a reader scanning the list wants to know which is which at a
+ * glance. Written gets a solid blue dot, queued a hollow grey ring.
+ */
+const PAGE_MARK: Record<string, { state: ActivityState; tone: MarkTone }> = {
+  pending: { state: "done", tone: "muted" },
+  planning: { state: "running", tone: "muted" },
+  generating: { state: "running", tone: "muted" },
+  ready: { state: "done", tone: "accent" },
+  partial: { state: "error", tone: "muted" },
+  error: { state: "error", tone: "muted" },
+};
+
+const RESTING_MARK = { state: "done", tone: "muted" } as const;
 
 export interface BookSidebarProps {
   book: Book | null;
@@ -229,31 +256,30 @@ export default function BookSidebar({
                           {page.title || t("Untitled")}
                         </span>
                       </span>
-                      <span className="flex shrink-0 items-center gap-1">
+                      <span className="flex shrink-0 items-center gap-1.5">
                         {bookmarkedPageIds?.includes(page.id) && (
                           <span
                             className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
                             title={t("Bookmarked")}
                           />
                         )}
-                        {page.status === "ready" && (
-                          <span
-                            className={
-                              visitedPageIds?.includes(page.id)
-                                ? "text-[var(--muted-foreground)]/70"
-                                : "text-[var(--primary)]"
-                            }
-                            title={
-                              visitedPageIds?.includes(page.id)
-                                ? t("Read")
-                                : t("Unread")
-                            }
-                          >
-                            {visitedPageIds?.includes(page.id) ? "✓" : "•"}
-                          </span>
-                        )}
-                        <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-[var(--muted-foreground)]">
-                          {t(STATUS_LABEL[page.status] || page.status)}
+                        {/* The status word survives as the tooltip:
+                            available when wanted, not shouted on every row.
+                            A chapter already read keeps the blue dot but
+                            dimmed — one mark, two facts. */}
+                        <span
+                          title={t(STATUS_LABEL[page.status] || page.status)}
+                          className={`inline-flex items-center ${
+                            page.status === "ready" &&
+                            visitedPageIds?.includes(page.id)
+                              ? "opacity-45"
+                              : ""
+                          }`}
+                        >
+                          <ActivityMark
+                            {...(PAGE_MARK[page.status] || RESTING_MARK)}
+                            className="mt-[1px]"
+                          />
                         </span>
                       </span>
                     </button>

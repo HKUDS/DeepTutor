@@ -13,6 +13,7 @@ from deeptutor.services.keypool import primary_api_key
 from deeptutor.services.provider_registry import (
     PROVIDERS,
     canonical_provider_name,
+    effective_backend,
     find_by_model,
     find_by_name,
     find_gateway,
@@ -203,6 +204,7 @@ def _resolve_call_config(
             api_version=api_version,
             extra_headers=merged_headers,
             wire_api=current.wire_api if current is not None else "auto",
+            api_format=current.api_format if current is not None else "auto",
             reasoning_effort=resolved_reasoning_effort,
         )
         return config, provider_spec
@@ -241,6 +243,7 @@ def _resolve_call_config(
             "api_version": resolved_api_version,
             "extra_headers": merged_headers,
             "wire_api": current.wire_api,
+            "api_format": current.api_format,
             "reasoning_effort": (
                 reasoning_effort if reasoning_effort is not None else current.reasoning_effort
             ),
@@ -250,9 +253,7 @@ def _resolve_call_config(
 
 
 def _capability_binding(config: LLMConfig, provider_spec: Any) -> str:
-    backend = (
-        getattr(provider_spec, "backend", "openai_compat") if provider_spec else "openai_compat"
-    )
+    backend = effective_backend(provider_spec, config.api_format)
     if backend == "anthropic":
         return "anthropic"
     if backend == "azure_openai":
@@ -605,6 +606,7 @@ async def fetch_models(
     binding: str,
     base_url: str = "",
     api_key: str | None = None,
+    api_format: str = "auto",
 ) -> list[str]:
     if canonical_provider_name(binding) == "codebuddy":
         from .provider_core.codebuddy_models import fetch_codebuddy_models
@@ -618,7 +620,7 @@ async def fetch_models(
 
     from . import cloud_provider
 
-    return await cloud_provider.fetch_models(base_url, api_key, binding)
+    return await cloud_provider.fetch_models(base_url, api_key, binding, api_format=api_format)
 
 
 def _build_api_provider_presets() -> dict[str, ApiProviderPreset]:

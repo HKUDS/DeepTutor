@@ -67,59 +67,6 @@ const STATUS_STYLES: Record<
   },
 };
 
-// Stable, deterministic palette per book id so each cover feels distinct
-// without resorting to placeholder letters.
-const COVER_PALETTES: Array<{
-  base: string;
-  accent: string;
-  spine: string;
-  glow: string;
-}> = [
-  {
-    base: "linear-gradient(135deg, #fdf3e7 0%, #f6dcc1 55%, #e9b88a 100%)",
-    accent: "#c97a3f",
-    spine: "rgba(168, 87, 35, 0.55)",
-    glow: "rgba(255, 198, 140, 0.6)",
-  },
-  {
-    base: "linear-gradient(135deg, #eef5ff 0%, #cfe1f7 55%, #9ec0e8 100%)",
-    accent: "#3b6fb6",
-    spine: "rgba(43, 89, 156, 0.55)",
-    glow: "rgba(150, 196, 255, 0.55)",
-  },
-  {
-    base: "linear-gradient(135deg, #f6efff 0%, #e2cff8 55%, #c2a3ec 100%)",
-    accent: "#8254cf",
-    spine: "rgba(96, 56, 159, 0.55)",
-    glow: "rgba(204, 162, 255, 0.55)",
-  },
-  {
-    base: "linear-gradient(135deg, #ecf8f0 0%, #c8eddc 55%, #93d6b6 100%)",
-    accent: "#3a9c72",
-    spine: "rgba(36, 117, 80, 0.55)",
-    glow: "rgba(160, 232, 199, 0.55)",
-  },
-  {
-    base: "linear-gradient(135deg, #fff4e9 0%, #fcd9b7 55%, #f4ad7d 100%)",
-    accent: "#d2683a",
-    spine: "rgba(178, 75, 35, 0.55)",
-    glow: "rgba(255, 195, 145, 0.6)",
-  },
-  {
-    base: "linear-gradient(135deg, #f1efff 0%, #d6d2f6 55%, #a7a1e6 100%)",
-    accent: "#5d54c6",
-    spine: "rgba(64, 56, 158, 0.55)",
-    glow: "rgba(189, 184, 255, 0.55)",
-  },
-];
-
-function paletteFor(id: string) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  }
-  return COVER_PALETTES[hash % COVER_PALETTES.length];
-}
 
 export interface BookLibraryProps {
   books: Book[];
@@ -266,11 +213,6 @@ export default function BookLibrary({
             {filtered.map((book) => {
               const isPendingDelete = pendingDeleteId === book.id;
               const status = STATUS_STYLES[book.status] || STATUS_STYLES.draft;
-              const palette = paletteFor(book.id);
-              const coverStyle: CSSProperties = { background: palette.base };
-              const glowStyle: CSSProperties = {
-                background: `radial-gradient(circle at 80% 25%, ${palette.glow} 0%, transparent 60%)`,
-              };
 
               return (
                 <div
@@ -286,112 +228,25 @@ export default function BookLibrary({
                   }}
                   className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]/70 transition-all hover:-translate-y-0.5 hover:border-[var(--primary)]/40 hover:shadow-md"
                 >
-                  {/* Cover */}
-                  <div
-                    className="relative h-28 w-full overflow-hidden"
-                    style={coverStyle}
-                  >
-                    {/* Soft glow accent */}
-                    <div
-                      className="pointer-events-none absolute inset-0"
-                      style={glowStyle}
-                    />
-                    {/* Stylized "book spine" stripes on the left edge */}
-                    <div
-                      className="pointer-events-none absolute inset-y-0 left-0 w-2"
-                      style={{
-                        background: `linear-gradient(180deg, ${palette.spine} 0%, transparent 100%)`,
-                      }}
-                    />
-                    <div
-                      className="pointer-events-none absolute inset-y-3 left-3.5 w-px"
-                      style={{ background: palette.spine, opacity: 0.45 }}
-                    />
-                    {/* Decorative diagonal line pattern */}
-                    <svg
-                      className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.07]"
-                      xmlns="http://www.w3.org/2000/svg"
-                      aria-hidden
-                    >
-                      <defs>
-                        <pattern
-                          id={`diag-${book.id}`}
-                          width="14"
-                          height="14"
-                          patternUnits="userSpaceOnUse"
-                          patternTransform="rotate(35)"
-                        >
-                          <line
-                            x1="0"
-                            y1="0"
-                            x2="0"
-                            y2="14"
-                            stroke="currentColor"
-                            strokeWidth="1"
-                          />
-                        </pattern>
-                      </defs>
-                      <rect
-                        width="100%"
-                        height="100%"
-                        fill={`url(#diag-${book.id})`}
-                      />
-                    </svg>
-                    <BookOpen
-                      size={20}
-                      className="absolute bottom-3 right-3 opacity-50"
-                      style={{ color: palette.accent }}
-                    />
-
-                    <span
-                      className={`absolute left-4 top-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${status.className}`}
-                    >
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${status.dot}`}
-                      />
-                      {t(status.label)}
-                    </span>
-                    {book.source === "shared" && (
-                      <span className="absolute bottom-2 left-4 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-medium text-slate-700 backdrop-blur-sm dark:bg-black/40 dark:text-slate-200">
-                        {book.can_edit
-                          ? t("Shared · edit")
-                          : t("Shared · read")}
-                      </span>
-                    )}
-                    {book.can_delete !== false && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (isPendingDelete) {
-                            onDeleteBook(book.id);
-                            setPendingDeleteId(null);
-                          } else {
-                            setPendingDeleteId(book.id);
-                          }
-                        }}
-                        title={
-                          isPendingDelete
-                            ? t("Click again to confirm")
-                            : t("Delete book")
-                        }
-                        className={`absolute right-2 top-2 rounded-md p-1.5 transition-colors ${
-                          isPendingDelete
-                            ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                            : "bg-white/60 text-[var(--muted-foreground)] opacity-0 backdrop-blur-sm hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100 dark:bg-black/30 dark:hover:text-rose-400"
-                        }`}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                  </div>
-
+                  {/* No cover art.
+                      A 112px band of gradient, radial glow, fake book-spine
+                      stripes and diagonal hatch, coloured by a hash of the
+                      book id: it took the top third of every card and said
+                      nothing about the book. What a library card owes the
+                      reader is which book this is and where they are in it,
+                      so the ornament is gone and its three working parts —
+                      status, sharing, delete — moved down to the row that
+                      already carries the facts. */}
+                  {/* Reading progress, back on the card.
+                      It went out with the cover art it happened to sit under
+                      — a real loss, because it is the one thing on the card
+                      that differs per book *and* per reader. A hairline at
+                      the top edge for the shape of it, and the number itself
+                      down in the facts row. */}
                   {(book.reading?.percent ?? 0) > 0 && (
                     <div
-                      className="h-0.5 w-full bg-[var(--muted)]"
-                      title={t("{{percent}}% read", {
-                        percent: book.reading?.percent ?? 0,
-                      })}
+                      className="h-[3px] w-full overflow-hidden rounded-t-xl bg-[var(--muted)]"
+                      aria-hidden
                     >
                       <div
                         className="h-full bg-[var(--primary)]"
@@ -400,10 +255,41 @@ export default function BookLibrary({
                     </div>
                   )}
 
+                  {book.can_delete !== false && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (isPendingDelete) {
+                          onDeleteBook(book.id);
+                          setPendingDeleteId(null);
+                        } else {
+                          setPendingDeleteId(book.id);
+                        }
+                      }}
+                      title={
+                        isPendingDelete
+                          ? t("Click again to confirm")
+                          : t("Delete book")
+                      }
+                      // Permanently visible on touch, where there is no hover
+                      // to reveal it — a control that only appears on hover
+                      // does not exist on a phone.
+                      className={`absolute right-2 top-2 z-10 rounded-md p-1.5 transition-colors ${
+                        isPendingDelete
+                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                          : "text-[var(--muted-foreground)]/70 hover:bg-rose-500/10 hover:text-rose-600 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:text-rose-400"
+                      }`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+
+
                   {/* Body */}
                   <div className="flex flex-1 flex-col gap-2 p-4">
                     <div
-                      className="line-clamp-2 text-sm font-semibold text-[var(--foreground)]"
+                      className="line-clamp-2 pr-6 font-serif text-[17px] font-semibold leading-snug text-[var(--foreground)]"
                       title={book.title || t("Untitled book")}
                     >
                       {book.title || t("Untitled book")}
@@ -415,7 +301,30 @@ export default function BookLibrary({
                         )}
                     </p>
                     <div className="mt-auto flex items-center justify-between text-[10px] text-[var(--muted-foreground)]/80">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {/* Only the states worth acting on. A "Ready" pill on
+                            every card in a library of ready books is a word
+                            that never varies — and putting it above the title
+                            pushed one card's title lower than its neighbours'.
+                            Down here it joins the other facts and the grid
+                            keeps one baseline. */}
+                        {book.status !== "ready" && (
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${status.className}`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${status.dot}`}
+                            />
+                            {t(status.label)}
+                          </span>
+                        )}
+                        {book.source === "shared" && (
+                          <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+                            {book.can_edit
+                              ? t("Shared · edit")
+                              : t("Shared · read")}
+                          </span>
+                        )}
                         <span className="inline-flex items-center gap-1">
                           <Layers size={11} />
                           {t("{{count}} ch", {
@@ -428,6 +337,20 @@ export default function BookLibrary({
                             count: book.page_count || 0,
                           })}
                         </span>
+                        {(book.reading?.percent ?? 0) > 0 && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[var(--primary)]"
+                            title={t("{{visited}} of {{total}} chapters read", {
+                              visited: book.reading?.visited_pages ?? 0,
+                              total: book.reading?.total_pages ?? 0,
+                            })}
+                          >
+                            <BookOpen size={11} />
+                            {t("{{percent}}% read", {
+                              percent: book.reading?.percent ?? 0,
+                            })}
+                          </span>
+                        )}
                       </div>
                       <span className="inline-flex items-center gap-1">
                         <Clock3 size={11} />

@@ -1064,7 +1064,9 @@ async def test_complete_tour_invalidates_runtime_caches(
 async def test_fetch_models_returns_picker_options(monkeypatch: pytest.MonkeyPatch) -> None:
     import deeptutor.services.llm.factory as factory_module
 
-    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+    async def _fake_fetch(
+        binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
+    ):
         assert binding == "openai"  # "OpenAI" is normalized to lowercase
         assert base_url == "https://api.example.com/v1"
         assert api_key == "sk-x"
@@ -1103,7 +1105,9 @@ async def test_fetch_models_resolves_masked_key_server_side(
     service = _FakeCatalogService(catalog)
     monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
 
-    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+    async def _fake_fetch(
+        binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
+    ):
         assert (binding, base_url, api_key) == (
             "openai",
             "https://llm.example/v1",
@@ -1142,7 +1146,9 @@ async def test_fetch_models_allows_codebuddy_without_base_url(
 ) -> None:
     import deeptutor.services.llm.factory as factory_module
 
-    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+    async def _fake_fetch(
+        binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
+    ):
         assert (binding, base_url, api_key) == ("codebuddy", "", None)
         return ["hy3", "glm-5.2"]
 
@@ -1261,6 +1267,11 @@ def test_codex_provider_choice_is_advertised_as_oauth() -> None:
         "base_url": "https://chatgpt.com/backend-api",
         "auth_mode": "oauth",
         "supports_wire_api_selection": False,
+        # OAuth fixes the protocol: nothing for a profile to choose.
+        "api_formats": [],
+        "default_api_format": "auto",
+        "base_urls": {},
+        "status": "supported",
     }
     # API-key providers keep the same shape, so the frontend never special-cases
     # a missing field.

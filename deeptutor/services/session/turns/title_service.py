@@ -141,7 +141,12 @@ class SessionTitleService:
         try:
             await self.store.update_session_title(session_id, title)
         except Exception:
-            logger.debug("update_session_title failed", exc_info=True)
+            # Not debug: the conversation keeps its placeholder title forever
+            # and nothing else reports it. A silent failure here is how the
+            # sidebar ends up permanently wrong.
+            logger.warning(
+                "Could not store generated title for session %s", session_id, exc_info=True
+            )
             return
 
         await self._publish_live_event(

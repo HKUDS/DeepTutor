@@ -1,34 +1,85 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 
 import { CategoryScroll } from "@/components/settings/CategoryScroll";
 import SettingsOverview from "@/components/settings/SettingsOverview";
 
-import AboutSettingsPage from "@/features/settings/sections/AboutSettingsSection";
-import AgentsSettingsPage from "@/features/settings/sections/AgentsSettingsSection";
-import AppearanceSettingsPage from "@/features/settings/sections/AppearanceSettingsSection";
-import ChatSettingsPage from "@/features/settings/sections/ChatSettingsSection";
-import DocumentParsingSettingsPage from "@/features/settings/sections/DocumentParsingSettingsSection";
-import GuardianSettingsPage from "@/features/settings/sections/GuardianSettingsSection";
-import LearnerProfileSettingsPage from "@/features/settings/sections/LearnerProfileSettingsSection";
-import MemorySettingsPage from "@/features/settings/sections/MemorySettingsSection";
-import ModelsSettingsPage from "@/features/settings/sections/ModelsSettingsSection";
-import NetworkSettingsPage from "@/features/settings/sections/NetworkSettingsSection";
 import {
   isSettingsCategoryVisible,
   SETTINGS_CATEGORIES,
 } from "@/features/settings/navigation/settings-nav";
 import { useSettingsAccess } from "@/features/settings/navigation/SettingsAccessProvider";
 
+const sectionLoading = () => <div className="min-h-80" aria-hidden="true" />;
+
+const AppearanceSettingsPage = dynamic(
+  () => import("@/features/settings/sections/AppearanceSettingsSection"),
+  { loading: sectionLoading },
+);
+const NetworkSettingsPage = dynamic(
+  () => import("@/features/settings/sections/NetworkSettingsSection"),
+  { loading: sectionLoading },
+);
+const ModelsSettingsPage = dynamic(
+  () => import("@/features/settings/sections/ModelsSettingsSection"),
+  { loading: sectionLoading },
+);
+const DocumentParsingSettingsPage = dynamic(
+  () => import("@/features/settings/sections/DocumentParsingSettingsSection"),
+  { loading: sectionLoading },
+);
+const ChatSettingsPage = dynamic(
+  () => import("@/features/settings/sections/ChatSettingsSection"),
+  { loading: sectionLoading },
+);
+const AgentsSettingsPage = dynamic(
+  () => import("@/features/settings/sections/AgentsSettingsSection"),
+  { loading: sectionLoading },
+);
+const LearnerProfileSettingsPage = dynamic(
+  () => import("@/features/settings/sections/LearnerProfileSettingsSection"),
+  { loading: sectionLoading },
+);
+const GuardianSettingsPage = dynamic(
+  () => import("@/features/settings/sections/GuardianSettingsSection"),
+  { loading: sectionLoading },
+);
+const MemorySettingsPage = dynamic(
+  () => import("@/features/settings/sections/MemorySettingsSection"),
+  { loading: sectionLoading },
+);
+const AboutSettingsPage = dynamic(
+  () => import("@/features/settings/sections/AboutSettingsSection"),
+  { loading: sectionLoading },
+);
+
+const childKeys = (key: string) =>
+  SETTINGS_CATEGORIES.find((category) => category.key === key)?.children?.map(
+    (child) => child.key,
+  ) ?? [];
+
 const SETTINGS_SECTIONS = [
   { key: "overview", Component: SettingsOverview },
   { key: "appearance", Component: AppearanceSettingsPage },
   { key: "network", Component: NetworkSettingsPage },
-  { key: "models", Component: ModelsSettingsPage },
+  {
+    key: "models",
+    Component: ModelsSettingsPage,
+    activationKeys: childKeys("models"),
+  },
   { key: "knowledge", Component: DocumentParsingSettingsPage },
-  { key: "chat", Component: ChatSettingsPage },
-  { key: "agents", Component: AgentsSettingsPage },
+  {
+    key: "chat",
+    Component: ChatSettingsPage,
+    activationKeys: childKeys("chat"),
+  },
+  {
+    key: "agents",
+    Component: AgentsSettingsPage,
+    activationKeys: childKeys("agents"),
+  },
   { key: "learner-profile", Component: LearnerProfileSettingsPage },
   { key: "guardian", Component: GuardianSettingsPage },
   { key: "memory", Component: MemorySettingsPage },
@@ -59,5 +110,5 @@ export default function SettingsPage() {
     return <div className="h-48" aria-busy="true" />;
   }
 
-  return <CategoryScroll sections={sections} />;
+  return <CategoryScroll sections={sections} deferSections />;
 }

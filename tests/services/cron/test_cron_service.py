@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
+from types import SimpleNamespace
 
 import pytest
 
+from deeptutor.services.cron import repository as cron_repository
 from deeptutor.services.cron.service import (
     CronOwner,
     CronSchedule,
@@ -23,6 +26,34 @@ def _now_ms() -> int:
 
 def _chat_owner(user_id: str = "local-admin") -> CronOwner:
     return CronOwner(kind="chat", user_id=user_id, session_id="s1")
+
+
+def test_cron_repository_does_not_bind_fcntl_at_import() -> None:
+    assert "fcntl" not in cron_repository.__dict__
+
+
+def test_cron_repository_uses_msvcrt_locking_on_windows(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[int, int]] = []
+    fake_msvcrt = SimpleNamespace(
+        LK_LOCK=1,
+        LK_UNLCK=2,
+        locking=lambda _fileno, mode, length: calls.append((mode, length)),
+    )
+    monkeypatch.setattr(cron_repository, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+
+    repository = cron_repository.SQLiteCronRepository(tmp_path / "jobs.sqlite3")
+
+    assert repository.revision() == 0
+    assert calls == [
+        (fake_msvcrt.LK_LOCK, 1),
+        (fake_msvcrt.LK_UNLCK, 1),
+        (fake_msvcrt.LK_LOCK, 1),
+        (fake_msvcrt.LK_UNLCK, 1),
+    ]
+    assert repository._migration_lock_path.read_bytes() == b"\0"
 
 
 class TestComputeNextRun:

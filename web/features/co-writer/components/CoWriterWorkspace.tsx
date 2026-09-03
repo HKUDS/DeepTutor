@@ -4,6 +4,13 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ActivityDetailGrid,
+  ActivityRow,
+  ActivityStack,
+  argumentRows,
+  type DetailRow,
+} from "@/components/activity";
+import {
   ArrowRight,
   ArrowUpRight,
   Bold,
@@ -244,7 +251,6 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
   const [selectionTrace, setSelectionTrace] =
     useState<SelectionTraceData | null>(null);
-  const [isTraceExpanded, setIsTraceExpanded] = useState(true);
   const [selectionPopoverPinned, setSelectionPopoverPinned] = useState(false);
   const [isDraggingSelectionPopover, setIsDraggingSelectionPopover] =
     useState(false);
@@ -550,7 +556,6 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
     setIsToolMenuOpen(false);
     setIsModeMenuOpen(false);
     setSelectionTrace(null);
-    setIsTraceExpanded(true);
   }, [cancelSelectionRequest]);
 
   const measureSelectionAnchor = useCallback(
@@ -659,7 +664,6 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
         } else {
           setSelectionTrace(null);
         }
-        setIsTraceExpanded(true);
       }
       return { start, end, text, snapshot: markdown };
     });
@@ -961,7 +965,6 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
     setError("");
     setStatus("");
     setSelectionTrace({ toolTraces: [], response: "" });
-    setIsTraceExpanded(true);
     const controller = startSelectionRequest();
 
     try {
@@ -2136,97 +2139,82 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
           )}
 
           {(isEditing || selectionTrace) && (
-            <div className="mt-2 rounded-xl border border-[var(--border)]/70 bg-[var(--muted)]/18">
-              <button
-                onClick={() => setIsTraceExpanded((prev) => !prev)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-              >
-                <ChevronDown
-                  size={12}
-                  className={`shrink-0 transition-transform ${isTraceExpanded ? "rotate-180" : ""}`}
-                />
-                <span className="font-medium text-[var(--foreground)]">
-                  {t("Trace")}
-                </span>
-                {isEditing ? (
-                  <Loader2 size={12} className="ml-auto animate-spin" />
-                ) : null}
-              </button>
-
-              {isTraceExpanded && (
-                <div
-                  data-no-drag="true"
-                  className="max-h-[280px] overflow-y-auto border-t border-[var(--border)]/60 px-3 py-2 text-[12px] leading-[1.7] text-[var(--muted-foreground)]"
-                >
-                  {selectionTrace && selectionTrace.toolTraces.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--muted-foreground)]/60">
-                        {t("Tool")}
-                      </div>
-                      <div className="space-y-2">
-                        {selectionTrace.toolTraces.map((trace, index) => (
-                          <div
-                            key={`${trace.name}-${index}`}
-                            className="space-y-1"
-                          >
-                            <div>
-                              <span className="opacity-50">
-                                {trace.kind === "tool_result" ? "✓ " : "→ "}
-                              </span>
-                              <span className="text-[var(--foreground)]">
-                                {t(
-                                  TOOL_OPTIONS.find(
-                                    (item) => item.name === trace.name,
-                                  )?.label || trace.name,
-                                )}
-                              </span>
-                            </div>
-                            {trace.arguments &&
-                            Object.keys(trace.arguments).length > 0 ? (
-                              <pre className="ml-3 whitespace-pre-wrap break-words rounded-md bg-[var(--muted)]/45 px-2 py-1 font-mono text-[11px] leading-[1.55] text-[var(--muted-foreground)]/78">
-                                {JSON.stringify(trace.arguments, null, 2)}
-                              </pre>
-                            ) : null}
-                            {trace.result ? (
-                              <div className="ml-3">
-                                <MarkdownRenderer
-                                  content={trace.result}
-                                  variant="trace"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectionTrace?.response ? (
-                    <div
-                      className={`space-y-1.5 ${
-                        selectionTrace.toolTraces.length > 0 ? "mt-3" : ""
-                      }`}
+            // The co-writer used to render its own trace: a hand-rolled fold
+            // with a spinner in the header, `→`/`✓` prefixes, and arguments
+            // as a `JSON.stringify` block. That was a second, drifting
+            // implementation of chat's reasoning trace. It now composes the
+            // same activity primitives, so one tool call looks the same
+            // wherever the reader meets it.
+            <div className="mt-2 rounded-xl border border-[var(--border)]/70 bg-[var(--muted)]/18 px-3 py-2">
+              <ActivityStack alignUnderOrb={false}>
+                {(selectionTrace?.toolTraces ?? []).map((trace, index) => {
+                  const label = t(
+                    TOOL_OPTIONS.find((item) => item.name === trace.name)
+                      ?.label || trace.name,
+                  );
+                  const rows: DetailRow[] = argumentRows(trace.arguments);
+                  // The leading argument is this row's content. A tool row
+                  // showing only its own name told the reader nothing they
+                  // could not get from the tool list — what it was called
+                  // *with* is the part worth a line.
+                  const lead = rows[0]?.value;
+                  const detail = typeof lead === "string" ? lead : undefined;
+                  if (trace.result) {
+                    rows.push({
+                      key: "result",
+                      value: (
+                        <MarkdownRenderer
+                          content={trace.result}
+                          variant="trace"
+                        />
+                      ),
+                    });
+                  }
+                  return (
+                    <ActivityRow
+                      key={`${trace.name}-${index}`}
+                      state={
+                        trace.kind === "tool_result"
+                          ? trace.success === false
+                            ? "error"
+                            : "done"
+                          : "running"
+                      }
+                      title={label}
+                      detail={detail}
+                      detailMono={Boolean(detail)}
+                      breathing={trace.kind !== "tool_result"}
                     >
-                      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--muted-foreground)]/60">
-                        {t("Response")}
-                      </div>
-                      <MarkdownRenderer
-                        content={selectionTrace.response}
-                        variant="trace"
-                      />
-                    </div>
-                  ) : null}
+                      {rows.length ? <ActivityDetailGrid rows={rows} /> : null}
+                    </ActivityRow>
+                  );
+                })}
 
-                  {isEditing &&
-                  selectionTrace &&
-                  selectionTrace.toolTraces.length === 0 &&
-                  !selectionTrace.response ? (
-                    <div className="opacity-70">
-                      {t("Running tools and preparing the final edit...")}
-                    </div>
-                  ) : null}
-                </div>
-              )}
+                {selectionTrace?.response ? (
+                  <ActivityRow
+                    state="done"
+                    title={t("Response")}
+                    detail={selectionTrace.response}
+                  >
+                    <MarkdownRenderer
+                      content={selectionTrace.response}
+                      variant="trace"
+                    />
+                  </ActivityRow>
+                ) : null}
+
+                {/* Nothing has come back yet — one live row rather than a
+                    sentence that would be replaced a moment later. */}
+                {isEditing &&
+                !selectionTrace?.toolTraces.length &&
+                !selectionTrace?.response ? (
+                  <ActivityRow
+                    state="running"
+                    title={t("Running tools and preparing the final edit...")}
+                    breathing
+                  />
+                ) : null}
+              </ActivityStack>
             </div>
           )}
         </div>

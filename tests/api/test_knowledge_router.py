@@ -18,7 +18,7 @@ from deeptutor.services.rag.pipelines.ima.client import (
 import deeptutor.services.rag.pipelines.ima.config as ima_config_module
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, HTTPException
     from fastapi.testclient import TestClient
 except Exception:  # pragma: no cover - optional dependency in lightweight envs
     FastAPI = None
@@ -42,6 +42,34 @@ def _build_app() -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api")
     return app
+
+
+def test_knowledge_source_error_translation_is_consistent_and_sanitized() -> None:
+    translate = knowledge_router_module._knowledge_source_errors
+
+    with pytest.raises(HTTPException) as invalid:
+        with translate("demo", validation_status=400):
+            raise ValueError("invalid source")
+    assert invalid.value.status_code == 400
+    assert invalid.value.detail == "invalid source"
+
+    with pytest.raises(HTTPException) as missing:
+        with translate("demo"):
+            raise ValueError("implementation-specific text")
+    assert missing.value.status_code == 404
+    assert missing.value.detail == "KB 'demo' not found"
+
+    expected = HTTPException(status_code=409, detail="busy")
+    with pytest.raises(HTTPException) as preserved:
+        with translate("demo"):
+            raise expected
+    assert preserved.value is expected
+
+    with pytest.raises(HTTPException) as unexpected:
+        with translate("demo"):
+            raise RuntimeError("internal secret")
+    assert unexpected.value.status_code == 500
+    assert unexpected.value.detail == "Knowledge source operation failed"
 
 
 class _FakeKBManager:

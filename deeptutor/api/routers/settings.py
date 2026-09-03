@@ -48,8 +48,6 @@ from deeptutor.services.config.settings_draft import (
     merge_draft_secrets,
     redact_draft,
 )
-from deeptutor.services.embedding.client import reset_embedding_client
-from deeptutor.services.llm.client import reset_llm_client
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
@@ -219,6 +217,15 @@ class FetchModelsPayload(BaseModel):
     base_url: str = ""
     api_key: Optional[str] = None
     profile_id: Optional[str] = None
+    # Which LLM-shaped service the profile lives in (for resolving a masked key).
+    service: Literal["llm", "task"] = "llm"
+    # The profile's API format; decides whether /models takes Anthropic headers.
+    api_format: Optional[str] = None
+
+
+class ModelCapabilitiesQuery(BaseModel):
+    binding: str = ""
+    model: str = ""
 
 
 class NetworkSettingsUpdate(BaseModel):
@@ -349,6 +356,9 @@ def _invalidate_runtime_caches() -> None:
         "Admin applied catalog; resetting global LLM/embedding clients. "
         "In-flight user turns may flip backend client mid-call."
     )
+    from deeptutor.services.embedding.client import reset_embedding_client
+    from deeptutor.services.llm.client import reset_llm_client
+
     clear_llm_config_cache()
     reset_llm_client()
     reset_embedding_client()
@@ -467,6 +477,19 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
                 "base_url": s.default_api_base,
                 "auth_mode": s.auth_mode,
                 "supports_wire_api_selection": s.supports_wire_api_selection,
+                # Which protocols a profile on this vendor may pick, and the
+                # vendor endpoint each one lives at when that differs.
+                "api_formats": list(s.api_formats),
+                "default_api_format": s.default_api_format,
+                "base_urls": {
+                    api_format: s.default_api_base_for(api_format)
+                    for api_format in s.api_formats
+                    if s.default_api_base_for(api_format)
+                },
+                # Legacy entries stay resolvable for stored catalogs but are
+                # not offered for new profiles; the same thing is expressed
+                # today as a provider plus an API format.
+                "status": "legacy" if s.is_legacy else "supported",
             }
             for s in PROVIDERS
         ],
@@ -1479,20 +1502,20 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
         )
 
     api_key = payload.api_key
-    if api_key == CATALOG_SECRET_MASK and payload.profile_id:
-        llm_service = get_model_catalog_service().load().get("services", {}).get("llm", {})
+    api_format = (payload.api_format or "").strip().lower()
+    if payload.profile_id and (api_key == CATALOG_SECRET_MASK or not api_format):
+        service = get_model_catalog_service().load().get("services", {}).get(payload.service, {})
         profile = next(
-            (
-                item
-                for item in llm_service.get("profiles", [])
-                if item.get("id") == payload.profile_id
-            ),
+            (item for item in service.get("profiles", []) if item.get("id") == payload.profile_id),
             None,
         )
-        api_key = profile.get("api_key") if profile else None
+        if api_key == CATALOG_SECRET_MASK:
+            api_key = profile.get("api_key") if profile else None
+        if not api_format and profile:
+            api_format = str(profile.get("api_format") or "")
 
     try:
-        model_ids = await fetch_llm_models(binding, base_url, api_key)
+        model_ids = await fetch_llm_models(binding, base_url, api_key, api_format or "auto")
     except Exception as exc:  # noqa: BLE001 — surface any provider error as 502
         logger.exception("Failed to fetch models from %s", base_url)
         raise HTTPException(
@@ -1501,6 +1524,25 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
         ) from exc
 
     return {"models": [{"id": model_id, "name": model_id} for model_id in model_ids]}
+
+
+@router.post("/model-capabilities")
+async def resolve_model_capabilities(payload: ModelCapabilitiesQuery):
+    """What the built-in capability tables assume for one provider/model pair.
+
+    The settings UI shows these as the value "Auto" resolves to next to each
+    per-model override, so a user can see what they are overriding.
+    """
+    _require_settings_admin()
+    from deeptutor.services.llm.capabilities import effective_capabilities
+
+    binding = (payload.binding or "").strip().lower() or "openai"
+    model = (payload.model or "").strip()
+    return {
+        "binding": binding,
+        "model": model,
+        "defaults": effective_capabilities(binding, model),
+    }
 
 
 @router.put("/theme")

@@ -56,6 +56,10 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "load_tools": "has_deferred_tools",
     "exec": "has_exec",
     "code_execution": "has_code",
+    "mastery_topics": "has_mastery_topics",
+    "mastery_sessions": "has_mastery_nav",
+    "mastery_open_session": "has_mastery_nav",
+    "mastery_new_session": "has_mastery_nav",
 }
 
 # Built-ins that survive an exclusive knowledge capability when other KBs are
@@ -142,6 +146,15 @@ class ToolMountFlags:
     has_deferred_tools: bool = False
     has_exec: bool = False
     has_code: bool = False
+    #: The learner has at least one mastery topic to be sent back to.
+    has_mastery_nav: bool = False
+    #: …and this turn is not itself a mastery turn. The tutoring surface has
+    #: ``mastery_paths`` for reading the atlas, so listing topics twice with
+    #: two differently-named tools only invites the model to pick the wrong
+    #: one. The hand-off tools stay mounted there: sending the learner to
+    #: another topic's own screen is safer mid-course than re-pointing the
+    #: conversation under them.
+    has_mastery_topics: bool = False
 
 
 def compose_enabled_tools(
@@ -296,6 +309,22 @@ def user_has_notebooks() -> bool:
         return False
 
 
+def user_has_mastery_topics() -> bool:
+    """Whether the learner has any mastery topic worth navigating to.
+
+    Auto-mount gate for the four ``mastery_*`` navigation tools. Same
+    fail-closed posture as :func:`user_has_memory`; the probe itself avoids
+    creating a store for a learner who has never opened one (see
+    ``LearningStore.default_db_path``).
+    """
+    try:
+        from deeptutor.learning.navigation import learner_has_topics
+
+        return learner_has_topics()
+    except Exception:
+        return False
+
+
 def user_has_question_bank() -> bool:
     """Whether the learner has any saved quiz questions.
 
@@ -318,6 +347,7 @@ __all__ = [
     "admin_enabled_optional_tools",
     "compose_enabled_tools",
     "default_optional_tools",
+    "user_has_mastery_topics",
     "user_has_memory",
     "user_has_notebooks",
     "user_has_question_bank",

@@ -155,3 +155,37 @@ export function buildChatOutline(
   }
   return entries;
 }
+
+/**
+ * Scroll a transcript to the user bubble represented by an outline entry.
+ * Workspace shells own the auto-scroll pin, but the DOM lookup, offset, and
+ * optional arrival flash must stay identical wherever the outline appears.
+ */
+export function scrollToChatTurn(
+  container: HTMLElement | null,
+  key: string,
+  options: { topOffset?: number; flash?: boolean } = {},
+): boolean {
+  const target = container?.querySelector<HTMLElement>(
+    `[data-turn-key="${key}"]`,
+  );
+  if (!container || !target) return false;
+
+  const offset =
+    target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+  container.scrollTo({
+    top: container.scrollTop + offset - (options.topOffset ?? 0),
+    behavior: "smooth",
+  });
+
+  if (options.flash) {
+    const bubble =
+      target.querySelector<HTMLElement>("[data-turn-bubble]") ?? target;
+    bubble.classList.remove("turn-flash");
+    // Force a reflow so choosing the same entry twice replays the animation.
+    void bubble.offsetWidth;
+    bubble.classList.add("turn-flash");
+    window.setTimeout(() => bubble.classList.remove("turn-flash"), 1300);
+  }
+  return true;
+}

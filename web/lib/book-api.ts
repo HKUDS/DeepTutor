@@ -183,6 +183,11 @@ export const bookApi = {
     spine?: Spine,
     auto_compile = true,
     expected_revision?: number,
+    /**
+     * Which block types the chapters may contain. `undefined` leaves the
+     * book's current choice alone; `[]` clears it back to no restriction.
+     */
+    block_types?: string[],
   ) =>
     request<{ pages: Page[]; book_revision: number }>("/books/confirm-spine", {
       method: "POST",
@@ -191,8 +196,15 @@ export const bookApi = {
         spine: spine ?? null,
         auto_compile,
         expected_revision,
+        block_types: block_types ?? null,
       }),
     }),
+
+  /** The block types the architect can plan, straight from the planner. */
+  blockTypes: () =>
+    request<{
+      block_types: Array<{ value: string; planner_default: boolean }>;
+    }>("/books/block-types"),
   compilePage: (
     book_id: string,
     page_id: string,

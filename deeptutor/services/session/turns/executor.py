@@ -929,7 +929,13 @@ class TurnExecutor:
                         ui_language=str(payload.get("language", "en") or "en"),
                     )
                 except Exception:
-                    logger.debug("Failed to generate session title", exc_info=True)
+                    # Not debug: this step is the only thing that names a
+                    # conversation, and it has no other error surface. Hiding
+                    # its failures below the default log level is what let a
+                    # broken title path go unnoticed.
+                    logger.warning(
+                        "Session title generation failed for turn %s", turn_id, exc_info=True
+                    )
             # Flush once every terminal/post-turn event (DONE, and the title
             # ``session_meta`` above) has been published, not before: a
             # client that reconnects after this task's ``finally`` pops
