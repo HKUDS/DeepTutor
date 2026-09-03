@@ -114,11 +114,11 @@ async def test_invidious(payload: VideoLearningSettingsRequest) -> dict[str, Any
 
 
 @router.post("/invidious/account/authorize")
-async def authorize_invidious_account(request: Request) -> dict[str, str]:
+async def authorize_invidious_account() -> dict[str, str]:
     try:
         url = invidious_account.begin_invidious_account_authorization(
             owner_id=current_owner_id(),
-            redirect_uri=invidious_account.invidious_redirect_uri(_request_origin(request)),
+            redirect_uri=invidious_account.invidious_redirect_uri(),
         )
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -149,14 +149,6 @@ async def disconnect_invidious_account() -> dict[str, Any]:
         return await invidious_account.disconnect_invidious_account(owner_id=current_owner_id())
     except Exception as exc:
         raise _http_error(exc) from exc
-
-
-def _request_origin(request: Request) -> str:
-    """The origin this request arrived on, honouring a reverse proxy's headers."""
-    headers = request.headers
-    proto = headers.get("x-forwarded-proto", "").split(",")[0].strip() or request.url.scheme
-    host = headers.get("x-forwarded-host", "").split(",")[0].strip() or headers.get("host", "")
-    return f"{proto}://{host}" if host else ""
 
 
 @router.post("/materials/resolve")

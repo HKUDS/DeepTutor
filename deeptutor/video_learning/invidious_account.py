@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -45,53 +46,124 @@ class _PendingFlow:
     expires_at: float
 
 
-_PENDING: dict[str, _PendingFlow] = {}
-
-
-def _purge_expired(now: float | None = None) -> None:
-    current = time.monotonic() if now is None else now
-    for state, flow in list(_PENDING.items()):
-        if flow.expires_at <= current:
-            _PENDING.pop(state, None)
-
-
-def _store_path(owner_id: str) -> Path:
+def _asset_dir(owner_id: str) -> Path:
     path = owner_secrets_dir(owner_id)
     for part in _SECRETS_SUBDIR:
         path = path / part
         path.mkdir(parents=True, exist_ok=True)
         os.chmod(path, stat.S_IRWXU)
-    return path / "account.json"
+    return path
 
 
-def _read(owner_id: str) -> dict[str, Any]:
-    path = _store_path(owner_id)
+def _store_path(owner_id: str) -> Path:
+    return _asset_dir(owner_id) / "account.json"
+
+
+def _pending_dir(owner_id: str) -> Path:
+    path = _asset_dir(owner_id) / "pending"
+    path.mkdir(parents=True, exist_ok=True)
+    os.chmod(path, stat.S_IRWXU)
+    return path
+
+
+def _flow_path(owner_id: str, state: str) -> Path:
+    # State never becomes a path segment. Besides avoiding traversal hazards,
+    # hashing keeps a filesystem backup from disclosing a still-live callback
+    # state to someone who can list filenames but not read owner-private files.
+    digest = hashlib.sha256(state.encode("utf-8")).hexdigest()
+    return _pending_dir(owner_id) / f"{digest}.json"
+
+
+def _read_json(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
 
 
-def _write(owner_id: str, payload: dict[str, Any]) -> None:
-    path = _store_path(owner_id)
-    temporary = path.with_name(f"{path.name}.tmp")
+def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     try:
-        with temporary.open("w", encoding="utf-8") as handle:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            stat.S_IRUSR | stat.S_IWUSR,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False, indent=2))
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temporary, stat.S_IRUSR | stat.S_IWUSR)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _pending_flow(path: Path) -> _PendingFlow | None:
+    payload = _read_json(path)
+    owner_id = payload.get("owner_id")
+    api_base_url = payload.get("api_base_url")
+    callback_url = payload.get("callback_url")
+    expires_at = payload.get("expires_at")
+    if (
+        not isinstance(owner_id, str)
+        or not owner_id
+        or not isinstance(api_base_url, str)
+        or not api_base_url
+        or not isinstance(callback_url, str)
+        or not callback_url
+        or not isinstance(expires_at, (int, float))
+    ):
+        return None
+    return _PendingFlow(
+        owner_id=owner_id,
+        api_base_url=api_base_url,
+        callback_url=callback_url,
+        expires_at=float(expires_at),
+    )
+
+
+def _purge_expired(owner_id: str, now: float | None = None) -> None:
+    current = time.time() if now is None else now
+    for path in _pending_dir(owner_id).glob("*.json"):
+        flow = _pending_flow(path)
+        if flow is None or flow.owner_id != owner_id or flow.expires_at <= current:
+            path.unlink(missing_ok=True)
+
+
+def _consume_pending_flow(owner_id: str, state: str) -> _PendingFlow | None:
+    if not state:
+        return None
+    source = _flow_path(owner_id, state)
+    claim = source.with_name(f".{source.name}.{secrets.token_hex(8)}.claim")
+    try:
+        # Same-filesystem rename is the one-time claim. It works across Uvicorn
+        # workers and across restarts, unlike a process-local dictionary.
+        source.rename(claim)
+    except FileNotFoundError:
+        return None
+    try:
+        flow = _pending_flow(claim)
+    finally:
+        claim.unlink(missing_ok=True)
+    if flow is None or flow.owner_id != owner_id or flow.expires_at <= time.time():
+        return None
+    return flow
+
+
+def _read(owner_id: str) -> dict[str, Any]:
+    return _read_json(_store_path(owner_id))
+
+
+def _write(owner_id: str, payload: dict[str, Any]) -> None:
+    _write_private_json(_store_path(owner_id), payload)
 
 
 def _forget(owner_id: str) -> None:
     _store_path(owner_id).unlink(missing_ok=True)
 
 
-def _configured_public_url(origin: str) -> str:
+def _configured_public_url() -> str:
     configured = os.environ.get(PUBLIC_URL_ENV, "").strip().rstrip("/")
     if configured:
         # Reuse the provider-origin rules rather than accepting an arbitrary
@@ -104,11 +176,15 @@ def _configured_public_url(origin: str) -> str:
             }
         )
         return normalized["invidious"]["public_base_url"]
-    return origin.strip().rstrip("/") or DEFAULT_PUBLIC_URL
+    # Request Host and X-Forwarded-* headers are attacker-controlled unless a
+    # deployment has explicitly configured and constrained trusted proxies.
+    # Remote deployments therefore opt into their canonical external origin;
+    # local installs retain the shipped frontend URL.
+    return DEFAULT_PUBLIC_URL
 
 
-def invidious_redirect_uri(origin: str = "") -> str:
-    return f"{_configured_public_url(origin)}{CALLBACK_PATH}"
+def invidious_redirect_uri() -> str:
+    return f"{_configured_public_url()}{CALLBACK_PATH}"
 
 
 def begin_invidious_account_authorization(*, owner_id: str, redirect_uri: str) -> str:
@@ -131,7 +207,7 @@ def begin_invidious_account_authorization(*, owner_id: str, redirect_uri: str) -
     ):
         raise TimedMediaError("Invidious callback URL must be a plain HTTP(S) URL.")
 
-    _purge_expired()
+    _purge_expired(owner_id)
     state = secrets.token_urlsafe(32)
     separator = "&" if parsed_redirect.query else "?"
     callback_url = f"{redirect_uri}{separator}{urlencode({'state': state})}"
@@ -139,14 +215,19 @@ def begin_invidious_account_authorization(*, owner_id: str, redirect_uri: str) -
 
     # Starting again replaces the prior pending consent for this owner and
     # instance. The browser can then follow only the most recent redirect.
-    for pending_state, flow in list(_PENDING.items()):
-        if flow.owner_id == owner_id and flow.api_base_url == base:
-            _PENDING.pop(pending_state, None)
-    _PENDING[state] = _PendingFlow(
-        owner_id=owner_id,
-        api_base_url=base,
-        callback_url=callback_url,
-        expires_at=time.monotonic() + FLOW_TIMEOUT_S,
+    for path in _pending_dir(owner_id).glob("*.json"):
+        flow = _pending_flow(path)
+        if flow is None or flow.owner_id != owner_id or flow.api_base_url == base:
+            path.unlink(missing_ok=True)
+    _write_private_json(
+        _flow_path(owner_id, state),
+        {
+            "version": 1,
+            "owner_id": owner_id,
+            "api_base_url": base,
+            "callback_url": callback_url,
+            "expires_at": time.time() + FLOW_TIMEOUT_S,
+        },
     )
     return authorize_url
 
@@ -231,9 +312,9 @@ async def _request_preferences(*, api_base_url: str, token: dict[str, Any]) -> d
 async def complete_invidious_account_authorization(
     *, owner_id: str, state: str, token: str
 ) -> dict[str, Any]:
-    _purge_expired()
-    flow = _PENDING.pop(state, None) if state else None
-    if flow is None or flow.owner_id != owner_id or flow.expires_at <= time.monotonic():
+    _purge_expired(owner_id)
+    flow = _consume_pending_flow(owner_id, state)
+    if flow is None:
         raise TimedMediaError("Invidious account callback is unknown, expired, or already used.")
 
     parsed_token = _parse_token(token)

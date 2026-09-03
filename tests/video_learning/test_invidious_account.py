@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
+import json
 from pathlib import Path
 import stat
 from urllib.parse import parse_qs, urlsplit
@@ -42,16 +43,7 @@ def configured_instance(monkeypatch: pytest.MonkeyPatch) -> str:
     return base
 
 
-@pytest.fixture(autouse=True)
-def clear_pending_flows():
-    account._PENDING.clear()
-    yield
-    account._PENDING.clear()
-
-
 def _token(scopes: list[str] | None = None) -> str:
-    import json
-
     return json.dumps(
         {
             "session": "v1:test-session",
@@ -97,7 +89,9 @@ def test_authorization_uses_minimal_scopes_and_one_time_state(
 
     assert urlsplit(url).path == "/authorize_token"
     assert query["scopes"] == [",".join(account.ACCOUNT_SCOPES)]
-    assert set(account._PENDING) == {state}
+    pending = account._flow_path("u_ada", state)
+    assert pending.is_file()
+    assert stat.S_IMODE(pending.stat().st_mode) == 0o600
 
     status = asyncio.run(
         account.complete_invidious_account_authorization(
@@ -143,10 +137,8 @@ def test_callback_cannot_be_replayed_or_used_by_another_owner(
             )
         )
 
-    url = account.begin_invidious_account_authorization(
-        owner_id="u_ada", redirect_uri="https://app.example.test/callback"
-    )
-    state = _state_from_authorize_url(url)
+    # Looking under another owner's state directory must not consume the real
+    # owner's pending callback.
     status = asyncio.run(
         account.complete_invidious_account_authorization(
             owner_id="u_ada", state=state, token=_token()
@@ -161,17 +153,39 @@ def test_callback_cannot_be_replayed_or_used_by_another_owner(
         )
 
 
-def test_expired_callback_is_rejected_and_never_writes_a_token(
+def test_pending_callback_claim_is_atomic_across_workers(
     system_root: Path,
     configured_instance: str,
 ) -> None:
-    import time
-
     url = account.begin_invidious_account_authorization(
         owner_id="u_ada", redirect_uri="https://app.example.test/callback"
     )
     state = _state_from_authorize_url(url)
-    account._PENDING[state] = replace(account._PENDING[state], expires_at=time.monotonic() - 1)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        claimed = list(
+            executor.map(
+                lambda _: account._consume_pending_flow("u_ada", state),
+                range(2),
+            )
+        )
+
+    assert sum(flow is not None for flow in claimed) == 1
+    assert not account._flow_path("u_ada", state).exists()
+
+
+def test_expired_callback_is_rejected_and_never_writes_a_token(
+    system_root: Path,
+    configured_instance: str,
+) -> None:
+    url = account.begin_invidious_account_authorization(
+        owner_id="u_ada", redirect_uri="https://app.example.test/callback"
+    )
+    state = _state_from_authorize_url(url)
+    pending = account._flow_path("u_ada", state)
+    payload = account._read_json(pending)
+    payload["expires_at"] = 0
+    account._write_private_json(pending, payload)
 
     with pytest.raises(TimedMediaError):
         asyncio.run(
@@ -327,15 +341,31 @@ def test_failed_upstream_disconnect_keeps_the_saved_connection_for_retry(
     assert account.invidious_account_status("u_ada")["connected"] is True
 
 
-def test_public_url_override_wins_over_forwarded_origin(
+def test_public_url_override_is_the_only_remote_callback_origin(
     configured_instance: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(account.PUBLIC_URL_ENV, "https://public.example.test")
-    assert (
-        account.invidious_redirect_uri("http://forwarded.example.test")
-        == "https://public.example.test" + account.CALLBACK_PATH
+    assert account.invidious_redirect_uri() == "https://public.example.test" + account.CALLBACK_PATH
+
+
+def test_default_callback_never_trusts_request_host_headers(
+    client: TestClient,
+    system_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(account.PUBLIC_URL_ENV, raising=False)
+    response = client.post(
+        "/api/video-learning/invidious/account/authorize",
+        headers={
+            "host": "attacker.example.test",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "forwarded-attacker.example.test",
+        },
     )
+    callback_url = parse_qs(urlsplit(response.json()["authorize_url"]).query)["callback_url"][0]
+    assert callback_url.startswith(account.DEFAULT_PUBLIC_URL + account.CALLBACK_PATH)
+    assert "attacker.example.test" not in callback_url
 
 
 def test_invidious_requests_use_bearer_json_and_unregister_session(
@@ -441,6 +471,7 @@ def test_router_authorize_callback_status_and_disconnect(
     system_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(account.PUBLIC_URL_ENV, "https://app.example.test")
     response = client.post(
         "/api/video-learning/invidious/account/authorize",
         headers={
@@ -453,7 +484,7 @@ def test_router_authorize_callback_status_and_disconnect(
     url = response.json()["authorize_url"]
     state = _state_from_authorize_url(url)
     callback_url = parse_qs(urlsplit(url).query)["callback_url"][0]
-    assert callback_url.startswith("https://forwarded.example.test")
+    assert callback_url.startswith("https://app.example.test")
 
     async def complete(*, owner_id: str, state: str, token: str) -> dict[str, object]:
         assert owner_id == "u_ada"
