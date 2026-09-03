@@ -9,6 +9,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   let invidiousOffline = false;
   let transcriptReady = true;
   let transcriptRefreshCount = 0;
+  let materialRequestCount = 0;
   let savedPosition = 0;
   let nativeResolveCount = 0;
   let nextNoteId = 1;
@@ -161,6 +162,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
       return json(material(body.provider_override || provider));
     }
     if (path === `/api/video-learning/materials/${MATERIAL_ID}`) {
+      materialRequestCount += 1;
       if (provider === "invidious" && invidiousOffline) {
         return json({ detail: "Invidious is offline" }, 400);
       }
@@ -264,7 +266,11 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   await expect(page.getByText("First timestamped note")).toBeVisible();
   await expect(page.getByText("The first grounded concept.")).toBeVisible();
 
-  await page.reload();
+  await page.goto("/");
+  await page.waitForTimeout(100);
+  expect(materialRequestCount).toBe(0);
+  await page.goto("/chat?capability=immersive_watching");
+  await expect.poll(() => materialRequestCount).toBe(1);
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
   await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByText("First timestamped note")).toBeVisible();
