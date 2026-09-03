@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 
+from deeptutor.agents._shared.structured_llm import stream_and_validate_json
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 
 from ..models import ConceptAnalysis, GeneratedCode, SceneDesign
-from ..utils import build_repair_error_message, extract_json_object
+from ..utils import build_repair_error_message
 
 
 class CodeGeneratorAgent(BaseAgent):
@@ -71,24 +72,25 @@ class CodeGeneratorAgent(BaseAgent):
             analysis_json=json.dumps(analysis.model_dump(), ensure_ascii=False, indent=2),
             design_json=json.dumps(design.model_dump(), ensure_ascii=False, indent=2),
         )
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
+        return await stream_and_validate_json(
+            stream=self.stream_llm,
             user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format={"type": "json_object"},
-            stage="code_generation",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-codegen"),
-                phase="code_generation",
-                label="Code generation",
-                call_kind="math_code_generation",
-                trace_role="generate",
-                trace_kind="llm_output",
-            ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return GeneratedCode.model_validate(extract_json_object(response))
+            model_type=GeneratedCode,
+            stream_kwargs={
+                "system_prompt": system_prompt,
+                "response_format": {"type": "json_object"},
+                "stage": "code_generation",
+                "trace_meta": build_trace_metadata(
+                    call_id=new_call_id("math-codegen"),
+                    phase="code_generation",
+                    label="Code generation",
+                    call_kind="math_code_generation",
+                    trace_role="generate",
+                    trace_kind="llm_output",
+                ),
+            },
+            is_complete=lambda payload: bool(payload.code.strip()),
+        )
 
     async def repair(
         self,
@@ -117,22 +119,23 @@ class CodeGeneratorAgent(BaseAgent):
             error_message=build_repair_error_message(error_message),
             current_code=current_code,
         )
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
+        return await stream_and_validate_json(
+            stream=self.stream_llm,
             user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format={"type": "json_object"},
-            stage="code_retry",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-retry"),
-                phase="code_retry",
-                label=f"Code retry #{attempt}",
-                call_kind="math_code_retry",
-                trace_role="repair",
-                trace_kind="llm_output",
-                attempt=attempt,
-            ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return GeneratedCode.model_validate(extract_json_object(response))
+            model_type=GeneratedCode,
+            stream_kwargs={
+                "system_prompt": system_prompt,
+                "response_format": {"type": "json_object"},
+                "stage": "code_retry",
+                "trace_meta": build_trace_metadata(
+                    call_id=new_call_id("math-retry"),
+                    phase="code_retry",
+                    label=f"Code retry #{attempt}",
+                    call_kind="math_code_retry",
+                    trace_role="repair",
+                    trace_kind="llm_output",
+                    attempt=attempt,
+                ),
+            },
+            is_complete=lambda payload: bool(payload.code.strip()),
+        )

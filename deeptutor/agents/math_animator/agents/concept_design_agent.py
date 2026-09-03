@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 
+from deeptutor.agents._shared.structured_llm import stream_and_validate_json
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 
 from ..models import ConceptAnalysis, SceneDesign
-from ..utils import extract_json_object
 
 
 class ConceptDesignAgent(BaseAgent):
@@ -47,21 +47,24 @@ class ConceptDesignAgent(BaseAgent):
             style_hint=style_hint.strip() or "(none)",
             analysis_json=json.dumps(analysis.model_dump(), ensure_ascii=False, indent=2),
         )
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
+        return await stream_and_validate_json(
+            stream=self.stream_llm,
             user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format={"type": "json_object"},
-            stage="concept_design",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-design"),
-                phase="concept_design",
-                label="Concept design",
-                call_kind="math_concept_design",
-                trace_role="design",
-                trace_kind="llm_output",
+            model_type=SceneDesign,
+            stream_kwargs={
+                "system_prompt": system_prompt,
+                "response_format": {"type": "json_object"},
+                "stage": "concept_design",
+                "trace_meta": build_trace_metadata(
+                    call_id=new_call_id("math-design"),
+                    phase="concept_design",
+                    label="Concept design",
+                    call_kind="math_concept_design",
+                    trace_role="design",
+                    trace_kind="llm_output",
+                ),
+            },
+            is_complete=lambda payload: bool(
+                payload.title.strip() or payload.scene_outline or payload.animation_notes
             ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return SceneDesign.model_validate(extract_json_object(response))
+        )

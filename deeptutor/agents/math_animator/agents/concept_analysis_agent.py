@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from deeptutor.agents._shared.structured_llm import stream_and_validate_json
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import Attachment
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 from deeptutor.services.prompt import get_prompt_manager
 
 from ..models import ConceptAnalysis
-from ..utils import extract_json_object
 
 
 class ConceptAnalysisAgent(BaseAgent):
@@ -62,27 +62,36 @@ class ConceptAnalysisAgent(BaseAgent):
             style_hint=style_hint.strip() or "(none)",
             reference_count=reference_count,
         )
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
+
+        def _messages(prompt: str) -> list[dict[str, str]]:
+            return [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+
+        return await stream_and_validate_json(
+            stream=self.stream_llm,
             user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            messages=messages,
-            attachments=attachments,
-            response_format={"type": "json_object"},
-            stage="concept_analysis",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-analysis"),
-                phase="concept_analysis",
-                label="Concept analysis",
-                call_kind="math_concept_analysis",
-                trace_role="analyze",
-                trace_kind="llm_output",
+            model_type=ConceptAnalysis,
+            build_messages=_messages,
+            stream_kwargs={
+                "system_prompt": system_prompt,
+                "attachments": attachments,
+                "response_format": {"type": "json_object"},
+                "stage": "concept_analysis",
+                "trace_meta": build_trace_metadata(
+                    call_id=new_call_id("math-analysis"),
+                    phase="concept_analysis",
+                    label="Concept analysis",
+                    call_kind="math_concept_analysis",
+                    trace_role="analyze",
+                    trace_kind="llm_output",
+                ),
+            },
+            is_complete=lambda payload: bool(
+                payload.learning_goal.strip()
+                or payload.math_focus
+                or payload.narrative_steps
+                or payload.visual_targets
             ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        return ConceptAnalysis.model_validate(extract_json_object(response))
+        )
