@@ -1,8 +1,7 @@
 """Pluggable storage backends for chat-session artifacts.
 
-Currently exposes only :mod:`attachment_store`, which persists user-uploaded
-chat attachments to disk so the frontend can preview them after the original
-base64 payload is dropped from the message record.
+Currently exposes :mod:`attachment_store` (session-facing paths + public URLs)
+and :mod:`blob_store` (content-addressed bytes shared across identical uploads).
 """
 
 from deeptutor.services.storage.attachment_store import (
@@ -10,9 +9,12 @@ from deeptutor.services.storage.attachment_store import (
     LocalDiskAttachmentStore,
     get_attachment_store,
 )
+from deeptutor.services.storage.blob_store import ContentAddressedBlobStore, sha256_hex
 
 __all__ = [
     "AttachmentStore",
+    "ContentAddressedBlobStore",
     "LocalDiskAttachmentStore",
     "get_attachment_store",
+    "sha256_hex",
 ]
