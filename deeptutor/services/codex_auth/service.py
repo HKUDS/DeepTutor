@@ -33,6 +33,7 @@ from .contracts import (
     CodexModel,
     CodexToken,
     decode_codex_jwt,
+    normalize_codex_reasoning_levels,
 )
 from .oauth import (
     CodexOAuthClient,
@@ -171,6 +172,17 @@ def _reasoning_efforts(profile: Mapping[str, Any]) -> dict[str, str]:
     return overrides
 
 
+def _managed_reasoning_levels(model: Mapping[str, Any]) -> list[str]:
+    slug = model.get("model")
+    supported = model.get("codex_supported_reasoning_levels")
+    levels = (
+        (level for level in supported if isinstance(level, str))
+        if isinstance(supported, list)
+        else ()
+    )
+    return list(normalize_codex_reasoning_levels(slug if isinstance(slug, str) else "", levels))
+
+
 def reconcile_codex_catalog_update(
     current_catalog: Mapping[str, Any],
     proposed_catalog: Mapping[str, Any],
@@ -227,9 +239,10 @@ def reconcile_codex_catalog_update(
             continue
         model.pop("reasoning_effort", None)
         slug = model.get("model")
-        supported = model.get("codex_supported_reasoning_levels")
+        supported = _managed_reasoning_levels(model)
+        model["codex_supported_reasoning_levels"] = supported
         effort = requested.get(slug) if isinstance(slug, str) else None
-        if isinstance(supported, list) and effort in supported:
+        if effort in supported:
             model["reasoning_effort"] = effort
 
     insert_at = proposed_indexes[0] if proposed_indexes else current_indexes[0]
@@ -769,15 +782,14 @@ class CodexOAuthService:
                 for model in profile.get("models", []):
                     if not isinstance(model, dict) or model.get("model") != model_slug:
                         continue
-                    supported = model.get("codex_supported_reasoning_levels")
-                    if reasoning_effort is not None and (
-                        not isinstance(supported, list) or reasoning_effort not in supported
-                    ):
+                    supported = _managed_reasoning_levels(model)
+                    if reasoning_effort is not None and reasoning_effort not in supported:
                         raise CodexAuthError(
                             "reasoning_effort_unsupported",
                             "The selected Codex model does not support that reasoning effort.",
                             422,
                         )
+                    model["codex_supported_reasoning_levels"] = supported
                     if reasoning_effort is None:
                         model.pop("reasoning_effort", None)
                     else:
@@ -907,12 +919,7 @@ class CodexOAuthService:
             if not isinstance(slug, str) or not slug:
                 continue
             name = model.get("name")
-            supported = model.get("codex_supported_reasoning_levels")
-            levels = (
-                [level for level in supported if isinstance(level, str)]
-                if isinstance(supported, list)
-                else []
-            )
+            levels = _managed_reasoning_levels(model)
             effort = model.get("reasoning_effort")
             result.append(
                 {

@@ -18,7 +18,13 @@ from .constants import (
     CODEX_MODELS_URL,
     CODEX_STALE_CACHE_SECONDS,
 )
-from .contracts import CatalogSnapshot, CodexAuthError, CodexCredentials, CodexModel
+from .contracts import (
+    CatalogSnapshot,
+    CodexAuthError,
+    CodexCredentials,
+    CodexModel,
+    normalize_codex_reasoning_levels,
+)
 from .storage import CodexCredentialStore
 
 
@@ -69,7 +75,8 @@ def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
                 visibility="list",
                 default_reasoning_level=_optional_string(raw_model.get("default_reasoning_level")),
                 supported_reasoning_levels=_reasoning_levels(
-                    raw_model.get("supported_reasoning_levels")
+                    raw_model.get("supported_reasoning_levels"),
+                    model_slug=slug,
                 ),
                 supports_reasoning_summary=_summary_support(raw_model),
                 supports_parallel_tool_calls=(
@@ -94,19 +101,19 @@ def _optional_positive_int(value: object) -> int | None:
     return value
 
 
-def _reasoning_levels(value: object) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        return ()
+def _reasoning_levels(value: object, *, model_slug: str) -> tuple[str, ...]:
     efforts: list[str] = []
-    for item in value:
-        effort: object
-        if isinstance(item, dict):
-            effort = item.get("effort")
-        else:
-            effort = item
-        if isinstance(effort, str) and effort and effort not in efforts:
-            efforts.append(effort)
-    return tuple(efforts)
+    if isinstance(value, list):
+        for item in value:
+            effort: object
+            if isinstance(item, dict):
+                effort = item.get("effort")
+            else:
+                effort = item
+            if isinstance(effort, str) and effort and effort not in efforts:
+                efforts.append(effort)
+
+    return normalize_codex_reasoning_levels(model_slug, efforts)
 
 
 def _summary_support(raw_model: Mapping[str, Any]) -> bool:
