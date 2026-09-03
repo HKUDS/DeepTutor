@@ -167,6 +167,22 @@ async def list_video_notes(material_id: str) -> list[dict[str, Any]]:
         raise _note_error(exc) from exc
 
 
+@router.get("/materials/{material_id}/notes.md")
+async def export_video_notes(material_id: str) -> Response:
+    try:
+        markdown = video_notes.export_notes(video_notes.get_notebook_manager(), material_id)
+        return Response(
+            markdown,
+            media_type="text/markdown",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Disposition": 'attachment; filename="video-notes.md"',
+            },
+        )
+    except Exception as exc:
+        raise _note_error(exc) from exc
+
+
 @router.post("/materials/{material_id}/notes")
 async def create_video_note(material_id: str, payload: CreateVideoNoteRequest) -> dict[str, Any]:
     try:

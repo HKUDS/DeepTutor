@@ -12,6 +12,8 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   let materialRequestCount = 0;
   let savedPosition = 0;
   let nativeResolveCount = 0;
+  let exportRequestCount = 0;
+  let exportShouldFail = false;
   let nextNoteId = 1;
   const notes: Array<{
     notebook_id: string;
@@ -78,6 +80,8 @@ test("YouTube learning survives reload and switches to Invidious without silent 
             start_seconds: savedPosition,
           },
   });
+
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
   await page.addInitScript(() => {
     class FakePlayer {
@@ -183,6 +187,15 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     if (path.endsWith("/notes") && request.method() === "GET") {
       return json(notes);
     }
+    if (path.endsWith("/notes.md")) {
+      exportRequestCount += 1;
+      if (exportShouldFail) return json({ detail: "Notes export failed" }, 500);
+      return route.fulfill({
+        status: 200,
+        contentType: "text/markdown",
+        body: "# Video notes: Timestamped lesson\n\n## 0:08\n\nFirst timestamped note\n",
+      });
+    }
     if (path.endsWith("/notes") && request.method() === "POST") {
       const body = request.postDataJSON() as {
         body: string;
@@ -261,10 +274,24 @@ test("YouTube learning survives reload and switches to Invidious without silent 
 
   await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByText("No notes yet.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy notes" })).toBeDisabled();
   await page.getByPlaceholder("Note at 0:08").fill("First timestamped note");
   await page.getByRole("button", { name: "Add video note" }).click();
   await expect(page.getByText("First timestamped note")).toBeVisible();
   await expect(page.getByText("The first grounded concept.")).toBeVisible();
+  await page.getByRole("button", { name: "Copy notes" }).click();
+  await expect(page.getByRole("button", { name: "Notes copied" })).toBeVisible();
+  await expect.poll(() => exportRequestCount).toBe(1);
+  await expect(
+    page.evaluate(() => navigator.clipboard.readText()),
+  ).resolves.toContain("First timestamped note");
+
+  exportShouldFail = true;
+  await page.getByRole("button", { name: "Notes copied" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Notes export failed" }),
+  ).toBeVisible();
+  exportShouldFail = false;
 
   await page.goto("/");
   await page.waitForTimeout(100);

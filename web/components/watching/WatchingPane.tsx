@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Check,
   Captions,
+  Copy,
   ExternalLink,
   Loader2,
   Pencil,
@@ -22,6 +23,7 @@ import type { PlayerController } from "@/lib/video-player-controller";
 import {
   createVideoNote,
   deleteVideoNote,
+  exportVideoNotes,
   listVideoNotes,
   saveVideoProgress,
   updateVideoNote,
@@ -62,7 +64,10 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [notesExportBusy, setNotesExportBusy] = useState(false);
+  const [notesCopied, setNotesCopied] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const notesExportRequestRef = useRef(0);
   const controllerRef = useRef<PlayerController | null>(null);
   const activeMaterialIdRef = useRef(materialId);
   const lastSavedRef = useRef(0);
@@ -166,6 +171,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     setEditingNoteId(null);
     setEditingDraft("");
     setPendingDeleteId(null);
+    notesExportRequestRef.current += 1;
+    setNotesExportBusy(false);
+    setNotesCopied(false);
     if (!materialId) {
       setNotesLoading(false);
       return () => {
@@ -216,6 +224,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotes((current) => sortNotes([...current, saved]));
       setNoteDraft("");
+      setNotesCopied(false);
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotesError(
@@ -247,6 +256,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       );
       setEditingNoteId(null);
       setEditingDraft("");
+      setNotesCopied(false);
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotesError(
@@ -273,6 +283,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         setEditingDraft("");
       }
       setPendingDeleteId(null);
+      setNotesCopied(false);
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotesError(
@@ -280,6 +291,31 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       );
     } finally {
       setNoteBusy(false);
+    }
+  };
+
+  const copyNotes = async () => {
+    if (!material || !notes.length || notesExportBusy) return;
+    const requestedMaterialId = material.material_id;
+    const requestId = ++notesExportRequestRef.current;
+    setNotesExportBusy(true);
+    setNotesCopied(false);
+    try {
+      const markdown = await exportVideoNotes(requestedMaterialId);
+      await navigator.clipboard.writeText(markdown);
+      if (notesExportRequestRef.current !== requestId) return;
+      setNotesCopied(true);
+    } catch (caught) {
+      if (notesExportRequestRef.current !== requestId) return;
+      setNotesError(
+        caught instanceof Error
+          ? caught.message
+          : t("Notes could not be copied."),
+      );
+    } finally {
+      if (notesExportRequestRef.current === requestId) {
+        setNotesExportBusy(false);
+      }
     }
   };
 
@@ -567,6 +603,21 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                       <Check className="h-4 w-4" />
                     )}
                     {t("Add video note")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyNotes()}
+                    disabled={notesExportBusy || !notes.length}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm disabled:opacity-50"
+                  >
+                    {notesExportBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : notesCopied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                    {notesCopied ? t("Notes copied") : t("Copy notes")}
                   </button>
                 </form>
 
