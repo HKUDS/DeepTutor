@@ -524,6 +524,17 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
             onTouchMove={() => {
               if (tab === "transcript") setFollowTranscript(false);
             }}
+            onPointerDown={(event) => {
+              // Native scrollbar drags target the scroll container itself.
+              // Pointer events from cue/control buttons bubble through here
+              // and must keep their own click semantics.
+              if (
+                tab === "transcript" &&
+                event.target === event.currentTarget
+              ) {
+                setFollowTranscript(false);
+              }
+            }}
             onKeyDown={(event) => {
               if (
                 tab === "transcript" &&

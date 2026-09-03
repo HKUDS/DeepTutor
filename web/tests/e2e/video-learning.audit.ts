@@ -324,6 +324,11 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     .poll(() => transcriptList.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(pausedScrollTop);
 
+  await transcriptList.dispatchEvent("pointerdown", { pointerType: "mouse" });
+  await expect(followButton).toHaveAttribute("aria-pressed", "false");
+  await followButton.click();
+  await expect(followButton).toHaveAttribute("aria-pressed", "true");
+
   await page.evaluate(() => {
     const player = (
       window as typeof window & { __fakePlayers: Array<{ current: number }> }
