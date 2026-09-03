@@ -206,3 +206,13 @@ def test_failed_sync_redacts_credentials_from_result_and_state(tmp_path: Path, m
     assert "password" not in result.error
     assert "sk-secret" not in result.error
     assert Manager.calls[0]["last_sync_error"] == result.error
+
+
+def test_sync_error_redaction_fails_closed_for_malformed_urls() -> None:
+    error = sync_module.redact_sync_error(
+        RuntimeError("token=private https://user:secret@example.test:not-a-port/v1")
+    )
+
+    assert "private" not in error
+    assert "secret" not in error
+    assert "[redacted-url]" in error

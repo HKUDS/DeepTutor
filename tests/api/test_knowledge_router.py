@@ -2245,6 +2245,13 @@ def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path
 
 def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    snapshot = SimpleNamespace(
+        persisted_policy=lambda: {
+            "policy": "pinned",
+            "selection": {"profile_id": "profile-1", "model_id": "model-1"},
+            "fingerprint": "a" * 64,
+        }
+    )
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
     monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
@@ -2252,6 +2259,11 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
     monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
     lightrag_config = importlib.import_module("deeptutor.services.rag.pipelines.lightrag.config")
     monkeypatch.setattr(lightrag_config, "is_lightrag_available", lambda: True)
+    monkeypatch.setattr(
+        knowledge_router_module,
+        "_freeze_default_indexing_llm",
+        lambda: snapshot,
+    )
 
     async def _noop_init_task(*_args, **_kwargs):
         return None

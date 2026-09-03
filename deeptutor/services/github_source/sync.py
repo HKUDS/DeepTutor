@@ -40,11 +40,16 @@ def redact_sync_error(exc: Exception) -> str:
     message = str(exc).strip() or type(exc).__name__
 
     def redact_url(match: re.Match[str]) -> str:
-        parsed = urlsplit(match.group(0))
-        host = parsed.hostname or ""
-        if parsed.port is not None:
-            host = f"{host}:{parsed.port}"
-        return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+        try:
+            parsed = urlsplit(match.group(0))
+            host = parsed.hostname or ""
+            if parsed.port is not None:
+                host = f"{host}:{parsed.port}"
+            return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+        except ValueError:
+            # Error strings are untrusted input too. A malformed bracket or port
+            # must not make credential redaction mask the original sync failure.
+            return "[redacted-url]"
 
     message = re.sub(r"https?://[^\s,;]+", redact_url, message)
     message = re.sub(r"\bsk-[A-Za-z0-9_-]{4,}\b", "[redacted]", message)

@@ -661,7 +661,13 @@ def test_rebuild_failure_before_index_output_keeps_previous_published_version(
     monkeypatch.setattr(pipeline, "_run_indexing", fail_before_output)
 
     with pytest.raises(RuntimeError, match="indexing failed"):
-        asyncio.run(pipeline.initialize("kb", [str(tmp_path / "doc.md")]))
+        asyncio.run(
+            pipeline.initialize(
+                "kb",
+                [str(tmp_path / "doc.md")],
+                indexing_snapshot=_indexing_snapshot(),
+            )
+        )
 
     assert storage.latest_published_root(kb_dir) == old
     assert not (kb_dir / "version-2").exists()
@@ -693,7 +699,13 @@ def test_atomic_meta_failure_leaves_new_candidate_unpublished(tmp_path: Path, mo
     monkeypatch.setattr(storage, "write_meta", fail_meta)
 
     with pytest.raises(OSError, match="atomic publication failed"):
-        asyncio.run(pipeline.initialize("kb", [str(tmp_path / "doc.md")]))
+        asyncio.run(
+            pipeline.initialize(
+                "kb",
+                [str(tmp_path / "doc.md")],
+                indexing_snapshot=_indexing_snapshot(),
+            )
+        )
 
     candidate = kb_dir / "version-2"
     assert candidate.is_dir()
