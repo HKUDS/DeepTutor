@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 const MATERIAL_ID = "0123456789abcdef0123456789abcdef";
+const SECOND_MATERIAL_ID = "fedcba9876543210fedcba9876543210";
+const SECOND_VIDEO_ID = "9bZkp7q19f0";
 
 test("YouTube learning survives reload and switches to Invidious without silent fallback", async ({
   page,
@@ -15,6 +17,9 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   let exportRequestCount = 0;
   let exportShouldFail = false;
   let nextNoteId = 1;
+  let activeMaterialId = MATERIAL_ID;
+  let activeVideoId = "dQw4w9WgXcQ";
+  let activeTitle = "Timestamped lesson";
   const notes: Array<{
     notebook_id: string;
     note_id: string;
@@ -40,15 +45,15 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   const material = (selected: "youtube" | "invidious") => ({
     version: 1,
     type: "timed_media",
-    material_id: MATERIAL_ID,
+    material_id: activeMaterialId,
     source: {
       provider: "youtube",
-      video_id: "dQw4w9WgXcQ",
-      url: "https://youtu.be/dQw4w9WgXcQ",
+      video_id: activeVideoId,
+      url: `https://youtu.be/${activeVideoId}`,
       entry_time_seconds: 0,
     },
     metadata: {
-      title: "Timestamped lesson",
+      title: activeTitle,
       author: "Teacher",
       duration_seconds: 120,
     },
@@ -74,7 +79,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
         ? {
             provider: "youtube",
             kind: "youtube_iframe",
-            video_id: "dQw4w9WgXcQ",
+            video_id: activeVideoId,
             start_seconds: savedPosition,
           }
         : {
@@ -82,8 +87,8 @@ test("YouTube learning survives reload and switches to Invidious without silent 
             kind: "html5",
             format_id: "18",
             mime_type: "video/mp4",
-            stream_url: `/api/video-learning/materials/${MATERIAL_ID}/stream/18`,
-            subtitles_url: `/api/video-learning/materials/${MATERIAL_ID}/subtitles.vtt`,
+            stream_url: `/api/video-learning/materials/${activeMaterialId}/stream/18`,
+            subtitles_url: `/api/video-learning/materials/${activeMaterialId}/subtitles.vtt`,
             start_seconds: savedPosition,
           },
   });
@@ -94,6 +99,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     class FakePlayer {
       current = 0;
       duration = 120;
+      playbackRate = 1;
       element: HTMLElement;
       options: Record<string, unknown>;
 
@@ -124,6 +130,12 @@ test("YouTube learning survives reload and switches to Invidious without silent 
       }
       getDuration() {
         return this.duration;
+      }
+      getPlaybackRate() {
+        return this.playbackRate;
+      }
+      setPlaybackRate(rate: number) {
+        this.playbackRate = rate;
       }
       seekTo(seconds: number) {
         this.current = seconds;
@@ -177,7 +189,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
       if (body.provider_override === "youtube") nativeResolveCount += 1;
       return json(material(body.provider_override || provider));
     }
-    if (path === `/api/video-learning/materials/${MATERIAL_ID}`) {
+    if (path === `/api/video-learning/materials/${activeMaterialId}`) {
       materialRequestCount += 1;
       if (provider === "invidious" && invidiousOffline) {
         return json({ detail: "Invidious is offline" }, 400);
@@ -273,6 +285,30 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   await expect(
     page.locator('iframe[title="Fake YouTube player"]'),
   ).toHaveAttribute("src", /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
+  const speedGroup = page.getByRole("group", { name: "Playback speed" });
+  const normalSpeedButton = page.getByRole("button", {
+    name: "1x",
+    exact: true,
+  });
+  const fastSpeedButton = page.getByRole("button", {
+    name: "1.5x",
+    exact: true,
+  });
+  const currentYouTubePlaybackRate = () =>
+    page.evaluate(() => {
+      const player = (
+        window as typeof window & {
+          __fakePlayers: Array<{ playbackRate: number }>;
+        }
+      ).__fakePlayers.at(-1);
+      return player?.playbackRate || 1;
+    });
+  await expect(speedGroup).toBeVisible();
+  await expect(normalSpeedButton).toBeEnabled();
+  await expect(normalSpeedButton).toHaveAttribute("aria-pressed", "true");
+  await fastSpeedButton.click();
+  await expect(fastSpeedButton).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(currentYouTubePlaybackRate).toBe(1.5);
 
   await page.evaluate(() => {
     const player = (
@@ -362,6 +398,8 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   await page.goto("/chat?capability=immersive_watching");
   await expect.poll(() => materialRequestCount).toBe(1);
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
+  await expect(normalSpeedButton).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(currentYouTubePlaybackRate).toBe(1);
   await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByText("First timestamped note")).toBeVisible();
 
@@ -447,10 +485,14 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     )
     .toBeGreaterThanOrEqual(70);
 
+  await fastSpeedButton.click();
+  await expect(fastSpeedButton).toHaveAttribute("aria-pressed", "true");
+
   provider = "invidious";
   transcriptReady = false;
   await page.getByRole("button", { name: "Refresh provider" }).click();
   await expect(page.locator("video")).toBeVisible();
+  await expect(page.locator("video")).toHaveJSProperty("playbackRate", 1.5);
   await expect(page.getByText("Invidious", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Retry captions" }),
@@ -479,4 +521,25 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     page.locator('iframe[title="Fake YouTube player"]'),
   ).toBeVisible();
   expect(nativeResolveCount).toBe(beforeFailure + 1);
+
+  await page.getByRole("button", { name: "Close video learning" }).click();
+  activeMaterialId = SECOND_MATERIAL_ID;
+  activeVideoId = SECOND_VIDEO_ID;
+  activeTitle = "Second timestamped lesson";
+  savedPosition = 0;
+  await page.goto("/chat?capability=immersive_watching");
+  await page
+    .getByPlaceholder("https://youtu.be/…")
+    .fill(`https://youtu.be/${SECOND_VIDEO_ID}`);
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page.getByText("Second timestamped lesson")).toBeVisible();
+  await page.getByRole("button", { name: "Use native YouTube" }).click();
+  await expect(
+    page.locator('iframe[title="Fake YouTube player"]'),
+  ).toHaveAttribute(
+    "src",
+    new RegExp(`youtube-nocookie\\.com/embed/${SECOND_VIDEO_ID}`),
+  );
+  await expect(normalSpeedButton).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(currentYouTubePlaybackRate).toBe(1);
 });
