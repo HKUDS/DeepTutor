@@ -148,11 +148,29 @@ class VisionSolverAgent(BaseAgent):
         json_str = matches[0] if matches else response
         json_str = re.sub(r"//.*?$", "", json_str, flags=re.MULTILINE)
         json_str = re.sub(r"/\*.*?\*/", "", json_str, flags=re.DOTALL)
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            # Last resort: strip trailing commas, a common model slip.
-            return json.loads(re.sub(r",\s*([}\]])", r"\1", json_str))
+        stripped = (json_str or "").lstrip()
+        decoder = json.JSONDecoder()
+        for idx, ch in enumerate(stripped):
+            if ch != "{":
+                continue
+            try:
+                parsed, _end = decoder.raw_decode(stripped[idx:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        # Last resort: strip trailing commas, a common model slip.
+        repaired = re.sub(r",\s*([}\]])", r"\1", stripped)
+        for idx, ch in enumerate(repaired):
+            if ch != "{":
+                continue
+            try:
+                parsed, _end = decoder.raw_decode(repaired[idx:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        raise json.JSONDecodeError("No JSON object found", stripped, 0)
 
     @staticmethod
     def _format_commands(commands: list[dict[str, Any]]) -> str:
