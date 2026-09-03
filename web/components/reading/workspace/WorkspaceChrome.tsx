@@ -89,7 +89,7 @@ export function CompanionWelcome({
             key={item}
             type="button"
             onClick={() => onAction(item)}
-            className="flex w-full items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-left text-[10.5px] leading-relaxed text-[var(--muted-foreground)] transition hover:border-[var(--primary)]/40 hover:text-[var(--foreground)] dark:border-[var(--border)] dark:bg-[var(--card)]"
+            className="flex w-full items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-left text-[10.5px] leading-relaxed text-[var(--muted-foreground)] transition hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:text-[var(--foreground)] dark:border-[var(--border)] dark:bg-[var(--card)]"
           >
             <ChevronRight
               size={10}

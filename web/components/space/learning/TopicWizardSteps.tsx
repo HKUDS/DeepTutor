@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertCircle,
   Brain,
   BookOpen,
   Check,
+  ChevronDown,
+  FileText,
   Compass,
   Database,
   FlaskConical,
@@ -18,6 +21,7 @@ import {
 } from "lucide-react";
 
 import type {
+  KnowledgeBaseFiles,
   SourceCandidate,
   SourceLibrary,
 } from "@/hooks/useTopicSourceLibrary";
@@ -127,13 +131,32 @@ export function SourcesStep({
   loading,
   selected,
   onToggle,
+  files,
+  onExpand,
 }: {
   library: SourceLibrary;
   loading: boolean;
   selected: Set<string>;
   onToggle: (key: string) => void;
+  /** Per-knowledge-base document lists, fetched when one is opened. */
+  files: Record<string, KnowledgeBaseFiles>;
+  onExpand: (candidate: SourceCandidate) => void;
 }) {
   const { t } = useTranslation();
+  // Which libraries are open. Local to this step: it is view state, and the
+  // documents themselves are cached in the hook that fetched them.
+  const [opened, setOpened] = useState<Set<string>>(new Set());
+  const toggleOpen = (candidate: SourceCandidate) => {
+    setOpened((previous) => {
+      const next = new Set(previous);
+      if (next.has(candidate.key)) next.delete(candidate.key);
+      else {
+        next.add(candidate.key);
+        onExpand(candidate);
+      }
+      return next;
+    });
+  };
   return (
     <div>
       <h3 className="text-lg font-semibold text-[var(--foreground)]">
@@ -173,6 +196,12 @@ export function SourcesStep({
             items={library.knowledgeBases}
             selected={selected}
             onToggle={onToggle}
+            hint={t(
+              "Take a whole library, or open one and pick just the lessons you mean.",
+            )}
+            files={files}
+            opened={opened}
+            onToggleOpen={toggleOpen}
           />
           {library.failures.length > 0 && (
             <p className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
@@ -189,6 +218,132 @@ export function SourcesStep({
   );
 }
 
+/**
+ * One selectable source: a checkbox, a name, and a line of detail.
+ *
+ * ``bare`` drops the row's own frame for a row that sits *inside* one — a
+ * library heading a document list already has a border around the whole
+ * group, and drawing a second one around the heading reads as a card inside
+ * a card. The border width is kept and made transparent so selecting a row
+ * cannot shift the layout by a pixel.
+ */
+function SourceRow({
+  item,
+  active,
+  onToggle,
+  disabled = false,
+  note = "",
+  bare = false,
+}: {
+  item: SourceCandidate;
+  active: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+  note?: string;
+  bare?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      disabled={disabled || !item.available}
+      className={`flex min-h-16 w-full items-center gap-3 border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${
+        bare ? "border-transparent" : "rounded-xl"
+      } ${
+        active
+          ? `bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] ${bare ? "" : "border-[var(--primary)]"}`
+          : `hover:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] ${bare ? "" : "border-[var(--border)]"}`
+      }`}
+    >
+      <span
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+          active
+            ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+            : "border-[var(--input)]"
+        }`}
+      >
+        {active && <Check className="h-3 w-3" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-[var(--foreground)]">
+          {item.label}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
+          {note || (item.available ? item.detail : t("Currently unavailable"))}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The documents inside one knowledge base, once it has been opened.
+ *
+ * Retrieval over a whole library answers "what does this say about my goal?".
+ * Picking one document answers "build this around chapter 3" — a different
+ * question, and the only one that can be asked by naming a file.
+ */
+function KnowledgeBaseDocuments({
+  parent,
+  state,
+  selected,
+  onToggle,
+  parentSelected,
+}: {
+  parent: SourceCandidate;
+  state: KnowledgeBaseFiles | undefined;
+  selected: Set<string>;
+  onToggle: (key: string) => void;
+  parentSelected: boolean;
+}) {
+  const { t } = useTranslation();
+  if (!state || state.loading) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-3 text-xs text-[var(--muted-foreground)]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        {t("Reading its files…")}
+      </div>
+    );
+  }
+  if (state.error) {
+    return (
+      <div className="flex items-start gap-2 px-3 py-3 text-xs text-[var(--muted-foreground)]">
+        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        {state.error}
+      </div>
+    );
+  }
+  if (state.candidates.length === 0) {
+    return (
+      <div className="px-3 py-3 text-xs text-[var(--muted-foreground)]">
+        {/* A connected external resource keeps its files where they live; the
+            whole library is still selectable, one of its documents is not. */}
+        {t("This knowledge base has no local files to pick from.")}
+      </div>
+    );
+  }
+  return (
+    <div className="max-h-56 space-y-1 overflow-y-auto px-2 pb-2">
+      {state.candidates.map((file) => (
+        <SourceRow
+          key={file.key}
+          item={file}
+          active={selected.has(file.key)}
+          onToggle={() => onToggle(file.key)}
+          disabled={parentSelected}
+          note={
+            parentSelected
+              ? t("Already covered by the whole library")
+              : `${parent.label} · ${file.path || file.sourceId}`
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
 function SourceSection({
   icon: Icon,
   title,
@@ -196,6 +351,10 @@ function SourceSection({
   items,
   selected,
   onToggle,
+  hint = "",
+  files,
+  opened,
+  onToggleOpen,
 }: {
   icon: typeof BookOpen;
   title: string;
@@ -203,54 +362,104 @@ function SourceSection({
   items: SourceCandidate[];
   selected: Set<string>;
   onToggle: (key: string) => void;
+  hint?: string;
+  /** Present only for the knowledge-base section, which can be opened up. */
+  files?: Record<string, KnowledgeBaseFiles>;
+  opened?: Set<string>;
+  onToggleOpen?: (candidate: SourceCandidate) => void;
 }) {
   const { t } = useTranslation();
+  const expandable = Boolean(files && opened && onToggleOpen);
   return (
     <section>
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-[var(--muted-foreground)]">
         <Icon className="h-3.5 w-3.5" /> {title}
       </div>
+      {hint && items.length > 0 && (
+        <p className="mb-2 text-xs leading-5 text-[var(--muted-foreground)]">
+          {hint}
+        </p>
+      )}
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] px-3 py-4 text-xs text-[var(--muted-foreground)]">
           {empty}
         </div>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+      ) : expandable ? (
+        // One column: a document list belongs directly under the library it
+        // came from, and a file's path is too long for a half-width card.
+        <div className="grid gap-2">
           {items.map((item) => {
-            const active = selected.has(item.key);
+            const isOpen = Boolean(opened?.has(item.key));
+            const state = files?.[item.key];
+            const picked = state
+              ? state.candidates.filter((file) => selected.has(file.key)).length
+              : 0;
             return (
-              <button
+              <div
                 key={item.key}
-                type="button"
-                onClick={() => onToggle(item.key)}
-                aria-pressed={active}
-                disabled={!item.available}
-                className={`flex min-h-16 items-center gap-3 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${
-                  active
-                    ? "border-[var(--primary)] bg-[var(--primary)]/[0.06]"
-                    : "border-[var(--border)] hover:bg-[var(--accent)]/60"
+                className={`overflow-hidden rounded-xl border transition-colors ${
+                  selected.has(item.key)
+                    ? "border-[var(--primary)]"
+                    : "border-[var(--border)]"
                 }`}
               >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-                    active
-                      ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                      : "border-[var(--input)]"
-                  }`}
-                >
-                  {active && <Check className="h-3 w-3" />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-[var(--foreground)]">
-                    {item.label}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
-                    {item.available ? item.detail : t("Currently unavailable")}
-                  </span>
-                </span>
-              </button>
+                <div className="flex items-stretch">
+                  <div className="min-w-0 flex-1">
+                    <SourceRow
+                      item={item}
+                      active={selected.has(item.key)}
+                      onToggle={() => onToggle(item.key)}
+                      bare
+                      note={
+                        picked > 0
+                          ? `${picked} ${t("of its files selected")}`
+                          : ""
+                      }
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onToggleOpen?.(item)}
+                    aria-expanded={isOpen}
+                    disabled={!item.available}
+                    className="flex w-11 shrink-0 items-center justify-center border-l border-[var(--border)] text-[var(--muted-foreground)] transition hover:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] hover:text-[var(--foreground)] disabled:opacity-40"
+                    aria-label={t("Show its files")}
+                  >
+                    <span className="flex flex-col items-center gap-0.5">
+                      <FileText className="h-3.5 w-3.5" />
+                      <ChevronDown
+                        className={`h-3 w-3 transition-transform ${
+                          isOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </span>
+                  </button>
+                </div>
+                {isOpen && (
+                  <div className="border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_75%,transparent)]">
+                    <KnowledgeBaseDocuments
+                      parent={item}
+                      state={state}
+                      selected={selected}
+                      onToggle={onToggle}
+                      parentSelected={selected.has(item.key)}
+                    />
+                  </div>
+                )}
+              </div>
             );
           })}
+        </div>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {items.map((item) => (
+            <SourceRow
+              key={item.key}
+              item={item}
+              active={selected.has(item.key)}
+              onToggle={() => onToggle(item.key)}
+            />
+          ))}
         </div>
       )}
     </section>

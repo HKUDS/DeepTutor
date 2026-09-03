@@ -30,7 +30,7 @@ export function youtubePlayerController(
 }
 
 export function html5PlayerController(
-  video: HTMLVideoElement,
+  video: HTMLMediaElement,
 ): PlayerController {
   return {
     currentTime: () => Number(video.currentTime) || 0,

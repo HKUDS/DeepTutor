@@ -143,6 +143,7 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     icon: Youtube,
     allowedTools: ["web_search", "code_execution", "reason"],
     defaultTools: [],
+    secondary: true,
   },
   {
     value: "course_study",
@@ -164,7 +165,10 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
 ];
 
 export const VISIBLE_CHAT_CAPABILITIES = CHAT_CAPABILITIES.filter(
-  (capability) => capability.value !== "course_study" && !capability.legacy,
+  (capability) =>
+    capability.value !== "course_study" &&
+    capability.value !== "immersive_reading" &&
+    !capability.legacy,
 );
 
 /** Actions offered inside Reading and Mastery; workspace identity is separate. */
@@ -241,7 +245,27 @@ export function mergeCapabilityPresentations(
 export function visibleCapabilityPresentations(
   capabilities: readonly ChatCapabilityDef[],
 ): ChatCapabilityDef[] {
-  return capabilities.filter(
-    (capability) => capability.value !== "course_study" && !capability.legacy,
+  const catalogOrder = new Map(
+    CHAT_CAPABILITIES.map((capability, index) => [capability.value, index]),
   );
+
+  return capabilities
+    .filter(
+      (capability) =>
+        capability.value !== "course_study" &&
+        capability.value !== "immersive_reading" &&
+        !capability.legacy,
+    )
+    .map((capability, sourceIndex) => ({ capability, sourceIndex }))
+    .sort((left, right) => {
+      const leftOrder = catalogOrder.get(left.capability.value);
+      const rightOrder = catalogOrder.get(right.capability.value);
+      if (leftOrder === undefined && rightOrder === undefined) {
+        return left.sourceIndex - right.sourceIndex;
+      }
+      if (leftOrder === undefined) return 1;
+      if (rightOrder === undefined) return -1;
+      return leftOrder - rightOrder;
+    })
+    .map(({ capability }) => capability);
 }

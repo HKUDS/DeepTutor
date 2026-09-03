@@ -81,13 +81,12 @@ def _disable_thinking_by_default(provider_name: str, model_name: str) -> bool:
 def default_reasoning_effort_for(provider: str | None, model: str | None) -> str | None:
     """Return the implicit ``reasoning_effort`` for ``provider``/``model``, if any.
 
-    Used by callers that don't go through :func:`build_openai_compatible_reasoning_kwargs`
-    (currently the openai-SDK path in ``executors.py`` and the aiohttp fallback
-    in ``cloud_provider.py``). Returns ``None`` when no default applies — the
-    caller should leave the field unset in that case.
+    Used by callers that don't go through :func:`build_openai_compatible_reasoning_kwargs`.
+    Returns ``None`` when no default applies — the caller should leave the field
+    unset in that case.
 
-    The single source of truth is :data:`_PROVIDER_DEFAULT_OFF_PATTERNS` so all
-    three execution paths agree on which models need thinking disabled by default.
+    The single source of truth is :data:`_PROVIDER_DEFAULT_OFF_PATTERNS` so every
+    execution path agrees on which models need thinking disabled by default.
     """
     provider_name = (provider or "").strip().lower()
     off_patterns = _PROVIDER_DEFAULT_OFF_PATTERNS.get(provider_name)

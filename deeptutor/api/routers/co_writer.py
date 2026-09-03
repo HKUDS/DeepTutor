@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from datetime import datetime
 import json
@@ -5,7 +7,7 @@ import logging
 from pathlib import Path
 import re
 import traceback
-from typing import AsyncGenerator, Literal
+from typing import TYPE_CHECKING, AsyncGenerator, Literal
 import urllib.parse
 import uuid
 
@@ -19,13 +21,6 @@ from deeptutor.co_writer.docx_converter import (
     docx_to_markdown,
     markdown_to_docx,
 )
-from deeptutor.co_writer.edit_agent import (
-    EditAgent,
-    append_history,
-    load_history,
-    print_stats,
-    tool_calls_dir,
-)
 from deeptutor.co_writer.storage import (
     CoWriterDocument,
     CoWriterDocumentSummary,
@@ -33,9 +28,10 @@ from deeptutor.co_writer.storage import (
 )
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
-from deeptutor.services.llm import clean_thinking_tags
-from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
 from deeptutor.services.settings.interface_settings import get_response_language
+
+if TYPE_CHECKING:
+    from deeptutor.co_writer.edit_agent import EditAgent
 
 router = APIRouter()
 
@@ -44,7 +40,7 @@ config = load_config_with_main("main.yaml", PROJECT_ROOT)
 log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = logging.getLogger(__name__)
 
-_edit_agent: EditAgent | None = None
+_edit_agent: "EditAgent | None" = None
 
 
 def _current_language() -> str:
@@ -61,6 +57,8 @@ def get_edit_agent() -> EditAgent:
     2. Latest LLM configuration from Settings is always used
     """
     global _edit_agent
+    from deeptutor.co_writer.edit_agent import EditAgent
+
     lang = _current_language()
     if _edit_agent is None or getattr(_edit_agent, "language", None) != lang:
         _edit_agent = EditAgent(language=lang)
@@ -192,6 +190,8 @@ def _strip_markdown_fence(text: str) -> str:
 
 
 def _clean_react_edit_output(text: str, *, binding: str | None, model: str | None) -> str:
+    from deeptutor.services.llm import clean_thinking_tags
+
     return _strip_markdown_fence(clean_thinking_tags(text, binding, model))
 
 
@@ -246,6 +246,8 @@ async def _run_react_edit(
     language: str,
     stream: StreamBus | None = None,
 ) -> dict[str, object]:
+    from deeptutor.co_writer.edit_agent import append_history, print_stats
+
     selected_text, instruction, tools = _prepare_react_edit_request(request, language)
     operation_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
 
@@ -256,6 +258,8 @@ async def _run_react_edit(
     query = instruction or selected_text[:400]
     context_blocks: list[str] = []
     tools_used: list[str] = []
+    from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
+
     pageindex_source = "rag" in tools and is_pageindex_kb(request.kb_name)
     for tool in tools:
         kb_name = request.kb_name if tool == "rag" else None
@@ -419,6 +423,8 @@ async def _stream_react_edit(request: ReactEditRequest) -> AsyncGenerator[str, N
 
 @router.post("/documents/actions/edit", response_model=EditResponse)
 async def edit_text(request: EditRequest):
+    from deeptutor.co_writer.edit_agent import print_stats
+
     try:
         # Get agent with refreshed LLM configuration from Settings
         agent = get_edit_agent()
@@ -468,6 +474,8 @@ async def edit_text_react_stream(request: ReactEditRequest):
 @router.post("/documents/actions/automark", response_model=AutoMarkResponse)
 async def auto_mark_text(request: AutoMarkRequest):
     """AI auto-mark text"""
+    from deeptutor.co_writer.edit_agent import print_stats
+
     try:
         # Get agent with refreshed LLM configuration from Settings
         agent = get_edit_agent()
@@ -486,6 +494,8 @@ async def auto_mark_text(request: AutoMarkRequest):
 @router.get("/documents/history")
 async def get_history():
     """Get all operation history"""
+    from deeptutor.co_writer.edit_agent import load_history
+
     try:
         history = load_history()
         return {"history": history, "total": len(history)}
@@ -496,6 +506,8 @@ async def get_history():
 @router.get("/documents/history/{operation_id}")
 async def get_operation(operation_id: str):
     """Get single operation details"""
+    from deeptutor.co_writer.edit_agent import load_history
+
     try:
         history = load_history()
         for op in history:
@@ -511,6 +523,8 @@ async def get_operation(operation_id: str):
 @router.get("/documents/tool-calls/{operation_id}")
 async def get_tool_call(operation_id: str):
     """Get tool call details"""
+    from deeptutor.co_writer.edit_agent import tool_calls_dir
+
     try:
         # Find matching file
         for filepath in tool_calls_dir().glob(f"{operation_id}_*.json"):

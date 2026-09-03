@@ -408,6 +408,49 @@ class Annotation:
 
 
 @dataclass(frozen=True, slots=True)
+class ReadingBookmark:
+    """A place in a material the reader chose to keep.
+
+    Distinct from the reading position, which the reader never asks for: that
+    is one automatically-updated "where I got to", overwritten every time they
+    move. A bookmark is deliberate and plural — the three passages worth
+    coming back to in a 400-page book — so it is addressed by its own id and
+    carries a label.
+
+    The label is optional. An empty one means "this page", and the reader sees
+    the outline heading for that locator instead of a name they had to invent
+    before they were allowed to save the spot.
+    """
+
+    bookmark_id: str
+    locator: int
+    label: str = ""
+    # Opaque renderer-native position, for formats where the locator alone is
+    # coarse. EPUB clients store a CFI here, exactly as annotations do.
+    source_anchor: str = ""
+    created_at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bookmark_id": self.bookmark_id,
+            "locator": self.locator,
+            "label": self.label,
+            "source_anchor": self.source_anchor,
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ReadingBookmark":
+        return cls(
+            bookmark_id=str(data.get("bookmark_id") or ""),
+            locator=max(1, int(data.get("locator") or 1)),
+            label=str(data.get("label") or ""),
+            source_anchor=str(data.get("source_anchor") or ""),
+            created_at=float(data.get("created_at") or 0.0),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ReadingPosition:
     """Last durable viewport for a material."""
 
@@ -443,6 +486,7 @@ __all__ = [
     "MaterialManifest",
     "MaterialNotFound",
     "OutlineEntry",
+    "ReadingBookmark",
     "ReadingError",
     "ReadingPosition",
     "ReadingUpgradeConflict",

@@ -54,6 +54,7 @@ from .agents.ideation_agent import IdeationAgent
 from .agents.source_explorer import SourceExplorer
 from .agents.spine_synthesizer import SpineSynthesizer
 from .compiler import BookCompiler, CompilerOptions, systemic_failure_reason
+from .errors import BookPausedError
 from .event_hub import close_book_bus, get_book_bus
 from .inputs import IdeationContext, build_book_inputs
 from .language import resolve_book_language
@@ -102,10 +103,6 @@ logger = logging.getLogger(__name__)
 # half-generated pages. Ungenerated pages are an asset; half-generated ones are
 # debris the user has to clean up.
 CONSECUTIVE_PAGE_FAILURE_LIMIT = 2
-
-
-class BookPausedError(RuntimeError):
-    """Raised when a compile request targets a durably paused book."""
 
 
 # Statuses that mean "this page still has work owed to it". PARTIAL is
@@ -222,6 +219,22 @@ def _generation_error_category(message: str) -> str:
         return "authentication"
     if any(token in text for token in ("rate limit", "too many requests", "429")):
         return "rate_limit"
+    # A block type whose generator needs an optional extra that is not
+    # installed. Distinct from a provider fault: nothing will fix itself on a
+    # retry, and the answer is either to install the extra or to leave that
+    # block type out of the book — so it must not land in "unknown", which is
+    # what the whole animation family was doing.
+    if any(
+        token in text
+        for token in (
+            "requires the optional",
+            "pip install",
+            "modulenotfounderror",
+            "no module named",
+            "not installed",
+        )
+    ):
+        return "missing_dependency"
     if any(token in text for token in ("timeout", "timed out", "connection", "provider")):
         return "provider"
     if any(token in text for token in ("parse", "invalid json", "validation")):
@@ -932,6 +945,11 @@ class BookEngine:
             if k not in {"pause_reason", "pause_kind"}
         }
         metadata["lazy_compile"] = not auto_compile
+        # When this run started, durably. The reader's clock used to count
+        # from the first event *their tab* happened to see, so reloading
+        # mid-compile restarted it at zero — a number that measured how long
+        # the page had been open and claimed to measure the run.
+        metadata["compile_started_at"] = time.time()
         book.metadata = metadata
         self.storage.save_book(book)
         self.storage.append_log(
@@ -1068,6 +1086,9 @@ class BookEngine:
             for k, v in (book.metadata or {}).items()
             if k not in {"pause_reason", "pause_kind"}
         }
+        # Resuming starts a new run: the clock counts this stretch of work,
+        # not the wall time since the book was first confirmed.
+        book.metadata["compile_started_at"] = time.time()
         book.updated_at = time.time()
         self.storage.save_book(book)
         self.storage.append_log(
@@ -1627,16 +1648,45 @@ class BookEngine:
 
         return scan_log_health(book_id, storage=self.storage).to_dict()
 
+    def is_worker_live(self, book_id: str) -> bool:
+        """Is something in *this process* actually compiling *book_id* right now?
+
+        ``status == COMPILING`` is a stored fact and outlives the process that
+        set it: restart the backend mid-compile and the manifest still claims
+        the book is being written while no queue, worker or task exists. The
+        runtime table is the only honest answer, so callers that want to tell
+        "working" from "abandoned" have to ask it rather than the manifest.
+        """
+
+        # `getattr`: embedders and focused tests build the engine with
+        # ``__new__`` and only wire ``storage``, and a diagnostics read must
+        # not be the thing that raises on them.
+        runtime = (getattr(self, "_runtimes", None) or {}).get(book_id)
+        if runtime is None:
+            return False
+        worker = runtime.worker
+        if worker is not None and not worker.done():
+            return True
+        return any(not task.done() for task in runtime.in_flight.values())
+
     def generation_overview(self, book: Book) -> dict[str, Any]:
         """Manifest-only generation state, cheap enough for the library."""
 
         source_quality = (book.metadata or {}).get("source_quality")
+        compiling = book.status == BookStatus.COMPILING
+        working = compiling and self.is_worker_live(book.id)
         return {
             "status": book.status.value,
             "can_resume": book.status
             in {BookStatus.COMPILING, BookStatus.PAUSED, BookStatus.ERROR},
             "pause_reason": str((book.metadata or {}).get("pause_reason") or ""),
             "source_quality": source_quality if isinstance(source_quality, dict) else None,
+            # Live now, versus "says compiling but nobody is compiling it".
+            "working": working,
+            "interrupted": compiling and not working,
+            # Epoch seconds this compile run began, so every viewer's clock
+            # agrees and survives a reload. 0 when no run has started.
+            "started_at": float((book.metadata or {}).get("compile_started_at") or 0.0),
         }
 
     def generation_summary(
@@ -1667,22 +1717,31 @@ class BookEngine:
                 category = _generation_error_category(error)
                 categories[category] = categories.get(category, 0) + 1
 
-        retryable = sum(
-            page_counts[status.value]
-            for status in (
-                PageStatus.PENDING,
-                PageStatus.PLANNING,
-                PageStatus.GENERATING,
-                PageStatus.ERROR,
-            )
-        )
         overview = self.generation_overview(book)
+        # Chapters still owed work. Queued is not the same as broken: while a
+        # worker is running these are simply the tail of its queue, and
+        # counting them as "retryable" is what made a healthy book announce
+        # "3 chapters can be retried" the moment it started — a failure
+        # warning on zero failures.
+        queued = sum(
+            page_counts[status.value]
+            for status in (PageStatus.PENDING, PageStatus.PLANNING, PageStatus.GENERATING)
+        )
+        failed = page_counts[PageStatus.ERROR.value]
+        # Owed chapters become the reader's problem only when nothing is going
+        # to pick them up: paused, errored, or a compile the process lost.
+        stalled = 0 if overview["working"] else queued
+        retryable = failed + stalled
         return {
             "book_id": book.id,
             **overview,
             "pages": {"total": len(pages), **page_counts},
             "failed_blocks": failed_blocks,
             "retryable_pages": retryable,
+            # Kept apart so the UI can say "2 queued" without an alarm and
+            # "1 failed" with one.
+            "queued_pages": queued,
+            "failed_pages": failed,
             "can_resume": bool(retryable) and bool(overview["can_resume"]),
             "failure_categories": categories,
         }

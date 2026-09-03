@@ -138,6 +138,19 @@ export interface ReadingPosition {
   updated_at: number;
 }
 
+/**
+ * A place the reader chose to keep, as opposed to the position above — which
+ * is the single automatic "where I got to", overwritten on every move. These
+ * are deliberate and plural, and each has its own id.
+ */
+export interface ReadingBookmark {
+  bookmark_id: string;
+  locator: number;
+  label: string;
+  source_anchor: string;
+  created_at: number;
+}
+
 export interface SupportedFormats {
   extensions: string[];
   max_bytes: number;
@@ -309,6 +322,44 @@ export async function saveReadingPosition(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(position),
     }),
+  );
+}
+
+export async function listBookmarks(
+  materialId: string,
+): Promise<ReadingBookmark[]> {
+  const data = await unwrap<{ bookmarks?: ReadingBookmark[] }>(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/bookmarks`), {
+      cache: "no-store",
+    }),
+  );
+  return data.bookmarks ?? [];
+}
+
+/** Keep a place. Bookmarking an already-kept locator returns that bookmark. */
+export async function addBookmark(
+  materialId: string,
+  locator: number,
+  label = "",
+): Promise<ReadingBookmark> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/bookmarks`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locator, label }),
+    }),
+  );
+}
+
+export async function deleteBookmark(
+  materialId: string,
+  bookmarkId: string,
+): Promise<void> {
+  await unwrap(
+    await apiFetch(
+      apiUrl(`${BASE}/materials/${materialId}/bookmarks/${bookmarkId}`),
+      { method: "DELETE" },
+    ),
   );
 }
 

@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from deeptutor.services.llm.reasoning_params import build_openai_compatible_reasoning_kwargs
-from deeptutor.services.provider_registry import find_by_name, strip_provider_prefix
+from deeptutor.services.provider_registry import (
+    effective_backend,
+    find_by_name,
+    strip_provider_prefix,
+)
 
 from .errors import GraphRagUnsupportedProviderError
 
@@ -24,15 +28,16 @@ def resolve_completion_provider(llm_cfg: Any) -> str:
     spec = find_by_name(binding)
     if spec is None:
         return "openai"
-    if spec.backend == "anthropic":
+    backend = effective_backend(spec, getattr(llm_cfg, "api_format", "auto"))
+    if backend == "anthropic":
         return "anthropic"
-    if spec.backend == "azure_openai":
+    if backend == "azure_openai":
         return "azure"
-    if spec.backend in {"openai_codex", "github_copilot"} or spec.is_oauth:
+    if backend in {"openai_codex", "github_copilot"} or spec.is_oauth:
         raise GraphRagUnsupportedProviderError(
             "GraphRAG cannot use this OAuth-only model provider. Choose an API-key profile."
         )
-    if spec.backend == "openai_compat":
+    if backend == "openai_compat":
         # DeepSeek's LiteLLM provider owns its parameter compatibility logic.
         # Other DeepTutor OpenAI-compatible profiles already expose an OpenAI
         # chat-completions endpoint and are safest on the generic transport.

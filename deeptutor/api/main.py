@@ -286,14 +286,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"PocketBase startup check failed: {e}")
 
-    # Migrate any v1 memory files (PROFILE.md / SUMMARY.md) into a
+    # Migrate any v1 memory files (PROFILE.md / SOUL.md / SUMMARY.md) into a
     # backup folder so the v2 three-layer subsystem starts clean.
     try:
         from deeptutor.services.memory import (
             migrate_partner_surface_if_needed,
             migrate_v1_if_needed,
         )
+        from deeptutor.services.path_service import get_path_service
 
+        get_path_service().migrate_legacy_memory_markdown()
         backup = migrate_v1_if_needed()
         if backup is not None:
             logger.info("v1 memory archived to %s", backup)

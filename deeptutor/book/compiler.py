@@ -31,6 +31,7 @@ from .blocks.text import generate_bridge_text
 from .models import (
     Block,
     BlockStatus,
+    BlockType,
     Chapter,
     ExplorationReport,
     Page,
@@ -47,6 +48,23 @@ logger = logging.getLogger(__name__)
 # a bad API key, an exhausted quota, an outage. One is worth retrying; a page
 # made entirely of them means the next page will fail the same way.
 SYSTEMIC_FAILURE_KINDS = frozenset({"rate_limit", "provider_error", "timeout"})
+
+
+def _parse_allowed_block_types(values: object) -> set[BlockType] | None:
+    if not isinstance(values, list):
+        return None
+    parsed: set[BlockType] = set()
+    for value in values:
+        if isinstance(value, BlockType):
+            parsed.add(value)
+            continue
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed.add(BlockType(value.strip().lower()))
+        except ValueError:
+            continue
+    return parsed or None
 
 
 def systemic_failure_reason(page: Page) -> str:
@@ -402,8 +420,16 @@ class BookCompiler:
             stage=STAGE_PAGE_PLAN,
         )
 
+        book = self.storage.load_book(book_id)
+        allowed = _parse_allowed_block_types(
+            (book.metadata or {}).get("block_types") if book is not None else None
+        )
         planned = await self.architect.plan_blocks_async(
-            chapter, exploration=exploration, language=language, depth=depth
+            chapter,
+            exploration=exploration,
+            language=language,
+            depth=depth,
+            allowed=allowed,
         )
         page.blocks = planned
         if not page.content_type:

@@ -528,7 +528,7 @@ export function EpubDocumentView({
           <button
             type="button"
             onClick={() => turnPage("previous")}
-            className="absolute left-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)]/90 text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
+            className="absolute left-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_90%,transparent)] text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
             aria-label={t("Previous")}
           >
             <ChevronLeft size={19} />
@@ -536,7 +536,7 @@ export function EpubDocumentView({
           <button
             type="button"
             onClick={() => turnPage("next")}
-            className="absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--background)]/90 text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
+            className="absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_90%,transparent)] text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
             aria-label={t("Next")}
           >
             <ChevronRight size={19} />

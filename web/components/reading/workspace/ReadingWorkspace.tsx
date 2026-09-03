@@ -3,7 +3,12 @@
 import { browserStorage } from "@/shared/storage";
 
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import {
   ArrowLeft,
   ChevronDown,
@@ -29,16 +34,15 @@ import { useTranslation } from "react-i18next";
 import type { JumpRequest } from "@/components/reading/PdfDocumentView";
 import { READER_ASK_EVENT, ReaderPane } from "@/components/reading/ReaderPane";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import { readingSessionIdFromPath } from "@/lib/mastery-session";
 import type { ReaderHeading } from "@/lib/reading-outline";
 import { setReadingViewport } from "@/lib/reading-turn-state";
 import { listNotebooks, type NotebookSummary } from "@/lib/notebook-api";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import {
-  getReadingPosition,
   getMaterial,
   getUnitText,
   rawMaterialUrl,
-  saveReadingPosition,
   uploadMaterial,
   type OutlineRow,
   type UnitReference,
@@ -86,9 +90,12 @@ interface ReaderAskDetail {
 }
 
 export function ReadingWorkspacePage() {
-  const params = useParams<{ workspaceId: string; sessionId?: string }>();
+  const params = useParams<{ workspaceId: string }>();
   const workspaceId = params.workspaceId;
-  const sessionIdParam = params.sessionId?.trim() || null;
+  // From the path, not from route params: the first turn binds its session id
+  // with the native history API so the workspace is not torn down mid-answer,
+  // and `useParams` does not follow that — `usePathname` does.
+  const sessionIdParam = readingSessionIdFromPath(usePathname());
   const courseId = useSearchParams().get("course")?.trim() ?? "";
   const router = useRouter();
   const { t } = useTranslation();
@@ -113,6 +120,9 @@ export function ReadingWorkspacePage() {
     linkedSessionIds,
     activeLocator,
     setActiveLocator,
+    bookmarks,
+    toggleBookmark,
+    removeBookmark,
     transcript,
     organizedNotes,
     setOrganizedNotes,
@@ -544,6 +554,8 @@ export function ReadingWorkspacePage() {
           search={transcriptSearch}
           onSearch={setTranscriptSearch}
           activeLocator={activeLocator}
+          bookmarks={bookmarks}
+          onRemoveBookmark={(bookmarkId) => void removeBookmark(bookmarkId)}
           annotationCount={annotations.length}
           unitCount={material?.unit_count ?? 0}
           mobileOpen={navigatorOpen}
@@ -600,6 +612,10 @@ export function ReadingWorkspacePage() {
                 onHeadingsChange={setPageHeadings}
                 onActiveHeadingChange={setActiveHeadingId}
                 headingJump={headingJump}
+                bookmarks={bookmarks}
+                onToggleBookmark={(locator, label) =>
+                  void toggleBookmark(locator, label)
+                }
                 onClose={() => router.push("/reading")}
               />
             </div>

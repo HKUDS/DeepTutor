@@ -25,3 +25,13 @@ test("the mastery study route provides every shared chat viewer context", () => 
   assert.match(layout, /<WatchingProvider>/);
   assert.match(layout, /<ChatRuntimeProvider>/);
 });
+
+test("mastery study exposes the shared transcript navigation and save actions", () => {
+  const study = source("components/space/learning/MasteryStudy.tsx");
+
+  assert.match(study, /<TurnNavigator/);
+  assert.match(study, /data-chat-column="true"/);
+  assert.match(study, /<SaveToNotebookModal/);
+  assert.match(study, /aria-label=\{t\("Save to Notebook"\)\}/);
+  assert.match(study, /source: "mastery_path"/);
+});

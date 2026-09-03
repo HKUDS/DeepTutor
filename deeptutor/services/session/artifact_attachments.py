@@ -15,7 +15,6 @@ session activity panel, instead of relying on the model pasting a raw
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -87,24 +86,15 @@ def artifact_attachments(event: StreamEvent) -> list[dict[str, Any]]:
 async def fill_preview_text(attachments: list[dict[str, Any]]) -> None:
     """Populate ``extracted_text`` on artifacts the browser cannot render.
 
-    Mutates *attachments* in place. Reading and parsing files is blocking work,
-    so it runs off the event loop; ``to_thread`` copies contextvars, so the
-    per-user path scope resolves the same as on the loop.
+    Mutates *attachments* in place. Each supported binary is parsed in a
+    short-lived process so optional Office libraries release their memory as
+    soon as the preview has been produced.
     """
     if not any(_needs_preview_text(att) for att in attachments):
         return
-    await asyncio.to_thread(_fill_preview_text_sync, attachments)
-
-
-def _needs_preview_text(attachment: dict[str, Any]) -> bool:
-    filename = str(attachment.get("filename") or "")
-    return Path(filename).suffix.lower() in _PREVIEW_TEXT_EXTENSIONS
-
-
-def _fill_preview_text_sync(attachments: list[dict[str, Any]]) -> None:
     from deeptutor.utils.document_extractor import (
         DocumentExtractionError,
-        extract_text_from_path,
+        extract_text_from_path_isolated,
     )
 
     for attachment in attachments:
@@ -114,10 +104,11 @@ def _fill_preview_text_sync(attachments: list[dict[str, Any]]) -> None:
         if path is None:
             continue
         try:
-            text = extract_text_from_path(path, max_chars=_PREVIEW_TEXT_MAX_CHARS)
+            text = await extract_text_from_path_isolated(
+                path,
+                max_chars=_PREVIEW_TEXT_MAX_CHARS,
+            )
         except DocumentExtractionError as exc:
-            # Unsupported legacy binary, empty deck, oversized file: the card
-            # still opens and offers a download, it just has no inline text.
             logger.debug("No preview text for artifact %s: %s", path, exc)
             continue
         except OSError as exc:
@@ -125,6 +116,11 @@ def _fill_preview_text_sync(attachments: list[dict[str, Any]]) -> None:
             continue
         if text.strip():
             attachment["extracted_text"] = text
+
+
+def _needs_preview_text(attachment: dict[str, Any]) -> bool:
+    filename = str(attachment.get("filename") or "")
+    return Path(filename).suffix.lower() in _PREVIEW_TEXT_EXTENSIONS
 
 
 def _resolve_artifact_path(url: str) -> Path | None:

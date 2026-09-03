@@ -95,6 +95,36 @@ test("narration before a tool remains visible while a finish answer does not", (
   assert.equal(hasRenderableCallTrace(finish), false);
 });
 
+test("adjacent react rounds and their trailing trace collapse into one display step", () => {
+  const events = [
+    event(
+      "thinking",
+      "round-1",
+      { trace_group: "react_round", step_id: "step-1" },
+      "Plan",
+    ),
+    event(
+      "tool_call",
+      "round-2",
+      { trace_group: "react_round", step_id: "step-1" },
+      "Search",
+    ),
+    event("thinking", "standalone", {}, "Reflect"),
+  ];
+
+  const items = selectTraceDisplayItems(groupTraceEvents(events));
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "step");
+  if (items[0].kind === "step") {
+    assert.equal(items[0].stepId, "step-1");
+    assert.deepEqual(
+      items[0].traces.map((trace) => trace.callId),
+      ["round-1", "round-2", "standalone"],
+    );
+  }
+});
+
 test("streaming mode follows the latest meaningful event", () => {
   assert.equal(
     detectStreamingMode([event("tool_call", "a")], false, true),

@@ -26,6 +26,7 @@ import {
   type MasteryTopicLabel,
 } from "@/lib/learning-api";
 import { sessionRoute } from "@/lib/mastery-session";
+import { subscribeSessionChanges } from "@/lib/session-events";
 
 export default function UtilitySidebar() {
   const { t } = useTranslation();
@@ -68,6 +69,15 @@ export default function UtilitySidebar() {
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
+
+  // A conversation can be archived, restored or deleted from a route the
+  // sidebar knows nothing about — Settings › Archive being the reason this
+  // exists. Without it the list keeps hiding a conversation that was just
+  // restored two panes away.
+  useEffect(
+    () => subscribeSessionChanges(() => void refreshSessions()),
+    [refreshSessions],
+  );
 
   // A study conversation opens on its own path — see ``sessionRoute``.
   const handleSelectSession = useCallback(

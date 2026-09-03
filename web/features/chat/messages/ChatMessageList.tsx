@@ -68,10 +68,12 @@ import { extractSetupCredential } from "@/lib/setup-signals";
 import { PartnerDraftCard } from "@/components/chat/home/PartnerDraftCard";
 import { extractPartnerDraft } from "@/lib/partner-draft";
 import { CourseHandoffCards } from "@/components/chat/home/CourseHandoffCard";
+import { MasteryHandoffCards } from "@/components/chat/home/MasteryHandoffCard";
 import {
   extractCourseHandoffs,
   stripLeakedHandoffJson,
 } from "@/lib/course-handoff";
+import { extractMasteryHandoffs } from "@/lib/mastery-handoff";
 import ContextReferenceTree, {
   type ContextTreeItem,
 } from "@/components/chat/home/ContextReferenceTree";
@@ -435,6 +437,15 @@ export const AssistantMessage = memo(function AssistantMessage({
     [msg.events],
   );
 
+  // Set by the mastery navigation tools when the learner asked to be taken
+  // back to something they are studying. Same shape of offer as above — a
+  // destination, a reason, an editable opening line — for the surface that
+  // actually teaches it.
+  const masteryHandoffs = useMemo(
+    () => extractMasteryHandoffs(msg.events),
+    [msg.events],
+  );
+
   // Some models write the hand-off out as literal JSON *and* call the tool, so
   // the card's own contents appear above it as raw arguments. Only stripped
   // once the turn is finished — mid-stream the text is still arriving and a
@@ -636,6 +647,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       {/* Course Study's hand-offs sit last: they are what to do *after* reading
           the answer, so they belong below it rather than competing with it. */}
       <CourseHandoffCards handoffs={courseHandoffs} />
+      <MasteryHandoffCards handoffs={masteryHandoffs} />
     </>
   );
 });

@@ -67,7 +67,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
 
   return buildStartTurn({
     content: input.content,
-    capability: input.capability ?? "chat",
+    capability: input.capability === undefined ? "chat" : input.capability,
     session_id: input.sessionId ?? null,
     tools: input.tools ?? null,
     knowledge_bases: input.knowledgeBases ?? [],
@@ -93,7 +93,9 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     reading_viewport: input.readingViewport ?? null,
     timed_media_id: input.timedMediaId ?? null,
     timed_media_viewport: input.timedMediaViewport ?? null,
-    parent_message_id: input.parentMessageId ?? null,
+    ...(input.parentMessageId !== undefined
+      ? { parent_message_id: input.parentMessageId }
+      : {}),
     course_id: input.courseId ?? null,
     persist_user_message: input.persistUserMessage ?? true,
     regenerate: input.regenerate ?? false,

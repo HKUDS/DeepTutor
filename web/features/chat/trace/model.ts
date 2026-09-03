@@ -19,6 +19,19 @@ export interface TraceMetadata {
   tool_name?: string;
   tool_source?: string;
   tool_provider?: string;
+  /**
+   * The engine a retrieval / search call actually ran on ("perplexity",
+   * "lightrag", …). The retrieval pipeline puts it here on its progress
+   * events; a tool's own `ToolResult.metadata` arrives under
+   * `tool_metadata` instead (see below).
+   */
+  provider?: string;
+  /**
+   * A tool's own returned metadata. `tool_dispatch` nests `ToolResult.metadata`
+   * under this key rather than merging it into the event metadata, so anything
+   * a tool reports about itself is one level down.
+   */
+  tool_metadata?: Record<string, unknown>;
   progress_fraction?: number;
   elapsed_s?: number;
   block_id?: string;
@@ -71,7 +84,6 @@ export type StreamingMode =
   | "responding"
   | "responded"
   | "planning"
-  | "drafting"
   | "exploring"
   | "quizzing"
   | "reflecting";

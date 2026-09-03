@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 Layer = Literal["L2", "L3"]
 
-_V1_FILES = ("PROFILE.md", "SUMMARY.md")
+_V1_FILES = ("PROFILE.md", "SOUL.md", "SUMMARY.md")
 
 
 def _normalize_pref_text(text: str) -> str:
