@@ -1298,6 +1298,7 @@ export function ChatStateAdapterProvider({
   // or ``nothing_to_regenerate``). Keyed by session entry key.
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
   const traceCacheRef = useRef<TraceCache>(new TraceCache());
+  const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
@@ -1311,6 +1312,11 @@ export function ChatStateAdapterProvider({
 
   useEffect(() => {
     if (!state.selectedKey) return;
+    for (const [key, controller] of traceRequestsRef.current) {
+      if (key.startsWith(`${state.selectedKey}:`)) continue;
+      controller.abort();
+      traceRequestsRef.current.delete(key);
+    }
     const released = traceCacheRef.current.releaseExcept(state.selectedKey);
     for (const [key, snapshot] of released) {
       const [sessionId, messageId] = key.split(":");
@@ -1330,6 +1336,8 @@ export function ChatStateAdapterProvider({
       runnersRef.current.clear();
       retryTimersRef.current.forEach((id) => clearTimeout(id));
       retryTimersRef.current.clear();
+      traceRequestsRef.current.forEach((controller) => controller.abort());
+      traceRequestsRef.current.clear();
     },
     [],
   );
@@ -1695,6 +1703,8 @@ export function ChatStateAdapterProvider({
 
   const releaseMessageTrace = useCallback((sessionId: string, messageId: number) => {
     const key = `${sessionId}:${messageId}`;
+    traceRequestsRef.current.get(key)?.abort();
+    traceRequestsRef.current.delete(key);
     const preview = traceCacheRef.current.release(key);
     if (!preview) return;
     dispatch({
@@ -1709,7 +1719,7 @@ export function ChatStateAdapterProvider({
   const loadMessageTrace = useCallback(
     async (sessionId: string, messageId: number) => {
       const key = `${sessionId}:${messageId}`;
-      if (traceCacheRef.current.has(key)) return;
+      if (traceCacheRef.current.has(key) || traceRequestsRef.current.has(key)) return;
       const session = stateRef.current.sessions[sessionId];
       if (!session || session.isStreaming || session.status === "running") return;
       const message = session.messages.find(
@@ -1717,44 +1727,62 @@ export function ChatStateAdapterProvider({
       );
       if (!message?.trace?.turn_id) return;
 
-      const events: StreamEvent[] = [];
-      let afterSeq = 0;
-      let page: MessageTracePage | null = null;
-      for (let page_count = 0; page_count < 1000; page_count += 1) {
-        page = await getMessageTrace(sessionId, messageId, afterSeq);
-        events.push(...page.events);
-        if (page.complete || page.next_seq == null) break;
-        afterSeq = page.next_seq;
-      }
-      if (!page) return;
-      const metadata: MessageTraceMetadata = {
-        turn_id: page.turn_id,
-        total: page.total,
-        last_seq: page.last_seq,
-        truncated: false,
-      };
-      const preview = compactTracePreview(message.events ?? []);
-      const evicted = traceCacheRef.current.retain(key, {
-        events: preview.events,
-        metadata: message.trace,
-      });
-      for (const [evictedKey, snapshot] of evicted) {
-        const [evictedSession, evictedMessage] = evictedKey.split(":");
+      const controller = new AbortController();
+      traceRequestsRef.current.set(key, controller);
+      try {
+        const events: StreamEvent[] = [];
+        let afterSeq = 0;
+        let page: MessageTracePage | null = null;
+        for (let pageCount = 0; pageCount < 1000; pageCount += 1) {
+          page = await getMessageTrace(
+            sessionId,
+            messageId,
+            afterSeq,
+            controller.signal,
+          );
+          events.push(...page.events);
+          if (page.complete || page.next_seq == null) break;
+          if (page.next_seq <= afterSeq) return;
+          afterSeq = page.next_seq;
+        }
+        if (!page || controller.signal.aborted) return;
+        const metadata: MessageTraceMetadata = {
+          turn_id: page.turn_id,
+          total: page.total,
+          last_seq: page.last_seq,
+          truncated: false,
+        };
+        const preview = compactTracePreview(message.events ?? []);
+        const evicted = traceCacheRef.current.retain(key, {
+          events: preview.events,
+          metadata: message.trace,
+        });
+        for (const [evictedKey, snapshot] of evicted) {
+          const [evictedSession, evictedMessage] = evictedKey.split(":");
+          dispatch({
+            type: "SET_MESSAGE_TRACE",
+            key: evictedSession,
+            messageId: Number(evictedMessage),
+            events: snapshot.events,
+            trace: snapshot.metadata ?? {},
+          });
+        }
         dispatch({
           type: "SET_MESSAGE_TRACE",
-          key: evictedSession,
-          messageId: Number(evictedMessage),
-          events: snapshot.events,
-          trace: snapshot.metadata ?? {},
+          key: sessionId,
+          messageId,
+          events,
+          trace: metadata,
         });
+      } catch (reason) {
+        if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+          console.warn("Failed to load message trace", reason);
+        }
+      } finally {
+        if (traceRequestsRef.current.get(key) === controller) {
+          traceRequestsRef.current.delete(key);
+        }
       }
-      dispatch({
-        type: "SET_MESSAGE_TRACE",
-        key: sessionId,
-        messageId,
-        events,
-        trace: metadata,
-      });
     },
     [],
   );

@@ -54,24 +54,23 @@ def _is_critical(event: dict[str, Any]) -> bool:
 def _truncate_legacy_payloads(event: dict[str, Any]) -> dict[str, Any]:
     """Bound old embedded payloads without mutating the source event."""
     truncated = False
+    bounded = copy.deepcopy(event)
 
     def cap(container: dict[str, Any], field: str) -> None:
         nonlocal truncated
         value = container.get(field)
         if isinstance(value, str) and len(value) > MAX_LEGACY_EVENT_PAYLOAD_CHARS:
-            container[field] = (
-                value[:MAX_LEGACY_EVENT_PAYLOAD_CHARS] + _TRUNCATION_NOTICE
-            )
+            container[field] = value[:MAX_LEGACY_EVENT_PAYLOAD_CHARS] + _TRUNCATION_NOTICE
             truncated = True
 
-    cap(event, "content")
-    metadata = event.get("metadata")
+    cap(bounded, "content")
+    metadata = bounded.get("metadata")
     if isinstance(metadata, dict):
         tool_metadata = metadata.get("tool_metadata")
         if isinstance(tool_metadata, dict):
             cap(tool_metadata, "content")
             cap(tool_metadata, "answer")
-    return event if not truncated else copy.deepcopy(event)
+    return bounded if truncated else event
 
 
 def compact_trace_preview(

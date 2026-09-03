@@ -996,7 +996,7 @@ class TurnExecutor:
             if partial_content or generated_attachments or assistant_events:
                 with contextlib.suppress(Exception):
                     await asyncio.shield(
-                        assistant_message_id = await self.store.add_message(
+                        assistant_message_id=await self.store.add_message(
                             session_id=session_id,
                             role="assistant",
                             content=partial_content,

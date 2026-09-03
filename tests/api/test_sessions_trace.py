@@ -31,9 +31,7 @@ def test_message_trace_is_paginated_and_session_scoped(tmp_path, monkeypatch) ->
     app.include_router(sessions_router.router, prefix="/api/sessions")
 
     with TestClient(app) as client:
-        page = client.get(
-            f"/api/sessions/{session['id']}/messages/{message_id}/events?limit=1"
-        )
+        page = client.get(f"/api/sessions/{session['id']}/messages/{message_id}/events?limit=1")
         assert page.status_code == 200
         body = page.json()
         assert body["turn_id"] == turn["id"]
@@ -42,10 +40,11 @@ def test_message_trace_is_paginated_and_session_scoped(tmp_path, monkeypatch) ->
         assert body["next_seq"] == 1
         assert body["complete"] is False
 
-        denied = client.get(
-            f"/api/sessions/{other['id']}/messages/{message_id}/events"
-        )
+        denied = client.get(f"/api/sessions/{other['id']}/messages/{message_id}/events")
         assert denied.status_code == 404
+
+        malformed = client.get(f"/api/sessions/{session['id']}/messages/not-a-sqlite-id/events")
+        assert malformed.status_code == 404
 
     detail = asyncio.run(store.get_session_with_messages(session["id"]))
     assert detail is not None

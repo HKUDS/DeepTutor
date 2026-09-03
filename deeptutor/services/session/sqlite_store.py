@@ -25,8 +25,8 @@ except ImportError:  # pragma: no cover - exercised only on Windows
 from deeptutor.services.path_service import get_path_service
 from deeptutor.utils.secret_files import ensure_private_directory, ensure_private_file
 
-from .ask_user_trace import filter_ask_user_events, select_ask_user_events
-from .event_preview import compact_trace_preview
+from .ask_user_trace import select_ask_user_events
+from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
 from .provider_response_state import redact_private_message_metadata
 from .workspace_preferences import upgrade_workspace_preferences
 
@@ -464,7 +464,7 @@ class SQLiteSessionStore:
                 """
                 UPDATE turns
                 SET assistant_message_id = (
-                    SELECT CAST(json_extract(event.value, '$.metadata.assistant_message_id') AS INTEGER)
+                    SELECT m.id
                     FROM messages AS m, json_each(m.events_json) AS event
                     WHERE m.session_id = turns.session_id
                       AND m.role = 'assistant'
@@ -478,8 +478,9 @@ class SQLiteSessionStore:
             )
         conn.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_turns_assistant_message
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_turns_assistant_message
             ON turns(assistant_message_id)
+            WHERE assistant_message_id IS NOT NULL
             """
         )
 
@@ -809,9 +810,7 @@ class SQLiteSessionStore:
             failure_code=(row["failure_code"] or "" if "failure_code" in row.keys() else ""),
             retryable=(bool(row["retryable"]) if "retryable" in row.keys() else False),
             assistant_message_id=(
-                row["assistant_message_id"]
-                if "assistant_message_id" in row.keys()
-                else None
+                row["assistant_message_id"] if "assistant_message_id" in row.keys() else None
             ),
         ).to_dict()
 
@@ -1270,9 +1269,7 @@ class SQLiteSessionStore:
                     "next_seq": None,
                     "complete": True,
                 }
-            turn = conn.execute(
-                "SELECT session_id FROM turns WHERE id = ?", (turn_id,)
-            ).fetchone()
+            turn = conn.execute("SELECT session_id FROM turns WHERE id = ?", (turn_id,)).fetchone()
             stats = conn.execute(
                 """
                 SELECT COUNT(*) AS total, COALESCE(MAX(seq), 0) AS last_seq
@@ -1309,12 +1306,20 @@ class SQLiteSessionStore:
     async def get_message_trace(
         self,
         session_id: str,
-        message_id: int,
+        message_id: int | str,
         after_seq: int = 0,
         limit: int | None = None,
     ) -> dict[str, Any] | None:
+        try:
+            resolved_message_id = int(message_id)
+        except (TypeError, ValueError):
+            return None
         return await self._run(
-            self._get_message_trace_sync, session_id, int(message_id), after_seq, limit
+            self._get_message_trace_sync,
+            session_id,
+            resolved_message_id,
+            after_seq,
+            limit,
         )
 
     def _update_session_title_sync(self, session_id: str, title: str) -> bool:
@@ -1785,29 +1790,90 @@ class SQLiteSessionStore:
         }
 
     def _canonical_trace_preview_sync(
-        self, conn: sqlite3.Connection, turn_id: str
+        self,
+        conn: sqlite3.Connection,
+        turn_id: str,
+        session_id: str,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        turn = conn.execute(
-            "SELECT session_id FROM turns WHERE id = ?", (turn_id,)
+        stats = conn.execute(
+            """
+            SELECT COUNT(*) AS total, COALESCE(MAX(seq), 0) AS last_seq
+            FROM turn_events WHERE turn_id = ?
+            """,
+            (turn_id,),
         ).fetchone()
+        # Preview queries stay bounded even for a very long agentic turn. The
+        # critical query reserves older terminal/result/ask-user state; the
+        # semantic query fills the remaining tail with tool activity.
+        columns = "turn_id, seq, type, source, stage, content, metadata_json, timestamp"
+        ask_user = """
+            json_extract(metadata_json, '$.ask_user') IS NOT NULL
+            OR json_extract(metadata_json, '$.ask_user_resolved') IS NOT NULL
+            OR json_extract(metadata_json, '$.tool_metadata.ask_user') IS NOT NULL
+        """
+        conditions = (
+            f"type IN ('done', 'error', 'cancelled', 'result') OR {ask_user}",
+            f"type IN ('done', 'error', 'cancelled', 'result', 'tool_call', 'tool_result') OR {ask_user}",
+        )
+        rows_by_seq: dict[int, sqlite3.Row] = {}
+        for condition in conditions:
+            rows = conn.execute(
+                f"""
+                SELECT {columns}
+                FROM turn_events
+                WHERE turn_id = ? AND ({condition})
+                ORDER BY seq DESC
+                LIMIT ?
+                """,
+                (turn_id, MAX_TRACE_PREVIEW_EVENTS),
+            ).fetchall()
+            rows_by_seq.update({int(row["seq"]): row for row in rows})
+        events = [self._turn_event_row_to_payload(rows_by_seq[seq]) for seq in sorted(rows_by_seq)]
+        for event in events:
+            event["session_id"] = session_id
+        preview, compacted = compact_trace_preview(events)
+        total = int(stats["total"])
+        metadata = {
+            "turn_id": turn_id,
+            "total": total,
+            "last_seq": int(stats["last_seq"]),
+            "truncated": compacted or total != len(preview),
+        }
+        return preview, metadata
+
+    def _legacy_trace_preview_sync(
+        self, events: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        preview, omitted = compact_trace_preview(events)
+        return preview, {
+            "turn_id": None,
+            "total": len(events),
+            "last_seq": max([int(event.get("seq") or 0) for event in events] or [0]),
+            "truncated": omitted,
+        }
+
+    def _ask_user_events_sync(
+        self, conn: sqlite3.Connection, turn_id: str, session_id: str
+    ) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT turn_id, seq, type, source, stage, content, metadata_json, timestamp
-            FROM turn_events WHERE turn_id = ? ORDER BY seq ASC
+            FROM turn_events
+            WHERE turn_id = ?
+              AND (
+                json_extract(metadata_json, '$.ask_user') IS NOT NULL
+                OR json_extract(metadata_json, '$.ask_user_resolved') IS NOT NULL
+                OR json_extract(metadata_json, '$.tool_metadata.ask_user') IS NOT NULL
+              )
+            ORDER BY seq DESC
+            LIMIT ?
             """,
-            (turn_id,),
+            (turn_id, MAX_TRACE_PREVIEW_EVENTS),
         ).fetchall()
-        events = [self._turn_event_row_to_payload(row) for row in rows]
+        events = [self._turn_event_row_to_payload(row) for row in reversed(rows)]
         for event in events:
-            event["session_id"] = turn["session_id"] if turn else ""
-        preview, omitted = compact_trace_preview(events)
-        metadata = {
-            "turn_id": turn_id,
-            "total": len(events),
-            "last_seq": events[-1]["seq"] if events else 0,
-            "truncated": omitted,
-        }
-        return preview, metadata
+            event["session_id"] = session_id
+        return events
 
     def _get_messages_sync(self, session_id: str) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -1827,25 +1893,17 @@ class SQLiteSessionStore:
             for row in rows:
                 turn_id = row["trace_turn_id"]
                 if row["role"] == "assistant" and turn_id is not None:
-                    events, trace = self._canonical_trace_preview_sync(conn, turn_id)
+                    events, trace = self._canonical_trace_preview_sync(conn, turn_id, session_id)
                     result.append(self._serialize_message(row, events=events, trace=trace))
                     continue
                 legacy_events = _json_loads(row["events_json"], [])
                 if row["role"] == "assistant" and isinstance(legacy_events, list):
-                    events, omitted = compact_trace_preview(legacy_events)
+                    events, trace = self._legacy_trace_preview_sync(legacy_events)
                     result.append(
                         self._serialize_message(
                             row,
                             events=events,
-                            trace={
-                                "turn_id": None,
-                                "total": len(legacy_events),
-                                "last_seq": max(
-                                    [int(event.get("seq") or 0) for event in legacy_events]
-                                    or [0]
-                                ),
-                                "truncated": omitted,
-                            },
+                            trace=trace,
                         )
                     )
                     continue
@@ -1912,9 +1970,7 @@ class SQLiteSessionStore:
                         "role": row["role"],
                         "content": row["content"] or "",
                         "events": (
-                            filter_ask_user_events(
-                                self._get_turn_events_sync(row["turn_id"])
-                            )
+                            self._ask_user_events_sync(conn, row["turn_id"], session_id)
                             if row["turn_id"] is not None
                             else select_ask_user_events(row["events_json"])
                         ),
@@ -1947,9 +2003,7 @@ class SQLiteSessionStore:
                         "role": row["role"],
                         "content": row["content"] or "",
                         "events": (
-                            filter_ask_user_events(
-                                self._get_turn_events_sync(row["turn_id"])
-                            )
+                            self._ask_user_events_sync(conn, row["turn_id"], session_id)
                             if row["turn_id"] is not None
                             else select_ask_user_events(row["events_json"])
                         ),
