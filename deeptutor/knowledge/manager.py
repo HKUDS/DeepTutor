@@ -35,7 +35,6 @@ from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     IMA_PROVIDER,
     KNOWN_PROVIDERS,
-    LIGHTRAG_PROVIDER,
     LIGHTRAG_SERVER_PROVIDER,
     PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
@@ -1390,21 +1389,6 @@ class KnowledgeBaseManager:
         # Same split for IMA: the library id is shown, the credentials are not.
         if kb_config.get("knowledge_base_id"):
             metadata["knowledge_base_id"] = kb_config.get("knowledge_base_id")
-
-        if rag_provider == LIGHTRAG_PROVIDER:
-            from deeptutor.services.rag.pipelines.lightrag.storage import (
-                latest_published_root,
-                read_published_policy,
-            )
-
-            published_root = latest_published_root(kb_dir) if dir_exists else None
-            indexing_policy = read_published_policy(published_root)
-            if indexing_policy is None:
-                pending = kb_config.get("pending_indexing_policy")
-                indexing_policy = (
-                    pending if isinstance(pending, dict) else {"policy": "legacy_unpinned"}
-                )
-            metadata["indexing_policy"] = indexing_policy
 
         metadata.update(self._embedding_fields(kb_config))
 

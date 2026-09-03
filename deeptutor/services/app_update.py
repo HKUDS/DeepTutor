@@ -166,15 +166,6 @@ def _distribution_direct_url() -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else {}
 
 
-def _running_from_source_checkout() -> bool:
-    """Return whether the imported package lives in a Git source checkout."""
-    try:
-        checkout_root = Path(__file__).resolve().parents[2]
-    except IndexError:
-        return False
-    return (checkout_root / ".git").exists() and (checkout_root / "pyproject.toml").is_file()
-
-
 def detect_installation() -> Installation:
     """Classify only layouts whose update ownership is unambiguous."""
 
@@ -185,15 +176,6 @@ def detect_installation() -> Installation:
             automatic_update=False,
             command="docker pull ghcr.io/hkuds/deeptutor:latest",
             reason="Container images are updated and recreated by the Docker host.",
-        )
-
-    if _running_from_source_checkout():
-        return Installation(
-            mode="source",
-            current_version=__version__,
-            automatic_update=False,
-            command="git pull && pip install -e .",
-            reason="Source checkouts stay under the developer's Git workflow.",
         )
 
     direct_url = _distribution_direct_url()

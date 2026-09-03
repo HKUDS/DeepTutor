@@ -8,9 +8,8 @@ import {
   type KnowledgeUploadPolicy,
 } from "@/features/knowledge/api/files";
 import {
-  kbCanUploadDocuments,
+  kbIsUploadable,
   kbNeedsReindex,
-  kbRequiresLightRagRebuildBeforeAppend,
   providerUsesEmbeddingMetadata,
   resolveKbStatus,
   resolveProgressPercent,
@@ -24,7 +23,6 @@ import ProcessLogs from "@/components/common/ProcessLogs";
 import FileDropZone from "./FileDropZone";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
 import KbUpdateHistory from "./KbUpdateHistory";
-import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
 
 interface KbDocumentsSectionProps {
   kb: KnowledgeBase;
@@ -81,19 +79,13 @@ export default function KbDocumentsSection({
     };
   }, [kb.name]);
 
+  const uploadable = kbIsUploadable(kb);
   const needsReindex = kbNeedsReindex(kb);
-  const requiresLightRagRebuild = kbRequiresLightRagRebuildBeforeAppend(kb);
   const status = resolveKbStatus(kb);
   const isError = status === "error";
   const provider =
     kb.statistics?.rag_provider || kb.metadata?.rag_provider || "llamaindex";
   const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
-  const publishedLightRagVersion =
-    provider === "lightrag"
-      ? kb.statistics?.index_versions?.find(
-          (version) => version.provider === "lightrag" && version.ready,
-        )
-      : undefined;
 
   const isUploadingHere = task?.kind === "upload" && task.executing;
   const isIndexingHere =
@@ -104,26 +96,20 @@ export default function KbDocumentsSection({
   // (Files tab) and upload replacements here, instead of being forced to
   // delete and rebuild the whole base. Uploads stay open unless a rebuild is
   // actively running; legacy/transition states remain genuinely blocked.
-  const canUpload = kbCanUploadDocuments(kb, isIndexingHere);
+  const canUpload = uploadable || (isError && !isIndexingHere);
 
   const blockedReason = canUpload
     ? null
-    : requiresLightRagRebuild
+    : needsReindex
       ? t(
-          "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
+          "This knowledge base is in legacy index format and needs reindex before upload.",
         )
-      : needsReindex
+      : status !== "ready"
         ? t(
-            "This knowledge base is in legacy index format and needs reindex before upload.",
+            "This knowledge base is currently {{status}} and cannot accept uploads yet.",
+            { status: status.replaceAll("_", " ") },
           )
-        : status !== "ready"
-          ? t(
-              "This knowledge base is currently {{status}} and cannot accept uploads yet.",
-              {
-                status: status.replaceAll("_", " "),
-              },
-            )
-          : null;
+        : null;
 
   const selection = validateFiles(files, policyForProvider, t);
   const canRetry = Boolean(onRetry) && isError && !isIndexingHere;
@@ -185,14 +171,6 @@ export default function KbDocumentsSection({
           )}
         </p>
       </div>
-
-      {provider === "lightrag" && (
-        <LightRagIndexingProvenance
-          policy={kb.metadata?.indexing_policy}
-          version={publishedLightRagVersion}
-          compact
-        />
-      )}
 
       {blockedReason && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">

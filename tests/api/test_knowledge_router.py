@@ -8,12 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.multi_user.context import (
-    get_current_user_or_none,
-    reset_current_user,
-    set_current_user,
-)
-from deeptutor.multi_user.models import CurrentUser, UserScope
 import deeptutor.services.config as config_module
 from deeptutor.services.config.runtime_settings import RuntimeSettingsService
 from deeptutor.services.rag.pipelines.ima.client import (
@@ -817,55 +811,6 @@ def test_create_normalizes_uploaded_extension_to_lowercase(monkeypatch, tmp_path
     assert (tmp_path / "knowledge_bases" / "kb-uppercase" / "raw" / "报告.pdf").exists()
 
 
-@pytest.mark.parametrize(("role", "fail"), [("user", False), ("admin", True)])
-def test_initialization_task_installs_owner_scope_and_restores_caller(
-    monkeypatch, tmp_path: Path, role: str, fail: bool
-) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    manager.config["knowledge_bases"]["kb"] = {"path": "kb", "status": "initializing"}
-    raw_dir = manager.base_dir / "kb" / "raw"
-    raw_dir.mkdir(parents=True)
-    owner = CurrentUser(
-        id=f"owner-{role}",
-        username=f"owner-{role}",
-        role=role,
-        scope=UserScope(kind=role, user_id=f"owner-{role}", root=tmp_path / "owner"),
-    )
-    ambient = CurrentUser(
-        id="ambient",
-        username="ambient",
-        role="user",
-        scope=UserScope(kind="user", user_id="ambient", root=tmp_path / "ambient"),
-    )
-
-    async def process_documents():
-        assert get_current_user_or_none() == owner
-        if fail:
-            raise RuntimeError("indexing failed")
-
-    tracker = SimpleNamespace(task_id=None, update=lambda *_args, **_kwargs: None)
-    initializer = SimpleNamespace(
-        owner=owner,
-        progress_tracker=tracker,
-        kb_name="kb",
-        base_dir=manager.base_dir,
-        raw_dir=raw_dir,
-        process_documents=process_documents,
-        index_published=False,
-    )
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    token = set_current_user(ambient)
-    try:
-        asyncio.run(
-            knowledge_router_module.run_initialization_task(
-                initializer, f"owner-scope-{role}-{fail}"
-            )
-        )
-        assert get_current_user_or_none() == ambient
-    finally:
-        reset_current_user(token)
-
-
 def test_upload_returns_409_when_kb_needs_reindex(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     manager.config["knowledge_bases"]["legacy-kb"] = {
@@ -1636,54 +1581,8 @@ def test_reindex_task_persists_completed_progress(monkeypatch, tmp_path: Path) -
     assert "embedding_mismatch" not in entry
 
 
-def test_reindex_task_preserves_prepublication_failure(monkeypatch, tmp_path: Path) -> None:
-    base_dir = tmp_path / "knowledge_bases"
-    raw_dir = base_dir / "kb" / "raw"
-    raw_dir.mkdir(parents=True)
-    (raw_dir / "fixture.txt").write_text("fixture", encoding="utf-8")
-    (base_dir / "kb_config.json").write_text(
-        json.dumps(
-            {
-                "knowledge_bases": {
-                    "kb": {
-                        "path": "kb",
-                        "rag_provider": "lightrag",
-                        "status": "processing",
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    class _FailingRagService:
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        async def initialize(self, *_args, **_kwargs) -> bool:
-            raise RuntimeError("original indexing failure")
-
-    rag_service_module = importlib.import_module("deeptutor.services.rag.service")
-    monkeypatch.setattr(rag_service_module, "RAGService", _FailingRagService)
-    task_id = knowledge_router_module._build_unique_task_id("kb_reindex", "prepublish-fail")
-
-    asyncio.run(
-        knowledge_router_module.run_reindex_task(
-            kb_name="kb",
-            base_dir=str(base_dir),
-            task_id=task_id,
-            signature_hash="lightrag",
-        )
-    )
-
-    task = knowledge_router_module.TaskIDManager.get_instance().get_task_metadata(task_id)
-    assert task is not None
-    assert task["status"] == "error"
-    assert task["error"] == "original indexing failure"
-
-
 @pytest.mark.parametrize("failed_sink", ["progress_file", "central_config"])
-def test_reindex_task_does_not_report_a_published_version_as_failed_when_bookkeeping_fails(
+def test_reindex_task_fails_closed_when_terminal_progress_is_not_persisted(
     monkeypatch, tmp_path: Path, failed_sink: str
 ) -> None:
     base_dir = tmp_path / "knowledge_bases"
@@ -1760,16 +1659,13 @@ def test_reindex_task_does_not_report_a_published_version_as_failed_when_bookkee
 
     task = task_manager.get_task_metadata(task_id)
     assert task is not None
-    assert task["status"] == "completed"
+    assert task["status"] == "error"
+    assert "terminal state" in task["error"]
     progress = json.loads((base_dir / "kb" / ".progress.json").read_text(encoding="utf-8"))
+    assert progress["stage"] == "error"
     persisted = json.loads((base_dir / "kb_config.json").read_text(encoding="utf-8"))
     entry = persisted["knowledge_bases"]["kb"]
-    if failed_sink == "progress_file":
-        assert progress["stage"] != "error"
-        assert entry["status"] == "ready"
-    else:
-        assert progress["stage"] == "completed"
-        assert entry["status"] == "processing"
+    assert entry["status"] == "error"
     assert entry["needs_reindex"] is True
     assert entry["embedding_mismatch"] == {"reason": "test"}
 
@@ -2245,15 +2141,6 @@ def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path
 
 def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    snapshot = SimpleNamespace(
-        persisted_policy=lambda: {
-            "policy": "pinned",
-            "selection": {"profile_id": "profile-1", "model_id": "model-1"},
-            "descriptor": {"model": "safe-model"},
-            "fingerprint": "a" * 64,
-            "vision_available": True,
-        }
-    )
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
     monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
@@ -2261,11 +2148,6 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
     monkeypatch.setattr(preflight, "engine_preflight", lambda _provider: {"ok": True, "checks": []})
     lightrag_config = importlib.import_module("deeptutor.services.rag.pipelines.lightrag.config")
     monkeypatch.setattr(lightrag_config, "is_lightrag_available", lambda: True)
-    monkeypatch.setattr(
-        knowledge_router_module,
-        "_freeze_default_indexing_llm",
-        lambda: snapshot,
-    )
 
     async def _noop_init_task(*_args, **_kwargs):
         return None
@@ -2284,180 +2166,6 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
 
     assert response.status_code == 200
     assert manager.config["knowledge_bases"]["kb-light"]["search_mode"] == "hybrid"
-
-
-def test_create_empty_lightrag_kb_persists_redacted_pending_policy(
-    monkeypatch, tmp_path: Path
-) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    snapshot = SimpleNamespace(
-        persisted_policy=lambda: {
-            "policy": "pinned",
-            "selection": {"profile_id": "profile-1", "model_id": "model-1"},
-            "descriptor": {"model": "safe-model"},
-            "fingerprint": "a" * 64,
-            "vision_available": True,
-        }
-    )
-    seen: list[str] = []
-
-    def freeze_form(raw: str):
-        seen.append(raw)
-        return {"profile_id": "profile-1", "model_id": "model-1"}, snapshot
-
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
-    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
-    monkeypatch.setattr(knowledge_router_module, "_assert_provider_ready", lambda _provider: None)
-    monkeypatch.setattr(knowledge_router_module, "_freeze_indexing_llm_form", freeze_form)
-
-    with TestClient(_build_app()) as client:
-        response = client.post(
-            "/api/knowledge-bases",
-            data={
-                "name": "kb-pending",
-                "rag_provider": "lightrag",
-                "indexing_llm": json.dumps({"profile_id": "profile-1", "model_id": "model-1"}),
-            },
-        )
-
-    assert response.status_code == 200
-    assert len(seen) == 1
-    pending = manager.config["knowledge_bases"]["kb-pending"]["pending_indexing_policy"]
-    assert pending["policy"] == "pending_pinned"
-    assert pending["fingerprint"] == "a" * 64
-    assert pending["selection"] == {"profile_id": "profile-1", "model_id": "model-1"}
-    assert not list((manager.base_dir / "kb-pending").glob("version-*"))
-
-
-def test_create_rejects_indexing_selection_for_other_provider_before_registration(
-    monkeypatch, tmp_path: Path
-) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
-
-    with TestClient(_build_app()) as client:
-        response = client.post(
-            "/api/knowledge-bases",
-            data={
-                "name": "wrong-provider",
-                "rag_provider": "llamaindex",
-                "indexing_llm": json.dumps({"profile_id": "profile-1", "model_id": "model-1"}),
-            },
-        )
-
-    assert response.status_code == 400
-    assert manager.config["knowledge_bases"] == {}
-
-
-def test_empty_lightrag_kb_can_update_pending_indexing_policy(monkeypatch, tmp_path: Path) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    manager.config["knowledge_bases"]["empty"] = {
-        "rag_provider": "lightrag",
-        "status": "ready",
-        "progress": {"stage": "completed"},
-    }
-    (manager.base_dir / "empty" / "raw").mkdir(parents=True)
-    policy = {
-        "policy": "pending_pinned",
-        "selection": {
-            "profile_id": "profile-1",
-            "model_id": "model-1",
-            "reasoning_effort": "none",
-        },
-        "descriptor": {"model": "safe-model", "reasoning_effort": "none"},
-        "fingerprint": "b" * 64,
-        "vision_available": False,
-    }
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(
-        "deeptutor.services.rag.pipelines.lightrag.storage.latest_published_root",
-        lambda _kb_dir: None,
-    )
-    monkeypatch.setattr(
-        "deeptutor.services.rag.pipelines.lightrag.indexing_policy.pending_policy_for_selection",
-        lambda selection: policy if selection["reasoning_effort"] == "none" else None,
-    )
-
-    with TestClient(_build_app()) as client:
-        response = client.put(
-            "/api/knowledge-bases/empty/indexing-policy",
-            json={
-                "profile_id": "profile-1",
-                "model_id": "model-1",
-                "reasoning_effort": "none",
-            },
-        )
-
-    assert response.status_code == 200
-    assert response.json()["indexing_policy"] == policy
-    assert manager.config["knowledge_bases"]["empty"]["pending_indexing_policy"] == policy
-
-
-@pytest.mark.parametrize("reason", ["published", "documents", "active"])
-def test_pending_indexing_policy_update_rejects_ineligible_kb(
-    monkeypatch, tmp_path: Path, reason: str
-) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    entry = {"rag_provider": "lightrag", "status": "ready"}
-    manager.config["knowledge_bases"]["kb"] = entry
-    raw_dir = manager.base_dir / "kb" / "raw"
-    raw_dir.mkdir(parents=True)
-    if reason == "documents":
-        (raw_dir / "doc.txt").write_text("content", encoding="utf-8")
-    if reason == "active":
-        entry.update({"status": "processing", "progress": {"stage": "processing_file"}})
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(
-        "deeptutor.services.rag.pipelines.lightrag.storage.latest_published_root",
-        lambda _kb_dir: object() if reason == "published" else None,
-    )
-
-    with TestClient(_build_app()) as client:
-        response = client.put(
-            "/api/knowledge-bases/kb/indexing-policy",
-            json={"profile_id": "profile-1", "model_id": "model-1"},
-        )
-
-    assert response.status_code == 409
-    assert "pending_indexing_policy" not in entry
-
-
-def test_reindex_passes_frozen_lightrag_snapshot_to_background_task(
-    monkeypatch, tmp_path: Path
-) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    manager.config["knowledge_bases"]["kb"] = {
-        "path": "kb",
-        "rag_provider": "lightrag",
-        "status": "ready",
-    }
-    (manager.base_dir / "kb" / "raw").mkdir(parents=True)
-    snapshot = object()
-    captured: dict[str, object] = {}
-
-    async def capture_task(*_args, **kwargs):
-        captured.update(kwargs)
-
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
-    monkeypatch.setattr(knowledge_router_module, "_assert_provider_ready", lambda _provider: None)
-    monkeypatch.setattr(
-        knowledge_router_module,
-        "_freeze_indexing_llm_form",
-        lambda _raw: ({"profile_id": "profile-1", "model_id": "model-1"}, snapshot),
-    )
-    monkeypatch.setattr(knowledge_router_module, "run_reindex_task", capture_task)
-
-    with TestClient(_build_app()) as client:
-        response = client.post(
-            "/api/knowledge-bases/kb/reindex",
-            data={"indexing_llm": json.dumps({"profile_id": "profile-1", "model_id": "model-1"})},
-        )
-
-    assert response.status_code == 200
-    assert captured["indexing_snapshot"] is snapshot
 
 
 def test_create_pageindex_oss_rejects_non_pdf(monkeypatch, tmp_path: Path) -> None:

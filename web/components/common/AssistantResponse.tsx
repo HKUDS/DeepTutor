@@ -9,7 +9,6 @@ import type { StreamEvent } from "@/features/chat/model/protocol";
 import { useWatching } from "@/context/WatchingContext";
 import {
   hasVisibleMarkdownContent,
-  repairChineseEmphasis,
   repairMalformedStrongEmphasis,
   stripArtifactAnnotations,
 } from "@/lib/markdown-display";
@@ -37,7 +36,6 @@ interface AssistantResponseProps {
   readingMaterialId?: string;
   readingMaterialRevision?: number;
   events?: StreamEvent[];
-  language?: string;
 }
 
 function AssistantResponseImpl({
@@ -47,7 +45,6 @@ function AssistantResponseImpl({
   readingMaterialId,
   readingMaterialRevision,
   events,
-  language,
 }: AssistantResponseProps) {
   const displayContent = useSmoothStreamText(content, isStreaming);
   // A locator becomes interactive only when this turn's persisted reading-tool
@@ -138,12 +135,7 @@ function AssistantResponseImpl({
             />
           );
         }
-        const repairedContent = isStreaming
-          ? repairMalformedStrongEmphasis(segment.content)
-          : repairChineseEmphasis(
-              repairMalformedStrongEmphasis(segment.content),
-              language,
-            );
+        const repairedContent = repairMalformedStrongEmphasis(segment.content);
 
         if (!hasVisibleMarkdownContent(repairedContent)) {
           return <Fragment key={`text-${index}`} />;

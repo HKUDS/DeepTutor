@@ -500,7 +500,6 @@ export default function BookChatPanel({
                   {m.role === "assistant" ? (
                     <AssistantResponse
                       content={m.content}
-                      language={book?.language || appLanguage}
                       className="text-sm leading-relaxed"
                       isStreaming={Boolean(m.streaming)}
                     />

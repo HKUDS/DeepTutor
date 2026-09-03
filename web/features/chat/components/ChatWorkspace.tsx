@@ -287,8 +287,6 @@ export default function ChatWorkspace() {
     newSession,
     loadSession,
     showCachedSession,
-    loadMessageTrace,
-    releaseMessageTrace,
     renameSessionTitle,
     setCourseId,
   } = useChatStateAdapter();
@@ -2408,16 +2406,6 @@ export default function ChatWorkspace() {
                         onEditMessage={editMessage}
                         onSwitchBranch={switchBranch}
                         onSubmitUserReply={submitUserReply}
-                        onLoadMessageTrace={(messageId) =>
-                          state.sessionId
-                            ? loadMessageTrace(state.sessionId, messageId)
-                            : Promise.resolve()
-                        }
-                        onReleaseMessageTrace={(messageId) => {
-                          if (state.sessionId) {
-                            releaseMessageTrace(state.sessionId, messageId);
-                          }
-                        }}
                         availableKbNames={
                           knowledgeBasesLoaded ? availableKbNames : undefined
                         }

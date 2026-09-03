@@ -23,25 +23,17 @@ def _write_provider_version(kb_dir: Path, provider: str) -> None:
         output_dir = version_dir / "output"
         output_dir.mkdir()
         (output_dir / "entities.parquet").write_bytes(b"placeholder")
-    elif provider == "lightrag":
-        (version_dir / "kv_store_doc_status.json").write_text(
-            json.dumps({"doc": {"status": "processed", "chunks_list": ["chunk"]}}),
-            encoding="utf-8",
-        )
     else:
         (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
         (version_dir / "index_store.json").write_text("{}", encoding="utf-8")
-    meta = {"provider": provider, "signature": provider, "version": "version-1"}
-    if provider == "lightrag":
-        meta.update(
-            {
-                "lightrag_adapter_schema": 2,
-                "parser_bridge_schema": 1,
-                "state": "published",
-            }
-        )
     (version_dir / "meta.json").write_text(
-        json.dumps(meta),
+        json.dumps(
+            {
+                "provider": provider,
+                "signature": provider,
+                "version": "version-1",
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -78,19 +70,6 @@ def test_document_adder_preserves_explicit_bound_provider(tmp_path: Path) -> Non
     assert adder.rag_provider == "graphrag"
 
 
-def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(tmp_path: Path) -> None:
-    (tmp_path / "empty-kb").mkdir()
-
-    adder = DocumentAdder(
-        kb_name="empty-kb",
-        base_dir=str(tmp_path),
-        rag_provider="lightrag",
-    )
-
-    assert adder.rag_provider == "lightrag"
-    assert adder.raw_dir.is_dir()
-
-
 def test_process_new_documents_returns_failures_without_marking_processed(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -120,37 +99,6 @@ def test_process_new_documents_returns_failures_without_marking_processed(
     assert result.failed_count == 1
     assert "provider exploded" in result.failure_summary()
     assert adder.get_ingested_hashes() == {}
-
-
-def test_lightrag_hash_bookkeeping_failure_does_not_deny_published_success(
-    monkeypatch, tmp_path: Path
-) -> None:
-    kb_dir = tmp_path / "kb"
-    raw_dir = kb_dir / "raw"
-    raw_dir.mkdir(parents=True)
-    _write_provider_version(kb_dir, "lightrag")
-    doc = raw_dir / "published.txt"
-    doc.write_text("hello", encoding="utf-8")
-
-    class _SuccessfulRagService:
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        async def add_documents(self, *_args, **_kwargs) -> bool:
-            return True
-
-    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _SuccessfulRagService)
-    adder = DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="lightrag")
-    monkeypatch.setattr(
-        adder,
-        "_record_successful_hash",
-        lambda _path: (_ for _ in ()).throw(OSError("metadata unavailable")),
-    )
-
-    result = asyncio.run(adder.process_new_documents([doc]))
-
-    assert result.processed_files == [doc]
-    assert result.failures == []
 
 
 def test_remove_raw_document_deletes_file_and_hash_without_index(

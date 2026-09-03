@@ -211,7 +211,6 @@ export function agentGlyph(kind: string | undefined): AgentGlyph | null {
   if (kind === "opencode") return OpencodeGlyph;
   if (kind === "mimo") return MimoGlyph;
   if (kind === "hermes") return HermesGlyph;
-  if (kind === "hermes_remote") return HermesGlyph;
   if (kind === "openclaw") return OpenClawGlyph;
   if (kind === "deepseek_harness") return DeepSeekGlyph;
   if (kind === "partner") return PartnerGlyph;

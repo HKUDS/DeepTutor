@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from deeptutor.services.llm.config import LLMConfig
-from deeptutor.services.llm.factory import complete, complete_with_config, stream
+from deeptutor.services.llm.factory import complete, stream
 from deeptutor.services.llm.provider_core.base import LLMResponse
 
 
@@ -26,10 +26,6 @@ class _FakeProvider:
         self.stream_response = stream_response or LLMResponse(content=stream_chunk)
         self.stream_chunk = stream_chunk
         self.reasoning_chunk = reasoning_chunk
-        self.closed = 0
-
-    async def aclose(self) -> None:
-        self.closed += 1
 
     async def chat_with_retry(self, **kwargs: Any) -> LLMResponse:
         self.complete_kwargs = kwargs
@@ -157,42 +153,6 @@ async def test_explicit_call_inherits_matching_profile_headers_and_reasoning(
     assert captured_config["config"].extra_headers == {"User-Agent": "DeepTutor-Test"}
     assert captured_config["config"].reasoning_effort == "minimal"
     assert provider.complete_kwargs["reasoning_effort"] == "minimal"
-
-
-@pytest.mark.asyncio
-async def test_complete_with_config_never_resolves_or_merges_global_config(monkeypatch) -> None:
-    snapshot = _make_cfg(extra_headers={}, reasoning_effort=None)
-    provider = _FakeProvider()
-    captured_config: dict[str, LLMConfig] = {}
-
-    def _unexpected_resolver(**_kwargs: Any):
-        raise AssertionError("explicit config path must not resolve global config")
-
-    def _fake_build_isolated_provider(config: LLMConfig):
-        captured_config["config"] = config
-        return provider
-
-    monkeypatch.setattr("deeptutor.services.llm.factory._resolve_call_config", _unexpected_resolver)
-    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", _unexpected_resolver)
-    monkeypatch.setattr("deeptutor.services.llm.factory._resolve_provider_spec", lambda **_: None)
-    monkeypatch.setattr(
-        "deeptutor.services.llm.factory.build_isolated_provider",
-        _fake_build_isolated_provider,
-    )
-
-    assert await complete_with_config(snapshot, "hello") == "ok"
-    assert captured_config["config"] is snapshot
-    assert captured_config["config"].extra_headers == {}
-    assert provider.complete_kwargs["reasoning_effort"] is None
-    assert provider.closed == 1
-
-
-@pytest.mark.asyncio
-async def test_complete_with_config_rejects_identity_overrides() -> None:
-    snapshot = _make_cfg()
-
-    with pytest.raises(TypeError, match="reasoning_effort"):
-        await complete_with_config(snapshot, "hello", reasoning_effort="high")
 
 
 @pytest.mark.asyncio

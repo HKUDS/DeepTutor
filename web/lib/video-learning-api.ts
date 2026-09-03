@@ -78,29 +78,18 @@ export interface VideoLearningSettings {
 
 async function unwrap<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw await responseError(response);
+    const payload = await response.json().catch(() => ({}));
+    const detail = (payload as { detail?: unknown })?.detail;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : typeof (detail as { message?: unknown } | undefined)?.message ===
+            "string"
+          ? (detail as { message: string }).message
+          : null;
+    throw new Error(message || `Request failed (${response.status})`);
   }
   return (await response.json()) as T;
-}
-
-async function responseError(response: Response): Promise<Error> {
-  const payload = await response.json().catch(() => ({}));
-  const detail = (payload as { detail?: unknown })?.detail;
-  const message =
-    typeof detail === "string"
-      ? detail
-      : typeof (detail as { message?: unknown } | undefined)?.message ===
-          "string"
-        ? (detail as { message: string }).message
-        : null;
-  return new Error(message || `Request failed (${response.status})`);
-}
-
-async function unwrapText(response: Response): Promise<string> {
-  if (!response.ok) {
-    throw await responseError(response);
-  }
-  return response.text();
 }
 
 export async function listVideoNotes(materialId: string): Promise<VideoNote[]> {
@@ -129,17 +118,6 @@ export async function createVideoNote(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body, time_seconds: timeSeconds }),
       },
-    ),
-  );
-}
-
-export async function exportVideoNotes(materialId: string): Promise<string> {
-  return unwrapText(
-    await apiFetch(
-      apiUrl(
-        `/api/video-learning/materials/${encodeURIComponent(materialId)}/notes.md`,
-      ),
-      { cache: "no-store" },
     ),
   );
 }

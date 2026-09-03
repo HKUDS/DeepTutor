@@ -66,9 +66,7 @@ def client(monkeypatch, tmp_path):
     manager = _FakeKBManager()
     monkeypatch.setattr(subagents_module, "current_kb_manager", lambda: manager)
     monkeypatch.setattr(
-        subagents_module,
-        "list_backend_kinds",
-        lambda: ["claude_code", "codex", "hermes_remote", "partner"],
+        subagents_module, "list_backend_kinds", lambda: ["claude_code", "codex", "partner"]
     )
     monkeypatch.setattr(subagents_module, "assert_path_allowed", lambda p: Path(p))
     # Isolate settings persistence to a temp file — the PUT path otherwise
@@ -128,19 +126,6 @@ def test_connect_rejects_unknown_kind(client):
         json={"name": "X", "agent_kind": "bogus"},
     )
     assert res.status_code == 400
-
-
-def test_connect_remote_backend_does_not_persist_a_local_cwd(client):
-    created = client.post(
-        "/api/subagents/connections",
-        json={
-            "name": "RemoteHermes",
-            "agent_kind": "hermes_remote",
-            "cwd": "/private/path-that-must-not-cross-the-boundary",
-        },
-    )
-    assert created.status_code == 200
-    assert created.json()["cwd"] == ""
 
 
 class _FakePartnerManagerForConnect:

@@ -81,7 +81,6 @@ import {
   AssistantActivity,
   NestedTraceFlow,
 } from "@/features/chat/trace/TracePresentation";
-import type { MessageTraceMetadata } from "@/features/chat/trace/memory";
 import { agentGlyph } from "@/components/agents/agent-icons";
 import { useConnectedAgentKinds } from "@/hooks/useConnectedAgentKinds";
 import {
@@ -113,7 +112,6 @@ interface ChatMessageItem {
   content: string;
   capability?: string;
   events?: StreamEvent[];
-  trace?: MessageTraceMetadata;
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
   parentMessageId?: number | null;
@@ -327,21 +325,13 @@ export const AssistantMessage = memo(function AssistantMessage({
   onConfirmOutline,
   onSubmitUserReply,
   researchRequestSnapshot,
-  onTraceToggle,
 }: {
-  msg: {
-    id?: number;
-    content: string;
-    capability?: string;
-    events?: StreamEvent[];
-    trace?: MessageTraceMetadata;
-  };
+  msg: { content: string; capability?: string; events?: StreamEvent[] };
   isStreaming?: boolean;
   outlineStatus?: "editing" | "researching" | "done" | "failed";
   sessionId?: string | null;
   language?: string;
   researchRequestSnapshot?: MessageRequestSnapshot | null;
-  onTraceToggle?: (open: boolean) => void;
   onConfirmOutline?: (
     outline: Array<{ title: string; overview: string }>,
     topic: string,
@@ -517,11 +507,6 @@ export const AssistantMessage = memo(function AssistantMessage({
         isStreaming={isStreaming}
         content={msg.content}
         className="mb-3"
-        onTraceToggle={
-          msg.id != null && msg.trace?.turn_id
-            ? (open) => onTraceToggle?.(open)
-            : undefined
-        }
       />
       {outlinePreview && outlinePreview.sub_topics.length > 0 ? (
         <>
@@ -560,7 +545,6 @@ export const AssistantMessage = memo(function AssistantMessage({
           {showResearchBody ? (
             <AssistantResponse
               content={msg.content}
-              language={language}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -586,7 +570,6 @@ export const AssistantMessage = memo(function AssistantMessage({
           {msg.content ? (
             <AssistantResponse
               content={msg.content}
-              language={language}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -610,7 +593,6 @@ export const AssistantMessage = memo(function AssistantMessage({
             <AssistantResponse
               key={seg.key}
               content={seg.text}
-              language={language}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -638,7 +620,6 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) : (
         <AssistantResponse
           content={body}
-          language={language}
           isStreaming={isStreaming}
           readingMaterialId={readingMaterialId}
           readingMaterialRevision={readingMaterialRevision}
@@ -1323,8 +1304,6 @@ export const ChatMessageList = memo(function ChatMessageList({
   availableKbNames,
   onSubmitUserReply,
   showModeBadge = true,
-  onLoadMessageTrace,
-  onReleaseMessageTrace,
 }: {
   messages: ChatMessageItem[];
   isStreaming: boolean;
@@ -1365,8 +1344,6 @@ export const ChatMessageList = memo(function ChatMessageList({
   /** Label each user bubble with its capability. Off on surfaces that run a
    *  single capability and already name it in their own chrome. */
   showModeBadge?: boolean;
-  onLoadMessageTrace?: (messageId: number) => Promise<void>;
-  onReleaseMessageTrace?: (messageId: number) => void;
 }) {
   const { t } = useTranslation();
   // Visible path: when no branching has happened the result is identical
@@ -1622,14 +1599,6 @@ export const ChatMessageList = memo(function ChatMessageList({
                 researchRequestSnapshot={
                   pairedUserMessage?.requestSnapshot ?? null
                 }
-                onTraceToggle={(open) => {
-                  if (msg.id == null) return;
-                  if (open) {
-                    void onLoadMessageTrace?.(msg.id);
-                  } else {
-                    onReleaseMessageTrace?.(msg.id);
-                  }
-                }}
               />
             </InlineFileCardProvider>
             <GeneratedFileCards

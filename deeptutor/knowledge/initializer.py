@@ -10,11 +10,7 @@ import json
 import logging
 from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from deeptutor.multi_user.models import CurrentUser
-    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingLLMSnapshot
+from typing import Optional
 
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -38,8 +34,6 @@ class KnowledgeBaseInitializer:
         base_url: str | None = None,
         progress_tracker: ProgressTracker | None = None,
         rag_provider: str | None = None,
-        indexing_snapshot: IndexingLLMSnapshot | None = None,
-        owner: CurrentUser | None = None,
     ):
         self.kb_name = validate_knowledge_base_name(kb_name)
         self.base_dir = Path(base_dir)
@@ -52,9 +46,6 @@ class KnowledgeBaseInitializer:
         self.base_url = base_url
         self.progress_tracker = progress_tracker or ProgressTracker(self.kb_name, self.base_dir)
         self.rag_provider = normalize_provider_name(rag_provider)
-        self.indexing_snapshot = indexing_snapshot
-        self.owner = owner
-        self.index_published = False
 
     def _register_to_config(self) -> None:
         """Register KB in kb_config.json with initializing state."""
@@ -214,7 +205,6 @@ class KnowledgeBaseInitializer:
                 file_paths=file_paths,
                 progress_callback=_on_progress,
                 image_progress_callback=_on_image_progress,
-                indexing_snapshot=self.indexing_snapshot,
             )
             if not success:
                 self.progress_tracker.update(
@@ -224,23 +214,13 @@ class KnowledgeBaseInitializer:
                 )
                 raise RuntimeError("RAG pipeline returned failure")
 
-            self.index_published = provider == "lightrag"
-            try:
-                self._update_metadata_with_provider(provider)
-                self.progress_tracker.update(
-                    ProgressStage.PROCESSING_DOCUMENTS,
-                    message_key="Documents processed successfully",
-                    current=len(doc_files),
-                    total=len(doc_files),
-                )
-            except Exception:
-                if not self.index_published:
-                    raise
-                logger.warning(
-                    "LightRAG index for %s was published before metadata bookkeeping failed",
-                    self.kb_name,
-                    exc_info=True,
-                )
+            self._update_metadata_with_provider(provider)
+            self.progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                message_key="Documents processed successfully",
+                current=len(doc_files),
+                total=len(doc_files),
+            )
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error processing documents: {error_msg}")
@@ -251,17 +231,8 @@ class KnowledgeBaseInitializer:
             )
             raise
 
-        try:
-            await self.fix_structure()
-            await self.display_statistics_generic()
-        except Exception:
-            if not self.index_published:
-                raise
-            logger.warning(
-                "LightRAG index for %s was published before statistics bookkeeping failed",
-                self.kb_name,
-                exc_info=True,
-            )
+        await self.fix_structure()
+        await self.display_statistics_generic()
         return True
 
     async def fix_structure(self) -> None:

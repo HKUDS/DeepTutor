@@ -6,67 +6,9 @@ import {
   hasVisibleMarkdownContent,
   markdownUrlTransform,
   normalizeMarkdownForDisplay,
-  repairChineseEmphasis,
   repairMalformedStrongEmphasis,
   safeDecodeURIComponent,
 } from "../lib/markdown-display";
-
-test("repairChineseEmphasis repairs punctuation boundaries only for Chinese", () => {
-  assert.equal(repairChineseEmphasis("中文*，重点*", "zh-CN"), "中文 *，重点*");
-  assert.equal(
-    repairChineseEmphasis("中文**，重点**", "zh"),
-    "中文 **，重点**",
-  );
-  assert.equal(repairChineseEmphasis("中文*，重点*", "en"), "中文*，重点*");
-  assert.equal(repairChineseEmphasis("中文*，重点*"), "中文*，重点*");
-});
-
-test("repairChineseEmphasis balances the opposite delimiter when exactly one boundary is repaired", () => {
-  assert.equal(
-    repairChineseEmphasis("中文*，重点*内容", "zh"),
-    "中文 *，重点* 内容",
-  );
-});
-
-test("repairChineseEmphasis is fed the complete raw stream, not prior display output", () => {
-  const chunks = ["中文*，重", "点*", "内容"];
-  const rawContent = chunks.join("");
-
-  assert.equal(repairChineseEmphasis(rawContent, "zh"), "中文 *，重点* 内容");
-  assert.equal(
-    repairChineseEmphasis(
-      repairChineseEmphasis(chunks.slice(0, 2).join(""), "zh") + chunks[2],
-      "zh",
-    ),
-    "中文 *，重点*内容",
-  );
-});
-test("repairChineseEmphasis leaves inner whitespace and literal stars unchanged", () => {
-  const inputs = [
-    "* 重点 *",
-    "** 重点 **",
-    "*重点 内容*",
-    "前言 * 第一项 * 与 * 第二项 * 后记",
-    "Use * as multiplication *",
-    String.raw`\* 重点 \*`,
-  ];
-  for (const input of inputs) {
-    assert.equal(repairChineseEmphasis(input, "zh"), input);
-  }
-});
-
-test("repairChineseEmphasis leaves code, math, escaped, and triple-star spans untouched", () => {
-  const input = [
-    "`中文*，重点*`",
-    "```md",
-    "中文**，重点**",
-    "```",
-    "$中文*，重点*$",
-    "\\中文\\*，重点\\*",
-    "中文***，重点***内容",
-  ].join("\n");
-  assert.equal(repairChineseEmphasis(input, "zh"), input);
-});
 
 test("repairMalformedStrongEmphasis moves label whitespace outside the closing marker", () => {
   assert.equal(

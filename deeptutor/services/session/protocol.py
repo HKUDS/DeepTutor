@@ -132,16 +132,6 @@ class SessionStoreProtocol(SessionRepository, TurnRepository, MessageRepository,
 
     async def get_turn_events(self, turn_id: str, after_seq: int = 0) -> list[dict[str, Any]]: ...
 
-    async def link_turn_message(self, turn_id: str, assistant_message_id: int | str) -> bool: ...
-
-    async def get_message_trace(
-        self,
-        session_id: str,
-        message_id: int | str,
-        after_seq: int = 0,
-        limit: int | None = None,
-    ) -> dict[str, Any] | None: ...
-
     async def update_session_title(self, session_id: str, title: str) -> bool: ...
 
     async def delete_session(self, session_id: str) -> bool: ...

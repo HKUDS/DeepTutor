@@ -165,20 +165,6 @@ async def get_session(session_id: str):
     return session
 
 
-@router.get("/{session_id}/messages/{message_id}/events")
-async def get_message_events(
-    session_id: str,
-    message_id: str,
-    after_seq: int = Query(default=0, ge=0),
-    limit: int = Query(default=500, ge=1, le=1000),
-):
-    store = get_session_store()
-    trace = await store.get_message_trace(session_id, message_id, after_seq, limit)
-    if trace is None:
-        raise HTTPException(status_code=404, detail="Message not found")
-    return trace
-
-
 @router.get("/{session_id}/ask-hint")
 async def get_session_ask_hint(session_id: str) -> dict[str, Any]:
     """One line the user is likely to type next, for the home composer placeholder."""

@@ -9,11 +9,8 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   let invidiousOffline = false;
   let transcriptReady = true;
   let transcriptRefreshCount = 0;
-  let materialRequestCount = 0;
   let savedPosition = 0;
   let nativeResolveCount = 0;
-  let exportRequestCount = 0;
-  let exportShouldFail = false;
   let nextNoteId = 1;
   const notes: Array<{
     notebook_id: string;
@@ -26,16 +23,6 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     created_at: number;
     updated_at: number;
   }> = [];
-  const transcriptCues = [
-    { start: 7, end: 12, text: "The first grounded concept." },
-    ...Array.from({ length: 60 }, (_, index) => ({
-      start: 13 + index,
-      end: 14 + index,
-      text: `Intermediate lesson detail ${index + 1}.`,
-    })),
-    { start: 70, end: 75, text: "The second grounded concept." },
-    { start: 110, end: 115, text: "The third grounded concept." },
-  ];
 
   const material = (selected: "youtube" | "invidious") => ({
     version: 1,
@@ -58,7 +45,10 @@ test("YouTube learning survives reload and switches to Invidious without silent 
           reason: "",
           language: "en",
           source: selected,
-          cues: transcriptCues,
+          cues: [
+            { start: 7, end: 12, text: "The first grounded concept." },
+            { start: 70, end: 75, text: "The second grounded concept." },
+          ],
         }
       : {
           status: "unavailable",
@@ -87,8 +77,6 @@ test("YouTube learning survives reload and switches to Invidious without silent 
             start_seconds: savedPosition,
           },
   });
-
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
   await page.addInitScript(() => {
     class FakePlayer {
@@ -131,11 +119,6 @@ test("YouTube learning survives reload and switches to Invidious without silent 
       playVideo() {}
       pauseVideo() {}
       destroy() {
-        const players = (
-          window as typeof window & { __fakePlayers?: FakePlayer[] }
-        ).__fakePlayers;
-        const index = players?.indexOf(this) ?? -1;
-        if (index >= 0) players?.splice(index, 1);
         this.element.remove();
       }
     }
@@ -178,7 +161,6 @@ test("YouTube learning survives reload and switches to Invidious without silent 
       return json(material(body.provider_override || provider));
     }
     if (path === `/api/video-learning/materials/${MATERIAL_ID}`) {
-      materialRequestCount += 1;
       if (provider === "invidious" && invidiousOffline) {
         return json({ detail: "Invidious is offline" }, 400);
       }
@@ -198,15 +180,6 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     }
     if (path.endsWith("/notes") && request.method() === "GET") {
       return json(notes);
-    }
-    if (path.endsWith("/notes.md")) {
-      exportRequestCount += 1;
-      if (exportShouldFail) return json({ detail: "Notes export failed" }, 500);
-      return route.fulfill({
-        status: 200,
-        contentType: "text/markdown",
-        body: "# Video notes: Timestamped lesson\n\n## 0:08\n\nFirst timestamped note\n",
-      });
     }
     if (path.endsWith("/notes") && request.method() === "POST") {
       const body = request.postDataJSON() as {
@@ -284,83 +257,14 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     page.getByText("The first grounded concept.").locator(".."),
   ).toHaveClass(/ring-1/);
 
-  const transcriptList = page.getByTestId("video-transcript-list");
-  const followButton = page.getByRole("button", { name: "Follow playback" });
-  await expect(followButton).toHaveAttribute("aria-pressed", "true");
-  await page.evaluate(() => {
-    const player = (
-      window as typeof window & { __fakePlayers: Array<{ current: number }> }
-    ).__fakePlayers.at(-1);
-    if (player) player.current = 74;
-  });
-  await expect(
-    page.getByText("The second grounded concept.").locator(".."),
-  ).toHaveClass(/ring-1/);
-  await expect
-    .poll(() => transcriptList.evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(100);
-
-  await transcriptList.hover();
-  await page.mouse.wheel(0, 20);
-  await expect(followButton).toHaveAttribute("aria-pressed", "false");
-  const pausedScrollTop = await transcriptList.evaluate(
-    (element) => element.scrollTop,
-  );
-  await page.evaluate(() => {
-    const player = (
-      window as typeof window & { __fakePlayers: Array<{ current: number }> }
-    ).__fakePlayers.at(-1);
-    if (player) player.current = 112;
-  });
-  await expect(
-    page.getByText("The third grounded concept.").locator(".."),
-  ).toHaveClass(/ring-1/);
-  await expect
-    .poll(() => transcriptList.evaluate((element) => element.scrollTop))
-    .toBe(pausedScrollTop);
-  await followButton.click();
-  await expect(followButton).toHaveAttribute("aria-pressed", "true");
-  await expect
-    .poll(() => transcriptList.evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(pausedScrollTop);
-
-  await transcriptList.dispatchEvent("pointerdown", { pointerType: "mouse" });
-  await expect(followButton).toHaveAttribute("aria-pressed", "false");
-  await followButton.click();
-  await expect(followButton).toHaveAttribute("aria-pressed", "true");
-
-  await page.evaluate(() => {
-    const player = (
-      window as typeof window & { __fakePlayers: Array<{ current: number }> }
-    ).__fakePlayers.at(-1);
-    if (player) player.current = 8;
-  });
   await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByText("No notes yet.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Copy notes" })).toBeDisabled();
   await page.getByPlaceholder("Note at 0:08").fill("First timestamped note");
   await page.getByRole("button", { name: "Add video note" }).click();
   await expect(page.getByText("First timestamped note")).toBeVisible();
   await expect(page.getByText("The first grounded concept.")).toBeVisible();
-  await page.getByRole("button", { name: "Copy notes" }).click();
-  await expect(page.getByRole("button", { name: "Notes copied" })).toBeVisible();
-  await expect.poll(() => exportRequestCount).toBe(1);
-  await expect(
-    page.evaluate(() => navigator.clipboard.readText()),
-  ).resolves.toContain("First timestamped note");
 
-  exportShouldFail = true;
-  await page.getByRole("button", { name: "Notes copied" }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Notes export failed" }),
-  ).toBeVisible();
-  exportShouldFail = false;
-
-  await page.goto("/");
-  await page.waitForTimeout(100);
-  expect(materialRequestCount).toBe(0);
-  await page.goto("/chat?capability=immersive_watching");
-  await expect.poll(() => materialRequestCount).toBe(1);
+  await page.reload();
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
   await page.getByRole("tab", { name: "Video notes" }).click();
   await expect(page.getByText("First timestamped note")).toBeVisible();

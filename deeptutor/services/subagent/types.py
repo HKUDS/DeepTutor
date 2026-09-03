@@ -1,9 +1,9 @@
 """Value types for the subagent driver layer.
 
 These are the only shapes that cross the boundary between a backend (which
-knows how to drive one local or remote agent) and the rest of the app (the
-consult tool, API, and tests). Keeping them dependency-free lets backends stay
-small and the capability layer stay ignorant of transport specifics.
+knows how to drive one local agent CLI) and the rest of the app (the consult
+tool, the API, the tests). Keeping them dependency-free lets the backends stay
+small and the capability layer stay ignorant of CLI specifics.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class ConsultResult:
 
 @dataclass(slots=True)
 class DetectResult:
-    """Whether a subagent backend is currently usable."""
+    """Whether a subagent backend is usable on the current machine."""
 
     kind: str
     display_name: str

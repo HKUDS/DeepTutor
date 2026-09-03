@@ -10,17 +10,11 @@ import types
 
 import pytest
 
-from deeptutor.multi_user.context import (
-    get_current_user_or_none,
-    reset_current_user,
-    set_current_user,
-)
-from deeptutor.multi_user.models import CurrentUser, UserScope
 from deeptutor.services.llm.exceptions import LLMAPIError, LLMAuthenticationError
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.rag.factory import get_pipeline, list_pipelines, normalize_provider_name
 from deeptutor.services.rag.index_versioning import list_kb_versions
-from deeptutor.services.rag.pipelines.lightrag import config, engine, indexing_policy, storage
+from deeptutor.services.rag.pipelines.lightrag import config, engine, storage
 from deeptutor.services.rag.pipelines.lightrag.ingress import (
     IngressError,
     bundles_root,
@@ -58,13 +52,6 @@ class _Bridge:
         return await value if inspect.isawaitable(value) else value
 
 
-def _indexing_snapshot():
-    return types.SimpleNamespace(
-        vision_available=True,
-        persisted_policy=lambda: {"policy": "pinned", "fingerprint": "a" * 64},
-    )
-
-
 def test_factory_routes_without_importing_optional_sdk(tmp_path: Path, monkeypatch) -> None:
     sys.modules.pop("lightrag", None)
     pipeline = get_pipeline("lightrag", kb_base_dir=str(tmp_path))
@@ -96,139 +83,71 @@ def test_availability_checks_native_lightrag_module(monkeypatch) -> None:
     assert seen == ["lightrag"]
 
 
-@pytest.mark.parametrize(
-    ("settings", "expected"),
-    [
+def test_lightrag_llm_selection_requires_both_catalog_ids(monkeypatch) -> None:
+    settings_cases = [
         ({}, None),
-        (
-            {"llm_profile_id": " profile ", "llm_model_id": " model "},
-            {"profile_id": "profile", "model_id": "model"},
-        ),
-        ({"llm_profile_id": "profile", "llm_model_id": ""}, None),
-    ],
-)
-def test_released_lightrag_query_selection_keeps_fallback_contract(
-    monkeypatch, settings, expected
-) -> None:
-    monkeypatch.setattr("deeptutor.services.config.load_lightrag_settings", lambda: settings)
-
-    assert config.lightrag_llm_selection_from_settings() == expected
+        ({"llm_profile_id": "p", "llm_model_id": "m"}, {"profile_id": "p", "model_id": "m"}),
+        ({"llm_profile_id": "p", "llm_model_id": ""}, None),
+        ({"llm_profile_id": "", "llm_model_id": "m"}, None),
+    ]
+    for settings, expected in settings_cases:
+        monkeypatch.setattr(
+            "deeptutor.services.config.load_lightrag_settings",
+            lambda settings=settings: settings,
+        )
+        assert config.lightrag_llm_selection_from_settings() == expected
 
 
-def test_indexing_selection_rejects_partial_released_setting(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "deeptutor.services.config.load_lightrag_settings",
-        lambda: {"llm_profile_id": "profile", "llm_model_id": ""},
-    )
+def test_lightrag_llm_adapter_resolves_dedicated_catalog_selection(monkeypatch) -> None:
+    class Client:
+        def __init__(self, *, config, configure_env) -> None:
+            assert config is selected_config
+            assert configure_env is False
 
-    with pytest.raises(ValueError, match="incomplete"):
-        config.lightrag_indexing_selection_from_settings()
+        def get_model_func(self):
+            async def model_func(_prompt, **kwargs):
+                assert kwargs["max_retries"] == 0
+                return "ok"
 
-
-def test_query_model_resolver_falls_back_only_when_selected_entry_is_missing(
-    monkeypatch,
-) -> None:
-    selection = {"profile_id": "profile", "model_id": "model"}
-    fallback = object()
-    calls: list[object] = []
-    monkeypatch.setattr(config, "lightrag_llm_selection_from_settings", lambda: selection)
-
-    def resolve(value):
-        calls.append(value)
-        if value is selection:
-            raise ValueError("missing")
-        return fallback
-
-    monkeypatch.setattr(
-        "deeptutor.services.model_selection.runtime.resolve_llm_config_for_selection",
-        resolve,
-    )
-
-    assert config.resolve_lightrag_query_llm_config() is fallback
-    assert calls == [selection, None]
-
-
-def test_lightrag_llm_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
-    def build_model(config, *, allow_multimodal):
-        assert config is selected_config
-        assert allow_multimodal is False
-
-        async def model_func(_prompt, **kwargs):
-            assert kwargs["max_retries"] == 0
-            return "ok"
-
-        return model_func
+            return model_func
 
     selected_config = object()
-    monkeypatch.setattr("deeptutor.services.llm.client.build_model_func_for_config", build_model)
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.runtime.resolve_llm_config_for_selection",
+        lambda selection: selected_config,
+    )
+    monkeypatch.setattr("deeptutor.services.llm.client.LLMClient", Client)
 
-    adapter = config.build_llm_model_func(llm_config=selected_config)
+    adapter = config.build_llm_model_func(llm_selection={"profile_id": "p", "model_id": "m"})
     assert asyncio.run(adapter("prompt")) == "ok"
 
 
-def test_lightrag_vision_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
-    def build_model(config, *, allow_multimodal):
-        assert config is selected_config
-        assert allow_multimodal is True
+def test_lightrag_vision_adapter_resolves_dedicated_catalog_selection(monkeypatch) -> None:
+    class Client:
+        def __init__(self, *, config, configure_env) -> None:
+            assert config is selected_config
+            assert configure_env is False
 
-        async def model_func(_prompt, **kwargs):
-            assert kwargs["allow_image_fallback"] is False
-            assert kwargs["image_data"] == "sentinel"
-            return "ok"
+        def get_vision_model_func(self):
+            async def model_func(_prompt, **kwargs):
+                assert kwargs["allow_image_fallback"] is False
+                assert kwargs["image_data"] == "sentinel"
+                return "ok"
 
-        return model_func
+            return model_func
 
     selected_config = object()
-    monkeypatch.setattr("deeptutor.services.llm.client.build_model_func_for_config", build_model)
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.runtime.resolve_llm_config_for_selection",
+        lambda selection: selected_config,
+    )
+    monkeypatch.setattr("deeptutor.services.llm.client.LLMClient", Client)
 
-    adapter = config.build_vision_model_func(llm_config=selected_config)
+    adapter = config.build_vision_model_func(llm_selection={"profile_id": "p", "model_id": "m"})
     assert asyncio.run(adapter("prompt", image_inputs=[{"base64": "sentinel"}])) == "ok"
 
 
-@pytest.mark.parametrize("role", ["user", "admin"])
-@pytest.mark.parametrize("fail", [False, True])
-def test_explicit_adapter_installs_owner_scope_and_restores_ambient_scope(
-    monkeypatch, tmp_path: Path, role: str, fail: bool
-) -> None:
-    owner = CurrentUser(
-        id=f"owner-{role}",
-        username=f"owner-{role}",
-        role=role,
-        scope=UserScope(kind=role, user_id=f"owner-{role}", root=tmp_path / "owner"),
-    )
-    ambient = CurrentUser(
-        id="ambient",
-        username="ambient",
-        role="user",
-        scope=UserScope(kind="user", user_id="ambient", root=tmp_path / "ambient"),
-    )
-
-    def build_model(_config, *, allow_multimodal):
-        assert allow_multimodal is False
-
-        async def model_func(_prompt, **_kwargs):
-            assert get_current_user_or_none() == owner
-            if fail:
-                raise RuntimeError("provider failed")
-            return "ok"
-
-        return model_func
-
-    monkeypatch.setattr("deeptutor.services.llm.client.build_model_func_for_config", build_model)
-    adapter = config.build_llm_model_func(llm_config=object(), owner=owner)
-    token = set_current_user(ambient)
-    try:
-        if fail:
-            with pytest.raises(RuntimeError, match="provider failed"):
-                asyncio.run(adapter("prompt"))
-        else:
-            assert asyncio.run(adapter("prompt")) == "ok"
-        assert get_current_user_or_none() == ambient
-    finally:
-        reset_current_user(token)
-
-
-def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
+def test_build_rag_keeps_dedicated_llm_selection_out_of_embedding_kwargs(
     monkeypatch, tmp_path: Path
 ) -> None:
     """The 1.6 native adapter must not pass LLM-only kwargs to embedding."""
@@ -240,12 +159,7 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
     fake_lightrag = types.ModuleType("lightrag")
     fake_lightrag.__path__ = []  # type: ignore[attr-defined]
     fake_roles = types.ModuleType("lightrag.llm_roles")
-
-    class RoleLLMConfig:
-        def __init__(self, **kwargs) -> None:
-            self.__dict__.update(kwargs)
-
-    fake_roles.RoleLLMConfig = RoleLLMConfig  # type: ignore[attr-defined]
+    fake_roles.RoleLLMConfig = object  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
     monkeypatch.setitem(sys.modules, "lightrag.llm_roles", fake_roles)
     monkeypatch.setattr(engine, "_require_exact_version", lambda: None)
@@ -253,9 +167,8 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
     monkeypatch.setattr(engine, "_controlled_class", lambda: NativeLightRag)
     monkeypatch.setattr(engine, "indexing_kwargs_from_settings", dict)
     monkeypatch.setattr(engine, "constructor_kwargs_from_settings", dict)
-    query_config = types.SimpleNamespace(binding="openai")
-    monkeypatch.setattr(engine, "resolve_lightrag_query_llm_config", lambda: query_config)
-    monkeypatch.setattr(indexing_policy, "cache_identity_for_config", lambda _config: "query-id")
+    selection = {"profile_id": "profile-1", "model_id": "model-1"}
+    monkeypatch.setattr(engine, "lightrag_llm_selection_from_settings", lambda: selection)
     llm_calls: list[dict[str, object]] = []
     embedding_calls: list[object] = []
 
@@ -272,7 +185,7 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
 
     rag = engine.build_rag(tmp_path)
 
-    assert llm_calls == [{"llm_config": query_config}]
+    assert llm_calls == [{"llm_selection": selection}]
     assert embedding_calls == [None]
     assert rag.kwargs["embedding_func"] == "embedding"
 
@@ -488,9 +401,7 @@ def test_preparse_runs_once_and_bundle_ignores_later_parser_drift(
     monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", ParseService)
     monkeypatch.setattr(config, "vision_model_available", lambda: False)
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path / "kb"))
-    staged, failures = pipeline._stage_documents(
-        tmp_path / "version-1", [str(source)], vision_available=True
-    )
+    staged, failures = pipeline._stage_documents(tmp_path / "version-1", [str(source)])
     source.write_text("changed after staging", encoding="utf-8")
 
     manifest, bundle = load_verified_bundle(tmp_path / "version-1", "source.md")
@@ -625,207 +536,6 @@ def test_flat_schema_two_candidate_fails_closed_until_published(tmp_path: Path) 
     assert list_kb_versions(tmp_path)[0]["ready"] is True
 
 
-def _write_published_version(root: Path, *, indexing_policy_value: dict | None = None) -> None:
-    root.mkdir(parents=True)
-    (root / "kv_store_doc_status.json").write_text(
-        json.dumps({"doc": {"status": "processed", "chunks_list": ["chunk"]}}),
-        encoding="utf-8",
-    )
-    (root / "meta.json").write_text(
-        json.dumps(
-            {
-                "provider": "lightrag",
-                "signature": "lightrag",
-                "lightrag_adapter_schema": storage.ADAPTER_SCHEMA,
-                "parser_bridge_schema": 1,
-                "state": "published",
-                "indexing_policy": indexing_policy_value or {"policy": "legacy_unpinned"},
-            }
-        ),
-        encoding="utf-8",
-    )
-
-
-def test_rebuild_failure_before_index_output_keeps_previous_published_version(
-    tmp_path: Path, monkeypatch
-) -> None:
-    kb_dir = tmp_path / "kb"
-    old = kb_dir / "version-1"
-    _write_published_version(old)
-    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
-
-    async def fail_before_output(*_args, **_kwargs):
-        raise RuntimeError("indexing failed")
-
-    monkeypatch.setattr(pipeline, "_run_indexing", fail_before_output)
-
-    with pytest.raises(RuntimeError, match="indexing failed"):
-        asyncio.run(
-            pipeline.initialize(
-                "kb",
-                [str(tmp_path / "doc.md")],
-                indexing_snapshot=_indexing_snapshot(),
-            )
-        )
-
-    assert storage.latest_published_root(kb_dir) == old
-    assert not (kb_dir / "version-2").exists()
-
-
-def test_atomic_meta_failure_leaves_new_candidate_unpublished(tmp_path: Path, monkeypatch) -> None:
-    kb_dir = tmp_path / "kb"
-    old = kb_dir / "version-1"
-    _write_published_version(old)
-    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
-
-    async def finish_index(root: Path, *_args, **_kwargs):
-        (root / "kv_store_doc_status.json").write_text(
-            json.dumps({"new": {"status": "processed", "chunks_list": ["chunk"]}}),
-            encoding="utf-8",
-        )
-        return BatchOutcome(
-            requested=1,
-            accepted=1,
-            processed=("doc.md",),
-            indexing_policy={"policy": "legacy_unpinned"},
-        )
-
-    def fail_meta(*_args, **_kwargs):
-        raise OSError("atomic publication failed")
-
-    monkeypatch.setattr(pipeline, "_run_indexing", finish_index)
-    monkeypatch.setattr(storage, "write_meta", fail_meta)
-
-    with pytest.raises(OSError, match="atomic publication failed"):
-        asyncio.run(
-            pipeline.initialize(
-                "kb",
-                [str(tmp_path / "doc.md")],
-                indexing_snapshot=_indexing_snapshot(),
-            )
-        )
-
-    candidate = kb_dir / "version-2"
-    assert candidate.is_dir()
-    assert not (candidate / "meta.json").exists()
-    assert storage.latest_published_root(kb_dir) == old
-
-
-def test_append_metadata_refresh_failure_preserves_published_success(
-    tmp_path: Path, monkeypatch
-) -> None:
-    kb_dir = tmp_path / "kb"
-    published = kb_dir / "version-1"
-    _write_published_version(
-        published,
-        indexing_policy_value={
-            "policy": "pinned",
-            "selection": {"profile_id": "profile", "model_id": "model"},
-            "fingerprint": "a" * 64,
-        },
-    )
-    original_meta = (published / "meta.json").read_bytes()
-    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
-
-    async def finish_index(*_args, **_kwargs):
-        return BatchOutcome(
-            requested=1,
-            accepted=1,
-            processed=("doc.md",),
-            indexing_policy={"policy": "legacy_unpinned"},
-        )
-
-    monkeypatch.setattr(pipeline, "_run_indexing", finish_index)
-    monkeypatch.setattr(
-        indexing_policy,
-        "snapshot_from_persisted",
-        lambda _policy: _indexing_snapshot(),
-    )
-    monkeypatch.setattr(
-        storage,
-        "write_meta",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("metadata unavailable")),
-    )
-
-    assert asyncio.run(pipeline.add_documents("kb", [str(tmp_path / "doc.md")])) is True
-    assert (published / "meta.json").read_bytes() == original_meta
-
-
-def test_append_rejects_legacy_unpinned_index_before_mutation(tmp_path: Path, monkeypatch) -> None:
-    published = tmp_path / "kb" / "version-1"
-    _write_published_version(published)
-    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
-
-    async def unexpected(*_args, **_kwargs):
-        raise AssertionError("legacy append must not reach indexing")
-
-    monkeypatch.setattr(pipeline, "_run_indexing", unexpected)
-
-    with pytest.raises(indexing_policy.IndexingModelChangedError, match="full re-index"):
-        asyncio.run(pipeline.add_documents("kb", [str(tmp_path / "doc.md")]))
-
-
-def test_append_rejects_explicit_indexing_snapshot_before_mutation(
-    tmp_path: Path, monkeypatch
-) -> None:
-    published = tmp_path / "kb" / "version-1"
-    _write_published_version(published)
-    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
-
-    async def unexpected(*_args, **_kwargs):
-        raise AssertionError("append must not reach indexing")
-
-    monkeypatch.setattr(pipeline, "_run_indexing", unexpected)
-
-    with pytest.raises(indexing_policy.IndexingPolicyError, match="full re-index"):
-        asyncio.run(
-            pipeline.add_documents(
-                "kb",
-                [str(tmp_path / "doc.md")],
-                indexing_snapshot=_indexing_snapshot(),
-            )
-        )
-
-
-def test_pending_policy_drift_fails_before_creating_a_version(tmp_path: Path, monkeypatch) -> None:
-    kb_dir = tmp_path / "kb"
-    kb_dir.mkdir()
-    (tmp_path / "kb_config.json").write_text(
-        json.dumps(
-            {
-                "knowledge_bases": {
-                    "kb": {
-                        "path": "kb",
-                        "pending_indexing_policy": {
-                            "policy": "pending_pinned",
-                            "selection": {"profile_id": "profile", "model_id": "model"},
-                            "fingerprint": "a" * 64,
-                        },
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
-
-    def changed(_policy):
-        raise indexing_policy.IndexingModelChangedError("reindex required")
-
-    monkeypatch.setattr(indexing_policy, "snapshot_from_persisted", changed)
-
-    with pytest.raises(indexing_policy.IndexingModelChangedError):
-        asyncio.run(pipeline.initialize("kb", [str(tmp_path / "doc.md")]))
-
-    assert not any(kb_dir.glob("version-*"))
-
-
 def test_schema_two_metadata_without_processed_workspace_output_is_not_ready(
     tmp_path: Path,
 ) -> None:
@@ -906,28 +616,8 @@ def test_indexing_initializes_processes_reconciles_and_finalizes(
 
     rag = Rag()
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    snapshot = _indexing_snapshot()
-    freeze_calls = 0
-
-    def freeze_default():
-        nonlocal freeze_calls
-        freeze_calls += 1
-        return snapshot
-
-    def stage(*_args, **kwargs):
-        assert kwargs["vision_available"] is True
-        return [staged], {}
-
-    def build(*_args, **kwargs):
-        assert kwargs["indexing_snapshot"] is snapshot
-        return rag
-
-    monkeypatch.setattr(
-        "deeptutor.services.rag.pipelines.lightrag.pipeline.freeze_default_snapshot",
-        freeze_default,
-    )
-    monkeypatch.setattr(pipeline, "_stage_documents", stage)
-    monkeypatch.setattr(engine, "build_rag", build)
+    monkeypatch.setattr(pipeline, "_stage_documents", lambda *_args: ([staged], {}))
+    monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: rag)
 
     async def initialize(_rag):
         events.append("initialize")
@@ -947,8 +637,6 @@ def test_indexing_initializes_processes_reconciles_and_finalizes(
     outcome = asyncio.run(pipeline._run_indexing(tmp_path, ["doc.pdf"], None))
 
     assert outcome.complete is True
-    assert freeze_calls == 1
-    assert outcome.indexing_policy == {"policy": "pinned", "fingerprint": "a" * 64}
     assert events == ["initialize", "enqueue", "process", ("finalize", False)]
 
 
@@ -972,7 +660,7 @@ def test_partial_failure_is_typed_and_finalizes_with_cancellation(
             }
 
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(pipeline, "_stage_documents", lambda *_args, **_kwargs: ([staged], {}))
+    monkeypatch.setattr(pipeline, "_stage_documents", lambda *_args: ([staged], {}))
     monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: Rag())
 
     async def no_op(*_args, **_kwargs):
@@ -989,7 +677,7 @@ def test_partial_failure_is_typed_and_finalizes_with_cancellation(
     monkeypatch.setattr(engine, "finalize", finalize)
 
     with pytest.raises(LightRagBatchError) as caught:
-        asyncio.run(pipeline._run_indexing(tmp_path, ["bad.pdf"], None, _indexing_snapshot()))
+        asyncio.run(pipeline._run_indexing(tmp_path, ["bad.pdf"], None))
     assert caught.value.outcome.failed == {"bad.pdf": "parse failed"}
     assert events == [("finalize", True)]
 
@@ -1022,7 +710,7 @@ def test_pre_acceptance_failure_removes_ingress_and_allows_same_name_retry(
 
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
 
-    def stage(_working, paths, **_kwargs):
+    def stage(_working, paths):
         staged = freeze_document(
             working,
             Path(paths[0]),
@@ -1050,14 +738,12 @@ def test_pre_acceptance_failure_removes_ingress_and_allows_same_name_retry(
     monkeypatch.setattr(engine, "finalize", finalize)
 
     with pytest.raises(RuntimeError, match=failure_stage):
-        asyncio.run(pipeline._run_indexing(working, [str(source)], None, _indexing_snapshot()))
+        asyncio.run(pipeline._run_indexing(working, [str(source)], None))
     assert not (pending_root(working) / "doc.md").exists()
     assert not (bundles_root(working) / "doc.md.bundle").exists()
 
     attempt = 1
-    outcome = asyncio.run(
-        pipeline._run_indexing(working, [str(source)], None, _indexing_snapshot())
-    )
+    outcome = asyncio.run(pipeline._run_indexing(working, [str(source)], None))
     assert outcome.complete is True
 
 
@@ -1082,7 +768,7 @@ def test_enqueue_partial_commit_removes_only_confirmed_unaccepted_ingress(
 
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
 
-    def stage(_working, paths, **_kwargs):
+    def stage(_working, paths):
         return [
             freeze_document(
                 working,
@@ -1106,14 +792,7 @@ def test_enqueue_partial_commit_removes_only_confirmed_unaccepted_ingress(
     monkeypatch.setattr(engine, "finalize", no_op)
 
     with pytest.raises(RuntimeError, match="partially committed"):
-        asyncio.run(
-            pipeline._run_indexing(
-                working,
-                [str(path) for path in sources],
-                None,
-                _indexing_snapshot(),
-            )
-        )
+        asyncio.run(pipeline._run_indexing(working, [str(path) for path in sources], None))
 
     assert len(status_reads) == 1
     assert status_reads[0][1] is True
@@ -1140,7 +819,7 @@ def test_enqueue_status_read_failure_retains_all_ingress(tmp_path: Path, monkeyp
 
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
 
-    def stage(_working, paths, **_kwargs):
+    def stage(_working, paths):
         return [
             freeze_document(
                 working,
@@ -1162,7 +841,7 @@ def test_enqueue_status_read_failure_retains_all_ingress(tmp_path: Path, monkeyp
     monkeypatch.setattr(engine, "finalize", no_op)
 
     with pytest.raises(ValueError, match="enqueue failed"):
-        asyncio.run(pipeline._run_indexing(working, [str(source)], None, _indexing_snapshot()))
+        asyncio.run(pipeline._run_indexing(working, [str(source)], None))
 
     assert (pending_root(working) / "doc.md").is_file()
     assert (bundles_root(working) / "doc.md.bundle").is_dir()
@@ -1187,7 +866,7 @@ def test_public_initial_ingestion_retains_uncertain_ingress(
 
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path / "knowledge-bases"))
 
-    def stage(working, paths, **_kwargs):
+    def stage(working, paths):
         nonlocal staged_working
         staged_working = working
         return [
@@ -1212,16 +891,7 @@ def test_public_initial_ingestion_retains_uncertain_ingress(
     monkeypatch.setattr(engine, "finalize", no_op)
 
     with pytest.raises(ValueError, match="original enqueue failure"):
-        asyncio.run(
-            getattr(pipeline, operation)(
-                "kb",
-                [str(source)],
-                indexing_snapshot=types.SimpleNamespace(
-                    vision_available=True,
-                    persisted_policy=lambda: {"policy": "legacy_unpinned"},
-                ),
-            )
-        )
+        asyncio.run(getattr(pipeline, operation)("kb", [str(source)]))
 
     assert staged_working is not None
     assert (pending_root(staged_working) / "doc.md").is_file()
@@ -1270,12 +940,7 @@ def test_append_rejects_corrupt_or_unpublished_existing_version(
     monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
 
     with pytest.raises(LightRagNeedsReindexError, match="unpublished, or corrupt"):
-        asyncio.run(
-            pipeline.add_documents(
-                "kb",
-                [str(tmp_path / "new.md")],
-            )
-        )
+        asyncio.run(pipeline.add_documents("kb", [str(tmp_path / "new.md")]))
 
     assert not (tmp_path / "kb" / "version-2").exists()
     assert {
@@ -1289,7 +954,11 @@ def test_search_failure_is_not_reported_as_empty_success(tmp_path: Path, monkeyp
     root = tmp_path / "version-1"
     root.mkdir()
     pipeline = LightRagPipeline(kb_base_dir=str(tmp_path))
-    monkeypatch.setattr(storage, "latest_published_root", lambda _kb_dir: root)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.pipeline.resolve_storage_dir_for_read",
+        lambda *_args: root,
+    )
+    monkeypatch.setattr(storage, "meta_is_native_published", lambda _root: True)
     monkeypatch.setattr(pipeline, "_resolve_mode", lambda *_args: "hybrid")
     monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
     monkeypatch.setattr(engine, "build_rag", lambda *_args, **_kwargs: object())

@@ -25,7 +25,6 @@ from deeptutor.services.subagent.config import (
     save_subagent_settings,
     settings_from_dict,
 )
-from deeptutor.services.subagent.hermes_remote import HermesRemoteBackend
 from deeptutor.services.subagent.partner import PARTNER_BACKEND_KIND
 from deeptutor.services.subagent.registry import detect_all, get_backend, list_backend_kinds
 from deeptutor.services.subagent.types import (
@@ -53,5 +52,4 @@ __all__ = [
     "ConsultResult",
     "DetectResult",
     "SubagentEvent",
-    "HermesRemoteBackend",
 ]

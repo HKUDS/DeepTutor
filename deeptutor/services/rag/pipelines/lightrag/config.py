@@ -24,9 +24,6 @@ import re
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
-    from deeptutor.multi_user.models import CurrentUser
-    from deeptutor.services.llm.config import LLMConfig
-
     from .worker import OwnerLoopBridge
 
 logger = logging.getLogger(__name__)
@@ -191,7 +188,8 @@ def constructor_kwargs_from_settings() -> dict:
         return {}
 
 
-def _lightrag_llm_selection_from_settings(*, strict: bool) -> dict[str, str] | None:
+def lightrag_llm_selection_from_settings() -> dict[str, str] | None:
+    """Return a complete dedicated catalog reference, or use the active LLM."""
     try:
         from deeptutor.services.config import load_lightrag_settings
 
@@ -201,14 +199,10 @@ def _lightrag_llm_selection_from_settings(*, strict: bool) -> dict[str, str] | N
         if not profile_id and not model_id:
             return None
         if not profile_id or not model_id:
-            if strict:
-                raise ValueError("The LightRAG LLM selection is incomplete.")
             logger.warning("Ignoring incomplete LightRAG LLM selection; using the active model")
             return None
         return {"profile_id": profile_id, "model_id": model_id}
     except Exception:
-        if strict:
-            raise
         logger.warning(
             "Could not read LightRAG LLM selection; using the active model",
             exc_info=True,
@@ -216,49 +210,41 @@ def _lightrag_llm_selection_from_settings(*, strict: bool) -> dict[str, str] | N
         return None
 
 
-def lightrag_llm_selection_from_settings() -> dict[str, str] | None:
-    """Return the released query-model selection with its fallback semantics."""
-    return _lightrag_llm_selection_from_settings(strict=False)
-
-
-def lightrag_indexing_selection_from_settings() -> dict[str, str] | None:
-    """Return the indexing default, rejecting unreadable or partial settings."""
-    return _lightrag_llm_selection_from_settings(strict=True)
-
-
-def resolve_lightrag_query_llm_config():
-    """Resolve the current LightRAG query model with the released fallback contract."""
-    from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
-
-    selection = lightrag_llm_selection_from_settings()
+def _resolve_override_llm_config(selection: dict[str, str] | None):
+    if selection is None:
+        return None
     try:
+        from deeptutor.services.model_selection.runtime import (
+            resolve_llm_config_for_selection,
+        )
+
         return resolve_llm_config_for_selection(selection)
     except ValueError:
         logger.warning(
             "LightRAG LLM selection %s no longer exists in the catalog; using the active model",
             selection,
         )
-        return resolve_llm_config_for_selection(None)
+        return None
 
 
 def build_llm_model_func(
     *,
     io_bridge: OwnerLoopBridge | None = None,
-    llm_config: LLMConfig | None = None,
-    owner: CurrentUser | None = None,
+    llm_selection: dict[str, str] | None = None,
 ):
     """Wrap DeepTutor's unified LLM callable for LightRAG.
 
     Drops LightRAG's internal kwargs while preserving explicit ``messages``.
     """
-    if llm_config is None:
+    override = _resolve_override_llm_config(llm_selection)
+    if override is None:
         from deeptutor.services.llm import get_llm_client
 
         base = get_llm_client().get_model_func()
     else:
-        from deeptutor.services.llm.client import build_model_func_for_config
+        from deeptutor.services.llm.client import LLMClient
 
-        base = build_model_func_for_config(llm_config, allow_multimodal=False)
+        base = LLMClient(config=override, configure_env=False).get_model_func()
 
     async def llm_model_func(
         prompt="",
@@ -268,22 +254,14 @@ def build_llm_model_func(
         **_ignored,
     ):
         async def request():
-            async def complete():
-                return await base(
-                    prompt or "",
-                    system_prompt=system_prompt,
-                    history_messages=history_messages or [],
-                    messages=messages,
-                    max_retries=0,
-                    allow_image_fallback=False,
-                )
-
-            if owner is None:
-                return await complete()
-            from deeptutor.multi_user.paths import user_context
-
-            with user_context(owner):
-                return await complete()
+            return await base(
+                prompt or "",
+                system_prompt=system_prompt,
+                history_messages=history_messages or [],
+                messages=messages,
+                max_retries=0,
+                allow_image_fallback=False,
+            )
 
         return await _run_adapter_with_retry(request, io_bridge=io_bridge)
 
@@ -293,18 +271,18 @@ def build_llm_model_func(
 def build_vision_model_func(
     *,
     io_bridge: OwnerLoopBridge | None = None,
-    llm_config: LLMConfig | None = None,
-    owner: CurrentUser | None = None,
+    llm_selection: dict[str, str] | None = None,
 ):
     """Map rc2 ``image_inputs`` to DeepTutor's vision callable."""
-    if llm_config is None:
+    override = _resolve_override_llm_config(llm_selection)
+    if override is None:
         from deeptutor.services.llm import get_llm_client
 
         base = get_llm_client().get_vision_model_func()
     else:
-        from deeptutor.services.llm.client import build_model_func_for_config
+        from deeptutor.services.llm.client import LLMClient
 
-        base = build_model_func_for_config(llm_config, allow_multimodal=True)
+        base = LLMClient(config=override, configure_env=False).get_vision_model_func()
 
     async def vision_model_func(
         prompt="",
@@ -324,23 +302,15 @@ def build_vision_model_func(
             raise ValueError("LightRAG vision image input requires a non-empty base64 value")
 
         async def request():
-            async def complete():
-                return await base(
-                    prompt or "",
-                    system_prompt=system_prompt,
-                    history_messages=history_messages or [],
-                    image_data=image_data,
-                    messages=messages,
-                    max_retries=0,
-                    allow_image_fallback=False,
-                )
-
-            if owner is None:
-                return await complete()
-            from deeptutor.multi_user.paths import user_context
-
-            with user_context(owner):
-                return await complete()
+            return await base(
+                prompt or "",
+                system_prompt=system_prompt,
+                history_messages=history_messages or [],
+                image_data=image_data,
+                messages=messages,
+                max_retries=0,
+                allow_image_fallback=False,
+            )
 
         return await _run_adapter_with_retry(request, io_bridge=io_bridge)
 
@@ -410,7 +380,6 @@ __all__ = [
     "indexing_kwargs_from_settings",
     "constructor_kwargs_from_settings",
     "lightrag_llm_selection_from_settings",
-    "resolve_lightrag_query_llm_config",
     "build_llm_model_func",
     "build_vision_model_func",
     "vision_model_available",

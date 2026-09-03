@@ -112,37 +112,6 @@ export interface MasteryMapResult {
   map: MasteryMap;
 }
 
-// ── Visual learning board ─────────────────────────────────────────────────
-
-export interface BoardCard {
-  id: string;
-  name: string;
-  type: string;
-  module_id: string;
-  module_name: string;
-  status: ObjectiveStatus;
-  mastery_level: number;
-  next_review_at: number | null;
-  position: { column: number; row: number };
-}
-
-export interface BoardModule {
-  id: string;
-  name: string;
-  order: number;
-  mastered: number;
-  total: number;
-  cards: BoardCard[];
-}
-
-export interface BoardResult {
-  book_id: string;
-  name: string;
-  path_revision: number;
-  cards: BoardCard[];
-  modules: BoardModule[];
-}
-
 export async function fetchMasteryMap(
   pathId: string,
   init?: RequestInit,
@@ -153,20 +122,6 @@ export async function fetchMasteryMap(
   );
   if (!res.ok) throw new Error(`Failed to fetch mastery map: ${res.status}`);
   return res.json() as Promise<MasteryMapResult>;
-}
-
-export async function fetchLearningBoard(
-  pathId: string,
-  init?: RequestInit,
-): Promise<BoardResult> {
-  const res = await apiFetch(
-    apiUrl(
-      `/api/mastery-paths/progress/${encodeURIComponent(pathId)}/board`,
-    ),
-    init,
-  );
-  if (!res.ok) throw new Error(`Failed to fetch learning board: ${res.status}`);
-  return res.json() as Promise<BoardResult>;
 }
 
 /** Rename a path. An empty name restores the derived display name. */

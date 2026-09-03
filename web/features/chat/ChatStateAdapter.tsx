@@ -28,22 +28,12 @@ import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import { buildStartTurnInput } from "@/features/chat/controllers/buildStartTurnInput";
 import {
   getSession,
-  getMessageTrace,
   deleteMessage,
   updateBranchSelection,
   updateSessionTitle,
-  type MessageTracePage,
   type SessionMessage,
 } from "@/lib/session-api";
-import {
-  TraceCache,
-  compactTracePreview,
-  type MessageTraceMetadata,
-} from "@/features/chat/trace/memory";
-import {
-  normalizeMarkdownForDisplay,
-  repairChineseEmphasis,
-} from "@/lib/markdown-display";
+import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
 import { normalizeMessageContent } from "@/lib/message-content";
 import {
   buildVisiblePath,
@@ -215,14 +205,10 @@ export interface MessageItem {
   id?: number;
   role: "user" | "assistant" | "system";
   content: string;
-  /** Original model text accumulated during a live stream. Kept separate from
-   * `content`, which may be Markdown-normalized for display. */
-  rawContent?: string;
   capability?: string;
   events?: StreamEvent[];
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
-  trace?: MessageTraceMetadata;
   /** Edit-branching: id of the message this row continues. */
   parentMessageId?: number | null;
 }
@@ -314,13 +300,6 @@ type Action =
       turnId?: string | null;
       userMessageId?: number | null;
       assistantMessageId?: number | null;
-    }
-  | {
-      type: "SET_MESSAGE_TRACE";
-      key: string;
-      messageId: number;
-      events: StreamEvent[];
-      trace: MessageTraceMetadata;
     }
   | { type: "DELETE_TURN"; key: string; messageId: number }
   | {
@@ -626,7 +605,6 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                 id: nextOptimisticId(),
                 role: "assistant",
                 content: "",
-                rawContent: "",
                 events: [],
                 capability: session.activeCapability || "",
                 parentMessageId: tip?.id ?? null,
@@ -663,7 +641,6 @@ function reducer(state: ProviderState, action: Action): ProviderState {
           id: nextOptimisticId(),
           role: "assistant",
           content: "",
-          rawContent: "",
           events: [],
           capability: session.activeCapability || "",
           parentMessageId: last?.id ?? null,
@@ -678,22 +655,19 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         return state;
       }
       const events = [...(last?.events || []), action.event];
-      const language = session.language;
-      let rawContent = last?.rawContent ?? last?.content ?? "";
+      let content = last?.content || "";
       if (isNarrationMarker(action.event)) {
         // A round just resolved as narration (preamble before a tool call):
         // drop its already-streamed text from the answer — it stays in the
-        // trace. Recompute from immutable event content, never from display text.
-        rawContent = recomputeAnswerContent(events);
+        // trace. Recomputing is cheap here (only fires per narration round).
+        content = recomputeAnswerContent(events);
       } else if (shouldAppendEventContent(action.event)) {
-        rawContent += action.event.content;
+        content += action.event.content;
       }
-      const content = repairChineseEmphasis(rawContent, language);
       const capability = last?.capability || session.activeCapability || "";
       msgs[msgs.length - 1] = {
         ...(last || { role: "assistant", content: "" }),
         content,
-        rawContent,
         events,
         capability,
       };
@@ -880,22 +854,6 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             selectedBranches: result.selectedBranches,
             updatedAt: Date.now(),
           },
-        },
-      };
-    }
-    case "SET_MESSAGE_TRACE": {
-      const session = state.sessions[action.key];
-      if (!session) return state;
-      const messages = session.messages.map((message) =>
-        message.id === action.messageId && message.role === "assistant"
-          ? { ...message, events: action.events, trace: action.trace }
-          : message,
-      );
-      return {
-        ...state,
-        sessions: {
-          ...state.sessions,
-          [action.key]: { ...session, messages, updatedAt: Date.now() },
         },
       };
     }
@@ -1098,10 +1056,6 @@ interface ChatContextValue {
   /** Select an already-loaded session without fetching. Returns false when
    *  it isn't in memory, i.e. the caller must load it. */
   showCachedSession: (sessionId: string) => boolean;
-  /** Lazily fetch one persisted turn trace and retain its compact preview. */
-  loadMessageTrace: (sessionId: string, messageId: number) => Promise<void>;
-  /** Restore the compact preview when a full trace is collapsed. */
-  releaseMessageTrace: (sessionId: string, messageId: number) => void;
   selectedSessionId: string | null;
   sessionStatuses: Record<string, SessionStatusSnapshot>;
   sidebarRefreshToken: number;
@@ -1297,8 +1251,6 @@ export function ChatStateAdapterProvider({
   // assistant message if the server rejects the request (e.g. ``regenerate_busy``
   // or ``nothing_to_regenerate``). Keyed by session entry key.
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
-  const traceCacheRef = useRef<TraceCache>(new TraceCache());
-  const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
@@ -1310,34 +1262,12 @@ export function ChatStateAdapterProvider({
     stateRef.current = state;
   }, [state]);
 
-  useEffect(() => {
-    if (!state.selectedKey) return;
-    for (const [key, controller] of traceRequestsRef.current) {
-      if (key.startsWith(`${state.selectedKey}:`)) continue;
-      controller.abort();
-      traceRequestsRef.current.delete(key);
-    }
-    const released = traceCacheRef.current.releaseExcept(state.selectedKey);
-    for (const [key, snapshot] of released) {
-      const [sessionId, messageId] = key.split(":");
-      dispatch({
-        type: "SET_MESSAGE_TRACE",
-        key: sessionId,
-        messageId: Number(messageId),
-        events: snapshot.events,
-        trace: snapshot.metadata ?? {},
-      });
-    }
-  }, [state.selectedKey]);
-
   useEffect(
     () => () => {
       runnersRef.current.forEach(({ client }) => client.disconnect());
       runnersRef.current.clear();
       retryTimersRef.current.forEach((id) => clearTimeout(id));
       retryTimersRef.current.clear();
-      traceRequestsRef.current.forEach((controller) => controller.abort());
-      traceRequestsRef.current.clear();
     },
     [],
   );
@@ -1383,7 +1313,6 @@ export function ChatStateAdapterProvider({
             capability: message.capability || "",
             events: Array.isArray(message.events) ? message.events : [],
             attachments,
-            trace: message.trace,
             parentMessageId:
               message.parent_message_id === undefined
                 ? null
@@ -1516,26 +1445,6 @@ export function ChatStateAdapterProvider({
               userMessageId: doneMeta?.user_message_id ?? null,
               assistantMessageId,
             });
-            const finished = stateRef.current.sessions[effectiveKey];
-            const finishedMessage = [...(finished?.messages ?? [])].reverse().find(
-              (item) => item.role === "assistant",
-            );
-            if (finishedMessage) {
-              const sourceEvents = finishedMessage.events ?? [];
-              const preview = compactTracePreview(sourceEvents);
-              dispatch({
-                type: "SET_MESSAGE_TRACE",
-                key: effectiveKey,
-                messageId: assistantMessageId,
-                events: preview.events,
-                trace: {
-                  turn_id: event.turn_id || null,
-                  total: sourceEvents.length,
-                  last_seq: Math.max(0, ...sourceEvents.map((item) => item.seq ?? 0)),
-                  truncated: preview.truncated,
-                },
-              });
-            }
           } else {
             // Older backend without ids on ``done`` — fall back to the
             // full session refetch.
@@ -1701,92 +1610,6 @@ export function ChatStateAdapterProvider({
     return true;
   }, []);
 
-  const releaseMessageTrace = useCallback((sessionId: string, messageId: number) => {
-    const key = `${sessionId}:${messageId}`;
-    traceRequestsRef.current.get(key)?.abort();
-    traceRequestsRef.current.delete(key);
-    const preview = traceCacheRef.current.release(key);
-    if (!preview) return;
-    dispatch({
-      type: "SET_MESSAGE_TRACE",
-      key: sessionId,
-      messageId,
-      events: preview.events,
-      trace: preview.metadata ?? {},
-    });
-  }, []);
-
-  const loadMessageTrace = useCallback(
-    async (sessionId: string, messageId: number) => {
-      const key = `${sessionId}:${messageId}`;
-      if (traceCacheRef.current.has(key) || traceRequestsRef.current.has(key)) return;
-      const session = stateRef.current.sessions[sessionId];
-      if (!session || session.isStreaming || session.status === "running") return;
-      const message = session.messages.find(
-        (item) => item.id === messageId && item.role === "assistant",
-      );
-      if (!message?.trace?.turn_id) return;
-
-      const controller = new AbortController();
-      traceRequestsRef.current.set(key, controller);
-      try {
-        const events: StreamEvent[] = [];
-        let afterSeq = 0;
-        let page: MessageTracePage | null = null;
-        for (let pageCount = 0; pageCount < 1000; pageCount += 1) {
-          page = await getMessageTrace(
-            sessionId,
-            messageId,
-            afterSeq,
-            controller.signal,
-          );
-          events.push(...page.events);
-          if (page.complete || page.next_seq == null) break;
-          if (page.next_seq <= afterSeq) return;
-          afterSeq = page.next_seq;
-        }
-        if (!page || controller.signal.aborted) return;
-        const metadata: MessageTraceMetadata = {
-          turn_id: page.turn_id,
-          total: page.total,
-          last_seq: page.last_seq,
-          truncated: false,
-        };
-        const preview = compactTracePreview(message.events ?? []);
-        const evicted = traceCacheRef.current.retain(key, {
-          events: preview.events,
-          metadata: message.trace,
-        });
-        for (const [evictedKey, snapshot] of evicted) {
-          const [evictedSession, evictedMessage] = evictedKey.split(":");
-          dispatch({
-            type: "SET_MESSAGE_TRACE",
-            key: evictedSession,
-            messageId: Number(evictedMessage),
-            events: snapshot.events,
-            trace: snapshot.metadata ?? {},
-          });
-        }
-        dispatch({
-          type: "SET_MESSAGE_TRACE",
-          key: sessionId,
-          messageId,
-          events,
-          trace: metadata,
-        });
-      } catch (reason) {
-        if (!(reason instanceof DOMException && reason.name === "AbortError")) {
-          console.warn("Failed to load message trace", reason);
-        }
-      } finally {
-        if (traceRequestsRef.current.get(key) === controller) {
-          traceRequestsRef.current.delete(key);
-        }
-      }
-    },
-    [],
-  );
-
   const loadSession = useCallback(
     async (
       sessionId: string,
@@ -1806,7 +1629,6 @@ export function ChatStateAdapterProvider({
         const local = stateRef.current.sessions[key];
         if (!local || local.isStreaming || local.status === "running") return;
       }
-      traceCacheRef.current.clear();
       const messages = hydrateMessages(session.messages ?? []);
       const loadedWorkspaceMode = normalizeWorkspaceMode(
         session.preferences?.workspace_mode,
@@ -2575,8 +2397,6 @@ export function ChatStateAdapterProvider({
       configureSession,
       loadSession,
       showCachedSession,
-      loadMessageTrace,
-      releaseMessageTrace,
       selectedSessionId: derivedState.sessionId,
       sessionStatuses,
       sidebarRefreshToken: state.sidebarRefreshToken,
@@ -2603,8 +2423,6 @@ export function ChatStateAdapterProvider({
       configureSession,
       loadSession,
       showCachedSession,
-      loadMessageTrace,
-      releaseMessageTrace,
       sessionStatuses,
       state.sidebarRefreshToken,
     ],

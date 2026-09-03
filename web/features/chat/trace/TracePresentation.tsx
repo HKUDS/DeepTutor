@@ -1733,7 +1733,6 @@ export function AssistantActivity({
   agentName,
   showMark = true,
   headerClassName = "",
-  onTraceToggle,
 }: {
   events: StreamEvent[];
   /**
@@ -1755,8 +1754,6 @@ export function AssistantActivity({
   /** Extra classes on the status header row (e.g. a min-height so the row
    *  vertically centers against an adjacent avatar). */
   headerClassName?: string;
-  /** Notified when a persisted trace is opened or collapsed. */
-  onTraceToggle?: (open: boolean) => void;
 }) {
   const shownTraceEvents = traceEvents ?? events;
   const hasTrace = useMemo(
@@ -1785,11 +1782,7 @@ export function AssistantActivity({
         content={content}
         expandable={hasTrace}
         expanded={open}
-        onToggle={() => {
-          const next = !open;
-          setUserOpen(next);
-          onTraceToggle?.(next);
-        }}
+        onToggle={() => setUserOpen(!open)}
         agentName={agentName}
         showMark={showMark}
         className={headerClassName}

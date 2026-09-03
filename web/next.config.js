@@ -140,24 +140,6 @@ const nextConfig = {
   // Transpile mermaid and related packages for proper ESM handling
   transpilePackages: ["mermaid"],
 
-  // v1.6.2 and earlier bookmarked Mastery Study at `/study`; tip teaches under
-  // `/sessions`. Permanent redirects keep old URLs (and issue repro links)
-  // landing on the live surface instead of a bare 404.
-  async redirects() {
-    return [
-      {
-        source: "/mastery/:pathId/study",
-        destination: "/mastery/:pathId/sessions",
-        permanent: true,
-      },
-      {
-        source: "/mastery/:pathId/study/:sessionId",
-        destination: "/mastery/:pathId/sessions/:sessionId",
-        permanent: true,
-      },
-    ];
-  },
-
   // Next.js 16 blocks cross-origin access to /_next/* dev resources (HMR
   // WebSocket, fonts, dev-only scripts) unless the request host is on this
   // allow-list. Without it, browsing http://127.0.0.1:<port>/ against a dev

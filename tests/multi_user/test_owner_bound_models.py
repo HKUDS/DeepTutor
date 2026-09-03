@@ -30,27 +30,11 @@ def _catalog(*, owner_bound: bool) -> dict:
     profile: dict = {
         "id": CODEX_PROFILE,
         "name": "OpenAI Codex",
-        "binding": "openai",
-        "models": [
-            {
-                "id": "m-sol",
-                "name": "GPT-5.6-Sol",
-                "model": "gpt-5.6-sol",
-                "reasoning_effort": "high",
-            }
-        ],
+        "models": [{"id": "m-sol", "name": "GPT-5.6-Sol", "model": "gpt-5.6-sol"}],
     }
     if owner_bound:
         profile["owner_bound"] = True
-    return {
-        "services": {
-            "llm": {
-                "active_profile_id": CODEX_PROFILE,
-                "active_model_id": "m-sol",
-                "profiles": [profile],
-            }
-        }
-    }
+    return {"services": {"llm": {"profiles": [profile]}}}
 
 
 def _grant(_user_id=None) -> dict:
@@ -63,9 +47,7 @@ def test_owner_bound_profile_is_withheld_from_granted_users(tmp_path, monkeypatc
     token = set_current_user(make_user(tmp_path))
     try:
         assert model_access.redacted_model_access()["llm"] == []
-        allowed = model_access.allowed_llm_options()
-        assert allowed["options"] == []
-        assert allowed["active"] is None
+        assert model_access.allowed_llm_options()["options"] == []
         assert model_access.has_capability_access("llm") is False
         with pytest.raises(PermissionError):
             model_access.apply_allowed_llm_selection(
@@ -101,14 +83,6 @@ def test_ordinary_shared_profiles_stay_grantable(tmp_path, monkeypatch):
     try:
         granted = model_access.redacted_model_access()["llm"]
         assert [item["model_id"] for item in granted] == ["m-sol"]
-        option = model_access.allowed_llm_options()["options"][0]
-        assert option["provider"] == "openai"
-        assert option["reasoning_effort"] == "high"
-        assert option["is_active_default"] is True
-        assert model_access.allowed_llm_options()["active"] == {
-            "profile_id": CODEX_PROFILE,
-            "model_id": "m-sol",
-        }
         assert model_access.has_capability_access("llm") is True
         assert model_access.apply_allowed_llm_selection(
             {"profile_id": CODEX_PROFILE, "model_id": "m-sol"}

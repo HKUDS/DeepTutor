@@ -69,7 +69,6 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!active || material) return;
     const materialId = browserStorage.readRaw("local", LAST_MATERIAL_KEY);
     if (!materialId) return;
     const sourceUrl = browserStorage.readRaw("local", LAST_URL_KEY) || "";
@@ -86,7 +85,7 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
         browserStorage.removeRaw("local", LAST_MATERIAL_KEY);
       })
       .finally(() => setLoading(false));
-  }, [accept, active, material, t]);
+  }, [accept, t]);
 
   const openUrl = useCallback(
     async (url: string, language = "", providerOverride?: VideoProvider) => {

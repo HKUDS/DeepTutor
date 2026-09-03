@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
 import {
   Bookmark,
   BookmarkCheck,
@@ -24,7 +23,6 @@ import {
   type ChapterScrollPlacement,
   type SequentialReadDirection,
 } from "@/lib/book-reader-navigation";
-import { browserStorage } from "@/shared/storage";
 import BlockRenderer from "./blocks/BlockRenderer";
 import type { QuizAttemptArgs } from "./blocks/QuizBlock";
 import PageOutlineNav from "./PageOutlineNav";
@@ -42,41 +40,6 @@ const INSERTABLE_TYPES: BlockType[] = [
   "deep_dive",
   "user_note",
 ];
-const PENDING_CHAPTER_END_KEY = "deeptutor.book.pendingChapterEnd";
-const PENDING_CHAPTER_END_TTL_MS = 30_000;
-
-interface PendingChapterEnd {
-  bookId: string;
-  pageId: string;
-  createdAt: number;
-}
-
-function rememberPendingChapterEnd(bookId: string, pageId: string): void {
-  browserStorage.writeRaw(
-    "session",
-    PENDING_CHAPTER_END_KEY,
-    JSON.stringify({ bookId, pageId, createdAt: Date.now() }),
-  );
-}
-
-function hasPendingChapterEnd(bookId: string, pageId: string): boolean {
-  const raw = browserStorage.readRaw("session", PENDING_CHAPTER_END_KEY);
-  if (!raw) return false;
-  try {
-    const pending = JSON.parse(raw) as PendingChapterEnd;
-    if (
-      typeof pending.createdAt !== "number" ||
-      Date.now() - pending.createdAt > PENDING_CHAPTER_END_TTL_MS
-    ) {
-      browserStorage.removeRaw("session", PENDING_CHAPTER_END_KEY);
-      return false;
-    }
-    return pending.bookId === bookId && pending.pageId === pageId;
-  } catch {
-    browserStorage.removeRaw("session", PENDING_CHAPTER_END_KEY);
-    return false;
-  }
-}
 
 export interface PageReaderProps {
   page: Page | null;
@@ -143,7 +106,6 @@ export default function PageReader({
   onCaptureSelection,
 }: PageReaderProps) {
   const { t } = useTranslation();
-  const pathname = usePathname();
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   /** The chapter outline starts parked so it never covers the prose unasked. */
   const [outlineCollapsed, setOutlineCollapsed] = useState(true);
@@ -200,18 +162,10 @@ export default function PageReader({
     const isNewPage = lastSeenPageIdRef.current !== page.id;
     lastSeenPageIdRef.current = page.id;
     const requestedPageId = pendingScrollPlacementPageIdRef.current;
-    const targetPath = `/books/${encodeURIComponent(page.book_id)}/pages/${encodeURIComponent(page.id)}`;
-    // State changes before App Router finishes updating the URL. Let the
-    // destination route consume this cross-mount intent; the departing page
-    // must not clear it during that short transition window.
-    const persistedEnd =
-      pathname === targetPath && hasPendingChapterEnd(page.book_id, page.id);
-    const pendingMatchesPage = requestedPageId === page.id || persistedEnd;
-    const placement = requestedPageId === page.id
+    const pendingMatchesPage = requestedPageId === page.id;
+    const placement = pendingMatchesPage
       ? pendingScrollPlacementRef.current
-      : persistedEnd
-        ? "end"
-        : "start";
+      : "start";
     if (!pendingMatchesPage) {
       pendingScrollPlacementRef.current = "start";
       pendingScrollPlacementPageIdRef.current = null;
@@ -227,6 +181,8 @@ export default function PageReader({
     // from surviving into the hydrated chapter. "End" must wait for content.
     if (waitingForContent && placement === "end") return;
 
+    pendingScrollPlacementRef.current = "start";
+    pendingScrollPlacementPageIdRef.current = null;
     const pendingFrames: number[] = [];
     pendingFrames.push(
       window.requestAnimationFrame(() => {
@@ -235,15 +191,6 @@ export default function PageReader({
             scrollContainer.scrollTop =
               placement === "end" ? scrollContainer.scrollHeight : 0;
             updateReadingProgress();
-            // Consume the placement only after it has actually reached the
-            // DOM. Hydration can rerun this effect between the two frames;
-            // clearing earlier loses an owed "land at end" and resets the
-            // previous chapter to its first screen.
-            pendingScrollPlacementRef.current = "start";
-            pendingScrollPlacementPageIdRef.current = null;
-            if (persistedEnd) {
-              browserStorage.removeRaw("session", PENDING_CHAPTER_END_KEY);
-            }
           }),
         );
       }),
@@ -254,7 +201,7 @@ export default function PageReader({
         window.cancelAnimationFrame(frame);
       }
     };
-  }, [scrollContainer, page, loading, pathname, updateReadingProgress]);
+  }, [scrollContainer, page, loading, updateReadingProgress]);
 
   useEffect(() => {
     updateReadingProgress();
@@ -364,8 +311,6 @@ export default function PageReader({
       if (direction === "previous" && previousPage) {
         pendingScrollPlacementRef.current = "end";
         pendingScrollPlacementPageIdRef.current = previousPage.id;
-        const currentBookId = bookId || page?.book_id;
-        if (currentBookId) rememberPendingChapterEnd(currentBookId, previousPage.id);
         onNavigate?.(previousPage.id);
         return true;
       }
@@ -379,10 +324,8 @@ export default function PageReader({
     },
     [
       loading,
-      bookId,
       nextPage,
       onNavigate,
-      page?.book_id,
       page?.blocks.length,
       previousPage,
       scrollContainer,

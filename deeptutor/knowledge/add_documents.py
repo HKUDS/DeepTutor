@@ -19,12 +19,10 @@ from deeptutor.services.config import resolve_llm_runtime_config
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
-    LIGHTRAG_PROVIDER,
     has_ready_provider_index,
     normalize_provider_name,
 )
 from deeptutor.services.rag.file_routing import FileTypeRouter
-from deeptutor.services.rag.index_versioning import list_kb_versions
 from deeptutor.services.rag.provider_binding import resolve_bound_provider
 from deeptutor.services.rag.service import RAGService
 
@@ -190,10 +188,7 @@ class DocumentAdder:
                 f"Knowledge base '{kb_name}' uses legacy index format and requires reindex before incremental add"
             )
 
-        allows_lightrag_bootstrap = self.rag_provider == LIGHTRAG_PROVIDER and not list_kb_versions(
-            self.kb_dir
-        )
-        if not has_provider_index and not allows_lightrag_bootstrap:
+        if not has_provider_index:
             raise ValueError(f"Knowledge base not initialized ({self.rag_provider}): {kb_name}")
 
         self.api_key = api_key
@@ -333,17 +328,7 @@ class DocumentAdder:
                     # this runs inside a FastAPI BackgroundTasks entry, which is
                     # awaited on the loop and would otherwise stall unrelated
                     # requests once per indexed file (#777).
-                    try:
-                        await asyncio.to_thread(self._record_successful_hash, doc_file)
-                    except Exception:
-                        if self.rag_provider != LIGHTRAG_PROVIDER:
-                            raise
-                        logger.warning(
-                            "LightRAG published '%s' before its duplicate-detection hash "
-                            "was recorded",
-                            doc_file.name,
-                            exc_info=True,
-                        )
+                    await asyncio.to_thread(self._record_successful_hash, doc_file)
                     logger.info(f"Processed: {doc_file.name}")
                     if self.progress_tracker is not None:
                         self.progress_tracker.update(
@@ -428,53 +413,43 @@ async def _bootstrap_index_from_files(
             f"Failed to initialize index for KB '{kb_name}' from {len(source_files)} file(s)"
         )
 
-    indexed = len(source_files)
-    provider = rag_service._resolve_provider(kb_name)
-    try:
-        # Record hashes so future syncs detect unchanged files.
-        metadata = _read_metadata(metadata_file)
-        hashes = metadata.setdefault("file_hashes", {})
-        for fpath_str in source_files:
-            fpath = Path(fpath_str)
-            sha = hashlib.sha256()
-            with open(fpath, "rb") as fh:
-                for block in iter(lambda: fh.read(65536), b""):
-                    sha.update(block)
-            hashes[_raw_hash_key(fpath, raw_dir)] = sha.hexdigest()
-        metadata["rag_provider"] = provider
-        metadata["needs_reindex"] = False
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        metadata["last_updated"] = ts
-        metadata["last_indexed_at"] = ts
-        metadata["last_indexed_count"] = indexed
-        metadata["last_indexed_action"] = "create"
-        _write_metadata(metadata_file, metadata)
+    # Record hashes so future syncs detect unchanged files.
+    metadata = _read_metadata(metadata_file)
+    hashes = metadata.setdefault("file_hashes", {})
+    for fpath_str in source_files:
+        fpath = Path(fpath_str)
+        sha = hashlib.sha256()
+        with open(fpath, "rb") as fh:
+            for block in iter(lambda: fh.read(65536), b""):
+                sha.update(block)
+        hashes[_raw_hash_key(fpath, raw_dir)] = sha.hexdigest()
+    metadata["rag_provider"] = rag_service._resolve_provider(kb_name)
+    metadata["needs_reindex"] = False
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    metadata["last_updated"] = ts
+    metadata["last_indexed_at"] = ts
+    metadata["last_indexed_count"] = len(source_files)
+    metadata["last_indexed_action"] = "create"
+    _write_metadata(metadata_file, metadata)
 
-        manager.update_kb_status(
-            name=kb_name,
-            status="ready",
-            progress={
-                "stage": "completed",
-                "message": f"Initialized index with {indexed} file(s).",
-                "percent": 100,
-                "current": indexed,
-                "total": max(indexed, 1),
-                "file_name": "",
-                "error": None,
-                "timestamp": datetime.now().isoformat(),
-                "indexed_count": indexed,
-                "index_changed": True,
-                "index_action": "create",
-            },
-        )
-    except Exception:
-        if provider != LIGHTRAG_PROVIDER:
-            raise
-        logger.warning(
-            "LightRAG bootstrap for '%s' published before bookkeeping failed",
-            kb_name,
-            exc_info=True,
-        )
+    indexed = len(source_files)
+    manager.update_kb_status(
+        name=kb_name,
+        status="ready",
+        progress={
+            "stage": "completed",
+            "message": f"Initialized index with {indexed} file(s).",
+            "percent": 100,
+            "current": indexed,
+            "total": max(indexed, 1),
+            "file_name": "",
+            "error": None,
+            "timestamp": datetime.now().isoformat(),
+            "indexed_count": indexed,
+            "index_changed": True,
+            "index_action": "create",
+        },
+    )
     logger.info("Bootstrapped index for empty KB '%s' with %d file(s)", kb_name, indexed)
     return indexed
 
@@ -491,7 +466,6 @@ async def add_documents(
     from deeptutor.knowledge.manager import KnowledgeBaseManager
 
     manager = KnowledgeBaseManager(base_dir=base_dir)
-    published_count = 0
     try:
         manager.update_kb_status(
             name=kb_name,
@@ -550,8 +524,6 @@ async def add_documents(
                 f"Failed to index {result.failed_count}/{len(new_files)} file(s): "
                 f"{result.failure_summary()}"
             )
-        if adder.rag_provider == LIGHTRAG_PROVIDER:
-            published_count = result.processed_count
         adder.update_metadata(result.processed_count)
 
         manager.update_kb_status(
@@ -573,13 +545,6 @@ async def add_documents(
         )
         return result.processed_count
     except Exception as exc:
-        if published_count:
-            logger.warning(
-                "LightRAG append for '%s' published before bookkeeping failed",
-                kb_name,
-                exc_info=True,
-            )
-            return published_count
         manager.update_kb_status(
             name=kb_name,
             status="error",

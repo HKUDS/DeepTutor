@@ -13,7 +13,7 @@ const ROUTE_TARGETS = [
   { route: "/", requestPath: "/", budgetKb: 300 },
   { route: "/chat/[sessionId]", requestPath: "/chat/perf-budget", budgetKb: 1_020 },
   { route: "/settings", requestPath: "/settings", budgetKb: 840 },
-  { route: "/knowledge-bases", requestPath: "/knowledge-bases", budgetKb: 550 },
+  { route: "/knowledge-bases", requestPath: "/knowledge-bases", budgetKb: 540 },
   { route: "/co-writer", requestPath: "/co-writer", budgetKb: 320 },
   { route: "/co-writer/[docId]", requestPath: "/co-writer/perf-budget", budgetKb: 515 },
   {

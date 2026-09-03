@@ -22,29 +22,10 @@ export interface SessionMessage {
     size_bytes?: number;
   }>;
   metadata?: Record<string, unknown>;
-  trace?: MessageTraceMetadata;
   created_at: number;
   /** Edit-branching: id of the message this row continues. `null` for the
    *  first message in a session. Siblings share the same parent. */
   parent_message_id?: number | null;
-}
-
-export interface MessageTraceMetadata {
-  turn_id?: string | null;
-  total?: number;
-  last_seq?: number;
-  truncated?: boolean;
-}
-
-export interface MessageTracePage {
-  session_id: string;
-  message_id: number;
-  turn_id?: string | null;
-  events: StreamEvent[];
-  total: number;
-  last_seq: number;
-  next_seq: number | null;
-  complete: boolean;
 }
 
 export interface SessionPreferences {
@@ -238,21 +219,6 @@ export async function updateSessionTitle(
   const data = await expectJson<{ session: SessionDetail }>(response);
   invalidateClientCache("sessions:");
   return data.session;
-}
-
-export async function getMessageTrace(
-  sessionId: string,
-  messageId: number,
-  afterSeq = 0,
-  signal?: AbortSignal,
-): Promise<MessageTracePage> {
-  const response = await apiFetch(
-    apiUrl(
-      `/api/sessions/${sessionId}/messages/${messageId}/events?after_seq=${afterSeq}&limit=500`,
-    ),
-    { cache: "no-store", signal },
-  );
-  return expectJson<MessageTracePage>(response);
 }
 
 export type SessionOrganizationPatch = Partial<{
