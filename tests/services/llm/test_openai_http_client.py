@@ -166,7 +166,7 @@ def test_aimlapi_partner_id_and_source_match_the_gateway_contract() -> None:
 def test_aimlapi_attribution_sent_for_the_registry_endpoint() -> None:
     headers = _default_headers(base_url=None, spec=_AIMLAPI_SPEC)
 
-    assert headers["X-AIMLAPI-Partner-ID"] == "part_deeptutor"
+    assert headers["X-AIMLAPI-Partner-ID"] == "part_ItAs0L5uSTvV2dFDOZZaS1BL"
     assert headers["X-AIMLAPI-Source"] == "agent/deeptutor"
     assert headers["X-Title"] == "DeepTutor"
 
@@ -182,7 +182,7 @@ def test_aimlapi_attribution_sent_for_the_registry_endpoint() -> None:
 def test_aimlapi_attribution_sent_for_equivalent_spellings(base_url: str) -> None:
     headers = _default_headers(base_url=base_url, spec=None)
 
-    assert headers["X-AIMLAPI-Partner-ID"] == "part_deeptutor"
+    assert headers["X-AIMLAPI-Partner-ID"] == "part_ItAs0L5uSTvV2dFDOZZaS1BL"
 
 
 @pytest.mark.parametrize(
@@ -221,7 +221,7 @@ def test_aimlapi_attribution_does_not_override_caller_headers() -> None:
 
     assert headers["X-Title"] == "Caller Wins"
     assert headers["X-Custom"] == "1"
-    assert headers["X-AIMLAPI-Partner-ID"] == "part_deeptutor"
+    assert headers["X-AIMLAPI-Partner-ID"] == "part_ItAs0L5uSTvV2dFDOZZaS1BL"
 
 
 def test_aimlapi_attribution_constant_is_never_mutated() -> None:

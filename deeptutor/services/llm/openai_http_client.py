@@ -32,7 +32,7 @@ OPENROUTER_ATTRIBUTION_HEADERS: dict[str, str] = {
 AIMLAPI_ATTRIBUTION_HEADERS: dict[str, str] = {
     "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
     "X-Title": "DeepTutor",
-    "X-AIMLAPI-Partner-ID": "part_deeptutor",
+    "X-AIMLAPI-Partner-ID": "part_ItAs0L5uSTvV2dFDOZZaS1BL",
     "X-AIMLAPI-Source": "agent/deeptutor",
 }
 
