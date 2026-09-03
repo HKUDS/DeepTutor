@@ -15,6 +15,8 @@ import pytest
 from deeptutor.api.routers import video_learning
 from deeptutor.multi_user import paths
 from deeptutor.video_learning import invidious_account as account
+from deeptutor.video_learning import invidious_account_client as account_client
+from deeptutor.video_learning import invidious_account_storage as account_storage
 from deeptutor.video_learning.service import TimedMediaError
 
 
@@ -89,7 +91,7 @@ def test_authorization_uses_minimal_scopes_and_one_time_state(
 
     assert urlsplit(url).path == "/authorize_token"
     assert query["scopes"] == [",".join(account.ACCOUNT_SCOPES)]
-    pending = account._flow_path("u_ada", state)
+    pending = account_storage.flow_path("u_ada", state)
     assert pending.is_file()
     assert stat.S_IMODE(pending.stat().st_mode) == 0o600
 
@@ -165,13 +167,13 @@ def test_pending_callback_claim_is_atomic_across_workers(
     with ThreadPoolExecutor(max_workers=2) as executor:
         claimed = list(
             executor.map(
-                lambda _: account._consume_pending_flow("u_ada", state),
+                lambda _: account_storage.consume_pending_flow("u_ada", state),
                 range(2),
             )
         )
 
     assert sum(flow is not None for flow in claimed) == 1
-    assert not account._flow_path("u_ada", state).exists()
+    assert not account_storage.flow_path("u_ada", state).exists()
 
 
 def test_expired_callback_is_rejected_and_never_writes_a_token(
@@ -182,10 +184,10 @@ def test_expired_callback_is_rejected_and_never_writes_a_token(
         owner_id="u_ada", redirect_uri="https://app.example.test/callback"
     )
     state = _state_from_authorize_url(url)
-    pending = account._flow_path("u_ada", state)
-    payload = account._read_json(pending)
+    pending = account_storage.flow_path("u_ada", state)
+    payload = account_storage.read_json(pending)
     payload["expires_at"] = 0
-    account._write_private_json(pending, payload)
+    account_storage.write_private_json(pending, payload)
 
     with pytest.raises(TimedMediaError):
         asyncio.run(
@@ -219,7 +221,7 @@ def test_failed_preference_verification_never_writes_a_token(
     configured_instance: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original_client = account.httpx.AsyncClient
+    original_client = account_client.httpx.AsyncClient
 
     def refusing_client(**kwargs: object) -> object:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -227,7 +229,7 @@ def test_failed_preference_verification_never_writes_a_token(
 
         return original_client(transport=httpx.MockTransport(handler), **kwargs)
 
-    monkeypatch.setattr(account.httpx, "AsyncClient", refusing_client)
+    monkeypatch.setattr(account_client.httpx, "AsyncClient", refusing_client)
     url = account.begin_invidious_account_authorization(
         owner_id="u_ada", redirect_uri="https://app.example.test/callback"
     )
@@ -248,7 +250,7 @@ def test_preference_network_failure_is_a_user_facing_error(
 ) -> None:
     import json
 
-    original_client = account.httpx.AsyncClient
+    original_client = account_client.httpx.AsyncClient
 
     def offline_client(**kwargs: object) -> object:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -256,7 +258,7 @@ def test_preference_network_failure_is_a_user_facing_error(
 
         return original_client(transport=httpx.MockTransport(handler), **kwargs)
 
-    monkeypatch.setattr(account.httpx, "AsyncClient", offline_client)
+    monkeypatch.setattr(account_client.httpx, "AsyncClient", offline_client)
 
     with pytest.raises(TimedMediaError, match="verification request failed"):
         asyncio.run(
@@ -271,7 +273,7 @@ def test_disconnect_revokes_upstream_and_removes_only_the_local_secret(
     configured_instance: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    account._write(
+    account_storage.write_account(
         "u_ada",
         {
             "version": 1,
@@ -281,7 +283,7 @@ def test_disconnect_revokes_upstream_and_removes_only_the_local_secret(
             "token": {"session": "v1:test-session", "signature": "test-signature"},
         },
     )
-    account._write(
+    account_storage.write_account(
         "u_bob",
         {
             "version": 1,
@@ -315,7 +317,7 @@ def test_failed_upstream_disconnect_keeps_the_saved_connection_for_retry(
     configured_instance: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    account._write(
+    account_storage.write_account(
         "u_ada",
         {
             "version": 1,
@@ -326,7 +328,7 @@ def test_failed_upstream_disconnect_keeps_the_saved_connection_for_retry(
         },
     )
 
-    original_client = account.httpx.AsyncClient
+    original_client = account_client.httpx.AsyncClient
 
     def failing_client(**kwargs: object) -> object:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -334,9 +336,40 @@ def test_failed_upstream_disconnect_keeps_the_saved_connection_for_retry(
 
         return original_client(transport=httpx.MockTransport(handler), **kwargs)
 
-    monkeypatch.setattr(account.httpx, "AsyncClient", failing_client)
+    monkeypatch.setattr(account_client.httpx, "AsyncClient", failing_client)
 
     with pytest.raises(TimedMediaError, match="failed with HTTP 503"):
+        asyncio.run(account.disconnect_invidious_account(owner_id="u_ada"))
+    assert account.invidious_account_status("u_ada")["connected"] is True
+
+
+def test_disconnect_network_failure_is_user_facing_and_keeps_connection(
+    system_root: Path,
+    configured_instance: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_storage.write_account(
+        "u_ada",
+        {
+            "version": 1,
+            "api_base_url": configured_instance,
+            "scopes": list(account.ACCOUNT_SCOPES),
+            "connected_at": "2026-09-02T00:00:00+00:00",
+            "token": {"session": "v1:test-session", "signature": "test-signature"},
+        },
+    )
+
+    original_client = account_client.httpx.AsyncClient
+
+    def offline_client(**kwargs: object) -> object:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("offline", request=request)
+
+        return original_client(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(account_client.httpx, "AsyncClient", offline_client)
+
+    with pytest.raises(TimedMediaError, match="disconnection request failed"):
         asyncio.run(account.disconnect_invidious_account(owner_id="u_ada"))
     assert account.invidious_account_status("u_ada")["connected"] is True
 
@@ -376,7 +409,7 @@ def test_invidious_requests_use_bearer_json_and_unregister_session(
 
     token = json.loads(_token())
     requests: list[httpx.Request] = []
-    original_client = account.httpx.AsyncClient
+    original_client = account_client.httpx.AsyncClient
 
     def recording_client(**kwargs: object) -> object:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -387,7 +420,7 @@ def test_invidious_requests_use_bearer_json_and_unregister_session(
 
         return original_client(transport=httpx.MockTransport(handler), **kwargs)
 
-    monkeypatch.setattr(account.httpx, "AsyncClient", recording_client)
+    monkeypatch.setattr(account_client.httpx, "AsyncClient", recording_client)
 
     preferences = asyncio.run(
         account._request_preferences(api_base_url=configured_instance, token=token)
@@ -400,7 +433,7 @@ def test_invidious_requests_use_bearer_json_and_unregister_session(
         "/api/v1/auth/preferences",
         "/api/v1/auth/tokens/unregister",
     ]
-    expected_authorization = f"Bearer {account._bearer_token(token)}"
+    expected_authorization = f"Bearer {account_client.bearer_token(token)}"
     assert all(request.headers["authorization"] == expected_authorization for request in requests)
     assert json.loads(requests[-1].content) == {"session": "v1:test-session"}
 
@@ -409,7 +442,7 @@ def test_status_rejects_expired_or_incomplete_stored_tokens(
     system_root: Path,
     configured_instance: str,
 ) -> None:
-    account._write(
+    account_storage.write_account(
         "u_ada",
         {
             "version": 1,
@@ -421,7 +454,7 @@ def test_status_rejects_expired_or_incomplete_stored_tokens(
     )
     assert account.invidious_account_status("u_ada")["connected"] is True
 
-    account._write(
+    account_storage.write_account(
         "u_ada",
         {
             "version": 1,
@@ -441,7 +474,7 @@ def test_disconnect_removes_an_expired_local_connection_without_upstream_call(
 ) -> None:
     from datetime import datetime, timezone
 
-    account._write(
+    account_storage.write_account(
         "u_ada",
         {
             "version": 1,
@@ -503,7 +536,7 @@ def test_router_authorize_callback_status_and_disconnect(
     assert callback.headers["cache-control"] == "no-store"
     assert "v1:test-session" not in callback.text
 
-    account._write(
+    account_storage.write_account(
         "u_ada",
         {
             "version": 1,
