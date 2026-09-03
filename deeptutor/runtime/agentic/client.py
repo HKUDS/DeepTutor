@@ -19,20 +19,28 @@ import threading
 from types import SimpleNamespace
 from typing import Any
 
-import httpx
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.keypool import KeyPool, primary_api_key
 from deeptutor.services.llm import get_token_limit_kwargs, supports_tools
-from deeptutor.services.llm.openai_http_client import sanitize_invalid_ssl_env
+from deeptutor.services.llm.capabilities import catalog_capability_override
+from deeptutor.services.llm.openai_http_client import (
+    openai_sdk_client_kwargs,
+    sanitize_invalid_ssl_env,
+)
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
 from deeptutor.services.provider_registry import (
+    api_format_for_provider,
+    api_format_from_legacy,
+    effective_backend,
     find_by_name,
     model_overrides_for,
+    normalize_api_format,
     wire_api_for_provider,
+    wire_api_from_api_format,
 )
 
 # Providers that don't reliably support OpenAI function-calling. The loop
@@ -66,13 +74,24 @@ class LLMClientConfig:
     extra_headers: dict[str, str] | None = None
     reasoning_effort: str | None = None
     wire_api: str = "auto"
+    api_format: str = "auto"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "wire_api",
-            wire_api_for_provider(self.wire_api, self.binding),
-        )
+        # Same rule as LLMConfig: an explicit ``api_format`` decides
+        # ``wire_api``; a caller that only knows ``wire_api`` gets the format
+        # derived from it. The two fields never disagree.
+        spec = find_by_name(self.binding)
+        if normalize_api_format(self.api_format) == "auto":
+            object.__setattr__(self, "api_format", api_format_from_legacy(spec, self.wire_api))
+            object.__setattr__(self, "wire_api", wire_api_for_provider(self.wire_api, spec))
+        else:
+            api_format = api_format_for_provider(self.api_format, spec)
+            object.__setattr__(self, "api_format", api_format)
+            object.__setattr__(
+                self,
+                "wire_api",
+                wire_api_for_provider(wire_api_from_api_format(api_format), spec),
+            )
 
 
 def _client_cache_key(
@@ -92,6 +111,7 @@ def _client_cache_key(
         config.api_version or "",
         headers,
         config.wire_api,
+        config.api_format,
         disable_ssl_verify,
     )
 
@@ -117,8 +137,8 @@ def _build_openai_client(
             for key in keys
         }
         return _KeyRotatingClient(KeyPool(keys), clients)
-    default_headers = config.extra_headers or None
     spec = find_by_name(config.binding)
+    backend = effective_backend(spec, config.api_format)
     wire_api = wire_api_for_provider(config.wire_api, spec)
     if wire_api == "responses":
         from deeptutor.services.llm.provider_core import OpenAICompatProvider
@@ -134,31 +154,28 @@ def _build_openai_client(
         )
         return _ProviderOpenAIAdapter(responses_provider)
     if spec and wire_api != "chat_completions":
-        native_adapter = _build_native_provider_adapter(config, spec)
+        native_adapter = _build_native_provider_adapter(config, spec, backend)
         if native_adapter is not None:
             return native_adapter
 
-    http_client = None
-    if disable_ssl_verify:
-        http_client = httpx.AsyncClient(verify=False)  # nosec B501
-    if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
-        retry_kwargs = {"max_retries": sdk_max_retries} if sdk_max_retries is not None else {}
-        return AsyncAzureOpenAI(
-            api_key=config.api_key or "sk-no-key-required",
-            azure_endpoint=config.base_url,
-            api_version=config.api_version,
-            http_client=http_client,
-            default_headers=default_headers,
-            **retry_kwargs,
-        )
-    retry_kwargs = {"max_retries": sdk_max_retries} if sdk_max_retries is not None else {}
-    return AsyncOpenAI(
+    # Same constructor recipe as the services-layer provider, so headers, the
+    # SDK retry budget and the TLS bypass cannot drift between the two paths.
+    sdk_kwargs = openai_sdk_client_kwargs(
         api_key=config.api_key or "sk-no-key-required",
         base_url=config.base_url or None,
-        http_client=http_client,
-        default_headers=default_headers,
-        **retry_kwargs,
+        extra_headers=config.extra_headers,
+        spec=spec,
+        disable_ssl_verify=disable_ssl_verify,
+        sdk_max_retries=sdk_max_retries,
     )
+    if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
+        sdk_kwargs.pop("base_url", None)
+        return AsyncAzureOpenAI(
+            azure_endpoint=config.base_url,
+            api_version=config.api_version,
+            **sdk_kwargs,
+        )
+    return AsyncOpenAI(**sdk_kwargs)
 
 
 class _KeyRotatingCompletions:
@@ -272,7 +289,7 @@ def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
 
     anthropic_provider = AnthropicProvider(
         api_key=primary_api_key(config.api_key),
-        api_base=config.base_url or spec.default_api_base or None,
+        api_base=config.base_url or spec.default_api_base_for(config.api_format) or None,
         default_model=config.model or "claude-sonnet-4-20250514",
         extra_headers=config.extra_headers,
         supports_prompt_caching=spec.supports_prompt_caching,
@@ -334,7 +351,9 @@ _NATIVE_ADAPTER_BUILDERS: dict[str, Callable[[LLMClientConfig, Any], Any]] = {
 }
 
 
-def _build_native_provider_adapter(config: LLMClientConfig, spec: Any) -> Any | None:
+def _build_native_provider_adapter(
+    config: LLMClientConfig, spec: Any, backend: str | None = None
+) -> Any | None:
     endpoint = (config.base_url or spec.default_api_base or "").lower()
     model = (config.model or "").lower()
     if (
@@ -356,7 +375,7 @@ def _build_native_provider_adapter(config: LLMClientConfig, spec: Any) -> Any | 
         # the supported model through the provider adapter; sibling models
         # stay on the ordinary Chat Completions client.
         return _build_direct_openai_adapter(config, spec)
-    builder = _NATIVE_ADAPTER_BUILDERS.get(spec.backend)
+    builder = _NATIVE_ADAPTER_BUILDERS.get(backend or spec.backend)
     return builder(config, spec) if builder else None
 
 
@@ -611,11 +630,15 @@ def build_provider_extra_kwargs(
     )
 
 
-def can_use_native_tool_calling(*, binding: str, model: str | None) -> bool:
+def can_use_native_tool_calling(
+    *, binding: str, model: str | None, api_format: str = "auto"
+) -> bool:
     """Whether the current provider supports OpenAI-style function calling.
 
     Resolution order:
 
+    0. A capability the user declared on the model in Settings wins outright —
+       that is the whole point of letting them declare it.
     1. Native provider adapters backed by Anthropic or OpenAI Codex support tools.
     2. Local OpenAI-compatible servers (Ollama, vLLM, LM Studio, llama.cpp,
        Lemonade, OVMS, …) and anything in ``_NATIVE_TOOL_BLOCKED_BINDINGS`` are
@@ -631,11 +654,15 @@ def can_use_native_tool_calling(*, binding: str, model: str | None) -> bool:
        To opt a cloud provider out, add its binding to
        ``_NATIVE_TOOL_BLOCKED_BINDINGS``.
     """
+    declared = catalog_capability_override(binding, model, "supports_tools")
+    if declared is not None:
+        return declared
     spec = find_by_name(binding)
-    if spec and spec.backend in _NATIVE_TOOL_BACKENDS:
+    backend = effective_backend(spec, api_format)
+    if spec and backend in _NATIVE_TOOL_BACKENDS:
         return True
     if binding in _NATIVE_TOOL_BLOCKED_BINDINGS or (spec and spec.is_local):
         return False
     if supports_tools(binding, model):
         return True
-    return bool(spec and spec.backend == "openai_compat")
+    return bool(spec and backend == "openai_compat")

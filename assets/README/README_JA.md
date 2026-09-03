@@ -314,7 +314,7 @@ deeptutor config show
 
 プロジェクトルートの`.env`はアプリケーション設定ファイルとして**読み込まれません**。最小限のモデル設定では、**Settings → Models**を開き、LLMプロフィール（ベースURL / APIキー / モデル名）を追加して保存してください。Knowledge Base / RAG機能を使用する予定がある場合のみ埋め込みプロフィールを追加してください。
 
-OpenAI互換LLMプロフィールには**APIプロトコル**設定もあります。通常のプロバイダー検出と互換フォールバックには`Auto`を使用し、`/responses`のみを実装するエンドポイントには`Responses API`、`/chat/completions`が必要なエンドポイントには`Chat Completions`を選択します。Responses強制モードはフェイルクローズです。エンドポイントエラーはChat Completions経由で暗黙に再試行されず、そのまま返されます。`model_catalog.json`の対応するプロフィールフィールドは`wire_api`（`auto`、`responses`、`chat_completions`）です。
+プロバイダーが選択肢をサポートする場合、LLMおよびタスクモデルのプロフィールには**APIフォーマット**設定が表示されます。通常のルーティングとフォールバックには`Auto`のままにするか、`OpenAI Chat Completions`、`OpenAI Responses`、または`Anthropic Messages`を選択します。Responses強制モードは引き続きフェイルクローズです。永続化されるフィールドは`api_format`（`auto`、`openai_chat`、`openai_responses`、または`anthropic`）であり、`wire_api`は派生した互換性状態です。モデルごとの`Auto` / `Supported` / `Not supported`オーバーライドは、ツール呼び出し、画像入力、JSON出力、推論制御を対象とします。
 
 </details>
 
@@ -386,7 +386,7 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 
 コンテキストには2種類あります：**スティッキーセッションコンテキスト**（機能、ワークスペースまたはコース、ツール、知識ベース、ペルソナ、モデル、Reading / Masteryの状態）はターンをまたいで持続します。**ワンタイム参照**（ファイル、チャット履歴、本、読書セクション、ノートブック、問題バンク、インポートしたエージェント）は単一のターンのために`+`メニューから追加します。音声ボタンが文字起こしするのは現在のメッセージだけです。
 
-Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**、**Immersive Watching**にワンクリックでアクセスできます。引用付きレポートの**Research**と手順を追った推論の**Solve**は*その他の機能*の下にあります。**Mastery Path**と**Immersive Reading**は専用のサイドバーワークスペースです。Readingには検証済みのクリック可能な引用、保存した引用とノート、ソースに基づく読み上げ / 学習ガイダンス / 語彙 / クイズ / 翻訳アクション、ノートブックへの取り込みが追加され、Course Studyはコースに紐づいた独自のコンテキストを維持します。
+Homeでは**Chat**、**Ask Questions**、**Quiz**、**Visualize**にワンクリックでアクセスできます。引用付きレポートの**Research**、手順を追った推論の**Solve**、**Immersive Watching**は*その他の機能*の下にあります。**Mastery Path**と**Immersive Reading**は専用のサイドバーワークスペースです。Readingには検証済みのクリック可能な引用、保存した引用とノート、ソースに基づく読み上げ / 学習ガイダンス / 語彙 / クイズ / 翻訳アクション、ノートブックへの取り込みが追加され、Course Studyはコースに紐づいた独自のコンテキストを維持します。
 
 </details>
 

@@ -1,3 +1,8 @@
+---
+name: deeptutor-cli
+description: Configure, manage, and use DeepTutor through its CLI, including capabilities, knowledge bases, partners, memory, sessions, notebooks, providers, skills, and the server or Web app.
+---
+
 # DeepTutor CLI Skill
 
 > Teach your AI agent to configure, manage, and use DeepTutor — an intelligent learning platform — entirely through the command line.

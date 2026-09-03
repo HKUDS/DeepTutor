@@ -72,6 +72,10 @@ test("settings scroll: the outer document tracks nested section anchors", () => 
   assert.match(source, /SETTINGS_ANCHOR_EVENT/);
   assert.match(source, /setActiveSection\(current\)/);
   assert.match(source, /requested && !validRequested/);
+  assert.match(source, /DeferredSectionContent/);
+  assert.match(source, /IntersectionObserver/);
+  assert.match(source, /rootMargin: ["']800px 0px["']/);
+  assert.match(source, /section\.activationKeys\?\.includes\(requested\)/);
   assert.doesNotMatch(source, /scrollIntoView/);
   assert.match(
     scrollHelper,
@@ -79,6 +83,30 @@ test("settings scroll: the outer document tracks nested section anchors", () => 
   );
   assert.match(scrollHelper, /scroller\.scrollTo/);
   assert.match(scrollHelper, /window\.scrollTo/);
+});
+
+test("settings page: heavy sections are split and mounted on demand", () => {
+  const page = readWebFile("app", "(utility)", "settings", "page.tsx");
+  const models = readWebFile(
+    "features",
+    "settings",
+    "sections",
+    "ModelsSettingsSection.tsx",
+  );
+  const chat = readWebFile(
+    "features",
+    "settings",
+    "sections",
+    "ChatSettingsSection.tsx",
+  );
+
+  assert.match(page, /dynamic\(/);
+  assert.match(page, /deferSections/);
+  assert.match(page, /activationKeys: childKeys\(["']models["']\)/);
+  assert.match(models, /dynamic\(/);
+  assert.match(models, /deferSections/);
+  assert.match(chat, /dynamic\(/);
+  assert.match(chat, /deferSections/);
 });
 
 test("sidebar version badge targets the canonical in-document About section", () => {

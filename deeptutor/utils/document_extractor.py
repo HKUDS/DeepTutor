@@ -283,6 +283,58 @@ def extract_text_from_path(
     )
 
 
+async def extract_text_from_path_isolated(
+    file_path: str | Path,
+    *,
+    max_bytes: int | None = MAX_DOC_BYTES,
+    max_chars: int | None = MAX_EXTRACTED_CHARS_PER_DOC,
+    timeout: float = 120.0,
+) -> str:
+    """Extract in a short-lived spawn process and preserve public errors."""
+
+    from deeptutor.runtime.isolated_worker import (
+        IsolatedWorkerError,
+        run_in_isolated_process,
+    )
+
+    path = Path(file_path)
+    try:
+        result = await run_in_isolated_process(
+            "deeptutor.runtime.worker_tasks:extract_document_text",
+            str(path),
+            timeout=timeout,
+            kwargs={"max_bytes": max_bytes, "max_chars": max_chars},
+        )
+    except IsolatedWorkerError as exc:
+        error_types: dict[str, type[DocumentExtractionError]] = {
+            cls.__name__: cls
+            for cls in (
+                DocumentExtractionError,
+                UnsupportedDocumentError,
+                CorruptDocumentError,
+                EmptyDocumentError,
+                DocumentTooLargeError,
+            )
+        }
+        error_type = error_types.get(exc.remote_type)
+        if error_type is not None:
+            filename = str(exc.remote_attrs.get("filename") or path.name)
+            raise error_type(str(exc), filename=filename) from exc
+        if exc.remote_module == "builtins" and exc.remote_type in {
+            "OSError",
+            "FileNotFoundError",
+            "PermissionError",
+        }:
+            raise OSError(str(exc)) from exc
+        raise
+    if not isinstance(result, str):
+        raise DocumentExtractionError(
+            f"{path.name}: isolated extractor returned invalid output",
+            filename=path.name,
+        )
+    return result
+
+
 def _extract_pdf(data: bytes, filename: str) -> str:
     global fitz, PdfReader, _PypdfNotDecryptedError
     if fitz is _NOT_LOADED:

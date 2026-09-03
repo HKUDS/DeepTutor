@@ -14,6 +14,20 @@ const config = [
     },
   },
   {
+    // Vendored upstream source — see `web/vendor/thinking-orbs/index.ts` for
+    // provenance and the list of local changes.
+    //
+    // Both hooks it ships seed their state from `matchMedia` with a
+    // synchronous `setState` in the effect body, which the React Compiler rule
+    // rejects. Rewriting them would deepen every future re-sync in exchange
+    // for one render at mount, so the rule is off here rather than the file
+    // being skipped: everything else still gets linted.
+    files: ["vendor/**/*.{ts,tsx}"],
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
     // ``.next-*`` covers every build output, including the throwaway dist dirs
     // a second dev server needs (DEEPTUTOR_NEXT_DIST_DIR, see next.config.js):
     // without it, running one turns `npx eslint .` — a CI gate — red with

@@ -14,6 +14,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ActivityHeader } from "@/components/activity";
 import type { Block, BlockType, Page, QuizAttempt } from "@/lib/book-types";
 import {
   SCROLL_EDGE_TOLERANCE_PX,
@@ -106,6 +107,8 @@ export default function PageReader({
 }: PageReaderProps) {
   const { t } = useTranslation();
   const [showInsertMenu, setShowInsertMenu] = useState(false);
+  /** The chapter outline starts parked so it never covers the prose unasked. */
+  const [outlineCollapsed, setOutlineCollapsed] = useState(true);
   const [inserting, setInserting] = useState(false);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(
     null,
@@ -362,6 +365,30 @@ export default function PageReader({
   const expandTip = t("Expand header");
   const collapseTip = t("Collapse header");
   const failedBlocks = page.blocks.filter((block) => block.status === "error");
+  /**
+   * Is this chapter being written right now?
+   *
+   * `loading` only covers a compile *this tab* asked for, so every chapter the
+   * background worker was writing rendered as a finished, empty page — "This
+   * page has no blocks yet" under an "Insert block" button, which reads as a
+   * broken chapter the reader is expected to fill in by hand. The chapter's
+   * own status is the honest answer and does not care who started the run.
+   */
+  const writing =
+    loading || page.status === "planning" || page.status === "generating";
+  /** Owed a run, with nothing working on it — the reader can start one. */
+  const queued = !writing && page.status === "pending";
+  /**
+   * Written, but its blocks have not arrived yet.
+   *
+   * The book is fetched as summaries — one file per chapter is far too much
+   * to pull just to draw a sidebar — so a finished chapter opens with
+   * `blocks: []` and `block_count > 0` until `hydratePage` fills it in. That
+   * is a load, not an empty chapter, and rendering it as one leaves a blank
+   * page under a chapter the sidebar says is ready.
+   */
+  const hydrating =
+    !writing && !queued && page.blocks.length === 0 && (page.block_count ?? 0) > 0;
   const hasFailedBlocks = failedBlocks.length > 0;
   const canCaptureSelection =
     !!onCaptureSelection && !loading && page.blocks.length > 0;
@@ -462,10 +489,38 @@ export default function PageReader({
         data-testid="chapter-scroll-container"
         className="flex-1 overflow-y-auto px-8 py-8"
       >
-        {loading && page.blocks.length === 0 ? (
-          <div className="mx-auto flex w-full max-w-[78ch] items-center gap-2 text-sm text-[var(--muted-foreground)]">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t("Compiling page…")}
+        {(writing || hydrating) && page.blocks.length === 0 ? (
+          <div className="mx-auto w-full max-w-[78ch]">
+            <ActivityHeader
+              orb="composing"
+              label={
+                hydrating
+                  ? t("Loading this chapter…")
+                  : page.status === "planning"
+                    ? t("Planning the blocks…")
+                    : t("Compiling page…")
+              }
+            />
+          </div>
+        ) : queued && page.blocks.length === 0 ? (
+          // Queued is not empty and not broken. Say which it is, and keep the
+          // manual way in: opening a chapter promotes it in the compile queue.
+          <div className="mx-auto w-full max-w-[78ch] space-y-3">
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {t(
+                "This chapter has not been written yet. It will be generated in turn — or start it now.",
+              )}
+            </p>
+            {onRecompile && (
+              <button
+                type="button"
+                onClick={onRecompile}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+                {t("Generate this chapter")}
+              </button>
+            )}
           </div>
         ) : (
           <article className="mx-auto flex w-full max-w-[78ch] flex-col gap-6 [&>:first-child]:mt-0">
@@ -555,13 +610,13 @@ export default function PageReader({
                 />
               </div>
             ))}
-            {page.blocks.length === 0 && (
-              <div className="text-sm text-[var(--muted-foreground)]">
-                {t("This page has no blocks yet.")}
-              </div>
+            {page.blocks.length === 0 && !writing && !queued && !hydrating && (
+              <p className="text-sm text-[var(--muted-foreground)]">
+                {t("This chapter is empty.")}
+              </p>
             )}
 
-            {onInsertBlock && (
+            {onInsertBlock && !writing && !queued && !hydrating && (
               <div className="relative mt-2 flex justify-center">
                 <button
                   onClick={() => setShowInsertMenu((v) => !v)}
@@ -661,6 +716,11 @@ export default function PageReader({
         blocks={page.blocks}
         scrollContainer={scrollContainer}
         language={bookLanguage}
+        // Held here, not in the nav: the nav is keyed by page id and so
+        // remounts on every chapter, and a preference that resets each
+        // chapter is not one.
+        collapsed={outlineCollapsed}
+        onCollapsedChange={setOutlineCollapsed}
       />
     </div>
   );

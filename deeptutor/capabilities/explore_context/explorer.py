@@ -111,6 +111,7 @@ class ContextExplorer:
             extra_headers=self.extra_headers or None,
             reasoning_effort=self.reasoning_effort,
             wire_api=getattr(cfg, "wire_api", None) or "auto",
+            api_format=getattr(cfg, "api_format", None) or "auto",
         )
 
     async def investigate(

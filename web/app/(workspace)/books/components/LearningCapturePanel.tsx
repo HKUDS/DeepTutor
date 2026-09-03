@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ListFilter, X } from "lucide-react";
+import { Check, ChevronDown, ListFilter, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -35,6 +35,20 @@ function statusText(
   return map[status] || status;
 }
 
+/**
+ * Highlights the reader saved, waiting to be confirmed.
+ *
+ * Two changes from the version that sat permanently under every chapter of
+ * every book:
+ *
+ * - **It is absent when it is empty.** A panel whose whole content was
+ *   "No captures awaiting review." occupied a strip of the reader in every
+ *   book, for every reader, most of whom have never saved a highlight. There
+ *   is nothing to report until there is something to report.
+ * - **It says what it is for.** "Learning capture inbox" named an internal
+ *   pipeline; nothing on screen connected it to selecting text in a chapter,
+ *   or said where a confirmed highlight goes.
+ */
 export default function LearningCapturePanel({
   captures,
   loading,
@@ -43,26 +57,45 @@ export default function LearningCapturePanel({
 }: LearningCapturePanelProps) {
   const { t } = useTranslation();
   const [showAll, setShowAll] = useState(false);
+  const [open, setOpen] = useState(true);
 
-  const filteredCaptures = useMemo(() => {
-    if (showAll) return captures;
-    return captures.filter((capture) => reviewableStatuses.has(capture.status));
-  }, [captures, showAll]);
+  const reviewable = useMemo(
+    () => captures.filter((capture) => reviewableStatuses.has(capture.status)),
+    [captures],
+  );
+  const filteredCaptures = showAll ? captures : reviewable;
+
+  // Nothing saved and nothing loading: no panel at all.
+  if (!captures.length) return null;
 
   return (
-    <section className="mx-auto w-full max-w-[78ch] space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+    <section className="mx-auto w-full max-w-[78ch] space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-          {t("Learning capture inbox")}
-        </h2>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs text-[var(--muted-foreground)]">
-            {filteredCaptures.length}
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          className="group/inbox inline-flex min-w-0 items-center gap-2 text-left text-[13px] font-semibold text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+        >
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-50 transition-transform ${
+              open ? "" : "-rotate-90"
+            }`}
+          />
+          {t("Saved highlights")}
+          <span className="font-normal text-[var(--muted-foreground)] opacity-60">
+            {reviewable.length
+              ? t("{{count}} awaiting confirmation", {
+                  count: reviewable.length,
+                })
+              : t("{{count}} saved", { count: captures.length })}
           </span>
+        </button>
+        {open && (
           <button
             type="button"
             onClick={() => setShowAll((current) => !current)}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--foreground)]"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             title={
               showAll
                 ? t("Show only reviewable captures")
@@ -72,21 +105,21 @@ export default function LearningCapturePanel({
             <ListFilter className="h-3.5 w-3.5" />
             {showAll ? t("Review") : t("All")}
           </button>
-        </div>
+        )}
       </div>
 
-      {loading && filteredCaptures.length === 0 ? (
+      {!open ? null : loading && filteredCaptures.length === 0 ? (
         <div className="text-xs text-[var(--muted-foreground)]">
           {t("Loading captures…")}
         </div>
       ) : filteredCaptures.length === 0 ? (
         <div className="text-xs text-[var(--muted-foreground)]">
-          {showAll ? t("No captures yet.") : t("No captures awaiting review.")}
+          {t("Nothing left to confirm — switch to All to see saved highlights.")}
         </div>
       ) : (
         <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
           {filteredCaptures.map((capture) => {
-            const reviewable = reviewableStatuses.has(capture.status);
+            const canReview = reviewableStatuses.has(capture.status);
             return (
               <article
                 key={capture.id}
@@ -109,7 +142,7 @@ export default function LearningCapturePanel({
                   </p>
                 ) : null}
                 <div className="mt-2 flex items-center gap-2">
-                  {reviewable && (
+                  {canReview && (
                     <>
                       <button
                         type="button"
@@ -134,6 +167,13 @@ export default function LearningCapturePanel({
             );
           })}
         </div>
+      )}
+      {open && reviewable.length > 0 && (
+        <p className="text-[11px] leading-snug text-[var(--muted-foreground)] opacity-70">
+          {t(
+            "Text you select in a chapter is saved here first. Confirmed highlights are exported to MarginNote.",
+          )}
+        </p>
       )}
     </section>
   );

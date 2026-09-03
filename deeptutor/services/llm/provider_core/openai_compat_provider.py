@@ -13,7 +13,6 @@ import secrets
 import string
 import time
 from typing import TYPE_CHECKING, Any
-import uuid
 
 import json_repair
 from openai import AsyncOpenAI
@@ -21,7 +20,7 @@ from openai import AsyncOpenAI
 from deeptutor.services.keypool import KeyPool
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
 from deeptutor.services.llm.exceptions import LLMConfigError
-from deeptutor.services.llm.openai_http_client import openai_client_kwargs
+from deeptutor.services.llm.openai_http_client import openai_sdk_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
     adapt_chat_kwargs_to_responses,
@@ -33,6 +32,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
+from deeptutor.services.llm.request_compat import is_response_format_unsupported
 from deeptutor.services.llm.usage_frame import token_counts
 from deeptutor.services.provider_registry import model_overrides_for, normalize_wire_api
 from deeptutor.services.session.provider_response_state import (
@@ -40,7 +40,7 @@ from deeptutor.services.session.provider_response_state import (
 )
 
 if TYPE_CHECKING:
-    from deeptutor.services.provider_registry import ProviderSpec
+    pass
 
 _ALLOWED_MSG_KEYS = frozenset(
     {
@@ -59,10 +59,6 @@ _ALNUM = string.ascii_letters + string.digits
 
 _INTERNAL_RESPONSE_STATE_KEYS = frozenset({"_provider_response_state", "_responses_output_items"})
 
-_DEFAULT_OPENROUTER_HEADERS = {
-    "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
-    "X-OpenRouter-Title": "DeepTutor",
-}
 _RESPONSES_FAILURE_THRESHOLD = 2
 _RESPONSES_PROBE_INTERVAL_S = 300.0
 
@@ -102,12 +98,6 @@ def _provider_state_output_items(message: dict[str, Any]) -> list[dict[str, Any]
     if not isinstance(items, list):
         return []
     return [dict(item) for item in items if isinstance(item, dict)]
-
-
-def _uses_openrouter(spec: "ProviderSpec | None", api_base: str | None) -> bool:
-    if spec and spec.name == "openrouter":
-        return True
-    return bool(api_base and "openrouter" in api_base.lower())
 
 
 def _is_direct_openai_base(api_base: str | None) -> bool:
@@ -173,18 +163,14 @@ class OpenAICompatProvider(LLMProvider):
                 "OpenAI API key is not configured. Set it in Settings > Catalog, "
                 "or select a local provider such as Ollama."
             )
-        default_headers: dict[str, str] = {"x-session-affinity": uuid.uuid4().hex}
-        if _uses_openrouter(spec, effective_base):
-            default_headers.update(_DEFAULT_OPENROUTER_HEADERS)
-        if extra_headers:
-            default_headers.update(extra_headers)
-
         self._client = AsyncOpenAI(
-            api_key=primary_key or "no-key",
-            base_url=effective_base,
-            default_headers=default_headers,
-            max_retries=0,
-            **openai_client_kwargs(),
+            **openai_sdk_client_kwargs(
+                api_key=primary_key or "no-key",
+                base_url=effective_base,
+                extra_headers=extra_headers,
+                spec=spec,
+                sdk_max_retries=0,
+            )
         )
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}
@@ -525,20 +511,7 @@ class OpenAICompatProvider(LLMProvider):
 
     @staticmethod
     def _is_response_format_error(exc: Exception) -> bool:
-        text = str(getattr(exc, "body", None) or getattr(exc, "message", None) or exc).lower()
-        if "response_format" not in text and "response format" not in text:
-            return False
-        return any(
-            marker in text
-            for marker in (
-                "not supported",
-                "unsupported",
-                "json_object",
-                "json_schema",
-                "must be 'json_schema' or 'text'",
-                "specified for 'response_format.type' is not valid",
-            )
-        )
+        return is_response_format_unsupported(exc)
 
     def _build_responses_body(
         self,

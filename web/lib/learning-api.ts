@@ -386,17 +386,43 @@ export interface MasteryTopic {
   updated_at: number;
 }
 
+/** One selected document the generated outline did not account for. */
+export interface TopicCoverageGap {
+  /** The source it came from — a knowledge base name, or a file's own label. */
+  label: string;
+  document: string;
+}
+
+/**
+ * How much of the learner's selected material the outline accounts for.
+ *
+ * `reported: false` means the model named no materials at all, so nothing can
+ * be concluded — showing every document as missed would send the learner
+ * regenerating an outline that may already cover them.
+ */
+export interface TopicCoverage {
+  documents: number;
+  covered: number;
+  missing: TopicCoverageGap[];
+  reported: boolean;
+}
+
 export interface TopicDraft {
   description: string;
   modules: ModuleInit[];
   /** Server-hydrated source states (for example KB retrieval availability). */
   sources?: TopicSourceInput[];
+  /** Regions this material justifies — scales with the documents selected. */
+  module_limit?: number;
+  coverage?: TopicCoverage;
 }
 
 export interface GenerateTopicInput {
   name: string;
   goal: string;
   sources: TopicSourceInput[];
+  /** Documents a previous draft missed, to be covered by this one. */
+  must_cover?: string[];
 }
 
 export interface CreateTopicInput extends GenerateTopicInput {

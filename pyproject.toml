@@ -78,6 +78,7 @@ dependencies = [
     "redis>=5.0.0,<7.0.0",
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
+    "croniter>=6.0.0,<7.0.0",
     # Process-tree memory readings for /api/system/memory. Soft dependency:
     # deeptutor.runtime.memory_probe imports it lazily and falls back to /proc,
     # so a missing wheel costs the settings strip, not the app.

@@ -1845,16 +1845,7 @@ class KnowledgeBaseManager:
             raise ValueError(f"Linked folder not found: {folder_id}")
 
         folder_path = Path(folder_info["path"]).expanduser().resolve()
-        last_sync = folder_info.get("last_sync")
         synced_files = folder_info.get("synced_files", {})
-
-        # Parse last sync timestamp
-        last_sync_time = None
-        if last_sync:
-            try:
-                last_sync_time = datetime.fromisoformat(last_sync)
-            except Exception:
-                pass
 
         new_files = []
         modified_files = []

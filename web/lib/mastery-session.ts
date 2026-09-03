@@ -43,6 +43,23 @@ export function readingWorkspaceIdOf(session: SessionSummary): string {
   return String(preferences.reading_workspace_id || "");
 }
 
+/**
+ * The reverse of the `/reading/...` branch of `sessionRoute`: which
+ * conversation a reading URL names, or null for "a new one".
+ *
+ * It reads the path rather than route params because the workspace binds the
+ * first turn's session id with the native history API — see the binding effect
+ * in `useReadingWorkspace` for why — and only `usePathname` follows that.
+ * It lives beside the function that writes these URLs because they are one
+ * rule in two directions: if they ever disagreed, the first turn would land on
+ * a URL the workspace then read as "new" and start the conversation over.
+ */
+export function readingSessionIdFromPath(pathname: string): string | null {
+  const match = /^\/reading\/[^/]+\/sessions\/([^/?#]+)/.exec(pathname);
+  if (!match) return null;
+  return decodeURIComponent(match[1]).trim() || null;
+}
+
 /** Where clicking this conversation should land. */
 export function sessionRoute(session: SessionSummary): string {
   const sessionId = encodeURIComponent(session.session_id);

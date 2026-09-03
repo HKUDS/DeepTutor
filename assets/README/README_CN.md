@@ -314,7 +314,7 @@ Web Search 引用默认经过过滤：只会展示公开的 `http`/`https` URL�
 
 项目根目录的 `.env` **不会**作为应用配置文件被读取。最简模型配置：打开 **Settings → Models**，添加 LLM 配置（Base URL / API Key / 模型名称），然后保存。仅在计划使用知识库 / RAG 功能时才需要添加嵌入配置。
 
-OpenAI 兼容的 LLM 配置还提供 **API 协议**设置。常规提供商检测与兼容回退请选择 `Auto`；对于仅实现 `/responses` 的端点，选择 `Responses API`；对于要求 `/chat/completions` 的端点，选择 `Chat Completions`。强制 Responses 模式会故障关闭：端点错误将直接返回，不会静默改用 Chat Completions 重试。`model_catalog.json` 中对应的配置字段是 `wire_api`（`auto`、`responses` 或 `chat_completions`）。
+如果提供商支持选择，LLM 和任务模型配置会提供 **API format** 设置。常规路由与回退请保留 `Auto`，也可选择 `OpenAI Chat Completions`、`OpenAI Responses` 或 `Anthropic Messages`；强制 Responses 模式仍会故障关闭。持久化字段为 `api_format`（`auto`、`openai_chat`、`openai_responses` 或 `anthropic`）；`wire_api` 是派生的兼容性状态。每个模型均可通过 `Auto` / `Supported` / `Not supported` 覆盖工具调用、图像输入、JSON 输出和推理控制。
 
 </details>
 
@@ -386,7 +386,7 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 
 上下文分为两类：**粘性会话上下文**（能力、工作区或课程、工具、知识库、人格预设、模型，以及 Reading / Mastery 状态）会在各轮次间持续保留；**一次性引用**（文件、聊天历史、书籍、阅读章节、笔记本、题库、导入的智能体）通过 `+` 菜单添加，仅用于单次对话轮次。语音按钮只会转录当前消息。
 
-主页让 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 和 **Immersive Watching** 一键可达；用于生成引用报告的 **Research** 和用于展示完整推理过程的 **Solve** 位于 *更多能力* 之下。**Mastery Path** 和 **Immersive Reading** 是侧边栏中的专用工作区；Reading 还提供经过验证的可点击引用、已保存的引用与笔记、基于来源的朗读 / 学习指导 / 词汇 / 测验 / 翻译操作，以及笔记本摘录，而 Course Study 则保留其自身与课程绑定的上下文。
+主页让 **Chat**、**Ask Questions**、**Quiz** 和 **Visualize** 一键可达；用于生成引用报告的 **Research**、用于展示完整推理过程的 **Solve** 和 **Immersive Watching** 位于 *更多能力* 之下。**Mastery Path** 和 **Immersive Reading** 是侧边栏中的专用工作区；Reading 还提供经过验证的可点击引用、已保存的引用与笔记、基于来源的朗读 / 学习指导 / 词汇 / 测验 / 翻译操作，以及笔记本摘录，而 Course Study 则保留其自身与课程绑定的上下文。
 
 </details>
 

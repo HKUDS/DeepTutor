@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from deeptutor.book.engine import BookEngine, get_book_engine
 from deeptutor.book.learning_overlay import BookLearningOverlay
 from deeptutor.book.models import Book, Progress
 from deeptutor.book.storage import BookStorage, get_book_storage
@@ -13,6 +12,9 @@ from deeptutor.book.storage import BookStorage, get_book_storage
 from .book_permission import BookPermissionLevel, permission_for_user
 from .context import get_current_user
 from .paths import get_admin_path_service, get_current_path_service
+
+if TYPE_CHECKING:
+    from deeptutor.book.engine import BookEngine
 
 BookSource = Literal["own", "shared"]
 
@@ -82,6 +84,8 @@ def can_create_book() -> bool:
 def resolve_book(book_id: str) -> ResolvedBook | None:
     """Resolve own-first, then shared, returning None for denied/unknown ids."""
 
+    from deeptutor.book.engine import BookEngine, get_book_engine
+
     own_storage = get_book_storage()
     user = get_current_user()
     if own_storage.book_exists(book_id):
@@ -114,6 +118,8 @@ def resolve_book(book_id: str) -> ResolvedBook | None:
 
 def accessible_books() -> list[tuple[Book, ResolvedBook]]:
     """List own plus allowed shared books, resolving permission only once."""
+
+    from deeptutor.book.engine import BookEngine, get_book_engine
 
     own_storage = get_book_storage()
     own_engine = get_book_engine()
@@ -170,6 +176,8 @@ def shared_book_exists(book_id: str) -> bool:
 
 
 def admin_book_catalog() -> list[dict[str, Any]]:
+    from deeptutor.book.engine import BookEngine
+
     engine = BookEngine(storage=_admin_storage())
     return [
         {

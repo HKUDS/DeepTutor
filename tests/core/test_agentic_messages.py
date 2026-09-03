@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+
+import httpx
+from openai import AsyncOpenAI
+import pytest
+
 from deeptutor.runtime.agentic.messages import assistant_message_with_tool_calls
 
 
@@ -52,3 +58,83 @@ def test_assistant_message_with_tool_calls_replays_reasoning_content() -> None:
         tool_calls=[{"id": "call-1", "name": "search"}],
         reasoning_content="",
     )
+
+
+def test_assistant_message_replays_gemini_thought_signature() -> None:
+    message = assistant_message_with_tool_calls(
+        content="",
+        tool_calls=[
+            {
+                "id": "function-call-1",
+                "name": "mastery_status",
+                "arguments": "{}",
+                "extra_content": {"google": {"thought_signature": "signature-from-gemini"}},
+            }
+        ],
+    )
+
+    assert message["tool_calls"][0]["extra_content"] == {
+        "google": {"thought_signature": "signature-from-gemini"}
+    }
+
+
+@pytest.mark.asyncio
+async def test_openai_sdk_keeps_gemini_signature_in_request_body() -> None:
+    captured: dict = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads((await request.aread()).decode()))
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-test",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "gemini-test",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = AsyncOpenAI(
+        api_key="test",
+        base_url="https://example.test/v1",
+        http_client=http_client,
+    )
+    message = assistant_message_with_tool_calls(
+        content="",
+        tool_calls=[
+            {
+                "id": "function-call-1",
+                "name": "mastery_status",
+                "arguments": "{}",
+                "extra_content": {"google": {"thought_signature": "signature-from-gemini"}},
+            }
+        ],
+    )
+
+    try:
+        await client.chat.completions.create(
+            model="gemini-test",
+            messages=[
+                {"role": "user", "content": "status"},
+                message,  # type: ignore[list-item]
+                {
+                    "role": "tool",
+                    "tool_call_id": "function-call-1",
+                    "content": "{}",
+                },
+            ],
+        )
+    finally:
+        await client.close()
+
+    assert captured["messages"][1]["tool_calls"][0]["extra_content"] == {
+        "google": {"thought_signature": "signature-from-gemini"}
+    }

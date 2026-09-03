@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { masteryPathIdOf, readingWorkspaceIdOf } from "../lib/mastery-session";
+import {
+  masteryPathIdOf,
+  readingSessionIdFromPath,
+  readingWorkspaceIdOf,
+  sessionRoute,
+} from "../lib/mastery-session";
 import type { SessionSummary } from "../lib/session-api";
 import { workspaceActionNeedsConfiguration } from "../lib/workspace-mode";
 
@@ -78,4 +83,47 @@ test("configured workspace actions do not bypass their settings", () => {
   assert.equal(workspaceActionNeedsConfiguration("deep_research"), true);
   assert.equal(workspaceActionNeedsConfiguration("deep_solve"), false);
   assert.equal(workspaceActionNeedsConfiguration(""), false);
+});
+
+/* ── Reading URLs, both directions ──────────────────────────────────────
+   The workspace writes the first turn's session id into the address bar with
+   the native history API, because moving between `/reading/<ws>` and
+   `/reading/<ws>/sessions/<id>` through the router unmounts the whole reader
+   mid-answer. That only holds together if reading the URL back agrees with
+   writing it: were they to disagree, the first question of a conversation
+   would land on a URL the workspace then reads as "start a new one". */
+
+test("a reading conversation route round-trips through the path parser", () => {
+  const route = sessionRoute(
+    session({
+      workspace_mode: "immersive_reading",
+      reading_workspace_id: "rw_42",
+    }),
+  );
+
+  assert.equal(route, "/reading/rw_42/sessions/session-1");
+  assert.equal(readingSessionIdFromPath(route), "session-1");
+});
+
+test("a bare collection URL means a new conversation, not a stored one", () => {
+  assert.equal(readingSessionIdFromPath("/reading/rw_42"), null);
+  assert.equal(readingSessionIdFromPath("/reading/rw_42/sessions"), null);
+  assert.equal(readingSessionIdFromPath("/reading/rw_42/sessions/"), null);
+  assert.equal(readingSessionIdFromPath("/reading"), null);
+});
+
+test("reading session ids survive URL encoding and trailing path noise", () => {
+  assert.equal(
+    readingSessionIdFromPath("/reading/rw%2042/sessions/unified_1_a%2Fb"),
+    "unified_1_a/b",
+  );
+  assert.equal(
+    readingSessionIdFromPath("/reading/rw_42/sessions/abc?tab=notes"),
+    "abc",
+  );
+});
+
+test("only reading URLs are read as reading conversations", () => {
+  assert.equal(readingSessionIdFromPath("/chat/abc"), null);
+  assert.equal(readingSessionIdFromPath("/mastery/p1/sessions/abc"), null);
 });

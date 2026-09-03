@@ -209,6 +209,13 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
+      - name: Check lazy startup and isolated worker protocol
+        run: |
+          python -c "import sys; import deeptutor.runtime.registry.tool_registry; assert 'deeptutor.agents.chat.agentic_pipeline' not in sys.modules; print('✅ Tool implementations stay cold')"
+          python -c "from deeptutor.runtime.isolated_worker import run_in_isolated_process_sync; assert run_in_isolated_process_sync('operator:add', 20, 22, timeout=15) == 42; print('✅ Isolated worker protocol OK')"
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
   python-tests:
     name: Python Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -291,7 +298,7 @@ jobs:
           echo "| Lint and format | ${{ needs.lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Web node tests | ${{ needs.web-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Four-worker browser acceptance | ${{ needs.multi-worker-web.result == 'success' && '✅ Passed' || needs.multi-worker-web.result == 'skipped' && '⏭️ Fixture not configured' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Import check (3.11–3.14; 3.14 on Linux/macOS/Windows) | ${{ needs.import-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Import/lazy/worker check (3.11–3.14; 3.14 on Linux/macOS/Windows) | ${{ needs.import-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Python tests (3.11/3.12/3.13/3.14) | ${{ needs.python-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Fail if tests failed

@@ -6,6 +6,7 @@ Handles knowledge base CRUD operations, file uploads, and initialization.
 """
 
 import asyncio
+from contextlib import contextmanager
 from datetime import datetime
 import json
 import logging
@@ -86,6 +87,7 @@ from deeptutor.utils.document_extractor import (
     MAX_EXTRACTED_CHARS_PER_DOC,
     DocumentExtractionError,
     extract_text_from_path,
+    extract_text_from_path_isolated,
 )
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
@@ -97,6 +99,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 ws_router = APIRouter()
+
+_DEFAULT_EXTRACT_TEXT_FROM_PATH = extract_text_from_path
 
 # Constants for byte conversions
 BYTES_PER_GB = 1024**3
@@ -2646,11 +2650,15 @@ async def serve_kb_raw_file_text_preview(kb_name: str, filename: str):
     """Serve extracted plain text for a raw KB document preview."""
     target = _resolve_kb_raw_file_or_404(kb_name, filename)
     try:
-        text = extract_text_from_path(
-            target,
-            max_bytes=DocumentValidator.MAX_FILE_SIZE,
-            max_chars=MAX_EXTRACTED_CHARS_PER_DOC,
-        )
+        extraction_kwargs = {
+            "max_bytes": DocumentValidator.MAX_FILE_SIZE,
+            "max_chars": MAX_EXTRACTED_CHARS_PER_DOC,
+        }
+        if extract_text_from_path is _DEFAULT_EXTRACT_TEXT_FROM_PATH:
+            text = await extract_text_from_path_isolated(target, **extraction_kwargs)
+        else:
+            # Preserve the router's long-standing monkeypatch/integration seam.
+            text = await asyncio.to_thread(extract_text_from_path, target, **extraction_kwargs)
     except DocumentExtractionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except OSError as exc:
@@ -3490,7 +3498,6 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
             if should_send:
                 await websocket.send_json({"type": "progress", "data": initial_progress})
 
-        last_progress = initial_progress
         last_timestamp = initial_progress.get("timestamp") if initial_progress else None
 
         while True:
@@ -3512,7 +3519,6 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
                             await websocket.send_json(
                                 {"type": "progress", "data": current_progress}
                             )
-                            last_progress = current_progress
                             last_timestamp = current_timestamp
 
                             if current_progress.get("stage") in ["completed", "error"]:
@@ -3762,55 +3768,55 @@ class WebSourceInfo(BaseModel):
     navigation: dict | None = None
 
 
+@contextmanager
+def _knowledge_source_errors(kb_name: str, *, validation_status: int = 404):
+    """Translate source-service failures without duplicating route ladders."""
+    try:
+        yield
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = (
+            404 if validation_status == 404 or "not found" in detail.lower() else validation_status
+        )
+        if validation_status == 404:
+            detail = f"KB '{kb_name}' not found"
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    except Exception as exc:
+        logger.exception("Knowledge source operation failed for %s", kb_name)
+        raise HTTPException(status_code=500, detail="Knowledge source operation failed") from exc
+
+
 @router.post("/knowledge-bases/{kb_name}/github-source", response_model=GitHubSourceInfo)
 async def add_github_source(kb_name: str, request: AddGitHubSourceRequest):
-    try:
+    with _knowledge_source_errors(kb_name, validation_status=400):
         manager, resolved_name, _ = _writable_kb(kb_name)
         info = manager.add_github_source(
             resolved_name, request.repo, request.branch, request.path, request.glob
         )
         return GitHubSourceInfo(**info)
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/knowledge-bases/{kb_name}/github-sources", response_model=list[GitHubSourceInfo])
 async def get_github_sources(kb_name: str):
-    try:
+    with _knowledge_source_errors(kb_name):
         manager, resolved_name, _ = _writable_kb(kb_name)
         return [GitHubSourceInfo(**s) for s in manager.get_github_sources(resolved_name)]
-    except HTTPException:
-        raise
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/knowledge-bases/{kb_name}/github-source/{source_id}")
 async def remove_github_source(kb_name: str, source_id: str):
-    try:
+    with _knowledge_source_errors(kb_name):
         manager, resolved_name, _ = _writable_kb(kb_name)
         if not manager.remove_github_source(resolved_name, source_id):
             raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
         return {"message": "Removed", "source_id": source_id}
-    except HTTPException:
-        raise
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/knowledge-bases/{kb_name}/sync-github")
 async def sync_github_sources(kb_name: str):
-    try:
+    with _knowledge_source_errors(kb_name):
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
         sources = manager.get_github_sources(resolved_name)
         if not sources:
@@ -3835,64 +3841,38 @@ async def sync_github_sources(kb_name: str):
                 }
             )
         return {"message": f"Synced {len(results)} source(s)", "results": results}
-    except HTTPException:
-        raise
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/knowledge-bases/{kb_name}/web-source", response_model=WebSourceInfo)
 async def add_web_source(kb_name: str, request: AddWebSourceRequest):
-    try:
+    with _knowledge_source_errors(kb_name, validation_status=400):
         manager, resolved_name, _ = _writable_kb(kb_name)
         info = manager.add_web_source(
             resolved_name, request.url, request.max_depth, request.max_pages
         )
         return WebSourceInfo(**info)
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/knowledge-bases/{kb_name}/web-sources", response_model=list[WebSourceInfo])
 async def get_web_sources(kb_name: str):
-    try:
+    with _knowledge_source_errors(kb_name):
         manager, resolved_name, _ = _writable_kb(kb_name)
         return [WebSourceInfo(**s) for s in manager.get_web_sources(resolved_name)]
-    except HTTPException:
-        raise
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/knowledge-bases/{kb_name}/web-source/{source_id}")
 async def remove_web_source(kb_name: str, source_id: str):
-    try:
+    with _knowledge_source_errors(kb_name):
         manager, resolved_name, _ = _writable_kb(kb_name)
         if not manager.remove_web_source(resolved_name, source_id):
             raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
         return {"message": "Removed", "source_id": source_id}
-    except HTTPException:
-        raise
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/knowledge-bases/{kb_name}/sync-web")
 async def sync_web_sources(kb_name: str):
     """Run one bounded crawl-and-sync pass for every enabled web source."""
-    try:
+    with _knowledge_source_errors(kb_name):
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
         sources = manager.get_web_sources(resolved_name)
         if not sources:
@@ -3940,9 +3920,3 @@ async def sync_web_sources(kb_name: str):
             "ok": all(result["ok"] for result in results),
             "results": results,
         }
-    except HTTPException:
-        raise
-    except ValueError:
-        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

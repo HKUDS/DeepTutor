@@ -18,20 +18,28 @@ def assistant_message_with_tool_calls(
     that issued the tool calls (#1058). Responses-API replay is handled
     separately via ``_responses_output_items``.
     """
+    serialized_calls: list[dict[str, Any]] = []
+    for tool_call in tool_calls:
+        serialized: dict[str, Any] = {
+            "id": tool_call["id"],
+            "type": "function",
+            "function": {
+                "name": tool_call["name"],
+                "arguments": tool_call.get("arguments") or "{}",
+            },
+        }
+        # Gemini's OpenAI-compatible endpoint requires the exact opaque
+        # thought signature from each function call to be sent back on the
+        # next round (#1181). Other providers simply omit this extension.
+        extra_content = tool_call.get("extra_content")
+        if isinstance(extra_content, dict) and extra_content:
+            serialized["extra_content"] = extra_content
+        serialized_calls.append(serialized)
+
     message: dict[str, Any] = {
         "role": "assistant",
         "content": content or None,
-        "tool_calls": [
-            {
-                "id": tool_call["id"],
-                "type": "function",
-                "function": {
-                    "name": tool_call["name"],
-                    "arguments": tool_call.get("arguments") or "{}",
-                },
-            }
-            for tool_call in tool_calls
-        ],
+        "tool_calls": serialized_calls,
     }
     if reasoning_content:
         message["reasoning_content"] = reasoning_content

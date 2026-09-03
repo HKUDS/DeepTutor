@@ -113,7 +113,7 @@ export function ConversationMenu({
         <button
           type="button"
           onClick={onNew}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[var(--primary)]/10"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-[var(--primary)] transition hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]"
         >
           <Plus size={10} /> {t("New")}
         </button>
@@ -125,7 +125,7 @@ export function ConversationMenu({
             <div
               key={row.session_id}
               className={`group/row relative flex w-full items-center gap-1 overflow-hidden rounded-xl transition-colors ${
-                active ? "bg-[var(--primary)]/10" : "hover:bg-[var(--muted)]"
+                active ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]" : "hover:bg-[var(--muted)]"
               }`}
             >
               {active && (

@@ -314,7 +314,7 @@ Web Search references default रूप से filter होते हैं: �
 
 Project-root `.env` application config file के रूप में **नहीं** पढ़ा जाता। Minimal model setup के लिए, **Settings → Models** खोलें, एक LLM profile (Base URL / API key / model name) add करें, और save करें। Embedding profile केवल तभी add करें जब आप Knowledge Base / RAG features उपयोग करने की योजना रखते हों।
 
-OpenAI-compatible LLM profiles में एक **API protocol** setting भी होती है। सामान्य provider detection और compatible fallback के लिए `Auto` रखें, केवल `/responses` implement करने वाले endpoints के लिए `Responses API` चुनें, या `/chat/completions` मांगने वाले endpoints के लिए `Chat Completions` चुनें। Forced Responses mode fail-closed है: endpoint errors को Chat Completions से silently retry करने की बजाय सीधे return किया जाता है। `model_catalog.json` में equivalent profile field `wire_api` है (`auto`, `responses`, या `chat_completions`)।
+LLM और task-model profiles तब **API format** setting expose करते हैं जब उनका provider choices support करता है। सामान्य routing और fallback के लिए `Auto` रखें, या `OpenAI Chat Completions`, `OpenAI Responses`, अथवा `Anthropic Messages` चुनें; Forced Responses mode fail-closed रहता है। Persist किया गया field `api_format` है (`auto`, `openai_chat`, `openai_responses`, या `anthropic`); `wire_api` derived compatibility state है। Per-model `Auto` / `Supported` / `Not supported` overrides tool calling, image input, JSON output, और reasoning controls को cover करते हैं।
 
 </details>
 
@@ -386,7 +386,7 @@ User-toggleable tools हैं `brainstorm`, `web_search`, `paper_search`, `rea
 
 Context दो प्रकार की होती है: **sticky session context** (capability, workspace या course, tools, knowledge bases, persona, model, और Reading / Mastery state) turns के पार persist करती है; **एक-बार references** (files, chat history, books, reading sections, notebooks, question bank, imported agents) एक single turn के लिए `+` menu से आते हैं। Voice button केवल current message को transcribe करता है।
 
-Home **Chat**, **Ask Questions**, **Quiz**, **Visualize**, और **Immersive Watching** को एक क्लिक की दूरी पर रखता है; cited reports के लिए **Research** और worked reasoning के लिए **Solve** *More Capabilities* के नीचे रहते हैं। **Mastery Path** और **Immersive Reading** dedicated sidebar workspaces हैं; Reading verified clickable citations, saved citations और notes, source-grounded read-aloud / study guidance / vocabulary / quiz / translation actions, और notebook capture जोड़ता है, जबकि Course Study अपना course-bound context बनाए रखता है।
+Home **Chat**, **Ask Questions**, **Quiz**, और **Visualize** को एक क्लिक की दूरी पर रखता है; cited reports के लिए **Research**, worked reasoning के लिए **Solve**, और **Immersive Watching** *More Capabilities* के नीचे रहते हैं। **Mastery Path** और **Immersive Reading** dedicated sidebar workspaces हैं; Reading verified clickable citations, saved citations और notes, source-grounded read-aloud / study guidance / vocabulary / quiz / translation actions, और notebook capture जोड़ता है, जबकि Course Study अपना course-bound context बनाए रखता है।
 
 </details>
 

@@ -5,25 +5,26 @@ import { createPortal } from "react-dom";
 import {
   Archive,
   ArchiveRestore,
-  BookText,
   Check,
+  ChevronDown,
   ChevronRight,
   GraduationCap,
-  House,
   MoreHorizontal,
   Pencil,
   Pin,
   PinOff,
   RotateCcw,
-  Route,
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { SessionAvatar } from "@/components/sidebar/SessionAvatar";
+import {
+  deriveSessionMark,
+  SessionAvatar,
+} from "@/components/sidebar/SessionAvatar";
+import { useUnreadSessions } from "@/lib/session-unread";
 import type { StudyCourse } from "@/lib/courses-api";
 import type { MasteryTopicLabel } from "@/lib/learning-api";
 import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
-import { masteryPathIdOf, readingWorkspaceIdOf } from "@/lib/mastery-session";
 import type {
   SessionOrganizationPatch,
   SessionSummary,
@@ -36,7 +37,10 @@ import {
 import { useDragSort } from "@/hooks/useDragSort";
 import { placeMenu, type FloatingMenuPosition } from "@/lib/floating-menu";
 import {
-  applyManualOrder,
+  buildSidebarEntries,
+  type SidebarGroupEntry,
+} from "@/lib/sidebar-entries";
+import {
   readCollapsedGroups,
   writeCollapsedGroups,
 } from "@/lib/sidebar-layout";
@@ -49,6 +53,13 @@ interface OrganizedSessionListProps {
   /** Collections whose reading conversations get their own group. */
   readingCollections?: ReadingCollectionLabel[];
   activeSessionId: string | null;
+  /**
+   * Conversations the caller is streaming right now. They sort above the rest
+   * (see ``organizeSessionTree``) — this list is only refetched when a turn
+   * ends, so without it the conversation you are waiting on can sit halfway
+   * down under a timestamp from last week.
+   */
+  liveSessionIds?: ReadonlySet<string>;
   emptyLabel?: string;
   nested?: boolean;
   onSelect: (sessionId: string) => void | Promise<void>;
@@ -59,13 +70,14 @@ interface OrganizedSessionListProps {
     patch: SessionOrganizationPatch,
   ) => void | Promise<void>;
   /**
-   * Hand-arranged order for the ungrouped conversations. Needed here as well
-   * as at the caller because ``organizeSessionTree`` sorts roots by pin and
-   * recency — without it a dragged row would snap back on the next render.
+   * Hand-arranged order of the top-level entries — conversation ids and group
+   * ids in one list. Needed here as well as at the caller because
+   * ``organizeSessionTree`` sorts roots by pin, activity and recency; without
+   * it a dragged entry would snap back on the next render.
    */
   manualOrder?: readonly string[];
-  /** Enables dragging the ungrouped rows; receives their new order. */
-  onReorder?: (sessionIds: string[]) => void;
+  /** Enables dragging the top-level entries; receives their new order. */
+  onReorder?: (entryIds: string[]) => void;
   /** Drops the hand-arranged order and returns the list to recency. */
   onResetOrder?: () => void;
   /** The scrolling ancestor, so a drag can reach rows past the fold. */
@@ -73,9 +85,6 @@ interface OrganizedSessionListProps {
 }
 
 const MENU_WIDTH = 240;
-/** Heading the home conversations live under. A literal, not a real course or
- *  topic id, and shaped so it can never collide with one. */
-const CHAT_GROUP_ID = "__chat__";
 
 export default function OrganizedSessionList({
   sessions,
@@ -83,6 +92,7 @@ export default function OrganizedSessionList({
   masteryTopics = [],
   readingCollections = [],
   activeSessionId,
+  liveSessionIds,
   emptyLabel,
   nested = true,
   onSelect,
@@ -94,6 +104,8 @@ export default function OrganizedSessionList({
   onResetOrder,
   scrollRef,
 }: OrganizedSessionListProps) {
+  // Reads the set; `SessionList` owns keeping it current.
+  const unread = useUnreadSessions();
   const { t } = useTranslation();
   // Backend writes the English sentinel "New conversation" until the LLM
   // title lands; mirror SessionList by showing a localized, breathing label.
@@ -111,112 +123,54 @@ export default function OrganizedSessionList({
   const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   const { roots, childrenByParent } = useMemo(
-    () => organizeSessionTree(sessions, nested),
-    [nested, sessions],
+    () => organizeSessionTree(sessions, nested, liveSessionIds),
+    [liveSessionIds, nested, sessions],
   );
 
-  /* Roots gathered under the course they belong to.
-   *
-   * Assigning a conversation to a course used to be write-only: the ⋯ menu
-   * could move it, and nothing anywhere then showed where it had gone. Filing
-   * you cannot read back is not filing, so the list groups by it — a course is
-   * the container everything else in the product hangs off, and this is the one
-   * place a learner passes every day.
-   *
-   * Courses keep the order the shelf gives them (so the sidebar and the Courses
-   * page agree), each holding its conversations in their existing recency
-   * order; anything unfiled stays at the top, ungrouped, because most
-   * conversations never belong to a course and must not be pushed under a
-   * heading to reach them.
-   */
-  const { ungrouped, grouped, masteryGrouped, readingGrouped } = useMemo(() => {
-    const byCourse = new Map<string, SessionSummary[]>();
-    const byTopic = new Map<string, SessionSummary[]>();
-    const byCollection = new Map<string, SessionSummary[]>();
-    const loose: SessionSummary[] = [];
-    for (const session of roots) {
-      // A study conversation files under its topic first. It can also carry a
-      // course id — a path reached from a course keeps that link — but the
-      // topic is the container it was actually held in, so filing it under
-      // the course would put it where the learner never looks for it.
-      const topicId = masteryPathIdOf(session);
-      if (topicId) {
-        const bucket = byTopic.get(topicId);
-        if (bucket) bucket.push(session);
-        else byTopic.set(topicId, [session]);
-        continue;
-      }
-      // A reading conversation files under the collection it was held in,
-      // for the same reason: the reader, its material and its citations are
-      // that conversation's context, and it is where the learner looks.
-      const collectionId = readingWorkspaceIdOf(session);
-      if (collectionId) {
-        const bucket = byCollection.get(collectionId);
-        if (bucket) bucket.push(session);
-        else byCollection.set(collectionId, [session]);
-        continue;
-      }
-      const id = String(session.preferences?.course_id || "");
-      if (!id) {
-        loose.push(session);
-        continue;
-      }
-      const bucket = byCourse.get(id);
-      if (bucket) bucket.push(session);
-      else byCourse.set(id, [session]);
-    }
-    const known = courses
-      .filter((course) => byCourse.has(course.id))
-      .map((course) => ({ course, rows: byCourse.get(course.id) ?? [] }));
-    // A conversation whose course was deleted is unclassified in every other
-    // view; hiding it here instead would lose it entirely.
-    const knownIds = new Set(courses.map((course) => course.id));
-    for (const [id, rows] of byCourse) {
-      if (!knownIds.has(id)) loose.push(...rows);
-    }
-    // Topics keep the index's own order, so the sidebar and the Mastery Path
-    // page list them the same way.
-    const topics = masteryTopics
-      .filter((topic) => byTopic.has(topic.path_id))
-      .map((topic) => ({ topic, rows: byTopic.get(topic.path_id) ?? [] }));
-    const knownTopicIds = new Set(masteryTopics.map((topic) => topic.path_id));
-    for (const [id, rows] of byTopic) {
-      if (!knownTopicIds.has(id)) loose.push(...rows);
-    }
-    // Same rule as topics: a conversation whose collection is gone falls back
-    // to the loose list rather than disappearing with its heading.
-    const collections = readingCollections
-      .filter((collection) => byCollection.has(collection.workspace_id))
-      .map((collection) => ({
-        collection,
-        rows: byCollection.get(collection.workspace_id) ?? [],
-      }));
-    const knownCollectionIds = new Set(
-      readingCollections.map((collection) => collection.workspace_id),
-    );
-    for (const [id, rows] of byCollection) {
-      if (!knownCollectionIds.has(id)) loose.push(...rows);
-    }
-    return {
-      ungrouped: applyManualOrder(loose, sessionKey, manualOrder ?? []),
-      grouped: known,
-      masteryGrouped: topics,
-      readingGrouped: collections,
-    };
-  }, [courses, manualOrder, masteryTopics, readingCollections, roots]);
+  // Whether to reserve the disclosure column at all.
+  //
+  // Every row used to hold 18px open for a caret that only a conversation with
+  // tutor threads under it ever draws — and the sidebar is handed its list with
+  // those threads already filtered out, so there the column could never be
+  // filled: every dot and every title sat a fifth of the panel's width in for
+  // nothing. It is reserved when this particular list has something expandable
+  // in it, which keeps titles aligned on the surfaces that do (a course page,
+  // the history console) and hands the sidebar its left edge back.
+  const hasThreads = childrenByParent.size > 0;
 
-  const ungroupedIds = useMemo(() => ungrouped.map(sessionKey), [ungrouped]);
+  /* One list, conversations and groups at the same level.
+   *
+   * A mastery topic and a reading collection are each a single unit here, sat
+   * in the slot of the newest conversation inside them, so the region reads by
+   * recency all the way down whatever surface the work happened on. Courses
+   * group the same way — assigning a conversation to one used to be write-only,
+   * and filing you cannot read back is not filing.
+   *
+   * The whole list is arrangeable by hand, groups included: what sits at the
+   * top of a sidebar is the learner's call, and the two kinds are peers. */
+  const entries = useMemo(
+    () =>
+      buildSidebarEntries({
+        roots,
+        courses,
+        masteryTopics,
+        readingCollections,
+        manualOrder,
+      }),
+    [courses, manualOrder, masteryTopics, readingCollections, roots],
+  );
+
+  const entryIds = useMemo(() => entries.map((entry) => entry.id), [entries]);
   const drag = useDragSort({
-    ids: ungroupedIds,
+    ids: entryIds,
     disabled: !onReorder,
     onReorder: (next) => onReorder?.(next),
     scrollRef,
   });
-
-  // One collapse set for every kind of heading — chat, topic, collection,
-  // course. Their ids never collide, and a learner folding a heading shut does
-  // not care which table it came from. Persisted, so a sidebar arranged once
-  // stays arranged across reloads.
+  // One collapse set for every kind of group — topic, collection, course.
+  // Their ids never collide, and a learner folding a group shut does not care
+  // which table it came from. Persisted, so a sidebar arranged once stays
+  // arranged across reloads.
   const [collapsedCourses, setCollapsedCourses] = useState<Set<string>>(
     new Set(),
   );
@@ -351,12 +305,12 @@ export default function OrganizedSessionList({
                 className={`transition-transform ${expanded ? "rotate-90" : ""}`}
               />
             </button>
-          ) : (
+          ) : hasThreads ? (
             <span className="w-3" />
-          )}
+          ) : null}
           <SessionAvatar
             sessionId={session.session_id}
-            running={session.status === "running"}
+            mark={deriveSessionMark(session, liveSessionIds, unread)}
             size={child ? 11 : 12}
             className={child ? "opacity-65" : "opacity-80"}
           />
@@ -550,12 +504,7 @@ export default function OrganizedSessionList({
     );
   };
 
-  /** A collapsible heading over its conversations. Courses mark themselves
-   *  with their colour dot, topics with their emoji; everything else about
-   *  the two is the same and stays the same. */
-  /** A row wrapped in the drag layer. Only the chat group is arrangeable —
-   *  a topic's or a collection's rows are ordered by the surface they belong
-   *  to, not by hand. */
+  /** A conversation row wrapped in the drag layer. */
   const renderSortableRow = (session: SessionSummary) => {
     if (!onReorder) return renderRow(session);
     const { style, ...handlers } = drag.getItemProps(session.session_id);
@@ -577,102 +526,130 @@ export default function OrganizedSessionList({
     );
   };
 
-  const renderGroup = (
-    id: string,
-    mark: React.ReactNode,
-    label: string,
-    rows: SessionSummary[],
-    sortable = false,
-  ) => {
-    const collapsed = collapsedCourses.has(id);
+  /**
+   * A collapsible group — a mastery topic, a reading collection, a course —
+   * standing at the same level as a single conversation, and dragged like one.
+   *
+   * Only the heading takes the press that starts a drag: grabbing a group by
+   * one of its rows and watching the whole block move is not what that press
+   * meant. The wrapper is still what the drag measures and shifts, so the gap a
+   * dragged group leaves behind is its real height — which is also why its
+   * spacing is padding rather than margin, since a margin sits outside the box
+   * the drag measures.
+   */
+  const renderGroup = (entry: SidebarGroupEntry) => {
+    const collapsed = collapsedCourses.has(entry.id);
+    const sortable = Boolean(onReorder);
+    const { style, ...handlers } = drag.getItemProps(entry.id);
+    const dragging = drag.draggingId === entry.id;
     return (
-      <div key={id} className="mt-1.5 first:mt-0.5">
+      <div
+        key={entry.id}
+        data-group-id={entry.id}
+        ref={sortable ? handlers.ref : undefined}
+        style={sortable ? style : undefined}
+        className={`pt-1.5 first:pt-0 ${
+          dragging
+            ? "rounded-lg bg-[var(--background)]/85 shadow-lg ring-1 ring-[var(--border)]/70"
+            : ""
+        }`}
+      >
         <button
           type="button"
-          onClick={() => toggleCourse(id)}
+          onPointerDown={sortable ? handlers.onPointerDown : undefined}
+          onClickCapture={sortable ? handlers.onClickCapture : undefined}
+          onKeyDown={sortable ? handlers.onKeyDown : undefined}
+          onDragStartCapture={
+            sortable ? handlers.onDragStartCapture : undefined
+          }
+          onClick={() => toggleCourse(entry.id)}
           aria-expanded={!collapsed}
-          className="flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[10.5px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/75 transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
+          // A quiet title, not a section banner: the same size and the same ink
+          // as the conversation titles it sits among, one weight heavier, with
+          // its mark column holding the two in one left edge. Earlier passes
+          // had it a hair smaller than a caption and uppercase, which shouted
+          // in a list of 12.5px rows and did nothing whatsoever to the CJK
+          // titles most of these groups actually carry.
+          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/40 hover:text-[var(--foreground)]"
         >
-          <ChevronRight
+          <GroupMark entry={entry} />
+          <span className="min-w-0 truncate">{entry.label}</span>
+          {/* The caret follows the words rather than introducing them — a
+              title that can be folded, instead of a row of controls with a
+              label attached. */}
+          <ChevronDown
             size={11}
-            className={`shrink-0 transition-transform ${collapsed ? "" : "rotate-90"}`}
+            strokeWidth={2}
+            className={`shrink-0 opacity-50 transition-[transform,opacity] duration-150 group-hover/heading:opacity-80 ${
+              collapsed ? "-rotate-90" : ""
+            }`}
           />
-          {mark}
-          <span className="min-w-0 flex-1 truncate normal-case">{label}</span>
-          <span className="shrink-0 tabular-nums opacity-70">
-            {rows.length}
-          </span>
+          <span className="flex-1" />
+          {/* Only while folded. An open group has its conversations on screen;
+              counting them for the reader is a number that says nothing. */}
+          {collapsed ? (
+            <span className="shrink-0 text-[10.5px] tabular-nums opacity-50">
+              {entry.rows.length}
+            </span>
+          ) : null}
         </button>
         {collapsed ? null : (
-          <div className="ml-1.5 border-l border-[var(--border)]/50 pl-1">
-            {rows.map((session) =>
-              sortable ? renderSortableRow(session) : renderRow(session),
-            )}
+          <div className="ml-1.5 border-l border-[var(--border)]/40 pl-1">
+            {entry.rows.map((session) => renderRow(session))}
           </div>
         )}
       </div>
     );
   };
 
+  /* One list, no heading over the conversations.
+   *
+   * The home conversations used to sit under a "Chat" heading of their own, on
+   * the reasoning that chat is one surface among several and all three should
+   * carry equal weight. In use it read as the opposite: the conversation you
+   * were in the middle of was two clicks and a fold away, and the heading it
+   * hid behind never told you anything its rows did not. Conversations are the
+   * thing this region is for, so they are the region. */
   return (
     <div className="py-0.5">
-      {/* Home conversations get a heading of their own rather than sitting
-          loose above the others: chat is one surface among several, and a
-          learner scanning for "the thing I was reading" should meet three
-          headings of equal weight, not one unlabelled pile and two groups. */}
-      {ungrouped.length > 0
-        ? renderGroup(
-            CHAT_GROUP_ID,
-            <House
-              aria-hidden
-              size={12}
-              strokeWidth={1.8}
-              className="shrink-0"
-            />,
-            t("Chat"),
-            ungrouped,
-            true,
-          )
-        : null}
-      {masteryGrouped.map(({ topic, rows }) =>
-        renderGroup(
-          topic.path_id,
-          <Route
-            aria-hidden
-            size={12}
-            strokeWidth={1.8}
-            className="shrink-0"
-          />,
-          topic.name,
-          rows,
-        ),
-      )}
-      {readingGrouped.map(({ collection, rows }) =>
-        renderGroup(
-          collection.workspace_id,
-          <BookText
-            aria-hidden
-            size={12}
-            strokeWidth={1.8}
-            className="shrink-0"
-          />,
-          collection.title,
-          rows,
-        ),
-      )}
-      {grouped.map(({ course, rows }) =>
-        renderGroup(
-          course.id,
-          <span
-            aria-hidden
-            className="h-1.5 w-1.5 shrink-0 rounded-full"
-            style={{ backgroundColor: course.color }}
-          />,
-          course.name,
-          rows,
-        ),
+      {entries.map((entry) =>
+        entry.kind === "group"
+          ? renderGroup(entry)
+          : renderSortableRow(entry.session),
       )}
     </div>
+  );
+}
+
+/**
+ * What a group wears in the column where its conversations carry their status
+ * mark.
+ *
+ * Mastery paths and reading collections used to show a lucide glyph here
+ * (`Route` / `BookText`). At 12px those sat in the same column as a session's
+ * status mark, at the same size, in an entirely different visual language —
+ * which is what made a mixed list read as two lists spliced together. A
+ * group's own title already says what kind of group it is, so the column is
+ * simply left empty for them.
+ *
+ * Courses keep their dot: the colour is a real identity (the same one the
+ * course wears everywhere else), and at 1.5px it cannot be mistaken for the
+ * 7px status mark a conversation carries.
+ *
+ * The fixed-width box is what holds the alignment — group titles and
+ * conversation titles start at the same x whether or not anything is drawn.
+ */
+function GroupMark({ entry }: { entry: SidebarGroupEntry }) {
+  return (
+    <span className="flex w-3 shrink-0 items-center justify-center">
+      {entry.group === "course" ? (
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: entry.color }}
+        />
+      ) : null}
+    </span>
   );
 }
 
@@ -714,8 +691,4 @@ function MenuButton({
       {checked ? <Check size={12} /> : null}
     </button>
   );
-}
-
-function sessionKey(session: SessionSummary) {
-  return session.session_id;
 }

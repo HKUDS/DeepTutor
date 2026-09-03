@@ -5,21 +5,17 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type SessionSummary } from "@/lib/session-api";
 import { normalizeMessageContent, truncateText } from "@/lib/message-content";
-import { SessionAvatar } from "@/components/sidebar/SessionAvatar";
+import {
+  deriveSessionMark,
+  SessionAvatar,
+} from "@/components/sidebar/SessionAvatar";
+import { useUnreadSessions } from "@/lib/session-unread";
 import {
   formatRelativeTime,
   getDayGroupKey,
   type DayGroupKey,
 } from "@/lib/relative-time";
 import { isPlaceholderSessionTitle } from "@/lib/session-title";
-
-type SessionRuntimeStatus =
-  | "idle"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "rejected";
 
 interface SessionListProps {
   sessions: SessionSummary[];
@@ -29,45 +25,6 @@ interface SessionListProps {
   onSelect: (sessionId: string) => void | Promise<void>;
   onRename: (sessionId: string, title: string) => void | Promise<void>;
   onDelete: (sessionId: string) => void | Promise<void>;
-}
-
-function StatusIndicator({ status }: { status?: SessionRuntimeStatus }) {
-  if (!status || status === "idle") return null;
-
-  if (status === "running") {
-    return (
-      <span className="relative ml-1.5 inline-flex shrink-0">
-        <span className="session-pulse absolute inline-flex h-2 w-2 rounded-full bg-blue-400/60" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-      </span>
-    );
-  }
-
-  if (status === "completed") {
-    return (
-      <span className="ml-1.5 inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-400/50 ring-1 ring-emerald-400/10" />
-    );
-  }
-
-  if (status === "failed") {
-    return (
-      <span className="ml-1.5 inline-flex h-2 w-2 shrink-0 rounded-full bg-rose-500/80 ring-1 ring-rose-500/20" />
-    );
-  }
-
-  if (status === "rejected") {
-    return (
-      <span className="ml-1.5 inline-flex h-2 w-2 shrink-0 rounded-full bg-fuchsia-500/80 ring-1 ring-fuchsia-500/20" />
-    );
-  }
-
-  if (status === "cancelled") {
-    return (
-      <span className="ml-1.5 inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-500/70 ring-1 ring-amber-500/20" />
-    );
-  }
-
-  return null;
 }
 
 export default function SessionList({
@@ -82,6 +39,11 @@ export default function SessionList({
   const { t, i18n } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
+
+  // Reads the set only. `WorkspaceSidebar` owns keeping it current, because
+  // it holds the runtime status map this is derived from and it outlives every
+  // list that renders from it.
+  const unread = useUnreadSessions();
 
   // The sentinel the backend writes when a session is created and not
   // yet renamed by the LLM title generator. We swap it for a localized
@@ -197,7 +159,7 @@ export default function SessionList({
             >
               <SessionAvatar
                 sessionId={session.session_id}
-                running={session.status === "running"}
+                mark={deriveSessionMark(session, undefined, unread)}
                 className={
                   session.status === "running" ? "opacity-100" : "opacity-80"
                 }
@@ -345,7 +307,6 @@ export default function SessionList({
                               {session.title}
                             </span>
                           )}
-                          <StatusIndicator status={session.status} />
                         </div>
                       )}
                       {!isEditing && (

@@ -314,7 +314,7 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 
 `.env` ที่ root ของโปรเจกต์จะ **ไม่** ถูกอ่านเป็นไฟล์ config ของแอปพลิเคชัน สำหรับการตั้งค่า model เบื้องต้น เปิด **Settings → Models** เพิ่มโปรไฟล์ LLM (Base URL / API key / ชื่อ model) และบันทึก เพิ่มโปรไฟล์ embedding เฉพาะเมื่อคุณวางแผนใช้ Knowledge Base / RAG features
 
-โปรไฟล์ LLM ที่เข้ากันได้กับ OpenAI ยังมีการตั้งค่า **API protocol** อีกด้วย ใช้ `Auto` ต่อไปสำหรับการตรวจหา provider ตามปกติและ fallback ที่เข้ากันได้ เลือก `Responses API` สำหรับ endpoints ที่รองรับเฉพาะ `/responses` หรือเลือก `Chat Completions` สำหรับ endpoints ที่ต้องใช้ `/chat/completions` โหมด Responses แบบบังคับจะ fail-closed: ระบบจะส่งคืนข้อผิดพลาดจาก endpoint แทนที่จะลองใหม่ผ่าน Chat Completions โดยไม่แจ้งให้ทราบ ฟิลด์โปรไฟล์ที่เทียบเท่าใน `model_catalog.json` คือ `wire_api` (`auto`, `responses` หรือ `chat_completions`)
+โปรไฟล์ LLM และ task-model จะแสดงการตั้งค่า API format เมื่อ provider รองรับหลายตัวเลือก คงค่า Auto ไว้สำหรับการกำหนดเส้นทางและ fallback ตามปกติ หรือเลือก OpenAI Chat Completions, OpenAI Responses หรือ Anthropic Messages; การบังคับใช้ Responses ยังคง fail-closed ฟิลด์ที่บันทึกคือ `api_format` (`auto`, `openai_chat`, `openai_responses` หรือ `anthropic`); `wire_api` เป็นสถานะความเข้ากันได้ที่อนุมานจากค่านี้ การ override ระดับแต่ละโมเดลด้วย Auto / Supported / Not supported ครอบคลุมการเรียกใช้เครื่องมือ, การป้อนภาพ, เอาต์พุต JSON และตัวควบคุมการให้เหตุผล
 
 </details>
 
@@ -386,7 +386,7 @@ Chat คือความสามารถเริ่มต้นและส
 
 บริบทมีสองประเภท: **sticky session context** (capability, workspace หรือ course, tools, knowledge bases, persona, model และสถานะ Reading / Mastery) คงอยู่ตลอด turns; **one-time references** (ไฟล์, ประวัติ chat, หนังสือ, ส่วนการอ่าน, notebooks, question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว ปุ่ม voice ทำหน้าที่ถอดเสียงเฉพาะข้อความปัจจุบัน
 
-Home ทำให้ **Chat**, **Ask Questions**, **Quiz**, **Visualize** และ **Immersive Watching** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิงและ **Solve** สำหรับการให้เหตุผลที่แสดงขั้นตอนอยู่ภายใต้ *More Capabilities* **Mastery Path** และ **Immersive Reading** เป็น workspace เฉพาะในแถบด้านข้าง; Reading เพิ่ม citations ที่ตรวจสอบแล้วและคลิกได้, citations และ notes ที่บันทึกไว้, การอ่านออกเสียง / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปลที่อ้างอิง source และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
+Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research**, **Solve** และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Mastery Path** และ **Immersive Reading** เป็น workspace เฉพาะในแถบด้านข้าง; Reading เพิ่ม citations ที่ตรวจสอบแล้วและคลิกได้, citations และ notes ที่บันทึกไว้, การอ่านออกเสียง / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปลที่อ้างอิง source และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
 
 </details>
 
