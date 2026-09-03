@@ -106,6 +106,8 @@ test("a reading conversation route round-trips through the path parser", () => {
 });
 
 test("a bare collection URL means a new conversation, not a stored one", () => {
+  assert.equal(readingSessionIdFromPath(undefined), null);
+  assert.equal(readingSessionIdFromPath(null), null);
   assert.equal(readingSessionIdFromPath("/reading/rw_42"), null);
   assert.equal(readingSessionIdFromPath("/reading/rw_42/sessions"), null);
   assert.equal(readingSessionIdFromPath("/reading/rw_42/sessions/"), null);

@@ -430,7 +430,13 @@ export function ReaderPane({
     let cancelled = false;
     void getReadingPosition(materialId)
       .then((position) => {
-        if (cancelled || position.locator <= 1) return;
+        if (
+          cancelled ||
+          !Number.isSafeInteger(position.locator) ||
+          position.locator <= 1
+        ) {
+          return;
+        }
         requestJump(position.locator);
       })
       .catch(() => {
