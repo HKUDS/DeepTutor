@@ -30,7 +30,7 @@ from deeptutor.services.config.embedding_endpoint import (
     is_gemini_native_embedding_endpoint,
     redact_embedding_endpoint_for_display,
 )
-from deeptutor.services.llm.config import get_token_limit_kwargs
+from deeptutor.services.llm.config import get_token_limit_kwargs, uses_max_completion_tokens
 from deeptutor.services.provider_registry import PROVIDERS, ProviderSpec, find_by_name
 
 # --- Featured selection ------------------------------------------------------
@@ -852,9 +852,20 @@ def select_model(
 
 # --- Connectivity probe --------------------------------------------------------
 
+# One token is enough to prove credentials work on a classic chat model, and
+# keeps the probe as cheap as possible.
+PROBE_MAX_TOKENS = 1
+# Reasoning models (the same families that require ``max_completion_tokens``)
+# spend the budget on hidden thinking tokens before emitting any content, so a
+# 1-token cap never reaches the answer. OpenAI rejects that outright with
+# HTTP 400 "Could not finish the message because max_tokens or model output
+# limit was reached", which reads as a credential failure even though the
+# endpoint and key are fine. Give them room for one short reasoning pass.
+PROBE_REASONING_MAX_TOKENS = 1024
+
 
 def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple[bool, int, str]:
-    """Send a single-token completion to verify credentials.
+    """Send a tiny completion to verify credentials.
 
     Returns ``(ok, elapsed_ms, error_or_empty)``. Network failures, auth
     failures, 4xx, 5xx all surface as ``ok=False`` with a short error string.
@@ -873,7 +884,7 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
             }
             body = {
                 "model": model,
-                "max_tokens": 1,
+                "max_tokens": PROBE_MAX_TOKENS,
                 "messages": [{"role": "user", "content": "ping"}],
             }
         else:
@@ -882,9 +893,14 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
                 "Authorization": f"Bearer {api_key or 'sk-no-key-required'}",
                 "Content-Type": "application/json",
             }
+            budget = (
+                PROBE_REASONING_MAX_TOKENS
+                if uses_max_completion_tokens(model)
+                else PROBE_MAX_TOKENS
+            )
             body = {
                 "model": model,
-                **get_token_limit_kwargs(model, 1),
+                **get_token_limit_kwargs(model, budget),
                 "messages": [{"role": "user", "content": "ping"}],
             }
 
