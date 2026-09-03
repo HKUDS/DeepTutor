@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+import re
 import shutil
 from typing import Any
 
@@ -79,10 +80,12 @@ def strip_frontmatter(text: str) -> str:
     raw = (text or "").lstrip()
     if not raw.startswith("---"):
         return text or ""
-    end = raw.find("\n---", 3)
-    if end == -1:
+    # Closing fence must be alone on its line (optional trailing whitespace).
+    # Body between fences may be empty (---\n---\nbody).
+    match = re.match(r"^---[ \t]*\r?\n(?:.*?\r?\n)?---[ \t]*(?:\r?\n|$)", raw, flags=re.DOTALL)
+    if match is None:
         return text or ""
-    return raw[end + 4 :].lstrip("\n")
+    return raw[match.end() :].lstrip("\n")
 
 
 def _partner_path_service(partner_id: str) -> PathService:
