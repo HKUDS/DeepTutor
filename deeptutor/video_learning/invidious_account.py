@@ -8,21 +8,16 @@ owner-private secrets tree. No password or browser cookie is handled here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
-from pathlib import Path
 import secrets
-import stat
 import time
 from typing import Any
 from urllib.parse import urlencode, urlparse
 
-import httpx
-
-from deeptutor.multi_user.paths import owner_secrets_dir
+import deeptutor.video_learning.invidious_account_client as _client
+import deeptutor.video_learning.invidious_account_storage as _storage
 from deeptutor.video_learning.service import (
     TimedMediaError,
     load_video_learning_settings,
@@ -34,133 +29,12 @@ FLOW_TIMEOUT_S = 600.0
 PUBLIC_URL_ENV = "DEEPTUTOR_PUBLIC_URL"
 DEFAULT_PUBLIC_URL = "http://localhost:3782"
 ACCOUNT_SCOPES = ("GET:preferences", "POST:tokens/unregister")
-_SECRETS_SUBDIR = ("private", "video-learning-invidious")
 _MAX_TOKEN_BYTES = 8192
 
-
-@dataclass(frozen=True, slots=True)
-class _PendingFlow:
-    owner_id: str
-    api_base_url: str
-    callback_url: str
-    expires_at: float
-
-
-def _asset_dir(owner_id: str) -> Path:
-    path = owner_secrets_dir(owner_id)
-    for part in _SECRETS_SUBDIR:
-        path = path / part
-        path.mkdir(parents=True, exist_ok=True)
-        os.chmod(path, stat.S_IRWXU)
-    return path
-
-
-def _store_path(owner_id: str) -> Path:
-    return _asset_dir(owner_id) / "account.json"
-
-
-def _pending_dir(owner_id: str) -> Path:
-    path = _asset_dir(owner_id) / "pending"
-    path.mkdir(parents=True, exist_ok=True)
-    os.chmod(path, stat.S_IRWXU)
-    return path
-
-
-def _flow_path(owner_id: str, state: str) -> Path:
-    # State never becomes a path segment. Besides avoiding traversal hazards,
-    # hashing keeps a filesystem backup from disclosing a still-live callback
-    # state to someone who can list filenames but not read owner-private files.
-    digest = hashlib.sha256(state.encode("utf-8")).hexdigest()
-    return _pending_dir(owner_id) / f"{digest}.json"
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
-    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    try:
-        descriptor = os.open(
-            temporary,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            stat.S_IRUSR | stat.S_IWUSR,
-        )
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, indent=2))
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _pending_flow(path: Path) -> _PendingFlow | None:
-    payload = _read_json(path)
-    owner_id = payload.get("owner_id")
-    api_base_url = payload.get("api_base_url")
-    callback_url = payload.get("callback_url")
-    expires_at = payload.get("expires_at")
-    if (
-        not isinstance(owner_id, str)
-        or not owner_id
-        or not isinstance(api_base_url, str)
-        or not api_base_url
-        or not isinstance(callback_url, str)
-        or not callback_url
-        or not isinstance(expires_at, (int, float))
-    ):
-        return None
-    return _PendingFlow(
-        owner_id=owner_id,
-        api_base_url=api_base_url,
-        callback_url=callback_url,
-        expires_at=float(expires_at),
-    )
-
-
-def _purge_expired(owner_id: str, now: float | None = None) -> None:
-    current = time.time() if now is None else now
-    for path in _pending_dir(owner_id).glob("*.json"):
-        flow = _pending_flow(path)
-        if flow is None or flow.owner_id != owner_id or flow.expires_at <= current:
-            path.unlink(missing_ok=True)
-
-
-def _consume_pending_flow(owner_id: str, state: str) -> _PendingFlow | None:
-    if not state:
-        return None
-    source = _flow_path(owner_id, state)
-    claim = source.with_name(f".{source.name}.{secrets.token_hex(8)}.claim")
-    try:
-        # Same-filesystem rename is the one-time claim. It works across Uvicorn
-        # workers and across restarts, unlike a process-local dictionary.
-        source.rename(claim)
-    except FileNotFoundError:
-        return None
-    try:
-        flow = _pending_flow(claim)
-    finally:
-        claim.unlink(missing_ok=True)
-    if flow is None or flow.owner_id != owner_id or flow.expires_at <= time.time():
-        return None
-    return flow
-
-
-def _read(owner_id: str) -> dict[str, Any]:
-    return _read_json(_store_path(owner_id))
-
-
-def _write(owner_id: str, payload: dict[str, Any]) -> None:
-    _write_private_json(_store_path(owner_id), payload)
-
-
-def _forget(owner_id: str) -> None:
-    _store_path(owner_id).unlink(missing_ok=True)
+# Explicit call seams let the workflow tests substitute transport behavior
+# without making filesystem persistence part of the same mock boundary.
+_request_preferences = _client.request_preferences
+_revoke_token = _client.revoke_token
 
 
 def _configured_public_url() -> str:
@@ -207,27 +81,20 @@ def begin_invidious_account_authorization(*, owner_id: str, redirect_uri: str) -
     ):
         raise TimedMediaError("Invidious callback URL must be a plain HTTP(S) URL.")
 
-    _purge_expired(owner_id)
+    _storage.purge_expired(owner_id)
     state = secrets.token_urlsafe(32)
     separator = "&" if parsed_redirect.query else "?"
     callback_url = f"{redirect_uri}{separator}{urlencode({'state': state})}"
     authorize_url = f"{base}/authorize_token?{urlencode({'scopes': ','.join(ACCOUNT_SCOPES), 'callback_url': callback_url})}"
 
-    # Starting again replaces the prior pending consent for this owner and
-    # instance. The browser can then follow only the most recent redirect.
-    for path in _pending_dir(owner_id).glob("*.json"):
-        flow = _pending_flow(path)
-        if flow is None or flow.owner_id != owner_id or flow.api_base_url == base:
-            path.unlink(missing_ok=True)
-    _write_private_json(
-        _flow_path(owner_id, state),
-        {
-            "version": 1,
-            "owner_id": owner_id,
-            "api_base_url": base,
-            "callback_url": callback_url,
-            "expires_at": time.time() + FLOW_TIMEOUT_S,
-        },
+    _storage.replace_pending_flow(
+        state=state,
+        flow=_storage.PendingFlow(
+            owner_id=owner_id,
+            api_base_url=base,
+            callback_url=callback_url,
+            expires_at=time.time() + FLOW_TIMEOUT_S,
+        ),
     )
     return authorize_url
 
@@ -268,10 +135,6 @@ def _scopes_include_required(scopes: Any) -> bool:
     return set(ACCOUNT_SCOPES).issubset(set(scopes))
 
 
-def _bearer_token(token: dict[str, Any]) -> str:
-    return json.dumps(token, ensure_ascii=False, separators=(",", ":"))
-
-
 def _stored_token_is_usable(token: Any) -> bool:
     if not isinstance(token, dict):
         return False
@@ -287,40 +150,18 @@ def _stored_token_is_usable(token: Any) -> bool:
     return not (isinstance(expire, int) and expire <= datetime.now(timezone.utc).timestamp())
 
 
-async def _request_preferences(*, api_base_url: str, token: dict[str, Any]) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
-        try:
-            response = await client.get(
-                f"{api_base_url}/api/v1/auth/preferences",
-                headers={"Authorization": f"Bearer {_bearer_token(token)}"},
-            )
-        except httpx.HTTPError as exc:
-            raise TimedMediaError("Invidious account verification request failed.") from exc
-    if response.status_code != 200:
-        raise TimedMediaError(
-            f"Invidious account verification failed with HTTP {response.status_code}."
-        )
-    try:
-        preferences = response.json()
-    except ValueError as exc:
-        raise TimedMediaError("Invidious returned invalid account preferences.") from exc
-    if not isinstance(preferences, dict):
-        raise TimedMediaError("Invidious returned invalid account preferences.")
-    return preferences
-
-
 async def complete_invidious_account_authorization(
     *, owner_id: str, state: str, token: str
 ) -> dict[str, Any]:
-    _purge_expired(owner_id)
-    flow = _consume_pending_flow(owner_id, state)
+    _storage.purge_expired(owner_id)
+    flow = _storage.consume_pending_flow(owner_id, state)
     if flow is None:
         raise TimedMediaError("Invidious account callback is unknown, expired, or already used.")
 
     parsed_token = _parse_token(token)
     await _request_preferences(api_base_url=flow.api_base_url, token=parsed_token)
 
-    _write(
+    _storage.write_account(
         owner_id,
         {
             "version": 1,
@@ -334,7 +175,7 @@ async def complete_invidious_account_authorization(
 
 
 def invidious_account_status(owner_id: str) -> dict[str, Any]:
-    payload = _read(owner_id)
+    payload = _storage.read_account(owner_id)
     token = payload.get("token")
     base = payload.get("api_base_url")
     scopes = payload.get("scopes")
@@ -353,30 +194,17 @@ def invidious_account_status(owner_id: str) -> dict[str, Any]:
     }
 
 
-async def _revoke_token(*, api_base_url: str, token: dict[str, Any]) -> None:
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
-        response = await client.post(
-            f"{api_base_url}/api/v1/auth/tokens/unregister",
-            headers={"Authorization": f"Bearer {_bearer_token(token)}"},
-            json={"session": token["session"]},
-        )
-    if response.status_code < 200 or response.status_code >= 300:
-        raise TimedMediaError(
-            f"Invidious account disconnection failed with HTTP {response.status_code}."
-        )
-
-
 async def disconnect_invidious_account(*, owner_id: str) -> dict[str, Any]:
-    payload = _read(owner_id)
+    payload = _storage.read_account(owner_id)
     token = payload.get("token")
     base = payload.get("api_base_url")
     if not _stored_token_is_usable(token) or not isinstance(base, str) or not base:
-        _forget(owner_id)
+        _storage.forget_account(owner_id)
         return {"connected": False}
 
     try:
         await _revoke_token(api_base_url=base, token=token)
-    except httpx.HTTPError as exc:
+    except _client.InvidiousTransportError as exc:
         raise TimedMediaError(
             "Invidious account disconnection request failed. The saved connection was kept so it can be retried."
         ) from exc
@@ -385,7 +213,7 @@ async def disconnect_invidious_account(*, owner_id: str) -> dict[str, Any]:
         # so would leave a valid token registered upstream with no local revoke.
         raise
 
-    _forget(owner_id)
+    _storage.forget_account(owner_id)
     return {"connected": False}
 
 
