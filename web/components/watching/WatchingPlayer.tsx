@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { apiUrl } from "@/lib/api";
@@ -21,11 +21,66 @@ interface WatchingPlayerProps {
   onError(message: string): void;
 }
 
+const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+
 export function WatchingPlayer(props: WatchingPlayerProps) {
-  return props.playback.kind === "youtube_iframe" ? (
-    <YouTubePlayer {...props} playback={props.playback} />
-  ) : (
-    <InvidiousPlayer {...props} playback={props.playback} />
+  const { playback, onController } = props;
+  const { t } = useTranslation();
+  const [controller, setController] = useState<PlayerController | null>(null);
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  const handleController = useCallback(
+    (nextController: PlayerController | null) => {
+      setController(nextController);
+      onController(nextController);
+    },
+    [onController],
+  );
+
+  useEffect(() => {
+    if (controller?.setPlaybackRate) {
+      controller.setPlaybackRate(playbackRate);
+    }
+  }, [controller, playbackRate]);
+
+  return (
+    <>
+      {playback.kind === "youtube_iframe" ? (
+        <YouTubePlayer
+          {...props}
+          playback={playback}
+          onController={handleController}
+        />
+      ) : (
+        <InvidiousPlayer
+          {...props}
+          playback={playback}
+          onController={handleController}
+        />
+      )}
+      <div
+        role="group"
+        aria-label={t("Playback speed")}
+        className="flex items-center gap-1 border-b border-[var(--border)] px-4 py-2"
+      >
+        {PLAYBACK_RATES.map((rate) => (
+          <button
+            key={rate}
+            type="button"
+            disabled={!controller}
+            aria-pressed={playbackRate === rate}
+            onClick={() => setPlaybackRate(rate)}
+            className={`min-w-12 rounded-md px-2 py-1 text-xs font-medium tabular-nums ${
+              playbackRate === rate
+                ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            } disabled:opacity-50`}
+          >
+            {rate}x
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 

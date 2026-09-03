@@ -469,7 +469,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       {material && (
         <div className="flex min-h-0 flex-1 flex-col">
           <WatchingPlayer
-            key={`${material.material_id}:${material.playback.provider}`}
+            key={material.material_id}
             playback={material.playback}
             transcriptLanguage={material.transcript.language || "en"}
             onController={handleController}
