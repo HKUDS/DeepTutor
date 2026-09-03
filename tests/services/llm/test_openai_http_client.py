@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from typing import Any
 
@@ -9,6 +10,7 @@ import pytest
 
 from deeptutor.services.llm import openai_http_client
 from deeptutor.services.llm.exceptions import LLMConfigError
+from deeptutor.services.provider_registry import PROVIDERS, find_by_name
 
 
 @pytest.fixture(autouse=True)
@@ -131,3 +133,114 @@ def test_embedding_sdk_passes_disable_ssl_http_client(
 
     assert captured[0]["http_client"] is clients[0]
     assert clients[0].kwargs == {"verify": False, "timeout": 60}
+
+
+# --- AI/ML API attribution ---------------------------------------------------
+# Attribution is scoped to the *host* of the resolved endpoint. A substring
+# match on the URL, or a match on the configured provider name, would also fire
+# for a look-alike domain and for a self-hosted proxy fronting the same API.
+
+_AIMLAPI_SPEC = find_by_name("aimlapi")
+
+_PARTNER_ID_PATTERN = re.compile(r"^part_[A-Za-z0-9]{1,64}$")
+_SOURCE_PATTERN = re.compile(r"^(web|agent|mcp)/[a-z0-9-]{1,32}$")
+
+
+def _default_headers(**kwargs: Any) -> dict[str, str]:
+    return openai_http_client.openai_sdk_client_kwargs(api_key="sk-test", **kwargs)[
+        "default_headers"
+    ]
+
+
+def test_aimlapi_partner_id_and_source_match_the_gateway_contract() -> None:
+    """A malformed partner id is accepted silently and earns nothing, so assert its shape."""
+    headers = openai_http_client.AIMLAPI_ATTRIBUTION_HEADERS
+
+    assert _PARTNER_ID_PATTERN.match(headers["X-AIMLAPI-Partner-ID"])
+    assert _SOURCE_PATTERN.match(headers["X-AIMLAPI-Source"])
+    # HTTP-Referer / X-Title identify the calling app, not the gateway.
+    assert headers["HTTP-Referer"] == "https://github.com/HKUDS/DeepTutor"
+    assert headers["X-Title"] == "DeepTutor"
+
+
+def test_aimlapi_attribution_sent_for_the_registry_endpoint() -> None:
+    headers = _default_headers(base_url=None, spec=_AIMLAPI_SPEC)
+
+    assert headers["X-AIMLAPI-Partner-ID"] == "part_deeptutor"
+    assert headers["X-AIMLAPI-Source"] == "agent/deeptutor"
+    assert headers["X-Title"] == "DeepTutor"
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.aimlapi.com/v1",
+        "https://API.AIMLAPI.COM/v1",
+        "api.aimlapi.com/v1",
+    ],
+)
+def test_aimlapi_attribution_sent_for_equivalent_spellings(base_url: str) -> None:
+    headers = _default_headers(base_url=base_url, spec=None)
+
+    assert headers["X-AIMLAPI-Partner-ID"] == "part_deeptutor"
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        # Suffix look-alike: a substring check on the URL would send our
+        # partner id to whoever controls evil.io.
+        "https://api.aimlapi.com.evil.io/v1",
+        "https://notaimlapi.com/v1",
+        "https://aimlapi.com.attacker.example/v1",
+        # A proxy that merely fronts the same API is still someone else's host.
+        "https://gateway.internal.example/aimlapi/v1",
+        "https://openrouter.ai/api/v1",
+        "https://api.openai.com/v1",
+    ],
+)
+def test_aimlapi_attribution_withheld_from_other_hosts(base_url: str) -> None:
+    headers = _default_headers(base_url=base_url, spec=None)
+
+    assert not [key for key in headers if key.lower().startswith("x-aimlapi-")]
+
+
+def test_aimlapi_attribution_withheld_when_binding_points_at_a_proxy() -> None:
+    """An aimlapi-typed profile pointed elsewhere must not carry our headers."""
+    headers = _default_headers(base_url="https://proxy.example.com/v1", spec=_AIMLAPI_SPEC)
+
+    assert not [key for key in headers if key.lower().startswith("x-aimlapi-")]
+
+
+def test_aimlapi_attribution_does_not_override_caller_headers() -> None:
+    headers = _default_headers(
+        base_url="https://api.aimlapi.com/v1",
+        spec=_AIMLAPI_SPEC,
+        extra_headers={"X-Title": "Caller Wins", "X-Custom": "1"},
+    )
+
+    assert headers["X-Title"] == "Caller Wins"
+    assert headers["X-Custom"] == "1"
+    assert headers["X-AIMLAPI-Partner-ID"] == "part_deeptutor"
+
+
+def test_aimlapi_attribution_constant_is_never_mutated() -> None:
+    before = dict(openai_http_client.AIMLAPI_ATTRIBUTION_HEADERS)
+
+    _default_headers(
+        base_url="https://api.aimlapi.com/v1",
+        spec=_AIMLAPI_SPEC,
+        extra_headers={"X-Title": "Caller Wins"},
+    )
+
+    assert openai_http_client.AIMLAPI_ATTRIBUTION_HEADERS == before
+
+
+def test_no_other_provider_spec_carries_aimlapi_headers() -> None:
+    """Attribution must never ride a request to a different vendor."""
+    for spec in PROVIDERS:
+        if spec.name == "aimlapi":
+            continue
+        headers = _default_headers(base_url=None, spec=spec)
+        leaked = [key for key in headers if key.lower().startswith("x-aimlapi-")]
+        assert not leaked, f"{spec.name} leaks {leaked}"

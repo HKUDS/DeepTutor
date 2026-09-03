@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 import uuid
 
 import httpx
@@ -24,6 +25,23 @@ OPENROUTER_ATTRIBUTION_HEADERS: dict[str, str] = {
     "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
     "X-OpenRouter-Title": "DeepTutor",
 }
+
+# AI/ML API attributes traffic the same way OpenRouter does, plus two headers
+# of its own. HTTP-Referer / X-Title identify DeepTutor as the calling app —
+# they are not AI/ML API's own URL and title.
+AIMLAPI_ATTRIBUTION_HEADERS: dict[str, str] = {
+    "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
+    "X-Title": "DeepTutor",
+    "X-AIMLAPI-Partner-ID": "part_deeptutor",
+    "X-AIMLAPI-Source": "agent/deeptutor",
+}
+
+# Exact hosts these headers may be sent to. Matching the *host* of the resolved
+# endpoint — not a substring of the URL and not the configured provider name —
+# is what keeps attribution off a look-alike domain ("api.aimlapi.com.evil.io",
+# "notaimlapi.com") and off a self-hosted proxy that merely fronts the same API
+# under a binding still typed as "aimlapi".
+_AIMLAPI_ATTRIBUTION_HOSTS: frozenset[str] = frozenset({"api.aimlapi.com"})
 
 _warning_lock = threading.Lock()
 _warning_logged = False
@@ -114,6 +132,36 @@ def _uses_openrouter(spec: "ProviderSpec | None", api_base: str | None) -> bool:
     return bool(api_base and "openrouter" in api_base.lower())
 
 
+def _endpoint_host(spec: "ProviderSpec | None", api_base: str | None) -> str:
+    """Host of the endpoint a client will actually call, lowercased.
+
+    Args:
+        spec: The resolved provider spec, whose ``default_api_base`` applies
+            when the profile carries no explicit endpoint.
+        api_base: The profile's configured endpoint, if any.
+
+    Returns:
+        The hostname, or an empty string when no endpoint resolves or the
+        value does not parse as a URL.
+    """
+    resolved = (api_base or (spec.default_api_base if spec is not None else "") or "").strip()
+    if not resolved:
+        return ""
+    # A bare "api.example.com/v1" has no scheme, so urlsplit would read it all
+    # as a path; "//" makes it a netloc without guessing http vs https.
+    if "//" not in resolved:
+        resolved = f"//{resolved}"
+    try:
+        return (urlsplit(resolved).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _uses_aimlapi(spec: "ProviderSpec | None", api_base: str | None) -> bool:
+    """Whether the resolved endpoint is an AI/ML API host we may attribute to."""
+    return _endpoint_host(spec, api_base) in _AIMLAPI_ATTRIBUTION_HOSTS
+
+
 def openai_sdk_client_kwargs(
     *,
     api_key: str | None,
@@ -127,7 +175,7 @@ def openai_sdk_client_kwargs(
     """Constructor kwargs for ``AsyncOpenAI`` / ``AsyncAzureOpenAI``.
 
     The one place that decides what every OpenAI-SDK client DeepTutor builds
-    looks like on the wire: default headers (session affinity, OpenRouter
+    looks like on the wire: default headers (session affinity, gateway
     attribution, the profile's extra headers), the SDK retry budget, and the
     TLS-verification bypass. ``disable_ssl_verify=None`` reads the system
     setting; callers that already hold the flag pass it through.
@@ -138,6 +186,8 @@ def openai_sdk_client_kwargs(
         headers["x-session-affinity"] = uuid.uuid4().hex
     if _uses_openrouter(spec, base_url):
         headers.update(OPENROUTER_ATTRIBUTION_HEADERS)
+    if _uses_aimlapi(spec, base_url):
+        headers.update(AIMLAPI_ATTRIBUTION_HEADERS)
     if extra_headers:
         headers.update(extra_headers)
     kwargs: dict[str, Any] = {
@@ -159,6 +209,7 @@ def openai_sdk_client_kwargs(
 
 
 __all__ = [
+    "AIMLAPI_ATTRIBUTION_HEADERS",
     "OPENROUTER_ATTRIBUTION_HEADERS",
     "build_openai_http_client",
     "disable_ssl_verify_enabled",
