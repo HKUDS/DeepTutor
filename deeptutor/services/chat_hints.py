@@ -32,6 +32,8 @@ import re
 import time
 from typing import Any
 
+from deeptutor.services.singleflight_cache import AsyncSingleFlightTTLCache
+
 logger = logging.getLogger(__name__)
 
 _MAX_HINT_CHARS = {"zh": 44, "en": 110}
@@ -58,29 +60,18 @@ class AskHint:
         }
 
 
-_cache: dict[str, AskHint] = {}
-_inflight: dict[str, asyncio.Task[AskHint]] = {}
+_hint_cache = AsyncSingleFlightTTLCache[str, AskHint](
+    limit=_CACHE_LIMIT,
+    ttl_seconds=_CACHE_TTL_SECONDS,
+    value_timestamp=lambda value: value.generated_at,
+)
+# Compatibility views for test/setup code that clears service-local state.
+_cache = _hint_cache.values
+_inflight = _hint_cache.inflight
 
 
 def _cache_key(session_id: str, transcript_length: int) -> str:
     return f"{session_id}\0{transcript_length}"
-
-
-def _remember(key: str, value: AskHint) -> None:
-    _cache[key] = value
-    if len(_cache) > _CACHE_LIMIT:
-        for stale in list(_cache)[: len(_cache) - _CACHE_LIMIT]:
-            _cache.pop(stale, None)
-
-
-def _recall(key: str) -> AskHint | None:
-    value = _cache.get(key)
-    if value is None:
-        return None
-    if time.time() - value.generated_at > _CACHE_TTL_SECONDS:
-        _cache.pop(key, None)
-        return None
-    return value
 
 
 # -- Material -----------------------------------------------------------------
@@ -306,28 +297,15 @@ async def get_ask_hint(session_id: str) -> dict[str, Any]:
         return AskHint(hint="", session_id=session_id, generated_at=time.time()).to_dict()
 
     key = _cache_key(session_id, material.transcript_length)
-    cached = _recall(key)
-    if cached is not None:
-        return cached.to_dict()
-
-    pending = _inflight.get(key)
-    if pending is None or pending.done():
-        pending = asyncio.ensure_future(_generate(session_id, material))
-        _inflight[key] = pending
     try:
-        value = await pending
+        value = await _hint_cache.get_or_create(
+            key,
+            lambda: _generate(session_id, material),
+            cache_when=lambda item: bool(item.hint),
+        )
     except Exception:
         logger.debug("chat ask-hint generation failed", exc_info=True)
         return AskHint(hint="", session_id=session_id, generated_at=time.time()).to_dict()
-    finally:
-        if _inflight.get(key) is pending:
-            _inflight.pop(key, None)
-
-    # Only a usable hint is cached — see the module docstrings this pattern is
-    # shared with (mastery_hints, reading_hints) for why an empty result must
-    # not be pinned in place for the whole TTL.
-    if value.hint:
-        _remember(key, value)
     return value.to_dict()
 
 

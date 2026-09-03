@@ -287,6 +287,21 @@ class PositionInfo(PositionPayload):
     updated_at: float = 0.0
 
 
+class BookmarkPayload(BaseModel):
+    locator: int = Field(ge=1)
+    label: str = Field(default="", max_length=200)
+    source_anchor: str = Field(default="", max_length=4096)
+
+
+class BookmarkInfo(BookmarkPayload):
+    bookmark_id: str
+    created_at: float = 0.0
+
+
+class BookmarkList(BaseModel):
+    bookmarks: list[BookmarkInfo]
+
+
 class SupportedFormats(BaseModel):
     extensions: list[str]
     max_bytes: int
@@ -1188,6 +1203,48 @@ async def save_position(material_id: str, payload: PositionPayload) -> PositionI
         return PositionInfo(**saved.to_dict())
     except Exception as exc:
         raise _http_error(exc) from exc
+
+
+@router.get("/materials/{material_id}/bookmarks", response_model=BookmarkList)
+async def list_bookmarks(material_id: str) -> BookmarkList:
+    """Every place the reader has kept in this material, in reading order."""
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        rows = store.bookmarks(material_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return BookmarkList(bookmarks=[BookmarkInfo(**row.to_dict()) for row in rows])
+
+
+@router.post("/materials/{material_id}/bookmarks", response_model=BookmarkInfo)
+async def add_bookmark(material_id: str, payload: BookmarkPayload) -> BookmarkInfo:
+    """Keep one place. Bookmarking an already-kept locator returns that one."""
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        saved = store.add_bookmark(
+            material_id,
+            payload.locator,
+            payload.label,
+            payload.source_anchor,
+        )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    return BookmarkInfo(**saved.to_dict())
+
+
+@router.delete("/materials/{material_id}/bookmarks/{bookmark_id}")
+async def delete_bookmark(material_id: str, bookmark_id: str) -> dict[str, bool]:
+    store = _store()
+    try:
+        assert_learning_material(material_id)
+        removed = store.delete_bookmark(material_id, bookmark_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+    if not removed:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+    return {"ok": True}
 
 
 @router.put("/materials/{material_id}/annotations", response_model=AnnotationInfo)

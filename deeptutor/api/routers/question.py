@@ -9,7 +9,6 @@ import traceback
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from deeptutor.agents.question import AgentCoordinator
 from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.logging import (
     ProcessLogEvent,
@@ -18,10 +17,8 @@ from deeptutor.logging import (
     current_log_context,
 )
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
-from deeptutor.services.llm.config import get_llm_config
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.settings.interface_settings import get_response_language
-from deeptutor.tools.question import mimic_exam_questions
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
 
@@ -32,6 +29,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 ws_router = APIRouter()
+
+
+async def mimic_exam_questions(*args, **kwargs):
+    """Compatibility seam that keeps the legacy workflow import deferred."""
+
+    from deeptutor.tools.question import mimic_exam_questions as run
+
+    return await run(*args, **kwargs)
 
 
 def _mimic_output_dir():
@@ -353,8 +358,10 @@ async def websocket_mimic_generate(websocket: WebSocket):
 
 @ws_router.websocket("/generate")
 async def websocket_question_generate(websocket: WebSocket):
+    from deeptutor.agents.question import AgentCoordinator
     from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
     from deeptutor.multi_user.context import reset_current_user
+    from deeptutor.services.llm.config import get_llm_config
 
     user_token = await ws_require_auth(websocket)
     if user_token is ws_auth_failed:

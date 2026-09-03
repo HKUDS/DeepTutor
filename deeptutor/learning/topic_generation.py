@@ -26,9 +26,34 @@ _MAX_SOURCES = 16
 _MAX_SOURCE_EXCERPT = 4_000
 _MAX_SOURCE_TOTAL = 24_000
 
+#: Regions in a generated route when the material does not argue for more.
+DEFAULT_MODULE_LIMIT = 8
+#: The ceiling, however much material there is. Past this a route stops being
+#: a route and becomes a table of contents.
+MAX_MODULE_LIMIT = 20
+#: Waypoints one region may hold. A strict caller that exceeds it is told.
+_MAX_OBJECTIVES_PER_MODULE = 7
+#: Documents named per knowledge base when handing the model its inventory.
+#: A route has to be able to *account for* every file, which means seeing the
+#: list — but a 400-document library would otherwise crowd out the excerpts.
+_MAX_KB_DOCUMENTS = 60
+
 
 class TopicGenerationError(RuntimeError):
     pass
+
+
+def source_documents(source: TopicSource) -> list[str]:
+    """The document names a grounded source says it holds.
+
+    Written by :func:`_ground_knowledge_base_source` and read by both the
+    prompt payload and the coverage report, so "what the model was shown" and
+    "what the route is measured against" are the same list.
+    """
+    raw = (source.metadata or {}).get("documents")
+    if not isinstance(raw, list):
+        return []
+    return [str(name).strip() for name in raw if str(name or "").strip()]
 
 
 def _source_payload(sources: list[TopicSource]) -> list[dict[str, Any]]:
@@ -37,13 +62,22 @@ def _source_payload(sources: list[TopicSource]) -> list[dict[str, Any]]:
     for source in sorted(sources, key=lambda item: item.position)[:_MAX_SOURCES]:
         excerpt = str(source.excerpt or "")[: min(_MAX_SOURCE_EXCERPT, remaining)]
         remaining -= len(excerpt)
-        payload.append(
-            {
-                "kind": source.kind.value,
-                "label": str(source.label or "")[:200],
-                "excerpt": excerpt,
-            }
-        )
+        entry: dict[str, Any] = {
+            "kind": source.kind.value,
+            "label": str(source.label or "")[:200],
+            "excerpt": excerpt,
+        }
+        # Retrieval answers "what does this library say about my goal?" and
+        # cannot answer "what is in it?" — four passages from a twenty-PDF
+        # library used to be the model's entire view of it, which is why
+        # generated routes silently covered two files and ignored the rest.
+        documents = source_documents(source)
+        if documents:
+            entry["documents"] = documents
+            omitted = int((source.metadata or {}).get("documents_omitted") or 0)
+            if omitted > 0:
+                entry["documents_omitted"] = omitted
+        payload.append(entry)
         if remaining <= 0:
             break
     return payload
@@ -74,6 +108,92 @@ def _retrieved_context(result: dict[str, Any]) -> str:
     return "\n\n".join(blocks)[:_MAX_SOURCE_EXCERPT]
 
 
+async def _knowledge_base_inventory(kb_ref: str) -> tuple[list[str], int]:
+    """The document names in ``kb_ref``, plus how many were left out.
+
+    Empty for a connected external resource with no enumerable document set —
+    a route over one of those is grounded by retrieval alone, and saying so is
+    better than pretending the library is empty.
+    """
+    try:
+        from deeptutor.multi_user.knowledge_access import resolve_kb_manifest
+
+        manifest = await asyncio.to_thread(
+            resolve_kb_manifest,
+            kb_ref,
+            limit=_MAX_KB_DOCUMENTS,
+        )
+    except Exception:
+        logger.exception("Knowledge-base inventory failed source_id=%s", kb_ref)
+        return [], 0
+    if manifest is None or not manifest.enumerable:
+        return [], 0
+    return [document.name for document in manifest.documents], manifest.omitted
+
+
+def _inventory_metadata(inventory: tuple[list[str], int]) -> dict[str, Any]:
+    documents, omitted = inventory
+    if not documents:
+        return {}
+    return {
+        "documents": documents,
+        **({"documents_omitted": omitted} if omitted > 0 else {}),
+    }
+
+
+async def _ground_file_source(source: TopicSource) -> TopicSource:
+    """Read one document the learner picked out of a knowledge base.
+
+    Selecting a single lesson is the difference between "design a route over
+    my whole course" and "design one over chapter 3", and retrieval cannot
+    express the second: it answers by similarity across the library. So this
+    reads the file itself, in a short-lived isolated process — a malformed PDF
+    must not be able to take the server down mid-wizard.
+    """
+    grounded = source.model_copy(deep=True)
+    if grounded.kind != TopicSourceKind.FILE or not grounded.available:
+        return grounded
+    metadata = grounded.metadata or {}
+    kb_ref = str(metadata.get("kb_name") or metadata.get("knowledge_base") or "").strip()
+    rel_path = str(metadata.get("path") or grounded.source_id or "").strip()
+    try:
+        from deeptutor.multi_user.knowledge_access import resolve_kb_document_path
+        from deeptutor.utils.document_extractor import extract_text_from_path_isolated
+
+        path = await asyncio.to_thread(resolve_kb_document_path, kb_ref, rel_path)
+        if path is None:
+            raise ValueError(f"{rel_path!r} is not a readable document in {kb_ref!r}")
+        text = await extract_text_from_path_isolated(
+            path,
+            max_chars=_MAX_SOURCE_EXCERPT,
+            timeout=60.0,
+        )
+        if not str(text or "").strip():
+            raise ValueError(f"{rel_path!r} yielded no extractable text")
+        grounded.excerpt = str(text)[:_MAX_SOURCE_EXCERPT]
+        grounded.metadata = {
+            **metadata,
+            "grounded_for_route": True,
+            # Named as a one-document inventory so coverage treats a picked
+            # file exactly like a library's file: something the route owes an
+            # answer for.
+            "documents": [rel_path],
+        }
+    except Exception:
+        logger.exception(
+            "File grounding failed kb=%s path=%s label=%s",
+            kb_ref,
+            rel_path,
+            grounded.label,
+        )
+        grounded.available = False
+        grounded.metadata = {
+            **metadata,
+            "unavailable_during_generation": True,
+        }
+    return grounded
+
+
 async def _ground_knowledge_base_source(
     source: TopicSource,
     *,
@@ -86,18 +206,20 @@ async def _ground_knowledge_base_source(
         or not grounded.source_id.strip()
     ):
         return grounded
+    inventory = await _knowledge_base_inventory(grounded.source_id)
     try:
         from deeptutor.tools.rag_tool import rag_search
 
         result = await rag_search(query, grounded.source_id, top_k=4)
         context = _retrieved_context(result if isinstance(result, dict) else {})
-        if not context:
+        if not context and not inventory[0]:
             raise ValueError("knowledge base returned no retrievable context")
         grounded.excerpt = context
         grounded.metadata = {
             **grounded.metadata,
             "grounded_for_route": True,
             "retrieval_provider": str(result.get("provider") or ""),
+            **_inventory_metadata(inventory),
         }
     except Exception:
         logger.exception(
@@ -123,10 +245,16 @@ async def ground_topic_sources(
     sources: list[TopicSource],
 ) -> list[TopicSource]:
     query = f"{str(name or '').strip()}\n{str(goal or '').strip()}".strip()[:2_000]
+
+    async def ground(source: TopicSource) -> TopicSource:
+        if source.kind == TopicSourceKind.FILE:
+            return await _ground_file_source(source)
+        return await _ground_knowledge_base_source(source, query=query)
+
     return list(
         await asyncio.gather(
             *(
-                _ground_knowledge_base_source(source, query=query)
+                ground(source)
                 for source in sorted(sources, key=lambda item: item.position)[:_MAX_SOURCES]
             )
         )
@@ -151,18 +279,29 @@ def materialize_modules(
     existing_module_ids: set[str] | None = None,
     existing_objective_ids: set[str] | None = None,
     discarded_modules: list[dict[str, Any]] | None = None,
+    module_limit: int = DEFAULT_MODULE_LIMIT,
 ) -> list[LearningModule]:
     """Validate and normalize a route while keeping existing entity identity.
 
     Draft generation is intentionally forgiving because model JSON can contain
     one malformed item among otherwise useful content. User-confirmed routes
     use ``strict=True`` so saving can never report success after silently
-    dropping a region or waypoint.
+    dropping a region or waypoint — which includes the region *limit*: past it
+    a strict caller is told, rather than having its tail quietly removed.
+
+    ``module_limit`` scales with the material: a course whose knowledge base
+    holds fourteen documents cannot be covered by eight regions, and the old
+    fixed cap is why generated routes stopped part-way through a library.
 
     Position is presentation state, not identity. Existing ids are accepted
     only when the caller proves they belong to this topic; every new entity gets
     a collision-proof id so a deleted objective's evidence can never be reused.
     """
+    cap = max(1, min(int(module_limit or DEFAULT_MODULE_LIMIT), MAX_MODULE_LIMIT))
+    if strict and len(raw_modules) > cap:
+        raise TopicGenerationError(
+            f"A route may have at most {cap} regions; this one has {len(raw_modules)}"
+        )
 
     allowed_modules = set(existing_module_ids or ())
     allowed_objectives = set(existing_objective_ids or ())
@@ -176,7 +315,7 @@ def materialize_modules(
         if discarded_modules is not None:
             discarded_modules.append({"index": module_index + 1, "reason": reason})
 
-    for module_index, raw_module in enumerate(raw_modules[:8]):
+    for module_index, raw_module in enumerate(raw_modules[:cap]):
         if not isinstance(raw_module, dict):
             if strict:
                 raise TopicGenerationError(f"Route region {module_index + 1} is invalid")
@@ -210,7 +349,12 @@ def materialize_modules(
             raise TopicGenerationError(
                 f"Route region {module_index + 1} needs at least one waypoint"
             )
-        for kp_index, raw_kp in enumerate(raw_kps[:7]):
+        if strict and len(raw_kps) > _MAX_OBJECTIVES_PER_MODULE:
+            raise TopicGenerationError(
+                f"Route region {module_index + 1} may have at most "
+                f"{_MAX_OBJECTIVES_PER_MODULE} waypoints; it has {len(raw_kps)}"
+            )
+        for kp_index, raw_kp in enumerate(raw_kps[:_MAX_OBJECTIVES_PER_MODULE]):
             if not isinstance(raw_kp, dict):
                 if strict:
                     raise TopicGenerationError(
@@ -267,12 +411,81 @@ def materialize_modules(
             )
         else:
             record_discard(module_index, "module has no usable waypoints")
-    if not strict and len(raw_modules) > 8:
-        for module_index in range(8, len(raw_modules)):
+    if not strict and len(raw_modules) > cap:
+        for module_index in range(cap, len(raw_modules)):
             record_discard(module_index, "module limit exceeded")
     if not modules:
         raise TopicGenerationError("The generated route contains no usable objectives")
     return modules
+
+
+def module_limit_for(sources: list[TopicSource]) -> int:
+    """How many regions this material can justify.
+
+    A goal-only route wants a handful of regions; a knowledge base holding
+    fourteen documents cannot be covered by eight, and squeezing it into eight
+    is what made a generated route look like it had ignored most of the
+    library. One region per document is the ceiling this asks for, bounded by
+    :data:`MAX_MODULE_LIMIT`.
+    """
+    documents = {name for source in sources for name in source_documents(source)}
+    return max(DEFAULT_MODULE_LIMIT, min(MAX_MODULE_LIMIT, len(documents)))
+
+
+def _covered_documents(raw_modules: list[Any]) -> set[str]:
+    """Which documents the model says its regions are built from.
+
+    Read off the optional per-region ``materials`` list. It is not persisted —
+    :class:`LearningModule` ignores unknown keys — because it answers a
+    question that only exists while the draft is on screen: did this route
+    account for everything the learner selected?
+    """
+    covered: set[str] = set()
+    for raw_module in raw_modules:
+        if not isinstance(raw_module, dict):
+            continue
+        materials = raw_module.get("materials")
+        if isinstance(materials, str):
+            materials = [materials]
+        if not isinstance(materials, list):
+            continue
+        for material in materials:
+            name = str(material or "").strip()
+            if name:
+                covered.add(name)
+    return covered
+
+
+def _coverage_report(
+    sources: list[TopicSource],
+    raw_modules: list[Any],
+) -> dict[str, Any]:
+    """What the route left out, per selected source.
+
+    Matching is on the document names the model was handed, in both
+    directions: a model that answers with ``"lecture03.pdf"`` for a document
+    listed as ``"slides/lecture03.pdf"`` has covered it, and saying otherwise
+    would send the learner regenerating a route that is already complete.
+    """
+    covered = _covered_documents(raw_modules)
+    folded = [name.casefold() for name in covered]
+    missing: list[dict[str, str]] = []
+    total = 0
+    for source in sorted(sources, key=lambda item: item.position):
+        for name in source_documents(source):
+            total += 1
+            needle = name.casefold()
+            if any(needle in item or item in needle for item in folded):
+                continue
+            missing.append({"label": source.label, "document": name})
+    return {
+        "documents": total,
+        "covered": max(0, total - len(missing)),
+        # Empty when the model named nothing at all: claiming every document
+        # was missed is worse than admitting the route did not say.
+        "missing": missing if covered else [],
+        "reported": bool(covered),
+    }
 
 
 async def generate_topic_draft(
@@ -281,6 +494,7 @@ async def generate_topic_draft(
     goal: str,
     sources: list[TopicSource],
     language: str,
+    must_cover: list[str] | None = None,
 ) -> dict[str, Any]:
     grounded_sources = await ground_topic_sources(
         name=name,
@@ -288,11 +502,14 @@ async def generate_topic_draft(
         sources=sources,
     )
     source_json = json.dumps(_source_payload(grounded_sources), ensure_ascii=False)
+    module_limit = module_limit_for(grounded_sources)
     system_prompt, prompt = learning_prompts.topic_generation_prompts(
         language,
         name=str(name or "").strip()[:120],
         goal=str(goal or "").strip()[:2_000],
         sources_json=source_json,
+        module_limit=module_limit,
+        must_cover=[str(item).strip() for item in (must_cover or []) if str(item or "").strip()],
     )
     response = await complete(prompt=prompt, system_prompt=system_prompt)
     data = parse_json_response(response, fallback=None)
@@ -307,6 +524,7 @@ async def generate_topic_draft(
             "draft",
             raw_modules,
             discarded_modules=discarded_modules,
+            module_limit=module_limit,
         )
     finally:
         if discarded_modules:
@@ -323,12 +541,18 @@ async def generate_topic_draft(
         "sources": [source.model_dump(mode="json") for source in grounded_sources],
         "discarded_module_count": len(discarded_modules),
         "discarded_modules": discarded_modules,
+        "module_limit": module_limit,
+        "coverage": _coverage_report(grounded_sources, raw_modules),
     }
 
 
 __all__ = [
+    "DEFAULT_MODULE_LIMIT",
+    "MAX_MODULE_LIMIT",
     "TopicGenerationError",
     "generate_topic_draft",
     "ground_topic_sources",
     "materialize_modules",
+    "module_limit_for",
+    "source_documents",
 ]

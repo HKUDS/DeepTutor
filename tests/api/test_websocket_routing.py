@@ -4,6 +4,7 @@ from fastapi.routing import APIWebSocketRoute
 
 from deeptutor.api.main import app
 from deeptutor.api.routers.auth import require_learning_surface
+from tests.api.route_surface import iter_registered_routes
 
 
 def test_websocket_routes_share_one_canonical_namespace() -> None:
@@ -20,13 +21,13 @@ def test_websocket_routes_share_one_canonical_namespace() -> None:
     }
     websocket_routes = {
         route.path: route
-        for route in app.routes
-        if isinstance(route, APIWebSocketRoute)
+        for route in iter_registered_routes(app.routes)
+        if isinstance(route.original_route, APIWebSocketRoute)
     }
 
     assert set(websocket_routes) == expected_paths
     for route in websocket_routes.values():
         assert all(
             dependency.call is not require_learning_surface
-            for dependency in route.dependant.dependencies
+            for dependency in route.original_route.dependant.dependencies
         )

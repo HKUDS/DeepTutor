@@ -86,6 +86,39 @@ test("direct mastery capability is catalogued but not duplicated as a browser ac
   );
 });
 
+test("home capability menu uses the curated order and workspace boundaries", () => {
+  const merged = mergeCapabilityPresentations(
+    parseCapabilityCatalogPayload({
+      capabilities: [
+        "ask_questions",
+        "immersive_reading",
+        "immersive_watching",
+        "chat",
+        "deep_question",
+        "deep_solve",
+      ],
+    }),
+  );
+  const visible = visibleCapabilityPresentations(merged);
+
+  assert.deepEqual(
+    visible
+      .filter((capability) => !capability.secondary)
+      .map((capability) => capability.value),
+    ["", "ask_questions", "deep_question"],
+  );
+  assert.deepEqual(
+    visible
+      .filter((capability) => capability.secondary)
+      .map((capability) => capability.value),
+    ["deep_solve", "immersive_watching"],
+  );
+  assert.equal(
+    visible.some((capability) => capability.value === "immersive_reading"),
+    false,
+  );
+});
+
 test("catalog merging returns isolated turn presentation objects", () => {
   const descriptors = parseCapabilityCatalogPayload({ capabilities: ["chat"] });
   const first = mergeCapabilityPresentations(descriptors);

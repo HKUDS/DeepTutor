@@ -48,6 +48,7 @@ from deeptutor.reading.models import (
     MaterialManifest,
     MaterialNotFound,
     OutlineEntry,
+    ReadingBookmark,
     ReadingError,
     ReadingPosition,
     ReadingUpgradeConflict,
@@ -65,6 +66,10 @@ ANNOTATIONS_NAME = "annotations.json"
 POSITION_NAME = "position.json"
 ANNOTATIONS_DIR = "annotations"
 POSITIONS_DIR = "positions"
+BOOKMARKS_DIR = "bookmarks"
+# A ceiling rather than a design limit: bookmarks are a short list a reader
+# scans, and the file is rewritten whole on every change.
+MAX_BOOKMARKS = 200
 UNIT_REFS_NAME = "unit_refs.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
@@ -317,7 +322,11 @@ class ReadingStore:
             # legacy upgrades with annotations were rejected above because
             # their old locators cannot be mapped safely to the spine.
             state_names: tuple[str, ...] = (ANNOTATIONS_NAME, POSITION_NAME)
-            state_dirs: tuple[str, ...] = (ANNOTATIONS_DIR, POSITIONS_DIR)
+            state_dirs: tuple[str, ...] = (
+                ANNOTATIONS_DIR,
+                POSITIONS_DIR,
+                BOOKMARKS_DIR,
+            )
             if existing is not None and existing.render_mode != "epub":
                 # A legacy text-reader position can point past the shorter
                 # source-faithful spine. Annotations are protected above;
@@ -325,7 +334,10 @@ class ReadingStore:
                 # drop the per-material viewports too, not just the legacy
                 # file, or the stale locator simply survives in the new path.
                 state_names = (ANNOTATIONS_NAME,)
-                state_dirs = (ANNOTATIONS_DIR,)
+                # A bookmark is a place the reader chose, so it is kept for the
+                # same reason an annotation is; only the automatic viewport
+                # resets when the spine changes under it.
+                state_dirs = (ANNOTATIONS_DIR, BOOKMARKS_DIR)
             for state_name in state_names:
                 source_state = material_dir / state_name
                 if source_state.is_file():
@@ -474,7 +486,7 @@ class ReadingStore:
                 source_state = material_dir / state_name
                 if source_state.is_file():
                     shutil.copy2(source_state, stage_dir / state_name)
-            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR):
+            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR, BOOKMARKS_DIR):
                 source_state_dir = material_dir / state_dir
                 if source_state_dir.is_dir():
                     shutil.copytree(
@@ -926,6 +938,82 @@ class ReadingStore:
                 existing[index] = stored
             self._write_annotations(material_id, existing)
             return stored
+
+    # -- bookmarks ---------------------------------------------------------
+
+    def bookmarks(self, material_id: str) -> list[ReadingBookmark]:
+        """Every kept place in this material, in reading order."""
+        self.manifest(material_id)
+        rows = _read_json(self._state_path(material_id, BOOKMARKS_DIR))
+        if not isinstance(rows, list):
+            return []
+        parsed = [
+            ReadingBookmark.from_dict(row)
+            for row in rows
+            if isinstance(row, dict) and row.get("bookmark_id")
+        ]
+        return sorted(parsed, key=lambda row: (row.locator, row.created_at))
+
+    def add_bookmark(
+        self,
+        material_id: str,
+        locator: int,
+        label: str = "",
+        source_anchor: str = "",
+    ) -> ReadingBookmark:
+        """Keep one place, or return the one already kept for that locator.
+
+        Idempotent per locator on purpose: the affordance is a toggle on the
+        reader's own toolbar, so the honest answer to "bookmark this page"
+        when the page is already bookmarked is the existing bookmark, not a
+        second identical row in the list.
+        """
+        manifest = self.manifest(material_id)
+        target = int(locator)
+        if not 1 <= target <= manifest.unit_count:
+            raise ReadingError(
+                f"{manifest.unit} {target} is out of range — "
+                f"this material has {manifest.unit_count}."
+            )
+        trimmed = str(label or "").strip()[:200]
+        anchor_value = str(source_anchor or "")[:4096]
+        with self._locked(material_id):
+            existing = self.bookmarks(material_id)
+            for row in existing:
+                if row.locator == target:
+                    return row
+            if len(existing) >= MAX_BOOKMARKS:
+                raise ReadingError(
+                    f"this material already has {MAX_BOOKMARKS} bookmarks — "
+                    "remove one before adding another."
+                )
+            created = ReadingBookmark(
+                bookmark_id=f"bm_{uuid.uuid4().hex[:12]}",
+                locator=target,
+                label=trimmed,
+                source_anchor=anchor_value,
+            )
+            self._write_bookmarks(material_id, [*existing, created])
+            return created
+
+    def delete_bookmark(self, material_id: str, bookmark_id: str) -> bool:
+        self.manifest(material_id)
+        target = str(bookmark_id or "").strip()
+        if not target:
+            return False
+        with self._locked(material_id):
+            existing = self.bookmarks(material_id)
+            remaining = [row for row in existing if row.bookmark_id != target]
+            if len(remaining) == len(existing):
+                return False
+            self._write_bookmarks(material_id, remaining)
+            return True
+
+    def _write_bookmarks(self, material_id: str, rows: Sequence[ReadingBookmark]) -> None:
+        _atomic_write(
+            self._state_path(material_id, BOOKMARKS_DIR),
+            json.dumps([row.to_dict() for row in rows], ensure_ascii=False, indent=2),
+        )
 
     def delete_annotation(self, material_id: str, annotation_id: str) -> bool:
         self.manifest(material_id)

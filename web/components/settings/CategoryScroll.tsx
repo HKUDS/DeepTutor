@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   SETTINGS_ANCHOR_EVENT,
@@ -12,7 +12,87 @@ import { useSettings } from "@/features/settings/store/SettingsStore";
 export type CategorySection = {
   key: string;
   Component: React.ComponentType;
+  /** Descendant anchors that require this parent section to be mounted. */
+  activationKeys?: readonly string[];
 };
+
+function DeferredSectionContent({
+  section,
+  defer,
+}: {
+  section: CategorySection;
+  defer: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(!defer);
+
+  useEffect(() => {
+    if (mounted || !defer) return;
+    const element = containerRef.current;
+    if (!element) return;
+
+    const activationKeys = new Set([
+      section.key,
+      ...(section.activationKeys ?? []),
+    ]);
+    const mountForAnchor = (requested: string) => {
+      if (activationKeys.has(requested)) setMounted(true);
+    };
+    const applyLocationHash = () => {
+      mountForAnchor(window.location.hash.replace(/^#/, ""));
+    };
+    const applyRequestedAnchor = (event: Event) => {
+      mountForAnchor((event as SettingsAnchorEvent).detail?.key ?? "");
+    };
+
+    applyLocationHash();
+    window.addEventListener("hashchange", applyLocationHash);
+    window.addEventListener(SETTINGS_ANCHOR_EVENT, applyRequestedAnchor);
+
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(
+            (entries) => {
+              if (entries.some((entry) => entry.isIntersecting)) {
+                setMounted(true);
+              }
+            },
+            {
+              root: element.closest<HTMLElement>("[data-settings-scroll]"),
+              // Fetch the next section before it enters the viewport so normal
+              // scrolling does not reveal a loading gap.
+              rootMargin: "800px 0px",
+            },
+          );
+    let fallbackFrame: number | null = null;
+    if (observer) observer.observe(element);
+    else {
+      // Older embedded browsers may not expose IntersectionObserver. Defer
+      // the compatibility mount so the effect itself stays state-free.
+      fallbackFrame = window.requestAnimationFrame(() => setMounted(true));
+    }
+
+    return () => {
+      observer?.disconnect();
+      if (fallbackFrame !== null) window.cancelAnimationFrame(fallbackFrame);
+      window.removeEventListener("hashchange", applyLocationHash);
+      window.removeEventListener(SETTINGS_ANCHOR_EVENT, applyRequestedAnchor);
+    };
+  }, [defer, mounted, section.activationKeys, section.key]);
+
+  const Component = section.Component;
+  return (
+    <div
+      ref={containerRef}
+      data-settings-deferred={defer && !mounted ? "true" : undefined}
+      aria-busy={defer && !mounted ? "true" : undefined}
+      className={defer && !mounted ? "min-h-80" : undefined}
+    >
+      {mounted ? <Component /> : null}
+    </div>
+  );
+}
 
 /**
  * A continuously scrolling settings document. It is used both for the whole
@@ -25,7 +105,13 @@ export type CategorySection = {
  * check on the ancestor scroll container (`[data-settings-scroll]`, from
  * `SettingsMain`) is cheap enough to run on every scroll tick.
  */
-export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
+export function CategoryScroll({
+  sections,
+  deferSections = false,
+}: {
+  sections: CategorySection[];
+  deferSections?: boolean;
+}) {
   const { setActiveSection } = useSettings();
   const rootRef = useRef<HTMLDivElement>(null);
   const pendingAnchorRef = useRef<string | null>(null);
@@ -46,9 +132,15 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
       const requestedElement = requested
         ? document.getElementById(requested)
         : null;
-      const validRequested = Boolean(
+      const requestedIsRendered = Boolean(
         requestedElement && rootElement.contains(requestedElement),
       );
+      const requestedIsKnown = sections.some(
+        (section) =>
+          section.key === requested ||
+          section.activationKeys?.includes(requested),
+      );
+      const validRequested = requestedIsRendered || requestedIsKnown;
       setActiveSection(validRequested ? requested : (sections[0]?.key ?? null));
       if (requested && !validRequested && sections[0]?.key) {
         window.history.replaceState(
@@ -180,10 +272,10 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
 
   return (
     <div ref={rootRef} data-settings-section-list>
-      {sections.map(({ key, Component }, index) => (
+      {sections.map((section, index) => (
         <section
-          key={key}
-          id={key}
+          key={section.key}
+          id={section.key}
           data-settings-section
           className={
             index === 0
@@ -191,7 +283,10 @@ export function CategoryScroll({ sections }: { sections: CategorySection[] }) {
               : "mt-12 scroll-mt-16 border-t border-[var(--border)]/60 pt-12"
           }
         >
-          <Component />
+          <DeferredSectionContent
+            section={section}
+            defer={deferSections && index > 0}
+          />
         </section>
       ))}
     </div>

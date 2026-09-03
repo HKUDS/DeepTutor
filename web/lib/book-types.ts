@@ -171,13 +171,30 @@ export interface GenerationOverview {
   can_resume: boolean;
   pause_reason: string;
   source_quality: SourceQuality | null;
+  /** Something in the backend is compiling this book right now. */
+  working?: boolean;
+  /**
+   * Stored status says `compiling` but no worker is behind it — the process
+   * that was writing this book is gone. Distinct from `paused`, which the
+   * reader or the failure breaker asked for.
+   */
+  interrupted?: boolean;
+  /**
+   * Epoch seconds the current compile run began, stamped by the engine so
+   * every viewer's clock agrees and survives a reload. 0 when none started.
+   */
+  started_at?: number;
 }
 
 export interface GenerationSummary extends GenerationOverview {
   book_id: string;
   pages: Record<string, number> & { total: number };
   failed_blocks: number;
+  /** Chapters that need the reader to act: failed, plus owed-but-abandoned. */
   retryable_pages: number;
+  /** Chapters still owed work. Only a problem when nothing is working. */
+  queued_pages?: number;
+  failed_pages?: number;
   failure_categories: Record<string, number>;
 }
 

@@ -79,7 +79,7 @@ export function AnnotationList({
 
       {!visibleAnnotations.length ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-          <Sparkles size={18} className="text-[var(--muted-foreground)]/60" />
+          <Sparkles size={18} className="text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]" />
           <p className="text-[12px] font-medium text-[var(--foreground)]">
             {t(
               view === "citations" ? "No citations yet" : "No annotations yet",
@@ -97,7 +97,7 @@ export function AnnotationList({
         <div className="dt-reader-scroll min-h-0 flex-1 overflow-y-auto px-2.5 py-2">
           {groups.map(([locator, rows]) => (
             <section key={locator} className="mb-3 last:mb-1">
-              <h4 className="sticky top-0 z-10 mb-1 bg-[var(--background)]/95 px-1 py-1 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--muted-foreground)] backdrop-blur">
+              <h4 className="sticky top-0 z-10 mb-1 bg-[color-mix(in_srgb,var(--background)_95%,transparent)] px-1 py-1 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--muted-foreground)] backdrop-blur">
                 {t(unitLabel(unit))} {locator}
               </h4>
               <ul className="space-y-1">
@@ -115,8 +115,8 @@ export function AnnotationList({
                       }}
                       className={`group/anno relative w-full cursor-pointer rounded-lg border px-2.5 py-2 text-left transition ${
                         annotation.annotation_id === activeId
-                          ? "border-[var(--ring)] bg-[var(--muted)]/60"
-                          : "border-transparent hover:border-[var(--border)] hover:bg-[var(--muted)]/40"
+                          ? "border-[var(--ring)] bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
+                          : "border-transparent hover:border-[var(--border)] hover:bg-[color-mix(in_srgb,var(--muted)_40%,transparent)]"
                       }`}
                     >
                       <span
@@ -141,7 +141,7 @@ export function AnnotationList({
                       )}
                       <div className="mt-1 flex items-center gap-1.5 pl-1.5">
                         {annotation.author === "assistant" && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/10 px-1.5 py-[1px] text-[10px] font-medium text-[var(--primary)]">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] px-1.5 py-[1px] text-[10px] font-medium text-[var(--primary)]">
                             <Bot size={9} />
                             {t("AI")}
                           </span>
@@ -166,7 +166,7 @@ export function AnnotationList({
                           event.stopPropagation();
                           onDelete(annotation);
                         }}
-                        className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] focus-visible:opacity-100 group-hover/anno:opacity-100"
+                        className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition hover:bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)] hover:text-[var(--destructive)] focus-visible:opacity-100 group-hover/anno:opacity-100"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -202,7 +202,7 @@ function ViewTab({
       className={`inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition ${
         active
           ? "bg-[var(--muted)] text-[var(--foreground)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+          : "text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] hover:text-[var(--foreground)]"
       }`}
     >
       <Icon size={12} />

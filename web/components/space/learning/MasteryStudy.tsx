@@ -2,9 +2,11 @@
 
 import { browserStorage } from "@/shared/storage";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowLeft,
+  BookmarkPlus,
   Compass,
   Flag,
   Loader2,
@@ -13,25 +15,25 @@ import {
   PanelRight,
   Sparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ChatMessageList } from "@/features/chat/messages";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
+import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
 } from "@/components/chat/home/SessionViewerPanel";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
-import { TurnStatusBar } from "@/features/chat/components/turn";
-import { turnViewState } from "@/features/chat/model/turn-state";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import { fetchMasteryAskHint, type MasteryTopic } from "@/lib/learning-api";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
-import { hasPendingAskUser } from "@/lib/ask-user-state";
+import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
+import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
 
 import { topicDisplayName, type Translate } from "./format";
@@ -41,6 +43,11 @@ import { ProgressRing } from "./ProgressRing";
 import { StudyOutline } from "./StudyOutline";
 
 const OUTLINE_STORAGE_KEY = "dt.mastery.outline";
+
+const SaveToNotebookModal = dynamic(
+  () => import("@/components/notebook/SaveToNotebookModal"),
+  { ssr: false },
+);
 
 const STARTERS = [
   { icon: Compass, key: "Start with a quick check of what I already know" },
@@ -86,7 +93,6 @@ export function MasteryStudy({
     state,
     sendMessage,
     submitUserReply,
-    cancelStreamingTurn,
     regenerateLastMessage,
     deleteTurn,
     editMessage,
@@ -99,6 +105,7 @@ export function MasteryStudy({
   const prefillInputRef = useRef<((text: string) => void) | null>(null);
   const viewerPanelRef = useRef<SessionViewerPanelHandle | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
   const sessionActivity = buildSessionActivity(state.messages);
   /* ── Transcript scrolling ────────────────────────────────────────────
      Was a bare `scrollIntoView` keyed on message count — no notion of the
@@ -107,18 +114,11 @@ export function MasteryStudy({
   const { ref: composerBoxRef, height: composerHeight } =
     useMeasuredHeight<HTMLDivElement>();
   const lastMessage = state.messages[state.messages.length - 1];
-  const awaitingUserReply = hasPendingAskUser(lastMessage?.events);
-  const activeTurnViewState = turnViewState({
-    status: awaitingUserReply
-      ? "waiting_input"
-      : state.isStreaming
-        ? "running"
-        : undefined,
-  });
   const {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
     shouldAutoScrollRef,
+    scrollToBottom,
     handleScroll: handleMessagesScroll,
   } = useChatAutoScroll({
     hasMessages,
@@ -128,6 +128,49 @@ export function MasteryStudy({
     lastMessageContent: lastMessage?.content,
     lastEventCount: lastMessage?.events?.length,
   });
+  const chatOutline = useMemo(
+    () => buildChatOutline(state.messages, state.selectedBranches),
+    [state.messages, state.selectedBranches],
+  );
+  const jumpToTurn = useCallback(
+    (key: string) => {
+      if (
+        scrollToChatTurn(messagesContainerRef.current, key, {
+          topOffset: 56,
+          flash: true,
+        })
+      ) {
+        shouldAutoScrollRef.current = false;
+      }
+    },
+    [messagesContainerRef, shouldAutoScrollRef],
+  );
+  const resumeFollowingLatest = useCallback(() => {
+    shouldAutoScrollRef.current = true;
+    scrollToBottom("instant");
+  }, [scrollToBottom, shouldAutoScrollRef]);
+
+  const notebookFallbackTitle = topic
+    ? topicDisplayName(topic, t)
+    : t("Mastery Path");
+  const { modalMessages: notebookSaveMessages, payload: notebookSavePayload } =
+    useMemo(
+      () =>
+        buildConversationNotebookSave(state.messages, {
+          source: "mastery_path",
+          fallbackTitle: notebookFallbackTitle,
+          activeCapability: state.activeCapability,
+          language: state.language,
+          sessionId: state.sessionId,
+        }),
+      [
+        notebookFallbackTitle,
+        state.activeCapability,
+        state.language,
+        state.messages,
+        state.sessionId,
+      ],
+    );
   // A new turn is the clearest possible "show me the answer" — re-arm the
   // pin even if a previous turn's browsing had released it.
   useEffect(() => {
@@ -338,6 +381,16 @@ export function MasteryStudy({
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
           <button
             type="button"
+            onClick={() => setShowSaveModal(true)}
+            disabled={!notebookSavePayload}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+            title={t("Save to Notebook")}
+            aria-label={t("Save to Notebook")}
+          >
+            <BookmarkPlus className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
             onClick={() => setViewerOpen((open) => !open)}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
             aria-label={t("Activity")}
@@ -373,109 +426,120 @@ export function MasteryStudy({
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col bg-[var(--background)]">
-          <div
-            ref={messagesContainerRef}
-            // Opts this scrollport into the global `overflow-anchor: none`
-            // rule; without it the browser's own scroll anchoring fights
-            // the pin every time a code block or KaTeX span reflows.
-            data-chat-scroll-root="true"
-            onScroll={() => {
-              const container = messagesContainerRef.current;
-              if (!container) return;
-              const distanceFromBottom =
-                container.scrollHeight -
-                container.scrollTop -
-                container.clientHeight;
-              // Arm-only while streaming: position alone should never
-              // RELEASE the pin mid-turn (a gesture already does that,
-              // unconditionally, inside the hook) — only ever confirm the
-              // user scrolled back down to resume following.
-              if (distanceFromBottom < 80) {
-                shouldAutoScrollRef.current = true;
-              } else if (!state.isStreaming) {
-                handleMessagesScroll();
-              }
-            }}
-            className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]"
-          >
-            <div className="mx-auto w-full max-w-[900px] px-4 pb-8 pt-7 sm:px-7">
-              {sessionLoading ? (
-                <div className="flex min-h-[45vh] flex-col items-center justify-center text-sm text-[var(--muted-foreground)]">
-                  <Loader2 className="mb-3 h-5 w-5 animate-spin" />
-                  {t("Reopening this session…")}
-                </div>
-              ) : sessionError ? (
-                <div className="mx-auto mt-20 max-w-md rounded-xl border border-red-500/20 bg-red-500/5 p-6 text-center">
-                  <MessageCircle className="mx-auto h-8 w-8 text-red-500/60" />
-                  <h2 className="mt-3 text-sm font-semibold">
-                    {t("The session did not open")}
-                  </h2>
-                  <p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">
-                    {sessionError}
-                  </p>
-                  <Link
-                    href={`/mastery/${encodeURIComponent(pathId)}/sessions`}
-                    className="mt-4 inline-flex rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)]"
-                  >
-                    {t("Start a new session")}
-                  </Link>
-                </div>
-              ) : !hasMessages ? (
-                <div className="mx-auto flex min-h-[54vh] max-w-2xl flex-col items-center justify-center text-center">
-                  <div className="text-[12px] text-[var(--muted-foreground)]">
-                    {t("Next up")}
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={messagesContainerRef}
+              // Opts this scrollport into the global `overflow-anchor: none`
+              // rule; without it the browser's own scroll anchoring fights
+              // the pin every time a code block or KaTeX span reflows.
+              data-chat-scroll-root="true"
+              onScroll={() => {
+                const container = messagesContainerRef.current;
+                if (!container) return;
+                const distanceFromBottom =
+                  container.scrollHeight -
+                  container.scrollTop -
+                  container.clientHeight;
+                // Arm-only while streaming: position alone should never
+                // RELEASE the pin mid-turn (a gesture already does that,
+                // unconditionally, inside the hook) — only ever confirm the
+                // user scrolled back down to resume following.
+                if (distanceFromBottom < 80) {
+                  shouldAutoScrollRef.current = true;
+                } else if (!state.isStreaming) {
+                  handleMessagesScroll();
+                }
+              }}
+              className="h-full overflow-y-auto [scrollbar-gutter:stable]"
+            >
+              <div
+                data-chat-column="true"
+                className="mx-auto w-full max-w-[900px] px-4 pb-8 pt-7 sm:px-7"
+              >
+                {sessionLoading ? (
+                  <div className="flex min-h-[45vh] flex-col items-center justify-center text-sm text-[var(--muted-foreground)]">
+                    <Loader2 className="mb-3 h-5 w-5 animate-spin" />
+                    {t("Reopening this session…")}
                   </div>
-                  <h2 className="mt-1.5 font-serif text-[20px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
-                    {waypoint.name}
-                  </h2>
-                  <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--muted-foreground)]">
-                    {t(
-                      "Your tutor adapts to your answers. Begin with a quick check, an intuitive explanation, or a challenge.",
-                    )}
-                  </p>
-                  <div className="mt-7 grid w-full gap-2 sm:grid-cols-3">
-                    {STARTERS.map((starter) => {
-                      const Icon = starter.icon;
-                      const label = t(starter.key);
-                      return (
-                        <button
-                          key={starter.key}
-                          type="button"
-                          onClick={() => startFromPrompt(label)}
-                          disabled={state.isStreaming || sessionLoading}
-                          className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary)]/35 disabled:opacity-50"
-                        >
-                          <Icon className="h-4 w-4 text-[var(--primary)]" />
-                          <span className="mt-3 block text-xs font-medium leading-5 text-[var(--foreground)]">
-                            {label}
-                          </span>
-                        </button>
-                      );
-                    })}
+                ) : sessionError ? (
+                  <div className="mx-auto mt-20 max-w-md rounded-xl border border-red-500/20 bg-red-500/5 p-6 text-center">
+                    <MessageCircle className="mx-auto h-8 w-8 text-red-500/60" />
+                    <h2 className="mt-3 text-sm font-semibold">
+                      {t("The session did not open")}
+                    </h2>
+                    <p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">
+                      {sessionError}
+                    </p>
+                    <Link
+                      href={`/mastery/${encodeURIComponent(pathId)}/sessions`}
+                      className="mt-4 inline-flex rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)]"
+                    >
+                      {t("Start a new session")}
+                    </Link>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-9">
-                  <ChatMessageList
-                    messages={state.messages}
-                    isStreaming={state.isStreaming}
-                    sessionId={state.sessionId}
-                    language={state.language}
-                    onCopyAssistantMessage={copyAssistantMessage}
-                    onRegenerateMessage={regenerateLastMessage}
-                    onDeleteTurn={deleteTurn}
-                    selectedBranches={state.selectedBranches}
-                    onEditMessage={editMessage}
-                    onSwitchBranch={switchBranch}
-                    onSubmitUserReply={submitUserReply}
-                    onConfirmOutline={confirmResearchOutline}
-                    availableKbNames={new Set(knowledgeBases)}
-                    showModeBadge={false}
-                  />
-                </div>
-              )}
-              <div ref={messagesEndRef} className="h-px" />
+                ) : !hasMessages ? (
+                  <div className="mx-auto flex min-h-[54vh] max-w-2xl flex-col items-center justify-center text-center">
+                    <div className="text-[12px] text-[var(--muted-foreground)]">
+                      {t("Next up")}
+                    </div>
+                    <h2 className="mt-1.5 font-serif text-[20px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
+                      {waypoint.name}
+                    </h2>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--muted-foreground)]">
+                      {t(
+                        "Your tutor adapts to your answers. Begin with a quick check, an intuitive explanation, or a challenge.",
+                      )}
+                    </p>
+                    <div className="mt-7 grid w-full gap-2 sm:grid-cols-3">
+                      {STARTERS.map((starter) => {
+                        const Icon = starter.icon;
+                        const label = t(starter.key);
+                        return (
+                          <button
+                            key={starter.key}
+                            type="button"
+                            onClick={() => startFromPrompt(label)}
+                            disabled={state.isStreaming || sessionLoading}
+                            className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary)]/35 disabled:opacity-50"
+                          >
+                            <Icon className="h-4 w-4 text-[var(--primary)]" />
+                            <span className="mt-3 block text-xs font-medium leading-5 text-[var(--foreground)]">
+                              {label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-9">
+                    <ChatMessageList
+                      messages={state.messages}
+                      isStreaming={state.isStreaming}
+                      sessionId={state.sessionId}
+                      language={state.language}
+                      onCopyAssistantMessage={copyAssistantMessage}
+                      onRegenerateMessage={regenerateLastMessage}
+                      onDeleteTurn={deleteTurn}
+                      selectedBranches={state.selectedBranches}
+                      onEditMessage={editMessage}
+                      onSwitchBranch={switchBranch}
+                      onSubmitUserReply={submitUserReply}
+                      onConfirmOutline={confirmResearchOutline}
+                      availableKbNames={new Set(knowledgeBases)}
+                      showModeBadge={false}
+                    />
+                  </div>
+                )}
+                <div ref={messagesEndRef} className="h-px" />
+              </div>
             </div>
+            <TurnNavigator
+              entries={chatOutline}
+              scrollRootRef={messagesContainerRef}
+              onJump={jumpToTurn}
+              onJumpToBottom={resumeFollowingLatest}
+            />
           </div>
 
           {!sessionError && (
@@ -483,13 +547,6 @@ export function MasteryStudy({
               ref={composerBoxRef}
               className="shrink-0 bg-[var(--background)]"
             >
-              <TurnStatusBar
-                state={activeTurnViewState}
-                stage={state.currentStage || undefined}
-                onCancel={cancelStreamingTurn}
-                onAnswer={() => prefillInputRef.current?.("")}
-                className="mx-4 mb-2"
-              />
               <MasteryComposer
                 placeholder={t("Ask your tutor about “{{waypoint}}”…", {
                   waypoint: waypoint.name,
@@ -509,6 +566,12 @@ export function MasteryStudy({
           onDone={() => setCelebration(null)}
         />
       )}
+      <SaveToNotebookModal
+        open={showSaveModal}
+        payload={notebookSavePayload}
+        messages={notebookSaveMessages}
+        onClose={() => setShowSaveModal(false)}
+      />
       <SessionViewerPanel
         ref={viewerPanelRef}
         open={viewerOpen}

@@ -1,0 +1,6 @@
+short_description: "List the learner's Mastery Path topics — progress, reviews due, conversations, and each one's lesson outline."
+when_to_use: "Whenever the learner refers to something they are studying rather than asking a question about it: \"take me back through lesson 1 of the stats course\", \"what am I in the middle of?\", \"quiz me on the ML path\". Always call it before the other mastery_* navigation tools, to turn what they said into real ids."
+input_format: "{} for everything, or {\"query\": \"stats\"} to filter by topic name, goal or lesson name."
+guideline: "The learner's own words are usually a fuzzy reference to one topic and often to one lesson inside it; this is how you resolve both. Do not offer to teach the topic here — chat has no map, no outline and no gate. Resolve, then hand off with mastery_open_session / mastery_new_session."
+note: "Read-only, and only mounted when the learner has at least one topic. Never mounted alongside `mastery_paths` (a tutoring turn reads its atlas through that instead)."
+phase: "exploration"

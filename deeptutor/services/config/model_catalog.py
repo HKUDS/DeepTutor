@@ -11,7 +11,13 @@ from typing import Any
 from uuid import uuid4
 
 from deeptutor.services.path_service import get_path_service
-from deeptutor.services.provider_registry import wire_api_for_provider
+from deeptutor.services.provider_registry import (
+    api_format_for_provider,
+    api_format_from_legacy,
+    find_by_name,
+    wire_api_for_provider,
+    wire_api_from_api_format,
+)
 
 from .embedding_endpoint import (
     is_gemini_native_embedding_endpoint,
@@ -174,6 +180,53 @@ _CONNECTION_BASE_SUFFIX: dict[str, str] = {"embedding": "/embeddings"}
 # Credential fields a linked profile inherits from its connection. base_url is
 # handled separately because it is per-service (see _CONNECTION_BASE_SUFFIX).
 _CONNECTION_CREDENTIAL_FIELDS: tuple[str, ...] = ("api_key", "api_version", "extra_headers")
+
+# Services whose profiles are LLM-shaped and therefore carry an API format.
+LLM_SHAPED_SERVICES: tuple[str, ...] = ("llm", "task")
+
+# Per-model capability overrides a user may set. Absent means "let the
+# built-in tables decide"; only explicit booleans are kept.
+MODEL_CAPABILITY_KEYS: tuple[str, ...] = ("tools", "vision", "json_output", "reasoning")
+
+
+def _normalize_model_capabilities(model: dict[str, Any]) -> bool:
+    raw = model.get("capabilities")
+    cleaned = {
+        key: bool(raw[key])
+        for key in MODEL_CAPABILITY_KEYS
+        if isinstance(raw, dict) and isinstance(raw.get(key), bool)
+    }
+    if cleaned:
+        if model.get("capabilities") != cleaned:
+            model["capabilities"] = cleaned
+            return True
+        return False
+    if "capabilities" in model:
+        model.pop("capabilities")
+        return True
+    return False
+
+
+def _normalize_profile_api_format(profile: dict[str, Any]) -> bool:
+    """Settle ``api_format`` and keep ``wire_api`` in step with it.
+
+    Files written before ``api_format`` existed carry only ``wire_api`` (and,
+    for Anthropic endpoints, one of the legacy ``*_anthropic`` bindings); the
+    format is derived from those so behaviour is unchanged. ``wire_api`` is
+    still written because a downgraded DeepTutor reads only that field, and
+    ``binding`` is deliberately left alone for the same reason.
+    """
+    spec = find_by_name(profile.get("binding"))
+    before_format = profile.get("api_format")
+    before_wire = profile.get("wire_api")
+    if before_format is None:
+        api_format = api_format_from_legacy(spec, before_wire)
+    else:
+        api_format = api_format_for_provider(before_format, spec)
+    wire_api = wire_api_for_provider(wire_api_from_api_format(api_format), spec)
+    profile["api_format"] = api_format
+    profile["wire_api"] = wire_api
+    return before_format != api_format or before_wire != wire_api
 
 
 def _connection_base_url_for(service_name: str, connection_base: str) -> str:
@@ -391,15 +444,10 @@ class ModelCatalogService:
                 else:
                     profile.setdefault("binding", "openai")
                     profile.setdefault("extra_headers", {})
-                    if service_name == "llm":
-                        before_wire_api = profile.get("wire_api")
-                        after_wire_api = wire_api_for_provider(
-                            before_wire_api,
-                            profile.get("binding"),
-                        )
-                        profile["wire_api"] = after_wire_api
-                        if before_wire_api != after_wire_api:
-                            changed = True
+                    if service_name in LLM_SHAPED_SERVICES and _normalize_profile_api_format(
+                        profile
+                    ):
+                        changed = True
                     if service_name == "embedding":
                         models = profile.setdefault("models", [])
                         active_model_id = service.get("active_model_id")
@@ -422,6 +470,10 @@ class ModelCatalogService:
                         model.setdefault("id", f"{service_name}-model-{uuid4().hex[:8]}")
                         model.setdefault("name", model.get("model") or "Untitled Model")
                         model.setdefault("model", "")
+                        if service_name in LLM_SHAPED_SERVICES and _normalize_model_capabilities(
+                            model
+                        ):
+                            changed = True
                         if service_name == "embedding":
                             # Empty default → test_runner auto-fills from the
                             # actual API response on first connection test.
@@ -505,6 +557,8 @@ __all__ = [
     "CATALOG_PATH",
     "CATALOG_SECRET_MASK",
     "CONNECTABLE_SERVICES",
+    "LLM_SHAPED_SERVICES",
+    "MODEL_CAPABILITY_KEYS",
     "SERVICE_NAMES",
     "ModelCatalogService",
     "get_model_catalog_service",

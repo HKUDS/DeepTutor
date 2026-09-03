@@ -57,6 +57,37 @@ class TurnApplicationService:
         _store, runtime = self._resolve()
         return await runtime.regenerate_last_turn(session_id, overrides=overrides)
 
+    # How long to keep reading after DONE before closing the stream.
+    #
+    # DONE is not a turn's last event. The runtime deliberately publishes
+    # post-turn metadata after it — notably the LLM-written session title,
+    # which ``SessionTitleService`` emits once the answer is saved so the
+    # composer and the duration clock stop immediately rather than waiting on
+    # the title model. Both loops below used to ``return`` the instant they
+    # saw DONE, so every post-DONE event was dropped: the title landed in
+    # ``turn_events`` and in the database while no subscriber ever received
+    # it, which is why a finished conversation could sit on "New conversation"
+    # indefinitely. The frontend even holds its socket open for 15s waiting
+    # for that frame; it never had a chance to arrive.
+    #
+    # End of stream is the turn's lease disappearing, not a timeout.
+    #
+    # The turn task releases its lease in its own ``finally``, which runs after
+    # every post-turn event has been published. So "lease gone" is an honest
+    # end-of-stream signal and needs no guessing about how long a title model
+    # might take — an idle timeout would have to exceed that model's own 20s
+    # ceiling to be safe, and would then hold every finished stream open for
+    # 20s whenever no title was written at all.
+    #
+    # The cap below exists only for a leaked lease; it is not the normal path.
+    _POST_DONE_MAX_SECONDS = 30.0
+
+    @staticmethod
+    def _done_has_tail(event: dict[str, Any]) -> bool:
+        """Can more events follow this DONE?"""
+        status = str((event.get("metadata") or {}).get("status") or "completed")
+        return status == "completed"
+
     async def subscribe_turn(
         self,
         turn_id: str,
@@ -65,6 +96,7 @@ class TurnApplicationService:
         store, _runtime = self._resolve()
         last_seq = max(0, int(after_seq))
         done = False
+        tail_possible = False
 
         # Durable replay covers a process/Redis restart. Shared-stream replay
         # then fills the live tail owned by any worker.
@@ -73,11 +105,21 @@ class TurnApplicationService:
             if seq <= last_seq:
                 continue
             last_seq = seq
-            done = done or str(event.get("type") or "") == "done"
+            if str(event.get("type") or "") == "done":
+                done = True
+                tail_possible = self._done_has_tail(event)
             yield event
         if done:
-            return
+            # The turn had already finished before this subscription opened, so
+            # the durable replay above carried its post-DONE events too. Only
+            # bail out once the terminal row confirms that; a turn still marked
+            # running with a DONE in its journal is mid-teardown and its title
+            # may not be written yet.
+            turn = await store.get_turn(turn_id)
+            if not tail_possible or turn is None or str(turn.get("status") or "") != "running":
+                return
 
+        first_done_at: float | None = time.monotonic() if done else None
         while True:
             emitted = False
             for event in await self.coordinator.read_events(turn_id, last_seq):
@@ -86,10 +128,27 @@ class TurnApplicationService:
                     continue
                 emitted = True
                 last_seq = seq
-                done = done or str(event.get("type") or "") == "done"
+                if str(event.get("type") or "") == "done":
+                    done = True
+                    tail_possible = self._done_has_tail(event)
+                    if first_done_at is None:
+                        first_done_at = time.monotonic()
                 yield event
-            if done:
+            if done and not tail_possible:
                 return
+            if done:
+                now = time.monotonic()
+                if first_done_at is None:
+                    first_done_at = now
+                # The turn task publishes its post-turn events before releasing
+                # the lease, so once the lease is gone the tail is complete.
+                if await self.coordinator.get_lease(turn_id) is None:
+                    return
+                if now - first_done_at >= self._POST_DONE_MAX_SECONDS:
+                    return
+                if not emitted:
+                    await asyncio.sleep(0.1)
+                continue
             turn = await store.get_turn(turn_id)
             if turn is None:
                 return

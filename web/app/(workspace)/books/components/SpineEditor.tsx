@@ -3,6 +3,8 @@
 import {
   ArrowDown,
   ArrowUp,
+  Blocks,
+  ChevronDown,
   Plus,
   Trash2,
   CheckCircle2,
@@ -11,7 +13,7 @@ import {
   Layers,
   Loader2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { bookApi, type EstimateBasis } from "@/lib/book-api";
 import type { BookDepth, Chapter, ContentType, Spine } from "@/lib/book-types";
@@ -28,6 +30,20 @@ interface ContentTypeOption {
   value: ContentType;
   label: string;
   description: string;
+}
+
+/**
+ * The one block type the reader cannot switch off.
+ *
+ * `section` carries the chapter's prose; a chapter without it is a chapter
+ * with no text in it. The backend enforces this too — the picker just does
+ * not offer it, rather than offering it and refusing.
+ */
+const ALWAYS_ON_TYPE = "section";
+
+interface BlockTypeOption {
+  value: string;
+  planner_default: boolean;
 }
 
 function ScopeOption({
@@ -87,10 +103,17 @@ const CONTENT_TYPE_OPTIONS: ContentTypeOption[] = [
 
 export interface SpineEditorProps {
   spine: Spine;
-  onConfirm: (spine: Spine, autoCompile: boolean) => void | Promise<void>;
+  onConfirm: (
+    spine: Spine,
+    autoCompile: boolean,
+    /** `null` when the picker never loaded — leave the book's choice alone. */
+    blockTypes: string[] | null,
+  ) => void | Promise<void>;
   loading?: boolean;
   /** Book depth, so the estimate matches what will actually be generated. */
   depth?: BookDepth;
+  /** The book's current block-type choice, if it already has one. */
+  initialBlockTypes?: string[];
 }
 
 export default function SpineEditor({
@@ -98,6 +121,7 @@ export default function SpineEditor({
   onConfirm,
   loading = false,
   depth = "standard",
+  initialBlockTypes,
 }: SpineEditorProps) {
   const { t } = useTranslation();
   // Engine-injected chapters (the overview, deep-dive sub-pages) are not part
@@ -106,6 +130,68 @@ export default function SpineEditor({
     spine.chapters.filter((c) => !c.auto_overview && !c.deep_dive),
   );
   const [autoCompile, setAutoCompile] = useState(true);
+  /**
+   * Which kinds of content the chapters may contain.
+   *
+   * `null` until the planner's own list arrives — the web app must not keep a
+   * second copy of what the architect can plan, or the two drift and the
+   * reader is offered a type that never appears (or denied one that does).
+   */
+  const [blockTypes, setBlockTypes] = useState<string[] | null>(null);
+  const [typeCatalog, setTypeCatalog] = useState<BlockTypeOption[]>([]);
+  const [typesOpen, setTypesOpen] = useState(false);
+  const typesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    bookApi
+      .blockTypes()
+      .then(({ block_types }) => {
+        if (cancelled) return;
+        const catalog = block_types.filter(
+          (option) => option.value !== ALWAYS_ON_TYPE,
+        );
+        setTypeCatalog(catalog);
+        setBlockTypes((current) => {
+          if (current) return current;
+          if (initialBlockTypes?.length) {
+            return catalog
+              .filter((option) => initialBlockTypes.includes(option.value))
+              .map((option) => option.value);
+          }
+          // Everything the templates already use, which is what a book
+          // generated today contains.
+          return catalog
+            .filter((option) => option.planner_default)
+            .map((option) => option.value);
+        });
+      })
+      .catch(() => {
+        // Without the list the picker simply does not appear; confirming
+        // sends no restriction, which is exactly today's behaviour.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialBlockTypes]);
+
+  useEffect(() => {
+    if (!typesOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!typesRef.current?.contains(event.target as Node)) {
+        setTypesOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTypesOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [typesOpen]);
   const [basis, setBasis] = useState<EstimateBasis | null>(null);
 
   useEffect(() => {
@@ -193,7 +279,13 @@ export default function SpineEditor({
       ...c,
       order: i,
     }));
-    await onConfirm({ ...spine, chapters: merged }, autoCompile);
+    // `section` is implied by the backend and is not the reader's to drop:
+    // it is the chapter's prose.
+    await onConfirm(
+      { ...spine, chapters: merged },
+      autoCompile,
+      blockTypes ? [ALWAYS_ON_TYPE, ...blockTypes] : null,
+    );
   };
 
   return (
@@ -353,6 +445,109 @@ export default function SpineEditor({
           <div className="flex items-center gap-2">
             {/* #655: the backend always supported deferring compilation; only
                 the UI insisted on building everything up front. */}
+            {/* What goes *in* a chapter, beside how many chapters. Both
+                answer "what will be generated", and each block type is a
+                model call per chapter — so leaving a kind out is how a
+                reader controls both the shape and the cost of the book. */}
+            {blockTypes && typeCatalog.length > 0 && (
+              <div className="relative" ref={typesRef}>
+                <button
+                  type="button"
+                  onClick={() => setTypesOpen((current) => !current)}
+                  aria-expanded={typesOpen}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-[7px] text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--foreground)]"
+                >
+                  <Blocks className="h-3 w-3" />
+                  {blockTypes.length === typeCatalog.length
+                    ? t("All content types")
+                    : t("{{count}} content types", {
+                        count: blockTypes.length + 1,
+                      })}
+                  <ChevronDown
+                    className={`h-3 w-3 transition-transform ${
+                      typesOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {typesOpen && (
+                  <div className="dt-detail-in absolute bottom-full right-0 z-40 mb-1.5 w-64 rounded-xl border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg">
+                    <p className="px-1.5 pb-1.5 text-[11px] leading-snug text-[var(--muted-foreground)]">
+                      {t(
+                        "Kinds of content the chapters may contain. Each one is a separate model call per chapter.",
+                      )}
+                    </p>
+                    <ul className="max-h-64 overflow-y-auto">
+                      <li className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[12px] text-[var(--muted-foreground)]">
+                        <input
+                          type="checkbox"
+                          checked
+                          disabled
+                          className="h-3.5 w-3.5 accent-[var(--primary)]"
+                        />
+                        <span className="text-[var(--foreground)]">
+                          {t(ALWAYS_ON_TYPE)}
+                        </span>
+                        <span className="ml-auto text-[10.5px] opacity-70">
+                          {t("always")}
+                        </span>
+                      </li>
+                      {typeCatalog.map((option) => {
+                        const on = blockTypes.includes(option.value);
+                        return (
+                          <li key={option.value}>
+                            <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-[12px] hover:bg-[var(--muted)]">
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={() =>
+                                  setBlockTypes((current) =>
+                                    (current || []).includes(option.value)
+                                      ? (current || []).filter(
+                                          (value) => value !== option.value,
+                                        )
+                                      : [...(current || []), option.value],
+                                  )
+                                }
+                                className="h-3.5 w-3.5 accent-[var(--primary)]"
+                              />
+                              <span className="text-[var(--foreground)]">
+                                {t(option.value)}
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div className="mt-1 flex items-center justify-between border-t border-[var(--border)] pt-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBlockTypes(
+                            typeCatalog.map((option) => option.value),
+                          )
+                        }
+                        className="rounded-md px-1.5 py-1 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      >
+                        {t("Select all")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBlockTypes(
+                            typeCatalog
+                              .filter((option) => option.planner_default)
+                              .map((option) => option.value),
+                          )
+                        }
+                        className="rounded-md px-1.5 py-1 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      >
+                        {t("Reset to default")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="inline-flex overflow-hidden rounded-lg border border-[var(--border)] text-[11px]">
               <ScopeOption
                 active={autoCompile}
@@ -365,29 +560,36 @@ export default function SpineEditor({
                 onClick={() => setAutoCompile(false)}
               />
             </div>
+            {/* One label for both scopes. Swapping it between "Confirm spine
+                & start compiling" and "Confirm spine" resized the button and
+                shoved the scope control sideways, so picking a scope moved
+                the thing you had just picked. */}
             <button
               onClick={handleConfirm}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
-              {autoCompile
-                ? t("Confirm spine & start compiling")
-                : t("Confirm spine")}
+              {t("Confirm spine")}
             </button>
           </div>
         </div>
-        {!autoCompile && (
-          <p className="mx-auto mt-2 w-full max-w-3xl text-[11px] text-[var(--muted-foreground)]">
-            {t(
-              "Chapters will be generated the first time you open them — useful when you want to read as you go, or keep an eye on model usage.",
-            )}
-          </p>
-        )}
+        {/* Always rendered, one line high, so the scope control does not sit
+            on a footer that grows and shrinks under it. Each scope says what
+            it costs — that is the whole reason to offer the choice. */}
+        <p className="mx-auto mt-2 min-h-[1.25rem] w-full max-w-3xl text-[11px] leading-5 text-[var(--muted-foreground)]">
+          {autoCompile
+            ? t(
+                "Every chapter is written now, in order. You can read the first one while the rest are still coming.",
+              )
+            : t(
+                "Chapters will be generated the first time you open them — useful when you want to read as you go, or keep an eye on model usage.",
+              )}
+        </p>
       </footer>
     </div>
   );

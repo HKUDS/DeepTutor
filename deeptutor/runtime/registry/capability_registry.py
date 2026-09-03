@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.entry_points import load_entry_point_group
 from deeptutor.i18n.metadata_i18n import capability_description_i18n
-from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
+from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_SPECS
 from deeptutor.runtime.capability_catalog import (
     CapabilityCatalog,
     EmptyConfig,
@@ -82,16 +82,22 @@ class CapabilityRegistry:
         logger.debug("Registered turn capability factory: %s", instance.name)
 
     def load_builtins(self) -> None:
-        for name, class_path in BUILTIN_CAPABILITY_CLASSES.items():
+        for name, spec in BUILTIN_CAPABILITY_SPECS.items():
             if self.catalog.get("turn", name) is not None:
                 continue
-            try:
-                self.register(
-                    _import_capability_class(class_path),
-                    config_model=CAPABILITY_CONFIG_MODELS[name],
-                )
-            except Exception:
-                logger.warning("Failed to load capability %s", name, exc_info=True)
+            class_path = spec.class_path
+
+            def _factory(path: str = class_path) -> TurnCapability:
+                return _import_capability_class(path)()
+
+            self.catalog.register(
+                name=name,
+                kind="turn",
+                manifest=spec.manifest,
+                factory=_factory,
+                config_model=CAPABILITY_CONFIG_MODELS[name],
+            )
+            logger.debug("Registered lazy built-in turn capability: %s", name)
 
     def load_plugins(self) -> None:
         """Load the canonical extension group, then the one-version legacy group."""

@@ -149,7 +149,13 @@ async def test_remote_worker_reply_reaches_owner_waiter(monkeypatch, tmp_path) -
     events = [event async for event in app_b.subscribe_turn(turn["id"])]
 
     assert any(event.get("content") == "reply:yes" for event in events)
-    assert events[-1]["type"] == "done"
+    # DONE is not the last frame of a completed turn: the runtime publishes
+    # post-turn metadata (the LLM-written session title) after it, and a
+    # subscriber has to receive that too — dropping it is what left finished
+    # conversations sitting on "New conversation". Assert the shape instead of
+    # asserting DONE is last: everything after DONE must be post-turn metadata.
+    done_index = next(i for i, event in enumerate(events) if event["type"] == "done")
+    assert all(event["type"] == "session_meta" for event in events[done_index + 1 :])
     assert [event["seq"] for event in events] == list(range(1, len(events) + 1))
     await runtime_a.close()
     await runtime_b.close()

@@ -22,19 +22,36 @@ function draftId(kind: "region" | "waypoint"): string {
     : `draft_${kind}_${Date.now()}_${fallbackSequence++}`;
 }
 
+/**
+ * Regions an outline may hold when the server has not said otherwise.
+ *
+ * The server scales its own limit with the material selected (a fourteen-
+ * document library earns fourteen regions), and this editor must not be the
+ * thing that refuses to add the fourteenth.
+ */
+const DEFAULT_MODULE_LIMIT = 8;
+const MAX_MODULE_LIMIT = 20;
+
 export function RouteDraftEditor({
   draft,
   onChange,
   compact = false,
   showDescription = true,
+  moduleLimit,
 }: {
   draft: TopicDraft;
   onChange: (draft: TopicDraft) => void;
   compact?: boolean;
   showDescription?: boolean;
+  /** From the draft the server generated; falls back to the classic cap. */
+  moduleLimit?: number;
 }) {
   const { t } = useTranslation();
   const issues = routeDraftIssues(draft);
+  const cap = Math.min(
+    MAX_MODULE_LIMIT,
+    Math.max(DEFAULT_MODULE_LIMIT, moduleLimit || DEFAULT_MODULE_LIMIT),
+  );
   const updateModule = (index: number, module: ModuleInit) => {
     const modules = [...draft.modules];
     modules[index] = module;
@@ -316,7 +333,7 @@ export function RouteDraftEditor({
           );
         })}
       </div>
-      {draft.modules.length < 8 && (
+      {draft.modules.length < cap && (
         <button
           type="button"
           onClick={addModule}

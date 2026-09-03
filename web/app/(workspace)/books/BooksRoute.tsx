@@ -2,12 +2,13 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Loader2, MessageSquare, Pause } from 'lucide-react'
+import { Loader2, MessageSquare } from 'lucide-react'
 import { notify } from '@/lib/notifications'
 import { bookRoute } from '@/lib/resource-routes'
 import { useTranslation } from 'react-i18next'
 
 import { BookApiError, bookApi, type BookWsEvent } from '@/lib/book-api'
+import { bookErrorMessage } from '@/lib/book-errors'
 import type {
   Block,
   BlockType,
@@ -19,13 +20,7 @@ import type {
   Spine,
   LearningCapture,
 } from '@/lib/book-types'
-import {
-  RESET_BOOK_PROGRESS,
-  emptyBookProgress,
-  progressHasActivity,
-  progressIsComplete,
-  reduceBookEvent,
-} from '@/lib/book-progress'
+import { RESET_BOOK_PROGRESS, emptyBookProgress, reduceBookEvent } from '@/lib/book-progress'
 import { bookEventKind, bookEventPageId, useBookStream } from '@/lib/use-book-stream'
 
 import BookChatPanel from './components/BookChatPanel'
@@ -33,7 +28,7 @@ import BookCreator from './components/BookCreator'
 import BookHealthBanner from './components/BookHealthBanner'
 import BookLibrary from './components/BookLibrary'
 import BookPausedBanner from './components/BookPausedBanner'
-import BookProgressTimeline from './components/BookProgressTimeline'
+import BookGenerationActivity from './components/BookGenerationActivity'
 import BookSidebar from './components/BookSidebar'
 import PageReader from './components/PageReader'
 import LearningCapturePanel from './components/LearningCapturePanel'
@@ -134,6 +129,19 @@ function BookPageInner() {
   // Phase 5 — live BookEngine progress timeline state.
   const [progress, dispatchProgress] = useReducer(reduceBookEvent, null, emptyBookProgress)
 
+  /**
+   * The revision the server last confirmed, in a ref.
+   *
+   * The render's copy of `detail` is a snapshot, and two of these mutations
+   * fire back to back inside one event handler: `handleConfirmSpine` claims a
+   * revision and then immediately asks the engine to compile chapter one. No
+   * state update can land between two statements, so that compile went out
+   * quoting the revision from *before* the confirm and came back 409 —
+   * "The book was updated by another collaborator", on a personal book, on
+   * every single book, as the first thing generation ever said.
+   */
+  const revisionRef = useRef<number | undefined>(undefined)
+
   // ── Data loaders ───────────────────────────────────────────────────
 
   /** Run a mutation, surfacing failures instead of dropping them. */
@@ -147,12 +155,13 @@ function BookPageInner() {
             const latest = await bookApi.get(selectedBookId, {
               includeBlocks: false,
             })
+            revisionRef.current = latest.book.revision
             setDetail(latest)
           } catch {
             // Keep the original conflict as the actionable error.
           }
         }
-        const reason = err instanceof Error ? err.message : String(err)
+        const reason = bookErrorMessage(err, t)
         notify(t('{{action}} failed: {{reason}}', { action, reason }), {
           tone: 'error',
           durationMs: 8000,
@@ -183,6 +192,7 @@ function BookPageInner() {
    */
   const loadBookDetail = useCallback(async (id: string) => {
     const data = await bookApi.get(id, { includeBlocks: false })
+    revisionRef.current = data.book.revision
     setDetail(data)
     return data
   }, [])
@@ -200,6 +210,7 @@ function BookPageInner() {
   }, [])
 
   const applyBookRevision = useCallback((revision: number) => {
+    revisionRef.current = revision
     setDetail(current => (current ? { ...current, book: { ...current.book, revision } } : current))
   }, [])
 
@@ -349,6 +360,11 @@ function BookPageInner() {
 
   const canEditBook = detail?.book.can_edit !== false
   const expectedRevision = detail?.book.revision
+  /** The freshest revision we know of — see `revisionRef`. */
+  const currentRevision = useCallback(
+    () => revisionRef.current ?? detail?.book.revision,
+    [detail]
+  )
 
   // ── Handlers ───────────────────────────────────────────────────────
 
@@ -448,11 +464,11 @@ function BookPageInner() {
     if (!detail || !canEditBook) return
     setResumingBook(true)
     try {
-      await bookApi.resume(detail.book.id, expectedRevision)
+      await bookApi.resume(detail.book.id, currentRevision())
       await loadBookDetail(detail.book.id)
       await refreshBooks()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = bookErrorMessage(err, t)
       notify(t('Could not resume: {{message}}', { message: msg }), {
         tone: 'error',
         durationMs: 8000,
@@ -466,12 +482,12 @@ function BookPageInner() {
     if (!detail || !canEditBook || detail.book.status !== 'compiling') return
     setPausingBook(true)
     try {
-      const result = await bookApi.pause(detail.book.id, expectedRevision)
+      const result = await bookApi.pause(detail.book.id, currentRevision())
       applyBookRevision(result.book_revision)
       await loadBookDetail(detail.book.id)
       await refreshBooks()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = bookErrorMessage(err, t)
       notify(t('Could not pause: {{message}}', { message: msg }), {
         tone: 'error',
         durationMs: 8000,
@@ -486,7 +502,7 @@ function BookPageInner() {
       if (!detail || !canEditBook) return
       setRebuildingBook(true)
       try {
-        await bookApi.rebuild(detail.book.id, true, expectedRevision)
+        await bookApi.rebuild(detail.book.id, true, currentRevision())
         const refreshed = await loadBookDetail(detail.book.id)
         setSelectedPageId(refreshed.pages[0]?.id || null)
         setView('reader')
@@ -539,11 +555,25 @@ function BookPageInner() {
     }
   }
 
-  const handleConfirmSpine = async (spine: Spine, autoCompile: boolean) => {
+  const handleConfirmSpine = async (
+    spine: Spine,
+    autoCompile: boolean,
+    blockTypes: string[] | null
+  ) => {
     if (!detail || !canEditBook) return
     setConfirmingSpine(true)
     try {
-      await bookApi.confirmSpine(detail.book.id, spine, autoCompile, expectedRevision)
+      const confirmed = await bookApi.confirmSpine(
+        detail.book.id,
+        spine,
+        autoCompile,
+        currentRevision(),
+        blockTypes ?? undefined
+      )
+      // Claim the token this call just advanced before anything else runs.
+      // The refresh below would also pick it up, but the compile that starts
+      // in the same handler must not be able to read the old one.
+      applyBookRevision(confirmed.book_revision)
       const refreshed = await loadBookDetail(detail.book.id)
       const firstPage = refreshed.pages[0] || null
       setSelectedPageId(firstPage?.id || null)
@@ -565,16 +595,28 @@ function BookPageInner() {
         // Progress arrives on the book's stream; this call just awaits the
         // finished page. The engine coalesces it with any run already in
         // flight, so opening a page the worker reached first is free.
-        const { page, book_revision } = await bookApi.compilePage(
-          selectedBookId,
-          pageId,
-          force,
-          expectedRevision
-        )
-        applyBookRevision(book_revision)
-        mergePage(page)
+        const run = async () => {
+          const { page, book_revision } = await bookApi.compilePage(
+            selectedBookId,
+            pageId,
+            force,
+            currentRevision()
+          )
+          applyBookRevision(book_revision)
+          mergePage(page)
+        }
+        try {
+          await run()
+        } catch (err) {
+          // A stale token is not a failed compile, and telling the reader
+          // "generation failed" for one is how the whole feature came to look
+          // broken. Catch up on the book and ask again, once.
+          if (!(err instanceof BookApiError) || err.status !== 409) throw err
+          await loadBookDetail(selectedBookId)
+          await run()
+        }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = bookErrorMessage(err, t)
         notify(t('Compile failed: {{message}}', { message: msg }), {
           tone: 'error',
           durationMs: 8000,
@@ -585,7 +627,7 @@ function BookPageInner() {
         setCompilingPageId(current => (current === pageId ? null : current))
       }
     },
-    [selectedBookId, canEditBook, expectedRevision, applyBookRevision, mergePage, loadBookDetail, t]
+    [selectedBookId, canEditBook, currentRevision, applyBookRevision, mergePage, loadBookDetail, t]
   )
 
   const handleSelectPage = useCallback(
@@ -656,7 +698,7 @@ function BookPageInner() {
         page_id: pageId,
         block_id: block.id,
         body,
-        expected_revision: expectedRevision,
+        expected_revision: currentRevision(),
       })
       applyBookRevision(book_revision)
       await hydratePage(pageId)
@@ -692,7 +734,7 @@ function BookPageInner() {
         pageId,
         block.id,
         undefined,
-        expectedRevision
+        currentRevision()
       )
       applyBookRevision(book_revision)
     } catch (err) {
@@ -714,7 +756,7 @@ function BookPageInner() {
         detail.book.id,
         selectedPage.id,
         block.id,
-        expectedRevision
+        currentRevision()
       )
       applyBookRevision(book_revision)
       await hydratePage(selectedPage.id)
@@ -732,7 +774,7 @@ function BookPageInner() {
         selectedPage.id,
         block.id,
         newPos,
-        expectedRevision
+        currentRevision()
       )
       applyBookRevision(book_revision)
       await hydratePage(selectedPage.id)
@@ -746,7 +788,7 @@ function BookPageInner() {
         page_id: selectedPage.id,
         block_id: block.id,
         new_type: newType,
-        expected_revision: expectedRevision,
+        expected_revision: currentRevision(),
       })
       applyBookRevision(book_revision)
       await hydratePage(selectedPage.id)
@@ -759,7 +801,7 @@ function BookPageInner() {
         book_id: detail.book.id,
         page_id: selectedPage.id,
         block_type,
-        expected_revision: expectedRevision,
+        expected_revision: currentRevision(),
       })
       applyBookRevision(book_revision)
       await hydratePage(selectedPage.id)
@@ -775,7 +817,7 @@ function BookPageInner() {
           parent_page_id: selectedPage.id,
           topic,
           block_id: blockId,
-          expected_revision: expectedRevision,
+          expected_revision: currentRevision(),
         })
         applyBookRevision(result.book_revision)
         // A deep dive adds a page, so the chapter list itself changed.
@@ -825,7 +867,7 @@ function BookPageInner() {
         detail.book.id,
         pageId,
         topic,
-        expectedRevision
+        currentRevision()
       )
       applyBookRevision(book_revision)
       await hydratePage(pageId)
@@ -928,44 +970,32 @@ function BookPageInner() {
       )}
 
       <main className="relative flex flex-1 overflow-hidden bg-[var(--background)]">
-        {/* Persistent mini progress chip — floats top-right of the workspace
-            across creator/spine/reader views as long as generation activity
-            exists and isn't fully complete. */}
-        {((progressHasActivity(progress) && !progressIsComplete(progress)) ||
-          detail?.book.status === 'compiling') && (
-          <div className="pointer-events-none absolute right-3 top-3 z-30 flex items-center gap-2">
-            {progressHasActivity(progress) && !progressIsComplete(progress) && (
-              <BookProgressTimeline
-                progress={progress}
-                pageCounts={
-                  detail
-                    ? {
-                        ready: detail.pages.filter(page => page.status === 'ready').length,
-                        total: detail.pages.length,
-                      }
-                    : undefined
-                }
-                mini
-              />
-            )}
-            {detail?.book.status === 'compiling' && canEditBook && (
-              <button
-                type="button"
-                onClick={() => void handlePauseBook()}
-                disabled={pausingBook}
-                className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--card)]/90 px-2.5 py-1 text-[11px] text-[var(--muted-foreground)] shadow-sm backdrop-blur hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {pausingBook ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Pause className="h-3 w-3" />
-                )}
-                {pausingBook ? t('Pausing…') : t('Pause generation')}
-              </button>
-            )}
-          </div>
-        )}
-        <div className="flex-1 overflow-hidden">
+        {/* One slot, one place, every view. The predecessor put a gradient
+            progress card *inside* the creator's scrolling content and a
+            second chip floating over the corner, so starting generation
+            shoved the page down, finishing it snapped the page back, and the
+            two readouts disagreed about what to show. Fixed slot above the
+            view: it changes height only when the reader asks it to. */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {view !== 'list' && (
+            <BookGenerationActivity
+              book={detail?.book || pendingBook || null}
+              pages={detail?.pages || []}
+              spine={detail?.spine}
+              generation={detail?.generation}
+              progress={progress}
+              onOpenPage={detail ? handleSelectPage : undefined}
+              onPause={
+                canEditBook && detail?.book.status === 'compiling'
+                  ? () => void handlePauseBook()
+                  : undefined
+              }
+              onResume={canEditBook && detail ? () => void handleResumeBook() : undefined}
+              pausing={pausingBook}
+              resuming={resumingBook}
+            />
+          )}
+          <div className="min-h-0 flex-1 overflow-hidden">
           {view === 'list' && (
             <BookLibrary
               books={books}
@@ -979,11 +1009,6 @@ function BookPageInner() {
 
           {view === 'creator' && (
             <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
-              {(confirmingProposal || progressHasActivity(progress)) && (
-                <div className="mx-auto mt-4 max-w-4xl px-4">
-                  <BookProgressTimeline progress={progress} />
-                </div>
-              )}
               <BookCreator
                 book={pendingBook}
                 onCreate={handleCreate}
@@ -1004,6 +1029,11 @@ function BookPageInner() {
                   onConfirm={handleConfirmSpine}
                   loading={confirmingSpine}
                   depth={detail.book.depth}
+                  initialBlockTypes={
+                    Array.isArray(detail.book.metadata?.block_types)
+                      ? (detail.book.metadata.block_types as string[])
+                      : undefined
+                  }
                 />
               </div>
             </div>
@@ -1097,6 +1127,9 @@ function BookPageInner() {
                     }
                   />
                 </div>
+                {/* The wrapper goes with the panel: a bordered strip with
+                    nothing in it is the same occupied space by another name. */}
+                {learningCaptures.length > 0 && (
                 <div className="shrink-0 border-t border-[var(--border)] px-8 py-3">
                   <LearningCapturePanel
                     captures={learningCaptures}
@@ -1109,6 +1142,7 @@ function BookPageInner() {
                     }
                   />
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -1118,6 +1152,7 @@ function BookPageInner() {
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('Loading spine…')}
             </div>
           )}
+          </div>
         </div>
 
         {view === 'reader' && !chatOpen && (

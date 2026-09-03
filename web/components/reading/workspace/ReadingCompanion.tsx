@@ -45,16 +45,14 @@ import SessionViewerPanel, {
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import Tooltip from "@/components/common/Tooltip";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
-import { TurnStatusBar } from "@/features/chat/components/turn";
-import { turnViewState } from "@/features/chat/model/turn-state";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
-import { buildChatOutline } from "@/lib/chat-outline";
+import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { downloadChatMarkdown } from "@/lib/chat-export";
+import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import { setReadingViewport } from "@/lib/reading-turn-state";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
-import { hasPendingAskUser } from "@/lib/ask-user-state";
 import {
   fetchReadingAskHint,
   fetchReadingOpeners,
@@ -116,7 +114,6 @@ export function ReadingCompanion({
   const {
     state,
     submitUserReply,
-    cancelStreamingTurn,
     regenerateLastMessage,
     deleteTurn,
     editMessage,
@@ -154,14 +151,6 @@ export function ReadingCompanion({
   const { ref: composerBoxRef, height: composerHeight } =
     useMeasuredHeight<HTMLDivElement>();
   const lastMessage = state.messages[state.messages.length - 1];
-  const awaitingUserReply = hasPendingAskUser(lastMessage?.events);
-  const activeTurnViewState = turnViewState({
-    status: awaitingUserReply
-      ? "waiting_input"
-      : state.isStreaming
-        ? "running"
-        : undefined,
-  });
   const {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
@@ -201,20 +190,10 @@ export function ReadingCompanion({
   const jumpToTurn = useCallback(
     (key: string) => {
       const container = messagesContainerRef.current;
-      const target = container?.querySelector<HTMLElement>(
-        `[data-turn-key="${key}"]`,
-      );
-      if (!container || !target) return;
-      // Release the pin first, or the next streamed delta snaps the reader
-      // straight back to the bottom they just navigated away from.
-      shouldAutoScrollRef.current = false;
-      const offset =
-        target.getBoundingClientRect().top -
-        container.getBoundingClientRect().top;
-      container.scrollTo({
-        top: container.scrollTop + offset - 12,
-        behavior: "smooth",
-      });
+      if (scrollToChatTurn(container, key, { topOffset: 12 })) {
+        // Release the pin, or the next streamed delta snaps the reader back.
+        shouldAutoScrollRef.current = false;
+      }
     },
     [messagesContainerRef, shouldAutoScrollRef],
   );
@@ -277,45 +256,24 @@ export function ReadingCompanion({
   }, [activeLocator, hasMessages, workspaceId]);
 
   /* ── Session-level actions, the same three /chat puts in its header ── */
-  const chatSaveMessages = useMemo(
-    () =>
-      state.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-        capability: message.capability,
-      })),
-    [state.messages],
-  );
-
-  const chatSavePayload = useMemo(() => {
-    if (!state.messages.length) return null;
-    return {
-      recordType: "chat" as const,
-      title:
-        state.messages
-          .find((message) => message.role === "user")
-          ?.content.trim()
-          .slice(0, 80) ||
-        material?.title ||
-        "Reading conversation",
-      // Rebuilt inside the modal from the subset the learner ticks.
-      userQuery: "",
-      output: "",
-      metadata: {
-        source: "immersive_reading",
-        capability: state.activeCapability || "immersive_reading",
-        ui_language: state.language,
-        session_id: state.sessionId,
-        total_message_count: state.messages.length,
-      },
-    };
-  }, [
-    material?.title,
-    state.activeCapability,
-    state.language,
-    state.messages,
-    state.sessionId,
-  ]);
+  const { modalMessages: chatSaveMessages, payload: chatSavePayload } =
+    useMemo(
+      () =>
+        buildConversationNotebookSave(state.messages, {
+          source: "immersive_reading",
+          fallbackTitle: material?.title || "Reading conversation",
+          activeCapability: state.activeCapability,
+          language: state.language,
+          sessionId: state.sessionId,
+        }),
+      [
+        material?.title,
+        state.activeCapability,
+        state.language,
+        state.messages,
+        state.sessionId,
+      ],
+    );
 
   const sessionActivity = useMemo(
     () => buildSessionActivity(state.messages),
@@ -581,13 +539,6 @@ export function ReadingCompanion({
         ref={composerBoxRef}
         className="shrink-0 border-t border-[var(--border)] bg-[var(--card)] pt-3 dark:border-[var(--border)] dark:bg-[var(--secondary)]"
       >
-        <TurnStatusBar
-          state={activeTurnViewState}
-          stage={state.currentStage || undefined}
-          onCancel={cancelStreamingTurn}
-          onAnswer={() => prefillInputRef.current?.("")}
-          className="mx-4 mb-2"
-        />
         {selection && (
           <div className="mx-4 mb-2 flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2.5 py-2 dark:border-[var(--border)] dark:bg-[var(--card)]">
             <Highlighter

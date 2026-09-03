@@ -1,14 +1,31 @@
 "use client";
 
+import dynamic from "next/dynamic";
+
 import { CategoryScroll } from "@/components/settings/CategoryScroll";
 import { useSettingsAccess } from "@/features/settings/navigation/SettingsAccessProvider";
 import { visibleSettingsChildren } from "@/features/settings/navigation/settings-nav";
 
-import VideoLearningSettingsPage from "./VideoLearningSettingsSection";
-import ToolsSettingsPage from "./ToolsSettingsSection";
-import CapabilitiesSettingsPage from "./CapabilitiesSettingsSection";
-import StarterSettingsPage from "./StartersSettingsSection";
-import AttachmentSettingsPage from "./AttachmentsSettingsSection";
+const loading = () => <div className="min-h-64" aria-hidden="true" />;
+const VideoLearningSettingsPage = dynamic(
+  () => import("./VideoLearningSettingsSection"),
+  { loading },
+);
+const ToolsSettingsPage = dynamic(() => import("./ToolsSettingsSection"), {
+  loading,
+});
+const CapabilitiesSettingsPage = dynamic(
+  () => import("./CapabilitiesSettingsSection"),
+  { loading },
+);
+const StarterSettingsPage = dynamic(
+  () => import("./StartersSettingsSection"),
+  { loading },
+);
+const AttachmentSettingsPage = dynamic(
+  () => import("./AttachmentsSettingsSection"),
+  { loading },
+);
 
 const CHAT_SECTIONS = [
   { key: "video-learning", Component: VideoLearningSettingsPage },
@@ -29,6 +46,7 @@ export default function ChatSettingsPage() {
   return (
     <CategoryScroll
       sections={CHAT_SECTIONS.filter(({ key }) => visibleKeys.has(key))}
+      deferSections
     />
   );
 }

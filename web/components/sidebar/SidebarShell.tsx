@@ -25,7 +25,6 @@ import type {
 } from "@/lib/session-api";
 import type { MasteryTopicLabel } from "@/lib/learning-api";
 import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
-import { masteryPathIdOf, readingWorkspaceIdOf } from "@/lib/mastery-session";
 import type { StudyCourse } from "@/lib/courses-api";
 import { SidebarNav } from "@/components/sidebar/SidebarNav";
 import { SECONDARY_NAV, isNavActive } from "@/components/sidebar/nav-entries";
@@ -41,6 +40,8 @@ const DOCS_URL = "https://deeptutor.info/";
 interface SidebarShellProps {
   sessions?: SessionSummary[];
   activeSessionId?: string | null;
+  /** Conversations the caller is streaming right now; they sort to the top. */
+  liveSessionIds?: ReadonlySet<string>;
   loadingSessions?: boolean;
   showSessions?: boolean;
   /** Clicking the Chat nav item resets to a fresh session via this handler. */
@@ -68,6 +69,7 @@ interface SidebarShellProps {
 export function SidebarShell({
   sessions = [],
   activeSessionId = null,
+  liveSessionIds,
   loadingSessions = false,
   showSessions = false,
   onNewChat,
@@ -101,8 +103,10 @@ export function SidebarShell({
 
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(collapsed) : footerSlot;
-  // The order the learner dragged the chat history into. Like the collapse
-  // preference above it is a per-machine view state, hydrated after mount.
+  // The order the learner dragged the history region into — conversation ids
+  // and group ids in one list, since the two are peers there. Like the
+  // collapse preference above it is per-machine view state, hydrated after
+  // mount.
   const [sessionOrder, setSessionOrder] = useState<string[]>([]);
   const sessionOrderRef = useRef<string[]>([]);
 
@@ -113,8 +117,8 @@ export function SidebarShell({
     setSessionOrder(stored);
   }, []);
 
-  // A drag only ever speaks for the rows on screen, so it is merged into the
-  // stored order rather than replacing it.
+  // A drag only ever speaks for the entries on screen, so it is merged into
+  // the stored order rather than replacing it.
   const handleReorderSessions = useCallback((nextIds: string[]) => {
     const merged = mergeManualOrder(sessionOrderRef.current, nextIds);
     sessionOrderRef.current = merged;
@@ -140,27 +144,18 @@ export function SidebarShell({
     router.push("/chat");
   };
 
-  // The Chat group shows the last 8 home conversations. Grouped ones are
-  // exempt from that cut: a topic heading that says "4" while listing two of
-  // them is worse than a slightly longer list, and the groups collapse anyway.
+  // Everything the learner has, minus the archived and minus the tutor threads
+  // that render nested under the conversation that spawned them.
+  //
+  // No recents window any more. The region used to cut the home conversations
+  // at eight, which was survivable only because the "Chat" heading above them
+  // printed the real count; with the conversations listed directly there is
+  // nothing on screen to say that older ones exist, and a sidebar that quietly
+  // drops your conversation from yesterday is worse than one you scroll.
   const visibleSessions = sessions.filter(
     (session) =>
       !session.preferences?.archived && !session.preferences?.parent_session_id,
   );
-  // Which conversations make the window is recency's call; the hand-arranged
-  // order (applied inside the list) decides how the ones that made it are
-  // stacked. Ordering before the cut instead would let an old arrangement keep
-  // newer chats out of the sidebar entirely.
-  // Grouped conversations are exempt from the cut — a heading that says "4"
-  // while listing two of them is worse than a slightly longer list, and the
-  // groups collapse anyway. Reading conversations group the same way study
-  // ones do, so they are exempt on the same terms.
-  const isGrouped = (session: SessionSummary) =>
-    Boolean(masteryPathIdOf(session)) || Boolean(readingWorkspaceIdOf(session));
-  const recentSessions = [
-    ...visibleSessions.filter((session) => !isGrouped(session)).slice(0, 8),
-    ...visibleSessions.filter(isGrouped),
-  ];
 
   /* ---- Collapsed state ---- */
   if (collapsed) {
@@ -314,7 +309,7 @@ export function SidebarShell({
               />
             ) : onOrganizeSession ? (
               <OrganizedSessionList
-                sessions={recentSessions}
+                sessions={visibleSessions}
                 // Course grouping temporarily hidden pending further product
                 // work; passing [] keeps the list flat without touching the
                 // course data callers still fetch.
@@ -322,6 +317,7 @@ export function SidebarShell({
                 masteryTopics={masteryTopics}
                 readingCollections={readingCollections}
                 activeSessionId={activeSessionId}
+                liveSessionIds={liveSessionIds}
                 manualOrder={sessionOrder}
                 onReorder={handleReorderSessions}
                 onResetOrder={handleResetSessionOrder}
@@ -336,7 +332,7 @@ export function SidebarShell({
               />
             ) : (
               <SessionList
-                sessions={recentSessions}
+                sessions={visibleSessions}
                 activeSessionId={activeSessionId}
                 onSelect={(sessionId) => {
                   drawer?.close();

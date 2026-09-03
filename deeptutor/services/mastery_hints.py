@@ -40,6 +40,8 @@ import logging
 import time
 from typing import Any
 
+from deeptutor.services.singleflight_cache import AsyncSingleFlightTTLCache
+
 logger = logging.getLogger(__name__)
 
 # A placeholder is read in the half-second before typing, so it has to be
@@ -76,33 +78,17 @@ class AskHint:
         }
 
 
-_cache: dict[str, AskHint] = {}
-# One in-flight generation per key: opening the same study screen in two tabs
-# must not become two LLM calls.
-_inflight: dict[str, asyncio.Task[AskHint]] = {}
+_hint_cache = AsyncSingleFlightTTLCache[str, AskHint](
+    limit=_CACHE_LIMIT,
+    ttl_seconds=_CACHE_TTL_SECONDS,
+    value_timestamp=lambda value: value.generated_at,
+)
+_cache = _hint_cache.values
+_inflight = _hint_cache.inflight
 
 
 def _cache_key(path_id: str, kp_id: str, anchor: str) -> str:
     return f"{path_id}\0{kp_id}\0{anchor}"
-
-
-def _remember(key: str, value: AskHint) -> None:
-    _cache[key] = value
-    if len(_cache) > _CACHE_LIMIT:
-        # Oldest first. dicts preserve insertion order, and every write here is
-        # a fresh key, so the head is the least recently generated.
-        for stale in list(_cache)[: len(_cache) - _CACHE_LIMIT]:
-            _cache.pop(stale, None)
-
-
-def _recall(key: str) -> AskHint | None:
-    value = _cache.get(key)
-    if value is None:
-        return None
-    if time.time() - value.generated_at > _CACHE_TTL_SECONDS:
-        _cache.pop(key, None)
-        return None
-    return value
 
 
 # ── Material ─────────────────────────────────────────────────────────────
@@ -382,28 +368,15 @@ async def get_ask_hint(path_id: str, session_id: str = "") -> dict[str, Any]:
         return AskHint(hint="", knowledge_point_id="", generated_at=time.time()).to_dict()
 
     key = _cache_key(path_id, material.anchor, session_id)
-    cached = _recall(key)
-    if cached is not None:
-        return cached.to_dict()
-
-    pending = _inflight.get(key)
-    if pending is None or pending.done():
-        pending = asyncio.ensure_future(_generate(path_id, session_id, material.anchor))
-        _inflight[key] = pending
     try:
-        value = await pending
+        value = await _hint_cache.get_or_create(
+            key,
+            lambda: _generate(path_id, session_id, material.anchor),
+            cache_when=lambda item: bool(item.hint),
+        )
     except Exception:
         logger.debug("ask-hint generation failed", exc_info=True)
         return AskHint(hint="", knowledge_point_id="", generated_at=time.time()).to_dict()
-    finally:
-        if _inflight.get(key) is pending:
-            _inflight.pop(key, None)
-
-    # Only a usable hint is cached. Caching the empty result would pin a
-    # transient failure — a timeout, a model that answered instead of asking —
-    # in place for the whole TTL, and the next visit would never retry.
-    if value.hint:
-        _remember(key, value)
     return value.to_dict()
 
 

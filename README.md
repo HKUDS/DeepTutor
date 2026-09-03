@@ -50,16 +50,18 @@
 
 ### 📦 Releases
 
+> **[2026.9.3]** [v1.6.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.4) — Faster isolated runtimes, controllable Book generation, source-complete Mastery paths and Chat hand-offs, durable Reading, unified activity UI, recoverable sessions, and explicit per-model API capabilities.
+
 > **[2026.9.2]** [v1.6.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.3) — Breaking front/back-end refactor, strict canonical routes and recoverable streams, plus learner/guardian accounts, grounded Reading, WeKnora, broader parsing, Python 3.14, and DashScope media.
 
 > **[2026.8.31]** [v1.6.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.2) — Immersive YouTube learning, a plugin-driven Visualize catalog, three new agent harnesses, safer reading citations, multi-format MinerU, live Partner channel status, and guided updates.
 
 > **[2026.8.30]** [v1.6.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.1) — One vendor key linked to every service it serves, a task model for background work, Settings as a searchable navigator, a sidebar you arrange, and first-party **LightRAG**.
 
-> **[2026.8.27]** [v1.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0) — Faithful EPUB reading and annotations, Courses with Little Tutor and Ask Questions, bounded web-source sync, shared Books with private learning state, and Serply/native search.
-
 <details>
 <summary><b>Past releases (more than 1 week ago)</b></summary>
+
+> **[2026.8.27]** [v1.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0) — Faithful EPUB reading and annotations, Courses with Little Tutor and Ask Questions, bounded web-source sync, shared Books with private learning state, and Serply/native search.
 
 > **[2026.8.25]** [v1.5.17](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.17) — Partners each member owns with private conversations and linkable chat accounts, GitHub repos as a knowledge source, **Antigravity CLI**, browser WeChat QR login, and `deeptutor doctor`.
 
@@ -201,7 +203,7 @@
 
 </details>
 
-> ✨ **v1.6.3 is live.** `pip install -U deeptutor` picks up the latest stable release.
+> ✨ **v1.6.4 is live.** `pip install -U deeptutor` picks up the latest stable release.
 
 ### 📰 News
 
@@ -492,14 +494,13 @@ and their subdomains; `blocked_domains` always takes precedence.
 
 Project-root `.env` is **not** read as an application config file. For a minimal model setup, open **Settings → Models**, add an LLM profile (Base URL / API key / model name), and save. Add an embedding profile only if you plan to use Knowledge Base / RAG features.
 
-OpenAI-compatible LLM profiles also expose an **API protocol** setting. Keep
-`Auto` for normal provider detection and compatible fallback, choose
-`Responses API` for endpoints that only implement `/responses`, or choose
-`Chat Completions` for endpoints that require `/chat/completions`. Forced
-Responses mode is fail-closed: endpoint errors are returned instead of being
-silently retried through Chat Completions. The equivalent profile field in
-`model_catalog.json` is `wire_api` (`auto`, `responses`, or
-`chat_completions`).
+LLM and task-model profiles expose an **API format** setting when their provider
+supports a choice. Keep `Auto` for normal routing and fallback, or choose
+`OpenAI Chat Completions`, `OpenAI Responses`, or `Anthropic Messages`; forced
+Responses remains fail-closed. The persisted field is `api_format` (`auto`,
+`openai_chat`, `openai_responses`, or `anthropic`); `wire_api` is derived
+compatibility state. Per-model `Auto` / `Supported` / `Not supported` overrides
+cover tool calling, image input, JSON output, and reasoning controls.
 
 </details>
 
@@ -589,7 +590,7 @@ User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, 
 
 Context comes in two kinds: **sticky session context** (capability, workspace or course, tools, knowledge bases, persona, model, and Reading / Mastery state) persists across turns; **one-time references** (files, chat history, books, reading sections, notebooks, question bank, imported agents) come from the `+` menu for a single turn. The voice button only transcribes the current message.
 
-Home keeps **Chat**, **Ask Questions**, **Quiz**, **Visualize**, and **Immersive Watching** one click away; **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*. **Mastery Path** and **Immersive Reading** are dedicated sidebar workspaces; Reading adds verified clickable citations, saved citations and notes, source-grounded read-aloud / study guidance / vocabulary / quiz / translation actions, and notebook capture, while Course Study keeps its own course-bound context.
+Home keeps **Chat**, **Ask Questions**, **Quiz**, and **Visualize** one click away; **Research** for cited reports, **Solve** for worked reasoning, and **Immersive Watching** sit under *More Capabilities*. **Mastery Path** and **Immersive Reading** are dedicated sidebar workspaces; Reading adds verified clickable citations, saved citations and notes, source-grounded read-aloud / study guidance / vocabulary / quiz / translation actions, and notebook capture, while Course Study keeps its own course-bound context.
 
 </details>
 

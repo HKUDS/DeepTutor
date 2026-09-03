@@ -95,15 +95,52 @@ test("keyboard zoom is handled only while the reader is active", () => {
 
 test("reader display copy is translated", () => {
   for (const key of [
-    "Smaller text",
-    "Larger text",
+    "Smaller text ({{percent}}%)",
+    "Larger text ({{percent}}%)",
     "Reset reading display",
     "Use sans-serif font",
     "Use serif font",
-    "Change line width",
+    "Change line width ({{width}} characters)",
     "Change reading theme",
   ]) {
-    assert.match(en, new RegExp(`"${key}": "`));
-    assert.match(zh, new RegExp(`"${key}": "[^"]+"`));
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(en, new RegExp(`"${escaped}": "`));
+    assert.match(zh, new RegExp(`"${escaped}": "[^"]+"`));
   }
+});
+
+test("the reader's state is spoken by the control that changes it", () => {
+  const view = reader;
+
+  // The size and width used to sit in silent spans beside their buttons —
+  // visible to a sighted reader, announced to nobody, and reading like debug
+  // output. Carrying them in the label means pressing a control says what it
+  // did, so the readouts had somewhere to go.
+  assert.match(view, /Smaller text \(\{\{percent\}\}%\)/);
+  assert.match(view, /Change line width \(\{\{width\}\} characters\)/);
+  assert.doesNotMatch(view, /font-mono/);
+
+  // And both translations have to keep the interpolation, or the label reads
+  // out the literal placeholder.
+  for (const bundle of [en, zh]) {
+    assert.match(bundle, /"Smaller text \(\{\{percent\}\}%\)": "[^"]*\{\{percent\}\}/);
+    assert.match(
+      bundle,
+      /"Change line width \(\{\{width\}\} characters\)": "[^"]*\{\{width\}\}/,
+    );
+  }
+});
+
+test("the reader states its position once", () => {
+  const pane = readFileSync("components/reading/ReaderPane.tsx", "utf8");
+  const view = reader;
+
+  // The header owns it, because it is the only line present in every render
+  // mode — a scrolled PDF has no pager to read it off. The paged text view
+  // therefore keeps the arrows and drops the sentence, which used to repeat
+  // the header's own count 44px underneath it in different words.
+  assert.match(pane, /\{\{unit\}\} \{\{n\}\} \/ \{\{total\}\}/);
+  assert.doesNotMatch(view, /of \{\{total\}\}/);
+  assert.match(view, /Previous \{\{unit\}\}/);
+  assert.match(view, /Next \{\{unit\}\}/);
 });

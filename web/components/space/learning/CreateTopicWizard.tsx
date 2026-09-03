@@ -15,6 +15,7 @@ import {
 import { useModalDialog } from "@/hooks/useModalDialog";
 import {
   hydrateTopicSource,
+  toggleSourceSelection,
   useTopicSourceLibrary,
 } from "@/hooks/useTopicSourceLibrary";
 import {
@@ -27,6 +28,7 @@ import {
 } from "@/lib/learning-api";
 
 import type { Translate } from "./format";
+import { CoverageNotice } from "./CoverageNotice";
 import { RouteDraftEditor } from "./RouteDraftEditor";
 import { isRouteDraftValid } from "./route-draft";
 import { GoalStep, SourcesStep } from "./TopicWizardSteps";
@@ -49,6 +51,8 @@ export function CreateTopicWizard({
     library,
     loading: libraryLoading,
     candidates,
+    files,
+    loadKnowledgeBaseFiles,
   } = useTopicSourceLibrary(t);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState<TopicDraft | null>(null);
@@ -58,15 +62,10 @@ export function CreateTopicWizard({
   const dialogRef = useModalDialog(onClose, busy, returnFocusRef);
 
   const toggleSource = (key: string) => {
-    setSelected((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    setSelected((previous) => toggleSourceSelection(previous, key, candidates));
   };
 
-  const generate = async () => {
+  const generate = async (mustCover: string[] = []) => {
     setBusy(true);
     setError(null);
     try {
@@ -86,6 +85,7 @@ export function CreateTopicWizard({
         name: name.trim(),
         goal: goal.trim(),
         sources: nextSources,
+        ...(mustCover.length ? { must_cover: mustCover } : {}),
       });
       setSources(nextDraft.sources ?? nextSources);
       setDraft(nextDraft);
@@ -219,10 +219,23 @@ export function CreateTopicWizard({
               loading={libraryLoading}
               selected={selected}
               onToggle={toggleSource}
+              files={files}
+              onExpand={loadKnowledgeBaseFiles}
             />
           )}
           {step === 3 && draft && (
-            <RouteDraftEditor draft={draft} onChange={setDraft} />
+            <>
+              <CoverageNotice
+                coverage={draft.coverage}
+                busy={busy}
+                onCover={(documents) => void generate(documents)}
+              />
+              <RouteDraftEditor
+                draft={draft}
+                onChange={setDraft}
+                moduleLimit={draft.module_limit}
+              />
+            </>
           )}
           {error && (
             <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.06] p-3 text-xs leading-5 text-red-700 dark:text-red-300">

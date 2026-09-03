@@ -66,7 +66,11 @@ import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
-import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
+import {
+  fileToPendingAttachment,
+  selectAttachmentFiles,
+  type PendingAttachment,
+} from "@/features/chat/controllers/pending-attachments";
 import { readChatLaunchIntent } from "@/lib/chat-launch-intent";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
@@ -111,7 +115,8 @@ import {
 import { useCapabilityCatalog } from "@/features/capabilities/useCapabilityCatalog";
 import { browserStorage } from "@/shared/storage";
 import { downloadChatMarkdown } from "@/lib/chat-export";
-import { buildChatOutline } from "@/lib/chat-outline";
+import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
+import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import { isPlaceholderSessionTitle } from "@/lib/session-title";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import {
@@ -217,15 +222,6 @@ interface KnowledgeBase {
   statistics?: {
     rag_provider?: string;
   };
-}
-
-interface PendingAttachment {
-  type: string;
-  filename: string;
-  base64?: string;
-  previewUrl?: string;
-  size?: number;
-  mimeType?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -936,39 +932,23 @@ export default function ChatWorkspace() {
     () => [...selectedMemoryFiles],
     [selectedMemoryFiles],
   );
-  const chatSaveMessages = useMemo(
-    () =>
-      state.messages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-        capability: msg.capability,
-      })),
-    [state.messages],
-  );
-  const chatSavePayload = useMemo(() => {
-    if (!state.messages.length) return null;
-    const title =
-      state.messages
-        .find((msg) => msg.role === "user")
-        ?.content.trim()
-        .slice(0, 80) || "Chat Session";
-    return {
-      recordType: "chat" as const,
-      title,
-      // The actual transcript / userQuery are rebuilt inside SaveToNotebookModal
-      // from the user's selected subset of messages. We still provide a
-      // sensible fallback for non-selection callers.
-      userQuery: "",
-      output: "",
-      metadata: {
-        source: "chat",
-        capability: state.activeCapability || "chat",
-        ui_language: state.language,
-        session_id: state.sessionId,
-        total_message_count: state.messages.length,
-      },
-    };
-  }, [state.activeCapability, state.language, state.messages, state.sessionId]);
+  const { modalMessages: chatSaveMessages, payload: chatSavePayload } =
+    useMemo(
+      () =>
+        buildConversationNotebookSave(state.messages, {
+          source: "chat",
+          fallbackTitle: "Chat Session",
+          activeCapability: state.activeCapability,
+          language: state.language,
+          sessionId: state.sessionId,
+        }),
+      [
+        state.activeCapability,
+        state.language,
+        state.messages,
+        state.sessionId,
+      ],
+    );
   const lastMessage = state.messages[state.messages.length - 1];
   const {
     containerRef: messagesContainerRef,
@@ -998,31 +978,13 @@ export default function ChatWorkspace() {
   const jumpToTurn = useCallback(
     (key: string) => {
       const container = messagesContainerRef.current;
-      const target = container?.querySelector<HTMLElement>(
-        `[data-turn-key="${key}"]`,
-      );
-      if (!container || !target) return;
-      // Release the streaming pin first: without this, a jump made while
-      // a turn is generating would be snapped straight back to the bottom
-      // by ``useChatAutoScroll``'s next content-growth pin.
-      shouldAutoScrollRef.current = false;
-      const offset =
-        target.getBoundingClientRect().top -
-        container.getBoundingClientRect().top;
       // 56 px clears the scrollport's top fade so the bubble lands fully
       // opaque rather than half-dissolved under the mask.
-      container.scrollTo({
-        top: container.scrollTop + offset - 56,
-        behavior: "smooth",
-      });
-      const bubble =
-        target.querySelector<HTMLElement>("[data-turn-bubble]") ?? target;
-      bubble.classList.remove("turn-flash");
-      // Force a reflow so clicking the same tick twice replays the flash
-      // instead of silently re-adding a class that is already settled.
-      void bubble.offsetWidth;
-      bubble.classList.add("turn-flash");
-      window.setTimeout(() => bubble.classList.remove("turn-flash"), 1300);
+      if (scrollToChatTurn(container, key, { topOffset: 56, flash: true })) {
+        // Release the streaming pin: otherwise the next content delta snaps
+        // the reader straight back to the bottom they just left.
+        shouldAutoScrollRef.current = false;
+      }
     },
     [messagesContainerRef, shouldAutoScrollRef],
   );
@@ -1441,30 +1403,7 @@ export default function ChatWorkspace() {
     [capabilities, setCapability, setTools, userEnabledTools],
   );
 
-  const fileToAttachment = useCallback(
-    (f: File): Promise<PendingAttachment> =>
-      new Promise((resolve, reject) => {
-        readFileAsDataUrl(f)
-          .then((raw) => {
-            // SVG: treat as file (text extraction on server, vision models
-            // reject SVG) but keep the data URL so the chip can render a
-            // thumbnail via a raw <img> tag.
-            const svg = isSvgFilename(f.name) || f.type === "image/svg+xml";
-            const isImage = !svg && f.type.startsWith("image/");
-            const b64 = extractBase64FromDataUrl(raw);
-            resolve({
-              type: isImage ? "image" : "file",
-              filename: f.name,
-              base64: b64,
-              previewUrl: isImage || svg ? raw : undefined,
-              size: f.size,
-              mimeType: f.type || undefined,
-            });
-          })
-          .catch(reject);
-      }),
-    [],
-  );
+  const fileToAttachment = fileToPendingAttachment;
 
   const showAttachmentError = useCallback((message: string) => {
     setAttachmentError(message);
@@ -1479,29 +1418,11 @@ export default function ChatWorkspace() {
 
   const filterAndReportFiles = useCallback(
     (files: File[]): File[] => {
-      let runningTotal = attachments.reduce((s, a) => s + (a.size ?? 0), 0);
-      const accepted: File[] = [];
-      const rejected: {
-        name: string;
-        reason: "unsupported" | "too_large" | "quota";
-      }[] = [];
-      for (const f of files) {
-        const kind = classifyFile(f);
-        if (!kind) {
-          rejected.push({ name: f.name, reason: "unsupported" });
-          continue;
-        }
-        if (f.size > attachmentLimits.maxFileBytes) {
-          rejected.push({ name: f.name, reason: "too_large" });
-          continue;
-        }
-        if (runningTotal + f.size > attachmentLimits.maxTotalBytes) {
-          rejected.push({ name: f.name, reason: "quota" });
-          break;
-        }
-        runningTotal += f.size;
-        accepted.push(f);
-      }
+      const { accepted, rejected } = selectAttachmentFiles(
+        files,
+        attachments.reduce((total, item) => total + (item.size ?? 0), 0),
+        attachmentLimits,
+      );
       if (rejected.length) {
         const first = rejected[0];
         let msg: string;

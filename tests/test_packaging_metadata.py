@@ -138,6 +138,18 @@ def test_requirements_mirror_the_core_mcp_client() -> None:
     assert "mcp>=" not in partners_text
 
 
+def test_full_app_cron_dependency_matches_every_server_install_surface() -> None:
+    expected = "croniter>=6.0.0,<7.0.0"
+    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:
+        project = tomllib.load(file)["project"]
+
+    assert project["dependencies"].count(expected) == 1
+    assert project["optional-dependencies"]["server"].count(expected) == 1
+    assert (REPOSITORY_ROOT / "requirements" / "server.txt").read_text(
+        encoding="utf-8"
+    ).splitlines().count(expected) == 1
+
+
 def test_pageindex_sdk_range_matches_every_install_surface() -> None:
     expected = "pageindex>=0.2.10,<0.3.0"
     with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:

@@ -50,6 +50,7 @@ def _llm_chunk(
             SimpleNamespace(
                 index=tc.get("index", i),
                 id=tc.get("id"),
+                extra_content=tc.get("extra_content"),
                 function=SimpleNamespace(
                     name=tc.get("name"),
                     arguments=tc.get("arguments"),
@@ -586,6 +587,54 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.metadata["rounds"] == 2
     # Only the finish round's text is the persisted answer.
     assert result.metadata["response"] == "Found what was needed."
+
+
+@pytest.mark.asyncio
+async def test_gemini_tool_round_replays_thought_signature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second request must echo Gemini's signature on the assistant
+    function call, otherwise the compatibility endpoint returns HTTP 400."""
+    registry = _Registry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "function-call-1",
+                            "name": "web_search",
+                            "arguments": json.dumps({"query": "Fourier transform"}),
+                            "extra_content": {
+                                "google": {"thought_signature": "signature-from-gemini"}
+                            },
+                        }
+                    ]
+                )
+            ],
+            [_llm_chunk(content="Found it.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Look up Fourier",
+            enabled_tools=["web_search"],
+        ),
+    )
+
+    second_round = client.calls[1]["messages"]
+    assistant_message = next(message for message in second_round if message.get("tool_calls"))
+    assistant_call = assistant_message["tool_calls"][0]
+    assert assistant_call["extra_content"] == {
+        "google": {"thought_signature": "signature-from-gemini"}
+    }
 
 
 @pytest.mark.asyncio

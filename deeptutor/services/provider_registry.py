@@ -58,6 +58,14 @@ class ProviderSpec:
     # Exact matching is intentional: providers often expose Responses only on
     # one model even when sibling models share the same family prefix.
     native_web_search_models: tuple[str, ...] = ()
+    # Endpoints a vendor exposes for a *non-default* API format, e.g. MiniMax
+    # serving Anthropic Messages at ``/anthropic`` next to its OpenAI-style
+    # ``/v1``. ``default_api_base`` stays the default format's endpoint.
+    api_base_by_format: tuple[tuple[str, str], ...] = ()
+    # Set on entries kept only so stored catalogs keep resolving: the pair is
+    # the (provider, api_format) that expresses the same thing today. Pickers
+    # hide these; ``binding`` values in existing files are never rewritten.
+    legacy_of: tuple[str, ...] = ()
 
     @property
     def mode(self) -> str:
@@ -79,6 +87,39 @@ class ProviderSpec:
     def supports_wire_api_selection(self) -> bool:
         """Whether profiles may select an OpenAI wire protocol explicitly."""
         return self.backend == "openai_compat" and not self.is_oauth
+
+    @property
+    def is_legacy(self) -> bool:
+        return bool(self.legacy_of)
+
+    @property
+    def api_formats(self) -> tuple[str, ...]:
+        """API formats a profile on this provider may choose between.
+
+        Empty means the format is fixed by the backend (OAuth vendors, Azure)
+        and the UI has nothing to offer. Anthropic-backed vendors speak only
+        Anthropic Messages. OpenAI-compatible vendors get the OpenAI pair, plus
+        Anthropic Messages when the vendor is known to serve it too or when
+        the endpoint is user-supplied and could be anything.
+        """
+        if self.is_oauth or self.backend in {"azure_openai", "openai_codex", "github_copilot"}:
+            return ()
+        if self.backend == "anthropic":
+            return ("anthropic",)
+        if self.backend != "openai_compat":
+            return ()
+        formats: tuple[str, ...] = OPENAI_API_FORMATS
+        if self.name == "custom" or "anthropic" in dict(self.api_base_by_format):
+            formats = (*formats, "anthropic")
+        return formats
+
+    @property
+    def default_api_format(self) -> str:
+        return "anthropic" if self.backend == "anthropic" else "auto"
+
+    def default_api_base_for(self, api_format: str | None) -> str:
+        """The vendor endpoint for *api_format*, falling back to the default one."""
+        return dict(self.api_base_by_format).get(api_format or "", self.default_api_base)
 
     @property
     def label(self) -> str:
@@ -148,6 +189,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="Custom (Anthropic API)",
         backend="anthropic",
         is_direct=True,
+        legacy_of=("custom", "anthropic"),
     ),
     ProviderSpec(
         name="azure_openai",
@@ -398,6 +440,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="MiniMax",
         backend="openai_compat",
         default_api_base="https://api.minimax.io/v1",
+        api_base_by_format=(("anthropic", "https://api.minimax.io/anthropic"),),
         thinking_style="reasoning_split",
     ),
     ProviderSpec(
@@ -407,6 +450,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="MiniMax (Anthropic)",
         backend="anthropic",
         default_api_base="https://api.minimax.io/anthropic",
+        legacy_of=("minimax", "anthropic"),
     ),
     ProviderSpec(
         name="mistral",
@@ -528,6 +572,24 @@ NANOBOT_LLM_PROVIDERS: tuple[str, ...] = tuple(spec.name for spec in PROVIDERS)
 WireAPI = Literal["auto", "responses", "chat_completions"]
 WIRE_API_VALUES: frozenset[str] = frozenset({"auto", "responses", "chat_completions"})
 
+# The protocol a profile's endpoint speaks. This is the user-facing concept;
+# ``backend`` (which SDK class talks) and ``wire_api`` (which OpenAI endpoint)
+# are derived from it. ``auto`` keeps the historical heuristics: Chat
+# Completions everywhere except reasoning models on api.openai.com.
+ApiFormat = Literal["auto", "openai_chat", "openai_responses", "anthropic"]
+API_FORMAT_VALUES: frozenset[str] = frozenset(
+    {"auto", "openai_chat", "openai_responses", "anthropic"}
+)
+OPENAI_API_FORMATS: tuple[str, ...] = ("auto", "openai_chat", "openai_responses")
+_WIRE_API_BY_FORMAT: dict[str, WireAPI] = {
+    "openai_responses": "responses",
+    "openai_chat": "chat_completions",
+}
+_FORMAT_BY_WIRE_API: dict[str, ApiFormat] = {
+    "responses": "openai_responses",
+    "chat_completions": "openai_chat",
+}
+
 
 def find_by_name(name: str | None) -> ProviderSpec | None:
     canonical = canonical_provider_name(name)
@@ -554,6 +616,67 @@ def wire_api_for_provider(
     if spec is None or not spec.supports_wire_api_selection:
         return "auto"
     return normalize_wire_api(value)
+
+
+def normalize_api_format(value: Any) -> ApiFormat:
+    """Normalize untrusted catalog values to a known API format."""
+    normalized = str(value or "auto").strip().lower()
+    return normalized if normalized in API_FORMAT_VALUES else "auto"  # type: ignore[return-value]
+
+
+def api_format_for_provider(
+    value: Any,
+    provider: ProviderSpec | str | None,
+) -> ApiFormat:
+    """Clamp a requested format to what *provider* can actually speak.
+
+    A vendor with no choice (OAuth, Azure, Anthropic-only) always resolves to
+    its own default, so a stray value in a hand-edited file cannot route an
+    Anthropic key at an OpenAI SDK.
+    """
+    spec = find_by_name(provider) if isinstance(provider, str) else provider
+    requested = normalize_api_format(value)
+    if spec is None:
+        return requested
+    choices = spec.api_formats
+    if not choices:
+        return spec.default_api_format  # type: ignore[return-value]
+    return requested if requested in choices else spec.default_api_format  # type: ignore[return-value]
+
+
+def api_format_from_legacy(
+    provider: ProviderSpec | str | None,
+    wire_api: Any,
+) -> ApiFormat:
+    """Derive the format a pre-``api_format`` profile has been running with.
+
+    Anthropic-backed bindings (including the legacy ``custom_anthropic`` /
+    ``minimax_anthropic`` entries) were always Anthropic Messages; everything
+    else expressed its protocol choice through ``wire_api``.
+    """
+    spec = find_by_name(provider) if isinstance(provider, str) else provider
+    if spec is not None and spec.backend == "anthropic":
+        return "anthropic"
+    return _FORMAT_BY_WIRE_API.get(normalize_wire_api(wire_api), "auto")
+
+
+def wire_api_from_api_format(api_format: Any) -> WireAPI:
+    """The OpenAI endpoint choice an explicit format implies (``auto`` otherwise)."""
+    return _WIRE_API_BY_FORMAT.get(normalize_api_format(api_format), "auto")
+
+
+def effective_backend(spec: ProviderSpec | None, api_format: Any = "auto") -> str:
+    """Which provider implementation serves *spec* under *api_format*.
+
+    The only format that changes the backend is Anthropic Messages on an
+    OpenAI-compatible vendor; the OpenAI formats differ in ``wire_api``, not
+    in backend.
+    """
+    if spec is None:
+        return "openai_compat"
+    if api_format_for_provider(api_format, spec) == "anthropic" and spec.backend == "openai_compat":
+        return "anthropic"
+    return spec.backend
 
 
 def find_by_model(model: str | None) -> ProviderSpec | None:
@@ -653,17 +776,25 @@ def strip_provider_prefix(model: str, spec: ProviderSpec | None) -> str:
 
 
 __all__ = [
+    "API_FORMAT_VALUES",
+    "ApiFormat",
+    "OPENAI_API_FORMATS",
     "ProviderSpec",
     "PROVIDERS",
     "NANOBOT_LLM_PROVIDERS",
     "PROVIDER_ALIASES",
     "WIRE_API_VALUES",
     "WireAPI",
+    "api_format_for_provider",
+    "api_format_from_legacy",
     "canonical_provider_name",
+    "effective_backend",
     "find_by_name",
     "find_by_model",
     "find_gateway",
+    "normalize_api_format",
     "normalize_wire_api",
     "strip_provider_prefix",
     "wire_api_for_provider",
+    "wire_api_from_api_format",
 ]

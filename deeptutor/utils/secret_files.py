@@ -10,15 +10,28 @@ SECRET_FILE_MODE = 0o600
 SECRET_DIR_MODE = 0o700
 
 
+def ensure_private_directory(path: Path) -> Path:
+    """Create *path* and keep it accessible only to its owner when possible."""
+    path.mkdir(parents=True, exist_ok=True, mode=SECRET_DIR_MODE)
+    with contextlib.suppress(OSError):
+        path.chmod(SECRET_DIR_MODE)
+    return path
+
+
+def ensure_private_file(path: Path) -> Path:
+    """Tighten an existing file to owner-only access when the OS supports it."""
+    with contextlib.suppress(OSError):
+        path.chmod(SECRET_FILE_MODE)
+    return path
+
+
 def write_secret_text(path: Path, text: str) -> None:
     """Write *text* to *path*, readable only by the owner.
 
     The mode is applied at creation rather than by a later ``chmod``, which
     would leave the contents world-readable in between.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        path.parent.chmod(SECRET_DIR_MODE)
+    ensure_private_directory(path.parent)
 
     # O_CREAT does not apply the mode to an existing file, so a leftover from an
     # interrupted run must be replaced rather than truncated.

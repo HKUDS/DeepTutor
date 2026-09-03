@@ -1087,6 +1087,34 @@ class LearningStore:
             )
         return snapshots
 
+    @staticmethod
+    def default_db_path() -> Path:
+        """Where the app-owned store's database is, creating nothing.
+
+        Constructing a store runs the V1 to V2 migration and writes the schema,
+        which is the right thing for anyone about to read or teach a path and
+        the wrong thing for a per-turn gate asking "does this learner have any
+        mastery topics at all?". That gate probes this path first, so a learner
+        who has never opened a topic never gets a store created for them.
+        """
+        from deeptutor.learning.migration import mastery_v2_root
+
+        learning_root = get_path_service().get_workspace_dir() / "learning"
+        return mastery_v2_root(learning_root) / LearningStore._DB_FILENAME
+
+    def has_active_topics(self) -> bool:
+        """Whether any named, unarchived topic exists.
+
+        Deliberately not ``len(list_topic_snapshots())``: that walk loads every
+        path's state, metadata, sources and open interaction to answer a
+        yes/no question a single indexed row settles.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM mastery_topic_meta WHERE status = 'active' LIMIT 1"
+            ).fetchone()
+        return row is not None
+
     # ---- explicit path/session ownership ---------------------------------
 
     def bind_session(self, path_id: str, session_id: str, *, owns_path: bool = False) -> None:
