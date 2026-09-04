@@ -2364,6 +2364,7 @@
   "Budget per exploring-loop round (notes + tool calls).": "每轮探索循环（笔记 + 工具调用）的 Token 预算。",
   "Cap on the explore loop before planning.": "规划前探索循环的上限。",
   "Couldn't load capability settings": "无法加载能力设置",
+  "Couldn't load memory settings": "无法加载记忆设置",
   "Deep question (quiz) generation pipeline.": "Deep Question（出题）生成流水线。",
   "Deep research pipeline. Iteration count is controlled per request via the depth selector (quick / standard / deep / manual) in the chat input, not here.": "Deep Research 流水线。迭代次数按请求由聊天输入框中的深度选择器（快速 / 标准 / 深度 / 手动）控制，不在此处设置。",
   "Deep solve runs as one agent loop with a plan / finish-step / replan spine.": "深度解题以单个 agent 循环运行，带有 计划 / 完成步骤 / 重新规划 的骨架。",
@@ -4753,5 +4754,7 @@
   "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.": "无法加载 LightRAG 查询模型设置。请选择索引模型或重试。",
   "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.": "历史索引模型无法确认。知识库仍可查询，但增量上传前必须完整重建。",
   "Unverified historical indexing model": "无法确认的历史索引模型",
-  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "此旧版 LightRAG 索引仍可查询，但增量上传前必须完整重建。"
+  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "此旧版 LightRAG 索引仍可查询，但增量上传前必须完整重建。",
+  "Assigned models": "已分配模型",
+  "No assigned models": "暂无已分配模型"
 }

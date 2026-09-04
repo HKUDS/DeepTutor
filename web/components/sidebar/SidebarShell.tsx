@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -27,7 +28,13 @@ import type { MasteryTopicLabel } from "@/lib/learning-api";
 import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
 import type { StudyCourse } from "@/lib/courses-api";
 import { SidebarNav } from "@/components/sidebar/SidebarNav";
-import { SECONDARY_NAV, isNavActive } from "@/components/sidebar/nav-entries";
+import {
+  PRIMARY_NAV,
+  SECONDARY_NAV,
+  isNavActive,
+  isNavEntryAllowedForLearningPolicy,
+} from "@/components/sidebar/nav-entries";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 import {
   mergeManualOrder,
   readSessionOrder,
@@ -85,6 +92,8 @@ export function SidebarShell({
   const router = useRouter();
   const { t } = useTranslation();
   const { sidebarCollapsed, setSidebarCollapsed: setCollapsed } = useAppShell();
+  const { learningPolicy } = useAuthStatus();
+  const activeLearningPolicy = learningPolicy ?? null;
   const { isMobile } = useDevice();
   const drawer = useSidebarDrawer();
   const recentsScrollRef = useRef<HTMLDivElement>(null);
@@ -103,6 +112,20 @@ export function SidebarShell({
 
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(collapsed) : footerSlot;
+  const allowedPrimaryHrefs = useMemo(
+    () =>
+      PRIMARY_NAV.filter((entry) =>
+        isNavEntryAllowedForLearningPolicy(entry, activeLearningPolicy),
+      ).map((entry) => entry.href),
+    [activeLearningPolicy],
+  );
+  const visibleSecondaryNav = useMemo(
+    () =>
+      SECONDARY_NAV.filter((entry) =>
+        isNavEntryAllowedForLearningPolicy(entry, activeLearningPolicy),
+      ),
+    [activeLearningPolicy],
+  );
   // The order the learner dragged the history region into — conversation ids
   // and group ids in one list, since the two are peers there. Like the
   // collapse preference above it is per-machine view state, hydrated after
@@ -190,6 +213,7 @@ export function SidebarShell({
           collapsed
           onHomeClick={handleHomeClick}
           onNavigate={closeDrawerOnNav}
+          allowedHrefs={allowedPrimaryHrefs}
         />
 
         <div className="flex-1" />
@@ -197,7 +221,7 @@ export function SidebarShell({
         {/* Secondary nav + footer */}
         <div className="flex w-full flex-col items-center gap-1 px-1.5">
           <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
-          {SECONDARY_NAV.map((item) => {
+          {visibleSecondaryNav.map((item) => {
             const active = isNavActive(pathname, item.href);
             return (
               <Link
@@ -288,6 +312,7 @@ export function SidebarShell({
         collapsed={false}
         onHomeClick={handleHomeClick}
         onNavigate={closeDrawerOnNav}
+        allowedHrefs={allowedPrimaryHrefs}
       />
 
       {/* Chat history — its own region below the nav, takes remaining height */}
@@ -355,7 +380,7 @@ export function SidebarShell({
 
       {/* Secondary nav + footer */}
       <div className="border-t border-[var(--border)]/40 px-2 py-2">
-        {SECONDARY_NAV.map((item) => {
+        {visibleSecondaryNav.map((item) => {
           const active = isNavActive(pathname, item.href);
           return (
             <Link

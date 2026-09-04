@@ -403,6 +403,11 @@ async def require_admin(
 
 def _learning_surface_for_path(path: str) -> str:
     normalized = "/" + str(path or "").lstrip("/")
+    # Model choices are part of chat, but this is the only settings route a
+    # learner may read. Match the exact path so the rest of the router stays
+    # default-denied.
+    if normalized == "/api/settings/llm-options":
+        return "chat"
     for root, surface in (
         ("/api/reading", "reading"),
         ("/api/chat", "chat"),
