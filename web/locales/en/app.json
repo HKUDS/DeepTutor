@@ -4753,5 +4753,16 @@
   "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.": "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.",
   "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.": "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.",
   "Unverified historical indexing model": "Unverified historical indexing model",
-  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads."
+  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
+  "Learning progress": "Learning progress",
+  "Review your own reading and learning activity.": "Review your own reading and learning activity.",
+  "Unable to load learning progress": "Unable to load learning progress",
+  "Loading progress": "Loading progress",
+  "No learning activity yet": "No learning activity yet",
+  "Learning actions": "Learning actions",
+  "Reading progress": "Reading progress",
+  "No reading progress yet": "No reading progress yet",
+  "Furthest reading progress": "Furthest reading progress",
+  "No learning actions yet": "No learning actions yet",
+  "Locator": "Locator"
 }

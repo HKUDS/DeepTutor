@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import reading
+from deeptutor.learning.storage import LearningStore
 from deeptutor.reading import ReadingCatalogStore, ReadingError, ReadingStore
 from deeptutor.services.path_service import PathService
 
@@ -241,6 +242,31 @@ def test_epub_contract_exposes_source_refs_original_and_position(client: TestCli
     assert saved.status_code == 200
     assert client.get(base).json()["source_anchor"] == "epubcfi(/6/2)"
     assert client.put(base, json={"locator": 2, "percentage": 0}).status_code == 400
+
+
+def test_saved_reading_position_updates_account_learning_record(client: TestClient) -> None:
+    material = _upload(client)
+    base = f"/api/reading/materials/{material['material_id']}/position"
+
+    assert client.put(base, json={"locator": 1, "percentage": 0.2}).status_code == 200
+    assert client.put(base, json={"locator": 2, "percentage": 0.7}).status_code == 200
+    assert (
+        client.put(
+            base,
+            json={"locator": 1, "source_anchor": "private-anchor", "percentage": 0.3},
+        ).status_code
+        == 200
+    )
+
+    records = LearningStore().list_reading_records()
+    assert len(records.progress) == 1
+    progress = records.progress[0]
+    assert progress.material_id == material["material_id"]
+    assert progress.latest_locator == 1
+    assert progress.latest_percentage == 0.3
+    assert progress.furthest_locator == 2
+    assert progress.furthest_percentage == 0.7
+    assert "source_anchor" not in progress.model_dump()
 
 
 def test_epub_pairing_requires_confirmation_and_preserves_source_materials(

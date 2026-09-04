@@ -4,6 +4,7 @@ from pathlib import Path
 import sqlite3
 import time
 
+from pydantic import ValidationError
 import pytest
 
 from deeptutor.learning.models import (
@@ -471,6 +472,88 @@ class TestInteractionsAndEvents:
         persisted = store.get_interaction("path-1", "question-1")
         assert persisted is not None
         assert persisted.status == InteractionStatus.GRADED
+
+
+# ── Reading learning records ─────────────────────────────────────────────
+
+
+class TestReadingLearningRecords:
+    def test_reading_tables_migrate_into_an_existing_learning_database(self, tmp_path):
+        db_path = tmp_path / LearningStore._DB_FILENAME
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE mastery_paths (
+                    path_id TEXT PRIMARY KEY,
+                    state_json TEXT NOT NULL,
+                    revision INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+                """
+            )
+
+        store = LearningStore(root=tmp_path)
+        store.record_reading_position("rm_one", locator=1, percentage=0.1)
+
+        assert store.list_reading_records().progress[0].material_id == "rm_one"
+
+    def test_position_progress_keeps_latest_and_furthest_views(self, store):
+        first = store.record_reading_position("rm_one", locator=3, percentage=0.3)
+        assert first.latest_locator == first.furthest_locator == 3
+
+        second = store.record_reading_position("rm_one", locator=5, percentage=0.5)
+        store.record_reading_position("rm_one", locator=4, percentage=0.4)
+
+        records = store.list_reading_records()
+        assert len(records.progress) == 1
+        assert records.progress[0].material_id == "rm_one"
+        assert records.progress[0].latest_locator == 4
+        assert records.progress[0].latest_percentage == 0.4
+        assert records.progress[0].furthest_locator == 5
+        assert records.progress[0].furthest_percentage == 0.5
+
+    def test_activity_records_keep_metadata_without_source_content(self, store):
+        first = store.record_reading_activity(
+            "rm_one",
+            extension_id="guided_learning",
+            action="guide",
+            locator=2,
+            result_type="card",
+        )
+        second = store.record_reading_activity(
+            "rm_one",
+            extension_id="vocabulary",
+            action="explain",
+            locator=3,
+            result_type="card",
+        )
+
+        records = store.list_reading_records()
+        assert {row.activity_id for row in records.activities} == {
+            first.activity_id,
+            second.activity_id,
+        }
+        assert all(row.material_id == "rm_one" for row in records.activities)
+        assert all("visible_text" not in row.model_dump() for row in records.activities)
+
+    def test_activity_result_type_is_schema_bounded(self, store):
+        with pytest.raises(ValidationError):
+            store.record_reading_activity(
+                "rm_one",
+                extension_id="sample",
+                action="open",
+                locator=1,
+                result_type="javascript",
+            )
+
+    def test_reading_ids_and_values_are_validated(self, store):
+        with pytest.raises(ValueError, match="Invalid book_id"):
+            store.record_reading_position("../escape", locator=1, percentage=0.1)
+        with pytest.raises(ValidationError):
+            store.record_reading_position("rm_one", locator=0, percentage=0.1)
+        with pytest.raises(ValidationError):
+            store.record_reading_position("rm_one", locator=1, percentage=1.1)
 
 
 # ── atomic write ──────────────────────────────────────────────────────────

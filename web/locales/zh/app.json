@@ -4753,5 +4753,16 @@
   "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.": "无法加载 LightRAG 查询模型设置。请选择索引模型或重试。",
   "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.": "历史索引模型无法确认。知识库仍可查询，但增量上传前必须完整重建。",
   "Unverified historical indexing model": "无法确认的历史索引模型",
-  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "此旧版 LightRAG 索引仍可查询，但增量上传前必须完整重建。"
+  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "此旧版 LightRAG 索引仍可查询，但增量上传前必须完整重建。",
+  "Learning progress": "学习进度",
+  "Review your own reading and learning activity.": "查看你自己的阅读与学习活动。",
+  "Unable to load learning progress": "无法加载学习进度",
+  "Loading progress": "正在加载进度",
+  "No learning activity yet": "还没有学习活动",
+  "Learning actions": "学习操作",
+  "Reading progress": "阅读进度",
+  "No reading progress yet": "还没有阅读进度",
+  "Furthest reading progress": "最远阅读进度",
+  "No learning actions yet": "还没有学习操作",
+  "Locator": "位置"
 }
