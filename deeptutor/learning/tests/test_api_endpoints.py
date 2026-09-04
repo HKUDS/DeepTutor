@@ -683,6 +683,74 @@ class TestGetProgress:
         assert path_map["path_revision"] == progress["version"]
 
 
+# -- GET /progress/{book_id}/board ----------------------------------------
+
+
+class TestProgressBoard:
+    def test_board_empty(self, client):
+        resp = client.get("/api/mastery-paths/progress/boardempty/board")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["book_id"] == "boardempty"
+        assert data["cards"] == []
+        assert data["modules"] == []
+
+    def test_board_card_shape_and_position(self, client):
+        client.post(
+            "/api/mastery-paths/progress/boardbook/init-modules",
+            json={
+                "modules": [
+                    {
+                        "id": "m1",
+                        "name": "M1",
+                        "order": 0,
+                        "knowledge_points": [
+                            {"id": "kp1", "name": "KP1", "type": "concept", "module_id": "m1"},
+                            {"id": "kp2", "name": "KP2", "type": "procedure", "module_id": "m1"},
+                        ],
+                    },
+                    {
+                        "id": "m2",
+                        "name": "M2",
+                        "order": 1,
+                        "knowledge_points": [
+                            {"id": "kp3", "name": "KP3", "type": "memory", "module_id": "m2"},
+                        ],
+                    },
+                ]
+            },
+        )
+        resp = client.get("/api/mastery-paths/progress/boardbook/board")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["cards"]) == 3
+        assert len(data["modules"]) == 2
+
+        first = data["cards"][0]
+        assert first["id"] == "kp1"
+        assert first["name"] == "KP1"
+        assert first["type"] == "concept"
+        assert first["module_id"] == "m1"
+        assert first["module_name"] == "M1"
+        assert first["status"] == "new"
+        assert first["mastery_level"] == 0.0
+        assert first["next_review_at"] is None
+        assert first["position"] == {"column": 0, "row": 0}
+
+        third = data["cards"][2]
+        assert third["position"] == {"column": 1, "row": 0}
+
+        module = data["modules"][0]
+        assert module["name"] == "M1"
+        assert module["mastered"] == 0
+        assert module["total"] == 2
+        assert len(module["cards"]) == 2
+
+    def test_board_invalid_book_id_returns_400(self, client):
+        resp = client.get("/api/mastery-paths/progress/a\\b/board")
+        assert resp.status_code == 400
+
+
 # -- DELETE /progress/{book_id} -------------------------------------------
 
 

@@ -13,6 +13,8 @@ export interface LLMOption extends LLMSelection {
   /** Human-readable provider name from the registry ("OpenRouter"). */
   provider_label?: string;
   context_window?: number;
+  reasoning_effort?: string;
+  supported_reasoning_efforts?: string[];
   is_active_default: boolean;
 }
 

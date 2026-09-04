@@ -211,7 +211,28 @@ def _parser_inputs(root_dir: Path) -> list[dict[str, str]]:
     ]
 
 
-def write_meta(root_dir: Path) -> None:
+def read_published_policy(root_dir: Path | None) -> dict[str, Any] | None:
+    if root_dir is None or not meta_is_native_published(root_dir):
+        return None
+    meta = _read_meta(Path(root_dir)) or {}
+    policy = meta.get("indexing_policy")
+    if isinstance(policy, dict):
+        return policy
+    return {"policy": "legacy_unpinned"}
+
+
+def latest_published_root(kb_dir: Path) -> Path | None:
+    """Return the newest native published version, ignoring failed candidates."""
+    from deeptutor.services.rag.index_versioning import list_kb_versions
+
+    for entry in list_kb_versions(Path(kb_dir)):
+        root = Path(str(entry.get("storage_path") or ""))
+        if meta_is_native_published(root):
+            return root
+    return None
+
+
+def write_meta(root_dir: Path, *, indexing_policy: dict[str, Any] | None = None) -> None:
     """Write a flat-layout ``meta.json`` so the version lists as ready.
 
     Mirrors ``index_versioning.write_version_meta`` but carries a synthetic
@@ -240,6 +261,9 @@ def write_meta(root_dir: Path) -> None:
         "layout": "flat",
         "created_at": str(previous.get("created_at") or now),
         "updated_at": now,
+        "indexing_policy": indexing_policy
+        or previous.get("indexing_policy")
+        or {"policy": "legacy_unpinned"},
         **embedding_meta_fields(),
     }
     atomic_write_json(target / META_FILENAME, payload)
@@ -254,5 +278,7 @@ __all__ = [
     "working_dir",
     "has_output",
     "meta_is_native_published",
+    "latest_published_root",
+    "read_published_policy",
     "write_meta",
 ]

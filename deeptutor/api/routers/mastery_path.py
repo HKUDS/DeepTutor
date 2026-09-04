@@ -653,6 +653,57 @@ async def get_progress_map(book_id: str):
     }
 
 
+@router.get("/progress/{book_id}/board")
+async def get_progress_board(book_id: str):
+    """The visual learning board: every knowledge point as a card, enriched
+    with its next review time and a deterministic grid position derived from
+    the module order. A read-only projection of the same mastery data the
+    tutor and the map view use."""
+    _validate_book_id(book_id)
+    service = get_learning_service()
+    progress = service.get_or_create(book_id)
+    summary = learning_policy.map_summary(progress)
+
+    due_by_kp = {task.knowledge_point_id: task.due_at for task in progress.review_queue}
+
+    cards: list[dict] = []
+    modules: list[dict] = []
+    for module in summary["modules"]:
+        module_cards: list[dict] = []
+        for index, kp in enumerate(module["knowledge_points"]):
+            card = {
+                "id": kp["id"],
+                "name": kp["name"],
+                "type": kp["type"],
+                "module_id": module["id"],
+                "module_name": module["name"],
+                "status": kp["status"],
+                "mastery_level": kp["mastery"],
+                "next_review_at": due_by_kp.get(kp["id"]),
+                "position": {"column": module["order"], "row": index},
+            }
+            cards.append(card)
+            module_cards.append(card)
+        modules.append(
+            {
+                "id": module["id"],
+                "name": module["name"],
+                "order": module["order"],
+                "mastered": module["mastered"],
+                "total": module["total"],
+                "cards": module_cards,
+            }
+        )
+
+    return {
+        "book_id": book_id,
+        "name": summary["name"],
+        "path_revision": progress.version,
+        "cards": cards,
+        "modules": modules,
+    }
+
+
 @router.get("/progress/{book_id}/objectives/{kp_id}")
 async def get_objective_report(book_id: str, kp_id: str):
     """The evidence behind one objective: attempts, schedule, errors, prompts.

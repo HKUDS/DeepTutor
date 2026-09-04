@@ -54,10 +54,7 @@ export function readingWorkspaceIdOf(session: SessionSummary): string {
  * rule in two directions: if they ever disagreed, the first turn would land on
  * a URL the workspace then read as "new" and start the conversation over.
  */
-export function readingSessionIdFromPath(
-  pathname: string | null | undefined,
-): string | null {
-  if (!pathname) return null;
+export function readingSessionIdFromPath(pathname: string): string | null {
   const match = /^\/reading\/[^/]+\/sessions\/([^/?#]+)/.exec(pathname);
   if (!match) return null;
   return decodeURIComponent(match[1]).trim() || null;

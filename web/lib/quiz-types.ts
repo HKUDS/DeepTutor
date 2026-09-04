@@ -2,6 +2,7 @@
  * Shared types for Quiz Generation (deep_question capability).
  */
 
+import { decodeEscapedUnicodeForDisplay } from "./markdown-display";
 import {
   type NormalizedQuizQuestionType,
   normalizeQuizQuestionType,
@@ -78,6 +79,42 @@ export interface QuizFollowupContext {
   ai_judgment?: string;
 }
 
+/** Decode dense ``\\uXXXX`` runs on learner-facing quiz strings (#973 family). */
+function decodeQuizText(value: string | undefined | null): string {
+  return decodeEscapedUnicodeForDisplay(String(value ?? ""));
+}
+
+function decodeQuizOptions(
+  options: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!options || typeof options !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(options)) {
+    out[key] = decodeQuizText(value);
+  }
+  return out;
+}
+
+function buildQuizQuestionFromQa(qa: Record<string, unknown>): QuizQuestion {
+  return {
+    question_id: String(qa.question_id ?? ""),
+    question: decodeQuizText(qa.question as string | undefined | null),
+    question_type: normalizeQuizQuestionType(qa.question_type),
+    options: decodeQuizOptions(qa.options as Record<string, string> | undefined),
+    correct_answer: decodeQuizText(qa.correct_answer as string | undefined | null),
+    explanation: decodeQuizText(qa.explanation as string | undefined | null),
+    difficulty: qa.difficulty ? String(qa.difficulty) : undefined,
+    concentration: qa.concentration ? String(qa.concentration) : undefined,
+    knowledge_context:
+      qa.metadata &&
+      typeof qa.metadata === "object" &&
+      "knowledge_context" in qa.metadata &&
+      qa.metadata.knowledge_context
+        ? decodeQuizText(String(qa.metadata.knowledge_context))
+        : undefined,
+  };
+}
+
 /**
  * Extract QuizQuestion[] from per-question ``content`` events emitted live
  * by the new ``QuestionPipeline`` while the quizzing phase is running.
@@ -107,16 +144,7 @@ export function extractStreamingQuizQuestions(
     const qa = meta.qa_pair as Record<string, unknown> | undefined;
     if (!qa || typeof qa !== "object" || !qa.question) continue;
     const idx = Number(meta.question_index);
-    const question: QuizQuestion = {
-      question_id: String(qa.question_id ?? ""),
-      question: String(qa.question ?? ""),
-      question_type: normalizeQuizQuestionType(qa.question_type),
-      options: qa.options as Record<string, string> | undefined,
-      correct_answer: String(qa.correct_answer ?? ""),
-      explanation: String(qa.explanation ?? ""),
-      difficulty: qa.difficulty ? String(qa.difficulty) : undefined,
-      concentration: qa.concentration ? String(qa.concentration) : undefined,
-    };
+    const question = buildQuizQuestionFromQa(qa);
     const key = question.question_id || String(idx);
     byId.set(key, {
       idx: Number.isFinite(idx) ? idx : byId.size,
@@ -171,24 +199,7 @@ export function extractQuizQuestions(
   const parsed: Array<QuizQuestion | null> = results.map((item) => {
     const qa = (item.qa_pair ?? item) as Record<string, unknown>;
     if (!qa.question) return null;
-    const question: QuizQuestion = {
-      question_id: String(qa.question_id ?? ""),
-      question: String(qa.question ?? ""),
-      question_type: normalizeQuizQuestionType(qa.question_type),
-      options: qa.options as Record<string, string> | undefined,
-      correct_answer: String(qa.correct_answer ?? ""),
-      explanation: String(qa.explanation ?? ""),
-      difficulty: qa.difficulty ? String(qa.difficulty) : undefined,
-      concentration: qa.concentration ? String(qa.concentration) : undefined,
-      knowledge_context:
-        qa.metadata &&
-        typeof qa.metadata === "object" &&
-        "knowledge_context" in qa.metadata &&
-        qa.metadata.knowledge_context
-          ? String(qa.metadata.knowledge_context)
-          : undefined,
-    };
-    return question;
+    return buildQuizQuestionFromQa(qa);
   });
 
   return parsed.filter(

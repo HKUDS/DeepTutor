@@ -15,6 +15,7 @@ from deeptutor.services.session.turn_runtime import (
     _format_followup_question_context,
     _format_selection_tutor_context,
     _narration_marker_call_id,
+    _repair_chinese_emphasis_for_persistence,
     _resolve_selection_tutor_context,
     _should_capture_assistant_content,
     _stamp_ask_user_content_offset,
@@ -118,6 +119,33 @@ class TestNarrationMarkerCallId:
 
 
 class TestAssemblePersistedAnswer:
+    def test_repairs_chinese_emphasis_boundaries_before_persistence(self) -> None:
+        assert (
+            _repair_chinese_emphasis_for_persistence("中文*，重点*内容", "zh")
+            == "中文 *，重点* 内容"
+        )
+        assert _repair_chinese_emphasis_for_persistence("**“你好”**啊", "zh-CN") == "**“你好”** 啊"
+        assert _repair_chinese_emphasis_for_persistence("中文*，重点*", "en") == "中文*，重点*"
+
+    def test_does_not_change_inner_whitespace_or_literal_stars(self) -> None:
+        inputs = [
+            "* 重点 *",
+            "** 重点 **",
+            "*重点 *",
+            "** 重点**",
+            "*重点 内容*",
+            "前言 * 第一项 * 与 * 第二项 * 后记",
+            "Use * as multiplication *",
+            r"\* 重点 \*",
+            "说明 * 这里不是完整强调，后面有 *正常内容*",
+        ]
+        for content in inputs:
+            assert _repair_chinese_emphasis_for_persistence(content, "zh") == content
+
+    def test_preserves_code_math_and_nested_emphasis(self) -> None:
+        content = "`中文*，重点*`\n$中文*，重点*$\n中文***，重点***内容"
+        assert _repair_chinese_emphasis_for_persistence(content, "zh") == content
+
     def test_continuation_preserves_exact_visible_boundary(self) -> None:
         segments = [
             ("round-part-1", "Part one. "),
