@@ -78,6 +78,22 @@ def test_assistant_message_replays_gemini_thought_signature() -> None:
     }
 
 
+def test_assistant_message_builds_extra_content_from_bare_thought_signature() -> None:
+    message = assistant_message_with_tool_calls(
+        content="",
+        tool_calls=[
+            {
+                "id": "call_1",
+                "name": "mastery_status",
+                "arguments": "{}",
+                "thought_signature": "sig-xyz",
+            }
+        ],
+    )
+
+    assert message["tool_calls"][0]["extra_content"] == {"google": {"thought_signature": "sig-xyz"}}
+
+
 @pytest.mark.asyncio
 async def test_openai_sdk_keeps_gemini_signature_in_request_body() -> None:
     captured: dict = {}

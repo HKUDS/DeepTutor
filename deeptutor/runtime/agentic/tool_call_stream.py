@@ -10,6 +10,8 @@ each field is stated here once instead of being restated per site:
 * Provider extensions attached to the call arrive **complete** and must be
   preserved. Gemini thinking models put the opaque signature required by the
   next tool round in ``extra_content.google.thought_signature`` (#1181).
+  Capture the whole ``extra_content`` object (SDK attribute, ``model_extra``,
+  or plain dict delta) so the assistant replay keeps the provider contract.
 
 Appending a complete field is issue #937: a router that re-sent ``id`` on
 every chunk grew it to 47241 characters, far past the 64-character limit the
@@ -29,7 +31,32 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["ToolCallAccumulator"]
+__all__ = ["ToolCallAccumulator", "extra_content_from_tool_call_delta"]
+
+
+def extra_content_from_tool_call_delta(tc_delta: Any) -> dict[str, Any] | None:
+    """Return Gemini (or other) ``extra_content`` from a tool-call delta.
+
+    Handles SDK models, ``model_extra``, and plain dict deltas so signatures
+    are not dropped when the OpenAI client does not promote the field.
+    """
+    extra = getattr(tc_delta, "extra_content", None)
+    if extra is None and isinstance(tc_delta, dict):
+        extra = tc_delta.get("extra_content")
+    if extra is None:
+        model_extra = getattr(tc_delta, "model_extra", None)
+        if isinstance(model_extra, dict):
+            extra = model_extra.get("extra_content")
+    if isinstance(extra, dict) and extra:
+        return extra
+
+    # Some gateways flatten the signature onto the tool-call object.
+    signature = getattr(tc_delta, "thought_signature", None)
+    if signature is None and isinstance(tc_delta, dict):
+        signature = tc_delta.get("thought_signature")
+    if signature:
+        return {"google": {"thought_signature": str(signature)}}
+    return None
 
 
 class ToolCallAccumulator:
@@ -44,32 +71,41 @@ class ToolCallAccumulator:
         The count covers ``name`` and ``arguments`` only, matching what
         callers bill as provider output.
         """
-        index = int(getattr(tc_delta, "index", 0) or 0)
+        raw_index = getattr(tc_delta, "index", None)
+        if raw_index is None and isinstance(tc_delta, dict):
+            raw_index = tc_delta.get("index")
+        index = int(raw_index or 0)
         part = self._parts.setdefault(index, {"id": "", "name": "", "arguments": ""})
 
         tcid = getattr(tc_delta, "id", None)
+        if tcid is None and isinstance(tc_delta, dict):
+            tcid = tc_delta.get("id")
         if tcid:
             part["id"] = str(tcid)
 
         # Gemini's OpenAI-compatible endpoint adds ``extra_content`` to the
-        # tool-call delta. The OpenAI SDK keeps unknown response fields on the
-        # model, so preserve the extension as an opaque object and replay it on
-        # the assistant tool-call message. Assign rather than merge: like the
-        # id/name fields, the provider sends this metadata as a complete value.
-        extra_content = getattr(tc_delta, "extra_content", None)
-        if isinstance(extra_content, dict) and extra_content:
+        # tool-call delta. Assign rather than merge: like id/name, the
+        # provider sends this metadata as a complete value.
+        extra_content = extra_content_from_tool_call_delta(tc_delta)
+        if extra_content is not None:
             part["extra_content"] = extra_content
 
         fn = getattr(tc_delta, "function", None)
+        if fn is None and isinstance(tc_delta, dict):
+            fn = tc_delta.get("function")
         if fn is None:
             return 0
 
         chars = 0
         name = getattr(fn, "name", None)
+        if name is None and isinstance(fn, dict):
+            name = fn.get("name")
         if name:
             part["name"] = str(name)
             chars += len(str(name))
         arguments = getattr(fn, "arguments", None)
+        if arguments is None and isinstance(fn, dict):
+            arguments = fn.get("arguments")
         if arguments:
             part["arguments"] += str(arguments)
             chars += len(str(arguments))

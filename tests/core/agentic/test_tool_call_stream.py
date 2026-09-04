@@ -146,3 +146,33 @@ def test_gemini_thought_signature_survives_stream_accumulation() -> None:
             "extra_content": {"google": {"thought_signature": "signature-from-gemini"}},
         }
     ]
+
+
+def test_gemini_thought_signature_from_dict_delta() -> None:
+    """Some gateways deliver tool-call deltas as plain dicts, not SDK models."""
+    acc = ToolCallAccumulator()
+    acc.feed(
+        {
+            "index": 0,
+            "id": "call_1",
+            "function": {"name": "rag_search", "arguments": "{}"},
+            "extra_content": {"google": {"thought_signature": "sig-dict"}},
+        }
+    )
+
+    assert acc.collected()[0]["extra_content"] == {"google": {"thought_signature": "sig-dict"}}
+
+
+def test_gemini_thought_signature_from_model_extra() -> None:
+    class _DeltaWithModelExtra:
+        index = 0
+        id = "call_1"
+        function = _Fn("mastery_status", "{}")
+        model_extra = {
+            "extra_content": {"google": {"thought_signature": "sig-extra"}},
+        }
+
+    acc = ToolCallAccumulator()
+    acc.feed(_DeltaWithModelExtra())
+
+    assert acc.collected()[0]["extra_content"] == {"google": {"thought_signature": "sig-extra"}}

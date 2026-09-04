@@ -17,6 +17,11 @@ def assistant_message_with_tool_calls(
     requires the prior round's reasoning to be echoed on the assistant turn
     that issued the tool calls (#1058). Responses-API replay is handled
     separately via ``_responses_output_items``.
+
+    Gemini thinking models similarly require ``thought_signature`` on each
+    function-call part, usually as ``extra_content.google.thought_signature``
+    (#1181). Accept either a full ``extra_content`` object or a bare
+    ``thought_signature`` string from the accumulator.
     """
     serialized_calls: list[dict[str, Any]] = []
     for tool_call in tool_calls:
@@ -28,12 +33,15 @@ def assistant_message_with_tool_calls(
                 "arguments": tool_call.get("arguments") or "{}",
             },
         }
-        # Gemini's OpenAI-compatible endpoint requires the exact opaque
-        # thought signature from each function call to be sent back on the
-        # next round (#1181). Other providers simply omit this extension.
         extra_content = tool_call.get("extra_content")
         if isinstance(extra_content, dict) and extra_content:
             serialized["extra_content"] = extra_content
+        else:
+            signature = tool_call.get("thought_signature")
+            if signature:
+                serialized["extra_content"] = {
+                    "google": {"thought_signature": str(signature)},
+                }
         serialized_calls.append(serialized)
 
     message: dict[str, Any] = {
