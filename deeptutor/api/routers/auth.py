@@ -405,6 +405,7 @@ def _learning_surface_for_path(path: str) -> str:
     normalized = "/" + str(path or "").lstrip("/")
     for root, surface in (
         ("/api/reading", "reading"),
+        ("/api/courses", "reading"),
         ("/api/chat", "chat"),
         ("/api/question", "chat"),
         ("/api/question-notebook", "chat"),

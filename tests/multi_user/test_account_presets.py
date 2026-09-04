@@ -36,6 +36,7 @@ def test_learning_surface_routing_matches_complete_path_segments():
     from deeptutor.api.routers.auth import _learning_surface_for_path
 
     assert _learning_surface_for_path("/api/reading/materials") == "reading"
+    assert _learning_surface_for_path("/api/courses/course/state") == "reading"
     assert _learning_surface_for_path("/api/question-notebook/entries") == "chat"
     assert _learning_surface_for_path("/api/reading-private") == ""
     assert _learning_surface_for_path("/api/questions") == ""

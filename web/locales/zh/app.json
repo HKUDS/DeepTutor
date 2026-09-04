@@ -3729,6 +3729,7 @@
   "Selected text": "选中内容",
   "Ask anything about the selected text.": "可以针对这段选中内容继续提问。",
   "My courses": "我的课程",
+  "Courses could not load": "课程加载失败",
   "Create a course": "创建课程",
   "Create your first course": "创建第一门课程",
   "Course name": "课程名称",
