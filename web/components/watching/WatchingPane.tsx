@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   ChevronsDown,
   Check,
   Captions,
@@ -12,6 +14,7 @@ import {
   Pencil,
   Play,
   RotateCcw,
+  Search,
   StickyNote,
   Trash2,
   X,
@@ -70,6 +73,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const notesExportRequestRef = useRef(0);
   const [followTranscript, setFollowTranscript] = useState(true);
+  const [transcriptQuery, setTranscriptQuery] = useState("");
+  const [selectedMatchIndex, setSelectedMatchIndex] = useState(0);
+  const [shouldScrollMatch, setShouldScrollMatch] = useState(false);
   const controllerRef = useRef<PlayerController | null>(null);
   const transcriptListRef = useRef<HTMLDivElement | null>(null);
   const activeMaterialIdRef = useRef(materialId);
@@ -146,12 +152,43 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     [material, time],
   );
 
+  const normalizedTranscriptQuery = transcriptQuery.trim().toLowerCase();
+  const transcriptMatches = useMemo(() => {
+    const cues = material?.transcript.cues ?? [];
+    if (!normalizedTranscriptQuery) return cues;
+    return cues.filter((row) =>
+      row.text.toLowerCase().includes(normalizedTranscriptQuery),
+    );
+  }, [material, normalizedTranscriptQuery]);
+  const selectedTranscriptIndex = transcriptMatches.length
+    ? Math.min(selectedMatchIndex, transcriptMatches.length - 1)
+    : 0;
+  const selectTranscriptMatch = useCallback(
+    (nextIndex: number) => {
+      if (!transcriptMatches.length) return;
+      setSelectedMatchIndex(
+        (nextIndex + transcriptMatches.length) % transcriptMatches.length,
+      );
+      setShouldScrollMatch(true);
+    },
+    [transcriptMatches.length],
+  );
+
   useEffect(() => {
     setFollowTranscript(true);
+    setTranscriptQuery("");
+    setSelectedMatchIndex(0);
+    setShouldScrollMatch(false);
   }, [materialId]);
 
   useEffect(() => {
-    if (!followTranscript || tab !== "transcript" || !cue) return;
+    if (
+      !followTranscript ||
+      tab !== "transcript" ||
+      normalizedTranscriptQuery ||
+      !cue
+    )
+      return;
     const list = transcriptListRef.current;
     const activeRow = list?.querySelector<HTMLButtonElement>(
       '[data-active-cue="true"]',
@@ -164,7 +201,29 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       list.clientHeight / 2 +
       activeRow.clientHeight / 2;
     list.scrollTo({ top: Math.max(0, rowTop), behavior: "smooth" });
-  }, [cue, followTranscript, tab]);
+  }, [cue, followTranscript, normalizedTranscriptQuery, tab]);
+
+  useEffect(() => {
+    if (tab !== "transcript" || !normalizedTranscriptQuery || !shouldScrollMatch)
+      return;
+    const list = transcriptListRef.current;
+    const selectedRow = list?.querySelector<HTMLButtonElement>(
+      '[data-selected-match="true"]',
+    );
+    if (!list || !selectedRow) return;
+    const rowTop =
+      selectedRow.getBoundingClientRect().top -
+      list.getBoundingClientRect().top +
+      list.scrollTop -
+      list.clientHeight / 2 +
+      selectedRow.clientHeight / 2;
+    list.scrollTo({ top: Math.max(0, rowTop), behavior: "smooth" });
+  }, [
+    normalizedTranscriptQuery,
+    selectedTranscriptIndex,
+    shouldScrollMatch,
+    tab,
+  ]);
 
   const submit = async (providerOverride?: "youtube") => {
     const url = (providerOverride ? lastUrl || input : input).trim();
@@ -625,25 +684,124 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                       <ChevronsDown className="h-4 w-4" />
                       {t("Follow playback")}
                     </button>
+                    <div className="flex min-w-48 flex-1 items-center gap-2">
+                      <div className="relative min-w-0 flex-1">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                        <input
+                          value={transcriptQuery}
+                          onChange={(event) => {
+                            setTranscriptQuery(event.target.value);
+                            setSelectedMatchIndex(0);
+                            setShouldScrollMatch(false);
+                            setFollowTranscript(false);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setTranscriptQuery("");
+                              setSelectedMatchIndex(0);
+                              setShouldScrollMatch(false);
+                              return;
+                            }
+                            if (event.key !== "Enter" || !transcriptMatches.length)
+                              return;
+                            event.preventDefault();
+                            selectTranscriptMatch(
+                              selectedTranscriptIndex + (event.shiftKey ? -1 : 1),
+                            );
+                          }}
+                          placeholder={t("Search transcript")}
+                          aria-label={t("Search transcript")}
+                          data-testid="video-transcript-search"
+                          className="w-full rounded-lg border border-[var(--border)] bg-transparent py-2 pl-9 pr-20 text-sm"
+                        />
+                        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              selectTranscriptMatch(selectedTranscriptIndex - 1);
+                            }}
+                            disabled={!transcriptMatches.length}
+                            title={t("Previous match")}
+                            aria-label={t("Previous match")}
+                            className="rounded-md p-1 hover:bg-[var(--muted)] disabled:opacity-40"
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              selectTranscriptMatch(selectedTranscriptIndex + 1);
+                            }}
+                            disabled={!transcriptMatches.length}
+                            title={t("Next match")}
+                            aria-label={t("Next match")}
+                            className="rounded-md p-1 hover:bg-[var(--muted)] disabled:opacity-40"
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </button>
+                          {transcriptQuery && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTranscriptQuery("");
+                                setSelectedMatchIndex(0);
+                                setShouldScrollMatch(false);
+                              }}
+                              title={t("Clear transcript search")}
+                              aria-label={t("Clear transcript search")}
+                              className="rounded-md p-1 hover:bg-[var(--muted)]"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {normalizedTranscriptQuery && (
+                        <span
+                          data-testid="video-transcript-match-count"
+                          className="shrink-0 text-xs text-[var(--muted-foreground)]"
+                        >
+                          {t("{{position}} / {{count}} matches", {
+                            position: transcriptMatches.length
+                              ? selectedTranscriptIndex + 1
+                              : 0,
+                            count: transcriptMatches.length,
+                          })}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-1">
-                    {material.transcript.cues.map((row, index) => {
-                      const active = row === cue;
-                      return (
-                        <button
-                          key={`${row.start}-${index}`}
-                          type="button"
-                          data-active-cue={active ? "true" : undefined}
-                          onClick={() => controllerRef.current?.seek(row.start)}
-                          className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-blue-500/15 ring-1 ring-blue-500/30" : "hover:bg-[var(--muted)]"}`}
-                        >
-                          <span className="shrink-0 tabular-nums text-blue-600">
-                            {formatTime(row.start)}
-                          </span>
-                          <span>{row.text}</span>
-                        </button>
-                      );
-                    })}
+                    {transcriptMatches.length ? (
+                      transcriptMatches.map((row, index) => {
+                        const active = row === cue;
+                        const selected = index === selectedTranscriptIndex;
+                        return (
+                          <button
+                            key={`${row.start}-${index}`}
+                            type="button"
+                            data-active-cue={active ? "true" : undefined}
+                            data-selected-match={
+                              selected && normalizedTranscriptQuery
+                                ? "true"
+                                : undefined
+                            }
+                            onClick={() => controllerRef.current?.seek(row.start)}
+                            className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-blue-500/15 ring-1 ring-blue-500/30" : "hover:bg-[var(--muted)]"} ${selected && normalizedTranscriptQuery ? "ring-1 ring-blue-500/30" : ""}`}
+                          >
+                            <span className="shrink-0 tabular-nums text-blue-600">
+                              {formatTime(row.start)}
+                            </span>
+                            <span>{row.text}</span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="rounded-lg border border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">
+                        {t("No transcript matches.")}
+                      </p>
+                    )}
                   </div>
                 </>
               )

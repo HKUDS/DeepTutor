@@ -329,6 +329,86 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   await followButton.click();
   await expect(followButton).toHaveAttribute("aria-pressed", "true");
 
+  const transcriptSearch = page.getByTestId("video-transcript-search");
+  await transcriptSearch.fill("GROUNDED CONCEPT");
+  await expect(followButton).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByTestId("video-transcript-match-count"),
+  ).toHaveText("1 / 3 matches");
+  await expect(page.getByText("Intermediate lesson detail 1.")).toBeHidden();
+  await expect(page.getByText("The first grounded concept.")).toBeVisible();
+  await expect(page.getByText("The second grounded concept.")).toBeVisible();
+  await expect(page.getByText("The third grounded concept.")).toBeVisible();
+
+  await transcriptSearch.press("Enter");
+  await expect(
+    page.getByTestId("video-transcript-match-count"),
+  ).toHaveText("2 / 3 matches");
+  await expect(
+    page.locator('[data-selected-match="true"]').filter({
+      hasText: "The second grounded concept.",
+    }),
+  ).toHaveCount(1);
+  await page
+    .getByRole("button", { name: /1:10\s+The second grounded concept\./ })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const player = (
+          window as typeof window & { __fakePlayers: Array<{ current: number }> }
+        ).__fakePlayers.at(-1);
+        return player?.current || 0;
+      }),
+    )
+    .toBe(70);
+
+  await transcriptSearch.press("Shift+Enter");
+  await expect(
+    page.getByTestId("video-transcript-match-count"),
+  ).toHaveText("1 / 3 matches");
+  await transcriptSearch.press("Enter");
+  await transcriptSearch.press("Enter");
+  await expect(
+    page.getByTestId("video-transcript-match-count"),
+  ).toHaveText("3 / 3 matches");
+  await transcriptSearch.press("Enter");
+  await expect(
+    page.getByTestId("video-transcript-match-count"),
+  ).toHaveText("1 / 3 matches");
+
+  await transcriptSearch.fill("missing-term");
+  await expect(
+    page.getByTestId("video-transcript-match-count"),
+  ).toHaveText("0 / 0 matches");
+  await expect(page.getByText("No transcript matches.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next match" })).toBeDisabled();
+
+  await transcriptSearch.press("Escape");
+  await expect(transcriptSearch).toHaveValue("");
+  await expect(page.getByText("Intermediate lesson detail 1.")).toBeVisible();
+  await expect(followButton).toHaveAttribute("aria-pressed", "false");
+  await page.evaluate(() => {
+    const player = (
+      window as typeof window & { __fakePlayers: Array<{ current: number }> }
+    ).__fakePlayers.at(-1);
+    if (player) player.current = 8;
+  });
+  const clearedSearchScrollTop = await transcriptList.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.evaluate(() => {
+    const player = (
+      window as typeof window & { __fakePlayers: Array<{ current: number }> }
+    ).__fakePlayers.at(-1);
+    if (player) player.current = 112;
+  });
+  await page.waitForTimeout(700);
+  const restoredSearchScrollTop = await transcriptList.evaluate(
+    (element) => element.scrollTop,
+  );
+  expect(restoredSearchScrollTop).toBe(clearedSearchScrollTop);
+
   await page.evaluate(() => {
     const player = (
       window as typeof window & { __fakePlayers: Array<{ current: number }> }
