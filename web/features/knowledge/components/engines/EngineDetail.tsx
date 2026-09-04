@@ -1126,7 +1126,7 @@ export function LightRagForm({
         />
         <label className="flex flex-col gap-1">
           <span className="text-[12px] font-medium text-[var(--foreground)]">
-            {t("Chat model")}
+            {t("LightRAG query model")}
           </span>
           <select
             value={selectedValue}
@@ -1144,7 +1144,7 @@ export function LightRagForm({
               <option value="">{t("Loading models…")}</option>
             ) : (
               <>
-                <option value="">{t("Use global active chat model")}</option>
+                <option value="">{t("Use active chat model")}</option>
                 {selectedValue && !selectedOption && (
                   <option value={selectedValue}>
                     {t("Selected model unavailable")}
@@ -1165,7 +1165,9 @@ export function LightRagForm({
             )}
           </select>
           <span className="text-[11px] text-[var(--muted-foreground)]">
-            {t("Used for LightRAG extraction and query calls")}
+            {t(
+              "Used for current LightRAG queries and as the default indexing model for new or fully rebuilt knowledge bases. Published indexes keep their pinned indexing model.",
+            )}
           </span>
         </label>
       </div>

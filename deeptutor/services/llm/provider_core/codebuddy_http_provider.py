@@ -51,6 +51,8 @@ class CodeBuddyHTTPProvider(OpenAICompatProvider):
         self,
         api_key: str | None = None,
         default_model: str = DEFAULT_CODEBUDDY_MODEL,
+        *,
+        configure_env: bool = True,
     ):
         self._explicit_api_key = normalize_api_key(api_key)
         self._credentials: CodeBuddyCredentials | None = (
@@ -70,6 +72,7 @@ class CodeBuddyHTTPProvider(OpenAICompatProvider):
             extra_headers=extra_headers,
             spec=find_by_name("codebuddy"),
             provider_name="codebuddy",
+            configure_env=configure_env,
         )
         if self._explicit_api_key:
             self._apply_token(self._explicit_api_key)
@@ -208,6 +211,8 @@ def sdk_installed() -> bool:
 def build_codebuddy_provider(
     api_key: str | None = None,
     default_model: str = DEFAULT_CODEBUDDY_MODEL,
+    *,
+    configure_env: bool = True,
 ) -> Any:
     """Return the HTTP transport when it can authenticate, else the Agent SDK.
 
@@ -226,7 +231,11 @@ def build_codebuddy_provider(
         use_http = codebuddy_http_available(api_key) or not has_sdk
 
     if use_http:
-        return CodeBuddyHTTPProvider(api_key=api_key, default_model=default_model)
+        return CodeBuddyHTTPProvider(
+            api_key=api_key,
+            default_model=default_model,
+            configure_env=configure_env,
+        )
 
     from deeptutor.services.llm.provider_core.codebuddy_provider import CodeBuddyProvider
 

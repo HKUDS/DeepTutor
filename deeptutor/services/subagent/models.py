@@ -350,6 +350,21 @@ async def _hermes_options() -> BackendOptions:
     return await _free_text_options("hermes", "Hermes Agent", _HERMES_EFFORTS)
 
 
+async def _hermes_remote_options() -> BackendOptions:
+    backend = get_backend("hermes_remote")
+    detected = await backend.detect() if backend else None
+    return BackendOptions(
+        kind="hermes_remote",
+        display_name="Hermes Agent (remote)",
+        available=detected.available if detected else False,
+        version=detected.version if detected else "",
+        models=[],
+        efforts=list(_HERMES_EFFORTS),
+        allow_custom_model=True,
+        detail=detected.detail if detected else "incompatible",
+    )
+
+
 async def _openclaw_options() -> BackendOptions:
     return await _free_text_options("openclaw", "OpenClaw", _OPENCLAW_EFFORTS)
 
@@ -369,6 +384,7 @@ _PROVIDERS: dict[str, Callable[..., Awaitable[BackendOptions]]] = {
     "opencode": _opencode_options,
     "mimo": _mimo_options,
     "hermes": _hermes_options,
+    "hermes_remote": _hermes_remote_options,
     "openclaw": _openclaw_options,
     "deepseek_harness": _deepseek_harness_options,
 }

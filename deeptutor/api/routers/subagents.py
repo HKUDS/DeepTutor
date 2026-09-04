@@ -1,17 +1,15 @@
 """Subagent connections API.
 
 Backs the "My Agents → connected agents" feature: detect which local agent CLIs
-(Claude Code, Codex, Antigravity CLI, Kimi CLI, opencode, MiMo Code, Hermes Agent,
-OpenClaw, DeepSeek Harness) are installed on
-this machine, connect one as a pointer KB the chat composer can select, and
-configure the consult budget. Connections are
+or configured remote backends are usable, connect one as a pointer KB the chat
+composer can select, and configure the consult budget. Connections are
 stored as ``type: subagent`` knowledge bases (per-user, via the KB manager), so
 they ride the same selection/persistence path as the other connected KB types —
 the subagent capability drives them live, nothing is indexed.
 
-The CLIs run on the host with the host user's own credentials, so detection is
-machine-global; whether a connection is usable is simply "is the CLI installed
-here". If it isn't, the UI just doesn't offer it.
+Local CLIs run on the host with the host user's credentials; remote backends
+use deployment-wide server configuration. Detection is therefore machine-
+global. Unavailable runtimes are not offered by the connection UI.
 """
 
 from __future__ import annotations
@@ -47,7 +45,7 @@ class ConnectSubagentRequest(BaseModel):
     agent_kind: str
     cwd: str = ""
     # For the partner backend (``agent_kind == "partner"``): which partner to
-    # consult. Ignored by the local-CLI backends, which use ``cwd`` instead.
+    # consult. Ignored by local and remote agent backends.
     partner_id: str = ""
 
 
@@ -63,7 +61,7 @@ class SubagentMessageRequest(BaseModel):
 
 @router.get("/detect")
 async def detect_subagents():
-    """Report which agent CLIs are installed and usable on this machine."""
+    """Report which local and remote agent backends are usable."""
     detections = await detect_all()
     return {"backends": [d.to_dict() for d in detections]}
 
@@ -132,7 +130,7 @@ async def list_connections():
 
 @router.post("/connections")
 async def create_connection(payload: ConnectSubagentRequest):
-    """Connect a subagent (a local CLI, or one of the user's partners) as a selectable KB.
+    """Connect a local, remote, or Partner subagent as a selectable KB.
 
     A partner connection (``agent_kind == "partner"``) binds a ``partner_id``
     instead of a working directory: consulting it opens a fresh session on that
@@ -164,8 +162,11 @@ async def create_connection(payload: ConnectSubagentRequest):
         if not get_partner_manager().partner_exists(partner_id):
             raise HTTPException(status_code=400, detail=f"No partner named {partner_id!r}.")
     else:
+        from deeptutor.services.subagent import get_backend
+
+        backend = get_backend(agent_kind)
         raw_cwd = (payload.cwd or "").strip()
-        if raw_cwd:
+        if raw_cwd and backend is not None and getattr(backend, "local_cli", True):
             try:
                 resolved_cwd = str(assert_path_allowed(raw_cwd))
             except ValueError as exc:

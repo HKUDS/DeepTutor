@@ -3,10 +3,10 @@
 Add a new subagent by writing a :class:`SubagentBackend` and listing it here;
 the capability, API and UI all discover it through these helpers. Local-CLI
 backends (Claude Code, Codex, Antigravity CLI, Kimi CLI, opencode,
-MiMo Code, Hermes Agent, OpenClaw, DeepSeek Harness) and
-the in-process partner backend live in the same registry but are told apart by
-``local_cli`` — only CLIs are detected on the machine and offered in the
-connect-CLI modal.
+MiMo Code, Hermes Agent, OpenClaw, DeepSeek Harness), configured remote
+backends, and the in-process partner backend live in the same registry.
+``local_cli`` and ``detectable`` control which backends participate in
+connection discovery.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from deeptutor.services.subagent.claude_code import ClaudeCodeBackend
 from deeptutor.services.subagent.codex import CodexBackend
 from deeptutor.services.subagent.deepseek_harness import DeepSeekHarnessBackend
 from deeptutor.services.subagent.hermes import HermesBackend
+from deeptutor.services.subagent.hermes_remote import HermesRemoteBackend
 from deeptutor.services.subagent.kimi import KimiBackend
 from deeptutor.services.subagent.openclaw import OpenClawBackend
 from deeptutor.services.subagent.opencode_family import MimoBackend, OpencodeBackend
@@ -35,6 +36,7 @@ _BACKENDS: dict[str, SubagentBackend] = {
         OpencodeBackend(),
         MimoBackend(),
         HermesBackend(),
+        HermesRemoteBackend(),
         OpenClawBackend(),
         DeepSeekHarnessBackend(),
         PartnerBackend(),
@@ -43,7 +45,7 @@ _BACKENDS: dict[str, SubagentBackend] = {
 
 
 def list_backend_kinds() -> list[str]:
-    """Every connectable backend kind (CLIs + partner)."""
+    """Return every connectable local, remote, and Partner backend kind."""
     return list(_BACKENDS.keys())
 
 
@@ -51,24 +53,23 @@ def get_backend(kind: str) -> SubagentBackend | None:
     return _BACKENDS.get(str(kind or "").strip())
 
 
-def _cli_backends() -> list[SubagentBackend]:
-    return [b for b in _BACKENDS.values() if getattr(b, "local_cli", True)]
+def _detectable_backends() -> list[SubagentBackend]:
+    return [
+        backend
+        for backend in _BACKENDS.values()
+        if getattr(backend, "local_cli", True) or getattr(backend, "detectable", False)
+    ]
 
 
 async def detect_all() -> list[DetectResult]:
-    """Probe each local-CLI backend for installability on this machine.
-
-    Non-CLI backends (the partner backend) are skipped — they aren't installed,
-    they're connected from their own list — so this only ever returns the CLIs
-    the connect-CLI modal offers.
-    """
-    cli = _cli_backends()
+    """Probe local CLIs and configured remote backends."""
+    backends = _detectable_backends()
     results = await asyncio.gather(
-        *(backend.detect() for backend in cli),
+        *(backend.detect() for backend in backends),
         return_exceptions=True,
     )
     detections: list[DetectResult] = []
-    for backend, result in zip(cli, results, strict=True):
+    for backend, result in zip(backends, results, strict=True):
         if isinstance(result, DetectResult):
             detections.append(result)
         else:

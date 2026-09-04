@@ -18,9 +18,11 @@ export {
   reindexKnowledgeBase,
   retryKnowledgeBase,
   setDefaultKnowledgeBase,
+  updatePendingIndexingPolicy,
 } from "./client";
 
 export type {
+  IndexingLLMSelection,
   ImaKnowledgeBasePage,
   ImaProbe,
   KnowledgeBaseSummary,

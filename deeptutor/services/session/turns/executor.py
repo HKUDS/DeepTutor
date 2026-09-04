@@ -42,6 +42,7 @@ from .._turn_runtime_shared import (
     _reading_references,
     _reading_viewport,
     _reading_workspace_id,
+    _repair_chinese_emphasis_for_persistence,
     _request_snapshot_metadata,
     _resolve_selection_tutor_context,
     _resolve_turn_outcome,
@@ -836,8 +837,13 @@ class TurnExecutor:
             await fill_preview_text(generated_attachments)
 
             # The persisted answer is the captured content minus any narration
-            # rounds (their text stayed in the trace, never the answer).
-            assistant_content = _persisted_answer()
+            # rounds (their text stayed in the trace, never the answer). Apply
+            # the CJK Markdown repair only after every streamed segment has
+            # arrived, so no incomplete response is ever rewritten.
+            assistant_content = _repair_chinese_emphasis_for_persistence(
+                _persisted_answer(),
+                str(payload.get("language", "en") or "en"),
+            )
 
             # Assistant continues the same branch as the user message it
             # answers. If we just persisted a new user row we chain off
@@ -850,7 +856,7 @@ class TurnExecutor:
                     role="assistant",
                     content=assistant_content,
                     capability=capability_name,
-                    events=assistant_events,
+                    events=[],
                     attachments=generated_attachments or None,
                     parent_message_id=new_user_message_id,
                     metadata=assistant_provider_metadata,
@@ -861,7 +867,7 @@ class TurnExecutor:
                     role="assistant",
                     content=assistant_content,
                     capability=capability_name,
-                    events=assistant_events,
+                    events=[],
                     attachments=generated_attachments or None,
                     parent_message_id=branch_parent_id,
                     metadata=assistant_provider_metadata,
@@ -872,10 +878,11 @@ class TurnExecutor:
                     role="assistant",
                     content=assistant_content,
                     capability=capability_name,
-                    events=assistant_events,
+                    events=[],
                     attachments=generated_attachments or None,
                     metadata=assistant_provider_metadata,
                 )
+            await self.store.link_turn_message(turn_id, assistant_message_id)
             turn_status, turn_error = _resolve_turn_outcome(
                 assistant_events,
                 pending_done_event,
@@ -989,12 +996,12 @@ class TurnExecutor:
             if partial_content or generated_attachments or assistant_events:
                 with contextlib.suppress(Exception):
                     await asyncio.shield(
-                        self.store.add_message(
+                        assistant_message_id=await self.store.add_message(
                             session_id=session_id,
                             role="assistant",
                             content=partial_content,
                             capability=capability_name,
-                            events=assistant_events,
+                            events=[],
                             attachments=generated_attachments or None,
                             metadata=(
                                 {"provider_response_state": provider_response_state}
@@ -1003,6 +1010,10 @@ class TurnExecutor:
                             ),
                         )
                     )
+                    with contextlib.suppress(Exception):
+                        await asyncio.shield(
+                            self.store.link_turn_message(turn_id, assistant_message_id)
+                        )
             transitioned = False
             with contextlib.suppress(Exception):
                 transitioned = await self._transition_execution(

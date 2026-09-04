@@ -26,6 +26,7 @@ from typing import Any
 import uuid
 
 from .ask_user_trace import filter_ask_user_events
+from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
 from .provider_response_state import redact_private_message_metadata
 from .scope import StoreScope
 from .workspace_preferences import upgrade_workspace_preferences
@@ -631,24 +632,94 @@ class PocketBaseSessionStore:
             logger.warning(f"get_last_message failed: {exc}")
             return None
 
+    @staticmethod
+    def _event_record_to_payload(row: Any, session_id: str, turn_id: str) -> dict[str, Any]:
+        return {
+            "type": getattr(row, "type", ""),
+            "source": getattr(row, "source", "") or "",
+            "stage": getattr(row, "stage", "") or "",
+            "content": getattr(row, "content", "") or "",
+            "metadata": _json_loads(getattr(row, "metadata_json", None), {}),
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "seq": int(getattr(row, "seq", 0) or 0),
+            "timestamp": _to_float(getattr(row, "event_timestamp", None)),
+        }
+
+    @staticmethod
+    def _page_items(page: Any) -> list[Any]:
+        return list(getattr(page, "items", ()) or ())
+
+    @staticmethod
+    def _page_total(page: Any) -> int:
+        value = getattr(page, "total_items", getattr(page, "totalItems", None))
+        return max(
+            0, int(value if value is not None else len(PocketBaseSessionStore._page_items(page)))
+        )
+
+    def _trace_preview(
+        self, pb: Any, *, session_id: str, turn_id: str
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        turn_id = _validate_id(turn_id, "turn_id")
+        page = pb.collection("turn_events").get_list(
+            1,
+            MAX_TRACE_PREVIEW_EVENTS,
+            query_params={"filter": f'turn_id="{turn_id}"', "sort": "-seq"},
+        )
+        rows = list(reversed(self._page_items(page)))
+        events = [self._event_record_to_payload(row, session_id, turn_id) for row in rows]
+        preview, omitted = compact_trace_preview(events)
+        total = self._page_total(page)
+        last_seq = int(getattr(rows[-1], "seq", 0) or 0) if rows else 0
+        return preview, {
+            "turn_id": turn_id,
+            "total": total,
+            "last_seq": last_seq,
+            "truncated": omitted or total != len(preview),
+        }
+
     async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         sid = _validate_id(session_id, "session_id")
 
-        def _get():
-            return (
-                _pb()
-                .collection("messages")
-                .get_full_list(
-                    query_params={
-                        "filter": f'session_id="{sid}"',
-                        "sort": "msg_created_at",
-                    }
-                )
+        def _get() -> list[dict[str, Any]]:
+            pb = _pb()
+            records = pb.collection("messages").get_full_list(
+                query_params={
+                    "filter": f'session_id="{sid}"',
+                    "sort": "msg_created_at",
+                }
             )
+            turns = pb.collection("turns").get_full_list(
+                query_params={"filter": f'session_id="{sid}"'}
+            )
+            turns_by_message = {
+                str(getattr(turn, "assistant_message_id", "") or ""): turn
+                for turn in turns
+                if getattr(turn, "assistant_message_id", None)
+            }
+            result: list[dict[str, Any]] = []
+            for record in records:
+                message = self._message_record_to_dict(record)
+                turn = turns_by_message.get(str(record.id))
+                if record.role == "assistant" and turn is not None:
+                    turn_id = str(getattr(turn, "turn_id", turn.id) or "")
+                    message["events"], message["trace"] = self._trace_preview(
+                        pb, session_id=sid, turn_id=turn_id
+                    )
+                elif record.role == "assistant":
+                    legacy_events = message["events"]
+                    message["events"], omitted = compact_trace_preview(legacy_events)
+                    message["trace"] = {
+                        "turn_id": None,
+                        "total": len(legacy_events),
+                        "last_seq": 0,
+                        "truncated": omitted,
+                    }
+                result.append(message)
+            return result
 
         try:
-            records = await asyncio.to_thread(_get)
-            return [self._message_record_to_dict(r) for r in records]
+            return await asyncio.to_thread(_get)
         except Exception as exc:
             logger.warning(f"get_messages failed: {exc}")
             return []
@@ -740,6 +811,7 @@ class PocketBaseSessionStore:
                         "state_version": 1,
                         "failure_code": "",
                         "retryable": False,
+                        "assistant_message_id": None,
                     }
                 )
             )
@@ -761,6 +833,7 @@ class PocketBaseSessionStore:
             "state_version": 1,
             "failure_code": "",
             "retryable": False,
+            "assistant_message_id": None,
         }
 
     async def create_turn(self, session_id: str, capability: str = "") -> dict[str, Any]:
@@ -914,7 +987,106 @@ class PocketBaseSessionStore:
             "state_version": int(getattr(record, "state_version", 1) or 1),
             "failure_code": getattr(record, "failure_code", "") or "",
             "retryable": bool(getattr(record, "retryable", False)),
+            "assistant_message_id": getattr(record, "assistant_message_id", None),
         }
+
+    async def link_turn_message(self, turn_id: str, assistant_message_id: int | str) -> bool:
+        tid = _validate_id(turn_id, "turn_id")
+        message_id = _validate_id(str(assistant_message_id), "assistant_message_id")
+
+        def _link() -> bool:
+            page = (
+                _pb()
+                .collection("turns")
+                .get_list(1, 1, query_params={"filter": f'turn_id="{tid}"'})
+            )
+            turns = self._page_items(page)
+            if not turns:
+                return False
+            record = turns[0]
+            if getattr(record, "assistant_message_id", None):
+                return False
+            _pb().collection("turns").update(
+                record.id,
+                {
+                    "assistant_message_id": message_id,
+                    "turn_updated_at": time.time(),
+                },
+            )
+            return True
+
+        return await asyncio.to_thread(_link)
+
+    async def get_message_trace(
+        self,
+        session_id: str,
+        message_id: int | str,
+        after_seq: int = 0,
+        limit: int | None = None,
+    ) -> dict[str, Any] | None:
+        try:
+            sid = _validate_id(session_id, "session_id")
+            mid = _validate_id(str(message_id), "message_id")
+        except ValueError:
+            return None
+        row_limit = 500 if limit is None else min(1000, max(1, int(limit)))
+        uid = _current_user_id()
+
+        def _get():
+            pb = _pb()
+            if _find_session_record(pb, sid, uid) is None:
+                return None
+            message_page = pb.collection("messages").get_list(
+                1,
+                1,
+                query_params={"filter": f'id="{mid}" && session_id="{sid}"'},
+            )
+            messages = self._page_items(message_page)
+            if not messages:
+                return None
+            turn_page = pb.collection("turns").get_list(
+                1,
+                1,
+                query_params={"filter": f'assistant_message_id="{mid}"'},
+            )
+            turns = self._page_items(turn_page)
+            if not turns:
+                return None
+            turn = turns[0]
+            turn_id = str(getattr(turn, "turn_id", getattr(turn, "id", "")) or "")
+            stats_page = pb.collection("turn_events").get_list(
+                1,
+                1,
+                query_params={"filter": f'turn_id="{turn_id}"', "sort": "-seq"},
+            )
+            last_rows = self._page_items(stats_page)
+            last_seq = int(getattr(last_rows[0], "seq", 0) or 0) if last_rows else 0
+            event_page = pb.collection("turn_events").get_list(
+                1,
+                row_limit,
+                query_params={
+                    "filter": f'turn_id="{turn_id}" && seq>{max(0, int(after_seq))}',
+                    "sort": "seq",
+                },
+            )
+            events = [
+                self._event_record_to_payload(row, sid, turn_id)
+                for row in self._page_items(event_page)
+            ]
+            loaded_seq = int(events[-1]["seq"]) if events else max(0, int(after_seq))
+            complete = loaded_seq >= last_seq
+            return {
+                "session_id": sid,
+                "message_id": message_id,
+                "turn_id": turn_id,
+                "events": events,
+                "total": self._page_total(stats_page),
+                "last_seq": last_seq,
+                "next_seq": None if complete else loaded_seq,
+                "complete": complete,
+            }
+
+        return await asyncio.to_thread(_get)
 
     # ------------------------------------------------------------------
     # Turn events — synchronously durable before terminal transition
