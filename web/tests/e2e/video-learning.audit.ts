@@ -14,6 +14,7 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   let nativeResolveCount = 0;
   let exportRequestCount = 0;
   let exportShouldFail = false;
+  let resolveCount = 0;
   let nextNoteId = 1;
   const notes: Array<{
     notebook_id: string;
@@ -172,7 +173,30 @@ test("YouTube learning survives reload and switches to Invidious without silent 
     }
     if (path === "/api/dashboard/suggestions")
       return json({ suggestions: [], stale: false });
+    if (path === "/api/video-learning/invidious/home") {
+      const tab = new URL(request.url()).searchParams.get("tab") || "Popular";
+      return json({
+        current_tab: tab,
+        tabs: ["Popular", "Trending"],
+        items: [
+          {
+            video_id: "dQw4w9WgXcQ",
+            title: "Public hub lecture",
+            author: "Teacher",
+            author_id: "UC123",
+            duration_seconds: 120,
+            thumbnail_url: "https://example.test/lecture.jpg",
+            view_count: 12,
+            published_text: "today",
+            url: "https://youtu.be/dQw4w9WgXcQ?t=7",
+          },
+        ],
+        reason: "",
+        invidious_public_base_url: "https://invidious.example.test",
+      });
+    }
     if (path === "/api/video-learning/materials/resolve") {
+      resolveCount += 1;
       const body = request.postDataJSON() as { provider_override?: "youtube" };
       if (body.provider_override === "youtube") nativeResolveCount += 1;
       return json(material(body.provider_override || provider));
@@ -264,10 +288,9 @@ test("YouTube learning survives reload and switches to Invidious without silent 
   });
 
   await page.goto("/chat?capability=immersive_watching");
-  await page
-    .getByPlaceholder("https://youtu.be/…")
-    .fill("https://youtu.be/dQw4w9WgXcQ?t=7");
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page.getByText("Public hub lecture")).toBeVisible();
+  await page.getByRole("button", { name: /Public hub lecture/ }).click();
+  expect(resolveCount).toBe(1);
 
   await expect(page.getByText("Timestamped lesson")).toBeVisible();
   await expect(

@@ -8,6 +8,7 @@ import {
   Captions,
   Copy,
   ExternalLink,
+  LayoutGrid,
   Loader2,
   Pencil,
   Play,
@@ -31,6 +32,7 @@ import {
   type VideoNote,
 } from "@/lib/video-learning-api";
 import { videoTimeFromHref } from "@/lib/watching-citations";
+import { InvidiousBrowse } from "./InvidiousBrowse";
 import { WatchingPlayer } from "./WatchingPlayer";
 
 export const WATCHING_ASK_EVENT = "dt:watching-ask";
@@ -54,6 +56,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   } = useWatching();
   const materialId = material?.material_id ?? null;
   const [input, setInput] = useState("");
+  const [showBrowse, setShowBrowse] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [tab, setTab] = useState<WatchTab>("transcript");
   const [time, setTime] = useState(0);
@@ -172,6 +175,17 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     setPlayerError(null);
     try {
       await openUrl(url, "", providerOverride);
+      setShowBrowse(false);
+    } catch {
+      // The context owns the user-facing error.
+    }
+  };
+
+  const openHubVideo = async (url: string) => {
+    setPlayerError(null);
+    try {
+      await openUrl(url);
+      setShowBrowse(false);
     } catch {
       // The context owns the user-facing error.
     }
@@ -387,8 +401,17 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         </div>
         <button
           type="button"
+          onClick={() => setShowBrowse((current) => !current)}
+          className="rounded-md p-2 hover:bg-[var(--muted)]"
+          aria-label={t("Browse Invidious")}
+          aria-pressed={!material || showBrowse}
+        >
+          <LayoutGrid className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
           onClick={() => void refreshProvider()}
-          disabled={!material || loading}
+          disabled={!material || loading || showBrowse}
           className="rounded-md p-2 hover:bg-[var(--muted)]"
           aria-label={t("Refresh provider")}
         >
@@ -404,8 +427,8 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         </button>
       </header>
 
-      {!material && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+      {(!material || showBrowse) && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto p-8 text-center">
           <Play className="h-10 w-10 text-red-500" />
           <div>
             <h3 className="font-medium">
@@ -463,10 +486,20 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
               )}
             </div>
           )}
+          {material && (
+            <button
+              type="button"
+              onClick={() => setShowBrowse(false)}
+              className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm"
+            >
+              {t("Back to video")}
+            </button>
+          )}
+          <InvidiousBrowse onSelectVideo={(url) => void openHubVideo(url)} />
         </div>
       )}
 
-      {material && (
+      {material && !showBrowse && (
         <div className="flex min-h-0 flex-1 flex-col">
           <WatchingPlayer
             key={`${material.material_id}:${material.playback.provider}`}
