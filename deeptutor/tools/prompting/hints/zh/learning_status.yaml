@@ -1,0 +1,6 @@
+short_description: "读取软学习日志（使命、上次会话、近期洞见）。"
+when_to_use: "用户要跨会话继续学某个主题、问上次学到哪，或你准备多轮教学需要使命/下一步焦点时。Guided Learning 的课程进度请用 mastery_status。"
+input_format: "{}"
+guideline: "在继续教学的回合开头调用一次。若为空，用 learning_update 帮用户立使命，不要捏造进度。不要和 Memory 偏好混淆。"
+note: "与 Mastery Path、Memory 互补。只有软状态，没有打分门闩。"
+phase: "exploration"
