@@ -55,7 +55,12 @@ def _thumbnail_url(item: dict[str, Any], video_id: str, public_base: str) -> str
             raw = str(thumb.get("url") or "").strip()
             if raw.startswith(("http://", "https://")):
                 parsed = urlparse(raw)
-                if parsed.scheme in {"http", "https"} and parsed.hostname:
+                public = urlparse(public_base)
+                same_public_origin = (
+                    parsed.scheme in {"http", "https"}
+                    and parsed.netloc.lower() == public.netloc.lower()
+                )
+                if same_public_origin:
                     return raw
             if raw.startswith("/") and public_base:
                 return urljoin(f"{public_base}/", raw.lstrip("/"))

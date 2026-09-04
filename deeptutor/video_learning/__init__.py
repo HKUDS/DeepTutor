@@ -1,6 +1,13 @@
 """Video-learning domain API."""
 
 from . import invidious_hub
+from .invidious_account import (
+    begin_invidious_account_authorization,
+    complete_invidious_account_authorization,
+    disconnect_invidious_account,
+    invidious_account_status,
+    invidious_redirect_uri,
+)
 from .service import (
     PROVIDER_RESOLVERS,
     ProviderResolution,
@@ -26,7 +33,12 @@ __all__ = [
     "TimedMediaNotFound",
     "TimedMediaStore",
     "build_segments",
+    "begin_invidious_account_authorization",
+    "complete_invidious_account_authorization",
+    "disconnect_invidious_account",
     "get_timed_media_store",
+    "invidious_account_status",
+    "invidious_redirect_uri",
     "invidious_hub",
     "load_video_learning_settings",
     "material_with_playback",

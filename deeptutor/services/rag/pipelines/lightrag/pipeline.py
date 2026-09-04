@@ -13,13 +13,19 @@ from typing import Any, Callable, Dict, List, Optional
 from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.rag.index_versioning import (
     list_kb_versions,
-    resolve_storage_dir_for_read,
     resolve_storage_dir_for_rebuild,
 )
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
-from . import block_policy, engine, ingress, storage
+from . import block_policy, engine, indexing_policy, ingress, storage
 from . import config as lr_config
+from .indexing_policy import (
+    IndexingLLMSnapshot,
+    IndexingPolicyError,
+    effective_policy,
+    freeze_default_snapshot,
+    resolve_write_snapshot,
+)
 from .worker import OwnerLoopBridge, run_in_worker_loop
 
 logger = logging.getLogger(__name__)
@@ -36,6 +42,8 @@ class BatchOutcome:
     nonterminal: dict[str, str] = field(default_factory=dict)
     missing: tuple[str, ...] = ()
     track_id: str = ""
+    vlm_used: bool = False
+    indexing_policy: dict[str, Any] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -111,7 +119,11 @@ class LightRagPipeline:
         )
 
     def _stage_documents(
-        self, working_dir: Path, file_paths: List[str]
+        self,
+        working_dir: Path,
+        file_paths: List[str],
+        *,
+        vision_available: bool,
     ) -> tuple[list[ingress.StagedDocument], dict[str, str]]:
         from deeptutor.services.parsing import get_parse_service
 
@@ -119,7 +131,6 @@ class LightRagPipeline:
         staged: list[ingress.StagedDocument] = []
         failures: dict[str, str] = {}
         seen: set[str] = set()
-        vision_available = lr_config.vision_model_available()
         for raw_path in file_paths:
             path = Path(raw_path)
             name = path.name
@@ -232,7 +243,10 @@ class LightRagPipeline:
                         block_policy.write_decision_ledger(
                             Path(rag.working_dir), doc_id, item.audit_ledger
                         )
-                return outcome
+                return replace(
+                    outcome,
+                    vlm_used=any("i" in getattr(item, "process_options", "") for item in staged),
+                )
             if unknown:
                 return BatchOutcome(
                     requested=len(expected) + len(preflight_failed),
@@ -265,10 +279,18 @@ class LightRagPipeline:
         working_dir: Path,
         file_paths: List[str],
         progress_callback: Callable[[int, int], Any] | None,
+        snapshot: IndexingLLMSnapshot | None = None,
     ) -> BatchOutcome:
+        if snapshot is None:
+            snapshot = freeze_default_snapshot()
+
         async def job(io_bridge: OwnerLoopBridge) -> BatchOutcome:
             io_bridge.raise_if_cancelled()
-            staged, preflight_failed = self._stage_documents(working_dir, file_paths)
+            staged, preflight_failed = self._stage_documents(
+                working_dir,
+                file_paths,
+                vision_available=snapshot.vision_available,
+            )
             if not staged:
                 raise LightRagBatchError(
                     BatchOutcome(requested=len(file_paths), preflight_failed=preflight_failed)
@@ -278,6 +300,7 @@ class LightRagPipeline:
                     working_dir,
                     io_bridge=io_bridge,
                     enable_vlm=any("i" in item.process_options for item in staged),
+                    indexing_snapshot=snapshot,
                 )
             except BaseException:
                 for item in staged:
@@ -332,7 +355,8 @@ class LightRagPipeline:
                     for item in cleanup:
                         ingress.remove_unaccepted(item)
 
-        return await run_in_worker_loop(job)
+        outcome = await run_in_worker_loop(job)
+        return replace(outcome, indexing_policy=snapshot.persisted_policy())
 
     def _remove_zero_accepted_candidate(self, root_dir: Path) -> None:
         if not root_dir.is_dir() or storage.has_any_doc_status(root_dir):
@@ -345,14 +369,28 @@ class LightRagPipeline:
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self._ensure_available()
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        snapshot = kwargs.get("indexing_snapshot")
+        if snapshot is None:
+            policy = effective_policy(
+                kb_dir,
+                base_dir=self.kb_base_dir,
+                kb_name=kb_name,
+            )
+            if policy is not None and policy.get("policy") == "pending_pinned":
+                snapshot = indexing_policy.snapshot_from_persisted(policy)
+            else:
+                snapshot = freeze_default_snapshot()
         root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
         try:
             outcome = await self._run_indexing(
-                root_dir, file_paths, kwargs.get("progress_callback")
+                root_dir, file_paths, kwargs.get("progress_callback"), snapshot
             )
             if not storage.has_output(root_dir):
                 raise RuntimeError(f"LightRAG did not produce a ready index for {kb_name!r}")
-            storage.write_meta(root_dir)
+            policy = dict(outcome.indexing_policy)
+            policy["vlm_used"] = outcome.vlm_used
+            storage.write_meta(root_dir, indexing_policy=policy)
+            self._clear_pending_policy(kb_name)
             return outcome.complete
         except asyncio.CancelledError:
             raise
@@ -367,25 +405,52 @@ class LightRagPipeline:
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self._ensure_available()
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        existing = resolve_storage_dir_for_read(kb_dir, None)
-        if existing is not None and storage.meta_is_native_published(existing):
-            root_dir = existing
-            is_update = True
-        elif existing is not None or list_kb_versions(kb_dir):
+        existing = storage.latest_published_root(kb_dir)
+        versions = list_kb_versions(kb_dir)
+        explicit = kwargs.get("indexing_snapshot")
+        if explicit is not None and (existing is not None or versions):
+            raise IndexingPolicyError(
+                "An explicit LightRAG indexing model cannot override an existing index; "
+                "run a full re-index."
+            )
+        if existing is None and versions:
             raise LightRagNeedsReindexError(
                 "This LightRAG index is legacy, unpublished, or corrupt and must be rebuilt "
                 "before appending."
             )
+        snapshot = resolve_write_snapshot(
+            kb_dir,
+            base_dir=self.kb_base_dir,
+            kb_name=kb_name,
+            explicit=explicit,
+        )
+        if existing is not None:
+            root_dir = existing
+            is_update = True
         else:
             root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
             is_update = False
         try:
             outcome = await self._run_indexing(
-                root_dir, file_paths, kwargs.get("progress_callback")
+                root_dir, file_paths, kwargs.get("progress_callback"), snapshot
             )
             if not storage.has_output(root_dir):
                 raise RuntimeError(f"LightRAG did not produce a ready index for {kb_name!r}")
-            storage.write_meta(root_dir)
+            policy = dict(outcome.indexing_policy)
+            policy["vlm_used"] = outcome.vlm_used
+            if not is_update:
+                storage.write_meta(root_dir, indexing_policy=policy)
+                self._clear_pending_policy(kb_name)
+            else:
+                try:
+                    storage.write_meta(root_dir, indexing_policy=policy)
+                    self._clear_pending_policy(kb_name)
+                except Exception:
+                    self.logger.warning(
+                        "LightRAG append completed but metadata refresh failed; preserving the "
+                        "existing published policy",
+                        exc_info=True,
+                    )
             return outcome.complete
         except LightRagBatchError as exc:
             if not is_update and exc.outcome.accepted == 0:
@@ -396,10 +461,27 @@ class LightRagPipeline:
                 self._remove_zero_accepted_candidate(root_dir)
             raise
 
+    def _clear_pending_policy(self, kb_name: str) -> None:
+        """Best-effort cleanup after version metadata became authoritative."""
+        try:
+            from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+            manager = KnowledgeBaseManager(base_dir=self.kb_base_dir)
+            entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
+            if "pending_indexing_policy" in entry:
+                entry.pop("pending_indexing_policy", None)
+                manager._save_config()
+        except Exception:
+            self.logger.warning(
+                "Published LightRAG policy for %s but could not clear pending cache",
+                kb_name,
+                exc_info=True,
+            )
+
     async def search(self, query: str, kb_name: str, **kwargs) -> Dict[str, Any]:
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        root_dir = resolve_storage_dir_for_read(kb_dir, None)
-        if root_dir is None or not storage.meta_is_native_published(root_dir):
+        root_dir = storage.latest_published_root(kb_dir)
+        if root_dir is None:
             return {
                 "query": query,
                 "answer": "This LightRAG knowledge base must be rebuilt for the native pipeline.",

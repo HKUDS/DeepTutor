@@ -39,8 +39,15 @@ export function scrollToSettingsSection(
 
   scroller.scrollTo({ top: Math.max(0, top), behavior });
 
-  // Fragment navigation may have moved the root scrolling element before the
-  // client handler ran. Keep the full-height application shell pinned.
-  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  // Fragment navigation may move the root scrolling element before or after
+  // the client handler runs. Keep the full-height application shell pinned
+  // now and after the anchor's default-action frame.
+  const resetDocumentScroll = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  };
+  resetDocumentScroll();
+  requestAnimationFrame(resetDocumentScroll);
   return true;
 }

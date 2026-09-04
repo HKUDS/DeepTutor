@@ -87,7 +87,10 @@ async def test_public_feed_normalizes_popular_items(
                     "lengthSeconds": "82",
                     "viewCount": "9",
                     "publishedText": "1 day ago",
-                    "videoThumbnails": [{"url": "/vi/dQw4w9WgXcQ/hqdefault.jpg"}],
+                    "videoThumbnails": [
+                        {"url": "https://images.example.test/vi/dQw4w9WgXcQ/hqdefault.jpg"},
+                        {"url": "/vi/dQw4w9WgXcQ/hqdefault.jpg"},
+                    ],
                 },
                 {"title": "missing id"},
                 {"videoId": "nope"},

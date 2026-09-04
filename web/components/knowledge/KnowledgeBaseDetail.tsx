@@ -16,7 +16,10 @@ import {
   Star,
   Upload,
 } from "lucide-react";
-import type { KnowledgeUploadPolicy } from "@/features/knowledge/model/types";
+import type {
+  IndexingLLMSelection,
+  KnowledgeUploadPolicy,
+} from "@/features/knowledge/model/types";
 import {
   formatKnowledgeTimestamp,
   isMarginNoteKb,
@@ -52,7 +55,14 @@ interface KnowledgeBaseDetailProps {
     files: File[],
     destSubdir?: string,
   ) => Promise<void>;
-  onReindex: (kbName: string) => Promise<void>;
+  onReindex: (
+    kbName: string,
+    indexingLLM?: IndexingLLMSelection,
+  ) => Promise<void>;
+  onUpdatePendingIndexingPolicy: (
+    kbName: string,
+    indexingLLM: IndexingLLMSelection,
+  ) => Promise<void>;
   onRetry: (kbName: string) => Promise<void>;
   onSetDefault: (kbName: string) => Promise<void>;
   onDelete: (kbName: string) => Promise<void>;
@@ -84,6 +94,7 @@ export default function KnowledgeBaseDetail({
   onCreate,
   onUpload,
   onReindex,
+  onUpdatePendingIndexingPolicy,
   onRetry,
   onSetDefault,
   onDelete,
@@ -289,12 +300,17 @@ export default function KnowledgeBaseDetail({
                 <KbIndexVersionsSection
                   kb={kb}
                   task={task}
-                  onReindex={() =>
+                  onReindex={(indexingLLM) =>
                     kb.read_only
                       ? Promise.resolve()
-                      : status === "error"
+                      : status === "error" && kbProvider(kb) !== "lightrag"
                         ? handleRetry()
-                        : onReindex(kb.name)
+                        : onReindex(kb.name, indexingLLM)
+                  }
+                  onUpdatePendingIndexingPolicy={(indexingLLM) =>
+                    kb.read_only
+                      ? Promise.resolve()
+                      : onUpdatePendingIndexingPolicy(kb.name, indexingLLM)
                   }
                 />
               )}
