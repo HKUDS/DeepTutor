@@ -1,0 +1,6 @@
+short_description: "Read the soft learning journal (mission, last session, recent insights)."
+when_to_use: "The user wants to continue a multi-session learning topic, asks where they left off, or you are about to teach across sessions and need the mission / next focus. Prefer mastery_status for Guided Learning curriculum progress."
+input_format: "{}"
+guideline: "Call once near the start of a continuing teaching turn. If empty, offer to set a mission via learning_update rather than inventing progress. Do not confuse this with Memory preferences."
+note: "Complements Mastery Path and Memory. Soft state only — no scored gates."
+phase: "exploration"

@@ -1,0 +1,6 @@
+short_description: "Update the soft learning journal: mission, session handoff, or one durable insight."
+when_to_use: "The user commits to a multi-session learning goal; a teaching session ends and you should leave a next-focus note; or they hit a non-obvious insight worth keeping. Not for preferences (write_memory) or Mastery Path scores."
+input_format: "{\"op\": \"set_mission\"|\"note_session\"|\"add_record\", \"topic\"?, \"why\"?, \"level\"?, \"summary\"?, \"next_focus\"?, \"title\"?, \"insight\"?}"
+guideline: "set_mission early when intent is clear. note_session near the end of a productive teaching turn. add_record sparingly for durable takeaways. One insight per add_record call."
+note: "Persists under the user's workspace learning_journal.json. Complements Mastery Path; does not replace it."
+phase: "execution"
