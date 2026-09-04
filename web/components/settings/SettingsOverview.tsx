@@ -124,10 +124,7 @@ export default function SettingsOverview() {
           type="button"
           onClick={() => {
             setPendingPrompt(
-              tr({
-                zh: "帮我配置一下 DeepTutor，先看看现在缺什么。",
-                en: "Help me configure DeepTutor — start by checking what's missing.",
-              }),
+              t("Help me configure DeepTutor — start by checking what's missing."),
             );
           }}
           className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] sm:inline-flex"

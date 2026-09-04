@@ -58,6 +58,7 @@ from deeptutor.core.trace import (
     merge_trace_metadata,
     new_call_id,
 )
+from deeptutor.i18n.languages import normalize_supported_language
 from deeptutor.knowledge.manifest import KbManifest, render_manifest_note
 from deeptutor.runtime.agentic import (
     DispatchOutcome,
@@ -232,7 +233,7 @@ class AgenticLoopPipeline:
         event_stage: str = "responding",
         emit_result: bool = True,
     ) -> None:
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        self.language = normalize_supported_language(language)
         self.llm_config = get_llm_config()
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)

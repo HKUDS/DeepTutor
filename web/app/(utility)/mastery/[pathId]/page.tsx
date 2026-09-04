@@ -52,37 +52,19 @@ import {
 } from "@/lib/learning-api";
 import { setPendingPrompt } from "@/lib/pending-prompt";
 
-const NEXT_LABELS: Record<string, { zh: string; en: string }> = {
-  probe: {
-    zh: "先用一道探查题看看你是否已经掌握",
-    en: "Start with a probe and test out if you already know it",
-  },
-  practice: {
-    zh: "继续练习，直到稳定越过掌握门槛",
-    en: "Practice until you reliably clear the mastery gate",
-  },
-  assess: {
-    zh: "用自己的话讲清楚这个概念",
-    en: "Explain this clearly in your own words",
-  },
-  review: { zh: "复习这个记忆信标", en: "Revisit this memory beacon" },
-  answer_pending: {
-    zh: "完成导师正在等待的回答",
-    en: "Complete the answer your tutor is waiting for",
-  },
-  complete: {
-    zh: "整片疆域已经点亮",
-    en: "The whole territory is illuminated",
-  },
+const NEXT_LABELS: Record<string, string> = {
+  probe: "Start with a probe and test out if you already know it",
+  practice: "Practice until you reliably clear the mastery gate",
+  assess: "Explain this clearly in your own words",
+  review: "Revisit this memory beacon",
+  answer_pending: "Complete the answer your tutor is waiting for",
+  complete: "The whole territory is illuminated",
 };
 
-const NEXT_CTA_LABELS: Record<string, { zh: string; en: string }> = {
-  review: { zh: "开始本次复习", en: "Start this review" },
-  answer_pending: {
-    zh: "回到原会话作答",
-    en: "Answer in the original session",
-  },
-  complete: { zh: "继续自由探索", en: "Keep exploring" },
+const NEXT_CTA_LABELS: Record<string, string> = {
+  review: "Start this review",
+  answer_pending: "Answer in the original session",
+  complete: "Keep exploring",
 };
 
 export default function MasteryTopicPage() {
@@ -290,10 +272,7 @@ export default function MasteryTopicPage() {
     );
   }
 
-  const nextCopy = NEXT_LABELS[topic.next.action] ?? {
-    zh: topic.next.reason,
-    en: topic.next.reason,
-  };
+  const nextCopy = NEXT_LABELS[topic.next.action];
   const progress = topic.map.counts.total
     ? Math.round((topic.map.counts.mastered / topic.map.counts.total) * 100)
     : 0;
@@ -430,9 +409,9 @@ export default function MasteryTopicPage() {
                   ? t(
                       "This goal has no outline yet. Open a session and the tutor will design one with you.",
                     )
-                  : zh
-                    ? nextCopy.zh
-                    : nextCopy.en}
+                  : nextCopy
+                    ? t(nextCopy)
+                    : topic.next.reason}
               </p>
             </div>
           </div>
@@ -456,9 +435,7 @@ export default function MasteryTopicPage() {
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[13px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
             >
               {nextCta
-                ? zh
-                  ? nextCta.zh
-                  : nextCta.en
+                ? t(nextCta)
                 : topic.session_count > 0
                   ? t("Continue learning")
                   : t("Begin first waypoint")}
