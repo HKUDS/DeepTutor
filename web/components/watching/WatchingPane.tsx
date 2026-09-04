@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ChevronsDown,
   Check,
   Captions,
+  Copy,
   ExternalLink,
   Loader2,
   Pencil,
@@ -22,6 +24,7 @@ import type { PlayerController } from "@/lib/video-player-controller";
 import {
   createVideoNote,
   deleteVideoNote,
+  exportVideoNotes,
   listVideoNotes,
   saveVideoProgress,
   updateVideoNote,
@@ -62,8 +65,13 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [notesExportBusy, setNotesExportBusy] = useState(false);
+  const [notesCopied, setNotesCopied] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const notesExportRequestRef = useRef(0);
+  const [followTranscript, setFollowTranscript] = useState(true);
   const controllerRef = useRef<PlayerController | null>(null);
+  const transcriptListRef = useRef<HTMLDivElement | null>(null);
   const activeMaterialIdRef = useRef(materialId);
   const lastSavedRef = useRef(0);
   const stateRef = useRef({ time: 0, duration: 0 });
@@ -138,6 +146,26 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     [material, time],
   );
 
+  useEffect(() => {
+    setFollowTranscript(true);
+  }, [materialId]);
+
+  useEffect(() => {
+    if (!followTranscript || tab !== "transcript" || !cue) return;
+    const list = transcriptListRef.current;
+    const activeRow = list?.querySelector<HTMLButtonElement>(
+      '[data-active-cue="true"]',
+    );
+    if (!list || !activeRow) return;
+    const rowTop =
+      activeRow.getBoundingClientRect().top -
+      list.getBoundingClientRect().top +
+      list.scrollTop -
+      list.clientHeight / 2 +
+      activeRow.clientHeight / 2;
+    list.scrollTo({ top: Math.max(0, rowTop), behavior: "smooth" });
+  }, [cue, followTranscript, tab]);
+
   const submit = async (providerOverride?: "youtube") => {
     const url = (providerOverride ? lastUrl || input : input).trim();
     if (!url) return;
@@ -166,6 +194,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     setEditingNoteId(null);
     setEditingDraft("");
     setPendingDeleteId(null);
+    notesExportRequestRef.current += 1;
+    setNotesExportBusy(false);
+    setNotesCopied(false);
     if (!materialId) {
       setNotesLoading(false);
       return () => {
@@ -216,6 +247,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotes((current) => sortNotes([...current, saved]));
       setNoteDraft("");
+      setNotesCopied(false);
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotesError(
@@ -247,6 +279,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       );
       setEditingNoteId(null);
       setEditingDraft("");
+      setNotesCopied(false);
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotesError(
@@ -273,6 +306,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         setEditingDraft("");
       }
       setPendingDeleteId(null);
+      setNotesCopied(false);
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotesError(
@@ -280,6 +314,31 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       );
     } finally {
       setNoteBusy(false);
+    }
+  };
+
+  const copyNotes = async () => {
+    if (!material || !notes.length || notesExportBusy) return;
+    const requestedMaterialId = material.material_id;
+    const requestId = ++notesExportRequestRef.current;
+    setNotesExportBusy(true);
+    setNotesCopied(false);
+    try {
+      const markdown = await exportVideoNotes(requestedMaterialId);
+      await navigator.clipboard.writeText(markdown);
+      if (notesExportRequestRef.current !== requestId) return;
+      setNotesCopied(true);
+    } catch (caught) {
+      if (notesExportRequestRef.current !== requestId) return;
+      setNotesError(
+        caught instanceof Error
+          ? caught.message
+          : t("Notes could not be copied."),
+      );
+    } finally {
+      if (notesExportRequestRef.current === requestId) {
+        setNotesExportBusy(false);
+      }
     }
   };
 
@@ -454,7 +513,44 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
               {t("Open official")} <ExternalLink className="h-3 w-3" />
             </a>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div
+            ref={transcriptListRef}
+            data-testid="video-transcript-list"
+            className="min-h-0 flex-1 overflow-y-auto p-4"
+            onWheel={(event) => {
+              if (tab !== "transcript") return;
+              setFollowTranscript(false);
+            }}
+            onTouchMove={() => {
+              if (tab === "transcript") setFollowTranscript(false);
+            }}
+            onPointerDown={(event) => {
+              // Native scrollbar drags target the scroll container itself.
+              // Pointer events from cue/control buttons bubble through here
+              // and must keep their own click semantics.
+              if (
+                tab === "transcript" &&
+                event.target === event.currentTarget
+              ) {
+                setFollowTranscript(false);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (
+                tab === "transcript" &&
+                [
+                  "ArrowDown",
+                  "ArrowUp",
+                  "PageDown",
+                  "PageUp",
+                  "Home",
+                  "End",
+                ].includes(event.key)
+              ) {
+                setFollowTranscript(false);
+              }
+            }}
+          >
             <div
               className="mb-3 grid w-full max-w-56 grid-cols-2 rounded-lg bg-[var(--muted)] p-1"
               role="tablist"
@@ -511,14 +607,25 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                 </div>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    onClick={askHere}
-                    disabled={!cue}
-                    className="mb-3 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-50"
-                  >
-                    {t("Explain here")}
-                  </button>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={askHere}
+                      disabled={!cue}
+                      className="rounded-lg bg-[var(--primary)] px-3 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-50"
+                    >
+                      {t("Explain here")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFollowTranscript((current) => !current)}
+                      aria-pressed={followTranscript}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium ${followTranscript ? "border-[var(--primary)] text-[var(--primary)]" : "border-[var(--border)] text-[var(--muted-foreground)]"}`}
+                    >
+                      <ChevronsDown className="h-4 w-4" />
+                      {t("Follow playback")}
+                    </button>
+                  </div>
                   <div className="space-y-1">
                     {material.transcript.cues.map((row, index) => {
                       const active = row === cue;
@@ -526,6 +633,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                         <button
                           key={`${row.start}-${index}`}
                           type="button"
+                          data-active-cue={active ? "true" : undefined}
                           onClick={() => controllerRef.current?.seek(row.start)}
                           className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-blue-500/15 ring-1 ring-blue-500/30" : "hover:bg-[var(--muted)]"}`}
                         >
@@ -567,6 +675,21 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                       <Check className="h-4 w-4" />
                     )}
                     {t("Add video note")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyNotes()}
+                    disabled={notesExportBusy || !notes.length}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm disabled:opacity-50"
+                  >
+                    {notesExportBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : notesCopied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                    {notesCopied ? t("Notes copied") : t("Copy notes")}
                   </button>
                 </form>
 

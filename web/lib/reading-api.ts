@@ -138,6 +138,26 @@ export interface ReadingPosition {
   updated_at: number;
 }
 
+export function parseReadingPosition(payload: unknown): ReadingPosition {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Invalid reading position response");
+  }
+  const position = payload as Record<string, unknown>;
+  if (
+    typeof position.locator !== "number" ||
+    !Number.isFinite(position.locator) ||
+    position.locator < 1 ||
+    typeof position.source_anchor !== "string" ||
+    typeof position.percentage !== "number" ||
+    !Number.isFinite(position.percentage) ||
+    typeof position.updated_at !== "number" ||
+    !Number.isFinite(position.updated_at)
+  ) {
+    throw new Error("Invalid reading position response");
+  }
+  return position as unknown as ReadingPosition;
+}
+
 /**
  * A place the reader chose to keep, as opposed to the position above — which
  * is the single automatic "where I got to", overwritten on every move. These
@@ -305,10 +325,12 @@ export function rawMaterialUrl(materialId: string): string {
 export async function getReadingPosition(
   materialId: string,
 ): Promise<ReadingPosition> {
-  return unwrap(
-    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
-      cache: "no-store",
-    }),
+  return parseReadingPosition(
+    await unwrap(
+      await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
+        cache: "no-store",
+      }),
+    ),
   );
 }
 
@@ -316,12 +338,14 @@ export async function saveReadingPosition(
   materialId: string,
   position: Pick<ReadingPosition, "locator" | "source_anchor" | "percentage">,
 ): Promise<ReadingPosition> {
-  return unwrap(
-    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(position),
-    }),
+  return parseReadingPosition(
+    await unwrap(
+      await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(position),
+      }),
+    ),
   );
 }
 

@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl } from "@/shared/api/client";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 export interface ReadingProgressRecord {
   material_id: string;

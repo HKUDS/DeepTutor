@@ -366,6 +366,18 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
     adminOnly: true,
   },
   {
+    key: "agent-hermes-remote",
+    href: "/settings#agent-hermes-remote",
+    label: { zh: "Hermes Agent（远程）", en: "Hermes Agent (remote)" },
+    blurb: {
+      zh: "通过 HTTP 网关调用远程 Hermes Agent，并按会话保持上下文。",
+      en: "Call a remote Hermes Agent over HTTP with per-chat session continuity.",
+    },
+    icon: HermesGlyph as unknown as LucideIcon,
+    tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    adminOnly: true,
+  },
+  {
     key: "agent-openclaw",
     href: "/settings#agent-openclaw",
     label: { zh: "OpenClaw", en: "OpenClaw" },
@@ -450,11 +462,11 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     children: AGENT_CHILDREN,
   },
   {
-    key: "learning-progress",
+    key: "progress",
     label: { zh: "学习进度", en: "Learning progress" },
     blurb: { zh: "查看自己的阅读与学习记录。", en: "Review your reading and learning activity." },
     icon: ChartNoAxesCombined,
-    href: "/settings#learning-progress",
+    href: "/settings/progress",
   },
   {
     key: "learner-profile",

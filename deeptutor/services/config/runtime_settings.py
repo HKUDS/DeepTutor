@@ -45,6 +45,9 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
         "enabled": True,
         "blocked_domains": [],
         "trusted_domains": [],
+        "content_filtering": True,
+        "use_educational_trusted_domains": False,
+        "use_moderation": False,
     },
     # Chat attachment policy. Size caps gate what the composer accepts and
     # what the turn runtime / partner upload endpoints extract; the char
@@ -1164,6 +1167,11 @@ class RuntimeSettingsService:
                 "enabled": _coerce_bool(source_filter.get("enabled"), True),
                 "blocked_domains": _string_or_list(source_filter.get("blocked_domains")),
                 "trusted_domains": _string_or_list(source_filter.get("trusted_domains")),
+                "content_filtering": _coerce_bool(source_filter.get("content_filtering"), True),
+                "use_educational_trusted_domains": _coerce_bool(
+                    source_filter.get("use_educational_trusted_domains"), False
+                ),
+                "use_moderation": _coerce_bool(source_filter.get("use_moderation"), False),
             },
             "chat_attachment_max_file_mb": max_file_mb,
             "chat_attachment_max_total_mb": max_total_mb,

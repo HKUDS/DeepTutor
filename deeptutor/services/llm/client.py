@@ -14,7 +14,67 @@ from typing import Any, cast
 
 from .capabilities import supports_vision
 from .config import LLMConfig, get_llm_config
-from .utils import sanitize_url
+
+
+def build_model_func_for_config(
+    config: LLMConfig,
+    *,
+    allow_multimodal: bool,
+) -> Callable[..., object]:
+    """Build a model callable owned solely by one resolved configuration."""
+    from . import factory
+
+    def _resolve_messages(
+        prompt: str,
+        system_prompt: str | None,
+        history_messages: list[dict[str, object]] | None,
+        messages: list[dict[str, object]] | None,
+    ) -> list[dict[str, Any]] | None:
+        if messages:
+            return cast(list[dict[str, Any]], messages)
+        if not history_messages:
+            return None
+
+        full_messages: list[dict[str, Any]] = []
+        if system_prompt and not (history_messages and history_messages[0].get("role") == "system"):
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(cast(list[dict[str, Any]], history_messages))
+        if prompt:
+            full_messages.append({"role": "user", "content": prompt})
+        return full_messages or None
+
+    async def model_func(
+        prompt: str,
+        system_prompt: str | None = None,
+        history_messages: list[dict[str, object]] | None = None,
+        image_data: str | None = None,
+        messages: list[dict[str, object]] | None = None,
+        **kwargs: object,
+    ) -> str:
+        payload_kwargs: dict[str, object] = dict(kwargs)
+        for alias in ("history_messages", "messages", "prompt", "system_prompt"):
+            payload_kwargs.pop(alias, None)
+
+        default_system_prompt = system_prompt or "You are a helpful assistant."
+        resolved_messages = _resolve_messages(
+            prompt,
+            default_system_prompt,
+            history_messages,
+            messages,
+        )
+        if allow_multimodal and image_data is not None:
+            payload_kwargs["image_data"] = image_data
+
+        factory_complete = cast(Callable[..., Awaitable[str]], factory.complete_with_config)
+        return await factory_complete(
+            config=config,
+            prompt=prompt,
+            system_prompt=default_system_prompt,
+            messages=resolved_messages,
+            **payload_kwargs,
+        )
+
+    return model_func
 
 
 class LLMClient:
@@ -132,7 +192,7 @@ class LLMClient:
         Returns:
             Callable that can be used as llm_model_func
         """
-        return self._build_factory_model_func(allow_multimodal=False)
+        return build_model_func_for_config(self.config, allow_multimodal=False)
 
     def get_vision_model_func(self) -> Callable[..., object]:
         """
@@ -141,80 +201,11 @@ class LLMClient:
         Returns:
             Callable that can be used as vision_model_func
         """
-        return self._build_factory_model_func(allow_multimodal=True)
+        return build_model_func_for_config(self.config, allow_multimodal=True)
 
     def supports_multimodal_images(self) -> bool:
         """Return whether the configured LLM can accept image input."""
         return supports_vision(getattr(self.config, "binding", "openai"), self.config.model)
-
-    def _build_factory_model_func(self, allow_multimodal: bool) -> Callable[..., object]:
-        """Build adapter callables on top of the unified factory.complete API."""
-        from . import factory
-
-        def _resolve_messages(
-            prompt: str,
-            system_prompt: str | None,
-            history_messages: list[dict[str, object]] | None,
-            messages: list[dict[str, object]] | None,
-        ) -> list[dict[str, Any]] | None:
-            if messages:
-                return cast(list[dict[str, Any]], messages)
-            if not history_messages:
-                return None
-
-            full_messages: list[dict[str, Any]] = []
-            if system_prompt and not (
-                history_messages and history_messages[0].get("role") == "system"
-            ):
-                full_messages.append({"role": "system", "content": system_prompt})
-            full_messages.extend(cast(list[dict[str, Any]], history_messages))
-            if prompt:
-                full_messages.append({"role": "user", "content": prompt})
-            return full_messages or None
-
-        async def model_func(
-            prompt: str,
-            system_prompt: str | None = None,
-            history_messages: list[dict[str, object]] | None = None,
-            image_data: str | None = None,
-            messages: list[dict[str, object]] | None = None,
-            **kwargs: object,
-        ) -> str:
-            payload_kwargs: dict[str, object] = dict(kwargs)
-
-            # Normalize aliases from legacy callsites.
-            payload_kwargs.pop("history_messages", None)
-            payload_kwargs.pop("messages", None)
-            payload_kwargs.pop("prompt", None)
-            payload_kwargs.pop("system_prompt", None)
-
-            default_system_prompt = system_prompt or "You are a helpful assistant."
-            resolved_messages = _resolve_messages(
-                prompt,
-                default_system_prompt,
-                history_messages,
-                messages,
-            )
-
-            if allow_multimodal and image_data is not None:
-                payload_kwargs["image_data"] = image_data
-
-            factory_complete = cast(Callable[..., Awaitable[str]], factory.complete)
-            return await factory_complete(
-                prompt=prompt,
-                system_prompt=default_system_prompt,
-                model=self.config.model,
-                api_key=self.config.api_key,
-                base_url=sanitize_url(self.config.base_url) if self.config.base_url else None,
-                api_version=getattr(self.config, "api_version", None),
-                binding=getattr(self.config, "binding", "openai"),
-                reasoning_effort=getattr(self.config, "reasoning_effort", None),
-                extra_headers=getattr(self.config, "extra_headers", None),
-                messages=resolved_messages,
-                **payload_kwargs,
-            )
-
-        return model_func
 
 
 _client: LLMClient | None = None

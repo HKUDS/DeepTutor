@@ -32,7 +32,6 @@ test("settings page: stacks every first-level section from overview to about", (
     "knowledge",
     "chat",
     "agents",
-    "learning-progress",
     "learner-profile",
     "guardian",
     "memory",
@@ -84,6 +83,8 @@ test("settings scroll: the outer document tracks nested section anchors", () => 
   );
   assert.match(scrollHelper, /scroller\.scrollTo/);
   assert.match(scrollHelper, /window\.scrollTo/);
+  assert.match(scrollHelper, /document\.documentElement\.scrollTop = 0/);
+  assert.match(scrollHelper, /requestAnimationFrame\(resetDocumentScroll\)/);
 });
 
 test("settings page: heavy sections are split and mounted on demand", () => {

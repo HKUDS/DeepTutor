@@ -15,7 +15,7 @@ test("learning records request the account reading summary", async () => {
         progress: [],
         activities: [],
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   };
 

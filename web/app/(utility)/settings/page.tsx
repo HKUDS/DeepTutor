@@ -38,10 +38,6 @@ const AgentsSettingsPage = dynamic(
   () => import("@/features/settings/sections/AgentsSettingsSection"),
   { loading: sectionLoading },
 );
-const LearningProgressSettingsPage = dynamic(
-  () => import("@/features/settings/sections/LearningProgressSettingsSection"),
-  { loading: sectionLoading },
-);
 const LearnerProfileSettingsPage = dynamic(
   () => import("@/features/settings/sections/LearnerProfileSettingsSection"),
   { loading: sectionLoading },
@@ -84,7 +80,6 @@ const SETTINGS_SECTIONS = [
     Component: AgentsSettingsPage,
     activationKeys: childKeys("agents"),
   },
-  { key: "learning-progress", Component: LearningProgressSettingsPage },
   { key: "learner-profile", Component: LearnerProfileSettingsPage },
   { key: "guardian", Component: GuardianSettingsPage },
   { key: "memory", Component: MemorySettingsPage },
