@@ -121,10 +121,11 @@ async def test_provider_stream_exposes_final_reasoning_content() -> None:
 
 
 @pytest.mark.parametrize("binding", ["moonshot", "openai", "custom"])
-def test_agentic_kwargs_drop_temperature_for_bare_kimi_k3(binding: str) -> None:
+@pytest.mark.parametrize("model", ["k3", "k3-256k"])
+def test_agentic_kwargs_drop_temperature_for_bare_kimi_k3(binding: str, model: str) -> None:
     kwargs = build_completion_kwargs(
         temperature=0.2,
-        model="k3",
+        model=model,
         max_tokens=256,
         binding=binding,
     )
