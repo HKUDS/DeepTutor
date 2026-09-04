@@ -180,6 +180,7 @@ class ContentAddressedBlobStore:
             except OSError as exc:
                 logger.warning("failed to remove blob object %s: %s", obj, exc)
                 return []
+
     def link_or_copy(self, digest: str, dest: Path) -> str:
         """Materialise *digest* at *dest* via hard link, else copy.
 

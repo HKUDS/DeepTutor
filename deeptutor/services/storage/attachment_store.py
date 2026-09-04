@@ -198,7 +198,9 @@ class LocalDiskAttachmentStore:
         payload = {"sha256": digest, "label": label, "materialize": mode}
         tmp = sidecar.with_suffix(sidecar.suffix + ".tmp")
         try:
-            tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            tmp.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
             os.replace(tmp, sidecar)
         finally:
             if tmp.exists():

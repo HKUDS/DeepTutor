@@ -37,7 +37,6 @@ import {
 } from "@/lib/session-api";
 import {
   TraceCache,
-  compactTracePreview,
   type MessageTraceMetadata,
 } from "@/features/chat/trace/memory";
 import {
@@ -1522,19 +1521,28 @@ export function ChatStateAdapterProvider({
             );
             if (finishedMessage) {
               const sourceEvents = finishedMessage.events ?? [];
-              const preview = compactTracePreview(sourceEvents);
-              dispatch({
-                type: "SET_MESSAGE_TRACE",
-                key: effectiveKey,
-                messageId: assistantMessageId,
-                events: preview.events,
-                trace: {
-                  turn_id: event.turn_id || null,
-                  total: sourceEvents.length,
-                  last_seq: Math.max(0, ...sourceEvents.map((item) => item.seq ?? 0)),
-                  truncated: preview.truncated,
-                },
-              });
+              void import("./trace/compact")
+                .then(({ compactTracePreview }) => {
+                  const preview = compactTracePreview(sourceEvents);
+                  dispatch({
+                    type: "SET_MESSAGE_TRACE",
+                    key: effectiveKey,
+                    messageId: assistantMessageId,
+                    events: preview.events,
+                    trace: {
+                      turn_id: event.turn_id || null,
+                      total: sourceEvents.length,
+                      last_seq: Math.max(
+                        0,
+                        ...sourceEvents.map((item) => item.seq ?? 0),
+                      ),
+                      truncated: preview.truncated,
+                    },
+                  });
+                })
+                .catch(() => {
+                  // Preview compaction is an optimization; the full trace remains available.
+                });
             }
           } else {
             // Older backend without ids on ``done`` — fall back to the
@@ -1752,6 +1760,7 @@ export function ChatStateAdapterProvider({
           last_seq: page.last_seq,
           truncated: false,
         };
+        const { compactTracePreview } = await import("./trace/compact");
         const preview = compactTracePreview(message.events ?? []);
         const evicted = traceCacheRef.current.retain(key, {
           events: preview.events,

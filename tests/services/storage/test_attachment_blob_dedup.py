@@ -29,7 +29,9 @@ def test_blob_store_dedups_and_releases(tmp_path: Path) -> None:
     assert dest_a.read_bytes() == payload
     assert dest_b.read_bytes() == payload
     if mode_a == "link" and mode_b == "link":
-        assert dest_a.stat().st_ino == dest_b.stat().st_ino == store.object_path(first).stat().st_ino
+        assert (
+            dest_a.stat().st_ino == dest_b.stat().st_ino == store.object_path(first).stat().st_ino
+        )
 
     removed = store.release("attachment:s1:a1", digest=first)
     assert removed == []
@@ -41,7 +43,9 @@ def test_blob_store_dedups_and_releases(tmp_path: Path) -> None:
     assert store.object_count() == 0
 
 
-def test_blob_store_link_falls_back_to_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_blob_store_link_falls_back_to_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     store = ContentAddressedBlobStore(tmp_path / "blobs")
     digest = store.put(b"payload", label="attachment:s:a")
 
