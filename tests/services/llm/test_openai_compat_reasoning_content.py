@@ -232,6 +232,7 @@ def test_services_custom_qwen_enables_thinking_without_top_level_effort() -> Non
         "kimi-k2.6",
         "kimi-k2.5",
         "kimi-latest",
+        "k3-256k",
     ],
 )
 def test_services_moonshot_kimi_drops_temperature(model: str) -> None:

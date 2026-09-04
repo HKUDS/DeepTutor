@@ -46,9 +46,10 @@ def _payload(binding: str | None, model: str) -> dict:
 
 
 @pytest.mark.parametrize("binding", ["openai", "moonshot", "azure", "no-such-provider"])
-def test_kimi_never_carries_an_explicit_temperature(binding: str) -> None:
+@pytest.mark.parametrize("model", ["kimi-k3", "k3-256k"])
+def test_kimi_never_carries_an_explicit_temperature(binding: str, model: str) -> None:
     """The reporter's scenario, plus every other route to the same model."""
-    assert "temperature" not in _payload(binding, "kimi-k3")
+    assert "temperature" not in _payload(binding, model)
 
 
 @pytest.mark.parametrize("model", ["moonshot-v1-32k", "moonshot-v1-8k-vision"])
@@ -88,7 +89,9 @@ def test_vendor_prefixed_routing_still_finds_the_model() -> None:
 def test_bare_k3_is_exact_and_does_not_capture_unrelated_short_ids() -> None:
     moonshot = find_by_name("moonshot")
     assert model_overrides_for("k3", moonshot) == {"temperature": None}
+    assert model_overrides_for("k3-256k", moonshot) == {"temperature": None}
     assert model_overrides_for("sk3", moonshot) == {}
     assert model_overrides_for("k30", moonshot) == {}
     assert find_by_model("k3") is moonshot
+    assert find_by_model("k3-256k") is moonshot
     assert find_by_model("sk3") is None

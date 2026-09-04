@@ -424,8 +424,9 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         model_overrides=(
             ("kimi", {"temperature": None}),
             ("=k3", {"temperature": None}),
+            ("=k3-256k", {"temperature": None}),
         ),
-        exact_model_ids=("k3",),
+        exact_model_ids=("k3", "k3-256k"),
     ),
     # MiniMax runs two separate platforms: global (platform.minimax.io /
     # api.minimax.io) and mainland China (platform.minimaxi.com /
