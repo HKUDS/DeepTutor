@@ -57,6 +57,19 @@ export interface TimedMediaMaterial {
   playback: VideoPlayback;
 }
 
+export interface RecentVideoMaterial {
+  material_id: string;
+  title: string;
+  author: string;
+  duration_seconds: number;
+  thumbnail_url: string;
+  provider: VideoProvider;
+  video_id: string;
+  source_url: string;
+  last_position: number;
+  updated_at: string;
+}
+
 export interface VideoNote {
   notebook_id: string;
   note_id: string;
@@ -204,6 +217,17 @@ export async function getVideoMaterial(
       {
         cache: "no-store",
       },
+    ),
+  );
+}
+
+export async function listRecentVideoMaterials(
+  limit = 20,
+): Promise<RecentVideoMaterial[]> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(`/api/video-learning/materials?limit=${encodeURIComponent(limit)}`),
+      { cache: "no-store" },
     ),
   );
 }
