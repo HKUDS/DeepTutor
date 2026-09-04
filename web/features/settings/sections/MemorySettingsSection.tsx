@@ -41,25 +41,31 @@ export default function MemorySettingsPage() {
   const [settings, setSettings] = useState<MemorySettingsDTO | null>(null);
   const [serverSnapshot, setServerSnapshot] =
     useState<MemorySettingsDTO | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void apiFetch(apiUrl(EXTENSION_ENDPOINTS.memory))
-      .then((res) => res.json() as Promise<MemorySettingsDTO>)
-      .then((data) => {
-        if (cancelled) return;
-        // A pending edit outlives the page it was made on; the server value is
-        // the baseline dirtiness is measured against either way.
-        const pending = pendingExtensionPayload("memory") as
-          | MemorySettingsDTO
-          | undefined;
-        setSettings(pending ?? data);
-        setServerSnapshot(data);
-      });
+    void (async () => {
+      const res = await apiFetch(apiUrl(EXTENSION_ENDPOINTS.memory));
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as MemorySettingsDTO;
+      if (cancelled) return;
+      // A pending edit outlives the page it was made on; the server value is
+      // the baseline dirtiness is measured against either way.
+      const pending = pendingExtensionPayload("memory") as
+        | MemorySettingsDTO
+        | undefined;
+      setSettings(pending ?? data);
+      setServerSnapshot(data);
+    })().catch(() => {
+      if (!cancelled) setError(t("Couldn't load memory settings"));
+    });
     return () => {
       cancelled = true;
     };
-  }, [draftRevision, pendingExtensionPayload]);
+  }, [draftRevision, pendingExtensionPayload, t]);
 
   const dirty =
     !!settings &&
@@ -80,6 +86,9 @@ export default function MemorySettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(current),
     });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
     const data = (await res.json()) as MemorySettingsDTO;
     setSettings(data);
     setServerSnapshot(data);
@@ -99,6 +108,13 @@ export default function MemorySettingsPage() {
   }
 
   if (!settings) {
+    if (error) {
+      return (
+        <div className="grid h-[60vh] place-items-center text-[13px] text-[var(--destructive)]">
+          {error}
+        </div>
+      );
+    }
     return (
       <div className="grid h-[60vh] place-items-center text-[13px] text-[var(--muted-foreground)]">
         <Loader2 className="h-4 w-4 animate-spin" />

@@ -39,7 +39,6 @@ import { useTranslation } from "react-i18next";
 import { useCapabilityAccess } from "@/components/access/CapabilityAccessContext";
 import {
   NAV_BY_HREF,
-  PRIMARY_NAV_HREFS,
   isNavActive,
 } from "@/components/sidebar/nav-entries";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -77,12 +76,15 @@ interface SidebarNavProps {
   onHomeClick: (event: React.MouseEvent) => void;
   /** Dismisses the mobile drawer on in-place navigation. */
   onNavigate: (event: React.MouseEvent) => void;
+  /** Feature destinations allowed by the current server-side account policy. */
+  allowedHrefs: readonly string[];
 }
 
 export function SidebarNav({
   collapsed,
   onHomeClick,
   onNavigate,
+  allowedHrefs,
 }: SidebarNavProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
@@ -105,8 +107,8 @@ export function SidebarNav({
   }, []);
 
   const resolved = useMemo(
-    () => resolveNavLayout(PRIMARY_NAV_HREFS, layout),
-    [layout],
+    () => resolveNavLayout(allowedHrefs, layout),
+    [allowedHrefs, layout],
   );
   /** Always edit the resolved order: the stored one may still be empty. */
   const editable = useMemo<SidebarNavLayout>(

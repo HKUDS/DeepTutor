@@ -2364,6 +2364,7 @@
   "Budget per exploring-loop round (notes + tool calls).": "Budget per exploring-loop round (notes + tool calls).",
   "Cap on the explore loop before planning.": "Cap on the explore loop before planning.",
   "Couldn't load capability settings": "Couldn't load capability settings",
+  "Couldn't load memory settings": "Couldn't load memory settings",
   "Deep question (quiz) generation pipeline.": "Deep question (quiz) generation pipeline.",
   "Deep research pipeline. Iteration count is controlled per request via the depth selector (quick / standard / deep / manual) in the chat input, not here.": "Deep research pipeline. Iteration count is controlled per request via the depth selector (quick / standard / deep / manual) in the chat input, not here.",
   "Deep solve runs as one agent loop with a plan / finish-step / replan spine.": "Deep solve runs as one agent loop with a plan / finish-step / replan spine.",
@@ -4753,5 +4754,7 @@
   "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.": "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.",
   "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.": "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.",
   "Unverified historical indexing model": "Unverified historical indexing model",
-  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads."
+  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.",
+  "Assigned models": "Assigned models",
+  "No assigned models": "No assigned models"
 }

@@ -80,6 +80,8 @@ export interface SettingsCategory {
   learnerOnly?: boolean;
   /** Shown only to authenticated standard users who may act as guardians. */
   guardianOnly?: boolean;
+  /** Remains useful when a learning policy redacts server settings surfaces. */
+  availableToLearningAccounts?: boolean;
 }
 
 export function isSettingsLeafVisible(
@@ -95,6 +97,12 @@ export function isSettingsCategoryVisible(
 ): boolean {
   if (category.learnerOnly && !access.showLearnerOnly) return false;
   if (category.guardianOnly && !access.showGuardianOnly) return false;
+  if (
+    access.learningPolicyActive &&
+    !category.availableToLearningAccounts &&
+    !category.learnerOnly
+  )
+    return false;
   return (
     !category.children ||
     category.children.some((leaf) => isSettingsLeafVisible(leaf, access))
@@ -405,6 +413,7 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     key: "appearance",
+    availableToLearningAccounts: true,
     label: { zh: "外观", en: "Appearance" },
     blurb: { zh: "视觉主题与界面语言", en: "Theme and interface language" },
     icon: Palette,
@@ -463,6 +472,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     key: "learner-profile",
     learnerOnly: true,
+    availableToLearningAccounts: true,
     label: { zh: "学习档案", en: "Learner profile" },
     blurb: {
       zh: "调整年龄、年级与讲解偏好。",
@@ -494,6 +504,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   },
   {
     key: "about",
+    availableToLearningAccounts: true,
     label: { zh: "关于", en: "About" },
     blurb: {
       zh: "版本、更新与项目资源",

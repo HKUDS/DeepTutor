@@ -831,6 +831,26 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     let settingsLoaded = false;
     try {
       const settingsResponse = await apiFetch(apiUrl("/api/settings"));
+      if (settingsResponse.status === 403) {
+        // Learner policies deny the deployment settings router, while the
+        // narrow public UI projection remains the supported read for theme
+        // and language preferences.
+        const uiResponse = await apiFetch(apiUrl("/api/settings/ui"));
+        if (!uiResponse.ok) {
+          throw new Error(`Settings fetch failed: HTTP ${uiResponse.status}`);
+        }
+        const payload = (await uiResponse.json()) as Partial<
+          Pick<UiSettings, "theme" | "language" | "response_language">
+        >;
+        setTheme(payload.theme ?? "snow");
+        setLanguage(payload.language ?? "en");
+        setResponseLanguage(
+          payload.response_language ?? payload.language ?? "en",
+        );
+        setCatalogEditable(false);
+        settingsLoaded = true;
+        return;
+      }
       if (!settingsResponse.ok) {
         throw new Error(
           `Settings fetch failed: HTTP ${settingsResponse.status}`,
