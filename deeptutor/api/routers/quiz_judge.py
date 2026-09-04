@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from deeptutor.i18n.languages import normalize_supported_language
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.settings.interface_settings import get_response_language
@@ -47,6 +48,17 @@ _JUDGE_SYSTEM_PROMPTS = {
         "- If multiple reasonable answers exist, acknowledge what the learner did well.\n"
         "- Speak directly to the learner's submission — do not give a generic lecture.\n"
         "- Reply in English."
+    ),
+    "es": (
+        "Eres un asistente docente riguroso y alentador que corrige la respuesta de un estudiante. "
+        "Usa la pregunta, la respuesta de referencia y la explicación para ofrecer una evaluación concreta.\n\n"
+        "Requisitos:\n"
+        "- Empieza con una línea que indique el veredicto: ✅ Correcta / ⚠️ Parcialmente correcta / ❌ Incorrecta, "
+        "junto con el motivo principal.\n"
+        "- Enumera después qué está bien, qué es incorrecto o falta y cómo corregirlo.\n"
+        "- Si existen varias respuestas razonables, reconoce los aciertos del estudiante.\n"
+        "- Habla directamente sobre la respuesta entregada; evita explicaciones genéricas.\n"
+        "- Responde siempre en español de España."
     ),
 }
 
@@ -96,6 +108,27 @@ def _build_judge_user_prompt(
             )
             parts.append(f"{count_text}，请结合图片中的文字/公式/草图一并判定。")
         parts.append("请针对该学习者的具体作答给出 AI 评判。")
+    elif language == "es":
+        parts = [
+            f"Tipo de pregunta: {question_type or 'desconocido'}",
+            f"Pregunta:\n{question}",
+        ]
+        if options_block:
+            parts.append(f"Opciones:\n{options_block}")
+        if correct_answer:
+            parts.append(f"Respuesta de referencia:\n{correct_answer}")
+        if explanation:
+            parts.append(f"Explicación de referencia:\n{explanation}")
+        parts.append(
+            "Respuesta del estudiante:\n"
+            + (
+                user_answer.strip()
+                if user_answer and user_answer.strip()
+                else "(Solo se han enviado imágenes, sin respuesta escrita)"
+            )
+        )
+        if has_image:
+            parts.append(f"Imágenes adjuntas: {image_count}")
     else:
         parts = [
             f"Question type: {question_type or 'unknown'}",
@@ -219,7 +252,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
             ] | null,
             "user_answer_image": str | null,  # legacy single-image form
             "image_filename": str | null,     # legacy filename for the above
-            "language": "zh" | "en",
+            "language": "en" | "zh" | "es",
         }
 
     Server → Client (streaming):
@@ -276,12 +309,11 @@ async def websocket_quiz_judge(websocket: WebSocket):
         return
 
     requested_language = (data.get("language") or "").strip().lower()
-    if requested_language not in ("zh", "en"):
+    if requested_language not in ("zh", "en", "es"):
         requested_language = get_response_language(
             default=_config.get("system", {}).get("language", "en")
         )
-        if requested_language not in ("zh", "en"):
-            requested_language = "en"
+        requested_language = normalize_supported_language(requested_language)
 
     user_answer = data.get("user_answer") or ""
 

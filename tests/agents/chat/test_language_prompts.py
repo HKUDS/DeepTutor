@@ -41,11 +41,13 @@ def test_agentic_chat_final_prompt_uses_selected_language(
     ctx = UnifiedContext()
     zh_prompt = AgenticChatPipeline(language="zh")._build_system_prompt([], ctx)
     en_prompt = AgenticChatPipeline(language="en")._build_system_prompt([], ctx)
+    es_prompt = AgenticChatPipeline(language="es-ES")._build_system_prompt([], ctx)
 
     # Prompt blocks are phase-specific, but the shared language directive
     # still runs at the end, so per-language imperatives must surface.
     assert "请严格使用中文" in zh_prompt
     assert "Write ALL reader-facing text" in en_prompt
+    assert "strictly in español de España" in es_prompt
     # Persona phrasing differs by language so the prompts are not just
     # English text with a Chinese tail appended.
     assert "你是 DeepTutor" in zh_prompt

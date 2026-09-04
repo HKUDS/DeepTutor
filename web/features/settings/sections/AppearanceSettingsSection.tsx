@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { ChevronDown, Languages } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
@@ -15,6 +16,8 @@ import {
   selectClass,
   selectOptionClass,
 } from "@/components/settings/shared";
+import { APP_LANGUAGE_DEFINITIONS } from "@/i18n/languages";
+import type { AppLanguage } from "@/i18n/languages";
 
 const CODE_BLOCK_PREVIEW_SNIPPET = `def fibonacci(n):
     """Generate the first n Fibonacci numbers."""
@@ -33,8 +36,45 @@ print(summary)
 
 const RichCodeBlockPreview = dynamic(
   () => import("@/components/common/RichCodeBlock"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
+
+function LanguageSelect({
+  value,
+  label,
+  onChange,
+}: {
+  value: AppLanguage;
+  label: string;
+  onChange: (language: AppLanguage) => void;
+}) {
+  return (
+    <div className="relative w-[180px] sm:w-[220px]">
+      <Languages
+        aria-hidden="true"
+        className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+      />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value as AppLanguage)}
+        className={`${selectClass} h-9 py-0 pl-9 pr-9 text-[13px] font-medium shadow-sm hover:border-[var(--muted-foreground)]/60`}
+      >
+        {APP_LANGUAGE_DEFINITIONS.map(({ code, nativeLabel }) => (
+          <option key={code} value={code} className={selectOptionClass}>
+            {nativeLabel}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]"
+      />
+    </div>
+  );
+}
 
 export default function AppearanceSettingsPage() {
   const { t } = useTranslation();
@@ -83,21 +123,11 @@ export default function AppearanceSettingsPage() {
             "Controls navigation, settings, and status text only.",
           )}
           control={
-            <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["en", "zh"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => updateLanguage(v)}
-                  className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    language === v
-                      ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {v === "en" ? t("language.english") : t("language.chinese")}
-                </button>
-              ))}
-            </div>
+            <LanguageSelect
+              label={t("Interface language")}
+              value={language}
+              onChange={(next) => void updateLanguage(next)}
+            />
           }
         />
         <SettingRow
@@ -106,23 +136,11 @@ export default function AppearanceSettingsPage() {
             "Sets the default language for chat and capability responses.",
           )}
           control={
-            <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["en", "zh"] as const).map((value) => (
-                <button
-                  key={value}
-                  onClick={() => updateResponseLanguage(value)}
-                  className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    responseLanguage === value
-                      ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {value === "en"
-                    ? t("language.english")
-                    : t("language.chinese")}
-                </button>
-              ))}
-            </div>
+            <LanguageSelect
+              label={t("Model output language")}
+              value={responseLanguage}
+              onChange={(next) => void updateResponseLanguage(next)}
+            />
           }
         />
       </SettingSection>

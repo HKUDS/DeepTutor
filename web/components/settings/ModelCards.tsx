@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
+import type { AppLanguage } from "@/i18n/languages";
 import type {
   CatalogModel,
   CatalogProfile,
@@ -344,7 +345,7 @@ export function ModelCard({
 }: {
   model: CatalogModel;
   service: ServiceName;
-  language: "en" | "zh";
+  language: AppLanguage;
   index: number;
   inUse: boolean;
   expanded: boolean;
@@ -361,7 +362,7 @@ export function ModelCard({
   const { t } = useTranslation();
   const name =
     (model.name || "").trim() ||
-    (language === "zh" ? `模型 ${index + 1}` : `Model ${index + 1}`);
+    `${t("Model")} ${index + 1}`;
   const detail =
     service === "llm"
       ? model.context_window

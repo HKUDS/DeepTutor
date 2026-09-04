@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import Modal from "@/components/common/Modal";
 import ProviderIcon from "@/components/common/ProviderIcon";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import type { AppLanguage } from "@/i18n/languages";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
   reasoningEffortOptions,
@@ -1202,7 +1203,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   );
 }
 
-function defaultModelLabel(language: "en" | "zh", index: number): string {
+function defaultModelLabel(language: AppLanguage, index: number): string {
   const safeIndex = index > 0 ? index : 1;
   return language === "zh" ? `模型${safeIndex}` : `Model ${safeIndex}`;
 }

@@ -1,8 +1,14 @@
 "use client";
 
 import { browserStorage } from "@/shared/storage";
+import {
+  APP_LANGUAGE_DEFINITIONS,
+  normalizeLanguage,
+  type AppLanguage,
+} from "@/i18n/languages";
 
-export type AppLanguage = "en" | "zh";
+export type { AppLanguage } from "@/i18n/languages";
+export { normalizeLanguage } from "@/i18n/languages";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
 export const LANGUAGE_STORAGE_KEY = "deeptutor-language";
@@ -67,19 +73,17 @@ export const RESPONSE_LANGUAGE_EVENT = "deeptutor:response-language";
 export const SIDEBAR_COLLAPSED_EVENT = "deeptutor:sidebar-collapsed";
 export const CODE_BLOCK_SETTINGS_EVENT = "deeptutor:code-block-settings";
 
-export function normalizeLanguage(
-  value: string | null | undefined,
-): AppLanguage {
-  return value === "zh" ? "zh" : "en";
-}
-
 export function resolveResponseLanguage(
   value: string | null | undefined,
   legacyLanguage: string | null | undefined = "en",
 ): AppLanguage {
-  return value === "zh" || value === "en"
-    ? value
-    : normalizeLanguage(legacyLanguage);
+  const candidate = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    APP_LANGUAGE_DEFINITIONS.find(({ aliases }) => aliases.includes(candidate))
+      ?.code ?? normalizeLanguage(legacyLanguage)
+  );
 }
 
 export function readStoredLanguage(): AppLanguage {
@@ -132,6 +136,17 @@ export function readStoredResponseLanguage(): AppLanguage {
     );
   } catch {
     return "en";
+  }
+}
+
+export function hasStoredResponseLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      browserStorage.readRaw("local", RESPONSE_LANGUAGE_STORAGE_KEY) !== null
+    );
+  } catch {
+    return false;
   }
 }
 

@@ -135,8 +135,8 @@ class SidebarNavOrder(BaseModel):
 
 class UISettings(BaseModel):
     theme: Literal["light", "dark", "glass", "snow"] = "snow"
-    language: Literal["zh", "en"] = "en"
-    response_language: Literal["zh", "en"] = "en"
+    language: Literal["en", "zh", "es"] = "en"
+    response_language: Literal["en", "zh", "es"] = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
     code_block_theme: Optional[str] = None
@@ -158,8 +158,8 @@ class UISettingsUpdate(BaseModel):
     # for exclude_unset partial merges, but an explicit value is still validated
     # so PUT /ui cannot persist a theme/language the app can't render.
     theme: Literal["light", "dark", "glass", "snow"] | None = None
-    language: Literal["zh", "en"] | None = None
-    response_language: Literal["zh", "en"] | None = None
+    language: Literal["en", "zh", "es"] | None = None
+    response_language: Literal["en", "zh", "es"] | None = None
     sidebar_description: str | None = None
     sidebar_nav_order: SidebarNavOrder | None = None
     code_block_theme: str | None = None
@@ -180,7 +180,7 @@ class ThemeUpdate(BaseModel):
 
 
 class LanguageUpdate(BaseModel):
-    language: Literal["zh", "en"]
+    language: Literal["en", "zh", "es"]
 
 
 class SidebarDescriptionUpdate(BaseModel):

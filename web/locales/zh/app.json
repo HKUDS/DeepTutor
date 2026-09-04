@@ -1,6 +1,7 @@
 {
   "language.english": "English",
   "language.chinese": "中文",
+  "language.spanishSpain": "西班牙语（西班牙）",
   "Start": "开始",
   "Learn": "学习",
   "Research": "研究",
@@ -4293,7 +4294,7 @@
   "{{count}} pages_other": "{{count}} 页",
   "{{count}} sections_one": "{{count}} 节",
   "{{count}} sections_other": "{{count}} 节",
-  "“{{title}}” and its reading conversations will be deleted. The {{count}} materials in it stay in your library._one": "将删除《{{title}}》及其阅读对话。其中的 {{count}} 份资料仍保留在资料库中。",
+  "“{{title}}” and its reading conversations will be deleted. The {{count}} materials in it stay in your library._one": "将删除《{{title}}》及其阅读对话。其中的资料仍保留在资料库中。",
   "“{{title}}” and its reading conversations will be deleted. The {{count}} materials in it stay in your library._other": "将删除《{{title}}》及其阅读对话。其中的 {{count}} 份资料仍保留在资料库中。",
   "Search your library": "搜索资料库",
   "“{{title}}” and its annotations will be deleted.": "将删除《{{title}}》及其批注。",

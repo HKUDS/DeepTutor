@@ -80,7 +80,7 @@ class UnifiedContext:
         knowledge_bases: KB names to use for RAG.
         attachments: Images / files sent with the message.
         config_overrides: Per-request config tweaks (e.g. temperature).
-        language: UI / response language ("en" | "zh").
+        language: UI / response language (for example ``"en"``, ``"zh"``, or ``"es"``).
         memory_context: Memory snapshot text injected into the system prompt.
         persona_context: Selected persona's instructions, eagerly injected
             into the system prompt (a persona must shape the voice from the

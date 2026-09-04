@@ -25,13 +25,13 @@ def test_load_ui_settings_migrates_legacy_language_to_response_language(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     settings_file = tmp_path / "interface.json"
-    settings_file.write_text('{"theme": "snow", "language": "zh"}', encoding="utf-8")
+    settings_file.write_text('{"theme": "snow", "language": "es"}', encoding="utf-8")
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
 
     settings = settings_router.load_ui_settings()
 
-    assert settings["language"] == "zh"
-    assert settings["response_language"] == "zh"
+    assert settings["language"] == "es"
+    assert settings["response_language"] == "es"
 
 
 def test_both_readers_of_interface_json_agree_on_a_legacy_file(
@@ -48,7 +48,7 @@ def test_both_readers_of_interface_json_agree_on_a_legacy_file(
     from deeptutor.services.settings import interface_settings
 
     settings_file = tmp_path / "interface.json"
-    settings_file.write_text('{"theme": "dark", "language": "zh"}', encoding="utf-8")
+    settings_file.write_text('{"theme": "dark", "language": "es"}', encoding="utf-8")
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
     monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
 
@@ -56,7 +56,7 @@ def test_both_readers_of_interface_json_agree_on_a_legacy_file(
     from_service = interface_settings.get_ui_settings()
 
     for field in ("language", "response_language"):
-        assert from_router[field] == from_service[field] == "zh"
+        assert from_router[field] == from_service[field] == "es"
 
 
 @pytest.mark.asyncio
@@ -67,11 +67,14 @@ async def test_ui_languages_are_persisted_independently(
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
 
     response = await settings_router.update_ui_settings(
-        settings_router.UISettingsUpdate(theme="snow", language="en", response_language="zh")
+        settings_router.UISettingsUpdate(language="es", response_language="zh")
     )
 
-    assert response["language"] == "en"
+    assert response["language"] == "es"
     assert response["response_language"] == "zh"
+    persisted = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert persisted["language"] == "es"
+    assert persisted["response_language"] == "zh"
 
 
 class _FakeEmbeddingAdapter:
