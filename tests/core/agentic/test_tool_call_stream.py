@@ -160,9 +160,7 @@ def test_gemini_thought_signature_from_dict_delta() -> None:
         }
     )
 
-    assert acc.collected()[0]["extra_content"] == {
-        "google": {"thought_signature": "sig-dict"}
-    }
+    assert acc.collected()[0]["extra_content"] == {"google": {"thought_signature": "sig-dict"}}
 
 
 def test_gemini_thought_signature_from_model_extra() -> None:
@@ -177,6 +175,4 @@ def test_gemini_thought_signature_from_model_extra() -> None:
     acc = ToolCallAccumulator()
     acc.feed(_DeltaWithModelExtra())
 
-    assert acc.collected()[0]["extra_content"] == {
-        "google": {"thought_signature": "sig-extra"}
-    }
+    assert acc.collected()[0]["extra_content"] == {"google": {"thought_signature": "sig-extra"}}

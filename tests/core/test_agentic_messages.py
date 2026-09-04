@@ -91,9 +91,7 @@ def test_assistant_message_builds_extra_content_from_bare_thought_signature() ->
         ],
     )
 
-    assert message["tool_calls"][0]["extra_content"] == {
-        "google": {"thought_signature": "sig-xyz"}
-    }
+    assert message["tool_calls"][0]["extra_content"] == {"google": {"thought_signature": "sig-xyz"}}
 
 
 @pytest.mark.asyncio
