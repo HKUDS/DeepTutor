@@ -26,11 +26,7 @@ export type CodexOAuthStatus = {
   redirect_uri: string | null;
   model_count: number;
   catalog_source:
-    | "live"
-    | "fresh-cache"
-    | "revalidated-cache"
-    | "stale-cache"
-    | null;
+    "live" | "fresh-cache" | "revalidated-cache" | "stale-cache" | null;
   catalog_fetched_at: number | null;
   active_model: string | null;
   models: CodexReasoningModel[];
@@ -176,6 +172,14 @@ export function startCodexLogin(): Promise<CodexLoginStart> {
   return requestCodex<CodexLoginStart>("/oauth/start", "POST");
 }
 
+export function completeCodexLogin(
+  callbackUrl: string,
+): Promise<{ accepted: boolean }> {
+  return requestCodex("/oauth/complete", "POST", apiFetch, {
+    callback_url: callbackUrl,
+  });
+}
+
 export function cancelCodexLogin(): Promise<CodexOAuthStatus> {
   return requestCodex<CodexOAuthStatus>("/oauth/cancel", "POST");
 }
@@ -216,6 +220,9 @@ export function codexErrorMessageKey(code: string | null): string {
   if (code === "inference_in_progress") {
     return "codex.oauth.inferenceActive";
   }
+  if (code === "invalid_callback_url") return "codex.oauth.invalidCallback";
+  if (code === "state_mismatch" || code === "login_not_active")
+    return "codex.oauth.callbackMismatch";
   if (code === "login_timeout") return "codex.oauth.callbackMissing";
   if (code === "callback_unavailable") {
     return "codex.oauth.callbackUnavailable";

@@ -14,6 +14,7 @@ import secrets
 import shutil
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -445,6 +446,45 @@ class CodexOAuthService:
     def awaits_callback(self) -> bool:
         """Whether this instance has a login waiting for a browser callback."""
         return self._operation is not None and self._operation_is_active()
+
+    async def submit_callback_url(self, callback_url: str) -> None:
+        """Recover a loopback redirect via the authenticated owner's Web session.
+
+        Parse only; never fetch the supplied URL or expose its query in errors.
+        The existing receiver still validates state and the exchange retains PKCE.
+        """
+        try:
+            if not isinstance(callback_url, str) or not 1 <= len(callback_url) <= 16384:
+                raise ValueError
+            parsed = urlsplit(callback_url.strip())
+            query = parse_qs(parsed.query, keep_blank_values=True, max_num_fields=20)
+            if (
+                parsed.scheme != "http"
+                or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+                or parsed.port not in CODEX_CALLBACK_PORTS
+                or parsed.path != CODEX_CALLBACK_PATH
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.fragment
+                or len(query.get("state", [])) != 1
+                or not query["state"][0]
+                or ("code" in query) == ("error" in query)
+                or any(
+                    len(query[key]) != 1 or not query[key][0]
+                    for key in ("code", "error")
+                    if key in query
+                )
+            ):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise CodexAuthError(
+                "invalid_callback_url",
+                "Paste the complete localhost callback URL from this sign-in.",
+                400,
+            ) from None
+        await self.receive_callback(
+            query.get("code", [None])[0], query["state"][0], query.get("error", [None])[0]
+        )
 
     async def receive_callback(
         self,

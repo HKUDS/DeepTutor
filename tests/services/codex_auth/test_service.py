@@ -1545,3 +1545,45 @@ async def test_recover_after_unauthorized_forces_refresh_for_next_request(
 
     assert oauth.refresh_calls == 1
     assert store.load_credentials().access_token == "refreshed-access"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_pasted_callback_is_owner_scoped_and_completes(tmp_path):
+    service, *_ = await _oauth_service(tmp_path / "owner")
+    other, *_ = await _oauth_service(tmp_path / "other")
+    started = await service.start_login()
+    await other.start_login()
+    state = parse_qs(urlsplit(started["authorize_url"]).query)["state"][0]
+    url = started["redirect_uri"] + "?code=authorization-code&state=" + state
+    with pytest.raises(CodexAuthError, match="invalid state"):
+        await other.submit_callback_url(url)
+    assert other.public_status()["operation_state"] == "waiting"
+    await service.submit_callback_url(url)
+    assert (await _wait_until_terminal(service))["operation_state"] == "completed"
+    await other.cancel_login()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example/auth/callback?code=secret&state=x",
+        "http://localhost:1455/wrong?code=secret&state=x",
+        "http://localhost:8001/auth/callback?code=secret&state=x",
+        "http://localhost:1455/auth/callback?code=secret&state=x&state=y",
+        "http://localhost:1455/auth/callback?code=secret&code=other&state=x",
+        "http://localhost:1455/auth/callback?code=secret&error=denied&state=x",
+        "http://user:secret@localhost:1455/auth/callback?code=secret&state=x",
+        "http://localhost:1455/auth/callback?code=secret&state=x#secret",
+        "secret",
+    ],
+)
+async def test_pasted_callback_rejects_malformed_urls_without_echo(tmp_path, url):
+    service, *_ = await _oauth_service(tmp_path)
+    await service.start_login()
+    with pytest.raises(CodexAuthError) as error:
+        await service.submit_callback_url(url)
+    assert error.value.code == "invalid_callback_url"
+    assert "secret" not in error.value.public_message
+    assert service.public_status()["operation_state"] == "waiting"
+    await service.cancel_login()

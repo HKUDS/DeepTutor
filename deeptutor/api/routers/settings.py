@@ -770,6 +770,24 @@ async def start_openai_codex_oauth() -> dict[str, Any]:
         raise _codex_http_exception(exc) from None
 
 
+@router.post("/providers/openai-codex/oauth/complete")
+async def complete_openai_codex_oauth(request: Request) -> dict[str, bool]:
+    _require_codex_oauth_actor()
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = None
+    if not isinstance(payload, dict) or not isinstance(payload.get("callback_url"), str):
+        raise HTTPException(
+            400, detail={"code": "invalid_callback_url", "message": "Invalid callback URL."}
+        )
+    try:
+        await get_codex_oauth_service().submit_callback_url(payload["callback_url"])
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+    return {"accepted": True}
+
+
 @router.get("/providers/openai-codex/oauth/status")
 async def get_openai_codex_oauth_status() -> dict[str, Any]:
     _require_codex_oauth_actor()

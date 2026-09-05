@@ -136,3 +136,37 @@ def test_a_partner_cannot_change_their_owners_reasoning_effort(client, tmp_path)
 
     assert response.status_code == 403
     assert service.calls == []
+
+
+def test_callback_completion_uses_own_service_and_hides_payload(client, monkeypatch):
+    test_client, service, _ = client
+
+    async def submit(value):
+        assert value == "private-callback"
+        service.calls.append("complete")
+
+    monkeypatch.setattr(service, "submit_callback_url", submit, raising=False)
+    response = test_client.post(
+        "/api/settings/providers/openai-codex/oauth/complete",
+        json={"callback_url": "private-callback"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"accepted": True}
+    assert service.calls == ["complete"]
+    for value in [{"callback_url": 123}, ["private-callback"]]:
+        response = test_client.post(
+            "/api/settings/providers/openai-codex/oauth/complete", json=value
+        )
+        assert response.status_code == 400
+        assert "private-callback" not in response.text
+
+
+def test_partner_cannot_submit_callback(client, tmp_path):
+    test_client, service, current = client
+    current["user"] = _user(f"{PARTNER_USER_PREFIX}ada", role="user", root=tmp_path / "partner")
+    response = test_client.post(
+        "/api/settings/providers/openai-codex/oauth/complete",
+        json={"callback_url": "private-callback"},
+    )
+    assert response.status_code == 403
+    assert service.calls == []
