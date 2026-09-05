@@ -4770,5 +4770,10 @@
   "Reading wheel must not exceed 10 MB.": "阅读扩展文件不能超过 10 MB。",
   "Uninstall reading bundle": "卸载阅读扩展",
   "Restore bundled reading actions": "恢复内置阅读功能",
-  "Updating reading extensions…": "正在更新阅读扩展…"
+  "Updating reading extensions…": "正在更新阅读扩展…",
+  "Independent providers": "独立插件提供者",
+  "Install only what you need, then choose a provider for each action.": "按需安装，再为每个功能选择提供者。",
+  "Default provider": "默认提供者",
+  "Download individual providers": "下载单功能插件",
+  "Dictionary example": "词典插件示例"
 }

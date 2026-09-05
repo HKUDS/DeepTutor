@@ -129,6 +129,11 @@ def _default_extensions() -> list[ReadingExtension]:
             "Reading bundle could not be loaded; restore or reinstall it.", exc_info=True
         )
         overrides, blocked = {}, set(plugin_manager.EXTENSIONS)
+    from deeptutor.reading import component_plugins
+
+    providers, provider_errors = component_plugins.load()
+    overrides.update(providers)
+    blocked.update(provider_errors)
     for name, target in _BUILTINS.items():
         if name in blocked:
             continue
@@ -140,9 +145,17 @@ def _default_extensions() -> list[ReadingExtension]:
         except Exception:
             logger.warning("Failed to load built-in reading extension %r.", name, exc_info=True)
 
+    for name, provider in providers.items():
+        if name not in _BUILTINS and name not in blocked:
+            rows.append(provider)
+
     def optional_extension(name: str, loaded: Any) -> ReadingExtension | None:
         # Reserve built-in IDs even when a built-in fails to load.
-        return None if name in _BUILTINS else _coerce(name, loaded)
+        return (
+            None
+            if name in _BUILTINS or name in providers or name in blocked
+            else _coerce(name, loaded)
+        )
 
     rows.extend(load_entry_point_group(ENTRY_POINT_GROUP, optional_extension, log=logger))
     return rows

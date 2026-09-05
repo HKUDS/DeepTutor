@@ -9,7 +9,21 @@ type PluginState = {
   version?: string;
   disabled: string[];
 };
+type ProviderPackage = {
+  name: string;
+  version: string;
+  targets: Record<string, string>;
+};
+type ProviderState = {
+  packages: Record<string, ProviderPackage>;
+  providers: Record<string, string>;
+};
 type Catalog = {
+  components?: {
+    desired: ProviderState;
+    active: ProviderState;
+    errors: Record<string, string>;
+  };
   package: string;
   desired: PluginState;
   active: PluginState;
@@ -81,6 +95,92 @@ export default function ReadingPluginsSettingsSection() {
       ) : null}
       {!catalog && !error ? (
         <p role="status">{t("Loading reading actions…")}</p>
+      ) : null}
+      {catalog?.components ? (
+        <div className="space-y-3 rounded-lg border border-[var(--border)] p-4">
+          <h3 className="font-medium">{t("Independent providers")}</h3>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {t(
+              "Install only what you need, then choose a provider for each action.",
+            )}
+          </p>
+          {Array.from(
+            new Set([
+              ...catalog.extensions,
+              ...Object.values(catalog.components.desired.packages).flatMap(
+                (item) => Object.keys(item.targets),
+              ),
+            ]),
+          ).map((slot) => (
+            <label key={slot} className="flex flex-wrap items-center gap-3">
+              <span>{labels[slot] || slot}</span>
+              <select
+                aria-label={`${t("Provider")}: ${labels[slot] || slot}`}
+                disabled={busy}
+                value={catalog.components?.desired.providers[slot] || ""}
+                onChange={(event) =>
+                  void request(`/providers/${encodeURIComponent(slot)}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ package: event.target.value }),
+                  })
+                }
+              >
+                <option value="">{t("Default provider")}</option>
+                {Object.entries(catalog.components?.desired.packages || {})
+                  .filter(([, item]) => slot in item.targets)
+                  .map(([id, item]) => (
+                    <option key={id} value={id}>
+                      {item.name} · {item.version}
+                    </option>
+                  ))}
+              </select>
+              {catalog.components?.errors[slot] ? (
+                <span role="alert">{catalog.components.errors[slot]}</span>
+              ) : null}
+            </label>
+          ))}
+          {Object.entries(catalog.components.desired.packages).map(
+            ([id, item]) => (
+              <div key={id} className="flex items-center gap-3">
+                <span>
+                  {item.name} · {item.version}
+                </span>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    void request(`/components/${encodeURIComponent(id)}`, {
+                      method: "DELETE",
+                    })
+                  }
+                >
+                  {t("Uninstall")}
+                </button>
+              </div>
+            ),
+          )}
+          <p className="text-sm">{t("Download individual providers")}</p>
+          <div className="flex flex-wrap gap-3">
+            {[
+              ["read-aloud", t("Read aloud")],
+              ["vocabulary", t("Look up word")],
+              ["quiz", t("Quiz me")],
+              ["dictionary-example", t("Dictionary example")],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                disabled={busy || !confirmed}
+                onClick={() =>
+                  void request(`/download?package=deeptutor-reading-${id}`, {
+                    method: "POST",
+                  })
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
       {catalog ? (
         <>

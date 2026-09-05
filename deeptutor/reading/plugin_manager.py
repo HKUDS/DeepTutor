@@ -77,12 +77,16 @@ def save(db: sqlite3.Connection, state: dict[str, Any]) -> None:
 
 
 def status() -> dict[str, Any]:
+    from deeptutor.reading import component_plugins
+
     desired = read_state()
+    components = component_plugins.status()
     return {
         "package": PACKAGE,
         "desired": desired,
         "active": ACTIVE_STATE,
-        "restart_required": desired != ACTIVE_STATE,
+        "restart_required": desired != ACTIVE_STATE or components["restart_required"],
+        "components": components,
         "extensions": list(EXTENSIONS),
     }
 
@@ -152,7 +156,13 @@ def inspect_wheel(data: bytes) -> dict[str, str]:
 
 
 def install(data: bytes) -> dict[str, Any]:
-    details = inspect_wheel(data)
+    try:
+        details = inspect_wheel(data)
+    except ValueError:
+        from deeptutor.reading import component_plugins
+
+        component_plugins.install(data)
+        return status()
     with transaction() as db:
         # Store immutable wheels; workers may still be running the previous one.
         filename = f"{details['sha256']}.whl"
@@ -221,8 +231,17 @@ def load_overrides() -> tuple[dict[str, Any], set[str]]:
     return {}, blocked
 
 
-def download_latest() -> dict[str, Any]:
+def download_latest(package: str = PACKAGE) -> dict[str, Any]:
     """Download a checksum-verified wheel from the fixed release repository."""
+    available = {
+        PACKAGE,
+        "deeptutor-reading-read-aloud",
+        "deeptutor-reading-vocabulary",
+        "deeptutor-reading-quiz",
+        "deeptutor-reading-dictionary-example",
+    }
+    if package not in available:
+        raise ValueError("Unknown published reading package; upload a trusted wheel instead.")
     with httpx.Client(timeout=30, follow_redirects=True) as client:
         response = client.get(f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest")
         response.raise_for_status()
@@ -230,7 +249,7 @@ def download_latest() -> dict[str, Any]:
         wheels = [
             row
             for row in assets
-            if row.get("name", "").startswith(NAMESPACE + "-")
+            if row.get("name", "").startswith(package.replace("-", "_") + "-")
             and row["name"].endswith("-py3-none-any.whl")
         ]
         if len(wheels) != 1:

@@ -4770,5 +4770,10 @@
   "Reading wheel must not exceed 10 MB.": "Reading wheel must not exceed 10 MB.",
   "Uninstall reading bundle": "Uninstall reading bundle",
   "Restore bundled reading actions": "Restore bundled reading actions",
-  "Updating reading extensions…": "Updating reading extensions…"
+  "Updating reading extensions…": "Updating reading extensions…",
+  "Independent providers": "Independent providers",
+  "Install only what you need, then choose a provider for each action.": "Install only what you need, then choose a provider for each action.",
+  "Default provider": "Default provider",
+  "Download individual providers": "Download individual providers",
+  "Dictionary example": "Dictionary example"
 }

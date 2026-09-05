@@ -9,7 +9,7 @@ import httpx
 from pydantic import BaseModel
 
 from deeptutor.api.routers.auth import require_admin
-from deeptutor.reading import plugin_manager
+from deeptutor.reading import component_plugins, plugin_manager
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -38,8 +38,8 @@ async def install_plugin(file: UploadFile = File(...)):  # noqa: B008
 
 
 @router.post("/download")
-async def download_plugin():
-    return await _run(plugin_manager.download_latest)
+async def download_plugin(package: str = plugin_manager.PACKAGE):
+    return await _run(plugin_manager.download_latest, package)
 
 
 @router.delete("")
@@ -59,3 +59,19 @@ class EnabledPayload(BaseModel):
 @router.put("/{extension}/enabled")
 async def enable_plugin(extension: str, payload: EnabledPayload):
     return await _run(plugin_manager.configure, extension=extension, enabled=payload.enabled)
+
+
+class ProviderPayload(BaseModel):
+    package: str = ""
+
+
+@router.put("/providers/{slot}")
+async def select_provider(slot: str, payload: ProviderPayload):
+    await _run(component_plugins.select, slot, payload.package)
+    return await _run(plugin_manager.status)
+
+
+@router.delete("/components/{package}")
+async def remove_component(package: str):
+    await _run(component_plugins.uninstall, package)
+    return await _run(plugin_manager.status)

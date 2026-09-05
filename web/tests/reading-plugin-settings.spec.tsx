@@ -81,3 +81,40 @@ test("download failures stay visible with retry", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("Offline");
   expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
+
+test("installed providers require explicit selection", async () => {
+  const state = {
+    packages: {
+      "deeptutor-reading-dictionary-example": {
+        name: "Dictionary example",
+        version: "0.2.0",
+        targets: { vocabulary: "example:Provider" },
+      },
+    },
+    providers: {},
+  };
+  const catalog = {
+    ...initial,
+    components: { active: state, desired: state, errors: {} },
+  };
+  vi.mocked(apiFetch).mockImplementation(
+    async () => new Response(JSON.stringify(catalog)),
+  );
+  render(<ReadingPluginsSettingsSection />);
+  const selector = await screen.findByRole("combobox", {
+    name: "Provider: Look up word",
+  });
+  expect(selector).toHaveValue("");
+  fireEvent.change(selector, {
+    target: { value: "deeptutor-reading-dictionary-example" },
+  });
+  await waitFor(() =>
+    expect(apiFetch).toHaveBeenLastCalledWith(
+      "/api/reading/plugins/providers/vocabulary",
+      expect.objectContaining({
+        method: "PUT",
+        body: '{"package":"deeptutor-reading-dictionary-example"}',
+      }),
+    ),
+  );
+});

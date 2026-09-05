@@ -37,11 +37,11 @@ def install(wheel: Path = typer.Argument(..., exists=True, dir_okay=False)):
 
 
 @app.command("update")
-def update():
+def update(package: str = "deeptutor-reading-extensions"):
     """Download and install the latest published reading bundle."""
     from deeptutor.reading.plugin_manager import download_latest
 
-    _call(download_latest)
+    _call(download_latest, package)
     typer.echo("Restart the DeepTutor backend to apply the change.")
 
 
@@ -74,4 +74,22 @@ def disable(extension: str):
     from deeptutor.reading.plugin_manager import configure
 
     _call(configure, extension=extension, enabled=False)
+    typer.echo("Restart the DeepTutor backend to apply the change.")
+
+
+@app.command("provider")
+def provider(slot: str, package: str = ""):
+    """Choose an installed provider; omit package to restore the default provider."""
+    from deeptutor.reading.component_plugins import select
+
+    _call(select, slot, package)
+    typer.echo("Restart the DeepTutor backend to apply the change.")
+
+
+@app.command("remove")
+def remove(package: str):
+    """Uninstall one independently installed provider."""
+    from deeptutor.reading.component_plugins import uninstall
+
+    _call(uninstall, package)
     typer.echo("Restart the DeepTutor backend to apply the change.")
