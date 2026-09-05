@@ -40872,6 +40872,73 @@
         "tags": ["settings"]
       }
     },
+    "/api/settings/providers/openai-codex/oauth/complete": {
+      "post": {
+        "operationId": "complete_openai_codex_oauth_api_settings_providers_openai_codex_oauth_complete_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Complete Openai Codex Oauth Api Settings Providers Openai Codex Oauth Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Openai Codex Oauth",
+        "tags": ["settings"]
+      }
+    },
     "/api/settings/providers/openai-codex/oauth/logout": {
       "post": {
         "operationId": "logout_openai_codex_oauth_api_settings_providers_openai_codex_oauth_logout_post",

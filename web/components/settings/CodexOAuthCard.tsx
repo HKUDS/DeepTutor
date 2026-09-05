@@ -10,6 +10,7 @@ import { reasoningEffortOptionsFromSupportedLevels } from "@/lib/reasoning-effor
 import {
   buildSshForwardCommand,
   cancelCodexLogin,
+  completeCodexLogin,
   codexRemoteGuidance,
   CodexOAuthApiError,
   codexErrorMessageKey,
@@ -34,6 +35,8 @@ export function CodexOAuthCard() {
     useSettings();
   const [status, setStatus] = useState<CodexOAuthStatus | null>(null);
   const [pending, setPending] = useState(false);
+  const [callbackUrl, setCallbackUrl] = useState("");
+  const [callbackErrorKey, setCallbackErrorKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [pollTick, setPollTick] = useState(0);
   const [loginStart, setLoginStart] = useState<CodexLoginStart | null>(null);
@@ -149,6 +152,31 @@ export function CodexOAuthCard() {
     reloadedOperation.current = status.operation_id;
     void syncCatalog();
   }, [syncCatalog, status]);
+
+  useEffect(() => {
+    setCallbackUrl("");
+    setCallbackErrorKey(null);
+  }, [status?.operation_id, status?.operation_state]);
+
+  const completeSignIn = async () => {
+    const submitted = callbackUrl;
+    setCallbackUrl("");
+    setPending(true);
+    setCallbackErrorKey(null);
+    invalidateStatusRequests();
+    try {
+      await completeCodexLogin(submitted);
+      await loadStatus();
+    } catch (error) {
+      setCallbackErrorKey(
+        codexErrorMessageKey(
+          error instanceof CodexOAuthApiError ? error.code : null,
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  };
 
   const localSignIn = async () => {
     invalidateStatusRequests();
@@ -396,6 +424,36 @@ export function CodexOAuthCard() {
                 </div>
               </div>
             )}
+          {status?.operation_state === "waiting" && (
+            <div className="mt-4 rounded-lg border border-[var(--border)] p-3">
+              <p className="text-sm">{t("codex.oauth.callbackHelp")}</p>
+              {callbackErrorKey && (
+                <p role="alert" className="mt-2 text-sm">
+                  {t(callbackErrorKey)}
+                </p>
+              )}
+              <label className="mt-2 block text-xs">
+                {t("codex.oauth.callbackInput")}
+                <input
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={callbackUrl}
+                  onChange={(event) => setCallbackUrl(event.target.value)}
+                  className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] p-2"
+                />
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                className="mt-2"
+                disabled={pending || !callbackUrl.trim()}
+                onClick={() => void completeSignIn()}
+              >
+                {t("codex.oauth.completeLogin")}
+              </Button>
+            </div>
+          )}
           {remoteAccess && remoteGuidance && (
             <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
               <p className="text-sm font-medium">

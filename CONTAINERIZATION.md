@@ -90,6 +90,14 @@ Notes:
   the name. The `deeptutor-data` volume keeps your settings and workspace
   across restarts.
 
+### Complete Codex sign-in without a callback port bridge
+
+If the browser cannot open `http://localhost:1455/auth/callback` (or port `1457`), return to the same DeepTutor account's Codex settings while the login is still waiting. Copy the complete address from the failed callback page into **Callback URL**, then choose **Complete sign-in**. This works for local containers and remote deployments without publishing callback ports or restarting the service.
+
+The address is submitted to the authenticated account's existing login operation. The server parses it without fetching it, validates OAuth state, and retains the original redirect URI and PKCE exchange. The input is cleared after submission and is not saved in browser storage. Do not share the callback address in issues or logs. If the login expired, start again; a callback from another account's login is rejected.
+
+The temporary bridge below remains available when automatic browser return is preferred.
+
 ### Temporary local Codex OAuth bridge
 
 OpenAI Codex redirects the browser to fixed loopback ports `1455` or `1457`.

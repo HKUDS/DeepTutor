@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
@@ -9,12 +10,14 @@ import { updateRagProviderMode } from "@/features/knowledge/api/engines";
 import KnowledgeBaseDetail from "./KnowledgeBaseDetail";
 import KnowledgeHome, { type KnowledgeHomeSection } from "./KnowledgeHome";
 import EngineDetail from "@/features/knowledge/components/engines/EngineDetail";
-import CreateKbModal from "./CreateKbModal";
+
 import {
   decodeResourceSegment,
   knowledgeBaseRoute,
 } from "@/lib/resource-routes";
 import type { IndexingLLMSelection } from "@/features/knowledge/model/types";
+
+const CreateKbModal = dynamic(() => import("./CreateKbModal"), { ssr: false });
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
@@ -366,7 +369,7 @@ export default function KnowledgePage() {
         </div>
       )}
 
-      <CreateKbModal
+      {createOpen && <CreateKbModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
         providers={providers}
@@ -384,7 +387,7 @@ export default function KnowledgePage() {
           setCreateOpen(false);
           openEngine(providerId);
         }}
-      />
+      />}
     </div>
   );
 }
