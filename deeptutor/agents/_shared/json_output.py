@@ -8,7 +8,12 @@ from typing import Any
 
 
 def extract_json_object(text: str) -> dict[str, Any]:
-    """Extract the first usable JSON object from raw model output."""
+    """Extract the first usable JSON object from raw model output.
+
+    Empty input returns ``{}`` for backward-compatible soft callers. Prefer
+    :func:`require_json_object` when a stage must fail closed on blank LLM
+    content (``content: null`` / reasoning-only replies).
+    """
     raw = (text or "").strip()
     if not raw:
         return {}
@@ -38,6 +43,18 @@ def extract_json_object(text: str) -> dict[str, Any]:
     raise json.JSONDecodeError("No JSON object found", raw, 0)
 
 
+def require_json_object(text: str) -> dict[str, Any]:
+    """Like :func:`extract_json_object`, but empty / null content is an error."""
+    raw = (text or "").strip()
+    if not raw:
+        raise json.JSONDecodeError(
+            "Empty model content; expected a JSON object",
+            text or "",
+            0,
+        )
+    return extract_json_object(raw)
+
+
 def _decode_first_json_object(text: str) -> dict[str, Any] | None:
     decoder = json.JSONDecoder()
     stripped = (text or "").lstrip()
@@ -59,4 +76,4 @@ def _decode_first_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
-__all__ = ["extract_json_object"]
+__all__ = ["extract_json_object", "require_json_object"]
