@@ -843,9 +843,7 @@ body[data-picker-open] .dt-breathing-text {
 }
 
 /* ----- Immersive watching -----------------------------------------------
-   The video-learning panel remains part of Home while reading owns its
-   dedicated workspace. Keeping a watching-specific shell prevents the two
-   navigation models from becoming coupled again. */
+   Watching shares the conversation renderer and owns its responsive video surface. */
 .dt-watching-shell {
   position: absolute;
   inset: 0 auto 0 0;
@@ -1106,5 +1104,45 @@ a[href^="#dt-locator-"]:hover {
   .dt-breathing-text,
   .animate-spin {
     animation: none !important;
+  }
+}
+
+/* Watching switches panes on small screens without unmounting playback or chat. */
+.watching-mobile-tabs {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .watching-mobile-tabs {
+    display: flex;
+    height: 44px;
+    gap: 8px;
+    padding: 4px 12px;
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 40;
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
+  }
+  .watching-mobile-tabs button {
+    flex: 1;
+    border-radius: 8px;
+  }
+  .watching-mobile-tabs button[aria-pressed="true"] {
+    background: var(--muted);
+    font-weight: 600;
+  }
+  .watching-surface .dt-watching-shell {
+    top: 44px;
+  }
+  .watching-surface[data-mobile-view="chat"] .dt-watching-shell {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  [data-watching-workspace="true"] > .chat-preview-shell {
+    padding-top: 44px;
+  }
+  .watching-surface[data-mobile-view="video"] ~ .chat-preview-shell {
+    visibility: hidden;
+    pointer-events: none;
   }
 }
