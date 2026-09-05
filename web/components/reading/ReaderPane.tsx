@@ -1,5 +1,7 @@
 "use client";
 
+import type { LLMSelection } from "@/features/chat/model/protocol";
+
 import { browserStorage } from "@/shared/storage";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -80,6 +82,7 @@ function locationEntry(
 }
 
 export interface ReaderPaneProps {
+  llmSelection?: LLMSelection | null;
   onClose: () => void;
   sessionId?: string | null;
   /** User-owned navigation from the workspace's source outline. */
@@ -128,6 +131,7 @@ export interface ReaderPaneProps {
  */
 export function ReaderPane({
   onClose,
+  llmSelection,
   sessionId,
   externalJump = null,
   onHeadingsChange,
@@ -189,6 +193,10 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  const [navigationVersion, setNavigationVersion] = useState(0);
+  useEffect(() => {
+    clearSelection();
+  }, [clearSelection, currentLocator, material?.material_id]);
   const nonceRef = useRef(0);
   const headingLocatorRef = useRef(1);
   const jumpMaterialIdRef = useRef<string | null>(null);
@@ -245,6 +253,11 @@ export function ReaderPane({
   const handleVisibleLocator = useCallback(
     (locator: number) => {
       setCurrentLocator(locator);
+      if (material?.render_mode === "epub") {
+        // Reflowed EPUB pages can move within the same chapter locator.
+        clearSelection();
+        setNavigationVersion((version) => version + 1);
+      }
       reportViewport({ locator });
       // Remember where the reader got to, so opening this material again
       // starts here instead of at page 1. EPUB writes its own position — a
@@ -284,7 +297,7 @@ export function ReaderPane({
         });
       }
     },
-    [historyReady, material, reportViewport],
+    [clearSelection, historyReady, material, reportViewport],
   );
 
   useEffect(() => {
@@ -891,8 +904,10 @@ export function ReaderPane({
         <ReadingExtensionBar
           materialId={material.material_id}
           locator={currentLocator}
+          navigationVersion={navigationVersion}
           selectionLocator={selection?.locator}
           selection={selection?.quote}
+          llmSelection={llmSelection}
           onError={setError}
         />
       )}
@@ -999,6 +1014,7 @@ export function ReaderPane({
           onNote={(note, color) => commitSelection("note", color, note)}
           onCitation={(color) => commitSelection("citation", color)}
           onAsk={askAboutSelection}
+          onActionFocus={() => setPopoverOpen(false)}
           // Closes the popover WITHOUT dropping the selection, so the
           // toolbar's selection-gated actions stay reachable.
           onDismiss={() => setPopoverOpen(false)}

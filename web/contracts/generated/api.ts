@@ -8618,6 +8618,8 @@ export interface components {
   schemas: {
     /** ActionPayload */
     readonly ActionPayload: {
+      readonly llm_selection?:
+        components["schemas"]["ReadingModelSelection"] | null;
       /**
        * Locale
        * @default en
@@ -11533,6 +11535,15 @@ export interface components {
        */
       readonly tools_used: readonly string[];
     };
+    /** ReadingModelSelection */
+    readonly ReadingModelSelection: {
+      /** Model Id */
+      readonly model_id: string;
+      /** Profile Id */
+      readonly profile_id: string;
+      /** Reasoning Effort */
+      readonly reasoning_effort?: string | null;
+    };
     /** ReadingReference */
     readonly ReadingReference: {
       /** Locators */
@@ -13314,6 +13325,8 @@ export type SchemaQuizResultsRequest =
 export type SchemaReactEditRequest = components["schemas"]["ReactEditRequest"];
 export type SchemaReactEditResponse =
   components["schemas"]["ReactEditResponse"];
+export type SchemaReadingModelSelection =
+  components["schemas"]["ReadingModelSelection"];
 export type SchemaReadingReference = components["schemas"]["ReadingReference"];
 export type SchemaReadingSessionCreateRequest =
   components["schemas"]["ReadingSessionCreateRequest"];
