@@ -1,7 +1,13 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { apiFetch } from "@/lib/api";
@@ -14,11 +20,17 @@ import {
 } from "@/lib/reading-api";
 import {
   allowsEpubPageTurn,
+  bufferEpubPageTurn,
   canStartEpubPageTurn,
   directionForEpubLayout,
+  epubEdgeTapDirection,
+  epubPageTurnDirectionForDelta,
+  epubPageTurnProgress,
+  epubPageTurnSettleDuration,
   epubSpreadModeForWidth,
+  isEpubPageTurnGesture,
   locatorForEpubHref,
-  resolveEpubPageTurnSwipe,
+  resolveEpubPageTurnRelease,
   type EpubPageTurnDirection,
   type EpubSpreadMode,
 } from "@/lib/epub-page-turn";
@@ -106,8 +118,7 @@ const HIGHLIGHT_COLORS: Record<string, string> = {
   purple: "rgba(199, 174, 250, 0.55)",
 };
 
-const EPUB_TURN_SWAP_MS = 145;
-const EPUB_TURN_SETTLE_MS = 155;
+const EPUB_RELOCATION_TIMEOUT_MS = 1200;
 
 type EpubPageState = {
   start: number;
@@ -115,6 +126,13 @@ type EpubPageState = {
   total: number;
   atStart: boolean;
   atEnd: boolean;
+};
+
+type EpubTurnVisual = {
+  direction: EpubPageTurnDirection;
+  phase: "dragging" | "settling" | "committing" | "boundary";
+  progress: number;
+  duration: number;
 };
 
 const INITIAL_PAGE_STATE: EpubPageState = {
@@ -127,6 +145,14 @@ const INITIAL_PAGE_STATE: EpubPageState = {
 
 function waitForTurnFrame(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) =>
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => resolve()),
+    ),
+  );
 }
 
 export interface EpubDocumentViewProps {
@@ -181,12 +207,19 @@ export function EpubDocumentView({
   const locatorRef = useRef(1);
   const pageStateRef = useRef<EpubPageState>(INITIAL_PAGE_STATE);
   const turningRef = useRef(false);
+  const activeTurnRef = useRef<EpubPageTurnDirection | null>(null);
+  const bufferedTurnRef = useRef<EpubPageTurnDirection | null>(null);
+  const relocationResolveRef = useRef<(() => void) | null>(null);
+  const turnPageRef = useRef<
+    (direction: EpubPageTurnDirection, initialProgress?: number) => void
+  >(() => undefined);
+  const cancelGestureRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [spreadMode, setSpreadMode] = useState<EpubSpreadMode>("single");
-  const [pageState, setPageState] =
-    useState<EpubPageState>(INITIAL_PAGE_STATE);
-  const [turning, setTurning] = useState<EpubPageTurnDirection | null>(null);
+  const [pageState, setPageState] = useState<EpubPageState>(INITIAL_PAGE_STATE);
+  const [turnVisual, setTurnVisual] = useState<EpubTurnVisual | null>(null);
+  const [turnBusy, setTurnBusy] = useState(false);
   const [turnError, setTurnError] = useState("");
 
   useEffect(() => {
@@ -210,6 +243,7 @@ export function EpubDocumentView({
   }, [onError]);
 
   const syncRenditionSize = useCallback(() => {
+    cancelGestureRef.current?.();
     const host = hostRef.current;
     if (!host) return;
     const width = Math.floor(host.clientWidth);
@@ -239,40 +273,152 @@ export function EpubDocumentView({
     };
   }, [syncRenditionSize]);
 
-  const turnPage = useCallback(
+  const animateTurn = useCallback(
+    async (
+      visual: Omit<EpubTurnVisual, "duration">,
+      duration: number,
+    ): Promise<void> => {
+      setTurnVisual({ ...visual, duration });
+      await waitForTurnFrame(duration);
+    },
+    [],
+  );
+
+  const nudgeBoundary = useCallback(
     async (direction: EpubPageTurnDirection) => {
+      const physical = directionForEpubLayout(direction, isRtlRef.current);
+      setTurnVisual({
+        direction: physical,
+        phase: "boundary",
+        progress: 0,
+        duration: 0,
+      });
+      await nextPaint();
+      await animateTurn(
+        { direction: physical, phase: "boundary", progress: 0.045 },
+        80,
+      );
+      await animateTurn(
+        { direction: physical, phase: "settling", progress: 0 },
+        140,
+      );
+      setTurnVisual(null);
+    },
+    [animateTurn],
+  );
+
+  const turnPage = useCallback(
+    async (direction: EpubPageTurnDirection, initialProgress = 0) => {
       const rendition = renditionRef.current;
-      if (
-        !rendition ||
-        !canStartEpubPageTurn(
-          direction,
-          turningRef.current,
-          pageStateRef.current,
-        )
-      )
+      if (!rendition) return;
+      if (turningRef.current) {
+        if (activeTurnRef.current) {
+          bufferedTurnRef.current = bufferEpubPageTurn(
+            activeTurnRef.current,
+            bufferedTurnRef.current,
+            direction,
+          );
+        }
         return;
+      }
+      if (!canStartEpubPageTurn(direction, false, pageStateRef.current)) {
+        const reduceMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)",
+        ).matches;
+        if (!reduceMotion) {
+          turningRef.current = true;
+          activeTurnRef.current = direction;
+          setTurnBusy(true);
+          void nudgeBoundary(direction).finally(() => {
+            turningRef.current = false;
+            activeTurnRef.current = null;
+            bufferedTurnRef.current = null;
+            setTurnBusy(false);
+          });
+        } else {
+          setTurnVisual(null);
+          setTurnBusy(false);
+        }
+        return;
+      }
       const physical = directionForEpubLayout(direction, isRtlRef.current);
       turningRef.current = true;
+      activeTurnRef.current = direction;
+      setTurnBusy(true);
       setTurnError("");
       const reduceMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)",
       ).matches;
-      if (!reduceMotion) {
-        setTurning(physical);
-        await waitForTurnFrame(EPUB_TURN_SWAP_MS);
-      }
       try {
+        if (!reduceMotion) {
+          const startingProgress = Math.min(0.49, initialProgress);
+          setTurnVisual({
+            direction: physical,
+            phase: "dragging",
+            progress: startingProgress,
+            duration: 0,
+          });
+          if (startingProgress === 0) await nextPaint();
+          const midpointDuration = Math.max(
+            60,
+            Math.round(
+              epubPageTurnSettleDuration(startingProgress) *
+                ((0.5 - startingProgress) /
+                  Math.max(0.5, 1 - startingProgress)),
+            ),
+          );
+          await animateTurn(
+            { direction: physical, phase: "committing", progress: 0.5 },
+            midpointDuration,
+          );
+        }
+
+        let relocationTimer = 0;
+        const relocated = new Promise<void>((resolve) => {
+          const finish = () => {
+            if (relocationTimer) window.clearTimeout(relocationTimer);
+            if (relocationResolveRef.current === finish) {
+              relocationResolveRef.current = null;
+            }
+            resolve();
+          };
+          relocationResolveRef.current = finish;
+          relocationTimer = window.setTimeout(
+            finish,
+            EPUB_RELOCATION_TIMEOUT_MS,
+          );
+        });
         await (physical === "next" ? rendition.next() : rendition.prev());
+        await relocated;
+
+        if (!reduceMotion) {
+          await animateTurn(
+            { direction: physical, phase: "committing", progress: 1 },
+            epubPageTurnSettleDuration(Math.max(0.5, initialProgress)),
+          );
+        }
       } catch {
         setTurnError(t("Could not turn the page."));
       } finally {
-        if (!reduceMotion) await waitForTurnFrame(EPUB_TURN_SETTLE_MS);
-        setTurning(null);
+        relocationResolveRef.current?.();
+        relocationResolveRef.current = null;
+        setTurnVisual(null);
         turningRef.current = false;
+        activeTurnRef.current = null;
+        setTurnBusy(false);
+        const buffered = bufferedTurnRef.current;
+        bufferedTurnRef.current = null;
+        if (buffered) window.setTimeout(() => turnPageRef.current(buffered), 0);
       }
     },
-    [t],
+    [animateTurn, nudgeBoundary, t],
   );
+
+  useEffect(() => {
+    turnPageRef.current = (direction, initialProgress) => {
+      void turnPage(direction, initialProgress);
+    };
+  }, [turnPage]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -282,6 +428,7 @@ export function EpubDocumentView({
     let book: EpubBook | null = null;
 
     const onRelocated = (raw: unknown) => {
+      relocationResolveRef.current?.();
       const location = raw as EpubLocation;
       const href = location.start?.href ?? "";
       const nextLocator = locatorForEpubHref(href, refsRef.current) || 1;
@@ -395,44 +542,194 @@ export function EpubDocumentView({
       });
       headingsByLocatorRef.current.set(locator, headings);
       if (locator === locatorRef.current) headingsChangeRef.current?.(headings);
-      let gesture: { x: number; y: number } | null = null;
+      type PointerGesture = {
+        pointerId: number;
+        startX: number;
+        startY: number;
+        sampleX: number;
+        sampleAt: number;
+        direction: EpubPageTurnDirection | null;
+        progress: number;
+        active: boolean;
+      };
+      let gesture: PointerGesture | null = null;
+      let suppressClickUntil = 0;
+
+      const clearGesture = () => {
+        gesture = null;
+        doc.documentElement.style.removeProperty("user-select");
+        doc.body.style.removeProperty("user-select");
+      };
+      cancelGestureRef.current = () => {
+        clearGesture();
+        if (!turningRef.current) {
+          setTurnVisual(null);
+          setTurnBusy(false);
+        }
+      };
+
+      doc.addEventListener("pointerdown", (event) => {
+        gesture = null;
+        if (
+          !event.isPrimary ||
+          (event.pointerType !== "touch" && event.pointerType !== "pen") ||
+          !allowsEpubPageTurn(event.target) ||
+          (doc.getSelection?.()?.toString() ?? "").trim()
+        )
+          return;
+        gesture = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          sampleX: event.clientX,
+          sampleAt: event.timeStamp,
+          direction: null,
+          progress: 0,
+          active: false,
+        };
+        (event.target as Element | null)?.setPointerCapture?.(event.pointerId);
+      });
+
       doc.addEventListener(
-        "touchstart",
+        "pointermove",
         (event) => {
-          gesture = null;
-          if (event.touches.length !== 1) return;
-          const touch = event.touches[0];
-          if (!allowsEpubPageTurn(touch.target)) return;
-          gesture = { x: touch.clientX, y: touch.clientY };
-        },
-        { passive: true },
-      );
-      doc.addEventListener(
-        "touchend",
-        (event) => {
-          if (!gesture || event.changedTouches.length !== 1) return;
-          const start = gesture;
-          gesture = null;
-          if ((doc.getSelection?.()?.toString() ?? "").trim()) return;
-          const touch = event.changedTouches[0];
-          const direction = resolveEpubPageTurnSwipe(
-            start.x,
-            start.y,
-            touch.clientX,
-            touch.clientY,
+          const current = gesture;
+          if (!current || event.pointerId !== current.pointerId) return;
+          const dx = event.clientX - current.startX;
+          const dy = event.clientY - current.startY;
+          if (!current.active) {
+            if (Math.abs(dy) >= 10 && Math.abs(dy) >= Math.abs(dx) * 1.2) {
+              clearGesture();
+              return;
+            }
+            if (!isEpubPageTurnGesture(dx, dy)) return;
+            current.active = true;
+            current.direction = epubPageTurnDirectionForDelta(
+              dx,
+              isRtlRef.current,
+            );
+            setTurnBusy(true);
+            doc.documentElement.style.userSelect = "none";
+            doc.body.style.userSelect = "none";
+          }
+          if (!current.direction) return;
+          const nextDirection = epubPageTurnDirectionForDelta(
+            dx,
+            isRtlRef.current,
           );
-          if (!direction) return;
+          if (nextDirection !== current.direction) {
+            current.progress = 0;
+          } else {
+            const hostWidth = hostRef.current?.clientWidth ?? 1;
+            const leafWidth =
+              epubSpreadModeForWidth(hostWidth) === "double"
+                ? hostWidth / 2
+                : hostWidth;
+            current.progress = epubPageTurnProgress(dx, leafWidth);
+          }
+          const physical = directionForEpubLayout(
+            current.direction,
+            isRtlRef.current,
+          );
+          if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            setTurnVisual({
+              direction: physical,
+              phase: "dragging",
+              progress: current.progress,
+              duration: 0,
+            });
+          }
+          if (event.timeStamp - current.sampleAt >= 24) {
+            current.sampleX = event.clientX;
+            current.sampleAt = event.timeStamp;
+          }
           event.preventDefault();
-          void turnPage(direction);
         },
         { passive: false },
+      );
+
+      const finishPointer = (
+        event: PointerEvent,
+        cancelledByBrowser: boolean,
+      ) => {
+        const current = gesture;
+        if (!current || event.pointerId !== current.pointerId) return;
+        const wasActive = current.active;
+        const dx = event.clientX - current.startX;
+        const sampleElapsed = Math.max(1, event.timeStamp - current.sampleAt);
+        const velocityX = (event.clientX - current.sampleX) / sampleElapsed;
+        const selection = (doc.getSelection?.()?.toString() ?? "").trim();
+        clearGesture();
+        if (!wasActive || !current.direction) return;
+        suppressClickUntil = performance.now() + 450;
+        event.preventDefault();
+        const releaseAction = resolveEpubPageTurnRelease({
+          cancelled: cancelledByBrowser,
+          hasSelection: Boolean(selection),
+          directionMatches:
+            epubPageTurnDirectionForDelta(dx, isRtlRef.current) ===
+            current.direction,
+          reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)")
+            .matches,
+          progress: current.progress,
+          velocityX,
+          distanceX: dx,
+        });
+        if (releaseAction === "commit") {
+          void turnPage(current.direction, current.progress);
+          return;
+        }
+        if (releaseAction === "idle") {
+          setTurnVisual(null);
+          setTurnBusy(false);
+          return;
+        }
+        const physical = directionForEpubLayout(
+          current.direction,
+          isRtlRef.current,
+        );
+        void animateTurn(
+          { direction: physical, phase: "settling", progress: 0 },
+          epubPageTurnSettleDuration(current.progress),
+        ).finally(() => {
+          if (!turningRef.current) setTurnVisual(null);
+          if (!turningRef.current) setTurnBusy(false);
+        });
+      };
+      doc.addEventListener("pointerup", (event) => finishPointer(event, false));
+      doc.addEventListener("pointercancel", (event) =>
+        finishPointer(event, true),
       );
       doc.addEventListener("click", (event) => {
         const anchor = (event.target as Element | null)?.closest?.("a[href]");
         const href = anchor?.getAttribute("href") ?? "";
-        if (!/^https?:\/\//i.test(href)) return;
+        if (/^https?:\/\//i.test(href)) {
+          event.preventDefault();
+          window.open(href, "_blank", "noopener,noreferrer");
+          return;
+        }
+        if (
+          anchor ||
+          performance.now() < suppressClickUntil ||
+          !allowsEpubPageTurn(event.target) ||
+          (doc.getSelection?.()?.toString() ?? "").trim()
+        )
+          return;
+        const frame = contents.window?.frameElement as HTMLElement | null;
+        const host = hostRef.current;
+        if (!frame || !host) return;
+        const x =
+          frame.getBoundingClientRect().left +
+          (event as MouseEvent).clientX -
+          host.getBoundingClientRect().left;
+        const direction = epubEdgeTapDirection(
+          x,
+          host.clientWidth,
+          isRtlRef.current,
+        );
+        if (!direction) return;
         event.preventDefault();
-        window.open(href, "_blank", "noopener,noreferrer");
+        void turnPage(direction);
       });
     };
 
@@ -478,6 +775,7 @@ export function EpubDocumentView({
           },
           body: {
             overflow: "hidden",
+            "touch-action": "pan-y pinch-zoom",
           },
           img: { "max-width": "100%", "max-height": "100%", height: "auto" },
         });
@@ -533,9 +831,25 @@ export function EpubDocumentView({
       renditionReadyRef.current = false;
       bookRef.current = null;
       turningRef.current = false;
+      activeTurnRef.current = null;
+      bufferedTurnRef.current = null;
+      relocationResolveRef.current?.();
+      relocationResolveRef.current = null;
+      cancelGestureRef.current?.();
+      cancelGestureRef.current = null;
+      setTurnVisual(null);
+      setTurnBusy(false);
       host.replaceChildren();
     };
-  }, [materialId, unitCount, onSelection, t, turnPage, syncRenditionSize]);
+  }, [
+    animateTurn,
+    materialId,
+    unitCount,
+    onSelection,
+    t,
+    turnPage,
+    syncRenditionSize,
+  ]);
 
   useEffect(() => {
     if (!headingJump || !renditionRef.current || !bookRef.current) return;
@@ -629,7 +943,9 @@ export function EpubDocumentView({
           {},
           undefined,
           "dt-epub-jump",
-          { fill: "rgba(99, 102, 241, 0.35)" },
+          {
+            fill: "rgba(99, 102, 241, 0.35)",
+          },
         );
         window.setTimeout(() => {
           renditionRef.current?.annotations.remove(matches[0].cfi, "highlight");
@@ -652,25 +968,46 @@ export function EpubDocumentView({
           total: pageState.total,
         });
 
+  const turnParallax = turnVisual
+    ? `${
+        (turnVisual.direction === "next" ? -1 : 1) *
+        Math.sin(Math.PI * turnVisual.progress) *
+        4
+      }px`
+    : "0px";
+
   return (
     <div className="dt-epub-stage h-full min-h-0 pb-[env(safe-area-inset-bottom)]">
       <div className="dt-epub-book-area">
         <div
           className="dt-epub-book"
           data-spread={spreadMode}
-          aria-busy={turning !== null}
+          aria-busy={turnBusy}
         >
           <div
             ref={hostRef}
             className="dt-epub-rendition"
+            style={
+              {
+                "--dt-epub-parallax": turnParallax,
+                "--dt-epub-turn-duration": `${turnVisual?.duration ?? 0}ms`,
+              } as CSSProperties
+            }
             aria-label={t("Immersive reading")}
           />
           {spreadMode === "double" && <div className="dt-epub-spine" />}
-          {turning && (
+          {turnVisual && (
             <div
               className="dt-epub-turn-sheet"
-              data-direction={turning}
+              data-direction={turnVisual.direction}
+              data-phase={turnVisual.phase}
               data-spread={spreadMode}
+              style={
+                {
+                  "--dt-epub-turn-progress": turnVisual.progress,
+                  "--dt-epub-turn-duration": `${turnVisual.duration}ms`,
+                } as CSSProperties
+              }
               aria-hidden="true"
             />
           )}
@@ -695,7 +1032,7 @@ export function EpubDocumentView({
             <button
               type="button"
               onClick={() => void turnPage("previous")}
-              disabled={pageState.atStart || turning !== null}
+              disabled={pageState.atStart || turnBusy}
               className="dt-epub-turn-button left-1 sm:left-2"
               aria-label={t("Previous")}
             >
@@ -704,7 +1041,7 @@ export function EpubDocumentView({
             <button
               type="button"
               onClick={() => void turnPage("next")}
-              disabled={pageState.atEnd || turning !== null}
+              disabled={pageState.atEnd || turnBusy}
               className="dt-epub-turn-button right-1 sm:right-2"
               aria-label={t("Next")}
             >

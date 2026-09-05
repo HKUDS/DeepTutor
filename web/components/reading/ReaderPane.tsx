@@ -244,7 +244,7 @@ export function ReaderPane({
     const reader = readerRef.current;
     if (reader?.requestFullscreen) {
       void reader.requestFullscreen().catch(() => {
-        // iPad Safari and embedded browsers fall back to the fixed viewport.
+        // iPad Safari and in-app browsers fall back to the fixed viewport.
       });
     }
   }, [epubFullscreen]);

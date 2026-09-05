@@ -1019,7 +1019,11 @@ a[href^="#dt-locator-"]:hover {
   overflow: hidden;
   padding: clamp(12px, 2vw, 30px) clamp(12px, 3vw, 44px) 8px;
   background:
-    radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--background) 72%, transparent), transparent 58%),
+    radial-gradient(
+      circle at 50% 34%,
+      color-mix(in srgb, var(--background) 72%, transparent),
+      transparent 58%
+    ),
     var(--secondary);
 }
 
@@ -1062,6 +1066,9 @@ a[href^="#dt-locator-"]:hover {
   height: 100%;
   overflow: hidden;
   background: #fffdf8;
+  transform: translateX(var(--dt-epub-parallax, 0));
+  transition: transform var(--dt-epub-turn-duration, 0ms) ease-out;
+  will-change: transform;
 }
 
 .dt-epub-spine {
@@ -1092,9 +1099,12 @@ a[href^="#dt-locator-"]:hover {
   backface-visibility: hidden;
   background: linear-gradient(90deg, #fffdf8, #f8f2e7 74%, #e9dfcf);
   box-shadow: 0 0 28px rgb(45 34 20 / 0.28);
-  animation-duration: 300ms;
-  animation-timing-function: cubic-bezier(0.42, 0, 0.18, 1);
-  animation-fill-mode: both;
+  opacity: min(0.94, calc(var(--dt-epub-turn-progress) * 2.4));
+  transition:
+    transform var(--dt-epub-turn-duration) cubic-bezier(0.33, 1, 0.68, 1),
+    opacity var(--dt-epub-turn-duration) ease-out,
+    box-shadow var(--dt-epub-turn-duration) ease-out;
+  will-change: transform, opacity;
 }
 
 .dt-epub-turn-sheet[data-spread="single"] {
@@ -1104,29 +1114,25 @@ a[href^="#dt-locator-"]:hover {
 .dt-epub-turn-sheet[data-direction="next"] {
   right: 0;
   transform-origin: left center;
-  animation-name: dt-epub-turn-next;
+  transform: rotateY(calc(var(--dt-epub-turn-progress) * -178deg))
+    translateX(calc(var(--dt-epub-turn-progress) * -2%));
+  background: linear-gradient(90deg, #fffdf8, #f8f2e7 72%, #e4d7c4);
 }
 
 .dt-epub-turn-sheet[data-direction="previous"] {
   left: 0;
   transform-origin: right center;
-  animation-name: dt-epub-turn-previous;
+  transform: rotateY(calc(var(--dt-epub-turn-progress) * 178deg))
+    translateX(calc(var(--dt-epub-turn-progress) * 2%));
+  background: linear-gradient(270deg, #fffdf8, #f8f2e7 72%, #e4d7c4);
 }
 
-@keyframes dt-epub-turn-next {
-  0% { opacity: 0; transform: rotateY(0deg) translateX(0); }
-  8% { opacity: 0.42; }
-  48% { opacity: 0.92; transform: rotateY(-76deg) translateX(-1.5%); }
-  52% { opacity: 0.88; transform: rotateY(76deg) translateX(1.5%); }
-  100% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+.dt-epub-turn-sheet[data-phase="dragging"] {
+  transition: none;
 }
 
-@keyframes dt-epub-turn-previous {
-  0% { opacity: 0; transform: rotateY(0deg) translateX(0); }
-  8% { opacity: 0.42; }
-  48% { opacity: 0.92; transform: rotateY(76deg) translateX(1.5%); }
-  52% { opacity: 0.88; transform: rotateY(-76deg) translateX(-1.5%); }
-  100% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+.dt-epub-turn-sheet[data-phase="boundary"] {
+  box-shadow: 0 0 18px rgb(45 34 20 / 0.2);
 }
 
 .dt-epub-turn-button {
@@ -1134,7 +1140,7 @@ a[href^="#dt-locator-"]:hover {
   z-index: 24;
   top: 50%;
   display: inline-flex;
-  width: 36px;
+  width: 44px;
   height: 52px;
   align-items: center;
   justify-content: center;
@@ -1145,7 +1151,11 @@ a[href^="#dt-locator-"]:hover {
   box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.42);
   backdrop-filter: blur(10px);
   transform: translateY(-50%);
-  transition: background 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out, transform 140ms ease-out;
+  transition:
+    background 140ms ease-out,
+    color 140ms ease-out,
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
 }
 
 .dt-epub-turn-button:hover:not(:disabled) {
