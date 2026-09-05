@@ -71,10 +71,13 @@ import { useSelectionEdit } from "@/features/co-writer/hooks/useSelectionEdit";
 import { useSplitPane } from "@/features/co-writer/hooks/useSplitPane";
 import { useSynchronizedScroll } from "@/features/co-writer/hooks/useSynchronizedScroll";
 import { useDocumentLifecycle } from "@/features/co-writer/hooks/useDocumentLifecycle";
-import SaveToNotebookModal, {
-  type NotebookSavePayload,
-} from "@/components/notebook/SaveToNotebookModal";
+import type { NotebookSavePayload } from "@/components/notebook/SaveToNotebookModal";
 import { CO_WRITER_SAMPLE_TEMPLATE } from "@/app/(workspace)/co-writer/sampleTemplate";
+
+const SaveToNotebookModal = dynamic(
+  () => import("@/components/notebook/SaveToNotebookModal"),
+  { ssr: false },
+);
 
 const MarkdownRenderer = dynamic(
   () => import("@/components/common/MarkdownRenderer"),
@@ -2410,7 +2413,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
         </div>
       )}
 
-      <SaveToNotebookModal
+      {notebookSavePayload !== null && <SaveToNotebookModal
         open={notebookSavePayload !== null}
         payload={notebookSavePayload}
         onClose={() => setNotebookSavePayload(null)}
@@ -2418,7 +2421,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
           setStatus(t("Saved to notebook."));
           setError("");
         }}
-      />
+      />}
     </div>
   );
 }
