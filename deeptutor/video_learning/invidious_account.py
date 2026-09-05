@@ -28,7 +28,13 @@ CALLBACK_PATH = "/api/video-learning/invidious/account/callback"
 FLOW_TIMEOUT_S = 600.0
 PUBLIC_URL_ENV = "DEEPTUTOR_PUBLIC_URL"
 DEFAULT_PUBLIC_URL = "http://localhost:3782"
-ACCOUNT_SCOPES = ("GET:preferences", "POST:tokens/unregister")
+ACCOUNT_SCOPES = (
+    "GET:preferences",
+    "POST:tokens/unregister",
+    "GET:feed",
+    "GET:playlists",
+    "GET:playlists/*",
+)
 _MAX_TOKEN_BYTES = 8192
 
 # Explicit call seams let the workflow tests substitute transport behavior
@@ -85,7 +91,8 @@ def begin_invidious_account_authorization(*, owner_id: str, redirect_uri: str) -
     state = secrets.token_urlsafe(32)
     separator = "&" if parsed_redirect.query else "?"
     callback_url = f"{redirect_uri}{separator}{urlencode({'state': state})}"
-    authorize_url = f"{base}/authorize_token?{urlencode({'scopes': ','.join(ACCOUNT_SCOPES), 'callback_url': callback_url})}"
+    public_base = settings["invidious"].get("public_base_url") or base
+    authorize_url = f"{public_base}/authorize_token?{urlencode({'scopes': ','.join(ACCOUNT_SCOPES), 'callback_url': callback_url})}"
 
     _storage.replace_pending_flow(
         state=state,
@@ -183,7 +190,9 @@ def invidious_account_status(owner_id: str) -> dict[str, Any]:
     if not _stored_token_is_usable(token) or not isinstance(base, str) or not base:
         return {"connected": False}
     if not _scopes_include_required(scopes):
-        return {"connected": False}
+        return {"connected": False, "needs_reauthorization": True}
+    if base != load_video_learning_settings()["invidious"]["api_base_url"]:
+        return {"connected": False, "needs_reauthorization": True}
     if not isinstance(connected_at, str) or not connected_at:
         return {"connected": False}
     return {
@@ -227,3 +236,95 @@ __all__ = [
     "invidious_account_status",
     "invidious_redirect_uri",
 ]
+
+
+async def browse_invidious(
+    *, owner_id: str, kind: str, query: str = "", page: int = 1, playlist_id: str = ""
+) -> Any:
+    """Read only the configured provider; credentials never leave this boundary."""
+    from urllib.parse import quote
+
+    settings = load_video_learning_settings()
+    base = settings["invidious"]["api_base_url"]
+    if not base:
+        raise TimedMediaError("Invidious is not configured.")
+    token = None
+    if kind == "search":
+        path = "/api/v1/search"
+        params = {"q": query, "page": page, "type": "video"}
+    else:
+        if not invidious_account_status(owner_id).get("connected"):
+            raise TimedMediaError("Reconnect your Invidious account to browse your videos.")
+        token = _storage.read_account(owner_id).get("token")
+        if kind == "feed":
+            path, params = "/api/v1/auth/feed", {"page": page, "max_results": 24}
+        elif kind == "playlists":
+            path, params = "/api/v1/auth/playlists", {}
+        elif kind == "playlist":
+            if (
+                not playlist_id
+                or len(playlist_id) > 100
+                or not all(c.isalnum() or c in "_-" for c in playlist_id)
+            ):
+                raise TimedMediaError("Invalid playlist identifier.")
+            path, params = "/api/v1/auth/playlists/" + quote(playlist_id, safe=""), {"page": page}
+        else:
+            raise TimedMediaError("Unknown video browser view.")
+    data = await _client.request_catalog(api_base_url=base, path=path, params=params, token=token)
+    return _catalog_payload(
+        data, kind=kind, public_base=settings["invidious"].get("public_base_url") or base
+    )
+
+
+def _catalog_payload(data: Any, *, kind: str, public_base: str) -> Any:
+    """Expose only card metadata, with thumbnails on a trusted provider origin."""
+    import re
+    from urllib.parse import urljoin, urlsplit
+
+    def video(raw: Any) -> dict[str, Any] | None:
+        if not isinstance(raw, dict) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{11}", str(raw.get("videoId", ""))
+        ):
+            return None
+        vid = raw["videoId"]
+        thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+        for entry in raw.get("videoThumbnails", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            candidate = urljoin(public_base + "/", str(entry.get("url", "")))
+            parsed = urlsplit(candidate)
+            if (
+                parsed.scheme in {"http", "https"}
+                and not parsed.username
+                and not parsed.password
+                and parsed.netloc == urlsplit(public_base).netloc
+            ):
+                thumbnail = candidate
+                break
+        duration = raw.get("lengthSeconds", 0)
+        return {
+            "videoId": vid,
+            "title": str(raw.get("title", "")),
+            "author": str(raw.get("author", "")),
+            "lengthSeconds": max(0, duration) if isinstance(duration, int) else 0,
+            "videoThumbnails": [{"url": thumbnail}],
+        }
+
+    if kind == "playlists":
+        return (
+            [
+                {
+                    "playlistId": item["playlistId"],
+                    "title": str(item.get("title", "")),
+                    "videoCount": item.get("videoCount", 0),
+                    "videos": [v for raw in item.get("videos", []) if (v := video(raw))],
+                }
+                for item in data
+                if isinstance(item, dict)
+                and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(item.get("playlistId", "")))
+            ]
+            if isinstance(data, list)
+            else []
+        )
+    rows = data if isinstance(data, list) else data.get("videos", [])
+    return {"videos": [v for raw in rows if (v := video(raw))]}

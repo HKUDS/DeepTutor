@@ -6,8 +6,8 @@ import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
@@ -126,16 +126,41 @@ async def authorize_invidious_account() -> dict[str, str]:
 
 
 @router.get("/invidious/account/callback")
-async def invidious_account_callback(token: str = "", state: str = "") -> JSONResponse:
+async def invidious_account_callback(token: str = "", state: str = "") -> RedirectResponse:
+    result = "connected"
     try:
-        status = await invidious_account.complete_invidious_account_authorization(
+        await invidious_account.complete_invidious_account_authorization(
             owner_id=current_owner_id(),
             state=state,
             token=token,
         )
+    except Exception:
+        result = "authorization_failed"
+    return RedirectResponse(
+        f"/watching?account={result}",
+        status_code=303,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@router.get("/invidious/browse/{kind}")
+async def browse_invidious(
+    kind: str,
+    q: str = Query(default="", max_length=500),
+    page: int = Query(default=1, ge=1, le=1000),
+    playlist_id: str = Query(default="", max_length=100),
+) -> JSONResponse:
+    try:
+        payload = await invidious_account.browse_invidious(
+            owner_id=current_owner_id(),
+            kind=kind,
+            query=q,
+            page=page,
+            playlist_id=playlist_id,
+        )
     except Exception as exc:
         raise _http_error(exc) from exc
-    return JSONResponse(status, headers={"Cache-Control": "no-store"})
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/invidious/account/status")
