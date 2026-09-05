@@ -148,7 +148,9 @@ for (const mobile of [false, true]) {
               stage: "responding",
               timestamp: Date.now() / 1000,
               content:
-                type === "content" ? "See [00:07] for the first concept." : "",
+                type === "content"
+                  ? "See [00:07](https://example.com/video?start=7) for the first concept."
+                  : "",
               metadata: type === "done" ? { status: "completed" } : {},
             }),
           );
@@ -371,7 +373,10 @@ for (const mobile of [false, true]) {
     await expect(page.getByText("Updated timestamped note")).toBeVisible();
 
     await page.getByRole("button", { name: "Delete note at 0:08" }).click();
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
     await expect(page.getByText("No notes yet.")).toBeVisible();
     await page.getByRole("tab", { name: "Transcript" }).click();
 
