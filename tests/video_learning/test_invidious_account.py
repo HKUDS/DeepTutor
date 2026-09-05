@@ -577,7 +577,7 @@ def test_unknown_callback_redirects_without_calling_invidious(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/watching?account=authorization_failed"
+    assert response.headers["location"] == "/watching?account=authorization_expired"
     assert "forged" not in response.text
     assert "v1:test-session" not in response.text
 
@@ -730,5 +730,82 @@ async def test_unauthenticated_callback_clears_credentials_from_destination():
 
     response = await selective_access_log(request, denied)
     assert response.status_code == 303
-    assert response.headers["location"] == "/watching?account=authorization_failed"
+    assert response.headers["location"] == "/watching?account=authorization_login_required"
     assert "secret" not in str(dict(response.headers))
+
+
+@pytest.mark.parametrize("encoded", [False, True])
+def test_real_invidious_callback_encoding(
+    client, system_root, configured_instance, monkeypatch, encoded
+):
+    from urllib.parse import quote_plus
+
+    # Native Invidious encodes JSON before HTTP::Params encodes the query again.
+    raw = json.loads(_token())
+    raw["session"] = "v1:literal+percent%2B"
+    serialized = json.dumps(raw)
+
+    async def preferences(*, api_base_url, token):
+        assert token == raw
+        return {}
+
+    monkeypatch.setattr(account, "_request_preferences", preferences)
+    started = client.post("/api/video-learning/invidious/account/authorize").json()
+    state = _state_from_authorize_url(started["authorize_url"])
+    callback = client.get(
+        "/api/video-learning/invidious/account/callback",
+        params={
+            "state": state,
+            "token": quote_plus(serialized) if encoded else serialized,
+        },
+        follow_redirects=False,
+    )
+    assert callback.status_code == 303
+    assert callback.headers["location"] == "/watching?account=connected"
+    assert account_storage.read_account("u_ada")["token"] == raw
+    assert client.get("/api/video-learning/invidious/account/status").json()["connected"]
+    repeated = client.get(
+        "/api/video-learning/invidious/account/callback",
+        params={"state": state, "token": serialized},
+        follow_redirects=False,
+    )
+    assert repeated.headers["location"] == "/watching?account=authorization_expired"
+
+
+def test_token_decoding_is_bounded_and_does_not_decode_literal_json():
+    from urllib.parse import quote_plus
+
+    raw = _token()
+    with pytest.raises(TimedMediaError, match="invalid account token"):
+        account._parse_token(quote_plus(quote_plus(raw)))
+
+
+@pytest.mark.parametrize(
+    ("error", "has_token", "code"),
+    [
+        (
+            TimedMediaError("Invidious account callback is unknown, expired, or already used."),
+            True,
+            "authorization_expired",
+        ),
+        (
+            TimedMediaError("Invidious account token is missing a required scope."),
+            True,
+            "authorization_scopes",
+        ),
+        (
+            TimedMediaError("Invidious account verification failed with HTTP 403."),
+            True,
+            "authorization_token_rejected",
+        ),
+        (
+            TimedMediaError("Invidious account verification request failed."),
+            True,
+            "authorization_unavailable",
+        ),
+        (RuntimeError("secret token should not be shown"), True, "authorization_failed"),
+        (RuntimeError("anything"), False, "authorization_cancelled"),
+    ],
+)
+def test_callback_failures_have_safe_actionable_codes(error, has_token, code):
+    assert account.authorization_failure_code(error, has_token=has_token) == code

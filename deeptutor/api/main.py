@@ -442,7 +442,7 @@ async def selective_access_log(request, call_next):
         and response.status_code in {401, 403}
     ):
         response = RedirectResponse(
-            "/watching?account=authorization_failed",
+            "/watching?account=authorization_login_required",
             status_code=303,
             headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
         )

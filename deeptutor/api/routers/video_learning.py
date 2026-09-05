@@ -134,8 +134,8 @@ async def invidious_account_callback(token: str = "", state: str = "") -> Redire
             state=state,
             token=token,
         )
-    except Exception:
-        result = "authorization_failed"
+    except Exception as exc:
+        result = invidious_account.authorization_failure_code(exc, has_token=bool(token))
     return RedirectResponse(
         f"/watching?account={result}",
         status_code=303,
