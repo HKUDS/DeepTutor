@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  WatchingSessionBridge,
+  WatchingSurface,
+} from "@/components/watching/WatchingWorkspace";
+
 import dynamic from "next/dynamic";
 import {
   type KeyboardEvent,
@@ -56,10 +61,7 @@ import {
 } from "@/features/chat/ChatStateAdapter";
 import { useAppShell } from "@/context/AppShellContext";
 
-import {
-  WATCHING_ASK_EVENT,
-  WatchingPane,
-} from "@/components/watching/WatchingPane";
+import { WATCHING_ASK_EVENT } from "@/components/watching/WatchingPane";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
 import {
@@ -260,7 +262,11 @@ function readContextBudget(
 /*  Chat page                                                         */
 /* ------------------------------------------------------------------ */
 
-export default function ChatWorkspace() {
+export default function ChatWorkspace({
+  watching = false,
+}: {
+  watching?: boolean;
+}) {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
   const { t } = useTranslation();
   const {
@@ -274,6 +280,7 @@ export default function ChatWorkspace() {
     state,
     setTools,
     setCapability,
+    configureSession,
     setKBs,
     setLLMSelection,
     setPersonaSelection,
@@ -290,6 +297,8 @@ export default function ChatWorkspace() {
     renameSessionTitle,
     setCourseId,
   } = useChatStateAdapter();
+
+  const entrySessionId = useRef(state.sessionId);
 
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
@@ -627,7 +636,19 @@ export default function ChatWorkspace() {
   const isQuizMode = activeCap.value === "deep_question";
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
-  const isWatchingMode = activeCap.value === "immersive_watching";
+  const isWatchingMode = watching;
+  useEffect(() => {
+    if (!sessionIdParam || state.sessionId !== sessionIdParam) return;
+    if (!watching && state.workspaceMode === "immersive_watching") {
+      router.replace(`/watching/${encodeURIComponent(sessionIdParam)}`, {
+        scroll: false,
+      });
+    } else if (watching && state.workspaceMode !== "immersive_watching") {
+      router.replace(`/chat/${encodeURIComponent(sessionIdParam)}`, {
+        scroll: false,
+      });
+    }
+  }, [watching, state.workspaceMode, state.sessionId, sessionIdParam, router]);
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
   const returnedResearchTurnRef = useRef<string | null>(null);
 
@@ -1024,8 +1045,8 @@ export default function ChatWorkspace() {
   /* ---- URL-driven session loading ---- */
 
   const navigateToHome = useCallback(() => {
-    router.replace("/chat", { scroll: false });
-  }, [router]);
+    router.replace(watching ? "/watching" : "/chat", { scroll: false });
+  }, [router, watching]);
 
   /** Abort in-flight load + navigate home. */
   const cancelSessionLoad = useCallback(() => {
@@ -1130,7 +1151,14 @@ export default function ChatWorkspace() {
     if (sessionIdParam) {
       startSessionLoad(sessionIdParam);
     } else {
-      newSession();
+      newSession(
+        watching
+          ? {
+              capability: "immersive_watching",
+              workspaceMode: "immersive_watching",
+            }
+          : undefined,
+      );
     }
     return () => {
       initialLoadRef.current = false;
@@ -1153,7 +1181,14 @@ export default function ChatWorkspace() {
       }
       startSessionLoad(sessionIdParam);
     } else {
-      newSession();
+      newSession(
+        watching
+          ? {
+              capability: "immersive_watching",
+              workspaceMode: "immersive_watching",
+            }
+          : undefined,
+      );
       setSessionLoading(false);
       setSessionLoadFailed(false);
     }
@@ -1161,10 +1196,16 @@ export default function ChatWorkspace() {
 
   // When a new session_id is assigned by the server, update the URL
   useEffect(() => {
-    if (state.sessionId && !sessionIdParam) {
-      router.replace(`/chat/${state.sessionId}`, { scroll: false });
+    if (
+      state.sessionId &&
+      !sessionIdParam &&
+      state.sessionId !== entrySessionId.current
+    ) {
+      router.replace(`${watching ? "/watching" : "/chat"}/${state.sessionId}`, {
+        scroll: false,
+      });
     }
-  }, [state.sessionId, sessionIdParam, router]);
+  }, [state.sessionId, sessionIdParam, router, watching]);
 
   useEffect(() => {
     setActiveSessionId(state.sessionId || sessionIdParam || null);
@@ -1381,6 +1422,11 @@ export default function ChatWorkspace() {
 
   const handleSelectCapability = useCallback(
     (value: string) => {
+      if (value === "immersive_watching" && !watching) {
+        router.push("/watching");
+        return;
+      }
+      if (watching && value !== "immersive_watching") return;
       const cap =
         capabilities.find((capability) => capability.value === value) ??
         capabilities[0] ??
@@ -1400,7 +1446,7 @@ export default function ChatWorkspace() {
       setCapabilityConfigConfirmed(false);
       setCapMenuOpen(false);
     },
-    [capabilities, setCapability, setTools, userEnabledTools],
+    [capabilities, setCapability, setTools, userEnabledTools, watching, router],
   );
 
   const fileToAttachment = fileToPendingAttachment;
@@ -2216,20 +2262,20 @@ export default function ChatWorkspace() {
           messages={state.messages}
           viewerPanelRef={viewerPanelRef}
         />
-        <div className="relative h-full overflow-hidden">
-          {/* The video panel slides in from the left and the chat column shrinks to
-            make room. Rendered as a sibling with its own transform rather than
-            wrapping the chat, so switching modes never remounts the chat tree —
-            a remount would refetch every piece of session metadata and stall the
-            UI for seconds (the regression behind the slow session-open bug). */}
-          <div
-            data-watching-open={isWatchingMode ? "true" : "false"}
-            className="dt-watching-shell"
-          >
-            {isWatchingMode && (
-              <WatchingPane onClose={() => setCapability("")} />
+        <div
+          className="relative h-full overflow-hidden"
+          data-watching-workspace={watching ? "true" : undefined}
+        >
+          {watching &&
+            state.workspaceMode === "immersive_watching" &&
+            (!sessionIdParam || state.sessionId === sessionIdParam) && (
+              <WatchingSessionBridge
+                sessionKey={state.sessionId || "draft"}
+                materialId={state.timedMediaId}
+                onMaterial={configureSession}
+              />
             )}
-          </div>
+          {watching && <WatchingSurface />}
           <div
             // When the preview drawer is open AND the viewport is wide enough,
             // push the chat content to the left by the drawer's width so the two
@@ -2490,7 +2536,13 @@ export default function ChatWorkspace() {
                 capabilityNeedsConfig={capabilityNeedsConfig}
                 capabilityConfigConfirmed={capabilityConfigConfirmed}
                 onRequestConfigConfirm={ensureActivityPanelOpen}
-                capabilities={visibleCapabilities}
+                capabilities={
+                  watching
+                    ? visibleCapabilities.filter(
+                        (cap) => cap.value === "immersive_watching",
+                      )
+                    : visibleCapabilities
+                }
                 onSetCapMenuOpen={setCapMenuOpen}
                 onSetSpaceMenuOpen={setSpaceMenuOpen}
                 onToggleKB={handleToggleKB}

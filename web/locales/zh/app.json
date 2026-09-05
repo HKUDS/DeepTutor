@@ -4701,5 +4701,7 @@
   "Regenerate covering these too": "重新生成，把它们也覆盖进来",
   "Or leave them out — you can also edit the outline directly below.": "也可以不管它们——下面的大纲你随时可以直接改。",
   "more": "个",
-  "{{visited}} of {{total}} chapters read": "已读 {{visited}}/{{total}} 章"
+  "{{visited}} of {{total}} chapters read": "已读 {{visited}}/{{total}} 章",
+  "Watch videos with a grounded AI companion.": "与有出处依据的 AI 伙伴一起观看视频。",
+  "Conversation": "对话"
 }
