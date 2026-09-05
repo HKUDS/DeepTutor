@@ -24,7 +24,7 @@ vi.mock("@/components/watching/WatchingPane", () => ({
 describe("Invidious callback feedback", () => {
   it("shows actionable failure and lets the learner dismiss it", () => {
     route.result = "authorization_expired";
-    render(<WatchingSurface />);
+    render(<WatchingSurface activePanel="chat" onPanelChange={vi.fn()} />);
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Click Connect Invidious to start again",
     );
@@ -34,7 +34,7 @@ describe("Invidious callback feedback", () => {
   it("announces success and removes callback parameters", () => {
     route.result = "connected";
     const history = vi.spyOn(window.history, "replaceState");
-    render(<WatchingSurface />);
+    render(<WatchingSurface activePanel="chat" onPanelChange={vi.fn()} />);
     expect(screen.getByRole("status")).toHaveTextContent(
       "Invidious account connected",
     );

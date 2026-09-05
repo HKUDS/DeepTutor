@@ -1,8 +1,10 @@
 "use client";
+import { MessageSquare } from "lucide-react";
 
 import {
   WatchingSessionBridge,
   WatchingSurface,
+  type WatchingPanel,
 } from "@/components/watching/WatchingWorkspace";
 
 import { useSearchParams } from "next/navigation";
@@ -371,6 +373,7 @@ export default function ChatWorkspace({
   // preference is then applied in a post-mount effect below.
   // Single right-side panel: the Activity/Viewer. Its home view is the
   // session activity; files and web pages open as tabs alongside it.
+  const [watchingPanel, setWatchingPanel] = useState<WatchingPanel>("chat");
   const [viewerPanelOpen, setViewerPanelOpen] = useState(false);
   const [selectionTutorPrompt, setSelectionTutorPrompt] = useState<{
     text: string;
@@ -381,33 +384,20 @@ export default function ChatWorkspace({
     top: number;
   } | null>(null);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || watching) return;
     if (browserStorage.readRaw("local", "dt:chat:viewer-panel") === "1") {
       setViewerPanelOpen(true);
     }
-  }, []);
+  }, [watching]);
   const setViewerOpen = useCallback((next: boolean) => {
     setViewerPanelOpen(next);
-    if (typeof window !== "undefined") {
-      browserStorage.writeRaw(
-        "local",
-        "dt:chat:viewer-panel",
-        next ? "1" : "0",
-      );
-    }
-  }, []);
-  const toggleViewerPanel = useCallback(() => {
-    setViewerPanelOpen((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        browserStorage.writeRaw(
-          "local",
-          "dt:chat:viewer-panel",
-          next ? "1" : "0",
-        );
-      }
-      return next;
-    });
+    if (watching) setWatchingPanel(next ? "activity" : "chat");
+    else browserStorage.writeRaw("local", "dt:chat:viewer-panel", next ? "1" : "0");
+  }, [watching]);
+  const toggleViewerPanel = useCallback(() => setViewerOpen(!viewerPanelOpen), [setViewerOpen, viewerPanelOpen]);
+  const selectWatchingPanel = useCallback((panel: WatchingPanel) => {
+    setWatchingPanel(panel);
+    setViewerPanelOpen(panel === "activity");
   }, []);
   /**
    * Force the panel open on its Activity home. Used by the send-gate when the
@@ -2267,6 +2257,7 @@ export default function ChatWorkspace({
         <div
           className="relative h-full overflow-hidden"
           data-watching-workspace={watching ? "true" : undefined}
+          data-learning-panel={watching ? watchingPanel : undefined}
         >
           {watching &&
             state.workspaceMode === "immersive_watching" &&
@@ -2278,7 +2269,7 @@ export default function ChatWorkspace({
                 onMaterial={configureSession}
               />
             )}
-          {watching && <WatchingSurface />}
+          {watching && <WatchingSurface activePanel={watchingPanel} onPanelChange={selectWatchingPanel} />}
           <div
             // When the preview drawer is open AND the viewport is wide enough,
             // push the chat content to the left by the drawer's width so the two
@@ -2290,9 +2281,10 @@ export default function ChatWorkspace({
             data-preview-open={previewSource ? "true" : "false"}
             data-viewer-open={viewerPanelOpen ? "true" : "false"}
             data-watching-open={isWatchingMode ? "true" : "false"}
+            id={watching ? "watching-panel-chat" : undefined}
             className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
           >
-            <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
+            <div className="chat-session-header mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
               <div className="group/title min-w-0 flex flex-1 items-center gap-2">
                 {sessionTitleEditing ? (
                   <input
@@ -2376,6 +2368,13 @@ export default function ChatWorkspace({
                       onRetry={retrySessionLoad}
                     />
                   </div>
+                </div>
+              ) : !hasMessages && watching ? (
+                <div className="watching-chat-empty">
+                  <MessageSquare className="h-7 w-7" strokeWidth={1.5} />
+                  <h2>{t("Learn from this moment")}</h2>
+                  <p>{t("Ask about the video, or select a subtitle to explore it together.")}</p>
+                  <button onClick={() => window.dispatchEvent(new CustomEvent("dt:watching-explain"))}>{t("Explain here")}</button>
                 </div>
               ) : !hasMessages ? (
                 <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 animate-fade-in px-6">
@@ -2583,8 +2582,8 @@ export default function ChatWorkspace({
                 onSelectCapability={handleSelectCapability}
                 onCancelStreaming={cancelStreamingTurn}
                 prefillInputRef={prefillInputRef}
-                inputPlaceholder={askHint || undefined}
-                inputPlaceholderCompletion={askHint}
+                inputPlaceholder={watching ? t("Ask about this video…") : askHint || undefined}
+                inputPlaceholderCompletion={watching ? undefined : askHint}
               />
               {/* Starter chips sit between the composer and the spacer, so they
                 ride up with the composer on the empty screen and disappear the
@@ -2592,7 +2591,7 @@ export default function ChatWorkspace({
                 it through the normal send path: this page is already a draft
                 session when it has no messages, so that both creates the
                 session and starts it on the topic. */}
-              {!hasMessages ? (
+              {!hasMessages && !watching ? (
                 <StarterSuggestions
                   onPick={(prompt) => void handleSend(prompt)}
                   disabled={state.isStreaming}
@@ -2602,7 +2601,7 @@ export default function ChatWorkspace({
                 aria-hidden="true"
                 className="shrink-0"
                 style={{
-                  flexGrow: hasMessages ? 0 : 1.4,
+                  flexGrow: hasMessages || watching ? 0 : 1.4,
                   transition: "flex-grow 650ms cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
               />
@@ -2657,6 +2656,7 @@ export default function ChatWorkspace({
               onClose={handleClosePreview}
             />
             <SessionViewerPanel
+              embedded={watching}
               ref={viewerPanelRef}
               open={viewerPanelOpen && previewSource === null}
               sessionId={state.sessionId}

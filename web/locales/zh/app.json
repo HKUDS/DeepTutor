@@ -4751,5 +4751,12 @@
   "Has captions": "有字幕",
   "Captions ready": "字幕已就绪",
   "With captions only": "仅显示有字幕的视频",
-  "Search transcript": "搜索字幕"
+  "Search transcript": "搜索字幕",
+  "Captions below video": "字幕显示在视频下方",
+  "Video options": "视频选项",
+  "Learn from this moment": "从这一刻开始学习",
+  "Ask about the video, or select a subtitle to explore it together.": "围绕视频提问，或选择一句字幕一起深入理解。",
+  "More options": "更多选项",
+  "Ask about this video…": "围绕这个视频提问…",
+  "Follow playback": "跟随播放"
 }

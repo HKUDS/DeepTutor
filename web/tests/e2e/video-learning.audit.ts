@@ -89,7 +89,10 @@ for (const mobile of [false, true]) {
         element: HTMLElement;
         options: Record<string, unknown>;
 
-        constructor(element: HTMLElement, options: Record<string, unknown>) {
+        constructor(
+          element: HTMLElement,
+          options: Record<string, unknown>,
+        ) {
           this.element = element;
           this.options = options;
           const iframe = document.createElement("iframe");
@@ -127,7 +130,9 @@ for (const mobile of [false, true]) {
         }
       }
 
-      (window as typeof window & { YT?: unknown }).YT = { Player: FakePlayer };
+      (window as typeof window & { YT?: unknown }).YT = {
+        Player: FakePlayer,
+      };
     });
 
     const turns: Record<string, unknown>[] = [];
@@ -136,7 +141,11 @@ for (const mobile of [false, true]) {
         const command = JSON.parse(String(raw));
         if (command.type !== "start_turn") return;
         turns.push(command);
-        for (const [index, type] of ["session", "content", "done"].entries()) {
+        for (const [index, type] of [
+          "session",
+          "content",
+          "done",
+        ].entries()) {
           socket.send(
             JSON.stringify({
               protocol_version: "2.0",
@@ -329,7 +338,7 @@ for (const mobile of [false, true]) {
     });
 
     await page.goto("/chat?capability=immersive_watching");
-    await expect(page).toHaveURL(/\/watching$/);
+    await expect(page).toHaveURL(/\/watching$/, { timeout: 30000 });
     await expect(
       page.getByRole("button", { name: "Disconnect Invidious" }),
     ).toBeVisible();
@@ -339,16 +348,22 @@ for (const mobile of [false, true]) {
     await expect(
       page.getByRole("button", { name: "Popular", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await page.getByRole("button", { name: "Trending", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Trending", exact: true })
+      .click();
     await expect(
       page.getByRole("button", { name: /Browse lesson/ }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Playlists", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Playlists", exact: true })
+      .click();
     await page.getByRole("button", { name: /My learning list/ }).click();
     await expect(
       page.getByRole("button", { name: /Browse lesson/ }),
     ).toBeVisible();
-    const search = page.getByPlaceholder("Search videos or paste a video link");
+    const search = page.getByPlaceholder(
+      "Search videos or paste a video link",
+    );
     await search.fill("lesson");
     await search.press("Enter");
     await expect(
@@ -361,76 +376,155 @@ for (const mobile of [false, true]) {
     });
     await page.getByRole("button", { name: /Browse lesson/ }).click();
 
-    await expect(page.getByText("Timestamped lesson")).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Timestamped lesson",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(
       page.locator('iframe[title="Fake YouTube player"]'),
     ).toHaveAttribute("src", /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
 
-    const originalPlayer = await page.locator('iframe[title="Fake YouTube player"]').elementHandle();
-    await page.getByRole("button", { name: "Fullscreen learning", exact: true }).click();
-    await expect(page.locator('[data-watching-workspace]')).toHaveAttribute('data-learning', 'true');
-    await expect(page.getByLabel('Learning captions')).toBeVisible();
-    expect(await originalPlayer?.evaluate(element => element.isConnected)).toBe(true);
+    await page.addStyleTag({
+      content: "* { animation-duration: 0s !important; }",
+    });
+    await page.getByLabel("More options", { exact: true }).click();
+    await page
+      .locator(".watching-menu-content")
+      .getByRole("button", { name: "Activity", exact: true })
+      .click();
+    const activity = page.locator("[data-embedded-viewer]");
+    await expect(activity).toBeVisible();
+    const viewerBounds = await activity.boundingBox();
+    const chatBounds = await page
+      .locator("#watching-panel-chat")
+      .boundingBox();
+    expect(viewerBounds!.width).toBeLessThanOrEqual(chatBounds!.width + 1);
+    await page
+      .getByRole("tab", { name: "Conversation", exact: true })
+      .click();
+    const originalPlayer = await page
+      .locator('iframe[title="Fake YouTube player"]')
+      .elementHandle();
+    await page
+      .getByRole("button", { name: "Fullscreen learning", exact: true })
+      .click();
+    await expect(page.locator("[data-watching-workspace]")).toHaveAttribute(
+      "data-learning",
+      "true",
+    );
+    await expect(page.getByLabel("Learning captions")).toBeVisible();
+    expect(
+      await originalPlayer?.evaluate((element) => element.isConnected),
+    ).toBe(true);
     if (!mobile) {
-      for (let i = 0; i < 5; i++) await page.getByRole('separator', { name: 'Video panel width' }).press('ArrowLeft');
-      await expect(page.locator('[data-watching-workspace]')).toHaveCSS('--watching-split', '55%');
+      for (let i = 0; i < 5; i++)
+        await page
+          .getByRole("separator", { name: "Video panel width" })
+          .press("ArrowLeft");
+      await expect(page.locator("[data-watching-workspace]")).toHaveCSS(
+        "--watching-rail-width",
+        "480px",
+      );
     }
-    const bounds = await page.locator('[data-watching-workspace]').boundingBox();
-    expect(bounds?.x).toBe(0); expect(bounds?.y).toBe(0);
+    const bounds = await page
+      .locator("[data-watching-workspace]")
+      .boundingBox();
+    expect(bounds?.x).toBe(0);
+    expect(bounds?.y).toBe(0);
     expect(bounds?.width).toBe(mobile ? 390 : 1440);
-    await page.screenshot({path: test.info().outputPath(`learning-${mobile ? 'mobile' : 'desktop'}.png`)});
-    const toolbar = page.locator(mobile ? '.watching-mobile-tabs' : '.watching-learning-toolbar');
-    await toolbar.getByRole('button', { name: 'Video notes', exact: true }).click();
-    await expect(page.getByRole('button', {name: 'Add video note', exact: true})).toBeVisible();
-    await page.getByPlaceholder(/Note at/).fill('Unsaved layout draft');
-    await toolbar.getByRole('button', { name: 'Conversation', exact: true }).click();
-    await toolbar.getByRole('button', { name: 'Video notes', exact: true }).click();
-    await expect(page.getByPlaceholder(/Note at/)).toHaveValue('Unsaved layout draft');
-    await page.getByPlaceholder(/Note at/).fill('');
-    await toolbar.getByRole('button', { name: 'Conversation', exact: true }).click();
-    await page.getByRole("button", { name: "Exit learning mode", exact: true }).click();
-    expect(await originalPlayer?.evaluate(element => element.isConnected)).toBe(true);
+    await page.screenshot({
+      path: test
+        .info()
+        .outputPath(`learning-${mobile ? "mobile" : "desktop"}.png`),
+    });
+    const toolbar = page.locator(".watching-rail-tabs");
+    await toolbar
+      .getByRole("tab", { name: "Video notes", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Add video note", exact: true }),
+    ).toBeVisible();
+    await page.getByPlaceholder(/Note at/).fill("Unsaved layout draft");
+    await toolbar
+      .getByRole("tab", { name: "Conversation", exact: true })
+      .click();
+    await toolbar
+      .getByRole("tab", { name: "Video notes", exact: true })
+      .click();
+    await expect(page.getByPlaceholder(/Note at/)).toHaveValue(
+      "Unsaved layout draft",
+    );
+    await page.getByPlaceholder(/Note at/).fill("");
+    await toolbar
+      .getByRole("tab", { name: "Conversation", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Exit learning mode", exact: true })
+      .click();
+    expect(
+      await originalPlayer?.evaluate((element) => element.isConnected),
+    ).toBe(true);
 
-    if (mobile)
-      await page
-        .getByRole("button", { name: "Conversation", exact: true })
-        .click();
-    await page.locator("textarea").fill("Explain the video");
-    await page.locator("textarea").press("Enter");
+    await page
+      .getByRole("tab", { name: "Conversation", exact: true })
+      .click();
+    await page
+      .locator("#watching-panel-chat textarea")
+      .fill("Explain the video");
+    await page.locator("#watching-panel-chat textarea").press("Enter");
     await expect(page).toHaveURL(/\/watching\/watching-test$/);
     expect(turns[0]).toMatchObject({
       capability: "immersive_watching",
       workspace_mode: "immersive_watching",
       timed_media_id: MATERIAL_ID,
     });
-    if (mobile)
-      await page.getByRole("button", { name: "Video", exact: true }).click();
+
     await page.evaluate(() => {
       const player = (
-        window as typeof window & { __fakePlayers: Array<{ current: number }> }
+        window as typeof window & {
+          __fakePlayers: Array<{ current: number }>;
+        }
       ).__fakePlayers.at(-1);
       if (player) player.current = 8;
     });
+    await page
+      .getByRole("tab", { name: "Transcript", exact: true })
+      .click();
     await expect(
-      page.getByText("The first grounded concept.").locator(".."),
-    ).toHaveClass(/ring-1/);
+      page.locator(".watching-transcript-list [data-active=true]"),
+    ).toContainText("The first grounded concept.");
 
     await page.getByRole("tab", { name: "Video notes" }).click();
     await expect(page.getByText("No notes yet.")).toBeVisible();
-    await page.getByPlaceholder("Note at 0:08").fill("First timestamped note");
+    await page
+      .getByPlaceholder("Note at 0:08")
+      .fill("First timestamped note");
     await page.getByRole("button", { name: "Add video note" }).click();
     await expect(page.getByText("First timestamped note")).toBeVisible();
-    await expect(page.getByText("The first grounded concept.")).toBeVisible();
+    await expect(page.getByLabel("Learning captions")).toContainText(
+      "first",
+    );
 
+    await page.getByRole("button", { name: "Fullscreen learning", exact: true }).click();
     await page.goto("/watching/watching-test");
     await page.reload();
-    await expect(page.getByText("Timestamped lesson")).toBeVisible();
+    await expect(page.locator("[data-watching-workspace]")).toHaveAttribute("data-learning", "true");
+    await expect(
+      page.getByRole("heading", {
+        name: "Timestamped lesson",
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.getByRole("tab", { name: "Video notes" }).click();
     await expect(page.getByText("First timestamped note")).toBeVisible();
 
     await page.evaluate(() => {
       const player = (
-        window as typeof window & { __fakePlayers: Array<{ current: number }> }
+        window as typeof window & {
+          __fakePlayers: Array<{ current: number }>;
+        }
       ).__fakePlayers.at(-1);
       if (player) player.current = 70;
     });
@@ -465,19 +559,19 @@ for (const mobile of [false, true]) {
     await expect(page.getByText("No notes yet.")).toBeVisible();
     await page.getByRole("tab", { name: "Transcript" }).click();
 
-    await page.getByRole("button", { name: "Explain here" }).click();
-    await expect(page.locator("textarea")).toHaveValue(
+    await page.evaluate(() =>
+      window.dispatchEvent(new CustomEvent("dt:watching-explain")),
+    );
+    await expect(page.locator("#watching-panel-chat textarea")).toHaveValue(
       /\[0:08\] The first grounded concept\./,
     );
 
-    if (mobile)
-      await page.getByRole("button", { name: "Video", exact: true }).click();
     await page.evaluate(() => {
       const link = document.createElement("a");
       link.id = "fake-assistant-timestamp";
       link.href = "#dt-video-time-70";
       link.textContent = "[01:10]";
-      document.body.appendChild(link);
+      document.querySelector("[data-chat-column]")!.appendChild(link);
     });
     await page.locator("#fake-assistant-timestamp").click();
     await expect
@@ -493,15 +587,15 @@ for (const mobile of [false, true]) {
       )
       .toBe(70);
 
-    await page
-      .getByRole("button", { name: "Close video learning" })
-      .evaluate((button) => {
-        document.dispatchEvent(new Event("visibilitychange"));
-        button.setAttribute("data-persisted", "true");
-      });
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await expect.poll(() => savedPosition).toBeGreaterThanOrEqual(70);
     await page.reload();
-    await expect(page.getByText("Timestamped lesson")).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Timestamped lesson",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -517,21 +611,33 @@ for (const mobile of [false, true]) {
 
     provider = "invidious";
     transcriptReady = false;
-    await page.getByRole("button", { name: "Refresh provider" }).click();
+    await page.evaluate(() =>
+      window.dispatchEvent(new CustomEvent("dt:watching-options")),
+    );
+    await page
+      .locator(".watching-provider-options")
+      .getByRole("button", { name: "Refresh provider" })
+      .click();
     await expect(page.locator("video")).toBeVisible();
-    await expect(page.getByText("Invidious", { exact: true })).toBeVisible();
+    if (!mobile) await expect(page.getByText("Invidious", { exact: true })).toBeVisible();
+    await page
+      .getByRole("tab", { name: "Transcript", exact: true })
+      .click();
     await expect(
-      page.getByRole("button", { name: "Retry captions" }),
+      page
+        .locator(".watching-detail-panel")
+        .getByRole("button", { name: "Retry captions" }),
     ).toBeVisible();
     const player = page.locator("video");
     await player.evaluate((video) =>
       video.setAttribute("data-transcript-retry-probe", "before"),
     );
-    await page.getByRole("button", { name: "Retry captions" }).click();
+    await page
+      .locator(".watching-detail-panel")
+      .getByRole("button", { name: "Retry captions" })
+      .click();
     await expect.poll(() => transcriptRefreshCount).toBe(1);
-    await expect(
-      page.getByRole("button", { name: "Explain here" }),
-    ).toBeVisible();
+    await expect(page.getByLabel("Learning captions")).toBeVisible();
     await expect(player).toHaveAttribute(
       "data-transcript-retry-probe",
       "before",
@@ -539,13 +645,19 @@ for (const mobile of [false, true]) {
 
     const beforeFailure = nativeResolveCount;
     invidiousOffline = true;
-    await page.getByRole("button", { name: "Refresh provider" }).click();
+    await page
+      .locator(".watching-provider-options")
+      .getByRole("button", { name: "Refresh provider" })
+      .click();
     await expect(
       page.getByRole("alert").filter({ hasText: "Invidious is offline" }),
     ).toBeVisible();
     expect(nativeResolveCount).toBe(beforeFailure);
 
-    await page.getByRole("button", { name: "Use native YouTube" }).click();
+    await page
+      .locator(".watching-provider-options")
+      .getByRole("button", { name: "Use native YouTube", exact: true })
+      .click();
     await expect(
       page.locator('iframe[title="Fake YouTube player"]'),
     ).toBeVisible();

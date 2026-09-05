@@ -16,22 +16,26 @@ export function WatchingCaptions({
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
+  const [font, setFont] = useState("22px sans-serif");
   const [width, setWidth] = useState(500);
   useEffect(() => {
     if (!ref.current) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setWidth(entry.contentRect.width),
-    );
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(entry.contentRect.width);
+      setFont(getComputedStyle(entry.target).font);
+    });
     observer.observe(ref.current);
     return () => observer.disconnect();
   }, []);
-  const index = cues.findLastIndex(cue => cue.start <= time && time < cue.end);
+  const index = cues.findLastIndex(
+    (cue) => cue.start <= time && time < cue.end,
+  );
   const cue = cues[index];
   const rows = useMemo(() => {
     if (!cue) return [];
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
-    if (context) context.font = "18px sans-serif";
+    if (context) context.font = font;
     const parts = cue.words?.length
       ? cue.words
       : [{ text: cue.text, start: cue.start, end: cue.end }];
@@ -42,7 +46,10 @@ export function WatchingCaptions({
         .split(/(\s+|(?<=[\u3000-\u9fff]))/u)
         .filter(Boolean)) {
         const size = context?.measureText(text).width ?? text.length * 18;
-        if (used + size > Math.max(100, width - 32) && result.at(-1)!.length) {
+        if (
+          used + size > Math.max(100, width - 32) &&
+          result.at(-1)!.length
+        ) {
           result.push([]);
           used = 0;
         }
@@ -51,9 +58,9 @@ export function WatchingCaptions({
       }
     }
     return result;
-  }, [cue, width]);
+  }, [cue, width, font]);
   let row = cue?.words?.length
-    ? rows.findLastIndex(line => line.some(word => word.start <= time))
+    ? rows.findLastIndex((line) => line.some((word) => word.start <= time))
     : 0;
   row = Math.max(0, row);
   let visible = rows.slice(Math.max(0, row - 1), Math.max(2, row + 1));
@@ -67,9 +74,17 @@ export function WatchingCaptions({
     ) {
       let context = previous.text;
       if (previous.end > cue.start) {
-        for (let length = Math.min(context.length, cue.text.length); length > 0; length--) {
-          if (context.endsWith(cue.text.slice(0, length)) && (length === cue.text.length || /\s/u.test(cue.text[length]))) {
-            context = context.slice(0, -length).trimEnd(); break;
+        for (
+          let length = Math.min(context.length, cue.text.length);
+          length > 0;
+          length--
+        ) {
+          if (
+            context.endsWith(cue.text.slice(0, length)) &&
+            (length === cue.text.length || /\s/u.test(cue.text[length]))
+          ) {
+            context = context.slice(0, -length).trimEnd();
+            break;
           }
         }
       }
@@ -86,26 +101,31 @@ export function WatchingCaptions({
       aria-label={t("Learning captions")}
     >
       {!cue ? (
-        <span className="text-sm opacity-60">
-          {t("No caption at this position")}
-        </span>
+        <span className="sr-only">{t("No caption at this position")}</span>
       ) : (
         visible.map((line, i) => (
-          <div key={i} className="watching-caption-line">
-            {line.map((word, j) => (
-              <button
-                key={j}
-                type="button"
-                onClick={() => onSeek(word.start)}
-                className={
-                  cue.words?.length && word.start <= time && time < word.end
-                    ? "watching-word-active"
-                    : ""
-                }
-              >
-                {word.text}
-              </button>
-            ))}
+          <div
+            key={i}
+            className={`watching-caption-line ${line[0]?.start < (cue?.start ?? 0) ? "watching-caption-context" : ""}`}
+          >
+            <span>
+              {line.map((word, j) => (
+                <button
+                  key={j}
+                  type="button"
+                  onClick={() => onSeek(word.start)}
+                  className={
+                    cue.words?.length &&
+                    word.start <= time &&
+                    time < word.end
+                      ? "watching-word-active"
+                      : ""
+                  }
+                >
+                  {word.text}
+                </button>
+              ))}
+            </span>
           </div>
         ))
       )}
