@@ -54,6 +54,7 @@ class OpenAICodexProvider(LLMProvider):
         model_name = model or self.default_model
         model_slug = _strip_model_prefix(model_name)
         system_prompt, input_items = convert_messages(messages)
+        responses_tool_choice = _convert_tool_choice(tool_choice)
 
         body: dict[str, Any] = {
             "model": model_slug,
@@ -64,7 +65,7 @@ class OpenAICodexProvider(LLMProvider):
             "text": {"verbosity": "medium"},
             "include": ["reasoning.encrypted_content"],
             "prompt_cache_key": _prompt_cache_key(messages),
-            "tool_choice": tool_choice or "auto",
+            "tool_choice": responses_tool_choice or "auto",
             "parallel_tool_calls": True,
         }
         if reasoning_effort:
@@ -173,6 +174,24 @@ def _strip_model_prefix(model: str) -> str:
     if model.startswith("openai-codex/") or model.startswith("openai_codex/"):
         return model.split("/", 1)[1]
     return model
+
+
+def _convert_tool_choice(
+    tool_choice: str | dict[str, Any] | None,
+) -> str | dict[str, Any] | None:
+    """Flatten a named Chat Completions function choice for Responses."""
+    if not isinstance(tool_choice, dict) or tool_choice.get("type") != "function":
+        return tool_choice
+
+    function = tool_choice.get("function")
+    if not isinstance(function, dict):
+        return tool_choice
+
+    name = function.get("name")
+    if not isinstance(name, str) or not name:
+        return tool_choice
+
+    return {"type": "function", "name": name}
 
 
 def _build_headers(account_id: str, token: str) -> dict[str, str]:
