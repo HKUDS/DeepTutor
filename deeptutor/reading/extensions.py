@@ -9,6 +9,7 @@ the reader or any other extension.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from importlib import import_module
 import json
 import logging
 import threading
@@ -106,13 +107,39 @@ def _coerce(name: str, loaded: Any) -> ReadingExtension | None:
     return candidate
 
 
+# Import implementations only when a registry is first requested. Source
+# checkouts must not depend on installed distribution metadata for built-ins.
+_BUILTINS = {
+    "read_aloud": "deeptutor.reading.read_aloud:ReadAloudExtension",
+    "vocabulary": "deeptutor.reading.vocabulary:VocabularyExtension",
+    "quiz": "deeptutor.reading.quiz:ReadingQuizExtension",
+    "guided_learning": "deeptutor.reading.study_guidance:StudyGuidanceExtension",
+    "translation": "deeptutor.reading.translation:TranslationExtension",
+}
+
+
+def _default_extensions() -> list[ReadingExtension]:
+    rows = []
+    for name, target in _BUILTINS.items():
+        try:
+            module, symbol = target.split(":")
+            candidate = _coerce(name, getattr(import_module(module), symbol))
+            if candidate is not None:
+                rows.append(candidate)
+        except Exception:
+            logger.warning("Failed to load built-in reading extension %r.", name, exc_info=True)
+
+    def optional_extension(name: str, loaded: Any) -> ReadingExtension | None:
+        # Reserve built-in IDs even when a built-in fails to load.
+        return None if name in _BUILTINS else _coerce(name, loaded)
+
+    rows.extend(load_entry_point_group(ENTRY_POINT_GROUP, optional_extension, log=logger))
+    return rows
+
+
 class ReadingExtensionRegistry:
     def __init__(self, extensions: list[ReadingExtension] | None = None) -> None:
-        rows = (
-            extensions
-            if extensions is not None
-            else load_entry_point_group(ENTRY_POINT_GROUP, _coerce, log=logger)
-        )
+        rows = extensions if extensions is not None else _default_extensions()
         self._extensions: dict[str, ReadingExtension] = {}
         for row in rows:
             self._extensions.setdefault(row.manifest.id, row)

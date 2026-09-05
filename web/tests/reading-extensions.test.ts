@@ -40,7 +40,7 @@ test("the browser sends a locator and selection, not trusted visible text", () =
 });
 
 test("a malformed extension catalog cannot crash the whole reader", () => {
-  assert.match(api, /if \(!Array\.isArray\(payload\)\) return \[\]/);
+  assert.match(api, /if \(!Array\.isArray\(payload\)\) throw new Error/);
   assert.match(
     api,
     /Array\.isArray\(\(row as ReadingExtensionManifest\)\.actions\)/,

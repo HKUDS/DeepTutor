@@ -26,12 +26,40 @@ def _extension(identifier: str = "sample"):
     )
 
 
-def test_registry_is_empty_when_no_entry_points_are_installed(monkeypatch):
+def test_builtins_load_when_no_entry_points_are_installed(monkeypatch):
     monkeypatch.setattr(
         "deeptutor.reading.extensions.load_entry_point_group",
         lambda *_args, **_kwargs: [],
     )
-    assert ReadingExtensionRegistry().all() == []
+    registry = ReadingExtensionRegistry()
+    assert {row.manifest.id for row in registry.all()} == {
+        "read_aloud",
+        "vocabulary",
+        "quiz",
+        "guided_learning",
+        "translation",
+    }
+
+
+def test_explicit_empty_registry_stays_empty():
+    assert ReadingExtensionRegistry([]).all() == []
+
+
+def test_third_party_extensions_load_but_cannot_replace_builtins(monkeypatch):
+    third_party = _extension()
+    impostor = _extension("read_aloud")
+
+    def load(_group, coerce, **_kwargs):
+        return [
+            row
+            for name, candidate in [("sample", third_party), ("read_aloud", impostor)]
+            if (row := coerce(name, candidate)) is not None
+        ]
+
+    monkeypatch.setattr("deeptutor.reading.extensions.load_entry_point_group", load)
+    registry = ReadingExtensionRegistry()
+    assert registry.get("sample") is third_party
+    assert registry.get("read_aloud") is not impostor
 
 
 def test_duplicate_extension_does_not_replace_the_first():
