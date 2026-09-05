@@ -252,3 +252,83 @@ export async function testInvidious(
     }),
   );
 }
+
+export interface InvidiousAccountStatus {
+  connected: boolean;
+  needs_reauthorization?: boolean;
+}
+export interface InvidiousVideo {
+  videoId: string;
+  title: string;
+  author: string;
+  lengthSeconds: number;
+  videoThumbnails?: { url: string }[];
+}
+export interface InvidiousPlaylist {
+  playlistId: string;
+  title: string;
+  videoCount: number;
+  videos?: InvidiousVideo[];
+}
+export interface InvidiousCatalog {
+  videos?: InvidiousVideo[];
+}
+export async function invidiousAccount(
+  action: "status" | "authorize" | "disconnect",
+) {
+  return unwrap<InvidiousAccountStatus & { authorize_url?: string }>(
+    await apiFetch(`/api/video-learning/invidious/account/${action}`, {
+      method: action === "status" ? "GET" : "POST",
+      cache: "no-store",
+    }),
+  );
+}
+export async function browseInvidious(
+  kind: string,
+  query: string,
+  page: number,
+  playlistId: string,
+  signal: AbortSignal,
+) {
+  if (kind === "popular" || kind === "trending") {
+    const feed = await unwrap<{
+      items: {
+        video_id: string;
+        title: string;
+        author: string;
+        duration_seconds: number;
+        thumbnail_url: string;
+      }[];
+      reason: string;
+    }>(
+      await apiFetch(`/api/video-learning/invidious/home?tab=${kind}`, {
+        signal,
+        cache: "no-store",
+      }),
+    );
+    if (feed.reason === "unavailable")
+      throw new Error(
+        "Invidious could not load videos. Please retry or check the instance.",
+      );
+    return {
+      videos: feed.items.map((item) => ({
+        videoId: item.video_id,
+        title: item.title,
+        author: item.author,
+        lengthSeconds: item.duration_seconds,
+        videoThumbnails: [{ url: item.thumbnail_url }],
+      })),
+    };
+  }
+  const params = new URLSearchParams({
+    q: query,
+    page: String(page),
+    playlist_id: playlistId,
+  });
+  return unwrap<InvidiousVideo[] | InvidiousPlaylist[] | InvidiousCatalog>(
+    await apiFetch(`/api/video-learning/invidious/browse/${kind}?${params}`, {
+      signal,
+      cache: "no-store",
+    }),
+  );
+}

@@ -1,0 +1,360 @@
+"""Secure per-owner Invidious account connections.
+
+Invidious token authorization is deliberately small: DeepTutor sends the learner
+to the instance's consent page, receives a signed token through a one-time
+callback, verifies it by reading preferences, and stores only that token in the
+owner-private secrets tree. No password or browser cookie is handled here.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+import os
+import secrets
+import time
+from typing import Any
+from urllib.parse import unquote_plus, urlencode, urlparse
+
+import deeptutor.video_learning.invidious_account_client as _client
+import deeptutor.video_learning.invidious_account_storage as _storage
+from deeptutor.video_learning.service import (
+    TimedMediaError,
+    load_video_learning_settings,
+    normalize_video_learning_settings,
+)
+
+CALLBACK_PATH = "/api/video-learning/invidious/account/callback"
+FLOW_TIMEOUT_S = 600.0
+PUBLIC_URL_ENV = "DEEPTUTOR_PUBLIC_URL"
+DEFAULT_PUBLIC_URL = "http://localhost:3782"
+ACCOUNT_SCOPES = (
+    "GET:preferences",
+    "POST:tokens/unregister",
+    "GET:feed",
+    "GET:playlists",
+    "GET:playlists/*",
+)
+_MAX_TOKEN_BYTES = 8192
+
+# Explicit call seams let the workflow tests substitute transport behavior
+# without making filesystem persistence part of the same mock boundary.
+_request_preferences = _client.request_preferences
+_revoke_token = _client.revoke_token
+
+
+def _configured_public_url() -> str:
+    configured = os.environ.get(PUBLIC_URL_ENV, "").strip().rstrip("/")
+    if configured:
+        # Reuse the provider-origin rules rather than accepting an arbitrary
+        # redirect target from an environment typo.
+        normalized = normalize_video_learning_settings(
+            {
+                "version": 1,
+                "default_provider": "youtube",
+                "invidious": {"api_base_url": "", "public_base_url": configured},
+            }
+        )
+        return normalized["invidious"]["public_base_url"]
+    # Request Host and X-Forwarded-* headers are attacker-controlled unless a
+    # deployment has explicitly configured and constrained trusted proxies.
+    # Remote deployments therefore opt into their canonical external origin;
+    # local installs retain the shipped frontend URL.
+    return DEFAULT_PUBLIC_URL
+
+
+def invidious_redirect_uri() -> str:
+    return f"{_configured_public_url()}{CALLBACK_PATH}"
+
+
+def begin_invidious_account_authorization(*, owner_id: str, redirect_uri: str) -> str:
+    settings = load_video_learning_settings()
+    base = settings["invidious"]["api_base_url"]
+    if not base:
+        raise TimedMediaError("Configure the Invidious API base URL before connecting an account.")
+
+    parsed_redirect = urlparse(redirect_uri)
+    try:
+        parsed_redirect.port
+    except ValueError as exc:
+        raise TimedMediaError("Invidious callback URL contains an invalid port.") from exc
+    if (
+        parsed_redirect.scheme not in {"http", "https"}
+        or not parsed_redirect.hostname
+        or parsed_redirect.username
+        or parsed_redirect.password
+        or parsed_redirect.fragment
+    ):
+        raise TimedMediaError("Invidious callback URL must be a plain HTTP(S) URL.")
+
+    _storage.purge_expired(owner_id)
+    state = secrets.token_urlsafe(32)
+    separator = "&" if parsed_redirect.query else "?"
+    callback_url = f"{redirect_uri}{separator}{urlencode({'state': state})}"
+    public_base = settings["invidious"].get("public_base_url") or base
+    authorize_url = f"{public_base}/authorize_token?{urlencode({'scopes': ','.join(ACCOUNT_SCOPES), 'callback_url': callback_url})}"
+
+    _storage.replace_pending_flow(
+        state=state,
+        flow=_storage.PendingFlow(
+            owner_id=owner_id,
+            api_base_url=base,
+            callback_url=callback_url,
+            expires_at=time.time() + FLOW_TIMEOUT_S,
+        ),
+    )
+    return authorize_url
+
+
+def _parse_token(raw_token: str) -> dict[str, Any]:
+    if not raw_token or len(raw_token.encode("utf-8")) > _MAX_TOKEN_BYTES:
+        raise TimedMediaError("Invidious returned an invalid account token.")
+    try:
+        # Invidious form-encodes the JSON, then encodes it again when adding
+        # it to the callback query. FastAPI has already removed the outer layer.
+        # Preserve literal JSON unchanged (including + and % in signed values),
+        # and decode at most one additional layer for the native callback format.
+        decoded = (
+            raw_token
+            if raw_token.lstrip().startswith("{")
+            else unquote_plus(raw_token, errors="strict")
+        )
+        token = json.loads(decoded)
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise TimedMediaError("Invidious returned an invalid account token.") from exc
+    if not isinstance(token, dict):
+        raise TimedMediaError("Invidious returned an invalid account token.")
+
+    session = token.get("session")
+    scopes = token.get("scopes")
+    signature = token.get("signature")
+    if (
+        not isinstance(session, str)
+        or not session
+        or not isinstance(signature, str)
+        or not signature
+        or not isinstance(scopes, list)
+        or any(not isinstance(scope, str) for scope in scopes)
+    ):
+        raise TimedMediaError("Invidious returned an incomplete account token.")
+    if not _scopes_include_required(scopes):
+        raise TimedMediaError("Invidious account token is missing a required scope.")
+    expire = token.get("expire")
+    if expire is not None and (not isinstance(expire, int) or expire <= 0):
+        raise TimedMediaError("Invidious returned an invalid token expiration.")
+    return token
+
+
+def _scopes_include_required(scopes: Any) -> bool:
+    if not isinstance(scopes, list) or any(not isinstance(scope, str) for scope in scopes):
+        return False
+    return set(ACCOUNT_SCOPES).issubset(set(scopes))
+
+
+def _stored_token_is_usable(token: Any) -> bool:
+    if not isinstance(token, dict):
+        return False
+    session = token.get("session")
+    signature = token.get("signature")
+    expire = token.get("expire")
+    if not isinstance(session, str) or not session:
+        return False
+    if not isinstance(signature, str) or not signature:
+        return False
+    if expire is not None and (not isinstance(expire, int) or expire <= 0):
+        return False
+    return not (isinstance(expire, int) and expire <= datetime.now(timezone.utc).timestamp())
+
+
+async def complete_invidious_account_authorization(
+    *, owner_id: str, state: str, token: str
+) -> dict[str, Any]:
+    _storage.purge_expired(owner_id)
+    flow = _storage.consume_pending_flow(owner_id, state)
+    if flow is None:
+        raise TimedMediaError("Invidious account callback is unknown, expired, or already used.")
+
+    parsed_token = _parse_token(token)
+    await _request_preferences(api_base_url=flow.api_base_url, token=parsed_token)
+
+    _storage.write_account(
+        owner_id,
+        {
+            "version": 1,
+            "api_base_url": flow.api_base_url,
+            "scopes": list(ACCOUNT_SCOPES),
+            "connected_at": datetime.now(timezone.utc).isoformat(),
+            "token": parsed_token,
+        },
+    )
+    return invidious_account_status(owner_id)
+
+
+def invidious_account_status(owner_id: str) -> dict[str, Any]:
+    payload = _storage.read_account(owner_id)
+    token = payload.get("token")
+    base = payload.get("api_base_url")
+    scopes = payload.get("scopes")
+    connected_at = payload.get("connected_at")
+    if not _stored_token_is_usable(token) or not isinstance(base, str) or not base:
+        return {"connected": False}
+    if not _scopes_include_required(scopes):
+        return {"connected": False, "needs_reauthorization": True}
+    if base != load_video_learning_settings()["invidious"]["api_base_url"]:
+        return {"connected": False, "needs_reauthorization": True}
+    if not isinstance(connected_at, str) or not connected_at:
+        return {"connected": False}
+    return {
+        "connected": True,
+        "api_base_url": base,
+        "scopes": [str(scope) for scope in scopes],
+        "connected_at": connected_at,
+    }
+
+
+async def disconnect_invidious_account(*, owner_id: str) -> dict[str, Any]:
+    payload = _storage.read_account(owner_id)
+    token = payload.get("token")
+    base = payload.get("api_base_url")
+    if not _stored_token_is_usable(token) or not isinstance(base, str) or not base:
+        _storage.forget_account(owner_id)
+        return {"connected": False}
+
+    try:
+        await _revoke_token(api_base_url=base, token=token)
+    except _client.InvidiousTransportError as exc:
+        raise TimedMediaError(
+            "Invidious account disconnection request failed. The saved connection was kept so it can be retried."
+        ) from exc
+    except TimedMediaError:
+        # Do not delete first: if the instance is temporarily unavailable, doing
+        # so would leave a valid token registered upstream with no local revoke.
+        raise
+
+    _storage.forget_account(owner_id)
+    return {"connected": False}
+
+
+__all__ = [
+    "ACCOUNT_SCOPES",
+    "CALLBACK_PATH",
+    "FLOW_TIMEOUT_S",
+    "begin_invidious_account_authorization",
+    "complete_invidious_account_authorization",
+    "disconnect_invidious_account",
+    "invidious_account_status",
+    "invidious_redirect_uri",
+]
+
+
+async def browse_invidious(
+    *, owner_id: str, kind: str, query: str = "", page: int = 1, playlist_id: str = ""
+) -> Any:
+    """Read only the configured provider; credentials never leave this boundary."""
+    from urllib.parse import quote
+
+    settings = load_video_learning_settings()
+    base = settings["invidious"]["api_base_url"]
+    if not base:
+        raise TimedMediaError("Invidious is not configured.")
+    token = None
+    if kind == "search":
+        path = "/api/v1/search"
+        params = {"q": query, "page": page, "type": "video"}
+    else:
+        if not invidious_account_status(owner_id).get("connected"):
+            raise TimedMediaError("Reconnect your Invidious account to browse your videos.")
+        token = _storage.read_account(owner_id).get("token")
+        if kind == "feed":
+            path, params = "/api/v1/auth/feed", {"page": page, "max_results": 24}
+        elif kind == "playlists":
+            path, params = "/api/v1/auth/playlists", {}
+        elif kind == "playlist":
+            if (
+                not playlist_id
+                or len(playlist_id) > 100
+                or not all(c.isalnum() or c in "_-" for c in playlist_id)
+            ):
+                raise TimedMediaError("Invalid playlist identifier.")
+            path, params = "/api/v1/auth/playlists/" + quote(playlist_id, safe=""), {"page": page}
+        else:
+            raise TimedMediaError("Unknown video browser view.")
+    data = await _client.request_catalog(api_base_url=base, path=path, params=params, token=token)
+    return _catalog_payload(
+        data, kind=kind, public_base=settings["invidious"].get("public_base_url") or base
+    )
+
+
+def _catalog_payload(data: Any, *, kind: str, public_base: str) -> Any:
+    """Expose only card metadata, with thumbnails on a trusted provider origin."""
+    import re
+    from urllib.parse import urljoin, urlsplit
+
+    def video(raw: Any) -> dict[str, Any] | None:
+        if not isinstance(raw, dict) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{11}", str(raw.get("videoId", ""))
+        ):
+            return None
+        vid = raw["videoId"]
+        thumbnail = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+        for entry in raw.get("videoThumbnails", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            candidate = urljoin(public_base + "/", str(entry.get("url", "")))
+            parsed = urlsplit(candidate)
+            if (
+                parsed.scheme in {"http", "https"}
+                and not parsed.username
+                and not parsed.password
+                and parsed.netloc == urlsplit(public_base).netloc
+            ):
+                thumbnail = candidate
+                break
+        duration = raw.get("lengthSeconds", 0)
+        return {
+            "videoId": vid,
+            "title": str(raw.get("title", "")),
+            "author": str(raw.get("author", "")),
+            "lengthSeconds": max(0, duration) if isinstance(duration, int) else 0,
+            "videoThumbnails": [{"url": thumbnail}],
+        }
+
+    if kind == "playlists":
+        return (
+            [
+                {
+                    "playlistId": item["playlistId"],
+                    "title": str(item.get("title", "")),
+                    "videoCount": item.get("videoCount", 0),
+                    "videos": [v for raw in item.get("videos", []) if (v := video(raw))],
+                }
+                for item in data
+                if isinstance(item, dict)
+                and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(item.get("playlistId", "")))
+            ]
+            if isinstance(data, list)
+            else []
+        )
+    rows = data if isinstance(data, list) else data.get("videos", [])
+    return {"videos": [v for raw in rows if (v := video(raw))]}
+
+
+def authorization_failure_code(error: Exception, *, has_token: bool) -> str:
+    """Stable non-sensitive callback outcomes; never put provider errors in URLs."""
+    if not has_token:
+        return "authorization_cancelled"
+    message = str(error) if isinstance(error, TimedMediaError) else ""
+    if message == "Invidious account callback is unknown, expired, or already used.":
+        return "authorization_expired"
+    if message == "Invidious account token is missing a required scope.":
+        return "authorization_scopes"
+    if message.startswith("Invidious returned an"):
+        return "authorization_token_invalid"
+    if message in {
+        "Invidious account verification failed with HTTP 401.",
+        "Invidious account verification failed with HTTP 403.",
+    }:
+        return "authorization_token_rejected"
+    if message.startswith("Invidious account verification"):
+        return "authorization_unavailable"
+    return "authorization_failed"

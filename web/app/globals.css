@@ -843,9 +843,7 @@ body[data-picker-open] .dt-breathing-text {
 }
 
 /* ----- Immersive watching -----------------------------------------------
-   The video-learning panel remains part of Home while reading owns its
-   dedicated workspace. Keeping a watching-specific shell prevents the two
-   navigation models from becoming coupled again. */
+   Watching shares the conversation renderer and owns its responsive video surface. */
 .dt-watching-shell {
   position: absolute;
   inset: 0 auto 0 0;
@@ -1107,4 +1105,138 @@ a[href^="#dt-locator-"]:hover {
   .animate-spin {
     animation: none !important;
   }
+}
+
+/* Watching switches panes on small screens without unmounting playback or chat. */
+.watching-mobile-tabs {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .watching-mobile-tabs {
+    display: flex;
+    height: 44px;
+    gap: 8px;
+    padding: 4px 12px;
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 40;
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
+  }
+  .watching-mobile-tabs button {
+    flex: 1;
+    border-radius: 8px;
+  }
+  .watching-mobile-tabs button[aria-pressed="true"] {
+    background: var(--muted);
+    font-weight: 600;
+  }
+  .watching-surface .dt-watching-shell {
+    top: 44px;
+  }
+  .watching-surface[data-mobile-view="chat"] .dt-watching-shell {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  [data-watching-workspace="true"] > .chat-preview-shell {
+    padding-top: 44px;
+  }
+  .watching-surface[data-mobile-view="video"] ~ .chat-preview-shell {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* Native provider browsing stays above the mounted learning workspace. */
+.watching-browser {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+}
+.watching-browser-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.watching-browser-button:hover,
+.watching-browser-button[aria-pressed='true'] {
+  background: var(--muted);
+}
+.watching-browser-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.watching-video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 24px 20px;
+}
+.watching-video-card {
+  text-align: left;
+  min-width: 0;
+  border-radius: 12px;
+}
+.watching-video-card:hover h2 {
+  text-decoration: underline;
+}
+.watching-browser-empty {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.watching-browse-toggle {
+  position: absolute;
+  right: 12px;
+  top: 8px;
+  z-index: 44;
+  background: var(--background);
+}
+.watching-account-error {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 46;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+.watching-surface[data-browsing] ~ .chat-preview-shell {
+  visibility: hidden;
+  pointer-events: none;
+}
+@media (max-width: 1023px) {
+  .watching-browse-toggle {
+    top: 48px;
+  }
+}
+@media (max-width: 520px) {
+  .watching-video-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.watching-surface .dt-watching-shell { top: 48px; }
+[data-watching-workspace="true"] > .chat-preview-shell { padding-top: 48px; }
+@media (max-width: 1023px) {
+  .watching-surface .dt-watching-shell { top: 92px; }
+  [data-watching-workspace="true"] > .chat-preview-shell { padding-top: 92px; }
+}
+.watching-surface[data-browsing] .dt-watching-shell,
+.watching-surface[data-browsing] .watching-mobile-tabs {
+  visibility: hidden;
+  pointer-events: none;
 }
