@@ -1025,3 +1025,97 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
     assert captured["learning_journal_context"] == ("# Learning journal\n## Mission\n- Topic: FFT")
     assert captured["conversation_history"] == []
     assert captured["conversation_context_text"] == "Recent chat summary"
+
+
+@pytest.mark.asyncio
+async def test_selection_tutoring_never_mounts_the_learning_journal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """A selected-text question must not inherit a carried-over study mission (#740).
+
+    The journal snapshot is a standing part of the system prompt, so a sidebar
+    question about one passage would otherwise answer *as if* it knew what the
+    learner is studying. Memory avoids this by only reading what the client
+    asks for; the journal has no such client input, so it needs its own guard.
+    Asserting the store is never consulted pins that guard, rather than a
+    snapshot that merely happens to be empty.
+    """
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: dict[str, object] = {}
+    journal_reads: list[str] = []
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **_kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            captured["learning_journal_context"] = context.learning_journal_context
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="It forks the process.",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    class FakeJournalStore:
+        def injection_markdown(self) -> str:
+            journal_reads.append("consulted")
+            return "# Learning journal\n## Mission\n- Topic: FFT"
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "## Preferences\n- Concise.", emit=None),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.learning_journal.get_learning_journal_store",
+        lambda: FakeJournalStore(),
+    )
+    monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
+
+    _session, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "what does this line mean?",
+            "session_id": None,
+            "capability": None,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            # Deliberately still requested: the client opting into memory must
+            # not be what keeps the journal out of a selection turn.
+            "memory_references": ["preferences"],
+            "language": "en",
+            "config": {},
+            "selection_tutor_context": {
+                "selected_text": "fork() returns in two processes.",
+                "source_message_text": "In Unix, fork() returns in two processes.",
+                "source_message_role": "assistant",
+            },
+        }
+    )
+
+    async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+        pass
+
+    assert captured["learning_journal_context"] == ""
+    assert journal_reads == []
