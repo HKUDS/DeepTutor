@@ -4757,5 +4757,18 @@
   "Select a word or passage first.": "请先选择单词或段落。",
   "Loading reading actions…": "正在加载阅读功能…",
   "Could not load reading actions.": "无法加载阅读功能。",
-  "Reading actions": "阅读功能"
+  "Reading actions": "阅读功能",
+  "Install the reading bundle once; control each action separately.": "安装一个阅读扩展包，分别管理每项功能。",
+  "Active reading version": "当前运行版本",
+  "Selected reading version": "待应用版本",
+  "Bundled": "内置版本",
+  "Restart all DeepTutor backend workers to apply these changes.": "请重启所有 DeepTutor 后端进程以应用更改。",
+  "Learner access still follows each account's reading permissions.": "学习账号仍按各自的阅读权限使用这些功能。",
+  "I trust this package publisher. Installed Python extensions run on the backend with its permissions.": "我信任此扩展包的发布者。安装的 Python 扩展将以服务器权限在后端运行。",
+  "Download or update reading bundle": "下载或更新阅读扩展",
+  "Install reading wheel": "安装阅读扩展文件",
+  "Reading wheel must not exceed 10 MB.": "阅读扩展文件不能超过 10 MB。",
+  "Uninstall reading bundle": "卸载阅读扩展",
+  "Restore bundled reading actions": "恢复内置阅读功能",
+  "Updating reading extensions…": "正在更新阅读扩展…"
 }

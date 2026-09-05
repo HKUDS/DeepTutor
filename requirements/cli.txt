@@ -77,3 +77,5 @@ json-repair>=0.57.0,<1.0.0
 # --- MCP client (configurable deferred tools; core, not partners-only) ---
 mcp>=1.26.0,<2.0.0
 pageindex>=0.2.10,<0.3.0
+
+packaging>=23.2

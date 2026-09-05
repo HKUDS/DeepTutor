@@ -20,3 +20,5 @@
 # This file installs the full server runtime (CLI + API + partners).
 
 -r requirements/partners.txt
+
+packaging>=23.2

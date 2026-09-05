@@ -4757,5 +4757,18 @@
   "Select a word or passage first.": "Select a word or passage first.",
   "Loading reading actions…": "Loading reading actions…",
   "Could not load reading actions.": "Could not load reading actions.",
-  "Reading actions": "Reading actions"
+  "Reading actions": "Reading actions",
+  "Install the reading bundle once; control each action separately.": "Install the reading bundle once; control each action separately.",
+  "Active reading version": "Active reading version",
+  "Selected reading version": "Selected reading version",
+  "Bundled": "Bundled",
+  "Restart all DeepTutor backend workers to apply these changes.": "Restart all DeepTutor backend workers to apply these changes.",
+  "Learner access still follows each account's reading permissions.": "Learner access still follows each account's reading permissions.",
+  "I trust this package publisher. Installed Python extensions run on the backend with its permissions.": "I trust this package publisher. Installed Python extensions run on the backend with its permissions.",
+  "Download or update reading bundle": "Download or update reading bundle",
+  "Install reading wheel": "Install reading wheel",
+  "Reading wheel must not exceed 10 MB.": "Reading wheel must not exceed 10 MB.",
+  "Uninstall reading bundle": "Uninstall reading bundle",
+  "Restore bundled reading actions": "Restore bundled reading actions",
+  "Updating reading extensions…": "Updating reading extensions…"
 }

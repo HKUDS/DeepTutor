@@ -219,6 +219,18 @@ const MODEL_CHILDREN: SettingsLeaf[] = [
 
 const CHAT_CHILDREN: SettingsLeaf[] = [
   {
+    key: "reading-extensions",
+    href: "/settings#reading-extensions",
+    label: { zh: "阅读扩展", en: "Reading extensions" },
+    blurb: {
+      zh: "安装、更新和管理朗读、查词与测验。",
+      en: "Install, update and manage reading actions.",
+    },
+    icon: Library,
+    tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+    adminOnly: true,
+  },
+  {
     key: "video-learning",
     href: "/settings#video-learning",
     label: { zh: "视频学习", en: "Video Learning" },
