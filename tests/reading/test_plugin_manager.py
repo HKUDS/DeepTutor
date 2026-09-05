@@ -100,6 +100,8 @@ def test_invalid_action_does_not_change_state():
         ("DELETE", ""),
         ("POST", "/restore"),
         ("PUT", "/quiz/enabled"),
+        ("PUT", "/providers/vocabulary"),
+        ("DELETE", "/components/deeptutor-reading-test"),
     ],
 )
 def test_non_admin_cannot_manage_plugins(monkeypatch, method, path):

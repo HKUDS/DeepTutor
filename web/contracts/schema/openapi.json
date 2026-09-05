@@ -5362,6 +5362,17 @@
         "title": "ProviderModeUpdate",
         "type": "object"
       },
+      "ProviderPayload": {
+        "properties": {
+          "package": {
+            "default": "",
+            "title": "Package",
+            "type": "string"
+          }
+        },
+        "title": "ProviderPayload",
+        "type": "object"
+      },
       "QuestionBankMaterial": {
         "properties": {
           "entry_count": {
@@ -35522,10 +35533,90 @@
         "tags": ["reading-plugins"]
       }
     },
+    "/api/reading/plugins/components/{package}": {
+      "delete": {
+        "operationId": "remove_component_api_reading_plugins_components__package__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package",
+            "required": true,
+            "schema": {
+              "title": "Package",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Component",
+        "tags": ["reading-plugins"]
+      }
+    },
     "/api/reading/plugins/download": {
       "post": {
         "operationId": "download_plugin_api_reading_plugins_download_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "package",
+            "required": false,
+            "schema": {
+              "default": "deeptutor-reading-extensions",
+              "title": "Package",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "Authorization",
@@ -35651,6 +35742,86 @@
           }
         },
         "summary": "Install Plugin",
+        "tags": ["reading-plugins"]
+      }
+    },
+    "/api/reading/plugins/providers/{slot}": {
+      "put": {
+        "operationId": "select_provider_api_reading_plugins_providers__slot__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slot",
+            "required": true,
+            "schema": {
+              "title": "Slot",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Select Provider",
         "tags": ["reading-plugins"]
       }
     },

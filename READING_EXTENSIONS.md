@@ -120,3 +120,20 @@ Standard pip installation of the same distribution is also supported when no
 managed selection has been configured. Managed selection always wins, including
 explicit uninstall and restore. Other third-party extensions cannot take over
 these reserved IDs. Study guidance and translation remain bundled extensions.
+
+### Independent providers and additional actions
+
+Provider wheels can now be installed independently of the convenience bundle.
+Each uses a unique `deeptutor-reading-*` package/namespace, a protocol-1
+`reading_plugin.json`, and `deeptutor.reading_extensions` entry points. No
+provider is selected automatically on installation. Administrators select one
+provider per action in Settings → Reading extensions, or with
+`deeptutor plugin reading provider vocabulary --package <installed-package>`.
+Use `deeptutor plugin reading remove <package>` to uninstall only that provider.
+Restart all backend workers to apply lifecycle changes.
+
+Novel extension IDs are supported and appear under More when selected; existing
+learner allowlists still authorize those IDs. Third-party upload supports the
+same validated pure-Python wheel format; automatic downloads use the fixed
+published catalog. The independent repository includes a small dictionary
+example and a [provider contract and roadmap](https://github.com/evan188199-tech/deeptutor-reading-extensions/blob/main/docs/PLUGIN_DESIGN.md).
