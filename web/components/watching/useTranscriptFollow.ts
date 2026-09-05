@@ -11,6 +11,7 @@ export function useTranscriptFollow(
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel || !enabled || cueStart === undefined) return;
+    const content = panel.querySelector<HTMLElement>(".watching-transcript-list");
     const tools = panel.querySelector<HTMLElement>(".watching-transcript-tools");
     const workspace = panel.closest("[data-watching-workspace]");
     const captions = workspace?.querySelector<HTMLElement>(".watching-live-captions");
@@ -49,6 +50,7 @@ export function useTranscriptFollow(
     const observer = new ResizeObserver(schedule);
     observer.observe(panel);
     if (tools) observer.observe(tools);
+    if (content) observer.observe(content);
     if (captions) observer.observe(captions);
     if (stage) observer.observe(stage);
     return () => {
