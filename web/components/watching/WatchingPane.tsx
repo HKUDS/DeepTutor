@@ -28,6 +28,7 @@ import {
   type VideoNote,
 } from "@/lib/video-learning-api";
 import { videoTimeFromHref } from "@/lib/watching-citations";
+import { useTranscriptFollow } from "./useTranscriptFollow";
 import { WatchingCaptions } from "./WatchingCaptions";
 import { WatchingPlayer } from "./WatchingPlayer";
 
@@ -168,10 +169,11 @@ export function WatchingPane({
     [material, time],
   );
 
-  useEffect(() => {
-    if (!transcriptActive || !followCaptions || transcriptQuery || !cue) return;
-    detailRef.current?.querySelector<HTMLElement>(`[data-cue-start="${cue.start}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [cue, transcriptActive, followCaptions, transcriptQuery]);
+  useTranscriptFollow(
+    detailRef,
+    cue?.start,
+    transcriptActive && followCaptions && !transcriptQuery,
+  );
 
   const submit = async (providerOverride?: "youtube") => {
     const url = (providerOverride ? lastUrl || input : input).trim();

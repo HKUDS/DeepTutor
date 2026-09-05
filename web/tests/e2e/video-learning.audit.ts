@@ -51,7 +51,9 @@ for (const mobile of [false, true]) {
             source: selected,
             cues: [
               { start: 7, end: 12, text: "The first grounded concept." },
+              ...Array.from({ length: 55 }, (_, index) => ({ start: 13 + index, end: 14 + index, text: `Context sentence ${index}.` })),
               { start: 70, end: 75, text: "The second grounded concept." },
+              ...Array.from({ length: 30 }, (_, index) => ({ start: 76 + index, end: 77 + index, text: `Later sentence ${index}.` })),
             ],
           }
         : {
@@ -428,6 +430,34 @@ for (const mobile of [false, true]) {
         "480px",
       );
     }
+    await page.getByRole("tab", {name: "Transcript", exact: true}).click();
+    await page.evaluate(() => {
+      const player = (window as typeof window & {__fakePlayers: Array<{current: number}>}).__fakePlayers.at(-1);
+      if (player) player.current = 35.5;
+    });
+    const rail = page.locator(".watching-detail-panel");
+    const alignmentError = () => rail.evaluate(panel => {
+      const active = panel.querySelector('[data-cue-start="35"]')!.getBoundingClientRect();
+      const tools = panel.querySelector('.watching-transcript-tools')!.getBoundingClientRect();
+      const bounds = panel.getBoundingClientRect();
+      const usableTop = bounds.top + panel.clientTop + tools.height;
+      const height = panel.clientHeight - tools.height;
+      const captions = document.querySelector('.watching-live-captions')!.getBoundingClientRect();
+      const desired = window.innerWidth >= 900 ? Math.max(usableTop + height * .25, Math.min(usableTop + height * .75, captions.top + captions.height / 2)) : usableTop + height / 2;
+      return Math.abs(active.top + active.height / 2 - desired);
+    });
+    await expect.poll(alignmentError).toBeLessThan(4);
+    const beforeManual = await rail.evaluate(panel => panel.scrollTop);
+    await rail.hover();
+    await page.mouse.wheel(0, -120);
+    await expect(page.getByRole("button", {name: "Follow playback", exact: true})).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(() => rail.evaluate(panel => panel.scrollTop)).toBeLessThan(beforeManual);
+    await page.getByLabel("Search transcript", {exact: true}).fill("Context sentence 22");
+    await expect(rail.locator('[data-cue-start]')).toHaveCount(1);
+    await page.getByLabel("Search transcript", {exact: true}).fill("");
+    await page.getByRole("button", {name: "Follow playback", exact: true}).click();
+    await expect.poll(alignmentError).toBeLessThan(4);
+    await page.getByRole("tab", {name: "Conversation", exact: true}).click();
     const bounds = await page
       .locator("[data-watching-workspace]")
       .boundingBox();
