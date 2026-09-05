@@ -279,6 +279,13 @@ class PathService:
     def get_memory_dir(self) -> Path:
         return self.workspace_root / "memory"
 
+    def get_learning_journal_dir(self) -> Path:
+        """Soft multi-session learning journal (#740), sibling of memory."""
+        return self.workspace_root / "learning_journal"
+
+    def get_learning_journal_file(self) -> Path:
+        return self.get_learning_journal_dir() / "journal.json"
+
     def migrate_legacy_memory_markdown(self) -> bool:
         """Move the old workspace memory files into the canonical memory root once.
 

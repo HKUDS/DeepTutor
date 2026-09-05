@@ -180,7 +180,7 @@ def compose_enabled_tools(
        KB is attached, ``read_source`` if a source index exists, …).
     3. Active loop capabilities' *owned* tools (``capability_owned``) — the
        capability's own tools, added on top.
-    4. Always-on auto-mounts (``write_memory`` / ``web_fetch`` / ``github`` /
+    4. Always-on auto-mounts (``write_memory`` / ``learning_status`` / ``learning_update`` / ``web_fetch`` / ``github`` /
        ``ask_user`` / ``cron``).
 
     A loop capability (solve, mastery) reuses the *full* chat surface and only
@@ -247,7 +247,15 @@ def compose_enabled_tools(
         if getattr(mount_flags, flag) and _builtin_allowed(tool_name):
             composed.append(tool_name)
     composed.extend(str(name) for name in capability_owned if str(name).strip())
-    for always_on in ("write_memory", "web_fetch", "github", "ask_user", "cron"):
+    for always_on in (
+        "write_memory",
+        "learning_status",
+        "learning_update",
+        "web_fetch",
+        "github",
+        "ask_user",
+        "cron",
+    ):
         if _builtin_allowed(always_on):
             composed.append(always_on)
     return _finalize(composed, forced, suppressed)

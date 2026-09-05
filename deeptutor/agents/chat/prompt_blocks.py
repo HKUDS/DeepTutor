@@ -98,6 +98,11 @@ class ChatPromptAssembler:
             blocks.append(PromptBlock("partner_turn_policy", partner_policy))
         if context.memory_context:
             blocks.append(PromptBlock("memory", context.memory_context))
+        # Carried-over learning state sits with memory rather than behind a
+        # tool call: a learner who says "继续上次那个" in a brand-new
+        # conversation expects the tutor to already know what "上次" was.
+        if context.learning_journal_context:
+            blocks.append(PromptBlock("learning_journal", context.learning_journal_context))
         if include_tool_manifest:
             tools = tool_manifest or self._fallback_empty_tool_list()
             if kb_note:

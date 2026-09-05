@@ -1,0 +1,6 @@
+short_description: "更新软学习日志：使命、会话交接，或一条持久洞见。"
+when_to_use: "用户明确要跨会话学某个主题；一节教学结束需要留下 next focus；或出现值得保留的非显然洞见。偏好用 write_memory；Mastery 打分别写这里。"
+input_format: "{\"op\": \"set_mission\"|\"note_session\"|\"add_record\", \"topic\"?, \"why\"?, \"level\"?, \"summary\"?, \"next_focus\"?, \"title\"?, \"insight\"?}"
+guideline: "意图明确时尽早 set_mission。有收获的教学回合结束时 note_session。add_record 只记持久洞见，一次一条。"
+note: "落在用户工作区 learning_journal.json。与 Mastery Path 互补，不替代。"
+phase: "execution"

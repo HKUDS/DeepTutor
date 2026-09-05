@@ -3294,6 +3294,7 @@
   "contextBudget.segment.persona_style": "Persona style",
   "contextBudget.segment.partner_turn_policy": "Partner turn policy",
   "contextBudget.segment.memory": "Memory",
+  "contextBudget.segment.learning_journal": "Learning journal",
   "contextBudget.segment.knowledge_base_note": "Knowledge base note",
   "contextBudget.segment.skills": "Skills",
   "contextBudget.segment.sources": "Sources",

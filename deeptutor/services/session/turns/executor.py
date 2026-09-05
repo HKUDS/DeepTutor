@@ -190,6 +190,7 @@ class TurnExecutor:
             from deeptutor.agents.notebook import NotebookAnalysisAgent
             from deeptutor.book.context import build_book_context
             from deeptutor.core.context import Attachment, TurnRuntimeContext, UnifiedContext
+            from deeptutor.services.learning_journal import get_learning_journal_store
             from deeptutor.services.memory import get_memory_store
             from deeptutor.services.model_selection.runtime import (
                 activate_llm_selection,
@@ -371,6 +372,15 @@ class TurnExecutor:
             )
             memory_store = get_memory_store()
             memory_context = memory_store.read_l3_concat() if memory_references else ""
+
+            # Taken once, before the loop runs: the journal snapshot is part of
+            # the system prompt, and that prefix must stay byte-stable for the
+            # whole turn even after the model writes to the journal mid-turn.
+            # Selection tutoring stays isolated from carried-over study state,
+            # exactly as it stays isolated from global memory.
+            learning_journal_context = ""
+            if not selection_tutor_context:
+                learning_journal_context = get_learning_journal_store().injection_markdown()
 
             # Persona: at most one behaviour preset per turn, eagerly
             # injected (a persona must shape the voice from the first
@@ -706,6 +716,7 @@ class TurnExecutor:
                 config_overrides=request_config,
                 language=payload.get("language", "en"),
                 memory_context=memory_context,
+                learning_journal_context=learning_journal_context,
                 persona_context=persona_context,
                 sidebar_context=sidebar_system_context,
                 skills_manifest=skills_manifest,
