@@ -4738,5 +4738,18 @@
   "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "请使用 Invidious 账号登录，确认只读授权后会自动返回此页。DeepTutor 与 Invidious 使用各自的登录账号。",
   "Popular": "热门",
   "Trending": "趋势",
-  "Explore popular videos": "浏览热门视频"
+  "Explore popular videos": "浏览热门视频",
+  "Learning captions": "学习字幕",
+  "No caption at this position": "当前时间无字幕",
+  "Word timing": "逐词时间",
+  "Sentence timing": "句级时间",
+  "Exit learning mode": "退出学习模式",
+  "Fullscreen learning": "全屏学习",
+  "System fullscreen": "系统全屏",
+  "Video panel width": "视频面板宽度",
+  "System fullscreen unavailable; learning mode remains active.": "系统全屏不可用，仍可使用学习模式。",
+  "Has captions": "有字幕",
+  "Captions ready": "字幕已就绪",
+  "With captions only": "仅显示有字幕的视频",
+  "Search transcript": "搜索字幕"
 }

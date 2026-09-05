@@ -76,6 +76,9 @@ def _normalize_item(item: Any, public_base: str) -> dict[str, Any] | None:
     title = " ".join(str(item.get("title") or video_id).split()) or video_id
     return {
         "video_id": video_id,
+        "has_captions": item.get("hasCaptions")
+        if isinstance(item.get("hasCaptions"), bool)
+        else None,
         "title": title[:240],
         "author": " ".join(str(item.get("author") or item.get("authorName") or "").split())[:160],
         "author_id": str(item.get("authorId") or "").strip()[:64],

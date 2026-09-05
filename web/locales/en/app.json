@@ -4738,5 +4738,18 @@
   "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.",
   "Popular": "Popular",
   "Trending": "Trending",
-  "Explore popular videos": "Explore popular videos"
+  "Explore popular videos": "Explore popular videos",
+  "Learning captions": "Learning captions",
+  "No caption at this position": "No caption at this position",
+  "Word timing": "Word timing",
+  "Sentence timing": "Sentence timing",
+  "Exit learning mode": "Exit learning mode",
+  "Fullscreen learning": "Fullscreen learning",
+  "System fullscreen": "System fullscreen",
+  "Video panel width": "Video panel width",
+  "System fullscreen unavailable; learning mode remains active.": "System fullscreen unavailable; learning mode remains active.",
+  "Has captions": "Has captions",
+  "Captions ready": "Captions ready",
+  "With captions only": "With captions only",
+  "Search transcript": "Search transcript"
 }

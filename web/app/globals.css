@@ -1240,3 +1240,43 @@ a[href^="#dt-locator-"]:hover {
   visibility: hidden;
   pointer-events: none;
 }
+
+/* Learning changes presentation without reparenting the player or chat runtime. */
+.watching-learning-toolbar { position: absolute; top: 4px; right: 12px; z-index: 45; display: flex; align-items: center; gap: 8px; }
+[data-watching-workspace][data-learning="true"] { position: fixed !important; inset: 0; z-index: 100; background: var(--background); height: 100dvh; }
+.watching-live-captions { flex-shrink: 0; height: 88px; padding: 12px 16px; background: #101010; color: #fafafa; font: 18px/30px sans-serif; overflow: hidden; }
+.watching-caption-line { height: 30px; white-space: pre; overflow: hidden; }
+.watching-caption-line button { border-radius: 3px; }
+.watching-word-active { color: #fde047; background: #ffffff18; }
+@media (min-width: 1024px) {
+  [data-learning="true"] .dt-watching-shell { width: var(--watching-split, 60%); }
+  [data-learning="true"] > .chat-preview-shell { padding-left: var(--watching-split, 60%); }
+  [data-learning="true"][data-learning-panel="notes"] > .chat-preview-shell { visibility: hidden; }
+  [data-learning="true"] .watching-detail-panel[data-notes="true"] { position: fixed; left: var(--watching-split, 60%); right: 0; top: 48px; bottom: 0; width: calc(100% - var(--watching-split, 60%)); background: var(--background); }
+}
+@media (max-width: 1023px) {
+  .watching-learning-toolbar { left: 120px; overflow-x: auto; white-space: nowrap; }
+  .watching-learning-toolbar input { display: none; }
+}
+[data-learning="true"] .dt-watching-shell { transform: none; }
+[data-learning="true"] .dt-watching-shell video { max-height: 52dvh; object-fit: contain; }
+@media (max-width: 1023px) {
+  .watching-surface .watching-mobile-tabs { top: 48px; }
+  .watching-learning-toolbar { height: 40px; }
+  .watching-learning-toolbar > button[aria-pressed] { display: none; }
+}
+[data-learning="true"] .watching-detail-panel [role="tablist"] { display: none; }
+.watching-split-handle { position: absolute; left: var(--watching-split, 60%); top: 48px; bottom: 0; width: 8px; transform: translateX(-50%); z-index: 44; cursor: col-resize; touch-action: none; }
+.watching-split-handle:hover, .watching-split-handle:focus-visible { background: var(--primary); opacity: .5; }
+@media (max-width: 1023px) { .watching-split-handle { display: none; } }
+@media (max-width: 1023px) { .watching-surface .watching-browse-toggle { top: 8px; left: 8px; right: auto; } }
+@media (max-width: 1023px) {
+  [data-learning="true"] .watching-surface[data-mobile-view="video"] .watching-detail-panel { display: none; }
+  [data-learning="true"] .watching-surface[data-mobile-view="notes"] .watching-media-player,
+  [data-learning="true"] .watching-surface[data-mobile-view="transcript"] .watching-media-player,
+  [data-learning="true"] .watching-surface[data-mobile-view="notes"] .watching-live-captions { display: none; }
+  .watching-surface[data-mobile-view="notes"] ~ .chat-preview-shell,
+  .watching-surface[data-mobile-view="transcript"] ~ .chat-preview-shell { visibility: hidden; pointer-events: none; }
+}
+.watching-surface .watching-browse-toggle { left: 8px; right: auto; }
+@media (max-width: 1023px) { .watching-mobile-tabs button { white-space: nowrap; font-size: 12px; min-width: 0; } }

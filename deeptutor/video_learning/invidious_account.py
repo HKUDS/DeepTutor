@@ -313,6 +313,9 @@ def _catalog_payload(data: Any, *, kind: str, public_base: str) -> Any:
         duration = raw.get("lengthSeconds", 0)
         return {
             "videoId": vid,
+            "hasCaptions": raw.get("hasCaptions")
+            if isinstance(raw.get("hasCaptions"), bool)
+            else None,
             "title": str(raw.get("title", "")),
             "author": str(raw.get("author", "")),
             "lengthSeconds": max(0, duration) if isinstance(duration, int) else 0,

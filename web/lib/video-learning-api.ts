@@ -3,6 +3,8 @@ import { apiFetch, apiUrl } from "@/lib/api";
 export type VideoProvider = "youtube" | "invidious";
 
 export interface TranscriptCue {
+  words?: { start: number; end: number; text: string }[];
+  lines?: string[];
   start: number;
   end: number;
   text: string;
@@ -258,6 +260,7 @@ export interface InvidiousAccountStatus {
   needs_reauthorization?: boolean;
 }
 export interface InvidiousVideo {
+  hasCaptions?: boolean | null;
   videoId: string;
   title: string;
   author: string;
@@ -294,6 +297,7 @@ export async function browseInvidious(
     const feed = await unwrap<{
       items: {
         video_id: string;
+        has_captions?: boolean | null;
         title: string;
         author: string;
         duration_seconds: number;
@@ -311,8 +315,9 @@ export async function browseInvidious(
         "Invidious could not load videos. Please retry or check the instance.",
       );
     return {
-      videos: feed.items.map((item) => ({
+      videos: feed.items.map(item => ({
         videoId: item.video_id,
+        hasCaptions: item.has_captions,
         title: item.title,
         author: item.author,
         lengthSeconds: item.duration_seconds,
@@ -327,6 +332,18 @@ export async function browseInvidious(
   });
   return unwrap<InvidiousVideo[] | InvidiousPlaylist[] | InvidiousCatalog>(
     await apiFetch(`/api/video-learning/invidious/browse/${kind}?${params}`, {
+      signal,
+      cache: "no-store",
+    }),
+  );
+}
+
+export async function captionStatus(videoIds: string[], signal: AbortSignal) {
+  return unwrap<Record<string, { ready: boolean; language: string }>>(
+    await apiFetch("/api/video-learning/captions/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ video_ids: videoIds.slice(0, 48) }),
       signal,
       cache: "no-store",
     }),

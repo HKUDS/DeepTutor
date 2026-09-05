@@ -340,3 +340,34 @@ def test_stream_forwards_a_206_range_response(
     assert response.content == b"video-bytes"
     assert response.headers["content-range"] == "bytes 0-10/100"
     assert upstream_client.closed is True
+
+
+def test_caption_status_only_reports_current_store(client, monkeypatch, tmp_path):
+    material = _material()
+    service.get_timed_media_store().save(material)
+    response = client.post(
+        "/api/video-learning/captions/status", json={"video_ids": ["dQw4w9WgXcQ"]}
+    )
+    assert response.status_code == 200
+    assert response.json()["dQw4w9WgXcQ"]["ready"] is True
+    monkeypatch.setattr(
+        service, "get_current_path_service", lambda: _Paths(tmp_path / "other-user")
+    )
+    assert (
+        client.post(
+            "/api/video-learning/captions/status", json={"video_ids": ["dQw4w9WgXcQ"]}
+        ).json()
+        == {}
+    )
+    assert (
+        client.post(
+            "/api/video-learning/captions/status", json={"video_ids": ["../secret"]}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/video-learning/captions/status", json={"video_ids": ["dQw4w9WgXcQ"] * 49}
+        ).status_code
+        == 422
+    )

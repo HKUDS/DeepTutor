@@ -28,12 +28,35 @@ from deeptutor.video_learning import (
     test_invidious_connection,
 )
 from deeptutor.video_learning import notes as video_notes
+from deeptutor.video_learning.service import material_id_for
 
 router = APIRouter()
 settings_router = APIRouter()
 STREAM_TIMEOUT_SECONDS = 30.0
 MAX_STREAM_REDIRECTS = 3
 RANGE_HEADER_RE = re.compile(r"^bytes=(?:[0-9]+-[0-9]*|-[0-9]+)$")
+
+
+class CaptionStatusRequest(BaseModel):
+    video_ids: list[str] = Field(max_length=48)
+
+
+@router.post("/captions/status")
+async def caption_status(request: CaptionStatusRequest, response: Response) -> dict[str, Any]:
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id) for video_id in request.video_ids):
+        raise HTTPException(status_code=422, detail="Invalid video ID.")
+    response.headers["Cache-Control"] = "no-store"
+    store = get_timed_media_store()
+    result = {}
+    for video_id in dict.fromkeys(request.video_ids):
+        try:
+            material = store.get(material_id_for(video_id))
+        except TimedMediaNotFound:
+            continue
+        transcript = material.get("transcript", {})
+        if transcript.get("status") == "ready" and transcript.get("cues"):
+            result[video_id] = {"ready": True, "language": transcript.get("language", "")}
+    return result
 
 
 class ResolveRequest(BaseModel):

@@ -15,6 +15,7 @@ import { loadYouTubeApi } from "@/lib/youtube-iframe-api";
 interface WatchingPlayerProps {
   playback: VideoPlayback;
   transcriptLanguage: string;
+  customCaptions?: boolean;
   onController(controller: PlayerController | null): void;
   onTime(seconds: number, duration: number): void;
   onPersist(): void;
@@ -52,7 +53,7 @@ function YouTubePlayer({
     let controller: PlayerController | null = null;
     let timer = 0;
     void loadYouTubeApi()
-      .then((YT) => {
+      .then(YT => {
         if (cancelled) return;
         new YT.Player(mount, {
           videoId: playback.video_id,
@@ -65,7 +66,7 @@ function YouTubePlayer({
             rel: 0,
           },
           events: {
-            onReady: (event) => {
+            onReady: event => {
               if (cancelled) return;
               controller = youtubePlayerController(event.target);
               onController(controller);
@@ -80,11 +81,11 @@ function YouTubePlayer({
                 250,
               );
             },
-            onStateChange: (event) => {
+            onStateChange: event => {
               if (cancelled) return;
               if (event.data === 0 || event.data === 2) onPersist();
             },
-            onError: (event) => {
+            onError: event => {
               if (!cancelled)
                 onError(
                   t("YouTube playback failed ({{code}}).", {
@@ -95,7 +96,7 @@ function YouTubePlayer({
           },
         });
       })
-      .catch((caught) => {
+      .catch(caught => {
         if (!cancelled) {
           onError(
             caught instanceof Error
@@ -124,7 +125,7 @@ function YouTubePlayer({
   return (
     <div
       ref={playerRootRef}
-      className="aspect-video w-full bg-black"
+      className="watching-media-player aspect-video w-full bg-black"
       title={t("YouTube learning video")}
     />
   );
@@ -137,11 +138,35 @@ function InvidiousPlayer({
   onPersist,
   onError,
   transcriptLanguage,
+  customCaptions,
 }: WatchingPlayerProps & {
   playback: Extract<VideoPlayback, { kind: "html5" }>;
 }) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const update = () => {
+      const native =
+        document.fullscreenElement === video ||
+        (video as HTMLVideoElement & { webkitDisplayingFullscreen?: boolean })
+          .webkitDisplayingFullscreen;
+      for (const track of Array.from(video.textTracks))
+        track.mode = customCaptions && !native ? "hidden" : "showing";
+    };
+    update();
+    video.textTracks.addEventListener("addtrack", update);
+    document.addEventListener("fullscreenchange", update);
+    video.addEventListener("webkitbeginfullscreen", update);
+    video.addEventListener("webkitendfullscreen", update);
+    return () => {
+      video.textTracks.removeEventListener("addtrack", update);
+      document.removeEventListener("fullscreenchange", update);
+      video.removeEventListener("webkitbeginfullscreen", update);
+      video.removeEventListener("webkitendfullscreen", update);
+    };
+  }, [customCaptions]);
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -172,7 +197,7 @@ function InvidiousPlayer({
       ref={videoRef}
       controls
       playsInline
-      className="aspect-video w-full bg-black"
+      className="watching-media-player aspect-video w-full bg-black"
       src={apiUrl(playback.stream_url)}
       onError={() =>
         onError(t("The configured Invidious stream could not be played."))

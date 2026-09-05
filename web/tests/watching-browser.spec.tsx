@@ -6,6 +6,7 @@ import { WatchingBrowser } from "@/components/watching/WatchingBrowser";
 const mock = vi.hoisted(() => ({
   account: vi.fn(),
   browse: vi.fn(),
+  captions: vi.fn(),
   push: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mock.push }) }));
@@ -21,6 +22,7 @@ vi.mock("@/hooks/useAuthStatus", () => ({
 vi.mock("@/lib/video-learning-api", () => ({
   invidiousAccount: mock.account,
   browseInvidious: mock.browse,
+  captionStatus: mock.captions,
 }));
 const video = {
   videoId: "aircAruvnKk",
@@ -32,6 +34,7 @@ const video = {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  mock.captions.mockResolvedValue({});
   mock.account.mockResolvedValue({ connected: true });
   mock.browse.mockResolvedValue({ videos: [video] });
 });
@@ -109,3 +112,14 @@ it.each(["search", "playlists"])(
     );
   },
 );
+
+it("distinguishes provider CC from saved captions and filters searches", async () => {
+  mock.browse.mockResolvedValue({videos: [{...video, hasCaptions: true}]});
+  mock.captions.mockResolvedValue({[video.videoId]: {ready: true, language: "en"}});
+  render(<WatchingBrowser onDismiss={() => {}} canDismiss={false} />);
+  expect(await screen.findByText("Captions ready · en")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", {name: "With captions only"}));
+  fireEvent.change(screen.getByPlaceholderText("Search videos or paste a video link"), {target: {value: "lesson"}});
+  fireEvent.submit(screen.getByPlaceholderText("Search videos or paste a video link").closest("form")!);
+  await waitFor(() => expect(mock.browse).toHaveBeenLastCalledWith("search", "lesson features:subtitles", 1, "", expect.any(AbortSignal)));
+});

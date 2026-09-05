@@ -366,6 +366,31 @@ for (const mobile of [false, true]) {
       page.locator('iframe[title="Fake YouTube player"]'),
     ).toHaveAttribute("src", /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
 
+    const originalPlayer = await page.locator('iframe[title="Fake YouTube player"]').elementHandle();
+    await page.getByRole("button", { name: "Fullscreen learning", exact: true }).click();
+    await expect(page.locator('[data-watching-workspace]')).toHaveAttribute('data-learning', 'true');
+    await expect(page.getByLabel('Learning captions')).toBeVisible();
+    expect(await originalPlayer?.evaluate(element => element.isConnected)).toBe(true);
+    if (!mobile) {
+      for (let i = 0; i < 5; i++) await page.getByRole('separator', { name: 'Video panel width' }).press('ArrowLeft');
+      await expect(page.locator('[data-watching-workspace]')).toHaveCSS('--watching-split', '55%');
+    }
+    const bounds = await page.locator('[data-watching-workspace]').boundingBox();
+    expect(bounds?.x).toBe(0); expect(bounds?.y).toBe(0);
+    expect(bounds?.width).toBe(mobile ? 390 : 1440);
+    await page.screenshot({path: test.info().outputPath(`learning-${mobile ? 'mobile' : 'desktop'}.png`)});
+    const toolbar = page.locator(mobile ? '.watching-mobile-tabs' : '.watching-learning-toolbar');
+    await toolbar.getByRole('button', { name: 'Video notes', exact: true }).click();
+    await expect(page.getByRole('button', {name: 'Add video note', exact: true})).toBeVisible();
+    await page.getByPlaceholder(/Note at/).fill('Unsaved layout draft');
+    await toolbar.getByRole('button', { name: 'Conversation', exact: true }).click();
+    await toolbar.getByRole('button', { name: 'Video notes', exact: true }).click();
+    await expect(page.getByPlaceholder(/Note at/)).toHaveValue('Unsaved layout draft');
+    await page.getByPlaceholder(/Note at/).fill('');
+    await toolbar.getByRole('button', { name: 'Conversation', exact: true }).click();
+    await page.getByRole("button", { name: "Exit learning mode", exact: true }).click();
+    expect(await originalPlayer?.evaluate(element => element.isConnected)).toBe(true);
+
     if (mobile)
       await page
         .getByRole("button", { name: "Conversation", exact: true })

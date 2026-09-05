@@ -18,6 +18,7 @@ import { browserStorage } from "@/shared/storage";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import {
   browseInvidious,
+  captionStatus,
   invidiousAccount,
   type InvidiousAccountStatus,
   type InvidiousVideo,
@@ -45,6 +46,10 @@ export function WatchingBrowser({
   const [query, setQuery] = useState("");
   const [playlist, setPlaylist] = useState("");
   const [page, setPage] = useState(1);
+  const [withCaptions, setWithCaptions] = useState(false);
+  const [captionStates, setCaptionStates] = useState<
+    Record<string, { ready: boolean; language: string }>
+  >({});
   const [items, setItems] = useState<(InvidiousVideo | InvidiousPlaylist)[]>(
     [],
   );
@@ -60,13 +65,15 @@ export function WatchingBrowser({
     if (auth.loading || !auth.statusAvailable) return;
     let alive = true;
     setItems([]);
+    setCaptionStates({});
     setAccount(null);
     void invidiousAccount("status")
-      .then((status) => {
+      .then(status => {
         if (!alive) return;
         setAccount(status);
         let saved: {
           version?: number;
+          withCaptions?: boolean;
           view?: BrowserView;
           query?: string;
           page?: number;
@@ -88,6 +95,7 @@ export function WatchingBrowser({
               ? saved.view
               : "popular",
           );
+          setWithCaptions(saved.withCaptions === true);
           setQuery(saved.query || "");
           setInput(saved.query || "");
           setPage(saved.page || 1);
@@ -107,6 +115,7 @@ export function WatchingBrowser({
     if (!account) return;
     const controller = new AbortController();
     setItems([]);
+    setCaptionStates({});
     setError("");
     setBusy(false);
     if (
@@ -115,10 +124,28 @@ export function WatchingBrowser({
     )
       return;
     setBusy(true);
-    void browseInvidious(view, query, page, playlist, controller.signal)
-      .then((data) => {
+    void browseInvidious(
+      view,
+      withCaptions && view === "search" ? `${query} features:subtitles` : query,
+      page,
+      playlist,
+      controller.signal,
+    )
+      .then(data => {
         if (controller.signal.aborted) return;
-        setItems(Array.isArray(data) ? data : data.videos || []);
+        const loaded = Array.isArray(data) ? data : data.videos || [];
+        setItems(loaded);
+        const ids = loaded.flatMap(item =>
+          "videoId" in item ? [item.videoId] : [],
+        );
+        if (ids.length)
+          void captionStatus(ids, controller.signal)
+            .then(states => {
+              if (!controller.signal.aborted) setCaptionStates(states);
+            })
+            .catch(() => {
+              /* Cache status is optional; browsing stays available. */
+            });
         requestAnimationFrame(() => {
           try {
             if (scroll.current)
@@ -137,7 +164,17 @@ export function WatchingBrowser({
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [account, view, query, page, playlist, reload, key, accountOnly]);
+  }, [
+    account,
+    view,
+    query,
+    page,
+    playlist,
+    reload,
+    key,
+    accountOnly,
+    withCaptions,
+  ]);
 
   function remember(position = 0) {
     try {
@@ -146,6 +183,7 @@ export function WatchingBrowser({
         key,
         JSON.stringify({
           version: 2,
+          withCaptions,
           view,
           query,
           page,
@@ -179,6 +217,7 @@ export function WatchingBrowser({
       const status = await invidiousAccount("disconnect");
       setAccount(status);
       setItems([]);
+      setCaptionStates({});
       setView("popular");
       setPage(1);
       setQuery("");
@@ -243,9 +282,20 @@ export function WatchingBrowser({
             )}
           </p>
         )}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={withCaptions}
+            onChange={event => {
+              setWithCaptions(event.target.checked);
+              setPage(1);
+            }}
+          />
+          {t("With captions only")}
+        </label>
         <form
           className="flex gap-2"
-          onSubmit={(event) => {
+          onSubmit={event => {
             event.preventDefault();
             if (/^https?:\/\//i.test(input.trim())) {
               select(input.trim());
@@ -261,7 +311,7 @@ export function WatchingBrowser({
             aria-label={t("Search videos or paste a video link")}
             placeholder={t("Search videos or paste a video link")}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value)}
           />
           <button
             className="watching-browser-button"
@@ -316,7 +366,7 @@ export function WatchingBrowser({
             <button
               className="underline"
               onClick={() => {
-                setReload((n) => n + 1);
+                setReload(n => n + 1);
                 if (!account)
                   void invidiousAccount("status")
                     .then(setAccount)
@@ -363,10 +413,10 @@ export function WatchingBrowser({
               </button>
             )}
             <div className="watching-video-grid">
-              {items.map((item) => {
+              {items.map(item => {
                 const isPlaylist = "playlistId" in item;
                 const video = isPlaylist ? item.videos?.[0] : item;
-                const thumbnail = video?.videoThumbnails?.find((thumb) =>
+                const thumbnail = video?.videoThumbnails?.find(thumb =>
                   /^https?:\/\//.test(thumb.url),
                 )?.url;
                 return (
@@ -406,6 +456,15 @@ export function WatchingBrowser({
                         </span>
                       )}
                     </div>
+                    {!isPlaylist &&
+                      (captionStates[item.videoId]?.ready ||
+                        item.hasCaptions) && (
+                        <span className="mt-2 inline-block rounded bg-[var(--muted)] px-2 py-1 text-xs">
+                          {captionStates[item.videoId]?.ready
+                            ? `${t("Captions ready")} · ${captionStates[item.videoId].language}`
+                            : `CC · ${t("Has captions")}`}
+                        </span>
+                      )}
                     <h2 className="mt-3 line-clamp-2 text-sm font-medium">
                       {item.title}
                     </h2>

@@ -8091,6 +8091,23 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/video-learning/captions/status": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Caption Status */
+    readonly post: operations["caption_status_api_video_learning_captions_status_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/video-learning/invidious/account/authorize": {
     readonly parameters: {
       readonly query?: never;
@@ -9117,6 +9134,11 @@ export interface components {
        * @default true
        */
       readonly link: boolean;
+    };
+    /** CaptionStatusRequest */
+    readonly CaptionStatusRequest: {
+      /** Video Ids */
+      readonly video_ids: readonly string[];
     };
     /** CatalogPayload */
     readonly CatalogPayload: {
@@ -13014,6 +13036,8 @@ export type SchemaBuiltinToolPayload =
   components["schemas"]["BuiltinToolPayload"];
 export type SchemaBulkCategoryRequest =
   components["schemas"]["BulkCategoryRequest"];
+export type SchemaCaptionStatusRequest =
+  components["schemas"]["CaptionStatusRequest"];
 export type SchemaCatalogPayload = components["schemas"]["CatalogPayload"];
 export type SchemaCategoryAddRequest =
   components["schemas"]["CategoryAddRequest"];
@@ -31583,6 +31607,45 @@ export interface operations {
         };
         content: {
           readonly "application/json": components["schemas"]["ToolsListResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly caption_status_api_video_learning_captions_status_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["CaptionStatusRequest"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
         };
       };
       /** @description Validation Error */

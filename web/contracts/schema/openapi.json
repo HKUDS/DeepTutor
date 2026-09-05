@@ -952,6 +952,23 @@
         "title": "BulkCategoryRequest",
         "type": "object"
       },
+      "CaptionStatusRequest": {
+        "properties": {
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 48,
+            "title": "Video Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "video_ids"
+        ],
+        "title": "CaptionStatusRequest",
+        "type": "object"
+      },
       "CatalogPayload": {
         "properties": {
           "catalog": {
@@ -45788,6 +45805,83 @@
         },
         "summary": "List Builtin Tools",
         "tags": ["tools"]
+      }
+    },
+    "/api/video-learning/captions/status": {
+      "post": {
+        "operationId": "caption_status_api_video_learning_captions_status_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptionStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Caption Status Api Video Learning Captions Status Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Caption Status",
+        "tags": [
+          "video-learning"
+        ]
       }
     },
     "/api/video-learning/invidious/account/authorize": {

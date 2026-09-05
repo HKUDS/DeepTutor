@@ -106,6 +106,7 @@ async def test_public_feed_normalizes_popular_items(
     assert feed["items"] == [
         {
             "video_id": "dQw4w9WgXcQ",
+            "has_captions": None,
             "title": "Example lecture",
             "author": "Tutor",
             "author_id": "UC123",

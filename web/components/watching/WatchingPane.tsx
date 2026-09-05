@@ -28,13 +28,22 @@ import {
   type VideoNote,
 } from "@/lib/video-learning-api";
 import { videoTimeFromHref } from "@/lib/watching-citations";
+import { WatchingCaptions } from "./WatchingCaptions";
 import { WatchingPlayer } from "./WatchingPlayer";
 
 export const WATCHING_ASK_EVENT = "dt:watching-ask";
 
 type WatchTab = "transcript" | "notes";
 
-export function WatchingPane({ onClose }: { onClose(): void }) {
+export function WatchingPane({
+  onClose,
+  learning = false,
+  transcriptExpanded = false,
+}: {
+  onClose(): void;
+  learning?: boolean;
+  transcriptExpanded?: boolean;
+}) {
   const { t } = useTranslation();
   const {
     material,
@@ -53,6 +62,15 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [input, setInput] = useState("");
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [tab, setTab] = useState<WatchTab>("transcript");
+  useEffect(() => {
+    const change = (event: Event) =>
+      setTab(
+        (event as CustomEvent).detail === "notes" ? "notes" : "transcript",
+      );
+    window.addEventListener("dt:watching-panel", change);
+    return () => window.removeEventListener("dt:watching-panel", change);
+  }, []);
+  const [transcriptQuery, setTranscriptQuery] = useState("");
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [notes, setNotes] = useState<VideoNote[]>([]);
@@ -133,7 +151,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const cue = useMemo(
     () =>
       material?.transcript.cues.find(
-        (row) => time >= row.start && time <= row.end,
+        row => time >= row.start && time <= row.end,
       ),
     [material, time],
   );
@@ -214,7 +232,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         time,
       );
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
-      setNotes((current) => sortNotes([...current, saved]));
+      setNotes(current => sortNotes([...current, saved]));
       setNoteDraft("");
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
@@ -238,11 +256,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         editingDraft.trim(),
       );
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
-      setNotes((current) =>
+      setNotes(current =>
         sortNotes(
-          current.map((note) =>
-            note.note_id === saved.note_id ? saved : note,
-          ),
+          current.map(note => (note.note_id === saved.note_id ? saved : note)),
         ),
       );
       setEditingNoteId(null);
@@ -265,8 +281,8 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     try {
       await deleteVideoNote(requestedMaterialId, pendingDeleteId);
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
-      setNotes((current) =>
-        current.filter((note) => note.note_id !== pendingDeleteId),
+      setNotes(current =>
+        current.filter(note => note.note_id !== pendingDeleteId),
       );
       if (editingNoteId === pendingDeleteId) {
         setEditingNoteId(null);
@@ -358,14 +374,14 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
           </div>
           <form
             className="flex w-full max-w-xl gap-2"
-            onSubmit={(event) => {
+            onSubmit={event => {
               event.preventDefault();
               void submit();
             }}
           >
             <input
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={event => setInput(event.target.value)}
               placeholder={t("YouTube URL")}
               className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-transparent px-3 py-2"
             />
@@ -413,11 +429,19 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
             key={`${material.material_id}:${material.playback.provider}`}
             playback={material.playback}
             transcriptLanguage={material.transcript.language || "en"}
+            customCaptions={learning && material.transcript.status === "ready"}
             onController={handleController}
             onTime={handleTime}
             onPersist={persist}
             onError={setPlayerError}
           />
+          {learning && material.transcript.status === "ready" && (
+            <WatchingCaptions
+              cues={material.transcript.cues}
+              time={time}
+              onSeek={seconds => controllerRef.current?.seek(seconds)}
+            />
+          )}
           {effectiveError && (
             <div
               role="alert"
@@ -454,13 +478,16 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
               {t("Open official")} <ExternalLink className="h-3 w-3" />
             </a>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div
+            className="watching-detail-panel min-h-0 flex-1 overflow-y-auto p-4"
+            data-notes={tab === "notes"}
+          >
             <div
               className="mb-3 grid w-full max-w-56 grid-cols-2 rounded-lg bg-[var(--muted)] p-1"
               role="tablist"
               aria-label={t("Video learning panels")}
             >
-              {(["transcript", "notes"] as const).map((item) => (
+              {(["transcript", "notes"] as const).map(item => (
                 <button
                   key={item}
                   type="button"
@@ -519,38 +546,56 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                   >
                     {t("Explain here")}
                   </button>
-                  <div className="space-y-1">
-                    {material.transcript.cues.map((row, index) => {
-                      const active = row === cue;
-                      return (
-                        <button
-                          key={`${row.start}-${index}`}
-                          type="button"
-                          onClick={() => controllerRef.current?.seek(row.start)}
-                          className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-blue-500/15 ring-1 ring-blue-500/30" : "hover:bg-[var(--muted)]"}`}
-                        >
-                          <span className="shrink-0 tabular-nums text-blue-600">
-                            {formatTime(row.start)}
-                          </span>
-                          <span>{row.text}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <details open={!learning || transcriptExpanded || undefined}>
+                    <summary>{t("Transcript")}</summary>
+                    <input
+                      aria-label={t("Search transcript")}
+                      placeholder={t("Search transcript")}
+                      value={transcriptQuery}
+                      onChange={event => setTranscriptQuery(event.target.value)}
+                      className="mb-2 w-full rounded border bg-transparent p-2"
+                    />
+                    <div className="space-y-1">
+                      {material.transcript.cues
+                        .filter(row =>
+                          row.text
+                            .toLocaleLowerCase()
+                            .includes(transcriptQuery.toLocaleLowerCase()),
+                        )
+                        .map((row, index) => {
+                          const active = row === cue;
+                          return (
+                            <button
+                              key={`${row.start}-${index}`}
+                              type="button"
+                              onClick={() =>
+                                controllerRef.current?.seek(row.start)
+                              }
+                              className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-blue-500/15 ring-1 ring-blue-500/30" : "hover:bg-[var(--muted)]"}`}
+                            >
+                              <span className="shrink-0 tabular-nums text-blue-600">
+                                {formatTime(row.start)}
+                              </span>
+                              <span>{row.text}</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </details>
                 </>
               )
             ) : (
               <div className="space-y-3">
                 <form
                   className="space-y-2"
-                  onSubmit={(event) => {
+                  onSubmit={event => {
                     event.preventDefault();
                     void addNote();
                   }}
                 >
                   <textarea
                     value={noteDraft}
-                    onChange={(event) => setNoteDraft(event.target.value)}
+                    onChange={event => setNoteDraft(event.target.value)}
                     placeholder={t("Note at {{time}}", {
                       time: formatTime(time),
                     })}
@@ -585,7 +630,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                     {t("Loading notes.")}
                   </p>
                 ) : notes.length ? (
-                  notes.map((note) => (
+                  notes.map(note => (
                     <article
                       key={`${note.notebook_id}:${note.note_id}`}
                       className="rounded-lg border border-[var(--border)] p-3"
@@ -604,7 +649,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                           {editingNoteId === note.note_id ? (
                             <textarea
                               value={editingDraft}
-                              onChange={(event) =>
+                              onChange={event =>
                                 setEditingDraft(event.target.value)
                               }
                               aria-label={t("Edit note at {{time}}", {
