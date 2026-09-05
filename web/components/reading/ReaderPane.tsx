@@ -179,6 +179,7 @@ export function ReaderPane({
   >(undefined);
   const [showHistory, setShowHistory] = useState(false);
   const [epubFullscreen, setEpubFullscreen] = useState(false);
+  const readerRef = useRef<HTMLDivElement | null>(null);
   const [unavailableMaterials, setUnavailableMaterials] = useState<Set<string>>(
     new Set(),
   );
@@ -218,6 +219,35 @@ export function ReaderPane({
   useEffect(() => {
     if (material?.render_mode !== "epub") setEpubFullscreen(false);
   }, [material?.material_id, material?.render_mode]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setEpubFullscreen(false);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleEpubFullscreen = useCallback(() => {
+    if (epubFullscreen) {
+      setEpubFullscreen(false);
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().catch(() => {
+          // The app-level fullscreen state has already been cleared.
+        });
+      }
+      return;
+    }
+
+    setEpubFullscreen(true);
+    const reader = readerRef.current;
+    if (reader?.requestFullscreen) {
+      void reader.requestFullscreen().catch(() => {
+        // iPad Safari and embedded browsers fall back to the fixed viewport.
+      });
+    }
+  }, [epubFullscreen]);
 
   // -- persisted auto-jump preference --------------------------------------
 
@@ -729,6 +759,7 @@ export function ReaderPane({
 
   return (
     <div
+      ref={readerRef}
       className={`flex min-w-0 flex-col bg-[var(--background)] ${
         epubFullscreen
           ? "fixed inset-0 z-[120] h-[100dvh] border-0"
@@ -837,7 +868,7 @@ export function ReaderPane({
                 icon={epubFullscreen ? Minimize2 : Maximize2}
                 label={epubFullscreen ? t("Exit fullscreen") : t("Fullscreen")}
                 active={epubFullscreen}
-                onClick={() => setEpubFullscreen((current) => !current)}
+                onClick={toggleEpubFullscreen}
               />
             )}
             <HeaderButton
