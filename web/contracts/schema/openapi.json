@@ -3,6 +3,16 @@
     "schemas": {
       "ActionPayload": {
         "properties": {
+          "llm_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadingModelSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "locale": {
             "default": "en",
             "maxLength": 32,
@@ -5634,6 +5644,37 @@
         },
         "required": ["edited_text", "operation_id"],
         "title": "ReactEditResponse",
+        "type": "object"
+      },
+      "ReadingModelSelection": {
+        "properties": {
+          "model_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Model Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          }
+        },
+        "required": ["profile_id", "model_id"],
+        "title": "ReadingModelSelection",
         "type": "object"
       },
       "ReadingReference": {

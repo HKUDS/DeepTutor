@@ -206,6 +206,7 @@ const BASE = "/api/reading";
 async function unwrap<T>(response: Response): Promise<T> {
   if (response.ok) return (await response.json()) as T;
   let detail = `Request failed: ${response.status}`;
+  let metadata: Record<string, unknown> = {};
   try {
     const body = (await response.json()) as { detail?: unknown };
     if (typeof body?.detail === "string" && body.detail) detail = body.detail;
@@ -215,11 +216,17 @@ async function unwrap<T>(response: Response): Promise<T> {
       "message" in body.detail
     ) {
       detail = String((body.detail as { message: unknown }).message);
+      const data = body.detail as Record<string, unknown>;
+      metadata = {
+        code: data.code,
+        recoverable: data.recoverable,
+        request_id: data.request_id,
+      };
     }
   } catch {
     // Non-JSON error body (a proxy page, say) — keep the status line.
   }
-  throw new Error(detail);
+  throw Object.assign(new Error(detail), metadata);
 }
 
 export async function getSupportedFormats(): Promise<SupportedFormats> {
@@ -283,7 +290,8 @@ export async function listReadingExtensions(): Promise<
   const payload: unknown = await unwrap(
     await apiFetch(apiUrl(`${BASE}/extensions`), { cache: "no-store" }),
   );
-  if (!Array.isArray(payload)) throw new Error("Invalid reading extension catalog.");
+  if (!Array.isArray(payload))
+    throw new Error("Invalid reading extension catalog.");
   return payload.filter(
     (row): row is ReadingExtensionManifest =>
       Boolean(row) &&
@@ -301,6 +309,7 @@ export async function runReadingExtension(
     locator: number;
     selection?: string;
     locale?: string;
+    llm_selection?: import("@/features/chat/model/protocol").LLMSelection;
   },
 ): Promise<ReadingExtensionResult> {
   return unwrap(

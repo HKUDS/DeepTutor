@@ -1,5 +1,7 @@
 "use client";
 
+import type { LLMSelection } from "@/features/chat/model/protocol";
+
 import { browserStorage } from "@/shared/storage";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -80,6 +82,7 @@ function locationEntry(
 }
 
 export interface ReaderPaneProps {
+  llmSelection?: LLMSelection | null;
   onClose: () => void;
   sessionId?: string | null;
   /** User-owned navigation from the workspace's source outline. */
@@ -128,6 +131,7 @@ export interface ReaderPaneProps {
  */
 export function ReaderPane({
   onClose,
+  llmSelection,
   sessionId,
   externalJump = null,
   onHeadingsChange,
@@ -158,6 +162,11 @@ export function ReaderPane({
     null,
   );
   const [selection, setSelection] = useState<SelectionPayload | null>(null);
+  const [selectionPopoverOpen, setSelectionPopoverOpen] = useState(false);
+  const receiveSelection = useCallback((value: SelectionPayload | null) => {
+    setSelection(value);
+    setSelectionPopoverOpen(Boolean(value));
+  }, []);
   const [jump, setJump] = useState<JumpRequest | null>(null);
   // `null` = follow the document: show the panel once there is something in it.
   // An empty panel is a whole column of nothing next to the page, which reads as
@@ -167,6 +176,10 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  useEffect(() => {
+    setSelection(null);
+    setSelectionPopoverOpen(false);
+  }, [material?.material_id, currentLocator]);
   const nonceRef = useRef(0);
   const headingLocatorRef = useRef(1);
   const jumpMaterialIdRef = useRef<string | null>(null);
@@ -870,6 +883,8 @@ export function ReaderPane({
           materialId={material.material_id}
           locator={currentLocator}
           selection={selection?.quote}
+          selectionLocator={selection?.locator}
+          llmSelection={llmSelection}
           onError={setError}
         />
       )}
@@ -903,7 +918,7 @@ export function ReaderPane({
               annotations={annotations}
               jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={receiveSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
@@ -920,7 +935,7 @@ export function ReaderPane({
               annotations={annotations}
               jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={receiveSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
@@ -936,7 +951,7 @@ export function ReaderPane({
               annotations={annotations}
               jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={receiveSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
@@ -964,7 +979,7 @@ export function ReaderPane({
         )}
       </div>
 
-      {selection && material && (
+      {selection && material && selectionPopoverOpen && (
         <AnnotationPopover
           anchor={selection.anchor}
           quote={selection.quote}
@@ -973,7 +988,8 @@ export function ReaderPane({
           onNote={(note, color) => commitSelection("note", color, note)}
           onCitation={(color) => commitSelection("citation", color)}
           onAsk={askAboutSelection}
-          onDismiss={() => setSelection(null)}
+          onActionFocus={() => setSelectionPopoverOpen(false)}
+          onDismiss={() => receiveSelection(null)}
         />
       )}
     </div>

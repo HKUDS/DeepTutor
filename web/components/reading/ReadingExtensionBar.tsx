@@ -1,5 +1,7 @@
 "use client";
 
+import type { LLMSelection } from "@/features/chat/model/protocol";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Square, Volume2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -33,11 +35,15 @@ export function ReadingExtensionBar({
   materialId,
   locator,
   selection,
+  selectionLocator,
+  llmSelection,
   onError,
 }: {
   materialId: string;
   locator: number;
   selection?: string;
+  selectionLocator?: number;
+  llmSelection?: LLMSelection | null;
   onError: (message: string) => void;
 }) {
   const { i18n, t } = useTranslation();
@@ -46,6 +52,7 @@ export function ReadingExtensionBar({
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
   const [hint, setHint] = useState("");
+  const [actionError, setActionError] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
   const requestVersion = useRef(0);
   const [busy, setBusy] = useState("");
@@ -79,6 +86,7 @@ export function ReadingExtensionBar({
   useEffect(() => {
     setResult(null);
     setHint("");
+    setActionError("");
     setBusy("");
     setMoreOpen(false);
     return () => {
@@ -105,6 +113,7 @@ export function ReadingExtensionBar({
       return;
     }
     setHint("");
+    setActionError("");
     setMoreOpen(false);
     const version = ++requestVersion.current;
     const key = `${extension.id}:${action.id}`;
@@ -115,7 +124,10 @@ export function ReadingExtensionBar({
         extension.id,
         action.id,
         {
-          locator,
+          locator: action.requires.includes("selection")
+            ? (selectionLocator ?? locator)
+            : locator,
+          ...(llmSelection ? { llm_selection: llmSelection } : {}),
           selection: selection || "",
           locale: i18n.language,
         },
@@ -137,8 +149,22 @@ export function ReadingExtensionBar({
         setSpeaking(true);
       }
     } catch (error) {
-      if (version === requestVersion.current)
-        onError(error instanceof Error ? error.message : String(error));
+      if (version === requestVersion.current) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String(error.code)
+            : "";
+        // Action-only copy is loaded on failure, outside the shared app shell.
+        const messages: Record<string, string> = i18n.language.startsWith("zh")
+          ? (await import("@/locales/zh/reading-errors.json")).default
+          : (await import("@/locales/en/reading-errors.json")).default;
+        if (version !== requestVersion.current) return;
+        const message =
+          messages[code] ||
+          (error instanceof Error ? error.message : String(error));
+        setActionError(message);
+        onError(message);
+      }
     } finally {
       if (version === requestVersion.current) setBusy("");
     }
@@ -199,7 +225,16 @@ export function ReadingExtensionBar({
   if (actions.length === 0) return null;
   return (
     <>
+      {actionError ? (
+        <div
+          role="alert"
+          className="border-b border-[var(--border)] px-3 py-2 text-xs"
+        >
+          {actionError}
+        </div>
+      ) : null}
       <div
+        data-reading-actions
         role="toolbar"
         aria-label={t("Reading actions")}
         className="relative flex shrink-0 gap-1.5 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2"

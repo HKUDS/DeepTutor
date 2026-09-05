@@ -607,6 +607,7 @@ export function ReadingWorkspacePage() {
           ) : (
             <div className="h-full [&>div]:border-r-0">
               <ReaderPane
+                llmSelection={state.llmSelection}
                 sessionId={state.sessionId ?? sessionIdParam}
                 externalJump={documentJump}
                 onHeadingsChange={setPageHeadings}

@@ -174,6 +174,12 @@ def _client(monkeypatch) -> TestClient:
 
 
 def test_quiz_crosses_the_api_boundary_with_stored_text(monkeypatch, tmp_path):
+    from deeptutor.services.llm.config import LLMConfig
+
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.runtime.resolve_llm_config_for_selection",
+        lambda _: LLMConfig(model="test-model", api_key="test"),
+    )
     monkeypatch.setenv("DEEPTUTOR_HOME", str(tmp_path))
     PathService.reset_instance()
     source = tmp_path / "source.txt"

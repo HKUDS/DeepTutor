@@ -1,6 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
+import { AnnotationPopover } from "@/components/reading/AnnotationPopover";
 import { ReadingExtensionBar } from "@/components/reading/ReadingExtensionBar";
 import {
   listReadingExtensions,
@@ -9,7 +10,8 @@ import {
   type ReadingExtensionResult,
 } from "@/lib/reading-api";
 
-vi.mock("@/lib/reading-api", () => ({
+vi.mock("@/lib/reading-api", async () => ({
+  ...(await vi.importActual("@/lib/reading-api")),
   listReadingExtensions: vi.fn(),
   runReadingExtension: vi.fn(),
 }));
@@ -176,4 +178,75 @@ test("speech can be stopped and is cancelled on unmount", async () => {
   view.unmount();
   expect(cancel.mock.calls.length).toBeGreaterThan(previous);
   vi.unstubAllGlobals();
+});
+
+test("annotation dismissal preserves the selected word for the action click", async () => {
+  function ReaderSelection() {
+    const [selection, setSelection] = React.useState<string | undefined>(
+      "algorithm",
+    );
+    const [open, setOpen] = React.useState(true);
+    return (
+      <>
+        <ReadingExtensionBar
+          materialId="material"
+          locator={2}
+          selection={selection}
+          selectionLocator={1}
+          llmSelection={{ profile_id: "granted", model_id: "chosen" }}
+          onError={vi.fn()}
+        />
+        {open && selection ? (
+          <AnnotationPopover
+            anchor={{ x: 100, y: 100 }}
+            quote={selection}
+            onHighlight={vi.fn()}
+            onUnderline={vi.fn()}
+            onNote={vi.fn()}
+            onCitation={vi.fn()}
+            onAsk={vi.fn()}
+            onDismiss={() => setSelection(undefined)}
+            onActionFocus={() => setOpen(false)}
+          />
+        ) : null}
+      </>
+    );
+  }
+  render(<ReaderSelection />);
+  const button = await screen.findByRole("button", { name: "Look up word" });
+  fireEvent.pointerDown(button);
+  fireEvent.mouseDown(button);
+  fireEvent.pointerUp(button);
+  fireEvent.mouseUp(button);
+  fireEvent.click(button);
+  expect(runReadingExtension).toHaveBeenCalledWith(
+    "material",
+    "vocabulary",
+    "explain",
+    expect.objectContaining({
+      locator: 1,
+      selection: "algorithm",
+      llm_selection: { profile_id: "granted", model_id: "chosen" },
+    }),
+  );
+  await screen.findByText("Word meaning");
+  expect(
+    screen.queryByRole("dialog", { name: "Annotate selection" }),
+  ).toBeNull();
+});
+
+test("recoverable action errors stay near the toolbar and permit retry", async () => {
+  vi.mocked(runReadingExtension).mockRejectedValueOnce(
+    Object.assign(new Error("timeout"), { code: "timeout", recoverable: true }),
+  );
+  render(<ReadingExtensionBar {...props} />);
+  const button = await screen.findByRole("button", { name: "Quiz me" });
+  fireEvent.click(button);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Timed out. Try again.",
+  );
+  expect(button).toBeEnabled();
+  fireEvent.click(button);
+  await screen.findByText("Word meaning");
+  expect(screen.queryByRole("alert")).toBeNull();
 });

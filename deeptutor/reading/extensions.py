@@ -38,6 +38,7 @@ class ReadingExtensionManifest(BaseModel):
     version: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=80)
     protocol_version: Literal["1"] = PROTOCOL_VERSION
+    requires_llm: bool = False
     actions: list[ReadingAction] = Field(min_length=1, max_length=12)
     result_types: list[Literal["card", "quiz", "feedback", "browser_speech"]] = Field(min_length=1)
 
@@ -194,6 +195,14 @@ class ReadingExtensionRegistry:
         """Open the circuit: Python cannot safely kill a stuck sync handler."""
         with self._execution_lock:
             self._timed_out.add(extension_id)
+
+    def clear_timeout(self, extension_id: str) -> None:
+        with self._execution_lock:
+            self._timed_out.discard(extension_id)
+
+    def is_timed_out(self, extension_id: str) -> bool:
+        with self._execution_lock:
+            return extension_id in self._timed_out
 
     def executor_for(self, extension_id: str) -> ThreadPoolExecutor:
         """Return the extension's private single worker, never the global pool."""
