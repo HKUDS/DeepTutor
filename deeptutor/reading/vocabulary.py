@@ -105,6 +105,7 @@ class VocabularyExtension:
     """Return bounded vocabulary explanations grounded in selected text."""
 
     manifest = ReadingExtensionManifest(
+        requires_llm=True,
         id="vocabulary",
         version="1.0.0",
         name="Vocabulary help",
@@ -120,17 +121,14 @@ class VocabularyExtension:
         if not context.selection.strip():
             raise ValueError("Vocabulary help requires selected text.")
 
-        from deeptutor.services.model_selection.tasks import task_llm_scope
-
-        with task_llm_scope():
-            raw = await complete(
-                prompt=_prompt(context),
-                system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,
-                temperature=0.2,
-                max_tokens=800,
-                max_retries=0,
-                response_format={"type": "json_object"},
-            )
+        raw = await complete(
+            prompt=_prompt(context),
+            system_prompt=_SYSTEM_ZH if _is_zh(context.locale) else _SYSTEM_EN,
+            temperature=0.2,
+            max_tokens=800,
+            max_retries=0,
+            response_format={"type": "json_object"},
+        )
         vocabulary = _vocabulary(raw, context.selection)
         return ReadingExtensionResult(
             type="card",

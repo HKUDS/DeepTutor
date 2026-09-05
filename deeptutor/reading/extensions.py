@@ -9,6 +9,7 @@ the reader or any other extension.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from importlib import import_module
 import json
 import logging
 import threading
@@ -37,6 +38,7 @@ class ReadingExtensionManifest(BaseModel):
     version: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=80)
     protocol_version: Literal["1"] = PROTOCOL_VERSION
+    requires_llm: bool = False
     actions: list[ReadingAction] = Field(min_length=1, max_length=12)
     result_types: list[Literal["card", "quiz", "feedback", "browser_speech"]] = Field(min_length=1)
 
@@ -106,13 +108,63 @@ def _coerce(name: str, loaded: Any) -> ReadingExtension | None:
     return candidate
 
 
+# Import implementations only when a registry is first requested. Source
+# checkouts must not depend on installed distribution metadata for built-ins.
+_BUILTINS = {
+    "read_aloud": "deeptutor.reading.read_aloud:ReadAloudExtension",
+    "vocabulary": "deeptutor.reading.vocabulary:VocabularyExtension",
+    "quiz": "deeptutor.reading.quiz:ReadingQuizExtension",
+    "guided_learning": "deeptutor.reading.study_guidance:StudyGuidanceExtension",
+    "translation": "deeptutor.reading.translation:TranslationExtension",
+}
+
+
+def _default_extensions() -> list[ReadingExtension]:
+    from deeptutor.reading import plugin_manager
+
+    rows = []
+    try:
+        overrides, blocked = plugin_manager.load_overrides()
+    except Exception:
+        logger.warning(
+            "Reading bundle could not be loaded; restore or reinstall it.", exc_info=True
+        )
+        overrides, blocked = {}, set(plugin_manager.EXTENSIONS)
+    from deeptutor.reading import component_plugins
+
+    providers, provider_errors = component_plugins.load()
+    overrides.update(providers)
+    blocked.update(provider_errors)
+    for name, target in _BUILTINS.items():
+        if name in blocked:
+            continue
+        try:
+            module, symbol = target.split(":")
+            candidate = _coerce(name, overrides.get(name) or getattr(import_module(module), symbol))
+            if candidate is not None:
+                rows.append(candidate)
+        except Exception:
+            logger.warning("Failed to load built-in reading extension %r.", name, exc_info=True)
+
+    for name, provider in providers.items():
+        if name not in _BUILTINS and name not in blocked:
+            rows.append(provider)
+
+    def optional_extension(name: str, loaded: Any) -> ReadingExtension | None:
+        # Reserve built-in IDs even when a built-in fails to load.
+        return (
+            None
+            if name in _BUILTINS or name in providers or name in blocked
+            else _coerce(name, loaded)
+        )
+
+    rows.extend(load_entry_point_group(ENTRY_POINT_GROUP, optional_extension, log=logger))
+    return rows
+
+
 class ReadingExtensionRegistry:
     def __init__(self, extensions: list[ReadingExtension] | None = None) -> None:
-        rows = (
-            extensions
-            if extensions is not None
-            else load_entry_point_group(ENTRY_POINT_GROUP, _coerce, log=logger)
-        )
+        rows = extensions if extensions is not None else _default_extensions()
         self._extensions: dict[str, ReadingExtension] = {}
         for row in rows:
             self._extensions.setdefault(row.manifest.id, row)
@@ -143,6 +195,14 @@ class ReadingExtensionRegistry:
         """Open the circuit: Python cannot safely kill a stuck sync handler."""
         with self._execution_lock:
             self._timed_out.add(extension_id)
+
+    def clear_timeout(self, extension_id: str) -> None:
+        with self._execution_lock:
+            self._timed_out.discard(extension_id)
+
+    def is_timed_out(self, extension_id: str) -> bool:
+        with self._execution_lock:
+            return extension_id in self._timed_out
 
     def executor_for(self, extension_id: str) -> ThreadPoolExecutor:
         """Return the extension's private single worker, never the global pool."""

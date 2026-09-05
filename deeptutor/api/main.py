@@ -502,6 +502,7 @@ from deeptutor.api.routers import (
     quiz_judge,
     reading,
     reading_extensions,
+    reading_plugins,
     sessions,
     settings,
     skills,
@@ -575,6 +576,12 @@ app.include_router(
     prefix="/api/reading",
     tags=["reading-extensions"],
     dependencies=_auth,
+)
+app.include_router(
+    reading_plugins.router,
+    prefix="/api/reading/plugins",
+    tags=["reading-plugins"],
+    dependencies=_admin,
 )
 app.include_router(memory.router, prefix="/api/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
