@@ -155,6 +155,16 @@ class TurnRequestPreparer:
             else preferences.get("workspace_mode"),
             capability=capability,
         )
+        if workspace_mode == "immersive_watching":
+            from deeptutor.video_learning import get_timed_media_store
+
+            media_id = _timed_media_id(payload.get("timed_media_id"))
+            if media_id:
+                # Resolve only in the authenticated owner's store before saving the binding.
+                get_timed_media_store().get(media_id)
+        else:
+            payload.pop("timed_media_id", None)
+            payload.pop("timed_media_viewport", None)
         try:
             from deeptutor.runtime.request_contracts import validate_capability_config
 
@@ -389,6 +399,8 @@ class TurnRequestPreparer:
         # non-empty legacy capability is persisted as part of migration.
         if workspace_mode_explicit or workspace_mode:
             preference_update["workspace_mode"] = workspace_mode
+        if workspace_mode == "immersive_watching":
+            preference_update["timed_media_id"] = _timed_media_id(payload.get("timed_media_id"))
         if course_id_explicit:
             preference_update["course_id"] = requested_course_id
 

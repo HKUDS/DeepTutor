@@ -191,6 +191,7 @@ export interface SessionViewerPanelHandle {
 }
 
 interface SessionViewerPanelProps {
+  embedded?: boolean;
   open: boolean;
   sessionId: string | null;
   onClose: () => void;
@@ -259,6 +260,7 @@ function SessionViewerPanelInner(
     onAutoOpen,
     activity,
     configSection,
+    embedded = false,
   }: SessionViewerPanelProps,
   ref: React.Ref<SessionViewerPanelHandle>,
 ) {
@@ -641,7 +643,10 @@ function SessionViewerPanelInner(
      and its drag handle stay desktop-only machinery. */
   return (
     <div
-      role="dialog"
+      role={embedded ? "region" : "dialog"}
+      data-embedded-viewer={embedded || undefined}
+      aria-label={t("Activity")}
+      inert={!visible}
       aria-hidden={!visible}
       className={`fixed right-0 top-0 z-[30] flex h-dvh flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out max-md:!w-full md:max-w-[92vw] ${
         // shadow-2xl only while visible — when closed, translate-x-full moves

@@ -5,7 +5,7 @@ import sys
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
@@ -435,6 +435,17 @@ if not any(getattr(h, "_deeptutor_access_handler", False) for h in _access_logge
 @app.middleware("http")
 async def selective_access_log(request, call_next):
     response = await call_next(request)
+    # An expired app login must not strand provider credentials in a callback URL.
+    # Authentication still runs normally; only its failure presentation changes.
+    if (
+        request.url.path == "/api/video-learning/invidious/account/callback"
+        and response.status_code in {401, 403}
+    ):
+        response = RedirectResponse(
+            "/watching?account=authorization_login_required",
+            status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
     if response.status_code != 200:
         _access_logger.info(
             '%s - "%s %s HTTP/%s" %d',

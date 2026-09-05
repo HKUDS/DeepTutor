@@ -28,13 +28,24 @@ import {
   type VideoNote,
 } from "@/lib/video-learning-api";
 import { videoTimeFromHref } from "@/lib/watching-citations";
+import { WatchingCaptions } from "./WatchingCaptions";
 import { WatchingPlayer } from "./WatchingPlayer";
 
 export const WATCHING_ASK_EVENT = "dt:watching-ask";
 
 type WatchTab = "transcript" | "notes";
 
-export function WatchingPane({ onClose }: { onClose(): void }) {
+export function WatchingPane({
+  onClose,
+  learning = false,
+  transcriptExpanded = false,
+  transcriptActive = false,
+}: {
+  onClose(): void;
+  learning?: boolean;
+  transcriptExpanded?: boolean;
+  transcriptActive?: boolean;
+}) {
   const { t } = useTranslation();
   const {
     material,
@@ -53,6 +64,23 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [input, setInput] = useState("");
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [tab, setTab] = useState<WatchTab>("transcript");
+  useEffect(() => {
+    const change = (event: Event) =>
+      setTab(
+        (event as CustomEvent).detail === "notes" ? "notes" : "transcript",
+      );
+    window.addEventListener("dt:watching-panel", change);
+    return () => window.removeEventListener("dt:watching-panel", change);
+  }, []);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  useEffect(() => {
+    const toggle = () => setOptionsOpen((value) => !value);
+    window.addEventListener("dt:watching-options", toggle);
+    return () => window.removeEventListener("dt:watching-options", toggle);
+  }, []);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const [followCaptions, setFollowCaptions] = useState(true);
+  const [transcriptQuery, setTranscriptQuery] = useState("");
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [notes, setNotes] = useState<VideoNote[]>([]);
@@ -62,7 +90,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(
+    null,
+  );
   const controllerRef = useRef<PlayerController | null>(null);
   const activeMaterialIdRef = useRef(materialId);
   const lastSavedRef = useRef(0);
@@ -138,6 +168,11 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     [material, time],
   );
 
+  useEffect(() => {
+    if (!transcriptActive || !followCaptions || transcriptQuery || !cue) return;
+    detailRef.current?.querySelector<HTMLElement>(`[data-cue-start="${cue.start}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [cue, transcriptActive, followCaptions, transcriptQuery]);
+
   const submit = async (providerOverride?: "youtube") => {
     const url = (providerOverride ? lastUrl || input : input).trim();
     if (!url) return;
@@ -157,6 +192,19 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       }),
     );
   };
+
+  useEffect(() => {
+    const explain = () => {
+      if (material && cue)
+        window.dispatchEvent(
+          new CustomEvent(WATCHING_ASK_EVENT, {
+            detail: { timeSeconds: time, text: cue.text },
+          }),
+        );
+    };
+    window.addEventListener("dt:watching-explain", explain);
+    return () => window.removeEventListener("dt:watching-explain", explain);
+  }, [material, cue, time]);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,7 +275,8 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   };
 
   const saveEditedNote = async () => {
-    if (!material || !editingNoteId || !editingDraft.trim() || noteBusy) return;
+    if (!material || !editingNoteId || !editingDraft.trim() || noteBusy)
+      return;
     const requestedMaterialId = material.material_id;
     setNoteBusy(true);
     setNotesError(null);
@@ -276,7 +325,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return;
       setNotesError(
-        caught instanceof Error ? caught.message : t("Note was not deleted."),
+        caught instanceof Error
+          ? caught.message
+          : t("Note was not deleted."),
       );
     } finally {
       setNoteBusy(false);
@@ -318,10 +369,12 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     [],
   );
   return (
-    <section className="flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
-      <header className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3">
+    <section className="watching-pane flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
+      <header className="watching-pane-header flex items-center gap-2 border-b border-[var(--border)] px-4 py-3">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-semibold">{t("Immersive Watching")}</h2>
+          <h2 className="truncate font-semibold">
+            {t("Immersive Watching")}
+          </h2>
           <p className="truncate text-xs text-[var(--muted-foreground)]">
             {material?.metadata.title || t("Native YouTube learning")}
           </p>
@@ -346,7 +399,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       </header>
 
       {!material && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="watching-empty-video flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
           <Play className="h-10 w-10 text-red-500" />
           <div>
             <h3 className="font-medium">
@@ -408,53 +461,108 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       )}
 
       {material && (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <WatchingPlayer
-            key={`${material.material_id}:${material.playback.provider}`}
-            playback={material.playback}
-            transcriptLanguage={material.transcript.language || "en"}
-            onController={handleController}
-            onTime={handleTime}
-            onPersist={persist}
-            onError={setPlayerError}
-          />
-          {effectiveError && (
+        <div className="watching-pane-body flex min-h-0 flex-1 flex-col">
+          <div className="watching-media-column">
+            <div className="watching-video-stage">
+              <WatchingPlayer
+                key={`${material.material_id}:${material.playback.provider}`}
+                playback={material.playback}
+                transcriptLanguage={material.transcript.language || "en"}
+                customCaptions={
+                  learning && material.transcript.status === "ready"
+                }
+                onController={handleController}
+                onTime={handleTime}
+                onPersist={persist}
+                onError={setPlayerError}
+              />
+              {learning && material.transcript.status === "ready" && (
+                <WatchingCaptions
+                  cues={material.transcript.cues}
+                  time={time}
+                  onSeek={(seconds) => controllerRef.current?.seek(seconds)}
+                />
+              )}
+            </div>
+            {effectiveError && (
+              <div
+                role="alert"
+                className="m-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              >
+                {effectiveError}
+                {material.playback.provider === "invidious" && (
+                  <button
+                    type="button"
+                    onClick={() => void openNativeYouTube()}
+                    className="ml-3 rounded border border-[var(--border)] px-2 py-1"
+                  >
+                    {t("Use native YouTube")}
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="watching-video-meta flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 text-sm">
+              <span className="watching-redundant-time tabular-nums">
+                {formatTime(time)} /{" "}
+                {formatTime(duration || material.metadata.duration_seconds)}
+              </span>
+              <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs">
+                {material.playback.provider === "youtube"
+                  ? "YouTube"
+                  : "Invidious"}
+              </span>
+              <a
+                href={`https://youtu.be/${material.source.video_id}?t=${Math.floor(time)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="ml-auto inline-flex items-center gap-1 text-xs text-blue-600"
+              >
+                {t("Open official")} <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+            <div className="watching-video-actions">
+              <button onClick={askHere} disabled={!cue}>
+                {t("Explain here")}
+              </button>
+              <button
+                onClick={() => setOptionsOpen((value) => !value)}
+                aria-expanded={optionsOpen}
+              >
+                {t("Video options")}
+              </button>
+            </div>
             <div
-              role="alert"
-              className="m-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              className="watching-provider-options"
+              hidden={!optionsOpen}
             >
-              {effectiveError}
+              <button
+                onClick={() => void refreshProvider()}
+                disabled={loading}
+              >
+                {t("Refresh provider")}
+              </button>
+              <button
+                onClick={() => void retryTranscript()}
+                disabled={loading}
+              >
+                {t("Retry captions")}
+              </button>
               {material.playback.provider === "invidious" && (
-                <button
-                  type="button"
-                  onClick={() => void openNativeYouTube()}
-                  className="ml-3 rounded border border-[var(--border)] px-2 py-1"
-                >
+                <button onClick={() => void openNativeYouTube()}>
                   {t("Use native YouTube")}
                 </button>
               )}
             </div>
-          )}
-          <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 text-sm">
-            <span className="tabular-nums">
-              {formatTime(time)} /{" "}
-              {formatTime(duration || material.metadata.duration_seconds)}
-            </span>
-            <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs">
-              {material.playback.provider === "youtube"
-                ? "YouTube"
-                : "Invidious"}
-            </span>
-            <a
-              href={`https://youtu.be/${material.source.video_id}?t=${Math.floor(time)}`}
-              target="_blank"
-              rel="noreferrer"
-              className="ml-auto inline-flex items-center gap-1 text-xs text-blue-600"
-            >
-              {t("Open official")} <ExternalLink className="h-3 w-3" />
-            </a>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div
+            ref={detailRef}
+            onWheel={() => setFollowCaptions(false)}
+            onTouchMove={() => setFollowCaptions(false)}
+            id={`watching-panel-${tab}`}
+            role="tabpanel"
+            className="watching-detail-panel min-h-0 flex-1 overflow-y-auto p-4"
+            data-notes={tab === "notes"}
+          >
             <div
               className="mb-3 grid w-full max-w-56 grid-cols-2 rounded-lg bg-[var(--muted)] p-1"
               role="tablist"
@@ -494,7 +602,8 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                     {t(
                       "Transcript learning is unavailable ({{reason}}). Playback still works, but Explain here is disabled.",
                       {
-                        reason: material.transcript.reason || t("no captions"),
+                        reason:
+                          material.transcript.reason || t("no captions"),
                       },
                     )}
                   </p>
@@ -515,28 +624,56 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                     type="button"
                     onClick={askHere}
                     disabled={!cue}
-                    className="mb-3 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-50"
+                    className="watching-transcript-ask mb-3 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-50"
                   >
                     {t("Explain here")}
                   </button>
-                  <div className="space-y-1">
-                    {material.transcript.cues.map((row, index) => {
-                      const active = row === cue;
-                      return (
-                        <button
-                          key={`${row.start}-${index}`}
-                          type="button"
-                          onClick={() => controllerRef.current?.seek(row.start)}
-                          className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-blue-500/15 ring-1 ring-blue-500/30" : "hover:bg-[var(--muted)]"}`}
-                        >
-                          <span className="shrink-0 tabular-nums text-blue-600">
-                            {formatTime(row.start)}
-                          </span>
-                          <span>{row.text}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <details
+                    className="watching-transcript-list"
+                    open={!learning || transcriptExpanded || undefined}
+                  >
+                    <summary>{t("Transcript")}</summary>
+                    <div className="watching-transcript-tools">
+                    <button type="button" className="watching-follow-captions" aria-pressed={followCaptions} onClick={() => setFollowCaptions(value => !value)}>{t("Follow playback")}</button>
+                    <input
+                      aria-label={t("Search transcript")}
+                      placeholder={t("Search transcript")}
+                      value={transcriptQuery}
+                      onChange={(event) =>
+                        setTranscriptQuery(event.target.value)
+                      }
+                      className="mb-2 w-full rounded border bg-transparent p-2"
+                    />
+                    </div>
+                    <div className="space-y-1">
+                      {material.transcript.cues
+                        .filter((row) =>
+                          row.text
+                            .toLocaleLowerCase()
+                            .includes(transcriptQuery.toLocaleLowerCase()),
+                        )
+                        .map((row, index) => {
+                          const active = row === cue;
+                          return (
+                            <button
+                              key={`${row.start}-${index}`}
+                              data-cue-start={row.start}
+                              type="button"
+                              onClick={() =>
+                                controllerRef.current?.seek(row.start)
+                              }
+                              data-active={active || undefined}
+                              className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-blue-500/15 ring-1 ring-blue-500/30" : "hover:bg-[var(--muted)]"}`}
+                            >
+                              <span className="shrink-0 tabular-nums text-blue-600">
+                                {formatTime(row.start)}
+                              </span>
+                              <span>{row.text}</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </details>
                 </>
               )
             ) : (
@@ -677,7 +814,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                     </article>
                   ))
                 ) : (
-                  !notesError && <p className="text-sm">{t("No notes yet.")}</p>
+                  !notesError && (
+                    <p className="text-sm">{t("No notes yet.")}</p>
+                  )
                 )}
               </div>
             )}
