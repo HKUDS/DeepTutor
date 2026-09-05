@@ -30,3 +30,37 @@ If metadata works but playback fails, inspect the authenticated stream response 
 Before deployment, record the running commit, save the tracked working-tree diff, and back up the video settings and service launch configuration. Build a separate release directory containing the existing deployment changes plus the reviewed Watching patch. Keep the existing data directory and owner identity; do not copy user data into Git.
 
 Run frontend type, contract, lint, translation and build checks, the Watching browser tests, and `pytest tests/video_learning`. Switch service paths only after the release is ready. Check `/watching`, `/reading`, `/chat` and real Invidious playback. On failure, restore the previous service paths and video settings, restart the old release, and verify readiness. Leave the previous working tree and its uncommitted changes intact.
+
+## Connected Invidious browsing
+
+Watching can search videos without an Invidious account. Connect an account from
+Watching to read its subscription feed and playlists, including private playlists.
+Video selection uses the existing timed-media resolver and opens a fresh Watching
+conversation; older conversations retain their original material.
+
+The account workflow reuses the owner-private account store and transport adapter.
+The additional scopes are `GET:feed`, `GET:playlists`, and `GET:playlists/*`.
+Older tokens require reconnection; subscription and playlist mutations are not requested.
+DeepTutor never asks for the Invidious password. Sign in and consent on the configured
+Invidious site. Revocation failures retain the saved token so disconnect can be retried.
+
+Set the administrator's `api_base_url` to an address reachable by the backend and
+`public_base_url` to the same instance's browser-reachable origin. Set
+`DEEPTUTOR_PUBLIC_URL` in the backend service environment to DeepTutor's canonical
+external origin. Restart the backend after changing that environment variable.
+Authorization uses the public instance origin; API requests use the internal origin.
+The callback returns to Watching with a non-sensitive outcome and no token in the
+redirect target. An expired application login must be renewed before reconnecting.
+
+For diagnosis, verify search first, then authorize, inspect subscription feed and
+playlist contents, select a video, and verify actual playback and seeking. An empty
+feed can mean that the account has no subscriptions. Expired/revoked tokens require
+reconnection; an unavailable instance offers retry. Provider failure never selects
+YouTube playback automatically.
+
+Before deploying, back up service definitions, video settings, and owner-private
+account files with their original restrictive permissions. Build in an isolated
+release directory and verify Reading and ordinary chat as well as Watching. Roll
+back service paths, environment, and settings to the previous release if acceptance
+fails; do not overwrite user data created after deployment. Preserve newly issued
+tokens until they can be explicitly revoked on the instance.

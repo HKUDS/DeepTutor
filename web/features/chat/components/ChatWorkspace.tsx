@@ -5,6 +5,7 @@ import {
   WatchingSurface,
 } from "@/components/watching/WatchingWorkspace";
 
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   type KeyboardEvent,
@@ -268,6 +269,7 @@ export default function ChatWorkspace({
   watching?: boolean;
 }) {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
+  const searchParams = useSearchParams();
   const { t } = useTranslation();
   const {
     capabilities,
@@ -2271,6 +2273,7 @@ export default function ChatWorkspace({
             (!sessionIdParam || state.sessionId === sessionIdParam) && (
               <WatchingSessionBridge
                 sessionKey={state.sessionId || "draft"}
+                sourceUrl={!sessionIdParam ? searchParams.get("video") : null}
                 materialId={state.timedMediaId}
                 onMaterial={configureSession}
               />

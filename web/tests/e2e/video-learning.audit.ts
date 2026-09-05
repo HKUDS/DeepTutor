@@ -163,6 +163,27 @@ for (const mobile of [false, true]) {
       const json = (payload: unknown, status = 200) =>
         route.fulfill({ status, json: payload });
 
+      if (path === "/api/video-learning/invidious/account/status")
+        return json({ connected: true });
+      if (path === "/api/video-learning/invidious/browse/playlists")
+        return json([
+          {
+            playlistId: "IVPLlesson",
+            title: "My learning list",
+            videoCount: 1,
+          },
+        ]);
+      if (path.startsWith("/api/video-learning/invidious/browse/"))
+        return json({
+          videos: [
+            {
+              videoId: "dQw4w9WgXcQ",
+              title: "Browse lesson",
+              author: "Teacher",
+              lengthSeconds: 120,
+            },
+          ],
+        });
       if (path === "/api/auth/status") {
         return json({
           enabled: false,
@@ -296,10 +317,29 @@ for (const mobile of [false, true]) {
 
     await page.goto("/chat?capability=immersive_watching");
     await expect(page).toHaveURL(/\/watching$/);
-    await page
-      .getByPlaceholder("https://youtu.be/…")
-      .fill("https://youtu.be/dQw4w9WgXcQ?t=7");
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Disconnect Invidious" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Browse lesson/ }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Playlists", exact: true }).click();
+    await page.getByRole("button", { name: /My learning list/ }).click();
+    await expect(
+      page.getByRole("button", { name: /Browse lesson/ }),
+    ).toBeVisible();
+    const search = page.getByPlaceholder("Search videos or paste a video link");
+    await search.fill("lesson");
+    await search.press("Enter");
+    await expect(
+      page.getByRole("button", { name: /Browse lesson/ }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: test
+        .info()
+        .outputPath(`watching-${mobile ? "mobile" : "desktop"}.png`),
+    });
+    await page.getByRole("button", { name: /Browse lesson/ }).click();
 
     await expect(page.getByText("Timestamped lesson")).toBeVisible();
     await expect(

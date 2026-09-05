@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams, useParams } from "next/navigation";
+import { WatchingBrowser } from "./WatchingBrowser";
 import { useTranslation } from "react-i18next";
 import { useWatching } from "@/context/WatchingContext";
 import type { SessionConfiguration } from "@/features/chat/ChatStateAdapter";
@@ -11,12 +13,14 @@ export function WatchingSessionBridge({
   sessionKey,
   materialId,
   onMaterial,
+  sourceUrl,
 }: {
+  sourceUrl?: string | null;
   sessionKey: string;
   materialId: string | null;
   onMaterial(configuration: SessionConfiguration): void;
 }) {
-  const { material, loading, error, restore, close } = useWatching();
+  const { material, loading, error, restore, close, openUrl } = useWatching();
   const [restoredKey, setRestoredKey] = useState<string | null>(null);
   const binding = useRef(materialId);
   useEffect(() => {
@@ -24,14 +28,16 @@ export function WatchingSessionBridge({
   }, [materialId]);
   useEffect(() => {
     let cancelled = false;
-    void restore(binding.current).then(() => {
+    void restore(sourceUrl ? null : binding.current).then(async () => {
+      if (cancelled) return;
+      if (sourceUrl) await openUrl(sourceUrl);
       if (!cancelled) setRestoredKey(sessionKey);
     });
     return () => {
       cancelled = true;
       close();
     };
-  }, [sessionKey, restore, close]);
+  }, [sessionKey, sourceUrl, restore, close, openUrl]);
   useEffect(() => {
     if (
       restoredKey !== sessionKey ||
@@ -41,13 +47,33 @@ export function WatchingSessionBridge({
     )
       return;
     onMaterial({ timedMediaId: material?.material_id ?? null });
-  }, [restoredKey, sessionKey, material, materialId, loading, error, onMaterial]);
+  }, [
+    restoredKey,
+    sessionKey,
+    material,
+    materialId,
+    loading,
+    error,
+    onMaterial,
+  ]);
   return null;
 }
 
 /** Responsive presentation only; ChatWorkspace continues to own the single chat runtime. */
 export function WatchingSurface() {
   const { t } = useTranslation();
+  const { material } = useWatching();
+  const params = useSearchParams();
+  const route = useParams();
+  const [browsing, setBrowsing] = useState(
+    !params.get("video") && !route.sessionId,
+  );
+  const [accountResult] = useState(params.get("account"));
+  useEffect(() => {
+    if (params.has("account"))
+      window.history.replaceState(null, "", "/watching");
+  }, [params]);
+  const showBrowser = browsing && !params.get("video");
   const [view, setView] = useState<"video" | "chat">("video");
   useEffect(() => {
     const showChat = () => setView("chat");
@@ -55,7 +81,35 @@ export function WatchingSurface() {
     return () => window.removeEventListener(WATCHING_ASK_EVENT, showChat);
   }, []);
   return (
-    <div className="watching-surface" data-mobile-view={view}>
+    <div
+      className="watching-surface"
+      data-mobile-view={view}
+      data-browsing={showBrowser || undefined}
+    >
+      {accountResult === "authorization_failed" && showBrowser && (
+        <div role="alert" className="watching-account-error">
+          {t(
+            "Invidious authorization was cancelled or expired. Please connect again.",
+          )}
+        </div>
+      )}
+      {showBrowser && (
+        <WatchingBrowser
+          canDismiss={!!material}
+          onDismiss={() => setBrowsing(false)}
+        />
+      )}
+      {!showBrowser && (
+        <button
+          className="watching-browse-toggle watching-browser-button"
+          onClick={() => {
+            window.history.replaceState(null, "", window.location.pathname);
+            setBrowsing(true);
+          }}
+        >
+          {t("Browse videos")}
+        </button>
+      )}
       <div
         className="watching-mobile-tabs"
         role="group"

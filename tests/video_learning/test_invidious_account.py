@@ -531,8 +531,10 @@ def test_router_authorize_callback_status_and_disconnect(
     callback = client.get(
         "/api/video-learning/invidious/account/callback",
         params={"state": state, "token": _token()},
+        follow_redirects=False,
     )
-    assert callback.status_code == 200
+    assert callback.status_code == 303
+    assert callback.headers["location"] == "/watching?account=connected"
     assert callback.headers["cache-control"] == "no-store"
     assert "v1:test-session" not in callback.text
 
@@ -566,14 +568,16 @@ def test_router_authorize_callback_status_and_disconnect(
     assert disconnected == {"owner_id": "u_ada"}
 
 
-def test_unknown_callback_returns_400_without_calling_invidious(
+def test_unknown_callback_redirects_without_calling_invidious(
     client: TestClient,
 ) -> None:
     response = client.get(
         "/api/video-learning/invidious/account/callback",
         params={"state": "forged", "token": _token()},
+        follow_redirects=False,
     )
-    assert response.status_code == 400
+    assert response.status_code == 303
+    assert response.headers["location"] == "/watching?account=authorization_failed"
     assert "forged" not in response.text
     assert "v1:test-session" not in response.text
 
@@ -597,3 +601,106 @@ def test_router_start_returns_400_when_invidious_is_not_configured(
     assert response.json()["detail"] == (
         "Configure the Invidious API base URL before connecting an account."
     )
+
+
+def test_authorization_uses_public_origin_and_preserves_private_transport(system_root, monkeypatch):
+    monkeypatch.setattr(
+        account,
+        "load_video_learning_settings",
+        lambda: {
+            "invidious": {
+                "api_base_url": "http://127.0.0.1:3000",
+                "public_base_url": "http://100.101.207.44:3000",
+            }
+        },
+    )
+    url = account.begin_invidious_account_authorization(
+        owner_id="u_ada", redirect_uri="http://100.101.207.44:3782/callback"
+    )
+    assert url.startswith("http://100.101.207.44:3000/authorize_token?")
+    flow = account_storage.consume_pending_flow("u_ada", _state_from_authorize_url(url))
+    assert flow.api_base_url == "http://127.0.0.1:3000"
+
+
+@pytest.mark.asyncio
+async def test_catalog_is_owner_scoped_and_search_is_anonymous(
+    system_root, configured_instance, monkeypatch
+):
+    calls = []
+
+    async def catalog(**kwargs):
+        calls.append(kwargs)
+        return [
+            {
+                "videoId": "aircAruvnKk",
+                "title": "Neural networks",
+                "videoThumbnails": [{"url": "https://untrusted.test/tracking"}],
+            }
+        ]
+
+    monkeypatch.setattr(account_client, "request_catalog", catalog)
+    account_storage.write_account(
+        "u_ada",
+        {
+            "version": 1,
+            "api_base_url": configured_instance,
+            "scopes": list(account.ACCOUNT_SCOPES),
+            "connected_at": "now",
+            "token": json.loads(_token()),
+        },
+    )
+    await account.browse_invidious(owner_id="u_ada", kind="feed")
+    assert calls[-1]["token"]["session"] == "v1:test-session"
+    with pytest.raises(TimedMediaError, match="Reconnect"):
+        await account.browse_invidious(owner_id="u_other", kind="feed")
+    result = await account.browse_invidious(owner_id="u_ada", kind="search", query="neural")
+    assert calls[-1]["token"] is None
+    assert result["videos"][0]["videoThumbnails"][0]["url"].startswith("https://i.ytimg.com/")
+    assert "token" not in result
+    with pytest.raises(TimedMediaError, match="Invalid playlist"):
+        await account.browse_invidious(
+            owner_id="u_ada", kind="playlist", playlist_id="../preferences"
+        )
+
+
+def test_old_account_requires_read_permission_upgrade(system_root, configured_instance):
+    account_storage.write_account(
+        "u_ada",
+        {
+            "version": 1,
+            "api_base_url": configured_instance,
+            "scopes": ["GET:preferences", "POST:tokens/unregister"],
+            "connected_at": "now",
+            "token": json.loads(_token()),
+        },
+    )
+    assert account.invidious_account_status("u_ada") == {
+        "connected": False,
+        "needs_reauthorization": True,
+    }
+
+
+def test_catalog_rejects_invalid_pagination(client):
+    assert client.get("/api/video-learning/invidious/browse/search?page=0").status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_catalog_transport_maps_offline_and_revoked_tokens(monkeypatch):
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, *args, **kwargs):
+            return httpx.Response(401)
+
+    monkeypatch.setattr(account_client.httpx, "AsyncClient", lambda **kwargs: FakeClient())
+    with pytest.raises(TimedMediaError, match="Reconnect"):
+        await account_client.request_catalog(
+            api_base_url="https://invidious.test",
+            path="/api/v1/auth/feed",
+            params={},
+            token=json.loads(_token()),
+        )
