@@ -1235,3 +1235,8 @@ a[href^="#dt-locator-"]:hover {
   .watching-surface .dt-watching-shell { top: 92px; }
   [data-watching-workspace="true"] > .chat-preview-shell { padding-top: 92px; }
 }
+.watching-surface[data-browsing] .dt-watching-shell,
+.watching-surface[data-browsing] .watching-mobile-tabs {
+  visibility: hidden;
+  pointer-events: none;
+}
