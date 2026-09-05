@@ -313,6 +313,34 @@ def test_upsert_notebook_entries_persists_all(store: SQLiteSessionStore) -> None
     assert all(e["session_title"] == "Test" for e in result["items"])
 
 
+def test_upsert_notebook_entry_persists_answer_images(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session(title="Image answer"))
+    image = {
+        "id": "answer-image-1",
+        "url": "/files/attachments/answer-image-1.png",
+        "filename": "answer.png",
+        "mime_type": "image/png",
+    }
+
+    upserted = asyncio.run(
+        store.upsert_notebook_entries(
+            session["id"],
+            [
+                {
+                    "question_id": "q-image",
+                    "question": "Which diagram is correct?",
+                    "user_answer_images": [image],
+                    "is_correct": False,
+                }
+            ],
+        )
+    )
+
+    assert upserted == 1
+    result = asyncio.run(store.list_notebook_entries(session_id=session["id"]))
+    assert result["items"][0]["user_answer_images"] == [image]
+
+
 def test_list_notebook_entries_intersects_session_filters(
     store: SQLiteSessionStore,
 ) -> None:
