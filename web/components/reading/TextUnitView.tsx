@@ -45,6 +45,7 @@ import {
 } from "@/lib/reading-outline";
 import { cleanQuote } from "@/lib/reading-selection";
 import { MarkdownLine } from "@/lib/reading-inline-markdown";
+import { domRangeForQuote } from "@/lib/reading-quote-locator";
 import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 
@@ -260,6 +261,60 @@ export function TextUnitView({
   }, [jump, unitCount]);
 
   useEffect(() => {
+    if (
+      !jump?.quote ||
+      jump.locator !== locator ||
+      loading ||
+      error ||
+      !articleRef.current
+    )
+      return;
+    const registry = (
+      CSS as unknown as {
+        highlights?: {
+          set: (name: string, value: unknown) => void;
+          delete: (name: string) => void;
+        };
+      }
+    ).highlights;
+    const HighlightConstructor = (
+      window as unknown as { Highlight?: new (...ranges: Range[]) => unknown }
+    ).Highlight;
+    if (!registry || !HighlightConstructor) return;
+    if (!document.getElementById("dt-reader-search-highlight-style")) {
+      const style = document.createElement("style");
+      style.id = "dt-reader-search-highlight-style";
+      style.textContent =
+        "::highlight(dt-reader-search-result){color:inherit;background:rgb(96 165 250 / .38);text-decoration:underline 2px rgb(59 130 246 / .7)}";
+      document.head.appendChild(style);
+    }
+    let timer = 0;
+    const frame = window.requestAnimationFrame(() => {
+      const article = articleRef.current;
+      const container = containerRef.current;
+      if (!article || !container) return;
+      const range = domRangeForQuote(article, jump.quote ?? "");
+      if (!range) return;
+      registry.set("dt-reader-search-result", new HighlightConstructor(range));
+      const rangeRect = range.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      container.scrollTop = Math.max(
+        0,
+        container.scrollTop + rangeRect.top - containerRect.top - 48,
+      );
+      timer = window.setTimeout(
+        () => registry.delete("dt-reader-search-result"),
+        jump.highlightMs ?? 5000,
+      );
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
+      registry.delete("dt-reader-search-result");
+    };
+  }, [error, jump, loading, locator, text]);
+
+  useEffect(() => {
     const article = articleRef.current;
     if (!article || loading || error) return;
     let cancelled = false;
@@ -464,11 +519,11 @@ export function TextUnitView({
           ? { background: "#f4ecd8", color: "#473c2c" }
           : readerTheme === "night"
             ? { background: "#16181d", color: "#e8e5df" }
-            // A desk, not a page — the page is the article below, the same
-            // relationship a scrolled PDF already has between its grey field
-            // and the white sheets on it. Sepia and Night are whole-surface
-            // paper by design, so they keep painting edge to edge.
-            : { background: "var(--secondary)" }
+            : // A desk, not a page — the page is the article below, the same
+              // relationship a scrolled PDF already has between its grey field
+              // and the white sheets on it. Sepia and Night are whole-surface
+              // paper by design, so they keep painting edge to edge.
+              { background: "var(--secondary)" }
       }
     >
       {/* Display controls on the left, position on the right.
@@ -587,9 +642,7 @@ export function TextUnitView({
               paperSheet
                 ? "rounded-2xl border border-[var(--border)] bg-[var(--card)] px-6 py-8 shadow-[0_1px_3px_rgba(0,0,0,0.06),0_10px_30px_-16px_rgba(0,0,0,0.14)] sm:px-10 "
                 : ""
-            }${isWebMarkdown ? "" : "whitespace-pre-wrap "}${
-              serif ? "font-serif" : "font-sans"
-            }`}
+            }${isWebMarkdown ? "" : "whitespace-pre-wrap "}${serif ? "font-serif" : "font-sans"}`}
             style={{
               // The sheet's padding is added on top of the line width, so
               // "84ch" stays 84 characters of text either way.
@@ -674,12 +727,7 @@ function TextWithHeadings({
         const key = `line-${lineIndex}`;
         if (line.heading) {
           const Heading = `h${line.heading.level}` as
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6";
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
           const titleOffset = line.text.indexOf(line.heading.title);
           const markerPrefix =
             titleOffset >= 0 ? line.text.slice(0, titleOffset) : "";

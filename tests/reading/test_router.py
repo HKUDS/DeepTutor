@@ -100,6 +100,33 @@ def test_upload_returns_a_readable_material_with_its_outline(client: TestClient)
     assert "attention.pdf" in body["outline_text"]
 
 
+def test_exact_search_returns_a_locator_and_source_quote(client: TestClient) -> None:
+    material = _upload(client)
+
+    response = client.post(
+        f"/api/reading/materials/{material['material_id']}/search",
+        json={"query": "scaled dot-product attention", "mode": "exact"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["resolved_mode"] == "exact"
+    assert body["hits"][0]["locator"] == 2
+    assert body["hits"][0]["quote"] == "scaled dot-product attention"
+
+
+def test_exact_search_does_not_silently_return_term_rankings(client: TestClient) -> None:
+    material = _upload(client)
+
+    response = client.post(
+        f"/api/reading/materials/{material['material_id']}/search",
+        json={"query": "transformers unrelated", "mode": "exact"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["hits"] == []
+
+
 def test_upload_rejects_an_empty_file(client: TestClient) -> None:
     response = client.post(
         "/api/reading/materials",
@@ -151,6 +178,71 @@ def test_list_materials_reports_annotation_counts(client: TestClient) -> None:
 def test_get_material_404s_for_an_unknown_id(client: TestClient) -> None:
     response = client.get("/api/reading/materials/0123456789abcdef")
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "method,suffix,payload",
+    [
+        ("GET", "/description-search/capabilities", None),
+        ("GET", "/description-search/index", None),
+        ("POST", "/description-search/index/rebuild", {"force": False}),
+        ("POST", "/search", {"query": "wallet", "mode": "description_fast"}),
+    ],
+)
+def test_search_routes_reject_unassigned_learning_materials(
+    client: TestClient, monkeypatch, method, suffix, payload
+) -> None:
+    def deny(material_id):
+        assert material_id == "rm_123456abcdef"
+        raise PermissionError("Reading material is not assigned")
+
+    monkeypatch.setattr(reading, "assert_learning_material", deny)
+    response = client.request(
+        method, f"/api/reading/materials/rm_123456abcdef{suffix}", json=payload
+    )
+    assert response.status_code == 403, response.text
+    assert "not assigned" in response.json()["detail"]
+
+
+def test_exact_search_returns_a_source_quote_at_the_matching_locator(client: TestClient) -> None:
+    material = _upload(client)
+    response = client.post(
+        f"/api/reading/materials/{material['material_id']}/search",
+        json={"query": "dot-product attention", "mode": "exact"},
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["resolved_mode"] == "exact"
+    hit = result["hits"][0]
+    assert hit["locator"] == 2
+    text = client.get(f"/api/reading/materials/{material['material_id']}/units/2").json()["text"]
+    assert text[hit["start_offset"] : hit["end_offset"]] == hit["quote"]
+    assert hit["quote"] == "dot-product attention"
+
+
+def test_duplicate_import_indexes_the_resolved_catalog_material(
+    client: TestClient, monkeypatch
+) -> None:
+    data = _pdf_bytes()
+    original = _upload(client, data=data)
+    queued = []
+
+    def queue(_background_tasks, _store, material_id, **_kwargs):
+        queued.append(material_id)
+
+    monkeypatch.setattr(reading, "_queue_description_index", queue)
+    response = client.post(
+        "/api/reading/materials",
+        params={"reuse": "false", "build_description_search": "true"},
+        files={"file": ("attention.pdf", io.BytesIO(data), "application/pdf")},
+    )
+    assert response.status_code == 200, response.text
+    copy_id = response.json()["material_id"]
+    assert copy_id != original["material_id"]
+    assert queued == [copy_id]
+    assert (
+        client.get(f"/api/reading/materials/{copy_id}/description-search/index").status_code == 200
+    )
 
 
 def test_get_material_400s_for_a_traversal_attempt(client: TestClient) -> None:

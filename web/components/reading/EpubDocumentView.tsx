@@ -491,11 +491,13 @@ export function EpubDocumentView({
           {},
           undefined,
           "dt-epub-jump",
-          { fill: "rgba(99, 102, 241, 0.35)" },
+          {
+            fill: "rgba(99, 102, 241, 0.35)",
+          },
         );
         window.setTimeout(() => {
           renditionRef.current?.annotations.remove(matches[0].cfi, "highlight");
-        }, 2200);
+        }, jump.highlightMs ?? 2200);
       } catch {
         // Reaching the requested locator is still useful if quote search fails.
       }
