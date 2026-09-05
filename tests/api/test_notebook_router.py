@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import importlib
 from pathlib import Path
 
@@ -14,6 +15,7 @@ notebook_router = importlib.import_module("deeptutor.api.routers.question_notebo
 sessions_router = importlib.import_module("deeptutor.api.routers.sessions").router
 
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+from deeptutor.services.storage.attachment_store import LocalDiskAttachmentStore
 
 
 def _build_app(store: SQLiteSessionStore) -> FastAPI:
@@ -105,6 +107,52 @@ def test_list_entries_empty(store: SQLiteSessionStore) -> None:
         resp = client.get("/api/question-notebook/entries")
         assert resp.status_code == 200
         assert resp.json() == {"items": [], "total": 0}
+
+
+def test_upsert_entry_persists_base64_answer_image(
+    store: SQLiteSessionStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = asyncio.run(store.create_session(title="Image answer"))
+    attachment_store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    monkeypatch.setattr(
+        "deeptutor.api.routers.question_notebook.get_attachment_store",
+        lambda: attachment_store,
+    )
+
+    with TestClient(_build_app(store)) as client:
+        response = client.post(
+            "/api/question-notebook/entries/upsert",
+            json={
+                "session_id": session["id"],
+                "question_id": "image-question",
+                "question": "Identify the diagram.",
+                "user_answer_images": [
+                    {
+                        "id": "answer-image-1",
+                        "base64": base64.b64encode(b"image-bytes").decode("ascii"),
+                        "filename": "answer.png",
+                        "mime_type": "image/png",
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["user_answer_images"] == [
+        {
+            "id": "answer-image-1",
+            "url": (f"/files/attachments/{session['id']}/answer-image-1/answer.png"),
+            "filename": "answer.png",
+            "mime_type": "image/png",
+        }
+    ]
+    stored_path = attachment_store.resolve_path(
+        session_id=session["id"],
+        attachment_id="answer-image-1",
+        filename="answer.png",
+    )
+    assert stored_path is not None
+    assert stored_path.read_bytes() == b"image-bytes"
 
 
 def test_list_entries_filters_by_course_and_total(
