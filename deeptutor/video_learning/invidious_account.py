@@ -14,7 +14,7 @@ import os
 import secrets
 import time
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import unquote_plus, urlencode, urlparse
 
 import deeptutor.video_learning.invidious_account_client as _client
 import deeptutor.video_learning.invidious_account_storage as _storage
@@ -110,7 +110,16 @@ def _parse_token(raw_token: str) -> dict[str, Any]:
     if not raw_token or len(raw_token.encode("utf-8")) > _MAX_TOKEN_BYTES:
         raise TimedMediaError("Invidious returned an invalid account token.")
     try:
-        token = json.loads(raw_token)
+        # Invidious form-encodes the JSON, then encodes it again when adding
+        # it to the callback query. FastAPI has already removed the outer layer.
+        # Preserve literal JSON unchanged (including + and % in signed values),
+        # and decode at most one additional layer for the native callback format.
+        decoded = (
+            raw_token
+            if raw_token.lstrip().startswith("{")
+            else unquote_plus(raw_token, errors="strict")
+        )
+        token = json.loads(decoded)
     except (json.JSONDecodeError, UnicodeError) as exc:
         raise TimedMediaError("Invidious returned an invalid account token.") from exc
     if not isinstance(token, dict):
@@ -328,3 +337,24 @@ def _catalog_payload(data: Any, *, kind: str, public_base: str) -> Any:
         )
     rows = data if isinstance(data, list) else data.get("videos", [])
     return {"videos": [v for raw in rows if (v := video(raw))]}
+
+
+def authorization_failure_code(error: Exception, *, has_token: bool) -> str:
+    """Stable non-sensitive callback outcomes; never put provider errors in URLs."""
+    if not has_token:
+        return "authorization_cancelled"
+    message = str(error) if isinstance(error, TimedMediaError) else ""
+    if message == "Invidious account callback is unknown, expired, or already used.":
+        return "authorization_expired"
+    if message == "Invidious account token is missing a required scope.":
+        return "authorization_scopes"
+    if message.startswith("Invidious returned an"):
+        return "authorization_token_invalid"
+    if message in {
+        "Invidious account verification failed with HTTP 401.",
+        "Invidious account verification failed with HTTP 403.",
+    }:
+        return "authorization_token_rejected"
+    if message.startswith("Invidious account verification"):
+        return "authorization_unavailable"
+    return "authorization_failed"

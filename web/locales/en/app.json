@@ -4725,5 +4725,15 @@
   "Invidious authorization was cancelled or expired. Please connect again.": "Invidious authorization was cancelled or expired. Please connect again.",
   "Reconnect your Invidious account to browse your videos.": "Reconnect your Invidious account to browse your videos.",
   "Invidious could not load videos. Please retry or check the instance.": "Invidious could not load videos. Please retry or check the instance.",
-  "Invidious is not configured.": "Invidious is not configured."
+  "Invidious is not configured.": "Invidious is not configured.",
+  "Invidious account connected. Your subscriptions and playlists are ready.": "Invidious account connected. Your subscriptions and playlists are ready.",
+  "This authorization link expired or was already used. Click Connect Invidious to start again.": "This authorization link expired or was already used. Click Connect Invidious to start again.",
+  "Authorization was cancelled. You can connect again whenever you are ready.": "Authorization was cancelled. You can connect again whenever you are ready.",
+  "Some read permissions were missing. Reconnect and approve all listed permissions.": "Some read permissions were missing. Reconnect and approve all listed permissions.",
+  "The instance returned an unsupported token. Start a new connection and try again.": "The instance returned an unsupported token. Start a new connection and try again.",
+  "Invidious rejected the token. Reconnect to issue a new one.": "Invidious rejected the token. Reconnect to issue a new one.",
+  "The Invidious instance could not verify your account. Check the instance and reconnect.": "The Invidious instance could not verify your account. Check the instance and reconnect.",
+  "Your DeepTutor login expired during authorization. Sign in, then start a new Invidious connection.": "Your DeepTutor login expired during authorization. Sign in, then start a new Invidious connection.",
+  "The account could not be connected. Please start a new connection.": "The account could not be connected. Please start a new connection.",
+  "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate."
 }

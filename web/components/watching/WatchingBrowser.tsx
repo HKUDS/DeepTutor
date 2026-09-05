@@ -215,6 +215,13 @@ export function WatchingBrowser({
         </div>
       </header>
       <div className="px-5 pt-5">
+        {account && !account.connected && (
+          <p className="mb-4 text-sm text-[var(--muted-foreground)]">
+            {t(
+              "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.",
+            )}
+          </p>
+        )}
         <form
           className="flex gap-2"
           onSubmit={(event) => {

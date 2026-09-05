@@ -1641,7 +1641,7 @@
   "Processing…": "处理中…",
   "Ready · {{count}} doc": "就绪 · {{count}} 个文档",
   "Ready · {{count}} docs": "就绪 · {{count}} 个文档",
-  "Dismiss": "关闭",
+  "Dismiss": "关闭提示",
   "Files": "文件",
   "No files yet. Add one using the right panel.": "暂无文件。请使用右侧面板添加。",
   "Add documents": "添加文档",
@@ -4725,5 +4725,15 @@
   "Invidious authorization was cancelled or expired. Please connect again.": "Invidious 授权已取消或过期，请重新关联。",
   "Reconnect your Invidious account to browse your videos.": "请重新关联 Invidious 账号，以浏览视频。",
   "Invidious could not load videos. Please retry or check the instance.": "Invidious 无法加载视频，请重试或检查实例。",
-  "Invidious is not configured.": "尚未配置 Invidious。"
+  "Invidious is not configured.": "尚未配置 Invidious。",
+  "Invidious account connected. Your subscriptions and playlists are ready.": "Invidious 账号已关联，可以查看订阅动态和播放列表。",
+  "This authorization link expired or was already used. Click Connect Invidious to start again.": "此授权链接已过期或已使用，请点击“关联 Invidious 账号”重新开始。",
+  "Authorization was cancelled. You can connect again whenever you are ready.": "已取消授权，你可以随时重新关联。",
+  "Some read permissions were missing. Reconnect and approve all listed permissions.": "缺少部分读取权限，请重新关联并确认页面列出的所有权限。",
+  "The instance returned an unsupported token. Start a new connection and try again.": "实例返回的令牌格式不受支持，请重新发起关联后重试。",
+  "Invidious rejected the token. Reconnect to issue a new one.": "Invidious 拒绝了此令牌，请重新关联以获取新令牌。",
+  "The Invidious instance could not verify your account. Check the instance and reconnect.": "Invidious 实例暂时无法验证账号，请检查实例后重新关联。",
+  "Your DeepTutor login expired during authorization. Sign in, then start a new Invidious connection.": "授权期间 DeepTutor 登录已失效，请先登录 DeepTutor，再重新关联 Invidious。",
+  "The account could not be connected. Please start a new connection.": "账号关联失败，请重新发起关联。",
+  "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "请使用 Invidious 账号登录，确认只读授权后会自动返回此页。DeepTutor 与 Invidious 使用各自的登录账号。"
 }

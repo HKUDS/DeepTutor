@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useParams } from "next/navigation";
+import { invidiousAccountResultMessage } from "@/lib/invidious-account-result";
 import { WatchingBrowser } from "./WatchingBrowser";
 import { useTranslation } from "react-i18next";
 import { useWatching } from "@/context/WatchingContext";
@@ -68,7 +69,8 @@ export function WatchingSurface() {
   const [browsing, setBrowsing] = useState(
     !params.get("video") && !route.sessionId,
   );
-  const [accountResult] = useState(params.get("account"));
+  const [accountResult, setAccountResult] = useState(params.get("account"));
+  const accountMessage = invidiousAccountResultMessage(accountResult);
   useEffect(() => {
     if (params.has("account"))
       window.history.replaceState(null, "", "/watching");
@@ -86,11 +88,19 @@ export function WatchingSurface() {
       data-mobile-view={view}
       data-browsing={showBrowser || undefined}
     >
-      {accountResult === "authorization_failed" && showBrowser && (
-        <div role="alert" className="watching-account-error">
-          {t(
-            "Invidious authorization was cancelled or expired. Please connect again.",
-          )}
+      {accountMessage && showBrowser && (
+        <div
+          role={accountResult === "connected" ? "status" : "alert"}
+          className="watching-account-error flex items-center justify-between gap-3"
+        >
+          <span>{t(accountMessage)}</span>
+          <button
+            type="button"
+            className="watching-browser-button shrink-0"
+            onClick={() => setAccountResult(null)}
+          >
+            {t("Dismiss")}
+          </button>
         </div>
       )}
       {showBrowser && (
