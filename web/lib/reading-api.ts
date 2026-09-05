@@ -283,7 +283,7 @@ export async function listReadingExtensions(): Promise<
   const payload: unknown = await unwrap(
     await apiFetch(apiUrl(`${BASE}/extensions`), { cache: "no-store" }),
   );
-  if (!Array.isArray(payload)) return [];
+  if (!Array.isArray(payload)) throw new Error("Invalid reading extension catalog.");
   return payload.filter(
     (row): row is ReadingExtensionManifest =>
       Boolean(row) &&

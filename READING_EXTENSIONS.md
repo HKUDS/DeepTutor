@@ -1,10 +1,19 @@
 # Immersive Reading extensions
 
-Immersive Reading discovers server-side packages through the
-`deeptutor.reading_extensions` Python entry-point group. DeepTutor ships read
-aloud, study guidance, vocabulary, quiz, and explicit-target translation
-extensions in this group; when no extension is installed, the Reader does not
-render an extension toolbar.
+Immersive Reading lazily registers its built-in read-aloud, study-guidance,
+vocabulary, quiz, and explicit-target translation extensions even when Python
+distribution metadata is unavailable. Additional server-side packages are
+discovered through the `deeptutor.reading_extensions` Python entry-point group.
+Built-in IDs are reserved; third-party packages cannot replace them.
+
+The EPUB, PDF, and text readers keep authorized Read aloud, Look up word, and
+Quiz me actions in a fixed toolbar. Other actions appear under More. Word lookup
+requires selected source text and explains its meaning in context. A failed
+catalog request offers Retry; a successfully loaded empty catalog (for example,
+a learner with no allowed extensions) does not show actions. Account extension
+allowlists still govern both discovery and execution. Explicitly constructing
+`ReadingExtensionRegistry([])` continues to provide an empty registry for
+embedding and tests.
 
 An entry point resolves to an object or class with a validated `manifest` and a
 `run_action(action, context)` method. The current protocol version is `1`.

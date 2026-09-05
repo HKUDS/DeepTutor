@@ -4726,7 +4726,6 @@
   "Model default": "模型默认值",
   "VLM capability": "VLM 能力",
   "Available": "可用",
-  "Unavailable": "不可用",
   "used for this version": "此版本已使用",
   "not used for this version": "此版本未使用",
   "Version source": "版本来源",
@@ -4753,5 +4752,10 @@
   "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.": "无法加载 LightRAG 查询模型设置。请选择索引模型或重试。",
   "The historical indexing model is unknown. Queries remain available, but incremental uploads require a full rebuild.": "历史索引模型无法确认。知识库仍可查询，但增量上传前必须完整重建。",
   "Unverified historical indexing model": "无法确认的历史索引模型",
-  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "此旧版 LightRAG 索引仍可查询，但增量上传前必须完整重建。"
+  "This legacy LightRAG index remains queryable, but it must be fully rebuilt before incremental uploads.": "此旧版 LightRAG 索引仍可查询，但增量上传前必须完整重建。",
+  "Look up word": "查单词",
+  "Select a word or passage first.": "请先选择单词或段落。",
+  "Loading reading actions…": "正在加载阅读功能…",
+  "Could not load reading actions.": "无法加载阅读功能。",
+  "Reading actions": "阅读功能"
 }

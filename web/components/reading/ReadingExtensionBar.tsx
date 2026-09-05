@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Sparkles, Square, Volume2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Square, Volume2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   listReadingExtensions,
@@ -42,6 +42,12 @@ export function ReadingExtensionBar({
 }) {
   const { i18n, t } = useTranslation();
   const [extensions, setExtensions] = useState<ReadingExtensionManifest[]>([]);
+  const [catalogError, setCatalogError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+  const [hint, setHint] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const requestVersion = useRef(0);
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState<ReadingExtensionResult | null>(null);
   const [speaking, setSpeaking] = useState(false);
@@ -53,22 +59,30 @@ export function ReadingExtensionBar({
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setCatalogError(false);
     void listReadingExtensions()
       .then((rows) => {
         if (active) setExtensions(rows);
       })
-      .catch((error) => {
-        if (active)
-          onError(error instanceof Error ? error.message : String(error));
+      .catch(() => {
+        if (active) setCatalogError(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [onError]);
+  }, [reload]);
 
   useEffect(() => {
     setResult(null);
+    setHint("");
+    setBusy("");
+    setMoreOpen(false);
     return () => {
+      requestVersion.current += 1;
       window.speechSynthesis?.cancel();
       setSpeaking(false);
     };
@@ -86,6 +100,13 @@ export function ReadingExtensionBar({
     extension: ReadingExtensionManifest,
     action: ReadingExtensionManifest["actions"][number],
   ) {
+    if (action.requires.includes("selection") && !selection?.trim()) {
+      setHint(t("Select a word or passage first."));
+      return;
+    }
+    setHint("");
+    setMoreOpen(false);
+    const version = ++requestVersion.current;
     const key = `${extension.id}:${action.id}`;
     setBusy(key);
     try {
@@ -99,6 +120,7 @@ export function ReadingExtensionBar({
           locale: i18n.language,
         },
       );
+      if (version !== requestVersion.current) return;
       setResult(next);
       if (next.type === "browser_speech") {
         const text = String(next.payload.text || "");
@@ -115,42 +137,102 @@ export function ReadingExtensionBar({
         setSpeaking(true);
       }
     } catch (error) {
-      onError(error instanceof Error ? error.message : String(error));
+      if (version === requestVersion.current)
+        onError(error instanceof Error ? error.message : String(error));
     } finally {
-      setBusy("");
+      if (version === requestVersion.current) setBusy("");
     }
   }
 
+  const primaryKeys = ["read_aloud:read", "vocabulary:explain", "quiz:start"];
+  const primary = primaryKeys.flatMap((key) =>
+    actions.filter(
+      ({ extension, action }) => `${extension.id}:${action.id}` === key,
+    ),
+  );
+  const secondary = actions.filter(
+    ({ extension, action }) =>
+      !primaryKeys.includes(`${extension.id}:${action.id}`),
+  );
+
+  function actionButton({ extension, action }: (typeof actions)[number]) {
+    const key = `${extension.id}:${action.id}`;
+    const builtInLabel = builtInActionLabel(extension.id, action.id);
+    return (
+      <button
+        key={key}
+        type="button"
+        disabled={Boolean(busy)}
+        onClick={() => void run(extension, action)}
+        className="inline-flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-50"
+      >
+        {busy === key ? (
+          <Loader2 size={14} className="shrink-0 animate-spin" />
+        ) : null}
+        <span>{builtInLabel ? t(builtInLabel) : action.label}</span>
+      </button>
+    );
+  }
+
+  if (loading)
+    return (
+      <div role="status" className="shrink-0 px-3 py-2 text-xs">
+        {t("Loading reading actions…")}
+      </div>
+    );
+  if (catalogError)
+    return (
+      <div
+        role="alert"
+        className="shrink-0 border-b border-[var(--border)] px-3 py-2 text-xs"
+      >
+        {t("Could not load reading actions.")}
+        <button
+          type="button"
+          className="ml-2 underline"
+          onClick={() => setReload((value) => value + 1)}
+        >
+          {t("Retry")}
+        </button>
+      </div>
+    );
   if (actions.length === 0) return null;
   return (
     <>
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2">
-        {actions.map(({ extension, action }) => {
-          const key = `${extension.id}:${action.id}`;
-          const disabled =
-            Boolean(busy) ||
-            (action.requires.includes("selection") && !selection?.trim());
-          const builtInLabel = builtInActionLabel(extension.id, action.id);
-          return (
+      <div
+        role="toolbar"
+        aria-label={t("Reading actions")}
+        className="relative flex shrink-0 gap-1.5 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2"
+      >
+        {primary.map(actionButton)}
+        {secondary.length > 0 ? (
+          <>
             <button
-              key={key}
               type="button"
-              disabled={disabled}
-              onClick={() => void run(extension, action)}
-              className="inline-flex h-8 min-w-[88px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-50"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((open) => !open)}
+              className="shrink-0 rounded-lg border border-[var(--border)] px-2 text-xs"
             >
-              {busy === key ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              <span className="truncate">
-                {builtInLabel ? t(builtInLabel) : action.label}
-              </span>
+              {t("More")}
             </button>
-          );
-        })}
+            {moreOpen ? (
+              <div
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setMoreOpen(false);
+                }}
+                className="absolute right-2 top-full z-40 flex w-56 flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg"
+              >
+                {secondary.map(actionButton)}
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </div>
+      {hint ? (
+        <p role="status" className="shrink-0 px-3 py-2 text-xs">
+          {hint}
+        </p>
+      ) : null}
       {speaking ? (
         <div
           role="status"
@@ -171,6 +253,7 @@ export function ReadingExtensionBar({
       ) : null}
       {result && result.type !== "browser_speech" ? (
         <ExtensionResult
+          key={requestVersion.current}
           result={result}
           closeLabel={t("Close")}
           onClose={() => setResult(null)}
@@ -188,7 +271,7 @@ function builtInActionLabel(extensionId: string, actionId: string) {
     return "Guide me";
   }
   if (extensionId === "vocabulary" && actionId === "explain") {
-    return "Explain vocabulary";
+    return "Look up word";
   }
   if (extensionId === "quiz" && actionId === "start") {
     return "Quiz me";
