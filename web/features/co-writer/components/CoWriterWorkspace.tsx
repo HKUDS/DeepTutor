@@ -71,15 +71,21 @@ import { useSelectionEdit } from "@/features/co-writer/hooks/useSelectionEdit";
 import { useSplitPane } from "@/features/co-writer/hooks/useSplitPane";
 import { useSynchronizedScroll } from "@/features/co-writer/hooks/useSynchronizedScroll";
 import { useDocumentLifecycle } from "@/features/co-writer/hooks/useDocumentLifecycle";
-import SaveToNotebookModal, {
-  type NotebookSavePayload,
-} from "@/components/notebook/SaveToNotebookModal";
+import type { NotebookSavePayload } from "@/components/notebook/SaveToNotebookModal";
 import { CO_WRITER_SAMPLE_TEMPLATE } from "@/app/(workspace)/co-writer/sampleTemplate";
 
 const MarkdownRenderer = dynamic(
   () => import("@/components/common/MarkdownRenderer"),
   {
     ssr: false,
+  },
+);
+
+const SaveToNotebookModal = dynamic(
+  () => import("@/components/notebook/SaveToNotebookModal"),
+  {
+    ssr: false,
+    loading: () => null,
   },
 );
 
@@ -2410,15 +2416,17 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
         </div>
       )}
 
-      <SaveToNotebookModal
-        open={notebookSavePayload !== null}
-        payload={notebookSavePayload}
-        onClose={() => setNotebookSavePayload(null)}
-        onSaved={() => {
-          setStatus(t("Saved to notebook."));
-          setError("");
-        }}
-      />
+      {notebookSavePayload && (
+        <SaveToNotebookModal
+          open={notebookSavePayload !== null}
+          payload={notebookSavePayload}
+          onClose={() => setNotebookSavePayload(null)}
+          onSaved={() => {
+            setStatus(t("Saved to notebook."));
+            setError("");
+          }}
+        />
+      )}
     </div>
   );
 }

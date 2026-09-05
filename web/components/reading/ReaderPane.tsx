@@ -13,6 +13,8 @@ import {
   FileText,
   Loader2,
   History,
+  Maximize2,
+  Minimize2,
   PanelRightClose,
   PanelRightOpen,
   X,
@@ -176,6 +178,8 @@ export function ReaderPane({
     string | null | undefined
   >(undefined);
   const [showHistory, setShowHistory] = useState(false);
+  const [epubFullscreen, setEpubFullscreen] = useState(false);
+  const readerRef = useRef<HTMLDivElement | null>(null);
   const [unavailableMaterials, setUnavailableMaterials] = useState<Set<string>>(
     new Set(),
   );
@@ -194,6 +198,56 @@ export function ReaderPane({
   const resumedMaterialRef = useRef("");
   const headingJumpNonceRef = useRef(0);
   const historyReady = historySessionId === (sessionId ?? null);
+
+  // Keep EPUB fullscreen inside the app rather than relying on the browser
+  // Fullscreen API. Safari on iPad does not expose that API consistently, and
+  // an in-app layer keeps the exit control available after rotation as well.
+  useEffect(() => {
+    if (!epubFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEpubFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [epubFullscreen]);
+
+  useEffect(() => {
+    if (material?.render_mode !== "epub") setEpubFullscreen(false);
+  }, [material?.material_id, material?.render_mode]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setEpubFullscreen(false);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleEpubFullscreen = useCallback(() => {
+    if (epubFullscreen) {
+      setEpubFullscreen(false);
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().catch(() => {
+          // The app-level fullscreen state has already been cleared.
+        });
+      }
+      return;
+    }
+
+    setEpubFullscreen(true);
+    const reader = readerRef.current;
+    if (reader?.requestFullscreen) {
+      void reader.requestFullscreen().catch(() => {
+        // iPad Safari and in-app browsers fall back to the fixed viewport.
+      });
+    }
+  }, [epubFullscreen]);
 
   // -- persisted auto-jump preference --------------------------------------
 
@@ -704,8 +758,22 @@ export function ReaderPane({
       : null;
 
   return (
-    <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
+    <div
+      ref={readerRef}
+      className={`flex min-w-0 flex-col bg-[var(--background)] ${
+        epubFullscreen
+          ? "fixed inset-0 z-[120] h-[100dvh] border-0"
+          : "relative h-full border-r border-[var(--border)]"
+      }`}
+      data-epub-fullscreen={epubFullscreen ? "true" : undefined}
+    >
+      <header
+        className={`flex shrink-0 items-center gap-1 border-b border-[var(--border)] ${
+          epubFullscreen
+            ? "h-[calc(2.75rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] pr-[max(0.625rem,env(safe-area-inset-right))] pl-[max(0.625rem,env(safe-area-inset-left))]"
+            : "h-11 px-2.5"
+        }`}
+      >
         <FileText
           size={14}
           className="shrink-0 text-[var(--muted-foreground)]"
@@ -795,6 +863,14 @@ export function ReaderPane({
               spinning={exporting}
               onClick={() => void runExport()}
             />
+            {material.render_mode === "epub" && (
+              <HeaderButton
+                icon={epubFullscreen ? Minimize2 : Maximize2}
+                label={epubFullscreen ? t("Exit fullscreen") : t("Fullscreen")}
+                active={epubFullscreen}
+                onClick={toggleEpubFullscreen}
+              />
+            )}
             <HeaderButton
               icon={showAnnotations ? PanelRightClose : PanelRightOpen}
               label={t("Annotations")}

@@ -1,20 +1,42 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { useKnowledgeBases } from "@/hooks/useKnowledgeBases";
 import { updateRagProviderMode } from "@/features/knowledge/api/engines";
-import KnowledgeBaseDetail from "./KnowledgeBaseDetail";
 import KnowledgeHome, { type KnowledgeHomeSection } from "./KnowledgeHome";
-import EngineDetail from "@/features/knowledge/components/engines/EngineDetail";
-import CreateKbModal from "./CreateKbModal";
 import {
   decodeResourceSegment,
   knowledgeBaseRoute,
 } from "@/lib/resource-routes";
 import type { IndexingLLMSelection } from "@/features/knowledge/model/types";
+
+const detailFallback = (
+  <div className="flex min-h-[50vh] flex-1 items-center justify-center">
+    <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+  </div>
+);
+
+const KnowledgeBaseDetail = dynamic(() => import("./KnowledgeBaseDetail"), {
+  ssr: false,
+  loading: () => detailFallback,
+});
+
+const EngineDetail = dynamic(
+  () => import("@/features/knowledge/components/engines/EngineDetail"),
+  {
+    ssr: false,
+    loading: () => detailFallback,
+  },
+);
+
+const CreateKbModal = dynamic(() => import("./CreateKbModal"), {
+  ssr: false,
+  loading: () => null,
+});
 
 export default function KnowledgePage() {
   const { t } = useTranslation();
@@ -366,25 +388,27 @@ export default function KnowledgePage() {
         </div>
       )}
 
-      <CreateKbModal
-        isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
-        providers={providers}
-        uploadPolicy={uploadPolicy}
-        onCreate={handleCreate}
-        onConnectLinkedFolder={connectLinkedFolder}
-        onConnectObsidian={connectObsidian}
-        onConnectLightRagServer={connectLightRagServer}
-        onConnectWeKnora={connectWeKnora}
-        onConnectMarginNote4={connectMarginNote4}
-        onConnectIma={connectIma}
-        initialMode={createPreset?.mode}
-        initialSource={createPreset?.source}
-        onConfigureProvider={(providerId) => {
-          setCreateOpen(false);
-          openEngine(providerId);
-        }}
-      />
+      {createOpen && (
+        <CreateKbModal
+          isOpen={createOpen}
+          onClose={() => setCreateOpen(false)}
+          providers={providers}
+          uploadPolicy={uploadPolicy}
+          onCreate={handleCreate}
+          onConnectLinkedFolder={connectLinkedFolder}
+          onConnectObsidian={connectObsidian}
+          onConnectLightRagServer={connectLightRagServer}
+          onConnectWeKnora={connectWeKnora}
+          onConnectMarginNote4={connectMarginNote4}
+          onConnectIma={connectIma}
+          initialMode={createPreset?.mode}
+          initialSource={createPreset?.source}
+          onConfigureProvider={(providerId) => {
+            setCreateOpen(false);
+            openEngine(providerId);
+          }}
+        />
+      )}
     </div>
   );
 }
