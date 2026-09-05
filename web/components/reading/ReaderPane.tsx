@@ -729,10 +729,10 @@ export function ReaderPane({
 
   return (
     <div
-      className={`relative flex min-w-0 flex-col bg-[var(--background)] ${
+      className={`flex min-w-0 flex-col bg-[var(--background)] ${
         epubFullscreen
           ? "fixed inset-0 z-[120] h-[100dvh] border-0"
-          : "h-full border-r border-[var(--border)]"
+          : "relative h-full border-r border-[var(--border)]"
       }`}
       data-epub-fullscreen={epubFullscreen ? "true" : undefined}
     >
