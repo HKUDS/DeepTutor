@@ -90,25 +90,13 @@ class LearningJournalStore:
         mission = journal.mission
         if not mission.is_empty():
             lines.append("## Mission")
-            if mission.topic:
-                lines.append(f"- Topic: {mission.topic}")
-            if mission.why:
-                lines.append(f"- Why: {mission.why}")
-            if mission.level:
-                lines.append(f"- Level: {mission.level}")
-            if mission.updated_at:
-                lines.append(f"- Updated: {mission.updated_at}")
+            lines.extend(self._mission_lines(mission))
             lines.append("")
 
         session = journal.last_session
         if not session.is_empty():
             lines.append("## Last session")
-            if session.summary:
-                lines.append(f"- Summary: {session.summary}")
-            if session.next_focus:
-                lines.append(f"- Next focus: {session.next_focus}")
-            if session.updated_at:
-                lines.append(f"- Updated: {session.updated_at}")
+            lines.extend(self._session_lines(session))
             lines.append("")
 
         if journal.records:
@@ -123,6 +111,57 @@ class LearningJournalStore:
             "curriculum progress; this journal is the soft mission + insight layer._"
         )
         return "\n".join(lines).rstrip() + "\n"
+
+    def injection_markdown(self) -> str:
+        """The resumable slice of the journal, for the per-turn system prompt.
+
+        Records are left out on purpose, and an empty journal yields ``""`` so
+        nothing is injected: both keep a turn's overhead from scaling with
+        journal history. ``learning_status`` advertises the journal to the
+        model through its own description, so an empty one needs no repeated
+        advertisement, and the full history stays one tool call away.
+        """
+        journal = self.load()
+        parts: list[list[str]] = []
+        mission_lines = self._mission_lines(journal.mission)
+        if mission_lines:
+            parts.append(["## Mission", *mission_lines])
+        session_lines = self._session_lines(journal.last_session)
+        if session_lines:
+            parts.append(["## Last session", *session_lines])
+        if not parts:
+            return ""
+        body = "\n\n".join("\n".join(part) for part in parts)
+        return (
+            "# Learning journal (carried over from earlier sessions)\n\n"
+            f"{body}\n\n"
+            "_Pick up from where this leaves off, and record what this session "
+            "changes with `learning_update`._\n"
+        )
+
+    @staticmethod
+    def _mission_lines(mission: LearningMission) -> list[str]:
+        lines: list[str] = []
+        if mission.topic:
+            lines.append(f"- Topic: {mission.topic}")
+        if mission.why:
+            lines.append(f"- Why: {mission.why}")
+        if mission.level:
+            lines.append(f"- Level: {mission.level}")
+        if mission.updated_at:
+            lines.append(f"- Updated: {mission.updated_at}")
+        return lines
+
+    @staticmethod
+    def _session_lines(session: LearningSessionNote) -> list[str]:
+        lines: list[str] = []
+        if session.summary:
+            lines.append(f"- Summary: {session.summary}")
+        if session.next_focus:
+            lines.append(f"- Next focus: {session.next_focus}")
+        if session.updated_at:
+            lines.append(f"- Updated: {session.updated_at}")
+        return lines
 
     def set_mission(
         self,

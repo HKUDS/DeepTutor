@@ -21,10 +21,12 @@ class LearningStatusTool(_PromptHintsMixin, BaseTool):
             name="learning_status",
             description=(
                 "Read the soft learning journal: mission (topic + why + level), "
-                "last-session handoff, and recent learning records. Use at the "
-                "start of a multi-session teaching turn, or whenever the user "
-                "asks to continue learning. Not a substitute for Mastery Path "
-                "progress (use mastery_status for scored curriculum)."
+                "last-session handoff, and recent learning records. The mission "
+                "and handoff are already in your context when a journal exists "
+                "— call this for the record history, or when the user asks to "
+                "continue learning and nothing was carried over. Not a "
+                "substitute for Mastery Path progress (use mastery_status for "
+                "scored curriculum)."
             ),
             parameters=[],
         )
