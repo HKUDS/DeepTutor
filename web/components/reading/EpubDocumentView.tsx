@@ -251,6 +251,12 @@ export function EpubDocumentView({
       const doc = contents.document;
       if (!doc?.body || doc.body.dataset.dtReaderReady === "true") return;
       doc.body.dataset.dtReaderReady = "true";
+      // A click/new selection inside the document cancels the previous quote.
+      // Toolbar clicks occur outside this iframe and keep their source selection.
+      doc.addEventListener("pointerdown", () => onSelection(null));
+      doc.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") onSelection(null);
+      });
       const href = (doc.location?.pathname ?? "").replace(/^\//, "");
       const locator =
         locatorForEpubHref(href, refsRef.current) || locatorRef.current;

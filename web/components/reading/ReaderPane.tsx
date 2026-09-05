@@ -176,6 +176,7 @@ export function ReaderPane({
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
+  const [navigationVersion, setNavigationVersion] = useState(0);
   useEffect(() => {
     setSelection(null);
     setSelectionPopoverOpen(false);
@@ -236,6 +237,12 @@ export function ReaderPane({
   const handleVisibleLocator = useCallback(
     (locator: number) => {
       setCurrentLocator(locator);
+      if (material?.render_mode === "epub") {
+        // Reflowed EPUB pages can move within the same chapter locator.
+        setSelection(null);
+        setSelectionPopoverOpen(false);
+        setNavigationVersion((version) => version + 1);
+      }
       reportViewport({ locator });
       // Remember where the reader got to, so opening this material again
       // starts here instead of at page 1. EPUB writes its own position — a
@@ -882,6 +889,7 @@ export function ReaderPane({
         <ReadingExtensionBar
           materialId={material.material_id}
           locator={currentLocator}
+          navigationVersion={navigationVersion}
           selection={selection?.quote}
           selectionLocator={selection?.locator}
           llmSelection={llmSelection}
