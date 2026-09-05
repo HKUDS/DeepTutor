@@ -15,6 +15,7 @@ test("settings navigation: every label targets the unified settings document", (
   assert.equal(settingsAnchorHref("overview"), "/settings#overview");
   assert.equal(settingsAnchorHref("llm"), "/settings#llm");
   assert.equal(settingsAnchorHref("about"), "/settings#about");
+  assert.equal(settingsAnchorHref("experimental"), "/settings#experimental");
 
   const nav = readWebFile("components", "settings", "SettingsNav.tsx");
   assert.match(nav, /settingsAnchorHref\(['"]overview['"]\)/);
@@ -27,6 +28,7 @@ test("settings page: stacks every first-level section from overview to about", (
   const keys = [
     "overview",
     "appearance",
+    "experimental",
     "network",
     "models",
     "knowledge",
@@ -132,6 +134,10 @@ test("settings toolbar: resolves storage paths while scrolling the unified page"
   assert.equal(
     storagePathFor("/settings", "knowledge"),
     "data/user/settings/document_parsing.json",
+  );
+  assert.equal(
+    storagePathFor("/settings", "experimental"),
+    "data/user/settings/interface.json",
   );
   assert.equal(storagePathFor("/settings", "about"), null);
 });

@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import sqlite3
@@ -19,6 +20,7 @@ from deeptutor.learning.models import (
 )
 from deeptutor.learning.storage import (
     LearningConflictError,
+    LearningPlanConflictError,
     LearningStore,
     LearningStoreError,
     PathLeaseConflictError,
@@ -29,6 +31,125 @@ from deeptutor.learning.storage import (
 @pytest.fixture
 def store(tmp_path):
     return LearningStore(root=tmp_path)
+
+
+# ── Learning plans ─────────────────────────────────────────────────────
+
+
+class TestLearningPlans:
+    def test_owner_scopes_reads_and_all_state_mutations(self, store):
+        plan = store.create_learning_plan(
+            "plan-1",
+            {"name": "Linear Algebra", "goal": "Learn vectors", "sources": []},
+            owner_id="owner-a",
+        )
+        assert plan["state"] == "discussing"
+        assert plan["brief"] == plan["input"]
+        assert store.get_learning_plan("plan-1", owner_id="owner-b") is None
+
+        with pytest.raises(KeyError):
+            store.append_planning_session_message("plan-1", "user", "hello", owner_id="owner-b")
+        with pytest.raises(KeyError):
+            store.settle_learning_plan("plan-1", {}, owner_id="owner-b")
+        with pytest.raises(KeyError):
+            store.save_learning_plan_route_draft("plan-1", {}, owner_id="owner-b")
+
+        store.append_planning_session_message("plan-1", "user", "hello", owner_id="owner-a")
+        settled = store.settle_learning_plan(
+            "plan-1",
+            {"name": "Linear Algebra", "goal": "Learn vectors", "sources": []},
+            owner_id="owner-a",
+        )
+        assert settled["state"] == "settled"
+        drafted = store.save_learning_plan_route_draft(
+            "plan-1", {"modules": []}, owner_id="owner-a"
+        )
+        assert drafted["state"] == "draft_ready"
+
+    def test_brief_revision_and_reusable_planning_session(self, store):
+        store.create_learning_plan("plan-1", {"name": "A"}, owner_id="owner-a")
+        revised = store.revise_learning_plan_brief(
+            "plan-1", {"name": "A", "goal": "Discussed goal"}, owner_id="owner-a"
+        )
+        assert revised["state"] == "discussing"
+        assert revised["brief"]["goal"] == "Discussed goal"
+        updated = store.update_learning_plan_brief(
+            "plan-1", {"name": "B", "goal": "Practice"}, owner_id="owner-a"
+        )
+        assert updated["brief"] == {"name": "B", "goal": "Practice"}
+        assert updated["brief_revision"] == 2
+        session = store.create_planning_session("planning-1", owner_id="owner-a", plan_id="plan-1")
+        assert session["planning_session_id"] == "planning-1"
+        assert store.get_planning_session("planning-1", owner_id="owner-b") is None
+
+    @pytest.mark.parametrize(
+        ("method_name", "initial_state", "payload"),
+        [
+            ("settle_learning_plan", "discussing", {"name": "Settled"}),
+            ("update_learning_plan_brief", "discussing", {"name": "Updated"}),
+            ("update_learning_plan_route_draft", "draft_ready", {"modules": [{"name": "Edited"}]}),
+        ],
+    )
+    def test_mutations_reject_claim_that_arrives_between_guard_and_update(
+        self, store, monkeypatch, method_name, initial_state, payload
+    ):
+        """A conditional update must see an operation claim made after the guard read."""
+        plan_id = f"plan-{method_name}"
+        owner_id = "owner-a"
+        store.create_learning_plan(plan_id, {"name": "Original"}, owner_id=owner_id)
+        with store._connect() as conn:
+            conn.execute(
+                "UPDATE mastery_learning_plans SET state = ? WHERE plan_id = ? AND owner_id = ?",
+                (initial_state, plan_id, owner_id),
+            )
+
+        original_connect = store._connect
+        guard_read_seen = False
+
+        @contextmanager
+        def interleaving_connect(*args, **kwargs):
+            nonlocal guard_read_seen
+            with original_connect(*args, **kwargs) as conn:
+
+                class ConnectionProxy:
+                    def execute(self, sql, parameters=()):
+                        nonlocal guard_read_seen
+                        if (
+                            not guard_read_seen
+                            and "SELECT state" in sql
+                            and "operation_kind" in sql
+                            and "mastery_learning_plans" in sql
+                        ):
+                            result = conn.execute(sql, parameters)
+                            guard_read_seen = True
+                            with LearningStore(root=store._root)._connect() as competing:
+                                competing.execute(
+                                    """UPDATE mastery_learning_plans
+                                    SET operation_kind = 'generation', operation_token = 'rival'
+                                    WHERE plan_id = ? AND owner_id = ?""",
+                                    (plan_id, owner_id),
+                                )
+                            return result
+                        return conn.execute(sql, parameters)
+
+                    def __getattr__(self, name):
+                        return getattr(conn, name)
+
+                yield ConnectionProxy()
+
+        monkeypatch.setattr(store, "_connect", interleaving_connect)
+        with pytest.raises(LearningPlanConflictError, match="busy"):
+            getattr(store, method_name)(plan_id, payload, owner_id=owner_id)
+
+        plan = store.get_learning_plan(plan_id, owner_id=owner_id)
+        assert plan is not None
+        with LearningStore(root=store._root)._connect() as conn:
+            operation_kind = conn.execute(
+                "SELECT operation_kind FROM mastery_learning_plans WHERE plan_id = ? AND owner_id = ?",
+                (plan_id, owner_id),
+            ).fetchone()["operation_kind"]
+        assert operation_kind == "generation"
+        assert plan["brief"]["name"] == "Original"
 
 
 # ── save / load ──────────────────────────────────────────────────────────

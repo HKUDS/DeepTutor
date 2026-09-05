@@ -135,6 +135,26 @@ test("settings-context: persistUiSettingsPatch can save theme without sending co
   });
 });
 
+test("settings-context: persistence rejects a failed experimental planning PUT", async () => {
+  const persist = (settingsContext as any).persistUiSettingsPatch;
+
+  await assert.rejects(
+    persist(
+      { experimental_mastery_planning: true },
+      async () => ({ ok: false, status: 503 }) as Response,
+    ),
+    /Settings update failed: HTTP 503/,
+  );
+});
+
+test("settings-context: authenticated UI payload resolves experimental planning true and legacy absence false", () => {
+  const resolve = (settingsContext as any).experimentalMasteryPlanningFromUi;
+
+  assert.equal(resolve({ experimental_mastery_planning: true }), true);
+  assert.equal(resolve({ experimental_mastery_planning: false }), false);
+  assert.equal(resolve({}), false);
+});
+
 test("settings-context: boolean values survive reload cycle from localStorage", () => {
   const sync = (settingsContext as any).syncLoadedCodeBlockSettingsToAppShell;
 
@@ -296,5 +316,34 @@ test("settings-context: routes code-block state through the AppShell single sour
     source,
     /setAppShellCodeBlockWrapLongLines\(next\)/,
     "updateCodeBlockWrapLongLines should delegate to the AppShell setter.",
+  );
+});
+
+test("settings-context: authenticated settings hydrate and failed toggle rollback use AppShell", () => {
+  const source = readSettingsContextSource();
+
+  assert.match(
+    source,
+    /setExperimentalMasteryPlanning\(\s*experimentalMasteryPlanningFromUi\(payload\.ui\),?\s*\)/,
+    "loadSettings should overwrite the pre-session flag from the authenticated payload.",
+  );
+  assert.match(
+    source,
+    /const previous = experimentalMasteryPlanning;[\s\S]*setExperimentalMasteryPlanning\(next\)[\s\S]*catch \(err\) \{[\s\S]*setExperimentalMasteryPlanning\(previous\)[\s\S]*setToast\(/,
+    "A failed planning toggle should restore the AppShell value and report an error.",
+  );
+});
+
+test("app-shell-context: a late public bootstrap cannot overwrite authenticated planning settings", () => {
+  const appShellPath = path.join(process.cwd(), "context", "AppShellContext.tsx");
+  const source = fs.readFileSync(appShellPath, "utf8");
+
+  assert.match(
+    source,
+    /experimentalMasteryPlanningAuthoritativeRef\.current = true/,
+  );
+  assert.match(
+    source,
+    /!experimentalMasteryPlanningAuthoritativeRef\.current[\s\S]*setExperimentalMasteryPlanningState\(payload\.experimental_mastery_planning\)/,
   );
 });

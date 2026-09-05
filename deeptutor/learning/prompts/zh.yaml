@@ -87,6 +87,9 @@ topic:
     主题名称：{name}
     学习目的地：{goal}
     {must_cover_block}
+    <learning_plan>
+    {learning_plan_json}
+    </learning_plan>
     返回：{{"description":"一句有吸引力的路线描述","modules":[{{"name":"区域名称","materials":["文件名"],"knowledge_points":[{{"name":"具体学习目标","type":"concept"}}]}}]}}
 
     <learning_sources>

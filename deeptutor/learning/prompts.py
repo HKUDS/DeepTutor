@@ -87,6 +87,7 @@ def topic_generation_prompts(
     sources_json: str,
     module_limit: int = 8,
     must_cover: list[str] | None = None,
+    learning_plan_json: str = "{}",
 ) -> tuple[str, str]:
     prompts = get_learning_prompts(language)
     system_prompt = _get_nested(
@@ -108,6 +109,7 @@ def topic_generation_prompts(
         name=name,
         goal=goal,
         sources_json=sources_json,
+        learning_plan_json=learning_plan_json,
         must_cover_block=_must_cover_block(language, must_cover or []),
     )
 

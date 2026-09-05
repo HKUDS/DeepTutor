@@ -142,6 +142,7 @@ class UISettings(BaseModel):
     code_block_theme: Optional[str] = None
     code_block_show_line_numbers: Optional[bool] = None
     code_block_wrap_long_lines: Optional[bool] = None
+    experimental_mastery_planning: bool = False
 
 
 class UISettingsUpdate(BaseModel):
@@ -165,6 +166,7 @@ class UISettingsUpdate(BaseModel):
     code_block_theme: str | None = None
     code_block_show_line_numbers: bool | None = None
     code_block_wrap_long_lines: bool | None = None
+    experimental_mastery_planning: bool | None = None
 
 
 class VoiceAutoplayUpdate(BaseModel):
@@ -1580,10 +1582,15 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
-# The UI preferences a page can need before it knows who is asking. All three
+# The UI preferences a page can need before it knows who is asking. These
 # describe the person's own presentation and output choices; none of them say
 # anything about how the deployment is configured.
-PRESESSION_UI_FIELDS = ("theme", "language", "response_language")
+PRESESSION_UI_FIELDS = (
+    "theme",
+    "language",
+    "response_language",
+    "experimental_mastery_planning",
+)
 
 
 @public_router.get("/ui")

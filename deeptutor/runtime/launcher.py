@@ -59,6 +59,23 @@ def _apply_single_user_allocator_env(env: dict[str, str]) -> None:
     env.setdefault("MALLOC_TRIM_THRESHOLD_", "131072")
 
 
+def _backend_environment(common_env: dict[str, str]) -> dict[str, str]:
+    """Make the backend import this checkout while retaining runtime-home data.
+
+    The backend deliberately runs with ``runtime_home`` as its working
+    directory so relative paths and legacy integrations remain rooted in the
+    selected workspace.  When that workspace is an older checkout, however,
+    its ``deeptutor`` package must not shadow the source checkout that launched
+    this process.
+    """
+
+    env = common_env.copy()
+    package_root = str(PACKAGE_ROOT.resolve())
+    inherited = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(part for part in (package_root, inherited) if part)
+    return env
+
+
 # Mutable holder so module-level helpers can format messages in the active
 # UI language without threading the labels through every function.
 _ACTIVE_LABELS: dict[str, str] = labels_for("en")
@@ -617,7 +634,14 @@ def _patch_packaged_web_placeholders(
 
 
 def _source_web_dir(home: Path) -> Path | None:
-    candidates = [home / "web", PACKAGE_ROOT / "web"]
+    """Find Web sources belonging to this code checkout, not runtime data.
+
+    ``--home`` selects the directory that owns ``data/``. It may deliberately
+    point at an older checkout so a new source checkout can reuse its existing
+    user data. Prefer this process's package root; otherwise an old sibling
+    ``web/`` silently supplies a stale frontend for a current backend.
+    """
+    candidates = [PACKAGE_ROOT / "web", home / "web"]
     for path in candidates:
         if (path / "package.json").exists():
             return path
@@ -1354,9 +1378,15 @@ def start(
 
     backend_cmd = [
         sys.executable,
+        # With a different ``--home``, cwd can be an older source checkout.
+        # -P prevents that cwd from taking precedence over PACKAGE_ROOT in the
+        # backend PYTHONPATH (Python >= 3.11 is required by this project).
+        "-P",
         "-m",
         "uvicorn",
         "deeptutor.api.main:app",
+        "--app-dir",
+        str(PACKAGE_ROOT.resolve()),
         "--host",
         "0.0.0.0",
         "--port",
@@ -1427,7 +1457,12 @@ def start(
 
     try:
         _log(_t("start.starting_backend"))
-        backend = _spawn(backend_cmd, cwd=runtime_home, env=common_env, name="backend")
+        backend = _spawn(
+            backend_cmd,
+            cwd=runtime_home,
+            env=_backend_environment(common_env),
+            name="backend",
+        )
         processes.append(backend)
         _wait_for_http(
             name=_t("start.backend"),

@@ -1325,6 +1325,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   showModeBadge = true,
   onLoadMessageTrace,
   onReleaseMessageTrace,
+  disableBranchFiltering = false,
 }: {
   messages: ChatMessageItem[];
   isStreaming: boolean;
@@ -1367,6 +1368,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   showModeBadge?: boolean;
   onLoadMessageTrace?: (messageId: number) => Promise<void>;
   onReleaseMessageTrace?: (messageId: number) => void;
+  /** Render a chronological transcript whose messages are not edit branches. */
+  disableBranchFiltering?: boolean;
 }) {
   const { t } = useTranslation();
   // Visible path: when no branching has happened the result is identical
@@ -1374,8 +1377,11 @@ export const ChatMessageList = memo(function ChatMessageList({
   // UI shows exactly one continuous thread, with arrow nav exposed on the
   // user message where branching diverges.
   const { messages: visibleMessages, siblingsByMessageId } = useMemo(
-    () => buildVisiblePath(messages, selectedBranches),
-    [messages, selectedBranches],
+    () =>
+      disableBranchFiltering
+        ? { messages, siblingsByMessageId: new Map<number, SiblingInfo>() }
+        : buildVisiblePath(messages, selectedBranches),
+    [disableBranchFiltering, messages, selectedBranches],
   );
 
   // Deep-research two-turn merge.

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import builtins
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -14,6 +17,64 @@ from deeptutor.services.app_update import UpdateJobStore, update_store_root
 class _FakeTty:
     def isatty(self) -> bool:
         return True
+
+
+def test_source_web_dir_prefers_current_checkout_over_runtime_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A runtime home may be an older checkout whose data we intentionally reuse."""
+    source_root = tmp_path / "current-source"
+    runtime_home = tmp_path / "old-runtime"
+    (source_root / "web").mkdir(parents=True)
+    (source_root / "web" / "package.json").write_text("{}", encoding="utf-8")
+    (runtime_home / "web").mkdir(parents=True)
+    (runtime_home / "web" / "package.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(launcher, "PACKAGE_ROOT", source_root)
+
+    assert launcher._source_web_dir(runtime_home) == source_root / "web"
+
+
+def test_source_web_dir_falls_back_to_runtime_home_for_installed_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime_home = tmp_path / "runtime"
+    (runtime_home / "web").mkdir(parents=True)
+    (runtime_home / "web" / "package.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(launcher, "PACKAGE_ROOT", tmp_path / "installed-package")
+
+    assert launcher._source_web_dir(runtime_home) == runtime_home / "web"
+
+
+def test_backend_environment_prioritizes_current_source_over_runtime_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--home`` owns data, but must not choose a sibling old package."""
+    source_root = tmp_path / "current-source"
+    runtime_home = tmp_path / "old-runtime"
+    (source_root / "deeptutor").mkdir(parents=True)
+    (runtime_home / "deeptutor").mkdir(parents=True)
+    (source_root / "deeptutor" / "__init__.py").write_text("SOURCE = 'current'\n", encoding="utf-8")
+    (runtime_home / "deeptutor" / "__init__.py").write_text("SOURCE = 'old'\n", encoding="utf-8")
+    monkeypatch.setattr(launcher, "PACKAGE_ROOT", source_root)
+
+    backend_env = launcher._backend_environment(
+        {"PYTHONPATH": os.pathsep.join((str(runtime_home), "/existing/pythonpath"))}
+    )
+
+    assert backend_env["PYTHONPATH"].split(os.pathsep) == [
+        str(source_root.resolve()),
+        str(runtime_home),
+        "/existing/pythonpath",
+    ]
+    result = subprocess.run(
+        [sys.executable, "-P", "-c", "import deeptutor; print(deeptutor.SOURCE)"],
+        cwd=runtime_home,
+        env=backend_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.strip() == "current"
 
 
 class _AcceptedConnection:
@@ -507,6 +568,9 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
         system_json_path=settings_dir / "system.json",
     )
     captured_envs: dict[str, dict[str, str]] = {}
+    captured_commands: dict[str, list[str]] = {}
+    source_root = tmp_path / "current-source"
+    source_root.mkdir()
 
     monkeypatch.setattr(launcher, "_relax_console_encoding", lambda: None)
     monkeypatch.setattr(launcher, "_reset_runtime_singletons", lambda: None)
@@ -523,6 +587,7 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     monkeypatch.setattr(launcher, "resolve_language", lambda: "en")
     monkeypatch.setattr(launcher, "print_banner", lambda **_kwargs: None)
     monkeypatch.setattr(launcher, "_log", lambda _message: None)
+    monkeypatch.setattr(launcher, "PACKAGE_ROOT", source_root)
     monkeypatch.setenv("DEEPTUTOR_NEXT_DIST_DIR", ".next-inherited")
     monkeypatch.setenv(launcher.DETACHED_WORKER_ENV, "1")
     monkeypatch.setenv(launcher.DETACHED_TOKEN_ENV, "secret-token")
@@ -545,6 +610,7 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     def _capture_spawn(_command, *, cwd, env, name):
         assert cwd == tmp_path
         captured_envs[name] = dict(env)
+        captured_commands[name] = list(_command)
         if name == "backend":
             return launcher.ManagedProcess("backend", object(), None)
         assert name == "frontend"
@@ -562,6 +628,9 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     assert "DEEPTUTOR_NEXT_DIST_DIR" not in captured_envs["frontend"]
     assert launcher.DETACHED_WORKER_ENV not in captured_envs["backend"]
     assert launcher.DETACHED_TOKEN_ENV not in captured_envs["backend"]
+    assert captured_envs["backend"]["DEEPTUTOR_HOME"] == str(tmp_path)
+    assert captured_envs["backend"]["PYTHONPATH"].split(os.pathsep)[0] == str(source_root.resolve())
+    assert captured_commands["backend"][:3] == [sys.executable, "-P", "-m"]
 
 
 def test_foreground_signal_handlers_keep_windows_ctrl_c(monkeypatch) -> None:

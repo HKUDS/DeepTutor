@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { apiFetch, apiUrl } from "@/lib/api";
@@ -65,6 +66,9 @@ interface AppShellContextValue {
   setCodeBlockShowLineNumbers: (show: boolean) => void;
   codeBlockWrapLongLines: boolean;
   setCodeBlockWrapLongLines: (wrap: boolean) => void;
+  experimentalMasteryPlanning: boolean;
+  experimentalMasteryPlanningReady: boolean;
+  setExperimentalMasteryPlanning: (enabled: boolean) => void;
 }
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
@@ -89,6 +93,9 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     useState<boolean>(() => readStoredCodeBlockShowLineNumbers());
   const [codeBlockWrapLongLines, setCodeBlockWrapLongLinesState] =
     useState<boolean>(() => readStoredCodeBlockWrapLongLines());
+  const [experimentalMasteryPlanning, setExperimentalMasteryPlanningState] = useState(false);
+  const [experimentalMasteryPlanningReady, setExperimentalMasteryPlanningReady] = useState(false);
+  const experimentalMasteryPlanningAuthoritativeRef = useRef(false);
 
   useEffect(() => {
     // Hydrate client-only preferences after SSR-safe first render.
@@ -113,12 +120,10 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
-      if (hasStoredLanguage()) {
-        if (!cancelled) {
-          setLanguageState(readStoredLanguage());
-          setLanguageReady(true);
-        }
-        return;
+      const localLanguage = hasStoredLanguage() ? readStoredLanguage() : null;
+      if (localLanguage !== null && !cancelled) {
+        setLanguageState(localLanguage);
+        setLanguageReady(true);
       }
       fallbackTimer = setTimeout(() => {
         controller.abort();
@@ -133,26 +138,39 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
         const payload = (await response.json()) as {
           language?: unknown;
           response_language?: unknown;
+          experimental_mastery_planning?: unknown;
         };
+        if (
+          typeof payload.experimental_mastery_planning === "boolean" &&
+          !experimentalMasteryPlanningAuthoritativeRef.current &&
+          !cancelled
+        ) {
+          setExperimentalMasteryPlanningState(payload.experimental_mastery_planning);
+        }
         if (payload.language !== "zh" && payload.language !== "en") return;
-        writeStoredLanguage(payload.language);
+        if (localLanguage === null) writeStoredLanguage(payload.language);
         // A backend that predates the split sends no response_language;
         // resolveResponseLanguage inherits the interface locale, matching what
         // the server does for a legacy interface.json.
-        writeStoredResponseLanguage(
-          resolveResponseLanguage(
-            typeof payload.response_language === "string"
-              ? payload.response_language
-              : null,
-            payload.language,
-          ),
-        );
-        if (!cancelled) setLanguageState(payload.language);
+        if (localLanguage === null) {
+          writeStoredResponseLanguage(
+            resolveResponseLanguage(
+              typeof payload.response_language === "string"
+                ? payload.response_language
+                : null,
+              payload.language,
+            ),
+          );
+          if (!cancelled) setLanguageState(payload.language);
+        }
       } catch {
         // Offline or unauthenticated: keep the local default.
       } finally {
         if (fallbackTimer) clearTimeout(fallbackTimer);
-        if (!cancelled) setLanguageReady(true);
+        if (!cancelled) {
+          setLanguageReady(true);
+          setExperimentalMasteryPlanningReady(true);
+        }
       }
     })();
     return () => {
@@ -289,6 +307,14 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     setCodeBlockWrapLongLinesState(wrap);
   }, []);
 
+  const setExperimentalMasteryPlanning = useCallback((enabled: boolean) => {
+    // SettingsProvider's authenticated payload and user edits are authoritative
+    // over the public pre-session bootstrap request, which may finish later.
+    experimentalMasteryPlanningAuthoritativeRef.current = true;
+    setExperimentalMasteryPlanningState(enabled);
+    setExperimentalMasteryPlanningReady(true);
+  }, []);
+
   const value = useMemo<AppShellContextValue>(
     () => ({
       theme,
@@ -306,6 +332,9 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       setCodeBlockShowLineNumbers,
       codeBlockWrapLongLines,
       setCodeBlockWrapLongLines,
+      experimentalMasteryPlanning,
+      experimentalMasteryPlanningReady,
+      setExperimentalMasteryPlanning,
     }),
     [
       activeSessionId,
@@ -318,6 +347,9 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       setCodeBlockShowLineNumbers,
       setCodeBlockTheme,
       setCodeBlockWrapLongLines,
+      experimentalMasteryPlanning,
+      experimentalMasteryPlanningReady,
+      setExperimentalMasteryPlanning,
       setLanguage,
       setSidebarCollapsed,
       setTheme,

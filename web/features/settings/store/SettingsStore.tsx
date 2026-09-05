@@ -191,6 +191,7 @@ export type UiSettings = {
   code_block_theme: string;
   code_block_show_line_numbers: boolean;
   code_block_wrap_long_lines: boolean;
+  experimental_mastery_planning: boolean;
 };
 
 type CodeBlockUiSettings = Pick<
@@ -226,11 +227,20 @@ export async function persistUiSettingsPatch(
   patch: UiSettingsPatch,
   fetcher: typeof apiFetch = apiFetch,
 ): Promise<void> {
-  await fetcher(apiUrl("/api/settings/ui"), {
+  const response = await fetcher(apiUrl("/api/settings/ui"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
+  if (!response.ok) {
+    throw new Error(`Settings update failed: HTTP ${response.status}`);
+  }
+}
+
+export function experimentalMasteryPlanningFromUi(
+  ui: Partial<UiSettings>,
+): boolean {
+  return ui.experimental_mastery_planning === true;
 }
 
 export type ProviderOption = {
@@ -563,6 +573,7 @@ export type SettingsContextValue = {
   codeBlockTheme: UiSettings["code_block_theme"];
   codeBlockShowLineNumbers: UiSettings["code_block_show_line_numbers"];
   codeBlockWrapLongLines: UiSettings["code_block_wrap_long_lines"];
+  experimentalMasteryPlanning: boolean;
   toast: string;
   setToast: (value: string) => void;
 
@@ -575,6 +586,7 @@ export type SettingsContextValue = {
   updateCodeBlockTheme: (next: CodeBlockThemeId) => Promise<void>;
   updateCodeBlockShowLineNumbers: (next: boolean) => Promise<void>;
   updateCodeBlockWrapLongLines: (next: boolean) => Promise<void>;
+  updateExperimentalMasteryPlanning: (next: boolean) => Promise<void>;
 
   // Catalog mutation
   mutateCatalog: (mutator: (next: Catalog) => void) => void;
@@ -720,6 +732,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setCodeBlockTheme: setAppShellCodeBlockTheme,
     setCodeBlockShowLineNumbers: setAppShellCodeBlockShowLineNumbers,
     setCodeBlockWrapLongLines: setAppShellCodeBlockWrapLongLines,
+    experimentalMasteryPlanning,
+    setExperimentalMasteryPlanning,
   } = useAppShell();
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -847,6 +861,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setTheme(payload.ui.theme);
       setLanguage(payload.ui.language);
       setResponseLanguage(payload.ui.response_language ?? payload.ui.language);
+      // The authenticated settings payload is authoritative over the public
+      // pre-session bootstrap, including legacy files that lack this field.
+      setExperimentalMasteryPlanning(
+        experimentalMasteryPlanningFromUi(payload.ui),
+      );
       // Writes the backend-loaded values into app-shell storage and dispatches
       // the code-block settings event; AppShellContext (the single source) picks
       // them up, so no separate copy needs seeding here.
@@ -913,7 +932,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         );
       }
     }
-  }, [syncPendingKeys, t]);
+  }, [setExperimentalMasteryPlanning, syncPendingKeys, t]);
 
   // Load settings + status once on mount. Subsequent navigations between
   // settings sub-pages share this state via the layout-level provider.
@@ -1002,6 +1021,19 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     },
     [setAppShellCodeBlockWrapLongLines],
   );
+
+  const updateExperimentalMasteryPlanning = useCallback(async (next: boolean) => {
+    const previous = experimentalMasteryPlanning;
+    setExperimentalMasteryPlanning(next);
+    try {
+      await persistUiSettingsPatch({ experimental_mastery_planning: next });
+    } catch (err) {
+      setExperimentalMasteryPlanning(previous);
+      setToast(
+        t("Could not update new mastery planning. Your previous setting was restored."),
+      );
+    }
+  }, [experimentalMasteryPlanning, setExperimentalMasteryPlanning, setToast, t]);
 
   // ── Catalog mutators ────────────────────────────────────────────────────
   const mutateCatalog = useCallback((mutator: (next: Catalog) => void) => {
@@ -1907,6 +1939,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       codeBlockTheme,
       codeBlockShowLineNumbers,
       codeBlockWrapLongLines,
+      experimentalMasteryPlanning,
       toast,
       setToast,
       updateTheme,
@@ -1915,6 +1948,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateCodeBlockTheme,
       updateCodeBlockShowLineNumbers,
       updateCodeBlockWrapLongLines,
+      updateExperimentalMasteryPlanning,
       mutateCatalog,
       addProfile,
       removeActiveProfile,
@@ -1980,6 +2014,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       draft,
       embeddingCapabilities,
       embeddingDefaultDim,
+      experimentalMasteryPlanning,
       hasUnsavedChanges,
       language,
       responseLanguage,
@@ -2016,6 +2051,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateCodeBlockShowLineNumbers,
       updateCodeBlockTheme,
       updateCodeBlockWrapLongLines,
+      updateExperimentalMasteryPlanning,
       updateContextWindowField,
       updateReasoningEffort,
       updateModelCapability,

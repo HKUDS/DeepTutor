@@ -18,6 +18,10 @@ const AppearanceSettingsPage = dynamic(
   () => import("@/features/settings/sections/AppearanceSettingsSection"),
   { loading: sectionLoading },
 );
+const ExperimentalSettingsPage = dynamic(
+  () => import("@/features/settings/sections/ExperimentalSettingsSection"),
+  { loading: sectionLoading },
+);
 const NetworkSettingsPage = dynamic(
   () => import("@/features/settings/sections/NetworkSettingsSection"),
   { loading: sectionLoading },
@@ -63,6 +67,7 @@ const childKeys = (key: string) =>
 const SETTINGS_SECTIONS = [
   { key: "overview", Component: SettingsOverview },
   { key: "appearance", Component: AppearanceSettingsPage },
+  { key: "experimental", Component: ExperimentalSettingsPage },
   { key: "network", Component: NetworkSettingsPage },
   {
     key: "models",

@@ -32,6 +32,21 @@ def test_load_ui_settings_migrates_legacy_language_to_response_language(
 
     assert settings["language"] == "zh"
     assert settings["response_language"] == "zh"
+    assert settings["experimental_mastery_planning"] is False
+
+
+@pytest.mark.asyncio
+async def test_experimental_mastery_planning_is_persisted(monkeypatch, tmp_path) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(experimental_mastery_planning=True)
+    )
+    assert response["experimental_mastery_planning"] is True
+    assert (
+        json.loads(settings_file.read_text(encoding="utf-8"))["experimental_mastery_planning"]
+        is True
+    )
 
 
 def test_both_readers_of_interface_json_agree_on_a_legacy_file(
@@ -1452,6 +1467,24 @@ def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch,
     payload = response.json()
     assert payload["language"] == "zh"
     assert payload["theme"] == "dark"
+
+
+def test_public_ui_defaults_experimental_flag_for_legacy_interface_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A pre-feature interface.json must still expose a usable false default."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text('{"theme": "snow", "language": "en"}', encoding="utf-8")
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    app = FastAPI()
+    app.include_router(settings_router.public_router, prefix="/api/settings")
+
+    payload = TestClient(app).get("/api/settings/ui").json()
+
+    assert payload["experimental_mastery_planning"] is False
 
 
 def test_auth_disabled_settings_endpoint_does_not_expose_provider_secrets(

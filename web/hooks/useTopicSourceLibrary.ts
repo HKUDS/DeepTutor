@@ -8,6 +8,7 @@ import { listKnowledgeBaseFiles } from "@/features/knowledge/api/client";
 import { SUBAGENT_KB_TYPE } from "@/lib/knowledge-helpers";
 import type { TopicSourceInput, TopicSourceKind } from "@/lib/learning-api";
 import { getNotebook, listNotebooks } from "@/lib/notebook-api";
+import type { Translate } from "@/components/space/learning/format";
 
 export type SourceCandidateKind = Exclude<TopicSourceKind, "goal" | "chat">;
 
@@ -51,8 +52,6 @@ const EMPTY_LIBRARY: SourceLibrary = {
   failures: [],
 };
 
-type Translate = (cn: string, en: string) => string;
-
 export function useTopicSourceLibrary(tr: Translate) {
   const [library, setLibrary] = useState<SourceLibrary>(EMPTY_LIBRARY);
   const [loading, setLoading] = useState(true);
@@ -66,12 +65,12 @@ export function useTopicSourceLibrary(tr: Translate) {
     ]).then(([booksResult, notebooksResult, knowledgeResult]) => {
       if (disposed) return;
       const failures: string[] = [];
-      if (booksResult.status === "rejected") failures.push(tr("书架", "Books"));
+      if (booksResult.status === "rejected") failures.push(tr("Books"));
       if (notebooksResult.status === "rejected") {
-        failures.push(tr("笔记本", "Notebooks"));
+        failures.push(tr("Notebooks"));
       }
       if (knowledgeResult.status === "rejected") {
-        failures.push(tr("知识库", "Knowledge bases"));
+        failures.push(tr("Knowledge bases"));
       }
       setLibrary({
         books:
@@ -81,10 +80,7 @@ export function useTopicSourceLibrary(tr: Translate) {
                 kind: "book" as const,
                 sourceId: book.id,
                 label: book.title,
-                detail: tr(
-                  `${book.chapter_count} 章 · ${book.status}`,
-                  `${book.chapter_count} chapters · ${book.status}`,
-                ),
+                detail: `${book.chapter_count} ${tr("chapters")} · ${book.status}`,
                 available: book.status !== "error",
               }))
             : [],
@@ -95,10 +91,7 @@ export function useTopicSourceLibrary(tr: Translate) {
                 kind: "notebook" as const,
                 sourceId: notebook.id,
                 label: notebook.name,
-                detail: tr(
-                  `${notebook.record_count ?? 0} 条记录`,
-                  `${notebook.record_count ?? 0} records`,
-                ),
+                detail: `${notebook.record_count ?? 0} ${tr("records")}`,
                 available: !notebook.unreadable,
               }))
             : [],
@@ -116,14 +109,9 @@ export function useTopicSourceLibrary(tr: Translate) {
                   label: knowledgeBase.name,
                   detail:
                     knowledgeBase.provenance_label ||
-                    tr(
-                      knowledgeBase.status === "ready"
-                        ? "可检索"
-                        : "索引状态未知",
-                      knowledgeBase.status === "ready"
-                        ? "Ready to retrieve"
-                        : "Index status unknown",
-                    ),
+                    knowledgeBase.status === "ready"
+                      ? tr("Ready to retrieve")
+                      : tr("Index status unknown"),
                   available: knowledgeBase.available !== false,
                 }))
             : [],
@@ -169,10 +157,7 @@ export function useTopicSourceLibrary(tr: Translate) {
                 kind: "file" as const,
                 sourceId: entry.name,
                 label: entry.name,
-                detail: tr(
-                  `${kbName} 中的文件`,
-                  `File in ${kbName}`,
-                ),
+                detail: `${tr("File in")} ${kbName}`,
                 available: true,
                 kbName,
                 path: entry.name,
@@ -189,7 +174,7 @@ export function useTopicSourceLibrary(tr: Translate) {
             error:
               reason instanceof Error
                 ? reason.message
-                : tr("无法读取文件列表", "Could not list files"),
+                : tr("Could not list files"),
           },
         }));
       }

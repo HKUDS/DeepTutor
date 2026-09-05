@@ -470,6 +470,54 @@ export interface GenerateTopicInput {
   must_cover?: string[];
 }
 
+export interface StructuredTopicDraftInput extends GenerateTopicInput {
+  topic: {
+    name: string;
+    purpose: string;
+    learning_purpose?: string | null;
+    custom_purpose?: string | null;
+  };
+  learner_context?: {
+    current_level?: string | null;
+    known_topics?: string[] | null;
+    skipped_topics?: string[] | null;
+  } | null;
+  scope?: { mode?: string | null; include?: string[]; exclude?: string[] } | null;
+  learning_preferences?: {
+    theory_practice?: string | null;
+    granularity?: string | null;
+    mathematical_rigor?: string | null;
+    activities?: string[] | null;
+  } | null;
+  time_constraints?: {
+    mode?: string | null;
+    weekly_hours?: number | null;
+    target_date?: string | null;
+    target_duration_weeks?: number | null;
+    session_duration_minutes?: number | null;
+  } | null;
+  milestones?: {
+    preference?: string | null;
+    items?: { name: string; description?: string | null; target_week?: number | null }[] | null;
+  } | null;
+}
+
+export type LearningPlanState = "discussing" | "settled" | "draft_ready";
+export interface LearningPlanMessage { role: "user" | "assistant"; content: string; created_at: number }
+export interface LearningPlan {
+  plan_id: string;
+  state: LearningPlanState;
+  input: StructuredTopicDraftInput;
+  brief: StructuredTopicDraftInput;
+  brief_revision: number;
+  messages: LearningPlanMessage[];
+  draft: TopicDraft | null;
+  context_path_id: string;
+  selected_session_ids: string[];
+  created_at: number;
+  updated_at: number;
+}
+
 export interface CreateTopicInput extends GenerateTopicInput {
   description?: string;
   emoji?: string;
@@ -490,6 +538,24 @@ export interface TopicSession {
   has_pending_question: boolean;
 }
 
+export const LEARNING_PLAN_CONFLICT = "learning_plan_conflict";
+
+export class LearningPlanApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, status: number, message?: string) {
+    super(message || code);
+    this.name = "LearningPlanApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+export function isLearningPlanConflict(error: unknown): error is LearningPlanApiError {
+  return error instanceof LearningPlanApiError && error.code === LEARNING_PLAN_CONFLICT;
+}
+
 async function masteryJson<T>(
   path: string,
   init?: RequestInit,
@@ -503,6 +569,9 @@ async function masteryJson<T>(
       detail = payload.detail ? `: ${payload.detail}` : "";
     } catch {
       // The status remains actionable when an upstream proxy returns HTML.
+    }
+    if (res.status === 409 && path.startsWith("/api/mastery-paths/learning-plans/")) {
+      throw new LearningPlanApiError(LEARNING_PLAN_CONFLICT, res.status);
     }
     throw new Error(`Failed to ${action} (${res.status})${detail}`);
   }
@@ -590,6 +659,20 @@ export function generateMasteryTopicDraft(
   );
 }
 
+export function generateMasteryTopicDraftCompatible(
+  input: StructuredTopicDraftInput,
+): Promise<TopicDraft> {
+  return masteryJson(
+    "/api/mastery-paths/topics/draft",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    "generate learning route",
+  );
+}
+
 export function createMasteryTopic(
   input: CreateTopicInput,
 ): Promise<MasteryTopic> {
@@ -602,6 +685,31 @@ export function createMasteryTopic(
     },
     "create topic",
   );
+}
+
+export function createLearningPlan(input: StructuredTopicDraftInput): Promise<LearningPlan> {
+  return masteryJson("/api/mastery-paths/learning-plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }, "create learning plan");
+}
+
+export function fetchLearningPlan(planId: string): Promise<LearningPlan> {
+  return masteryJson(`/api/mastery-paths/learning-plans/${encodeURIComponent(planId)}`, undefined, "load learning plan");
+}
+
+export function sendLearningPlanMessage(planId: string, content: string): Promise<LearningPlan> {
+  return masteryJson(`/api/mastery-paths/learning-plans/${encodeURIComponent(planId)}/planning-session/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) }, "send planning message");
+}
+
+export function settleLearningPlan(planId: string, input: StructuredTopicDraftInput): Promise<LearningPlan> {
+  return masteryJson(`/api/mastery-paths/learning-plans/${encodeURIComponent(planId)}/settle`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }, "settle learning plan");
+}
+
+export function generateLearningPlanRouteDraft(planId: string, options: { force?: boolean } = {}): Promise<TopicDraft> {
+  const query = options.force ? "?force=true" : "";
+  return masteryJson(`/api/mastery-paths/learning-plans/${encodeURIComponent(planId)}/route-draft${query}`, { method: "POST" }, "generate route draft");
+}
+
+export function saveLearningPlanRouteDraft(planId: string, draft: TopicDraft): Promise<LearningPlan> {
+  return masteryJson(`/api/mastery-paths/learning-plans/${encodeURIComponent(planId)}/route-draft`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) }, "save route draft");
 }
 
 export function updateMasteryTopicMap(

@@ -411,6 +411,16 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     href: "/settings#appearance",
   },
   {
+    key: "experimental",
+    label: { zh: "测试", en: "Experimental" },
+    blurb: {
+      zh: "试用仍在完善中的可选功能",
+      en: "Try opt-in features that are still being refined",
+    },
+    icon: Sparkles,
+    href: "/settings#experimental",
+  },
+  {
     key: "network",
     label: { zh: "网络", en: "Network" },
     blurb: {
@@ -519,6 +529,7 @@ export function settingsAnchorHref(key: string): string {
 // looked up via the currently scrolled-to section (see `storagePathFor`).
 const STORAGE_PATHS: Record<string, string> = {
   "/settings#appearance": "data/user/settings/interface.json",
+  "/settings#experimental": "data/user/settings/interface.json",
   "/settings#network": "data/user/settings/system.json",
   "/settings#llm": "data/user/settings/model_catalog.json",
   "/settings#embedding": "data/user/settings/model_catalog.json",
@@ -531,6 +542,7 @@ const STORAGE_PATHS: Record<string, string> = {
   "/settings#document-parsing": "data/user/settings/document_parsing.json",
   "/settings#memory": "data/user/settings/main.yaml",
   appearance: "data/user/settings/interface.json",
+  experimental: "data/user/settings/interface.json",
   network: "data/user/settings/system.json",
   connections: "data/user/settings/model_catalog.json",
   "task-models": "data/user/settings/model_catalog.json",

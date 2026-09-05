@@ -87,6 +87,9 @@ test("learner and guardian sections follow the resolved account type", () => {
   const agents = SETTINGS_CATEGORIES.find(
     (category) => category.key === "agents",
   )!;
+  const experimental = SETTINGS_CATEGORIES.find(
+    (category) => category.key === "experimental",
+  )!;
 
   assert.equal(
     isSettingsCategoryVisible(learner, PENDING_SETTINGS_ACCESS),
@@ -100,6 +103,11 @@ test("learner and guardian sections follow the resolved account type", () => {
     isSettingsCategoryVisible(agents, PENDING_SETTINGS_ACCESS),
     false,
   );
+  // Experimental is a personal UI preference, never an auth or role gate.
+  assert.equal(
+    isSettingsCategoryVisible(experimental, PENDING_SETTINGS_ACCESS),
+    true,
+  );
 
   const localAdmin = settingsAccessFromAuthStatus({
     enabled: false,
@@ -110,6 +118,7 @@ test("learner and guardian sections follow the resolved account type", () => {
   assert.equal(isSettingsCategoryVisible(learner, localAdmin), false);
   assert.equal(isSettingsCategoryVisible(guardian, localAdmin), false);
   assert.equal(isSettingsCategoryVisible(agents, localAdmin), true);
+  assert.equal(isSettingsCategoryVisible(experimental, localAdmin), true);
 
   const learnerAccount = settingsAccessFromAuthStatus({
     enabled: true,
@@ -120,6 +129,7 @@ test("learner and guardian sections follow the resolved account type", () => {
   assert.equal(isSettingsCategoryVisible(learner, learnerAccount), true);
   assert.equal(isSettingsCategoryVisible(guardian, learnerAccount), false);
   assert.equal(isSettingsCategoryVisible(agents, learnerAccount), false);
+  assert.equal(isSettingsCategoryVisible(experimental, learnerAccount), true);
 
   const guardianAccount = settingsAccessFromAuthStatus({
     enabled: true,

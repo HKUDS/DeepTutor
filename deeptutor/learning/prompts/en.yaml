@@ -87,6 +87,9 @@ topic:
     Topic name: {name}
     Learner destination: {goal}
     {must_cover_block}
+    <learning_plan>
+    {learning_plan_json}
+    </learning_plan>
     Return: {{"description":"one inviting sentence","modules":[{{"name":"region name","materials":["document name"],"knowledge_points":[{{"name":"specific objective","type":"concept"}}]}}]}}
 
     <learning_sources>

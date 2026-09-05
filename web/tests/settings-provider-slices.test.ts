@@ -33,6 +33,19 @@ test("appearance consumes only the UI preference slice", () => {
   assert.doesNotMatch(appearance, /useSettings\(\)/);
 });
 
+test("experimental settings is a first-level section backed by the UI slice", () => {
+  const section = read(
+    "features/settings/sections/ExperimentalSettingsSection.tsx",
+  );
+  const page = read("app/(utility)/settings/page.tsx");
+  const nav = read("features/settings/navigation/settings-nav.ts");
+  assert.match(page, /key: "experimental", Component: ExperimentalSettingsPage/);
+  assert.match(nav, /key: "experimental"[\s\S]*?href: "\/settings#experimental"/);
+  assert.match(section, /useUiSettings\(\)/);
+  assert.match(section, /experimentalMasteryPlanning/);
+  assert.match(section, /updateExperimentalMasteryPlanning/);
+});
+
 test("continuous settings imports feature sections, never route modules", () => {
   const page = read("app/(utility)/settings/page.tsx");
   assert.match(page, /features\/settings\/sections\/ModelsSettingsSection/);

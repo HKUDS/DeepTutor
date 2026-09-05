@@ -495,6 +495,7 @@ async def generate_topic_draft(
     sources: list[TopicSource],
     language: str,
     must_cover: list[str] | None = None,
+    learning_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     grounded_sources = await ground_topic_sources(
         name=name,
@@ -510,6 +511,7 @@ async def generate_topic_draft(
         sources_json=source_json,
         module_limit=module_limit,
         must_cover=[str(item).strip() for item in (must_cover or []) if str(item or "").strip()],
+        learning_plan_json=json.dumps(learning_plan or {}, ensure_ascii=False),
     )
     response = await complete(prompt=prompt, system_prompt=system_prompt)
     data = parse_json_response(response, fallback=None)

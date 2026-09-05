@@ -23,6 +23,7 @@ DEFAULT_UI_SETTINGS: dict[str, Any] = {
     "theme": "snow",
     "language": "en",
     "response_language": "en",
+    "experimental_mastery_planning": False,
 }
 
 
