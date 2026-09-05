@@ -11,7 +11,10 @@ from typing import Any
 
 WORKSPACE_MODE_READING = "immersive_reading"
 WORKSPACE_MODE_MASTERY = "mastery_path"
-WORKSPACE_MODES = frozenset({WORKSPACE_MODE_READING, WORKSPACE_MODE_MASTERY})
+WORKSPACE_MODE_WATCHING = "immersive_watching"
+WORKSPACE_MODES = frozenset(
+    {WORKSPACE_MODE_READING, WORKSPACE_MODE_MASTERY, WORKSPACE_MODE_WATCHING}
+)
 
 
 def upgrade_workspace_preferences(value: Any) -> dict[str, Any]:
@@ -33,7 +36,9 @@ def upgrade_workspace_preferences(value: Any) -> dict[str, Any]:
     reading_workspace_id = str(preferences.get("reading_workspace_id") or "").strip()
     session_kind = str(preferences.get("session_kind") or "").strip()
 
-    if capability == WORKSPACE_MODE_MASTERY and mastery_path_id:
+    if capability == WORKSPACE_MODE_WATCHING:
+        preferences["workspace_mode"] = WORKSPACE_MODE_WATCHING
+    elif capability == WORKSPACE_MODE_MASTERY and mastery_path_id:
         preferences["workspace_mode"] = WORKSPACE_MODE_MASTERY
     elif reading_workspace_id and (
         capability == WORKSPACE_MODE_READING or session_kind == WORKSPACE_MODE_READING

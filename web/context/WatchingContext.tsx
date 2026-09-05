@@ -1,12 +1,10 @@
 "use client";
 
-import { browserStorage } from "@/shared/storage";
-
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
+  useRef,
   useMemo,
   useState,
   type ReactNode,
@@ -25,9 +23,6 @@ import {
   setWatchingViewport,
 } from "@/lib/watching-turn-state";
 
-const LAST_MATERIAL_KEY = "dt:video-learning:last-material";
-const LAST_URL_KEY = "dt:video-learning:last-url";
-
 interface WatchingContextValue {
   material: TimedMediaMaterial | null;
   active: boolean;
@@ -39,6 +34,7 @@ interface WatchingContextValue {
     language?: string,
     providerOverride?: VideoProvider,
   ): Promise<void>;
+  restore(materialId: string | null): Promise<void>;
   refresh(): Promise<void>;
   refreshTranscript(): Promise<void>;
   close(): void;
@@ -56,45 +52,52 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [lastUrl, setLastUrl] = useState("");
   const [active, setActive] = useState(false);
+  const generation = useRef(0);
 
   const accept = useCallback((next: TimedMediaMaterial) => {
     setMaterial(next);
     setWatchingMaterial(next.material_id);
     setWatchingViewport(next.playback.start_seconds || 0);
-    if (typeof window !== "undefined") {
-      browserStorage.writeRaw("local", LAST_MATERIAL_KEY, next.material_id);
-      browserStorage.writeRaw("local", LAST_URL_KEY, next.source.url);
-    }
+    setLastUrl(next.source.url);
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const materialId = browserStorage.readRaw("local", LAST_MATERIAL_KEY);
-    if (!materialId) return;
-    const sourceUrl = browserStorage.readRaw("local", LAST_URL_KEY) || "";
-    setLastUrl(sourceUrl);
-    setLoading(true);
-    void getVideoMaterial(materialId)
-      .then(accept)
-      .catch((caught) => {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : t("The player provider is unavailable."),
-        );
-        browserStorage.removeRaw("local", LAST_MATERIAL_KEY);
-      })
-      .finally(() => setLoading(false));
-  }, [accept, t]);
+  const restore = useCallback(
+    async (materialId: string | null) => {
+      const request = ++generation.current;
+      setMaterial(null);
+      setWatchingMaterial(null);
+      setLastUrl("");
+      setError(null);
+      setLoading(Boolean(materialId));
+      if (!materialId) return;
+      try {
+        const next = await getVideoMaterial(materialId);
+        if (request === generation.current) accept(next);
+      } catch (caught) {
+        if (request === generation.current)
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : t("The player provider is unavailable."),
+          );
+      } finally {
+        if (request === generation.current) setLoading(false);
+      }
+    },
+    [accept, t],
+  );
 
   const openUrl = useCallback(
     async (url: string, language = "", providerOverride?: VideoProvider) => {
+      const request = ++generation.current;
       setLoading(true);
       setError(null);
       setLastUrl(url);
       try {
-        accept(await resolveVideo(url, language, providerOverride));
+        const next = await resolveVideo(url, language, providerOverride);
+        if (request === generation.current) accept(next);
       } catch (caught) {
+        if (request !== generation.current) return;
         setError(
           caught instanceof Error
             ? caught.message
@@ -102,7 +105,7 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
         );
         throw caught;
       } finally {
-        setLoading(false);
+        if (request === generation.current) setLoading(false);
       }
     },
     [accept, t],
@@ -110,46 +113,51 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!material) return;
+    const request = ++generation.current;
     setLoading(true);
     setError(null);
     try {
-      accept(await getVideoMaterial(material.material_id));
+      const next = await getVideoMaterial(material.material_id);
+      if (request === generation.current) accept(next);
     } catch (caught) {
+      if (request !== generation.current) return;
       setError(
         caught instanceof Error
           ? caught.message
           : t("The player provider is unavailable."),
       );
     } finally {
-      setLoading(false);
+      if (request === generation.current) setLoading(false);
     }
   }, [accept, material, t]);
 
   const refreshTranscript = useCallback(async () => {
     if (!material) return;
+    const request = ++generation.current;
     setLoading(true);
     setError(null);
     try {
-      accept(await refreshInvidiousTranscript(material.material_id));
+      const next = await refreshInvidiousTranscript(material.material_id);
+      if (request === generation.current) accept(next);
     } catch (caught) {
+      if (request !== generation.current) return;
       setError(
         caught instanceof Error
           ? caught.message
           : t("The player provider is unavailable."),
       );
     } finally {
-      setLoading(false);
+      if (request === generation.current) setLoading(false);
     }
   }, [accept, material, t]);
 
   const close = useCallback(() => {
+    generation.current += 1;
     setMaterial(null);
     setWatchingMaterial(null);
+    setLastUrl("");
+    setLoading(false);
     setError(null);
-    if (typeof window !== "undefined") {
-      browserStorage.removeRaw("local", LAST_MATERIAL_KEY);
-      browserStorage.removeRaw("local", LAST_URL_KEY);
-    }
   }, []);
   const reportTime = useCallback(
     (seconds: number) => setWatchingViewport(seconds),
@@ -165,6 +173,7 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
       error,
       lastUrl,
       openUrl,
+      restore,
       refresh,
       refreshTranscript,
       close,
@@ -179,6 +188,7 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
       error,
       lastUrl,
       openUrl,
+      restore,
       refresh,
       refreshTranscript,
       close,

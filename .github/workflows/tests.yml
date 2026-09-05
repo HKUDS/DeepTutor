@@ -198,23 +198,27 @@ jobs:
 
       - name: Check module imports
         run: |
-          echo "🐍 Testing with Python ${{ matrix.python-version }}"
-          python -c "from deeptutor.runtime.orchestrator import ChatOrchestrator; print('✅ Orchestrator imports OK')"
-          python -c "from deeptutor.runtime.registry.tool_registry import get_tool_registry; print('✅ Tool registry imports OK')"
-          python -c "from deeptutor.runtime.registry.capability_registry import get_capability_registry; print('✅ Capability registry imports OK')"
-          python -c "from deeptutor.services.config.runtime_settings import RuntimeSettingsService; print('✅ RuntimeSettingsService imports OK')"
-          python -c "from deeptutor.api.routers.unified_ws import unified_websocket; print('✅ Unified WS imports OK')"
-          python -c "from deeptutor.services.prompt.manager import PromptManager; print('✅ Prompt manager imports OK')"
-          python -c "from deeptutor.logging import configure_logging, bind_log_context, capture_process_logs, ProcessLogEvent; print('✅ Logging imports OK')"
+          echo "Testing with Python ${{ matrix.python-version }}"
+          python -c "from deeptutor.runtime.orchestrator import ChatOrchestrator; print('[OK] Orchestrator imports')"
+          python -c "from deeptutor.runtime.registry.tool_registry import get_tool_registry; print('[OK] Tool registry imports')"
+          python -c "from deeptutor.runtime.registry.capability_registry import get_capability_registry; print('[OK] Capability registry imports')"
+          python -c "from deeptutor.services.config.runtime_settings import RuntimeSettingsService; print('[OK] RuntimeSettingsService imports')"
+          python -c "from deeptutor.api.routers.unified_ws import unified_websocket; print('[OK] Unified WS imports')"
+          python -c "from deeptutor.services.prompt.manager import PromptManager; print('[OK] Prompt manager imports')"
+          python -c "from deeptutor.logging import configure_logging, bind_log_context, capture_process_logs, ProcessLogEvent; print('[OK] Logging imports')"
         env:
           PYTHONPATH: ${{ github.workspace }}
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
 
       - name: Check lazy startup and isolated worker protocol
         run: |
-          python -c "import sys; import deeptutor.runtime.registry.tool_registry; assert 'deeptutor.agents.chat.agentic_pipeline' not in sys.modules; print('✅ Tool implementations stay cold')"
-          python -c "from deeptutor.runtime.isolated_worker import run_in_isolated_process_sync; assert run_in_isolated_process_sync('operator:add', 20, 22, timeout=15) == 42; print('✅ Isolated worker protocol OK')"
+          python -c "import sys; import deeptutor.runtime.registry.tool_registry; assert 'deeptutor.agents.chat.agentic_pipeline' not in sys.modules; print('[OK] Tool implementations stay cold')"
+          python -c "from deeptutor.runtime.isolated_worker import run_in_isolated_process_sync; assert run_in_isolated_process_sync('operator:add', 20, 22, timeout=15) == 42; print('[OK] Isolated worker protocol')"
         env:
           PYTHONPATH: ${{ github.workspace }}
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
 
   python-tests:
     name: Python Tests (Python ${{ matrix.python-version }})

@@ -7,8 +7,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import html
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -134,7 +136,14 @@ def _is_local_host(host: str) -> bool:
         address = ipaddress.ip_address(host)
     except ValueError:
         return False
-    return address.is_loopback or address.is_private or address.is_link_local
+    # RFC 6598 shared address space is used by private overlays such as Tailscale.
+    # ipaddress intentionally classifies it as neither private nor global.
+    return (
+        address.is_loopback
+        or address.is_private
+        or address.is_link_local
+        or address in ipaddress.ip_network("100.64.0.0/10")
+    )
 
 
 def normalize_video_learning_settings(payload: Any) -> dict[str, Any]:
@@ -207,7 +216,31 @@ def normalize_cues(rows: Any) -> list[dict[str, Any]]:
                 end = start + max(0.0, float(merged.get("duration") or 0))
         except (TypeError, ValueError):
             continue
-        result.append({"start": start, "end": max(start, end), "text": text})
+        if not math.isfinite(start) or not math.isfinite(end):
+            continue
+        item = {"start": start, "end": max(start, end), "text": text}
+        words = merged.get("words")
+        if isinstance(words, list):
+            valid = []
+            for word in words[:2000]:
+                if not isinstance(word, dict):
+                    continue
+                try:
+                    ws, we = float(word["start"]), float(word["end"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                wt = str(word.get("text") or "")
+                if wt.strip() and start <= ws < we <= end and (not valid or ws >= valid[-1]["end"]):
+                    valid.append({"start": ws, "end": we, "text": wt[:4096]})
+            if (
+                valid
+                and len(valid) == len(words)
+                and " ".join("".join(w["text"] for w in valid).split()) == " ".join(text.split())
+            ):
+                item["words"] = valid
+        if isinstance(merged.get("lines"), list):
+            item["lines"] = [str(line)[:4096] for line in merged["lines"][:20]]
+        result.append(item)
         total_bytes += len(encoded)
     return result
 
@@ -217,7 +250,7 @@ def build_segments(cues: list[dict[str, Any]]) -> list[dict[str, Any]]:
     current: dict[str, Any] | None = None
     for cue in cues:
         if current is None:
-            current = dict(cue)
+            current = {key: cue[key] for key in ("start", "end", "text")}
             continue
         gap = max(0.0, float(cue["start"]) - float(current["end"]))
         length = float(cue["end"]) - float(current["start"])
@@ -231,7 +264,7 @@ def build_segments(cues: list[dict[str, Any]]) -> list[dict[str, Any]]:
             current["text"] = f"{current['text']} {cue['text']}".strip()
         else:
             segments.append(current)
-            current = dict(cue)
+            current = {key: cue[key] for key in ("start", "end", "text")}
     if current is not None:
         segments.append(current)
     for locator, segment in enumerate(segments, start=1):
@@ -269,16 +302,37 @@ def parse_webvtt(text: str) -> list[dict[str, Any]]:
             body_lines.append(line)
             index += 1
 
-        body = re.sub(r"<[^>]+>", "", "\n".join(body_lines))
-        body = re.sub(r"\s+", " ", body).strip()
+        raw = "\n".join(body_lines)
+
+        def clean(value: str) -> str:
+            return html.unescape(re.sub(r"<[^>]+>", "", value))
+
+        body = re.sub(r"\s+", " ", clean(raw)).strip()
         if body:
-            result.append(
-                {
-                    "start": _vtt_time(match.group("start")),
-                    "end": _vtt_time(match.group("end")),
-                    "text": body,
-                }
-            )
+            start, end = _vtt_time(match.group("start")), _vtt_time(match.group("end"))
+            item = {"start": start, "end": end, "text": body}
+            marks = list(re.finditer(r"<((?:\d{2}:)?\d{2}:\d{2}\.\d{3})>", raw))
+            if marks:
+                pieces = []
+                cursor, previous = 0, start
+                for mark in marks:
+                    moment = _vtt_time(mark.group(1))
+                    if not previous <= moment <= end:
+                        pieces = []
+                        break
+                    text_part = clean(raw[cursor : mark.start()])
+                    if text_part.strip() and moment > previous:
+                        pieces.append({"start": previous, "end": moment, "text": text_part})
+                    previous, cursor = moment, mark.end()
+                else:
+                    tail = clean(raw[cursor:])
+                    if tail.strip() and previous < end:
+                        pieces.append({"start": previous, "end": end, "text": tail})
+                if pieces:
+                    item["words"] = pieces
+            if len(body_lines) > 1:
+                item["lines"] = [clean(line).strip() for line in body_lines]
+            result.append(item)
     return result
 
 
