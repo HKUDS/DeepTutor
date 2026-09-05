@@ -107,3 +107,21 @@ async def test_watching_turn_rejects_another_owners_material(tmp_path, monkeypat
                 "language": "en",
             }
         )
+
+
+@pytest.mark.parametrize("origin", ["http://100.64.0.1:3000", "http://100.127.255.254:3000"])
+def test_private_overlay_invidious_origins(origin):
+    from deeptutor.video_learning.service import _validate_origin
+
+    assert _validate_origin(origin) == origin
+
+
+@pytest.mark.parametrize(
+    "origin", ["http://100.63.255.255:3000", "http://100.128.0.1:3000", "http://8.8.8.8:3000"]
+)
+def test_public_invidious_origins_still_require_https(origin):
+    from deeptutor.video_learning import TimedMediaError
+    from deeptutor.video_learning.service import _validate_origin
+
+    with pytest.raises(TimedMediaError, match="HTTPS"):
+        _validate_origin(origin)

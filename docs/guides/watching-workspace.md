@@ -10,6 +10,8 @@ In administrator settings, open the video-learning section, enter the existing i
 
 - `invidious.api_base_url`: an origin reachable by the DeepTutor backend. Loopback is suitable only when the backend and instance share a host network. Containers must use an appropriate service or host address.
 - `invidious.public_base_url`: the same instance's origin reachable by the user's browser/device.
+Private HTTP origins include loopback, LAN and RFC 6598 shared addresses used by overlays such as Tailscale. Public instances must use HTTPS.
+
 - `default_provider`: `invidious` or `youtube`.
 
 DeepTutor continues to proxy media through its authenticated video-learning endpoints. Do not replace the player with an Invidious iframe or relax the stream proxy's allowed-origin checks. Invidious failure remains visible; switching to native YouTube requires the user's explicit action.
