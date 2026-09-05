@@ -171,6 +171,46 @@ export interface ReadingBookmark {
   created_at: number;
 }
 
+export interface FocusCheckpoint {
+  checkpoint_id: string;
+  title: string;
+  start_locator: number;
+  end_locator: number;
+  char_count: number;
+}
+
+export interface FocusAttempt {
+  checkpoint_id: string;
+  passed: boolean;
+  score: number;
+  feedback: string;
+  strengths: string[];
+  missing: string[];
+  attempt_count: number;
+  updated_at: number;
+}
+
+export interface FocusState {
+  active: boolean;
+  run_id: string;
+  revision: number;
+  plan_hash: string;
+  passed_checkpoint_ids: string[];
+  attempts: FocusAttempt[];
+  checkpoints: FocusCheckpoint[];
+  expected_checkpoint: FocusCheckpoint | null;
+  completed: boolean;
+  unlocked_through_locator: number;
+  pass_score: number;
+  updated_at: number;
+}
+
+export interface FocusCheckResult {
+  attempt: FocusAttempt;
+  focus: FocusState;
+  idempotent: boolean;
+}
+
 export interface SupportedFormats {
   extensions: string[];
   max_bytes: number;
@@ -382,8 +422,64 @@ export async function deleteBookmark(
   await unwrap(
     await apiFetch(
       apiUrl(`${BASE}/materials/${materialId}/bookmarks/${bookmarkId}`),
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+      },
     ),
+  );
+}
+
+export async function getFocusState(materialId: string): Promise<FocusState> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/focus`), {
+      cache: "no-store",
+    }),
+  );
+}
+
+export async function startFocusReading(
+  materialId: string,
+  reset = false,
+): Promise<FocusState> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/focus/start`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reset }),
+    }),
+  );
+}
+
+export async function stopFocusReading(
+  materialId: string,
+): Promise<FocusState> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/focus/stop`), {
+      method: "POST",
+    }),
+  );
+}
+
+export async function submitFocusCheck(
+  materialId: string,
+  focus: Pick<FocusState, "run_id" | "revision">,
+  input: {
+    checkpoint_id: string;
+    summary: string;
+    reflection: string;
+    locale?: string;
+  },
+): Promise<FocusCheckResult> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/focus/check`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...input,
+        run_id: focus.run_id,
+        revision: focus.revision,
+      }),
+    }),
   );
 }
 
@@ -417,7 +513,9 @@ export async function deleteAnnotation(
   await unwrap(
     await apiFetch(
       apiUrl(`${BASE}/materials/${materialId}/annotations/${annotationId}`),
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+      },
     ),
   );
 }

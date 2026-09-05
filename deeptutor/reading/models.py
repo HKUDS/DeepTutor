@@ -60,6 +60,18 @@ class ReadingUpgradeConflict(ReadingError):
     """A source-faithful upgrade would invalidate existing annotations."""
 
 
+class FocusCheckpointConflict(ReadingError):
+    """A Focus-Check request does not target the server-required checkpoint."""
+
+    def __init__(self, message: str, *, expected_checkpoint_id: str | None = None) -> None:
+        super().__init__(message)
+        self.expected_checkpoint_id = expected_checkpoint_id
+
+
+class FocusEvaluationError(ReadingError):
+    """The configured model could not produce a valid Focus-Check result."""
+
+
 @dataclass(frozen=True, slots=True)
 class Rect:
     """A normalised rectangle within one unit: 0..1, origin top-left."""
@@ -164,6 +176,107 @@ class UnitReference:
             locator=max(1, int(data.get("locator") or 1)),
             source_href=str(data.get("source_href") or ""),
             title=str(data.get("title") or ""),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FocusCheckpoint:
+    """One server-derived reading checkpoint spanning whole existing units."""
+
+    checkpoint_id: str
+    title: str
+    start_locator: int
+    end_locator: int
+    char_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "checkpoint_id": self.checkpoint_id,
+            "title": self.title,
+            "start_locator": self.start_locator,
+            "end_locator": self.end_locator,
+            "char_count": self.char_count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FocusAttempt:
+    """Latest evaluated answer for a checkpoint."""
+
+    checkpoint_id: str
+    passed: bool
+    score: int
+    feedback: str
+    strengths: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
+    attempt_count: int = 1
+    updated_at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "checkpoint_id": self.checkpoint_id,
+            "passed": self.passed,
+            "score": self.score,
+            "feedback": self.feedback,
+            "strengths": list(self.strengths),
+            "missing": list(self.missing),
+            "attempt_count": self.attempt_count,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "FocusAttempt":
+        return cls(
+            checkpoint_id=str(data.get("checkpoint_id") or ""),
+            passed=bool(data.get("passed")),
+            score=max(0, min(100, int(data.get("score") or 0))),
+            feedback=str(data.get("feedback") or ""),
+            strengths=tuple(str(row) for row in data.get("strengths") or ()),
+            missing=tuple(str(row) for row in data.get("missing") or ()),
+            attempt_count=max(1, int(data.get("attempt_count") or 1)),
+            updated_at=float(data.get("updated_at") or 0.0),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FocusState:
+    """Durable Focus Reading state; progression fields are server-owned."""
+
+    active: bool = False
+    run_id: str = ""
+    revision: int = 0
+    plan_hash: str = ""
+    passed_checkpoint_ids: tuple[str, ...] = ()
+    attempts: tuple[FocusAttempt, ...] = ()
+    updated_at: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "active": self.active,
+            "run_id": self.run_id,
+            "revision": self.revision,
+            "plan_hash": self.plan_hash,
+            "passed_checkpoint_ids": list(self.passed_checkpoint_ids),
+            "attempts": [attempt.to_dict() for attempt in self.attempts],
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "FocusState":
+        return cls(
+            active=bool(data.get("active")),
+            run_id=str(data.get("run_id") or ""),
+            revision=max(0, int(data.get("revision") or 0)),
+            plan_hash=str(data.get("plan_hash") or ""),
+            passed_checkpoint_ids=tuple(
+                str(row) for row in data.get("passed_checkpoint_ids") or () if row
+            ),
+            attempts=tuple(
+                FocusAttempt.from_dict(row)
+                for row in data.get("attempts") or ()
+                if isinstance(row, dict) and row.get("checkpoint_id")
+            ),
+            updated_at=float(data.get("updated_at") or 0.0),
         )
 
 
@@ -483,6 +596,11 @@ __all__ = [
     "Annotation",
     "AnnotationKind",
     "ContentFormat",
+    "FocusAttempt",
+    "FocusCheckpoint",
+    "FocusCheckpointConflict",
+    "FocusEvaluationError",
+    "FocusState",
     "MaterialManifest",
     "MaterialNotFound",
     "OutlineEntry",

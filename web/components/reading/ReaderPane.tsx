@@ -15,6 +15,7 @@ import {
   History,
   PanelRightClose,
   PanelRightOpen,
+  Sparkles,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -34,10 +35,14 @@ import {
   type AnnotationItem,
   type MaterialDetail,
   type ReadingBookmark,
+  getFocusState,
+  type FocusState,
 } from "@/lib/reading-api";
+import { focusAllowsLocator, focusProgress } from "@/lib/reading-focus";
 import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover } from "./AnnotationPopover";
 import { EpubDocumentView } from "./EpubDocumentView";
+import { FocusReadingPanel } from "./FocusReadingPanel";
 import {
   PdfDocumentView,
   type JumpRequest,
@@ -194,6 +199,15 @@ export function ReaderPane({
   const resumedMaterialRef = useRef("");
   const headingJumpNonceRef = useRef(0);
   const historyReady = historySessionId === (sessionId ?? null);
+  const [focus, setFocus] = useState<FocusState | null>(null);
+  const [focusMaterialId, setFocusMaterialId] = useState("");
+  const [showFocus, setShowFocus] = useState(false);
+  const currentFocus = material?.material_id === focusMaterialId ? focus : null;
+  const allowedHeadingJump =
+    headingJump &&
+    !focusAllowsLocator(currentFocus, headingJump.locator ?? currentLocator)
+      ? null
+      : headingJump;
 
   // -- persisted auto-jump preference --------------------------------------
 
@@ -205,6 +219,34 @@ export function ReaderPane({
       // Private mode / storage disabled — keep the default.
     }
   }, []);
+
+  useEffect(() => {
+    if (!material) {
+      setFocus(null);
+      setFocusMaterialId("");
+      setShowFocus(false);
+      return;
+    }
+    let cancelled = false;
+    void getFocusState(material.material_id)
+      .then((next) => {
+        if (!cancelled) {
+          setFocus(next);
+          setFocusMaterialId(material.material_id);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setError(
+            error instanceof Error
+              ? error.message
+              : t("Could not load Focus Reading."),
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [material, setError, t]);
 
   const toggleAutoJump = useCallback(() => {
     setAutoJump((current) => {
@@ -271,7 +313,7 @@ export function ReaderPane({
 
   // -- reader actions from the assistant -----------------------------------
 
-  const requestJump = useCallback(
+  const forceJump = useCallback(
     (locator: number, quote?: string, targetMaterialId?: string) => {
       nonceRef.current += 1;
       setJump({ locator, quote, nonce: nonceRef.current });
@@ -281,14 +323,33 @@ export function ReaderPane({
     [material?.material_id],
   );
 
+  const requestJump = useCallback(
+    (locator: number, quote?: string, targetMaterialId?: string) => {
+      const targetIsCurrent =
+        !targetMaterialId || targetMaterialId === material?.material_id;
+      if (targetIsCurrent && !focusAllowsLocator(currentFocus, locator)) {
+        setShowFocus(true);
+        setError(t("Complete the current Focus-Check before moving ahead."));
+        return;
+      }
+      forceJump(locator, quote, targetMaterialId);
+    },
+    [currentFocus, forceJump, material?.material_id, setError, t],
+  );
+
   const rememberExplicitLocation = useCallback(
     (locator: number) => {
-      if (!material || !historyReady) return;
+      if (
+        !material ||
+        !historyReady ||
+        !focusAllowsLocator(currentFocus, locator)
+      )
+        return;
       setLocationHistory((current) =>
         pushReadingLocation(current, locationEntry(material, locator)),
       );
     },
-    [historyReady, material],
+    [currentFocus, historyReady, material],
   );
 
   const openHistoryEntry = useCallback(
@@ -515,8 +576,28 @@ export function ReaderPane({
     if (!headingJump) return;
     if (headingJumpNonceRef.current === headingJump.nonce) return;
     headingJumpNonceRef.current = headingJump.nonce;
+    if (
+      !focusAllowsLocator(
+        currentFocus,
+        headingJump.locator ?? headingLocatorRef.current,
+      )
+    ) {
+      setShowFocus(true);
+      setError(t("Complete the current Focus-Check before moving ahead."));
+      return;
+    }
     rememberExplicitLocation(headingJump.locator ?? headingLocatorRef.current);
-  }, [headingJump, rememberExplicitLocation]);
+  }, [currentFocus, headingJump, rememberExplicitLocation, setError, t]);
+
+  useEffect(() => {
+    if (
+      currentFocus?.active &&
+      currentFocus.expected_checkpoint &&
+      currentLocator > currentFocus.unlocked_through_locator
+    ) {
+      forceJump(currentFocus.expected_checkpoint.start_locator);
+    }
+  }, [currentFocus, currentLocator, forceJump]);
 
   useEffect(() => {
     const onReaderAction = (event: Event) => {
@@ -702,6 +783,10 @@ export function ReaderPane({
     material && jumpMaterialIdRef.current === material.material_id
       ? jump
       : null;
+  const focusLimit = currentFocus?.active
+    ? currentFocus.unlocked_through_locator
+    : undefined;
+  const focusCounts = focusProgress(currentFocus);
 
   return (
     <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
@@ -788,6 +873,16 @@ export function ReaderPane({
               }
               active={autoJump}
               onClick={toggleAutoJump}
+            />
+            <HeaderButton
+              icon={Sparkles}
+              label={
+                currentFocus?.active
+                  ? t("Focus Reading · {{passed}}/{{total}}", focusCounts)
+                  : t("Focus Reading")
+              }
+              active={Boolean(currentFocus?.active)}
+              onClick={() => setShowFocus(true)}
             />
             <HeaderButton
               icon={exporting ? Loader2 : Download}
@@ -909,8 +1004,10 @@ export function ReaderPane({
               }
               onVisibleLocatorChange={handleVisibleLocator}
               onHeadingsChange={onHeadingsChange}
-              headingJump={headingJump}
+              headingJump={allowedHeadingJump}
               onError={setError}
+              maxLocator={focusLimit}
+              onBlockedForward={() => setShowFocus(true)}
             />
           ) : material.has_raw_view ? (
             <PdfDocumentView
@@ -925,6 +1022,8 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
+              maxLocator={focusLimit}
+              onBlockedForward={() => setShowFocus(true)}
             />
           ) : (
             <TextUnitView
@@ -943,7 +1042,9 @@ export function ReaderPane({
               onVisibleLocatorChange={handleVisibleLocator}
               onHeadingsChange={onHeadingsChange}
               onActiveHeadingChange={onActiveHeadingChange}
-              headingJump={headingJump}
+              headingJump={allowedHeadingJump}
+              maxLocator={focusLimit}
+              onBlockedForward={() => setShowFocus(true)}
             />
           )}
         </div>
@@ -974,6 +1075,34 @@ export function ReaderPane({
           onCitation={(color) => commitSelection("citation", color)}
           onAsk={askAboutSelection}
           onDismiss={() => setSelection(null)}
+        />
+      )}
+
+      {material && currentFocus?.active && !currentFocus.completed && (
+        <button
+          type="button"
+          onClick={() => setShowFocus(true)}
+          className="absolute bottom-4 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--primary)]/30 bg-[var(--background)]/95 px-4 py-2 text-xs font-medium text-[var(--primary)] shadow-lg backdrop-blur hover:bg-[var(--muted)]"
+        >
+          <Sparkles size={14} />
+          {currentLocator >= currentFocus.unlocked_through_locator
+            ? t("Complete Focus-Check to continue")
+            : t("Focus Reading · {{passed}}/{{total}}", focusCounts)}
+        </button>
+      )}
+
+      {material && showFocus && (
+        <FocusReadingPanel
+          key={material.material_id}
+          materialId={material.material_id}
+          focus={currentFocus}
+          onFocusChange={(next) => {
+            setFocus(next);
+            setFocusMaterialId(material.material_id);
+          }}
+          onNavigate={(locator) => forceJump(locator)}
+          onClose={() => setShowFocus(false)}
+          onError={setError}
         />
       )}
     </div>

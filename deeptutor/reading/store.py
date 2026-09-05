@@ -9,6 +9,7 @@ Layout, one directory per extracted content::
         raw/<filename>       # the original bytes, for the faithful viewer
         annotations/<material_id>.json
         positions/<material_id>.json
+        focus/<material_id>.json
 
 One file per unit is the point of the layout: ``read_material(locator=12)``
 opens one small file instead of deserialising the whole document, so a 600-page
@@ -38,13 +39,14 @@ import shutil
 import sqlite3
 import threading
 import time
-from typing import Any, Iterator, Literal, Mapping, Sequence
+from typing import Any, BinaryIO, Iterator, Literal, Mapping, Sequence
 import uuid
 
 from deeptutor.reading.extract import extract_material, synthesise_outline
 from deeptutor.reading.models import (
     MAX_TEXT_SELECTOR_CHARS,
     Annotation,
+    FocusState,
     MaterialManifest,
     MaterialNotFound,
     OutlineEntry,
@@ -70,6 +72,8 @@ BOOKMARKS_DIR = "bookmarks"
 # A ceiling rather than a design limit: bookmarks are a short list a reader
 # scans, and the file is rewritten whole on every change.
 MAX_BOOKMARKS = 200
+FOCUS_NAME = "focus.json"
+FOCUS_DIR = "focus"
 UNIT_REFS_NAME = "unit_refs.json"
 UNITS_DIR = "units"
 RAW_DIR = "raw"
@@ -86,6 +90,13 @@ _ID_LENGTH = 16
 # for "1-400" cannot blow the turn's context budget. The tool reports the
 # truncation rather than silently trimming.
 MAX_READ_CHARS = 60_000
+
+# FastAPI constructs a ReadingStore for each request. Locks therefore have to
+# be shared by all instances, keyed by the resolved workspace root as well as
+# the content-addressed material id. Otherwise two requests can both read the
+# same old Focus state and overwrite one another after an LLM await.
+_SHARED_LOCKS_GUARD = threading.Lock()
+_SHARED_LOCKS: dict[tuple[str, str], threading.RLock] = {}
 
 
 def _normalise_selector_text(value: str) -> str:
@@ -150,8 +161,6 @@ class ReadingStore:
 
     def __init__(self, root: Path | str | None = None) -> None:
         self._root_override = Path(root) if root is not None else None
-        self._locks_guard = threading.Lock()
-        self._locks: dict[str, threading.RLock] = {}
 
     # -- paths ------------------------------------------------------------
 
@@ -217,14 +226,22 @@ class ReadingStore:
 
     @contextmanager
     def _locked(self, material_id: str) -> Iterator[None]:
-        lock_id = self._content_id(material_id)
-        with self._locks_guard:
-            lock = self._locks.get(lock_id)
+        key = (str(self.root.resolve()), self._content_id(material_id))
+        with _SHARED_LOCKS_GUARD:
+            lock = _SHARED_LOCKS.get(key)
             if lock is None:
                 lock = threading.RLock()
-                self._locks[lock_id] = lock
+                _SHARED_LOCKS[key] = lock
         with lock:
-            yield
+            lock_dir = self.root / ".locks"
+            lock_dir.mkdir(parents=True, exist_ok=True)
+            lock_path = lock_dir / f"{key[1]}.lock"
+            with lock_path.open("a+b") as handle:
+                _lock_file(handle)
+                try:
+                    yield
+                finally:
+                    _unlock_file(handle)
 
     # -- ingest -----------------------------------------------------------
 
@@ -321,11 +338,12 @@ class ReadingStore:
             # A repair or compatible re-ingest keeps user-owned state. EPUB
             # legacy upgrades with annotations were rejected above because
             # their old locators cannot be mapped safely to the spine.
-            state_names: tuple[str, ...] = (ANNOTATIONS_NAME, POSITION_NAME)
+            state_names: tuple[str, ...] = (ANNOTATIONS_NAME, POSITION_NAME, FOCUS_NAME)
             state_dirs: tuple[str, ...] = (
                 ANNOTATIONS_DIR,
                 POSITIONS_DIR,
                 BOOKMARKS_DIR,
+                FOCUS_DIR,
             )
             if existing is not None and existing.render_mode != "epub":
                 # A legacy text-reader position can point past the shorter
@@ -333,11 +351,11 @@ class ReadingStore:
                 # the viewport safely resets to chapter one — which has to
                 # drop the per-material viewports too, not just the legacy
                 # file, or the stale locator simply survives in the new path.
-                state_names = (ANNOTATIONS_NAME,)
+                state_names = (ANNOTATIONS_NAME, FOCUS_NAME)
                 # A bookmark is a place the reader chose, so it is kept for the
                 # same reason an annotation is; only the automatic viewport
                 # resets when the spine changes under it.
-                state_dirs = (ANNOTATIONS_DIR, BOOKMARKS_DIR)
+                state_dirs = (ANNOTATIONS_DIR, BOOKMARKS_DIR, FOCUS_DIR)
             for state_name in state_names:
                 source_state = material_dir / state_name
                 if source_state.is_file():
@@ -482,11 +500,11 @@ class ReadingStore:
                         source_dir = material_dir / dirname
                         if source_dir.is_dir():
                             shutil.copytree(source_dir, revision_dir / dirname)
-            for state_name in (ANNOTATIONS_NAME, POSITION_NAME):
+            for state_name in (ANNOTATIONS_NAME, POSITION_NAME, FOCUS_NAME):
                 source_state = material_dir / state_name
                 if source_state.is_file():
                     shutil.copy2(source_state, stage_dir / state_name)
-            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR, BOOKMARKS_DIR):
+            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR, BOOKMARKS_DIR, FOCUS_DIR):
                 source_state_dir = material_dir / state_dir
                 if source_state_dir.is_dir():
                     shutil.copytree(
@@ -739,6 +757,33 @@ class ReadingStore:
             )
         return stored
 
+    # -- focus reading ----------------------------------------------------
+
+    def focus_state(self, material_id: str) -> FocusState:
+        """Return durable Focus state without deriving or advancing a plan."""
+        self.manifest(material_id)
+        state_path = self._state_path(material_id, FOCUS_DIR)
+        row = _read_json(state_path)
+        if row is None and not state_path.exists():
+            legacy_path = self._legacy_state_path(material_id, FOCUS_NAME)
+            row = _read_json(legacy_path) if legacy_path is not None else None
+        return FocusState.from_dict(row) if isinstance(row, dict) else FocusState()
+
+    def _write_focus_state_locked(self, material_id: str, state: FocusState) -> None:
+        """Atomically persist state. Callers must hold :meth:`material_lock`."""
+        self.manifest(material_id)
+        _atomic_write(
+            self._state_path(material_id, FOCUS_DIR),
+            json.dumps(state.to_dict(), ensure_ascii=False, indent=2),
+        )
+
+    @contextmanager
+    def material_lock(self, material_id: str) -> Iterator[None]:
+        """Coordinate a state transition across requests and worker processes."""
+        self.manifest(material_id)
+        with self._locked(material_id):
+            yield
+
     @staticmethod
     def _find_raw(material_dir: Path) -> Path | None:
         raw_dir = material_dir / RAW_DIR
@@ -801,7 +846,7 @@ class ReadingStore:
             raise ReadingError(f"invalid content id for material {material_id!r}")
         content_dir = self.root / resolved_content
         with self._locked(resolved_content):
-            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR):
+            for state_dir in (ANNOTATIONS_DIR, POSITIONS_DIR, FOCUS_DIR):
                 state_path = content_dir / state_dir / f"{resolved_id}.json"
                 state_path.unlink(missing_ok=True)
                 try:
@@ -1044,6 +1089,40 @@ def _safe_filename(name: str, *, fallback: str) -> str:
     return base[:180]
 
 
+def _lock_file(handle: BinaryIO) -> None:
+    """Acquire one byte exclusively on Windows, or flock the file on POSIX."""
+    if os.name == "nt":  # pragma: no cover - exercised by Windows CI
+        import msvcrt
+
+        handle.seek(0)
+        if handle.read(1) == b"":
+            handle.seek(0)
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        locking = getattr(msvcrt, "locking")
+        lock_mode = getattr(msvcrt, "LK_LOCK")
+        locking(handle.fileno(), lock_mode, 1)
+        return
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+
+
+def _unlock_file(handle: BinaryIO) -> None:
+    if os.name == "nt":  # pragma: no cover - exercised by Windows CI
+        import msvcrt
+
+        handle.seek(0)
+        locking = getattr(msvcrt, "locking")
+        unlock_mode = getattr(msvcrt, "LK_UNLCK")
+        locking(handle.fileno(), unlock_mode, 1)
+        return
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def _guess_mime(filename: str) -> str:
     import mimetypes
 
@@ -1053,6 +1132,7 @@ def _guess_mime(filename: str) -> str:
 
 __all__ = [
     "ANNOTATIONS_NAME",
+    "FOCUS_NAME",
     "MANIFEST_NAME",
     "MAX_READ_CHARS",
     "OUTLINE_NAME",
