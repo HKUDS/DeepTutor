@@ -91,6 +91,7 @@ def test_webvtt_preserves_caption_after_leading_blank_and_inline_tags() -> None:
             "start": 0.0,
             "end": 2.0,
             "text": "Opening idea and continuation",
+            "lines": ["Opening idea", "and continuation"],
         }
     ]
 
