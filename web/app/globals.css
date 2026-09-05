@@ -1667,3 +1667,6 @@ a[href^="#dt-locator-"]:hover {
 
 .watching-transcript-list .watching-follow-captions { font-size: 12px; padding: 6px 10px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 16px; color: var(--muted-foreground); }
 .watching-follow-captions[aria-pressed="true"] { background: var(--muted); color: var(--foreground); }
+
+.watching-transcript-tools { position: sticky; top: -16px; z-index: 2; padding-top: 12px; padding-bottom: 4px; background: var(--background); }
+.watching-transcript-tools input { margin-bottom: 8px; }

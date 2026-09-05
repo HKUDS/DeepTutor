@@ -633,6 +633,7 @@ export function WatchingPane({
                     open={!learning || transcriptExpanded || undefined}
                   >
                     <summary>{t("Transcript")}</summary>
+                    <div className="watching-transcript-tools">
                     <button type="button" className="watching-follow-captions" aria-pressed={followCaptions} onClick={() => setFollowCaptions(value => !value)}>{t("Follow playback")}</button>
                     <input
                       aria-label={t("Search transcript")}
@@ -643,6 +644,7 @@ export function WatchingPane({
                       }
                       className="mb-2 w-full rounded border bg-transparent p-2"
                     />
+                    </div>
                     <div className="space-y-1">
                       {material.transcript.cues
                         .filter((row) =>
