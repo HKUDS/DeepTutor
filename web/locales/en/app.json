@@ -4735,5 +4735,8 @@
   "The Invidious instance could not verify your account. Check the instance and reconnect.": "The Invidious instance could not verify your account. Check the instance and reconnect.",
   "Your DeepTutor login expired during authorization. Sign in, then start a new Invidious connection.": "Your DeepTutor login expired during authorization. Sign in, then start a new Invidious connection.",
   "The account could not be connected. Please start a new connection.": "The account could not be connected. Please start a new connection.",
-  "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate."
+  "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.": "Sign in with your Invidious account, then approve read-only access to return here. Your DeepTutor login is separate.",
+  "Popular": "Popular",
+  "Trending": "Trending",
+  "Explore popular videos": "Explore popular videos"
 }

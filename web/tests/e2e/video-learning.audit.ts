@@ -163,6 +163,19 @@ for (const mobile of [false, true]) {
       const json = (payload: unknown, status = 200) =>
         route.fulfill({ status, json: payload });
 
+      if (path === "/api/video-learning/invidious/home")
+        return json({
+          items: [
+            {
+              video_id: "dQw4w9WgXcQ",
+              title: "Browse lesson",
+              author: "Teacher",
+              duration_seconds: 120,
+              thumbnail_url: "",
+            },
+          ],
+          reason: "",
+        });
       if (path === "/api/video-learning/invidious/account/status")
         return json({ connected: true });
       if (path === "/api/video-learning/invidious/browse/playlists")
@@ -320,6 +333,13 @@ for (const mobile of [false, true]) {
     await expect(
       page.getByRole("button", { name: "Disconnect Invidious" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Browse lesson/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Popular", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Trending", exact: true }).click();
     await expect(
       page.getByRole("button", { name: /Browse lesson/ }),
     ).toBeVisible();

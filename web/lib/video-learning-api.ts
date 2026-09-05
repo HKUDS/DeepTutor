@@ -290,6 +290,36 @@ export async function browseInvidious(
   playlistId: string,
   signal: AbortSignal,
 ) {
+  if (kind === "popular" || kind === "trending") {
+    const feed = await unwrap<{
+      items: {
+        video_id: string;
+        title: string;
+        author: string;
+        duration_seconds: number;
+        thumbnail_url: string;
+      }[];
+      reason: string;
+    }>(
+      await apiFetch(`/api/video-learning/invidious/home?tab=${kind}`, {
+        signal,
+        cache: "no-store",
+      }),
+    );
+    if (feed.reason === "unavailable")
+      throw new Error(
+        "Invidious could not load videos. Please retry or check the instance.",
+      );
+    return {
+      videos: feed.items.map((item) => ({
+        videoId: item.video_id,
+        title: item.title,
+        author: item.author,
+        lengthSeconds: item.duration_seconds,
+        videoThumbnails: [{ url: item.thumbnail_url }],
+      })),
+    };
+  }
   const params = new URLSearchParams({
     q: query,
     page: String(page),
