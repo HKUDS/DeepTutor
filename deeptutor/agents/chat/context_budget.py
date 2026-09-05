@@ -40,6 +40,7 @@ _BLOCK_SEGMENTS: dict[str, str] = {
     "persona_style": "persona_style",
     "partner_turn_policy": "partner_turn_policy",
     "memory": "memory",
+    "learning_journal": "learning_journal",
     "tools": "tool_manifest",
     "knowledge_base_note": "knowledge_base_note",
     "skills": "skills",

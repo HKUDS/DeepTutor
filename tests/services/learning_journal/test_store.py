@@ -71,3 +71,39 @@ def test_add_record_dedupes(journal_store: LearningJournalStore) -> None:
 def test_set_mission_requires_topic(journal_store: LearningJournalStore) -> None:
     result = journal_store.set_mission(topic="  ")
     assert not result.accepted
+
+
+def test_injection_snapshot_carries_mission_and_handoff(
+    journal_store: LearningJournalStore,
+) -> None:
+    journal_store.set_mission(
+        topic="Fourier transform",
+        why="Signals coursework",
+        level="intermediate",
+    )
+    journal_store.note_session(
+        summary="Covered continuous FT definition.",
+        next_focus="Discrete FT and sampling intuition",
+    )
+    text = journal_store.injection_markdown()
+    assert "Fourier transform" in text
+    assert "Discrete FT and sampling intuition" in text
+
+
+def test_injection_snapshot_leaves_records_out(journal_store: LearningJournalStore) -> None:
+    journal_store.set_mission(topic="Fourier transform")
+    journal_store.add_record(title="Duality", insight="Time stretch means frequency squeeze.")
+    text = journal_store.injection_markdown()
+    assert "Duality" not in text
+    assert "Time stretch" not in text
+
+
+def test_injection_snapshot_is_empty_for_a_new_learner(journal_store: LearningJournalStore) -> None:
+    assert journal_store.injection_markdown() == ""
+
+
+def test_injection_snapshot_skips_records_only_journal(
+    journal_store: LearningJournalStore,
+) -> None:
+    journal_store.add_record(title="Nyquist", insight="Sample at more than 2B.")
+    assert journal_store.injection_markdown() == ""

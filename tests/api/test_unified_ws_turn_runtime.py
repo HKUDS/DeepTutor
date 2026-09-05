@@ -963,6 +963,7 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
         async def handle(self, context):
             captured["conversation_history"] = context.conversation_history
             captured["memory_context"] = context.memory_context
+            captured["learning_journal_context"] = context.learning_journal_context
             captured["conversation_context_text"] = context.metadata.get(
                 "conversation_context_text"
             )
@@ -993,6 +994,12 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
             emit=fake_emit,
         ),
     )
+    monkeypatch.setattr(
+        "deeptutor.services.learning_journal.get_learning_journal_store",
+        lambda: SimpleNamespace(
+            injection_markdown=lambda: "# Learning journal\n## Mission\n- Topic: FFT",
+        ),
+    )
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
     monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
@@ -1015,5 +1022,6 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
         pass
 
     assert captured["memory_context"] == "## Memory\n## Preferences\n- Prefer concise answers."
+    assert captured["learning_journal_context"] == ("# Learning journal\n## Mission\n- Topic: FFT")
     assert captured["conversation_history"] == []
     assert captured["conversation_context_text"] == "Recent chat summary"

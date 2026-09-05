@@ -82,6 +82,11 @@ class UnifiedContext:
         config_overrides: Per-request config tweaks (e.g. temperature).
         language: UI / response language ("en" | "zh").
         memory_context: Memory snapshot text injected into the system prompt.
+        learning_journal_context: Learning journal snapshot (mission + last
+            session handoff) taken at turn start and injected into the system
+            prompt, so a new conversation resumes where the last one stopped.
+            Empty when there is nothing to carry over — never an advertisement
+            for the feature.
         persona_context: Selected persona's instructions, eagerly injected
             into the system prompt (a persona must shape the voice from the
             first token; empty when no persona is active).
@@ -114,6 +119,7 @@ class UnifiedContext:
     config_overrides: dict[str, Any] = field(default_factory=dict)
     language: str = "en"
     memory_context: str = ""
+    learning_journal_context: str = ""
     persona_context: str = ""
     sidebar_context: str = ""
     skills_manifest: str = ""
