@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 
+from deeptutor.agents._shared.structured_llm import stream_and_validate_json
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import Attachment
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 from deeptutor.services.llm import supports_vision
 
 from ..models import RenderResult, VisualReviewResult
-from ..utils import extract_json_object
 
 
 class VisualReviewAgent(BaseAgent):
@@ -68,33 +68,52 @@ class VisualReviewAgent(BaseAgent):
             ),
             current_code=current_code,
         )
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            messages=messages,
-            attachments=attachments,
-            response_format={"type": "json_object"},
-            model=model,
-            stage="render_output",
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("math-visual-review"),
-                phase="render_output",
-                label="Visual quality review",
-                call_kind="math_visual_review",
-                trace_role="review",
-                trace_kind="llm_output",
-            ),
-        ):
-            _chunks.append(_c)
-        response = "".join(_chunks)
-        payload = extract_json_object(response)
-        payload.setdefault("reviewed_frames", len(attachments))
-        return VisualReviewResult.model_validate(payload)
+
+        def _messages(prompt: str) -> list[dict[str, str]]:
+            return [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+
+        try:
+            result = await stream_and_validate_json(
+                stream=self.stream_llm,
+                user_prompt=user_prompt,
+                model_type=VisualReviewResult,
+                build_messages=_messages,
+                stream_kwargs={
+                    "system_prompt": system_prompt,
+                    "attachments": attachments,
+                    "response_format": {"type": "json_object"},
+                    "model": model,
+                    "stage": "render_output",
+                    "trace_meta": build_trace_metadata(
+                        call_id=new_call_id("math-visual-review"),
+                        phase="render_output",
+                        label="Visual quality review",
+                        call_kind="math_visual_review",
+                        trace_role="review",
+                        trace_kind="llm_output",
+                    ),
+                },
+                is_complete=lambda payload: bool(payload.summary.strip()),
+                # The whole review call sits inside retry_manager's
+                # review_timeout_seconds; a third attempt risks turning a
+                # slow reviewer into a timeout that re-renders a good result.
+                max_attempts=2,
+            )
+        except ValueError:
+            # An unreadable verdict must not destroy the render it judged —
+            # same "cannot judge, keep the result" policy as the skip paths.
+            self.logger.warning("Visual review returned no usable JSON; keeping the current render")
+            return VisualReviewResult(
+                passed=True,
+                summary="Visual review skipped because the reviewer returned no readable verdict.",
+                reviewed_frames=len(attachments),
+            )
+        if not result.reviewed_frames:
+            result.reviewed_frames = len(attachments)
+        return result
 
 
 __all__ = ["VisualReviewAgent"]
