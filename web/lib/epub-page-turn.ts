@@ -1,7 +1,30 @@
 export type EpubPageTurnDirection = "previous" | "next";
+export type EpubSpreadMode = "single" | "double";
 
 export const EPUB_PAGE_TURN_MIN_DRAG_PX = 48;
 export const EPUB_PAGE_TURN_HORIZONTAL_RATIO = 1.25;
+export const EPUB_SPREAD_MIN_WIDTH_PX = 900;
+export const EPUB_MIN_LEAF_WIDTH_PX = 360;
+
+export interface EpubPageTurnBounds {
+  atStart: boolean;
+  atEnd: boolean;
+}
+
+export function epubSpreadModeForWidth(width: number): EpubSpreadMode {
+  return width >= EPUB_SPREAD_MIN_WIDTH_PX && width / 2 >= EPUB_MIN_LEAF_WIDTH_PX
+    ? "double"
+    : "single";
+}
+
+export function canStartEpubPageTurn(
+  direction: EpubPageTurnDirection,
+  turning: boolean,
+  bounds: EpubPageTurnBounds,
+): boolean {
+  if (turning) return false;
+  return direction === "previous" ? !bounds.atStart : !bounds.atEnd;
+}
 
 const INTERACTIVE_SELECTOR = [
   "a",

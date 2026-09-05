@@ -1009,6 +1009,189 @@ a[href^="#dt-locator-"]:hover {
   background: transparent;
 }
 
+/* EPUB pages sit on a quiet reading desk instead of bleeding to every edge of
+   the workspace. The rendition owns pagination; this shell supplies the paper,
+   spine, controls and the short physical cue when the visible leaf changes. */
+.dt-epub-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  padding: clamp(12px, 2vw, 30px) clamp(12px, 3vw, 44px) 8px;
+  background:
+    radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--background) 72%, transparent), transparent 58%),
+    var(--secondary);
+}
+
+.dt-epub-book-area {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  width: 100%;
+  max-width: 1448px;
+  align-self: center;
+  align-items: stretch;
+  justify-content: center;
+  padding-inline: 38px;
+}
+
+.dt-epub-book {
+  position: relative;
+  width: min(100%, 1360px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgb(82 67 43 / 0.18);
+  border-radius: 4px 8px 8px 4px;
+  background: #fffdf8;
+  box-shadow:
+    0 2px 2px rgb(48 38 24 / 0.08),
+    0 15px 38px -14px rgb(37 29 18 / 0.34),
+    0 1px 0 rgb(255 255 255 / 0.9) inset;
+  perspective: 1800px;
+  transform-style: preserve-3d;
+}
+
+.dt-epub-book[data-spread="double"] {
+  border-radius: 8px;
+}
+
+.dt-epub-rendition {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #fffdf8;
+}
+
+.dt-epub-spine {
+  position: absolute;
+  z-index: 12;
+  inset-block: 0;
+  left: 50%;
+  width: 26px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(55 43 28 / 0.09) 38%,
+    rgb(255 255 255 / 0.42) 50%,
+    rgb(55 43 28 / 0.09) 62%,
+    transparent
+  );
+  mix-blend-mode: multiply;
+}
+
+.dt-epub-turn-sheet {
+  position: absolute;
+  z-index: 20;
+  inset-block: 0;
+  width: 50%;
+  pointer-events: none;
+  backface-visibility: hidden;
+  background: linear-gradient(90deg, #fffdf8, #f8f2e7 74%, #e9dfcf);
+  box-shadow: 0 0 28px rgb(45 34 20 / 0.28);
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0.42, 0, 0.18, 1);
+  animation-fill-mode: both;
+}
+
+.dt-epub-turn-sheet[data-spread="single"] {
+  width: 100%;
+}
+
+.dt-epub-turn-sheet[data-direction="next"] {
+  right: 0;
+  transform-origin: left center;
+  animation-name: dt-epub-turn-next;
+}
+
+.dt-epub-turn-sheet[data-direction="previous"] {
+  left: 0;
+  transform-origin: right center;
+  animation-name: dt-epub-turn-previous;
+}
+
+@keyframes dt-epub-turn-next {
+  0% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+  8% { opacity: 0.42; }
+  48% { opacity: 0.92; transform: rotateY(-76deg) translateX(-1.5%); }
+  52% { opacity: 0.88; transform: rotateY(76deg) translateX(1.5%); }
+  100% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+}
+
+@keyframes dt-epub-turn-previous {
+  0% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+  8% { opacity: 0.42; }
+  48% { opacity: 0.92; transform: rotateY(76deg) translateX(1.5%); }
+  52% { opacity: 0.88; transform: rotateY(-76deg) translateX(-1.5%); }
+  100% { opacity: 0; transform: rotateY(0deg) translateX(0); }
+}
+
+.dt-epub-turn-button {
+  position: absolute;
+  z-index: 24;
+  top: 50%;
+  display: inline-flex;
+  width: 36px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  color: var(--foreground);
+  box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.42);
+  backdrop-filter: blur(10px);
+  transform: translateY(-50%);
+  transition: background 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out, transform 140ms ease-out;
+}
+
+.dt-epub-turn-button:hover:not(:disabled) {
+  background: var(--background);
+  transform: translateY(-50%) scale(1.04);
+}
+
+.dt-epub-turn-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.dt-epub-turn-button:disabled {
+  cursor: default;
+  opacity: 0.24;
+}
+
+.dt-epub-page-label {
+  min-height: 18px;
+  flex: none;
+  text-align: center;
+  font-size: 10.5px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.dt-epub-page-label[data-error="true"] {
+  color: var(--destructive);
+}
+
+@media (max-width: 640px) {
+  .dt-epub-stage {
+    padding-inline: 4px;
+  }
+  .dt-epub-book-area {
+    padding-inline: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-epub-turn-sheet {
+    display: none;
+  }
+}
+
 /* Recogito Text Annotator's required overlay styles, scoped to the Reader.
    The package's global stylesheet also changes html/body overscroll and every
    selection in the app, so importing it would leak reader behaviour into chat.

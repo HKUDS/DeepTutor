@@ -2,11 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canStartEpubPageTurn,
   directionForEpubLayout,
+  epubSpreadModeForWidth,
   hrefKey,
   locatorForEpubHref,
   resolveEpubPageTurnSwipe,
 } from "../lib/epub-page-turn";
+
+test("book spread needs both the desktop breakpoint and useful leaf width", () => {
+  assert.equal(epubSpreadModeForWidth(899), "single");
+  assert.equal(epubSpreadModeForWidth(900), "double");
+  assert.equal(epubSpreadModeForWidth(1440), "double");
+});
+
+test("page-turn guard respects animation lock and book boundaries", () => {
+  assert.equal(
+    canStartEpubPageTurn("previous", false, { atStart: true, atEnd: false }),
+    false,
+  );
+  assert.equal(
+    canStartEpubPageTurn("next", false, { atStart: true, atEnd: false }),
+    true,
+  );
+  assert.equal(
+    canStartEpubPageTurn("next", false, { atStart: false, atEnd: true }),
+    false,
+  );
+  assert.equal(
+    canStartEpubPageTurn("next", true, { atStart: false, atEnd: false }),
+    false,
+  );
+});
 
 test("horizontal swipes turn pages but vertical scrolls do not", () => {
   assert.equal(resolveEpubPageTurnSwipe(200, 100, 100, 105), "next");

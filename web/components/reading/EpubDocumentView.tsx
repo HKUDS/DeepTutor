@@ -14,17 +14,28 @@ import {
 } from "@/lib/reading-api";
 import {
   allowsEpubPageTurn,
+  canStartEpubPageTurn,
   directionForEpubLayout,
+  epubSpreadModeForWidth,
   locatorForEpubHref,
   resolveEpubPageTurnSwipe,
   type EpubPageTurnDirection,
+  type EpubSpreadMode,
 } from "@/lib/epub-page-turn";
 import { extractEpubHeadings, type ReaderHeading } from "@/lib/reading-outline";
 import { cleanQuote } from "@/lib/reading-selection";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 
 type EpubLocation = {
-  start?: { cfi?: string; href?: string; percentage?: number };
+  start?: {
+    cfi?: string;
+    href?: string;
+    percentage?: number;
+    displayed?: { page?: number; total?: number };
+  };
+  end?: { displayed?: { page?: number; total?: number } };
+  atStart?: boolean;
+  atEnd?: boolean;
 };
 
 type EpubContents = {
@@ -47,6 +58,8 @@ type EpubRendition = {
   display: (target?: string) => Promise<unknown>;
   next: () => Promise<unknown>;
   prev: () => Promise<unknown>;
+  resize: (width: number, height: number) => void;
+  spread: (spread: "none" | "always" | "auto", min?: number) => void;
   destroy: () => void;
   on: (event: string, callback: (...args: unknown[]) => void) => void;
   off: (event: string, callback: (...args: unknown[]) => void) => void;
@@ -93,6 +106,29 @@ const HIGHLIGHT_COLORS: Record<string, string> = {
   purple: "rgba(199, 174, 250, 0.55)",
 };
 
+const EPUB_TURN_SWAP_MS = 145;
+const EPUB_TURN_SETTLE_MS = 155;
+
+type EpubPageState = {
+  start: number;
+  end: number;
+  total: number;
+  atStart: boolean;
+  atEnd: boolean;
+};
+
+const INITIAL_PAGE_STATE: EpubPageState = {
+  start: 1,
+  end: 1,
+  total: 1,
+  atStart: true,
+  atEnd: false,
+};
+
+function waitForTurnFrame(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export interface EpubDocumentViewProps {
   materialId: string;
   unitCount: number;
@@ -132,6 +168,7 @@ export function EpubDocumentView({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const bookRef = useRef<EpubBook | null>(null);
   const renditionRef = useRef<EpubRendition | null>(null);
+  const renditionReadyRef = useRef(false);
   const isRtlRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const renderedAnchorsRef = useRef<string[]>([]);
@@ -142,8 +179,15 @@ export function EpubDocumentView({
   const headingsByLocatorRef = useRef<Map<number, ReaderHeading[]>>(new Map());
   const errorRef = useRef(onError);
   const locatorRef = useRef(1);
+  const pageStateRef = useRef<EpubPageState>(INITIAL_PAGE_STATE);
+  const turningRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [spreadMode, setSpreadMode] = useState<EpubSpreadMode>("single");
+  const [pageState, setPageState] =
+    useState<EpubPageState>(INITIAL_PAGE_STATE);
+  const [turning, setTurning] = useState<EpubPageTurnDirection | null>(null);
+  const [turnError, setTurnError] = useState("");
 
   useEffect(() => {
     refsRef.current = unitRefs;
@@ -165,12 +209,70 @@ export function EpubDocumentView({
     errorRef.current = onError;
   }, [onError]);
 
-  const turnPage = useCallback((direction: EpubPageTurnDirection) => {
+  const syncRenditionSize = useCallback(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const width = Math.floor(host.clientWidth);
+    const height = Math.floor(host.clientHeight);
+    if (width < 1 || height < 1) return;
+    const nextMode = epubSpreadModeForWidth(width);
+    setSpreadMode((current) => (current === nextMode ? current : nextMode));
     const rendition = renditionRef.current;
-    if (!rendition) return;
-    const physical = directionForEpubLayout(direction, isRtlRef.current);
-    void (physical === "next" ? rendition.next() : rendition.prev());
+    if (!rendition || !renditionReadyRef.current) return;
+    rendition.spread(nextMode === "double" ? "always" : "none", 900);
+    rendition.resize(width, height);
   }, []);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(syncRenditionSize);
+    });
+    observer.observe(host);
+    syncRenditionSize();
+    return () => {
+      observer.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [syncRenditionSize]);
+
+  const turnPage = useCallback(
+    async (direction: EpubPageTurnDirection) => {
+      const rendition = renditionRef.current;
+      if (
+        !rendition ||
+        !canStartEpubPageTurn(
+          direction,
+          turningRef.current,
+          pageStateRef.current,
+        )
+      )
+        return;
+      const physical = directionForEpubLayout(direction, isRtlRef.current);
+      turningRef.current = true;
+      setTurnError("");
+      const reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      if (!reduceMotion) {
+        setTurning(physical);
+        await waitForTurnFrame(EPUB_TURN_SWAP_MS);
+      }
+      try {
+        await (physical === "next" ? rendition.next() : rendition.prev());
+      } catch {
+        setTurnError(t("Could not turn the page."));
+      } finally {
+        if (!reduceMotion) await waitForTurnFrame(EPUB_TURN_SETTLE_MS);
+        setTurning(null);
+        turningRef.current = false;
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     const host = hostRef.current;
@@ -184,6 +286,31 @@ export function EpubDocumentView({
       const href = location.start?.href ?? "";
       const nextLocator = locatorForEpubHref(href, refsRef.current) || 1;
       const cfi = location.start?.cfi ?? "";
+      const displayedStart = Math.max(
+        1,
+        Number(location.start?.displayed?.page ?? 1),
+      );
+      const displayedEnd = Math.max(
+        displayedStart,
+        Number(location.end?.displayed?.page ?? displayedStart),
+      );
+      const displayedTotal = Math.max(
+        displayedEnd,
+        Number(
+          location.end?.displayed?.total ??
+            location.start?.displayed?.total ??
+            displayedEnd,
+        ),
+      );
+      const nextPageState = {
+        start: displayedStart,
+        end: displayedEnd,
+        total: displayedTotal,
+        atStart: Boolean(location.atStart),
+        atEnd: Boolean(location.atEnd),
+      };
+      pageStateRef.current = nextPageState;
+      setPageState(nextPageState);
       const percentage = Math.min(
         1,
         Math.max(
@@ -243,7 +370,7 @@ export function EpubDocumentView({
         return;
       if (!allowsEpubPageTurn(event.target)) return;
       event.preventDefault();
-      turnPage(event.key === "ArrowLeft" ? "previous" : "next");
+      void turnPage(event.key === "ArrowLeft" ? "previous" : "next");
     };
 
     const installContentSafety = (rawContents: unknown) => {
@@ -296,7 +423,7 @@ export function EpubDocumentView({
           );
           if (!direction) return;
           event.preventDefault();
-          turnPage(direction);
+          void turnPage(direction);
         },
         { passive: false },
       );
@@ -333,21 +460,26 @@ export function EpubDocumentView({
         await book.ready;
         if (cancelled) return;
         isRtlRef.current = book.package?.metadata?.direction === "rtl";
+        const initialSpread = epubSpreadModeForWidth(host.clientWidth);
+        setSpreadMode(initialSpread);
         rendition = book.renderTo(host, {
           width: "100%",
           height: "100%",
           flow: "paginated",
-          spread: "auto",
+          spread: initialSpread === "double" ? "always" : "none",
+          minSpreadWidth: 900,
           allowScriptedContent: false,
         });
         renditionRef.current = rendition;
         rendition.themes.register("deeptutor", {
-          "body, p, span, div": {
+          html: {
             "font-family":
-              "ui-serif, Georgia, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', serif !important",
+              "ui-serif, Georgia, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', serif",
           },
-          "body *": { "vertical-align": "baseline" },
-          img: { "max-width": "100%", height: "auto" },
+          body: {
+            overflow: "hidden",
+          },
+          img: { "max-width": "100%", "max-height": "100%", height: "auto" },
         });
         rendition.themes.select("deeptutor");
         rendition.on("relocated", onRelocated);
@@ -370,7 +502,11 @@ export function EpubDocumentView({
               refsRef.current[0]?.source_href,
           );
         }
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          renditionReadyRef.current = true;
+          syncRenditionSize();
+          setLoading(false);
+        }
       } catch (error) {
         if (cancelled) return;
         const message =
@@ -394,10 +530,12 @@ export function EpubDocumentView({
       }
       book?.destroy();
       renditionRef.current = null;
+      renditionReadyRef.current = false;
       bookRef.current = null;
+      turningRef.current = false;
       host.replaceChildren();
     };
-  }, [materialId, unitCount, onSelection, t, turnPage]);
+  }, [materialId, unitCount, onSelection, t, turnPage, syncRenditionSize]);
 
   useEffect(() => {
     if (!headingJump || !renditionRef.current || !bookRef.current) return;
@@ -420,7 +558,7 @@ export function EpubDocumentView({
         return;
       if (!allowsEpubPageTurn(event.target)) return;
       event.preventDefault();
-      turnPage(event.key === "ArrowLeft" ? "previous" : "next");
+      void turnPage(event.key === "ArrowLeft" ? "previous" : "next");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -502,46 +640,87 @@ export function EpubDocumentView({
     });
   }, [jump, unitRefs]);
 
+  const pageLabel =
+    pageState.start === pageState.end
+      ? t("Page {{start}} of {{total}} in this chapter", {
+          start: pageState.start,
+          total: pageState.total,
+        })
+      : t("Pages {{start}}–{{end}} of {{total}} in this chapter", {
+          start: pageState.start,
+          end: pageState.end,
+          total: pageState.total,
+        });
+
   return (
-    <div className="relative h-full min-h-0 overflow-hidden bg-[var(--background)] pb-[env(safe-area-inset-bottom)]">
-      <div
-        ref={hostRef}
-        className="h-full w-full"
-        aria-label={t("Immersive reading")}
-      />
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-[var(--background)] text-xs text-[var(--muted-foreground)]">
-          <Loader2 size={15} className="animate-spin" />
-          {t("Opening document…")}
-        </div>
-      )}
-      {!loading && loadError && (
+    <div className="dt-epub-stage h-full min-h-0 pb-[env(safe-area-inset-bottom)]">
+      <div className="dt-epub-book-area">
         <div
-          role="alert"
-          className="absolute inset-0 grid place-items-center p-8 text-center text-sm text-[var(--destructive)]"
+          className="dt-epub-book"
+          data-spread={spreadMode}
+          aria-busy={turning !== null}
         >
-          {loadError}
+          <div
+            ref={hostRef}
+            className="dt-epub-rendition"
+            aria-label={t("Immersive reading")}
+          />
+          {spreadMode === "double" && <div className="dt-epub-spine" />}
+          {turning && (
+            <div
+              className="dt-epub-turn-sheet"
+              data-direction={turning}
+              data-spread={spreadMode}
+              aria-hidden="true"
+            />
+          )}
+          {loading && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center gap-2 bg-[#fffdf8] text-xs text-neutral-500">
+              <Loader2 size={15} className="animate-spin" />
+              {t("Opening document…")}
+            </div>
+          )}
+          {!loading && loadError && (
+            <div
+              role="alert"
+              className="absolute inset-0 z-30 grid place-items-center bg-[#fffdf8] p-8 text-center text-sm text-[var(--destructive)]"
+            >
+              {loadError}
+            </div>
+          )}
         </div>
-      )}
-      {!loadError && (
-        <>
-          <button
-            type="button"
-            onClick={() => turnPage("previous")}
-            className="absolute left-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_90%,transparent)] text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
-            aria-label={t("Previous")}
-          >
-            <ChevronLeft size={19} />
-          </button>
-          <button
-            type="button"
-            onClick={() => turnPage("next")}
-            className="absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_90%,transparent)] text-[var(--foreground)] shadow-sm backdrop-blur transition hover:bg-[var(--muted)]"
-            aria-label={t("Next")}
-          >
-            <ChevronRight size={19} />
-          </button>
-        </>
+
+        {!loadError && (
+          <>
+            <button
+              type="button"
+              onClick={() => void turnPage("previous")}
+              disabled={pageState.atStart || turning !== null}
+              className="dt-epub-turn-button left-1 sm:left-2"
+              aria-label={t("Previous")}
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <button
+              type="button"
+              onClick={() => void turnPage("next")}
+              disabled={pageState.atEnd || turning !== null}
+              className="dt-epub-turn-button right-1 sm:right-2"
+              aria-label={t("Next")}
+            >
+              <ChevronRight size={20} />
+            </button>
+          </>
+        )}
+      </div>
+      {!loading && !loadError && (
+        <div
+          className="dt-epub-page-label"
+          data-error={turnError ? "true" : undefined}
+          aria-live="polite"
+        >
+          {turnError || pageLabel}
+        </div>
       )}
     </div>
   );
