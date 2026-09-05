@@ -88,6 +88,16 @@ export function WatchingPane({
   const [notesLoading, setNotesLoading] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [noteTime, setNoteTime] = useState<number | null>(null);
+  const [noteStatus, setNoteStatus] = useState("");
+  const [notesReload, setNotesReload] = useState(0);
+  const noteRequestRef = useRef(false);
+  const noteScopeRef = useRef({ id: materialId, version: 0 });
+  if (noteScopeRef.current.id !== materialId) {
+    noteScopeRef.current = { id: materialId, version: noteScopeRef.current.version + 1 };
+    noteRequestRef.current = false;
+  }
+  const notesRevisionRef = useRef(0);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
@@ -209,13 +219,19 @@ export function WatchingPane({
   }, [material, cue, time]);
 
   useEffect(() => {
-    let cancelled = false;
+    setNoteBusy(false);
     setNotes([]);
     setNotesError(null);
     setNoteDraft("");
+    setNoteTime(null);
+    setNoteStatus("");
     setEditingNoteId(null);
     setEditingDraft("");
     setPendingDeleteId(null);
+  }, [materialId]);
+
+  useEffect(() => {
+    let cancelled = false;
     if (!materialId) {
       setNotesLoading(false);
       return () => {
@@ -223,10 +239,14 @@ export function WatchingPane({
       };
     }
     setNotesLoading(true);
+    const revision = notesRevisionRef.current;
     void (async () => {
       try {
         const loaded = await listVideoNotes(materialId);
-        if (!cancelled) setNotes(loaded);
+        if (!cancelled && revision === notesRevisionRef.current) {
+          setNotes(loaded);
+          setNotesError(null);
+        }
       } catch (caught) {
         if (!cancelled) {
           setNotesError(
@@ -242,7 +262,7 @@ export function WatchingPane({
     return () => {
       cancelled = true;
     };
-  }, [materialId, t]);
+  }, [materialId, t, notesReload]);
 
   const sortNotes = (rows: VideoNote[]) =>
     [...rows].sort(
@@ -253,34 +273,47 @@ export function WatchingPane({
     );
 
   const addNote = async () => {
-    if (!material || !noteDraft.trim() || noteBusy) return;
+    if (!material || !noteDraft.trim() || noteRequestRef.current || notesLoading) return;
     const requestedMaterialId = material.material_id;
+    const requestedScope = noteScopeRef.current.version;
+    noteRequestRef.current = true;
+    notesRevisionRef.current += 1;
     setNoteBusy(true);
+    setNoteStatus("");
     setNotesError(null);
     try {
       const saved = await createVideoNote(
         requestedMaterialId,
         noteDraft.trim(),
-        time,
+        noteTime ?? time,
       );
-      if (activeMaterialIdRef.current !== requestedMaterialId) return;
+      if (activeMaterialIdRef.current !== requestedMaterialId || noteScopeRef.current.version !== requestedScope) return;
       setNotes((current) => sortNotes([...current, saved]));
       setNoteDraft("");
+      setNoteTime(null);
+      setNoteStatus(t("Note saved."));
     } catch (caught) {
-      if (activeMaterialIdRef.current !== requestedMaterialId) return;
+      if (activeMaterialIdRef.current !== requestedMaterialId || noteScopeRef.current.version !== requestedScope) return;
       setNotesError(
         caught instanceof Error ? caught.message : t("Note was not saved."),
       );
     } finally {
-      setNoteBusy(false);
+      if (noteScopeRef.current.version === requestedScope) {
+        noteRequestRef.current = false;
+        setNoteBusy(false);
+      }
     }
   };
 
   const saveEditedNote = async () => {
-    if (!material || !editingNoteId || !editingDraft.trim() || noteBusy)
+    if (!material || !editingNoteId || !editingDraft.trim() || noteRequestRef.current)
       return;
     const requestedMaterialId = material.material_id;
+    const requestedScope = noteScopeRef.current.version;
+    noteRequestRef.current = true;
+    notesRevisionRef.current += 1;
     setNoteBusy(true);
+    setNoteStatus("");
     setNotesError(null);
     try {
       const saved = await updateVideoNote(
@@ -288,7 +321,7 @@ export function WatchingPane({
         editingNoteId,
         editingDraft.trim(),
       );
-      if (activeMaterialIdRef.current !== requestedMaterialId) return;
+      if (activeMaterialIdRef.current !== requestedMaterialId || noteScopeRef.current.version !== requestedScope) return;
       setNotes((current) =>
         sortNotes(
           current.map((note) =>
@@ -298,24 +331,32 @@ export function WatchingPane({
       );
       setEditingNoteId(null);
       setEditingDraft("");
+      setNoteStatus(t("Note saved."));
     } catch (caught) {
-      if (activeMaterialIdRef.current !== requestedMaterialId) return;
+      if (activeMaterialIdRef.current !== requestedMaterialId || noteScopeRef.current.version !== requestedScope) return;
       setNotesError(
         caught instanceof Error ? caught.message : t("Note was not saved."),
       );
     } finally {
-      setNoteBusy(false);
+      if (noteScopeRef.current.version === requestedScope) {
+        noteRequestRef.current = false;
+        setNoteBusy(false);
+      }
     }
   };
 
   const confirmDelete = async () => {
-    if (!material || !pendingDeleteId || noteBusy) return;
+    if (!material || !pendingDeleteId || noteRequestRef.current) return;
     const requestedMaterialId = material.material_id;
+    const requestedScope = noteScopeRef.current.version;
+    noteRequestRef.current = true;
+    notesRevisionRef.current += 1;
     setNoteBusy(true);
+    setNoteStatus("");
     setNotesError(null);
     try {
       await deleteVideoNote(requestedMaterialId, pendingDeleteId);
-      if (activeMaterialIdRef.current !== requestedMaterialId) return;
+      if (activeMaterialIdRef.current !== requestedMaterialId || noteScopeRef.current.version !== requestedScope) return;
       setNotes((current) =>
         current.filter((note) => note.note_id !== pendingDeleteId),
       );
@@ -324,15 +365,19 @@ export function WatchingPane({
         setEditingDraft("");
       }
       setPendingDeleteId(null);
+      setNoteStatus(t("Note deleted."));
     } catch (caught) {
-      if (activeMaterialIdRef.current !== requestedMaterialId) return;
+      if (activeMaterialIdRef.current !== requestedMaterialId || noteScopeRef.current.version !== requestedScope) return;
       setNotesError(
         caught instanceof Error
           ? caught.message
           : t("Note was not deleted."),
       );
     } finally {
-      setNoteBusy(false);
+      if (noteScopeRef.current.version === requestedScope) {
+        noteRequestRef.current = false;
+        setNoteBusy(false);
+      }
     }
   };
 
@@ -689,15 +734,23 @@ export function WatchingPane({
                 >
                   <textarea
                     value={noteDraft}
-                    onChange={(event) => setNoteDraft(event.target.value)}
+                    disabled={noteBusy}
+                    aria-label={t("Video note")}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (!noteDraft && value) setNoteTime(time);
+                      if (!value) setNoteTime(null);
+                      setNoteDraft(value);
+                      setNoteStatus("");
+                    }}
                     placeholder={t("Note at {{time}}", {
-                      time: formatTime(time),
+                      time: formatTime(noteTime ?? time),
                     })}
                     className="min-h-20 w-full resize-y rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
                   />
                   <button
                     type="submit"
-                    disabled={noteBusy || !noteDraft.trim()}
+                    disabled={noteBusy || notesLoading || !noteDraft.trim()}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm text-[var(--primary-foreground)] disabled:opacity-50"
                   >
                     {noteBusy ? (
@@ -709,12 +762,19 @@ export function WatchingPane({
                   </button>
                 </form>
 
+                {noteTime !== null && (
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {t("Note timestamp: {{time}}", { time: formatTime(noteTime) })}
+                  </p>
+                )}
+                {noteStatus && <p role="status" className="text-sm text-[var(--muted-foreground)]">{noteStatus}</p>}
                 {notesError && (
                   <p
                     role="alert"
                     className="rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm text-[var(--destructive)]"
                   >
                     {notesError}
+                    <button type="button" disabled={notesLoading || noteBusy} onClick={() => setNotesReload(value => value + 1)} className="ml-2 underline">{t("Reload notes")}</button>
                   </p>
                 )}
 
@@ -742,6 +802,7 @@ export function WatchingPane({
                         <div className="min-w-0 flex-1">
                           {editingNoteId === note.note_id ? (
                             <textarea
+                              disabled={noteBusy}
                               value={editingDraft}
                               onChange={(event) =>
                                 setEditingDraft(event.target.value)
@@ -836,6 +897,7 @@ export function WatchingPane({
         onCancel={() => setPendingDeleteId(null)}
       >
         {t("This note will be removed from Video Learning.")}
+        {notesError && <p role="alert" className="mt-2 text-[var(--destructive)]">{notesError}</p>}
       </ConfirmDialog>
     </section>
   );

@@ -4758,5 +4758,10 @@
   "Ask about the video, or select a subtitle to explore it together.": "围绕视频提问，或选择一句字幕一起深入理解。",
   "More options": "更多选项",
   "Ask about this video…": "围绕这个视频提问…",
-  "Follow playback": "跟随播放"
+  "Follow playback": "跟随播放",
+  "Video note": "视频笔记",
+  "Note saved.": "笔记已保存。",
+  "Note deleted.": "笔记已删除。",
+  "Note timestamp: {{time}}": "笔记时间：{{time}}",
+  "Reload notes": "重新加载笔记"
 }

@@ -168,7 +168,7 @@ export function WatchingSurface({
       if (
         event.key === "Escape" &&
         !document.fullscreenElement &&
-        !Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).some(dialog => dialog.getBoundingClientRect().width > 0 && getComputedStyle(dialog).visibility !== "hidden" && dialog.getAttribute("aria-hidden") !== "true")
+        !Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"],[role="alertdialog"]')).some(dialog => dialog.getBoundingClientRect().width > 0 && getComputedStyle(dialog).visibility !== "hidden" && dialog.getAttribute("aria-hidden") !== "true")
       )
         setLearning(false);
     };

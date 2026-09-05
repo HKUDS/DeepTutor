@@ -4758,5 +4758,10 @@
   "Ask about the video, or select a subtitle to explore it together.": "Ask about the video, or select a subtitle to explore it together.",
   "More options": "More options",
   "Ask about this video…": "Ask about this video…",
-  "Follow playback": "Follow playback"
+  "Follow playback": "Follow playback",
+  "Video note": "Video note",
+  "Note saved.": "Note saved.",
+  "Note deleted.": "Note deleted.",
+  "Note timestamp: {{time}}": "Note timestamp: {{time}}",
+  "Reload notes": "Reload notes"
 }
