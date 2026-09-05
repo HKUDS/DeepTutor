@@ -44,7 +44,7 @@ describe("Watching account browser", () => {
     expect(mock.push).toHaveBeenCalledWith(
       `/watching?video=${encodeURIComponent("https://www.youtube.com/watch?v=aircAruvnKk")}`,
     );
-    expect(mock.browse.mock.calls[0][0]).toBe("feed");
+    expect(mock.browse.mock.calls[0][0]).toBe("popular");
   });
   it("allows anonymous search and guides account-only browsing", async () => {
     mock.account.mockResolvedValue({ connected: false });
@@ -54,7 +54,10 @@ describe("Watching account browser", () => {
     await screen.findByText(
       "Connect your Invidious account to see subscriptions and playlists.",
     );
-    expect(mock.browse).not.toHaveBeenCalled();
+    expect(mock.browse.mock.calls.every((call) => call[0] === "popular")).toBe(
+      true,
+    );
+    mock.browse.mockClear();
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "neural" } });
     fireEvent.submit(input.closest("form")!);
@@ -89,3 +92,20 @@ describe("Watching account browser", () => {
     await screen.findByText("Neural networks");
   });
 });
+
+it.each(["search", "playlists"])(
+  "migrates the old %s view to Popular",
+  async (view) => {
+    sessionStorage.setItem(
+      "watching-browser:owner-a",
+      JSON.stringify({ view, query: "" }),
+    );
+    render(<WatchingBrowser canDismiss={false} onDismiss={vi.fn()} />);
+    await screen.findByText("Neural networks");
+    expect(mock.browse.mock.calls[0][0]).toBe("popular");
+    expect(screen.getByRole("button", { name: "Popular" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  },
+);

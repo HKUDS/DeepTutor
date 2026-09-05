@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import {
   Search,
+  Flame,
+  TrendingUp,
   Link2,
   Play,
   ListVideo,
@@ -22,7 +24,8 @@ import {
   type InvidiousPlaylist,
 } from "@/lib/video-learning-api";
 
-type BrowserView = "feed" | "playlists" | "search" | "playlist";
+type BrowserView =
+  "feed" | "playlists" | "search" | "playlist" | "popular" | "trending";
 export function WatchingBrowser({
   onDismiss,
   canDismiss,
@@ -34,7 +37,10 @@ export function WatchingBrowser({
   const router = useRouter();
   const auth = useAuthStatus();
   const [account, setAccount] = useState<InvidiousAccountStatus | null>(null);
-  const [view, setView] = useState<BrowserView>("search");
+  const [view, setView] = useState<BrowserView>("popular");
+  const accountOnly =
+    view === "feed" || view === "playlists" || view === "playlist";
+  const publicFeed = view === "popular" || view === "trending";
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [playlist, setPlaylist] = useState("");
@@ -60,6 +66,7 @@ export function WatchingBrowser({
         if (!alive) return;
         setAccount(status);
         let saved: {
+          version?: number;
           view?: BrowserView;
           query?: string;
           page?: number;
@@ -73,7 +80,14 @@ export function WatchingBrowser({
         }
         if (!restored.current) {
           restored.current = true;
-          setView(saved.view || (status.connected ? "feed" : "search"));
+          setView(
+            saved.view &&
+              (saved.version === 2 ||
+                (saved.view === "search" && saved.query?.trim())) &&
+              !(saved.view === "search" && !saved.query?.trim())
+              ? saved.view
+              : "popular",
+          );
           setQuery(saved.query || "");
           setInput(saved.query || "");
           setPage(saved.page || 1);
@@ -96,7 +110,7 @@ export function WatchingBrowser({
     setError("");
     setBusy(false);
     if (
-      (view !== "search" && !account.connected) ||
+      (accountOnly && !account.connected) ||
       (view === "search" && !query.trim())
     )
       return;
@@ -123,14 +137,21 @@ export function WatchingBrowser({
         if (!controller.signal.aborted) setBusy(false);
       });
     return () => controller.abort();
-  }, [account, view, query, page, playlist, reload, key]);
+  }, [account, view, query, page, playlist, reload, key, accountOnly]);
 
   function remember(position = 0) {
     try {
       browserStorage.writeRaw(
         "session",
         key,
-        JSON.stringify({ view, query, page, playlist, scroll: position }),
+        JSON.stringify({
+          version: 2,
+          view,
+          query,
+          page,
+          playlist,
+          scroll: position,
+        }),
       );
     } catch {
       /* Optional. */
@@ -158,7 +179,7 @@ export function WatchingBrowser({
       const status = await invidiousAccount("disconnect");
       setAccount(status);
       setItems([]);
-      setView("search");
+      setView("popular");
       setPage(1);
       setQuery("");
       setInput("");
@@ -251,9 +272,14 @@ export function WatchingBrowser({
             <span className="hidden sm:inline">{t("Search")}</span>
           </button>
         </form>
-        <nav className="mt-4 flex gap-2" aria-label={t("Video browsing views")}>
+        <nav
+          className="mt-4 flex gap-2 overflow-x-auto pb-2 [&>button]:shrink-0"
+          aria-label={t("Video browsing views")}
+        >
           {(
             [
+              ["popular", Flame, t("Popular")],
+              ["trending", TrendingUp, t("Trending")],
               ["feed", Rss, t("Subscription feed")],
               ["playlists", ListVideo, t("Playlists")],
               ["search", Search, t("Search")],
@@ -301,7 +327,7 @@ export function WatchingBrowser({
             </button>
           </div>
         )}
-        {view !== "search" && account && !account.connected ? (
+        {accountOnly && account && !account.connected ? (
           <div className="watching-browser-empty">
             <Link2 size={32} />
             <p>
@@ -400,27 +426,40 @@ export function WatchingBrowser({
                     ? t("Find a video to start learning.")
                     : t("No videos here yet.")}
                 </p>
+                {!publicFeed && (
+                  <button
+                    className="watching-browser-button"
+                    onClick={() => {
+                      setView("popular");
+                      setPage(1);
+                    }}
+                  >
+                    {t("Explore popular videos")}
+                  </button>
+                )}
               </div>
             )}
-            {view !== "playlists" && (items.length > 0 || page > 1) && (
-              <div className="mt-6 flex justify-center gap-4">
-                <button
-                  className="watching-browser-button"
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                >
-                  {t("Previous")}
-                </button>
-                <span className="self-center">{page}</span>
-                <button
-                  className="watching-browser-button"
-                  disabled={!items.length}
-                  onClick={() => setPage(page + 1)}
-                >
-                  {t("Next")}
-                </button>
-              </div>
-            )}
+            {!publicFeed &&
+              view !== "playlists" &&
+              (items.length > 0 || page > 1) && (
+                <div className="mt-6 flex justify-center gap-4">
+                  <button
+                    className="watching-browser-button"
+                    disabled={page <= 1}
+                    onClick={() => setPage(page - 1)}
+                  >
+                    {t("Previous")}
+                  </button>
+                  <span className="self-center">{page}</span>
+                  <button
+                    className="watching-browser-button"
+                    disabled={!items.length}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    {t("Next")}
+                  </button>
+                </div>
+              )}
           </>
         )}
       </div>
