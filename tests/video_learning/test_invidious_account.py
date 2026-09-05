@@ -704,3 +704,31 @@ async def test_catalog_transport_maps_offline_and_revoked_tokens(monkeypatch):
             params={},
             token=json.loads(_token()),
         )
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_callback_clears_credentials_from_destination():
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    from deeptutor.api.main import selective_access_log
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/video-learning/invidious/account/callback",
+            "query_string": b"token=secret&state=secret",
+            "headers": [],
+            "scheme": "http",
+            "server": ("localhost", 8001),
+        }
+    )
+
+    async def denied(_request):
+        return Response(status_code=401)
+
+    response = await selective_access_log(request, denied)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/watching?account=authorization_failed"
+    assert "secret" not in str(dict(response.headers))
