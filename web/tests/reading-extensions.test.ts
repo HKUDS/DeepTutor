@@ -56,7 +56,7 @@ test("browser speech is stoppable and cannot continue after navigation", () => {
   assert.match(component, /window\.speechSynthesis\?\.cancel\(\)/);
   assert.match(component, /utterance\.onend = \(\) => setSpeaking\(false\)/);
   assert.match(component, /utterance\.onerror = \(\) => setSpeaking\(false\)/);
-  assert.match(component, /\}, \[locator, materialId\]\);/);
+  assert.match(component, /\}, \[locator, materialId, navigationVersion\]\);/);
   assert.match(component, /aria-label=\{t\("Stop reading aloud"\)\}/);
 });
 

@@ -102,7 +102,7 @@ test("server filtering is respected", async () => {
   expect(screen.queryByRole("button", { name: "Look up word" })).toBeNull();
 });
 
-test("late speech responses cannot start after navigation", async () => {
+test("late speech responses cannot start after same-chapter navigation", async () => {
   let resolve!: (value: ReadingExtensionResult) => void;
   vi.mocked(runReadingExtension).mockReturnValue(
     new Promise((done) => {
@@ -113,7 +113,7 @@ test("late speech responses cannot start after navigation", async () => {
   vi.stubGlobal("speechSynthesis", { cancel: vi.fn(), speak });
   const view = render(<ReadingExtensionBar {...props} />);
   fireEvent.click(await screen.findByRole("button", { name: "Read aloud" }));
-  view.rerender(<ReadingExtensionBar {...props} locator={2} />);
+  view.rerender(<ReadingExtensionBar {...props} navigationVersion={1} />);
   await act(async () =>
     resolve({
       type: "browser_speech",

@@ -11,33 +11,29 @@ vi.mock("@/lib/reading-api", async () => ({
   ...(await vi.importActual("@/lib/reading-api")),
   getReadingPosition: vi.fn().mockResolvedValue({ locator: 1 }),
   saveReadingPosition: vi.fn().mockResolvedValue({}),
-  listReadingExtensions: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        id: "vocabulary",
-        name: "Vocabulary",
-        version: "1",
-        protocol_version: "1",
-        actions: [
-          {
-            id: "explain",
-            label: "Explain",
-            trigger: "toolbar",
-            requires: ["selection"],
-          },
-        ],
-        result_types: ["card"],
-      },
-    ]),
-  runReadingExtension: vi
-    .fn()
-    .mockResolvedValue({
-      type: "card",
-      title: "Definition received",
-      message: "",
-      payload: {},
-    }),
+  listReadingExtensions: vi.fn().mockResolvedValue([
+    {
+      id: "vocabulary",
+      name: "Vocabulary",
+      version: "1",
+      protocol_version: "1",
+      actions: [
+        {
+          id: "explain",
+          label: "Explain",
+          trigger: "toolbar",
+          requires: ["selection"],
+        },
+      ],
+      result_types: ["card"],
+    },
+  ]),
+  runReadingExtension: vi.fn().mockResolvedValue({
+    type: "card",
+    title: "Definition received",
+    message: "",
+    payload: {},
+  }),
 }));
 vi.mock("@/context/ReadingContext", () => ({
   useReading: () => ({
@@ -90,14 +86,14 @@ vi.mock("@/components/reading/EpubDocumentView", () => ({
       >
         Select English word
       </button>
-      <button onClick={() => onVisibleLocatorChange(2)}>
+      <button onClick={() => onVisibleLocatorChange(1)}>
         Turn document page
       </button>
     </>
   ),
 }));
 
-test("ReaderPane preserves selection through annotation pointerdown and clears it on navigation", async () => {
+test("ReaderPane preserves selection through annotation pointerdown and clears it on same-chapter EPUB navigation", async () => {
   render(
     <ReaderPane
       onClose={vi.fn()}

@@ -36,6 +36,7 @@ export function ReadingExtensionBar({
   locator,
   selection,
   selectionLocator,
+  navigationVersion = 0,
   llmSelection,
   onError,
 }: {
@@ -43,6 +44,7 @@ export function ReadingExtensionBar({
   locator: number;
   selection?: string;
   selectionLocator?: number;
+  navigationVersion?: number;
   llmSelection?: LLMSelection | null;
   onError: (message: string) => void;
 }) {
@@ -94,7 +96,7 @@ export function ReadingExtensionBar({
       window.speechSynthesis?.cancel();
       setSpeaking(false);
     };
-  }, [locator, materialId]);
+  }, [locator, materialId, navigationVersion]);
 
   const actions = useMemo(
     () =>
