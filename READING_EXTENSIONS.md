@@ -74,3 +74,49 @@ class ExampleExtension:
 Protocol changes must remain backward-compatible within version `1`. A future
 incompatible contract must use a new protocol version rather than changing the
 meaning of an existing field.
+
+## Independently installed reading bundle
+
+The three core learning actions can be upgraded together with the
+`deeptutor-reading-extensions` wheel, while each action retains its own ID
+and learner permissions. Administrators can open **Settings → Reading
+extensions** (`/settings#reading-extensions`) to download the latest GitHub
+Release, upload a local wheel, toggle actions, uninstall, or restore the host's
+bundled versions. The host integration must be deployed once before this page
+and the CLI lifecycle commands are available.
+
+```sh
+deeptutor plugin reading list
+deeptutor plugin reading install ./deeptutor_reading_extensions-0.1.0-py3-none-any.whl
+deeptutor plugin reading update
+deeptutor plugin reading disable vocabulary
+deeptutor plugin reading enable vocabulary
+deeptutor plugin reading uninstall
+deeptutor plugin reading restore
+```
+
+Run these commands from the same runtime home as the backend, or set
+`DEEPTUTOR_HOME` to that directory. Restart **all** backend workers after any
+change. No frontend rebuild is needed for subsequent compatible plugin updates.
+
+Managed wheels and their selected generation live under
+`data/system/reading-plugins`. Keep this directory in the Docker data volume.
+The installer does not modify Python site-packages, install dependencies, or
+execute build hooks. It verifies package identity, the supported pure-Python
+wheel layout, host/Python compatibility, and the exact extension entry points.
+The fixed GitHub release download is verified against its asset SHA-256 digest.
+Administrators should install only publishers they trust: these are Python
+extensions with backend process permissions, not sandboxed browser components.
+
+An installed managed bundle takes precedence over the three bundled actions.
+An explicit uninstall disables those IDs after restart; it does not silently
+reactivate the host versions. Restore explicitly selects the bundled versions.
+Immutable older wheel files are retained so existing workers can finish; they
+may be removed manually after every worker has restarted. Installation errors
+leave the prior selection intact. A damaged selected wheel fails closed for
+those three actions and logs the load error.
+
+Standard pip installation of the same distribution is also supported when no
+managed selection has been configured. Managed selection always wins, including
+explicit uninstall and restore. Other third-party extensions cannot take over
+these reserved IDs. Study guidance and translation remain bundled extensions.

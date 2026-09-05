@@ -119,11 +119,22 @@ _BUILTINS = {
 
 
 def _default_extensions() -> list[ReadingExtension]:
+    from deeptutor.reading import plugin_manager
+
     rows = []
+    try:
+        overrides, blocked = plugin_manager.load_overrides()
+    except Exception:
+        logger.warning(
+            "Reading bundle could not be loaded; restore or reinstall it.", exc_info=True
+        )
+        overrides, blocked = {}, set(plugin_manager.EXTENSIONS)
     for name, target in _BUILTINS.items():
+        if name in blocked:
+            continue
         try:
             module, symbol = target.split(":")
-            candidate = _coerce(name, getattr(import_module(module), symbol))
+            candidate = _coerce(name, overrides.get(name) or getattr(import_module(module), symbol))
             if candidate is not None:
                 rows.append(candidate)
         except Exception:
