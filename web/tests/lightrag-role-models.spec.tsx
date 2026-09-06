@@ -102,6 +102,9 @@ describe("LightRAG role editor", () => {
       ...textModel,
       reasoning_effort: "high",
     });
+    invalidBaseReasoning.extract.reasoning_effort = "none";
+    invalidBaseReasoning.keyword.reasoning_effort = "none";
+    invalidBaseReasoning.query.reasoning_effort = "none";
     expect(roleModelsValidationError(invalidBaseReasoning, options)).toBe(
       "The selected reasoning effort is no longer supported.",
     );

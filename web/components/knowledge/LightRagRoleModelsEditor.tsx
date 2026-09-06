@@ -50,8 +50,17 @@ export function roleModelsValidationError(
         option.profile_id === selection?.profile_id &&
         option.model_id === selection?.model_id,
     );
-  if (!findOption(models.base)) {
+  const baseOption = findOption(models.base);
+  if (!baseOption) {
     return "The LightRAG base model is unavailable. Choose an accessible model.";
+  }
+  if (
+    models.base.reasoning_effort &&
+    !baseOption.supported_reasoning_efforts?.includes(
+      models.base.reasoning_effort,
+    )
+  ) {
+    return "The selected reasoning effort is no longer supported.";
   }
   for (const role of ["extract", "keyword", "query", "vlm"] as const) {
     const value = models[role];
