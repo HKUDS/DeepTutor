@@ -2730,6 +2730,7 @@ def test_lightrag_config_validates_dedicated_llm_selection(monkeypatch, tmp_path
     from deeptutor.services.config.model_catalog import ModelCatalogService
 
     settings_service = RuntimeSettingsService(tmp_path, process_env={})
+    settings_service.save_lightrag({"version": 1})
     catalog_service = ModelCatalogService(tmp_path / "model_catalog.json")
     catalog_service.save(
         {
@@ -2809,6 +2810,12 @@ def test_lightrag_role_settings_validate_before_save(monkeypatch, tmp_path):
     monkeypatch.setattr(roles, "validate_models", validate)
     client = TestClient(_build_app())
     url = "/api/knowledge-bases/rag-pipelines/lightrag/config"
+    fresh = client.get(url).json()
+    assert fresh["version"] == 2
+    assert (
+        client.put(url, json={"llm_profile_id": "public", "llm_model_id": "ok"}).status_code == 422
+    )
+    assert client.get(url).json() == fresh
     models = {
         "base": {"profile_id": "public", "model_id": "ok"},
         "query": {"mode": "inherit", "reasoning_effort": "adaptive"},

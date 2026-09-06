@@ -1601,6 +1601,11 @@ async def update_lightrag_pipeline_config(payload: LightRagConfigUpdate):
         candidate = {**current, **updates}
         if "role_models" in payload.model_fields_set and payload.role_models is None:
             raise HTTPException(status_code=422, detail="Role models cannot be cleared.")
+        if (
+            current.get("version") == 2
+            and {"llm_profile_id", "llm_model_id"} & payload.model_fields_set
+        ):
+            raise HTTPException(status_code=422, detail="Use role_models for this configuration.")
         if candidate.get("role_models") is not None:
             from deeptutor.services.rag.pipelines.lightrag.roles import validate_models
 
