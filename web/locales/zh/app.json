@@ -4015,5 +4015,7 @@
   "VLM image analysis": "VLM 图片分析",
   "VLM model": "VLM 模型",
   "effective model": "实际模型",
-  "Finalizing index publication": "正在完成索引发布"
+  "Finalizing index publication": "正在完成索引发布",
+  "Inherit base reasoning": "继承基础模型推理设置",
+  "With no role override, reasoning follows the LightRAG base.": "未设置角色覆盖值时，推理强度继承 LightRAG 基础模型。"
 }

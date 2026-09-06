@@ -17,7 +17,7 @@ export function indexingSelectionFromDefaults(
   config: Pick<
     LightRagConfig,
     "llm_profile_id" | "llm_model_id" | "role_models"
-  >,
+  > & { version?: number },
   active?: LLMOptionsResponse["active"],
 ): LightRagIndexingSelection | null {
   if (config.role_models) {
@@ -33,6 +33,7 @@ export function indexingSelectionFromDefaults(
   const selected = selectionFromLightRagDefault(options, config, active);
   if (!selected) return null;
   const vision =
+    config.version !== 2 &&
     options.find(
       (option) =>
         option.profile_id === selected.profile_id &&

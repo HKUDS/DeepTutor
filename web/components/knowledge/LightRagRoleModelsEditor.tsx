@@ -127,7 +127,19 @@ export default function LightRagRoleModelsEditor({
                       ? options.filter((option) => option.supports_vision)
                       : options
                   }
-                  selection={effective}
+                  selection={
+                    effective
+                      ? {
+                          ...effective,
+                          reasoning_effort: value.reasoning_effort ?? undefined,
+                        }
+                      : null
+                  }
+                  inheritBaseReasoning={
+                    value.mode === "inherit"
+                      ? (models.base.reasoning_effort ?? null)
+                      : undefined
+                  }
                   loading={loading}
                   error={error}
                   lockModel={value.mode === "inherit"}

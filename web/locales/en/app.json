@@ -4015,5 +4015,7 @@
   "VLM image analysis": "VLM image analysis",
   "VLM model": "VLM model",
   "effective model": "effective model",
-  "Finalizing index publication": "Finalizing index publication"
+  "Finalizing index publication": "Finalizing index publication",
+  "Inherit base reasoning": "Inherit base reasoning",
+  "With no role override, reasoning follows the LightRAG base.": "With no role override, reasoning follows the LightRAG base."
 }

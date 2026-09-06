@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .llm import VALID_REASONING_EFFORTS
+from deeptutor.services.llm.reasoning_params import build_openai_compatible_reasoning_kwargs
+from deeptutor.services.provider_registry import find_by_name
 
 
 def supported_reasoning_efforts(
@@ -17,11 +18,7 @@ def supported_reasoning_efforts(
 ) -> list[str]:
     metadata = metadata or {}
     declared = metadata.get("codex_supported_reasoning_levels")
-    if isinstance(declared, list):
-        return [level for level in (*VALID_REASONING_EFFORTS, "adaptive") if level in declared]
     capabilities = metadata.get("capabilities") or {}
-    if capabilities.get("reasoning") is False:
-        return []
     provider = binding.lower().replace("-", "_")
     provider = {
         "azure": "azure_openai",
@@ -32,6 +29,28 @@ def supported_reasoning_efforts(
         "openai_compatible": "custom",
         "anthropic_compatible": "custom_anthropic",
     }.get(provider, provider)
+    spec = find_by_name(provider)
+    binary_choices = None
+    if spec is None or spec.backend in {"openai_compat", "azure_openai"}:
+        # Use the actual wire mapper, including custom model-family inference.
+        # Its binary controls express off as minimal and on as high; it cannot
+        # preserve none or distinct low/medium choices on these paths.
+        mapped = build_openai_compatible_reasoning_kwargs(
+            spec=spec, binding=provider, model=model, reasoning_effort="minimal"
+        )
+        if mapped.get("extra_body"):
+            binary_choices = ["minimal", "high"]
+    if isinstance(declared, list):
+        ordered = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "adaptive")
+        return [
+            level
+            for level in ordered
+            if level in declared and (binary_choices is None or level in binary_choices)
+        ]
+    if capabilities.get("reasoning") is False:
+        return []
+    if binary_choices is not None:
+        return binary_choices
     name = model.lower()
     levels: list[str] = []
     if provider == "gemini" or "gemini" in name:

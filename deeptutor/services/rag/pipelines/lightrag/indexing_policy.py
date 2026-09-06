@@ -301,6 +301,8 @@ def freeze_roles(
     settings = load_lightrag_settings()
     models = settings_models(settings)
     limits = runtime_limits(settings)
+    if selection_value is None and models is None and settings.get("version") == 2:
+        raise IndexingPolicyError("Choose a LightRAG base model or explicit indexing models first.")
     if selection_value is None and models is not None:
         extract_selection = models.selection_for("extract").model_dump()
         vlm_selection = models.selection_for("vlm")
@@ -330,7 +332,7 @@ def freeze_roles(
         value = {
             "extract": selected,
             "vlm": {"mode": "enabled", "selection": selected}
-            if single.vision_available
+            if single.vision_available and settings.get("version") != 2
             else {"mode": "disabled"},
         }
     parsed = LightRagIndexingSelection.model_validate(value)
@@ -426,11 +428,17 @@ def _target_policy_key(kb_dir: Path) -> str | None:
 def _content_revision(root: Path | None) -> str:
     # Native document-status flushes are atomic. Track inode and nanosecond
     # timestamps as well as size so a same-version append invalidates a queued rebuild.
+    from .storage import _store_root
+
     revisions = {}
     if root is not None:
-        for name in ("meta.json", "kv_store_doc_status.json"):
+        paths = {
+            "meta.json": root / "meta.json",
+            "kv_store_doc_status.json": _store_root(root) / "kv_store_doc_status.json",
+        }
+        for name, path in paths.items():
             try:
-                stat = (root / name).stat()
+                stat = path.stat()
                 revisions[name] = [stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
             except FileNotFoundError:
                 revisions[name] = None

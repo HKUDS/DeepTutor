@@ -639,3 +639,126 @@ async def test_github_sync_freezes_policy_before_download(role_environment, tmp_
     assert accepted[0].vlm.fingerprint == pinned.vlm.fingerprint
     assert accepted[0].target_bound
     assert recorded[0]["last_synced_sha"] == "new-sha"
+
+
+@pytest.mark.parametrize("outcome_kind", ["partial_append", "metadata_refresh_failure"])
+def test_native_workspace_append_invalidates_queued_rebuild_without_meta_change(
+    role_environment, tmp_path, monkeypatch, outcome_kind
+):
+    from deeptutor.services.rag.pipelines.lightrag.pipeline import LightRagBatchError
+
+    kb = tmp_path / "kb"
+    root = kb / "version-1"
+    snapshot = policy.freeze_roles()
+    _published(root, snapshot.persisted_policy())
+    workspace = root / engine.workspace_for(root)
+    workspace.mkdir()
+    status = workspace / "kv_store_doc_status.json"
+    (root / status.name).rename(status)
+    before_meta = (root / "meta.json").read_bytes()
+    rebuild = policy.bind_target(snapshot, kb, protect_contents=True)
+    append = policy.bind_target(snapshot, kb)
+    pipeline = LightRagPipeline(str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+
+    async def append_native(*args):
+        status.write_text('{"doc":{"status":"processed"},"later":{"status":"processed"}}')
+        result = BatchOutcome(
+            requested=2 if outcome_kind == "partial_append" else 1,
+            accepted=2 if outcome_kind == "partial_append" else 1,
+            processed=("later.md",),
+            failed={"bad.md": "provider rejected"} if outcome_kind == "partial_append" else {},
+            indexing_policy=snapshot.persisted_policy(),
+        )
+        if outcome_kind == "partial_append":
+            raise LightRagBatchError(result)
+        return result
+
+    def fail_metadata(*args, **kwargs):
+        raise OSError("metadata refresh failed")
+
+    monkeypatch.setattr(pipeline, "_run_indexing", append_native)
+    monkeypatch.setattr(storage, "write_meta", fail_metadata)
+    if outcome_kind == "partial_append":
+        with pytest.raises(LightRagBatchError):
+            asyncio.run(
+                pipeline.add_documents(
+                    "kb", ["later.md", "bad.md"], accepted_indexing_snapshot=append
+                )
+            )
+    else:
+        assert asyncio.run(
+            pipeline.add_documents("kb", ["later.md"], accepted_indexing_snapshot=append)
+        )
+    assert (root / "meta.json").read_bytes() == before_meta
+    assert storage.latest_published_root(kb) == root
+    with pytest.raises(policy.IndexingPolicyError, match="target index"):
+        policy.validate_target(rebuild, kb)
+    policy.validate_target(append, kb)
+
+
+@pytest.mark.parametrize("model", ["qwen3-32b", "deepseek-r1"])
+def test_custom_binary_reasoning_choices_match_actual_request(model):
+    from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
+    from deeptutor.services.model_selection.reasoning import supported_reasoning_efforts
+    from deeptutor.services.provider_registry import find_by_name
+
+    assert supported_reasoning_efforts("custom", model) == ["minimal", "high"]
+    assert supported_reasoning_efforts(
+        "custom", model, metadata={"codex_supported_reasoning_levels": ["none", "low", "high"]}
+    ) == ["high"]
+    provider = OpenAICompatProvider(
+        api_key="synthetic", default_model=model, spec=find_by_name("custom"), configure_env=False
+    )
+    disabled = provider._build_kwargs(
+        [{"role": "user", "content": "test"}], None, model, 100, 0, "minimal", None
+    )
+    enabled = provider._build_kwargs(
+        [{"role": "user", "content": "test"}], None, model, 100, 0, "high", None
+    )
+    if "qwen" in model:
+        assert disabled["extra_body"]["enable_thinking"] is False
+        assert enabled["extra_body"]["enable_thinking"] is True
+    else:
+        assert disabled["extra_body"]["thinking"]["type"] == "disabled"
+        assert enabled["extra_body"]["thinking"]["type"] == "enabled"
+
+
+def test_binary_provider_none_is_rejected_before_snapshot(role_environment):
+    role_environment["configs"]["p0"].model = "qwen3-32b"
+    # Use the real capability mapper with the same catalog model name.
+    options = roles.allowed_llm_options
+
+    def catalog():
+        value = options()
+        value["options"][0]["model"] = "qwen3-32b"
+        return value
+
+    from unittest.mock import patch
+
+    with patch.object(roles, "allowed_llm_options", catalog):
+        with pytest.raises(policy.IndexingPolicyError, match="reasoning effort"):
+            policy.freeze_roles()
+
+
+def test_fresh_defaults_do_not_enter_legacy_model_or_vision_fallback(role_environment, tmp_path):
+    from deeptutor.services.config.runtime_settings import RuntimeSettingsService
+
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    fresh = service.load_lightrag()
+    assert fresh["version"] == 2
+    role_environment["settings"] = fresh
+    with pytest.raises(policy.IndexingPolicyError, match="base model"):
+        policy.freeze_roles()
+    with pytest.raises(ValueError, match="base model"):
+        roles.resolve_query_roles()
+    # An old-form explicit model input on a fresh configuration still defaults VLM off.
+    created = policy.freeze_roles(choice(3))
+    assert created.vlm is None
+    legacy_path = service.path_for("lightrag")
+    legacy_path.write_text('{"llm_profile_id":"p3","llm_model_id":"m3"}')
+    legacy = service.load_lightrag()
+    assert legacy["version"] == 1
+    role_environment["settings"] = legacy
+    # The compatibility path retains historical vision semantics.
+    assert policy.freeze_roles(choice(3)).vlm is not None

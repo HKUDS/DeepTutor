@@ -214,3 +214,50 @@ it("requires an explicit vision selection when enabling it in a rebuild draft", 
   });
   expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
 });
+
+it("distinguishes inherited reasoning from an explicit override with the same value", () => {
+  render(
+    <Editor
+      initial={newRoleModels({ ...visionModel, reasoning_effort: "high" })}
+    />,
+  );
+  const extract = within(screen.getByRole("group", { name: "EXTRACT" }));
+  const reasoning = extract.getByRole("combobox", { name: "Reasoning effort" });
+  expect(reasoning).toHaveValue("");
+  expect(
+    within(reasoning).getByRole("option", {
+      name: "Inherit base reasoning",
+      selected: true,
+    }),
+  ).toBeInTheDocument();
+  expect(resolvedRole(state(), "extract")?.reasoning_effort).toBe("high");
+  fireEvent.change(reasoning, { target: { value: "high" } });
+  expect(reasoning).toHaveValue("high");
+  fireEvent.change(
+    screen.getAllByRole("combobox", { name: "Reasoning effort" })[0],
+    { target: { value: "none" } },
+  );
+  expect(resolvedRole(state(), "extract")?.reasoning_effort).toBe("high");
+  fireEvent.change(reasoning, { target: { value: "" } });
+  expect(reasoning).toHaveValue("");
+  expect(state().extract.reasoning_effort).toBeNull();
+  expect(resolvedRole(state(), "extract")?.reasoning_effort).toBe("none");
+});
+
+it("prefills fresh indexing defaults with VLM disabled while preserving legacy vision defaults", () => {
+  const defaults = { llm_profile_id: "", llm_model_id: "" };
+  expect(
+    indexingSelectionFromDefaults(
+      options,
+      { ...defaults, version: 2 },
+      visionModel,
+    )?.vlm,
+  ).toEqual({ mode: "disabled" });
+  expect(
+    indexingSelectionFromDefaults(
+      options,
+      { ...defaults, version: 1 },
+      visionModel,
+    )?.vlm,
+  ).toEqual({ mode: "enabled", selection: visionModel });
+});

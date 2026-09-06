@@ -1081,7 +1081,10 @@ export function LightRagForm({
   const roleModels =
     form.role_models ??
     (legacyBase
-      ? newRoleModels(legacyBase, legacyOption?.supports_vision === true)
+      ? newRoleModels(
+          legacyBase,
+          form.version !== 2 && legacyOption?.supports_vision === true,
+        )
       : null);
 
   const save = async () => {
@@ -1133,7 +1136,7 @@ export function LightRagForm({
         />
       </div>
 
-      {!form.role_models && (
+      {!form.role_models && form.version !== 2 && (
         <p className="text-xs text-[var(--muted-foreground)]">
           {t(
             "Legacy model settings are shown below. Saving fixes the LightRAG base selection independently of chat.",

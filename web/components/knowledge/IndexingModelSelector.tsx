@@ -61,6 +61,7 @@ export function selectionFromLightRagDefault(
 interface IndexingModelSelectorProps {
   label?: string;
   lockModel?: boolean;
+  inheritBaseReasoning?: string | null;
   options: LLMOption[];
   selection: IndexingLLMSelection | null;
   loading: boolean;
@@ -74,6 +75,7 @@ interface IndexingModelSelectorProps {
 export default function IndexingModelSelector({
   label = "Indexing model",
   lockModel = false,
+  inheritBaseReasoning,
   options,
   selection,
   loading,
@@ -194,7 +196,11 @@ export default function IndexingModelSelector({
               }
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] disabled:opacity-50"
             >
-              <option value="">{t("Model default / unspecified")}</option>
+              <option value="">
+                {inheritBaseReasoning !== undefined
+                  ? t("Inherit base reasoning")
+                  : t("Model default / unspecified")}
+              </option>
               {selection?.reasoning_effort &&
                 !reasoningOptions.some(
                   (option) => option.value === selection.reasoning_effort,
@@ -215,10 +221,17 @@ export default function IndexingModelSelector({
             <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
               {t("Effective reasoning")}:{" "}
               {selection?.reasoning_effort ||
+                inheritBaseReasoning ||
                 selected.reasoning_effort ||
                 t("Model default")}
               .{" "}
-              {t("Auto inherits the selected model's saved reasoning effort.")}
+              {inheritBaseReasoning !== undefined
+                ? t(
+                    "With no role override, reasoning follows the LightRAG base.",
+                  )
+                : t(
+                    "Auto inherits the selected model's saved reasoning effort.",
+                  )}
             </p>
           </label>
         )}

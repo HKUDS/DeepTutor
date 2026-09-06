@@ -101,6 +101,8 @@ def resolve_query_roles() -> dict[str, RoleCall]:
 
     settings = load_lightrag_settings()
     models = settings_models(settings)
+    if models is None and settings.get("version") == 2:
+        raise ValueError("Choose and save a LightRAG base model before querying.")
     limits = runtime_limits(settings)
     owner = get_current_user()
     result = {}

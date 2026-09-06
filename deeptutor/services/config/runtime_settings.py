@@ -342,7 +342,7 @@ DEFAULT_GRAPHRAG_SETTINGS: dict[str, Any] = {
 # Stable catalog references let LightRAG use a dedicated LLM while the global
 # active chat model remains unchanged for ordinary chat.
 DEFAULT_LIGHTRAG_SETTINGS: dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "top_k": 60,
     "response_type": "Multiple Paragraphs",
     "max_concurrent_files": 1,
@@ -620,7 +620,10 @@ class RuntimeSettingsService:
                 loaded = json.load(handle)
             if not isinstance(loaded, dict):
                 raise ValueError("LightRAG settings must be an object.")
-            normalized = self._normalize_lightrag({**DEFAULT_LIGHTRAG_SETTINGS, **loaded})
+            # Existing files without a version predate independent roles.
+            normalized = self._normalize_lightrag(
+                {**DEFAULT_LIGHTRAG_SETTINGS, "version": 1, **loaded}
+            )
             if normalized != loaded:
                 _atomic_write_json(path, normalized)
             return normalized
@@ -977,7 +980,7 @@ class RuntimeSettingsService:
             else None
         )
         result = {
-            "version": 1,
+            "version": 2 if roles is not None or settings.get("version") == 2 else 1,
             "top_k": _coerce_clamped_int(settings.get("top_k"), 60, 1, 200),
             "response_type": self._normalize_response_type(settings.get("response_type")),
             "max_concurrent_files": _coerce_clamped_int(

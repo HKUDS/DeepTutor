@@ -11,6 +11,8 @@ Shared engine settings require administrator access when authentication is enabl
 | QUERY | Answer generation | Base or explicit model |
 | VLM | Requested image analysis | Disabled, base or explicit vision model |
 
+Fresh settings are distinguished from historical settings. Choose and save a
+LightRAG base before querying; creation can also use explicit indexing selections.
 New role configurations disable VLM by default. Inheriting the base for VLM
 requires a model that supports image inputs. Disabling VLM preserves text,
 table and equation processing. An explicit image-analysis request on a disabled
