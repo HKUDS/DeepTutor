@@ -971,6 +971,10 @@ class RuntimeSettingsService:
     def _normalize_lightrag(self, settings: dict[str, Any]) -> dict[str, Any]:
         from .lightrag_roles import LightRagRoleModels
 
+        version = settings.get("version", 1)
+        if type(version) is not int or version not in {1, 2}:
+            raise ValueError("Unsupported LightRAG settings version.")
+
         # Missing means a released, legacy setting. Never turn malformed new
         # configuration back into a legacy model fallback.
         role_models = settings.get("role_models")

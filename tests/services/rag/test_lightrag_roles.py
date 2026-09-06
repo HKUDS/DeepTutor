@@ -762,3 +762,16 @@ def test_fresh_defaults_do_not_enter_legacy_model_or_vision_fallback(role_enviro
     role_environment["settings"] = legacy
     # The compatibility path retains historical vision semantics.
     assert policy.freeze_roles(choice(3)).vlm is not None
+
+
+@pytest.mark.parametrize("version", [3, "2", True])
+def test_invalid_settings_version_never_becomes_legacy_fallback(tmp_path, version):
+    from deeptutor.services.config.runtime_settings import RuntimeSettingsService
+
+    service = RuntimeSettingsService(tmp_path, process_env={})
+    path = service.path_for("lightrag")
+    path.write_text(json.dumps({"version": version}))
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="settings version"):
+        service.load_lightrag()
+    assert path.read_bytes() == before
