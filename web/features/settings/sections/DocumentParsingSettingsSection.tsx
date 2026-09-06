@@ -168,6 +168,11 @@ export default function DocumentParsingSettingsPage() {
                   "The active engine handles all parsing. Text-only is built in and extracts plain text; markitdown is lightweight and optional; MinerU and Docling produce richer structure, while Tika provides broad remote text extraction.",
                 )}
               </p>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
+                {t(
+                  "To show figures from textbooks in LlamaIndex RAG answers, pick MinerU, PyMuPDF4LLM, or LiteParse with image extraction, then reindex the knowledge base. Text-only leaves images out of the index.",
+                )}
+              </p>
             </header>
             <div className="flex flex-col gap-2">
               {data.available_engines.map((engine) => {

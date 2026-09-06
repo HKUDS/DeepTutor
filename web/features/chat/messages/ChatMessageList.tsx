@@ -30,6 +30,7 @@ import { useTranslation } from "react-i18next";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import AssistantResponse from "@/components/common/AssistantResponse";
+import { RagSourceFigures } from "@/components/chat/RagSourceFigures";
 import {
   InlineFileCardProvider,
   mergeGeneratedFiles,
@@ -1769,6 +1770,10 @@ export const ChatMessageList = memo(function ChatMessageList({
                 masterySkips={masterySkips}
               />
             </InlineFileCardProvider>
+            <RagSourceFigures
+              events={msg.events}
+              onOpen={onPreviewAttachment}
+            />
             <GeneratedFileCards
               attachments={msg.attachments ?? []}
               events={msg.events}

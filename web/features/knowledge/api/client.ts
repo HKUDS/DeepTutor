@@ -643,6 +643,17 @@ export function knowledgeBaseFilePath(
     .join("/")}`;
 }
 
+/** Build the `/api/...` path for a LlamaIndex frozen figure (caller can pass to apiUrl()). */
+export function knowledgeBaseIndexAssetPath(
+  kbName: string,
+  assetPath: string,
+): string {
+  return `/api/knowledge-bases/${encodeURIComponent(kbName)}/index-assets/${assetPath
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+}
+
 /** Build the `/api/...` path for extracted plain-text preview of a raw KB file. */
 export function knowledgeBaseFilePreviewTextPath(
   kbName: string,

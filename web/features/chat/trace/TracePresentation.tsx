@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
+import { apiUrl } from "@/lib/api";
 import { formatTurnDuration, getTurnDurationSeconds } from "@/lib/trace-timing";
 import { describeProviderTool, type ToolProvider } from "@/lib/trace-tools";
 import type { StreamEvent } from "@/features/chat/model/protocol";
@@ -904,12 +905,35 @@ function TraceRowBody({
       {inlineSources.length > 0 && (
         <div className="mt-1 opacity-50">
           {t("Sources")}:{" "}
-          {inlineSources.map((source, idx) => (
-            <span key={`${callId}-source-${idx}`}>
-              {idx > 0 && " · "}
-              {String(source.title || source.query || source.type || "source")}
-            </span>
-          ))}
+          {inlineSources.map((source, idx) => {
+            const nested = Array.isArray(source.images)
+              ? (source.images as Array<Record<string, unknown>>)
+              : [];
+            const thumbUrl = String(
+              source.image_url || nested[0]?.image_url || "",
+            );
+            const title = String(
+              source.title || source.query || source.type || "source",
+            );
+            return (
+              <span
+                key={`${callId}-source-${idx}`}
+                className="inline-flex items-center gap-1"
+              >
+                {idx > 0 && " · "}
+                {thumbUrl.startsWith("/api/") ||
+                thumbUrl.startsWith("http") ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={apiUrl(thumbUrl)}
+                    alt=""
+                    className="inline-block h-4 w-4 rounded-sm object-cover align-text-bottom"
+                  />
+                ) : null}
+                {title}
+              </span>
+            );
+          })}
         </div>
       )}
 

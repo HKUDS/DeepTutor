@@ -172,9 +172,6 @@ def test_loader_explains_scanned_pdf_when_parser_yields_images_only(
     pytest.importorskip("llama_index.core")
     from deeptutor.services.parsing.types import ParsedDocument
     from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
-    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
-        LlamaIndexDocumentLoader,
-    )
 
     pdf_path = tmp_path / "scan.pdf"
     pdf_path.write_bytes(b"stub")
@@ -202,13 +199,51 @@ def test_loader_explains_scanned_pdf_when_parser_yields_images_only(
     monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyClient())
 
     with caplog.at_level("WARNING"):
-        documents = asyncio.run(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+        documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
 
     assert documents == []
     assert "pymupdf4llm engine extracted 1 image(s) but no text" in caplog.text
     assert "scanned PDF" in caplog.text
     assert "OCR-capable" in caplog.text
     assert "Settings, Document Parsing" in caplog.text
+
+
+def test_loader_keeps_extracted_images_when_multimodal_indexing_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    (asset_dir / "page-1.png").write_bytes(b"\x89PNG\r\n")
+
+    _install_stub_parse_service(
+        monkeypatch,
+        {"paper.pdf": ParsedDocument(markdown="Body", asset_dir=asset_dir)},
+    )
+
+    class _TextOnlyClient:
+        config = type("Config", (), {"binding": "openai", "model": "text-embedding"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return False
+
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyClient())
+
+    loader = loader_module.LlamaIndexDocumentLoader()
+    documents = asyncio.run(loader.load([str(pdf_path)]))
+    pending = loader.take_pending_image_sources()
+
+    assert len(documents) == 1
+    assert documents[0].metadata["asset_origin"] == "paper.pdf"
+    assert len(pending) == 1
+    assert pending[0].path.name == "page-1.png"
+    assert pending[0].origin.name == "paper.pdf"
+    assert pending[0].page == "1"
 
 
 def test_loader_keeps_generic_empty_warning_for_non_pdf(
@@ -284,6 +319,7 @@ def test_loader_indexes_images_extracted_from_parsed_document(
 
     assert len(text_docs) == 1
     assert text_docs[0].text == "Paper body"
+    assert text_docs[0].metadata["asset_origin"] == "paper.pdf"
 
     assert len(image_nodes) == 1
     node = image_nodes[0]

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from dataclasses import dataclass
 import logging
 import mimetypes
 from pathlib import Path
@@ -27,6 +26,7 @@ from deeptutor.services.llm.client import get_llm_client
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.utils.document_validator import DocumentValidator
 
+from .assets import ImageAssetSource, page_from_blocks, page_from_filename
 from .config import image_description_limits
 
 IMAGE_DESCRIPTION_SYSTEM_PROMPT = (
@@ -42,26 +42,19 @@ IMAGE_DESCRIPTION_PROMPT = (
 )
 
 
-@dataclass(frozen=True)
-class _ImageSource:
-    """An image to embed as an ``ImageNode``, plus the document it came from.
-
-    ``path`` is the image file on disk (what gets embedded and served).
-    ``origin`` is the document it belongs to: the image itself for a standalone
-    image file, or the source PDF/e-book for an image extracted during parsing —
-    so retrieval cites the source document rather than an opaque cache asset.
-    """
-
-    path: Path
-    origin: Path
-
-
 class LlamaIndexDocumentLoader:
     """Convert source files into LlamaIndex ``Document`` / ``ImageNode`` objects."""
 
     def __init__(self, logger=None, image_concurrency: int = 6) -> None:
         self.logger = logger or logging.getLogger(__name__)
         self.image_concurrency = max(1, int(image_concurrency))
+        self._pending_image_sources: list[ImageAssetSource] = []
+
+    def take_pending_image_sources(self) -> list[ImageAssetSource]:
+        """Images discovered during the last ``load``, including skipped ImageNodes."""
+        sources = self._pending_image_sources
+        self._pending_image_sources = []
+        return sources
 
     async def load(
         self,
@@ -69,7 +62,8 @@ class LlamaIndexDocumentLoader:
         image_progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[Any]:
         documents: list[Any] = []
-        image_sources: list[_ImageSource] = []
+        image_sources: list[ImageAssetSource] = []
+        self._pending_image_sources = []
         classification = FileTypeRouter.classify_files(list(file_paths))
 
         for file_path_str in classification.parser_files:
@@ -120,10 +114,11 @@ class LlamaIndexDocumentLoader:
                 else:
                     # Preserve the pre-parser behavior when an image-capable
                     # engine fails or yields no usable IR.
-                    image_sources.append(_ImageSource(path=path, origin=path))
+                    image_sources.append(ImageAssetSource(path=path, origin=path))
             else:
-                image_sources.append(_ImageSource(path=path, origin=path))
+                image_sources.append(ImageAssetSource(path=path, origin=path))
 
+        self._pending_image_sources = list(image_sources)
         if image_sources:
             documents.extend(
                 await self._load_image_nodes(
@@ -140,7 +135,7 @@ class LlamaIndexDocumentLoader:
         self,
         file_path: Path,
         parse_service=None,  # noqa: ANN001
-    ) -> tuple[str, list[_ImageSource], str]:
+    ) -> tuple[str, list[ImageAssetSource], str]:
         """Parse a document through the shared, engine-pluggable parse layer.
 
         Returns ``(text, extracted_images, engine)``. A parse failure (engine
@@ -160,7 +155,9 @@ class LlamaIndexDocumentLoader:
             return "", [], ""
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
-        images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
+        images = self._collect_asset_images(
+            parsed.asset_dir, origin=file_path, blocks=parsed.blocks
+        )
         return text, images, str(parsed.engine or "")
 
     @staticmethod
@@ -175,7 +172,13 @@ class LlamaIndexDocumentLoader:
         ]
         return "\n\n".join(part for part in parts if part)
 
-    def _collect_asset_images(self, asset_dir: Path | None, *, origin: Path) -> list[_ImageSource]:
+    def _collect_asset_images(
+        self,
+        asset_dir: Path | None,
+        *,
+        origin: Path,
+        blocks: list[dict] | None = None,
+    ) -> list[ImageAssetSource]:
         """Gather images the parse engine extracted into ``asset_dir``.
 
         Engines that don't extract images (text-only, markitdown) leave
@@ -185,7 +188,11 @@ class LlamaIndexDocumentLoader:
         if not asset_dir or not Path(asset_dir).is_dir():
             return []
         images = [
-            _ImageSource(path=child, origin=origin)
+            ImageAssetSource(
+                path=child,
+                origin=origin,
+                page=page_from_blocks(blocks, child.name) or page_from_filename(child.name),
+            )
             for child in sorted(Path(asset_dir).iterdir())
             if child.is_file() and child.suffix.lower() in FileTypeRouter.IMAGE_EXTENSIONS
         ]
@@ -197,7 +204,7 @@ class LlamaIndexDocumentLoader:
 
     async def _load_image_nodes(
         self,
-        sources: list[_ImageSource],
+        sources: list[ImageAssetSource],
         *,
         image_progress_callback: Callable[[int, int], None] | None = None,
     ) -> list[ImageNode]:
@@ -231,7 +238,7 @@ class LlamaIndexDocumentLoader:
             )
             return []
 
-        embedded: list[_ImageSource] = []
+        embedded: list[ImageAssetSource] = []
         descriptions: list[str] = []
         contents: list[dict[str, str]] = []
         completed = 0
@@ -240,10 +247,10 @@ class LlamaIndexDocumentLoader:
         semaphore = asyncio.Semaphore(concurrency)
 
         async def _describe_one(
-            source: _ImageSource,
-        ) -> tuple[_ImageSource, str, dict[str, str]] | None:
+            source: ImageAssetSource,
+        ) -> tuple[ImageAssetSource, str, dict[str, str]] | None:
             nonlocal completed
-            result: tuple[_ImageSource, str, dict[str, str]] | None = None
+            result: tuple[ImageAssetSource, str, dict[str, str]] | None = None
             try:
                 try:
                     async with semaphore:
@@ -332,6 +339,8 @@ class LlamaIndexDocumentLoader:
                         "file_path": str(source.origin),
                         "content_type": "image",
                         "image_description": description,
+                        "asset_origin": source.origin.name,
+                        **({"page": source.page} if source.page else {}),
                     },
                     embedding=embedding,
                 )
@@ -339,7 +348,7 @@ class LlamaIndexDocumentLoader:
             self.logger.info(f"Loaded image: {source.path.name} ({len(embedding)}D vector)")
         return nodes
 
-    def _log_skipped_images(self, sources: list[_ImageSource], reason: str) -> None:
+    def _log_skipped_images(self, sources: list[ImageAssetSource], reason: str) -> None:
         for source in sources:
             self.logger.warning(
                 "Skipped image because image indexing requires both multimodal "
@@ -389,6 +398,7 @@ class LlamaIndexDocumentLoader:
                     metadata={
                         "file_name": file_path.name,
                         "file_path": str(file_path),
+                        "asset_origin": file_path.name,
                     },
                 )
             )
