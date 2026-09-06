@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import logging
 import re
 from typing import TYPE_CHECKING, Any, Literal
+import unicodedata
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.services.llm.utils import clean_thinking_tags
@@ -115,6 +116,150 @@ def _assemble_persisted_answer(
             for call_id, text in content_segments
             if not (call_id and call_id in narration_call_ids)
         )
+    )
+
+
+_FENCED_CODE_BLOCK_RE = re.compile(r"```[\s\S]*?```")
+_INLINE_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
+_MATH_SPAN_RE = re.compile(
+    r"\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$"
+)
+
+
+def _is_escaped(text: str, index: int) -> bool:
+    """Whether the character at index has an odd-length backslash prefix."""
+    slash_count = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        slash_count += 1
+        cursor -= 1
+    return slash_count % 2 == 1
+
+
+def _is_emphasis_normal_character(value: str | None) -> bool:
+    return bool(value and (value.isalpha() or value.isnumeric()))
+
+
+def _is_emphasis_punctuation_or_symbol(value: str | None) -> bool:
+    return bool(value and unicodedata.category(value)[0] in {"P", "S"})
+
+
+def _can_open_emphasis(line: str, index: int, marker: str) -> bool:
+    before = line[index - 1] if index else None
+    after_index = index + len(marker)
+    after = line[after_index] if after_index < len(line) else None
+    if after is None or after.isspace():
+        return False
+    if _is_emphasis_punctuation_or_symbol(after):
+        return (
+            before is None
+            or before.isspace()
+            or _is_emphasis_punctuation_or_symbol(before)
+            or _is_emphasis_normal_character(before)
+        )
+    return True
+
+
+def _can_close_emphasis(line: str, index: int, marker: str) -> bool:
+    before = line[index - 1] if index else None
+    after_index = index + len(marker)
+    after = line[after_index] if after_index < len(line) else None
+    if before is None or before.isspace():
+        return False
+    if _is_emphasis_punctuation_or_symbol(before):
+        return (
+            after is None
+            or after.isspace()
+            or _is_emphasis_punctuation_or_symbol(after)
+            or _is_emphasis_normal_character(after)
+        )
+    return True
+
+
+def _paired_emphasis_delimiters(line: str) -> list[tuple[str, int, int]]:
+    """Return only syntactically plausible (marker, left opener, right closer) pairs."""
+    openers: dict[str, list[int]] = {"*": [], "**": []}
+    pairs: list[tuple[str, int, int]] = []
+    cursor = 0
+    while cursor < len(line):
+        if line[cursor] != "*" or _is_escaped(line, cursor):
+            cursor += 1
+            continue
+        run_end = cursor
+        while run_end < len(line) and line[run_end] == "*":
+            run_end += 1
+        marker = line[cursor:run_end]
+        if marker in openers:
+            can_open = _can_open_emphasis(line, cursor, marker)
+            can_close = _can_close_emphasis(line, cursor, marker)
+            if can_close and openers[marker]:
+                pairs.append((marker, openers[marker].pop(), cursor))
+            elif can_open:
+                openers[marker].append(cursor)
+        cursor = run_end
+    return pairs
+
+
+def _repair_chinese_emphasis_line(line: str) -> str:
+    insertions: set[int] = set()
+    for marker, left_opener, right_closer in _paired_emphasis_delimiters(line):
+        left_before = line[left_opener - 1] if left_opener else None
+        left_inside = (
+            line[left_opener + len(marker)] if left_opener + len(marker) < len(line) else None
+        )
+        right_inside = line[right_closer - 1] if right_closer else None
+        right_after_index = right_closer + len(marker)
+        right_after = line[right_after_index] if right_after_index < len(line) else None
+
+        left_needs_space = _is_emphasis_normal_character(
+            left_before
+        ) and _is_emphasis_punctuation_or_symbol(left_inside)
+        right_needs_space = _is_emphasis_punctuation_or_symbol(
+            right_inside
+        ) and _is_emphasis_normal_character(right_after)
+        if left_needs_space:
+            insertions.add(left_opener)
+        if right_needs_space:
+            insertions.add(right_after_index)
+
+        # Only mirror a required repair onto the other marker in THIS pair.
+        if left_needs_space != right_needs_space:
+            if _is_emphasis_normal_character(right_inside) and _is_emphasis_normal_character(
+                right_after
+            ):
+                insertions.add(right_after_index)
+            elif _is_emphasis_normal_character(left_before) and _is_emphasis_normal_character(
+                left_inside
+            ):
+                insertions.add(left_opener)
+
+    for index in sorted(insertions, reverse=True):
+        line = f"{line[:index]} {line[index:]}"
+    return line
+
+
+def _repair_chinese_emphasis_for_persistence(content: str, language: str) -> str:
+    """Normalize CJK Markdown emphasis before the assistant answer is stored.
+
+    This deliberately runs only for Chinese model output and leaves code and
+    mathematics literal, so the persisted source matches its valid rendering.
+    """
+    if not content or not str(language or "").lower().startswith("zh"):
+        return content
+    protected: list[str] = []
+
+    def mask(match: re.Match[str]) -> str:
+        protected.append(match.group(0))
+        return f"\x00CJK_PROTECTED_{len(protected) - 1}\x00"
+
+    masked = _FENCED_CODE_BLOCK_RE.sub(mask, content)
+    masked = _MATH_SPAN_RE.sub(mask, masked)
+    masked = _INLINE_CODE_SPAN_RE.sub(mask, masked)
+    repaired = "\n".join(_repair_chinese_emphasis_line(line) for line in masked.split("\n"))
+    return re.sub(
+        r"\x00CJK_PROTECTED_(\d+)\x00",
+        lambda match: protected[int(match.group(1))],
+        repaired,
     )
 
 

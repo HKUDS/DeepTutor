@@ -19,8 +19,10 @@ Work PDFs in the sandbox with preinstalled Python libs. Pick the library by task
 - **Fill forms** → `pypdf` (fillable AcroForm fields) or annotation overlay (flat forms).
 - **Create from scratch** → `reportlab`.
 
-Write complete Python source and run it via `code_execution`. Save outputs to the workspace dir.
-After execution, refer to the PDF exactly as the Generated artifacts list names it. Use `exec` only for a genuinely shell-only command; never put this source in `python -c` or a heredoc.
+Use `exec` with complete Python source (`language: python`). Prefer creating,
+reopening, and validating the PDF in one call; later calls can revise the same
+relative filename. Follow the turn's **User workspace** instructions for
+locating inputs, output boundaries, and presenting the finished file.
 Preserve an explicitly requested quantity (such as 500 words) and verify the count in the output before finishing. If execution fails or the artifact is missing, diagnose stderr/root cause and change strategy; do not retry identical code or reduce the requested scope without asking.
 
 ## Extract text and tables (pdfplumber)
@@ -37,18 +39,25 @@ with pdfplumber.open("in.pdf") as pdf:
                 print(row)
 ```
 
-Tables → DataFrame/Excel:
+Tables → Excel (one worksheet per table):
 ```python
-import pdfplumber, pandas as pd
+import pdfplumber
+from openpyxl import Workbook
 
-frames = []
+workbook = Workbook()
+workbook.remove(workbook.active)
+table_number = 0
 with pdfplumber.open("in.pdf") as pdf:
-    for page in pdf.pages:
-        for t in page.extract_tables():
-            if t and len(t) > 1:
-                frames.append(pd.DataFrame(t[1:], columns=t[0]))
-if frames:
-    pd.concat(frames, ignore_index=True).to_excel("tables.xlsx", index=False)
+    for page_number, page in enumerate(pdf.pages, 1):
+        for table in page.extract_tables():
+            if not table:
+                continue
+            table_number += 1
+            sheet = workbook.create_sheet(f"p{page_number}_table{table_number}"[:31])
+            for row in table:
+                sheet.append([cell or "" for cell in row])
+if table_number:
+    workbook.save("tables.xlsx")
 ```
 
 Messy tables: pass strategies, or crop a region with `page.within_bbox((x0, top, x1, bottom))` first:

@@ -11,6 +11,7 @@ const LABELS: Record<string, string> = {
   medium: "Medium",
   high: "High",
   xhigh: "Extra high",
+  max: "Maximum",
   adaptive: "Adaptive",
 };
 
@@ -180,6 +181,22 @@ function tableReasoningEffortOptions(
   }
 
   if (OPENAI_PROVIDERS.has(provider)) {
+    // gpt-5.6-sol does not share the gpt-5 enum: it takes `none` at the bottom
+    // instead of `minimal`, and adds `max` above `xhigh`. It has to be matched
+    // before the generic branch, and the two lists stay separate because the
+    // other gpt-5.6 variants have not been confirmed to accept `max` — this
+    // table exists to keep a rejected level off the menu, so a guess here is
+    // the same bug in the other direction.
+    //
+    // Only the API-key `openai`/`azure_openai` bindings reach this; a managed
+    // Codex (OAuth) model is driven by the live
+    // `codex_supported_reasoning_levels` from the account catalog instead.
+    if (modelName.includes("gpt-5.6-sol")) {
+      return options(
+        ["none", "low", "medium", "high", "xhigh", "max"],
+        current,
+      );
+    }
     const isGpt5OrCodex = includesAny(modelName, ["gpt-5", "codex"]);
     if (isGpt5OrCodex) {
       return options(["minimal", "low", "medium", "high", "xhigh"], current);

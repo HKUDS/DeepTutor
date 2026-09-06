@@ -657,6 +657,8 @@ export type SettingsContextValue = {
   applying: boolean;
   saveDraft: () => Promise<void>;
   applyCatalog: () => Promise<void>;
+  /** Promote one model service without applying unrelated Settings drafts. */
+  applyService: (service: ServiceName) => Promise<boolean>;
   discardDraft: () => Promise<void>;
   /** A draft parked on the server, waiting to be applied. */
   storedDraft: StoredDraft | null;
@@ -1562,6 +1564,62 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [draftEnvelope, t]);
 
+  /** Apply one model-service editor without promoting unrelated settings. */
+  const applyService = useCallback(
+    async (service: ServiceName): Promise<boolean> => {
+      setApplying(true);
+      try {
+        const response = await apiFetch(apiUrl("/api/settings/apply/service"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            service,
+            config: draft.services[service],
+          }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = (await response.json()) as {
+          catalog: Catalog;
+          draft: StoredDraft | null;
+        };
+        const appliedService = cloneCatalog(payload.catalog).services[service];
+        setCatalog(payload.catalog);
+        setDraft((current) => {
+          const next = cloneCatalog(current);
+          next.services[service] = appliedService;
+          return next;
+        });
+        setStoredDraft(payload.draft ?? null);
+        // The remaining in-memory edits may or may not match an older stored
+        // draft. Mark them unsaved rather than claiming more durability than
+        // this service-scoped action provided.
+        setSavedSignature(null);
+        invalidateLLMOptionsCache();
+        try {
+          const statusResponse = await apiFetch(apiUrl("/api/system/status"));
+          if (statusResponse.ok) {
+            setStatus((await statusResponse.json()) as SystemStatus);
+          }
+        } catch {
+          // The catalog is already live. A status refresh failure should not
+          // turn a successful apply into a failure or keep the dialog open.
+        }
+        setToast(t("Applied"));
+        return true;
+      } catch (err) {
+        setToast(
+          t("Could not apply: {{message}}", {
+            message: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        return false;
+      } finally {
+        setApplying(false);
+      }
+    },
+    [draft.services, t],
+  );
+
   /** Apply — move everything into the live files and clear the draft. */
   const applyCatalog = useCallback(async () => {
     setApplying(true);
@@ -1939,6 +1997,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       applying,
       saveDraft,
       applyCatalog,
+      applyService,
       discardDraft,
       storedDraft,
       draftState,
@@ -1965,6 +2024,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       addProfile,
       applyDetectedContextWindow,
       applyCatalog,
+      applyService,
       applying,
       draftState,
       storedDraft,

@@ -73,7 +73,23 @@ DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統�
 
 ## 🚀 開始使用
 
-DeepTutor 提供四種安裝方式。它們共用相同的工作區配置：設定會儲存在啟動目錄下的 `data/user/settings/`（若明確設定 `DEEPTUTOR_HOME` 或 `deeptutor start --home`，則儲存在該位置）。完整應用程式的建議流程是：**選擇工作區目錄 → 安裝 → `deeptutor init` → `deeptutor start`**。
+DeepTutor 提供四種安裝方式，皆共用同一套執行環境目錄配置：私有設定會儲存在啟動目錄下的 `data/user/settings/`（若明確設定 `DEEPTUTOR_HOME` 或 `deeptutor start --home`，則改儲存在該位置）。完整應用程式的建議流程是：**選擇一個執行環境目錄 → 安裝 → `deeptutor init` → `deeptutor start`**。
+
+### 內容工作區
+
+**內容工作區（Content Workspace）**與 DeepTutor 的私有執行環境目錄是分開的。這是代理程式可以讀取的資料夾，凡是代理程式建立的檔案、下載內容、程式碼執行結果、快取與生成的素材，都會放在依回合區分的 `outputs/<capability>/<session>/<turn>/` 目錄下。Settings、API key、資料庫、Memory 與內部應用程式狀態則都不在此範圍內。
+
+在未經設定的情況下，內容工作區位於 `<執行環境目錄>/data/user/workspace`。本機的 PyPI、CLI 與原始碼安裝，皆可在 **Settings → Workspace** 或以下列指令，選擇任何現有且可讀寫的資料夾：
+
+```bash
+deeptutor workspace show
+deeptutor workspace set /absolute/path/to/my-folder
+deeptutor workspace reset
+```
+
+每項能力都能透過內建的 workspace 工具檢視同一個資料夾。模型只會收到 `outputs/...` 之類的相對路徑；當它使用 `workspace_present` 時，UI 會顯示一個已驗證身分、可開啟的快照。同一組相對路徑，在一般的 Markdown 連結或圖片中也同樣可用。日後變更來源檔案，並不會改變已呈現的快照。
+
+在 `outputs/` 之外，執行動作一律唯讀。若要將生成的檔案複製到內容工作區中的其他位置，必須針對該確切的來源與目的地，明確以 **Allow once** 確認。系統沙箱或 Docker runner（若可用）會強制執行此邊界；本機受限制的子處理程序備援方式，則會在 Workspace 設定中顯示為**盡力而為（best effort）**。
 
 <details>
 <summary><b>方式一 — 從 PyPI 安裝</b> · 完整本機 Web 應用程式＋CLI，無須 clone</summary>
@@ -177,12 +193,27 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
+若要在容器啟動時選擇主機端的內容資料夾，請將它掛載到固定的容器路徑，並把 DeepTutor 鎖定到該路徑：
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+若使用 Compose，請在執行 `python scripts/docker_compose.py up -d` 前設定 `DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder`；未設定時預設為 `./data/user/workspace`。Docker 的路徑於啟動時即已選定，因此會在 Web 設定頁面中顯示為鎖定狀態。
+
 > **只需要發布 `3782`。** 瀏覽器只會與前端 origin 通訊；Next.js middleware（`web/proxy.ts`）會將 `/api/*` 與 `/ws/*` 轉送到容器**內部**的 FastAPI 後端。發布 `8001`（`-p 127.0.0.1:8001:8001`）並非必要；只有在你想直接以 curl 或指令碼呼叫 API 時才方便。
 
-開啟 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器會在首次啟動時建立 `/app/data/user/settings/*.json`；請從 Web 設定頁面設定模型供應商。設定、API key、記錄、工作區檔案、記憶與知識庫都會保留在 `deeptutor-data` volume 中。選用的額外套件應設定在部署層級，而不是在 shell 裡：設定 `DEEPTUTOR_EXTRAS`（系統函式庫則另設 `DEEPTUTOR_APT_PACKAGES`），由它啟動的每個容器都會重新套用；相較之下，`docker exec … pip install` 這類做法會在下一次 `compose down` 時消失。
+開啟 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器會在首次啟動時建立 `/app/data/user/settings/*.json`；請從 Web 設定頁面設定模型供應商。設定、API key、記錄、預設的內容工作區、記憶與知識庫都會保留在 `deeptutor-data` volume 中；另行掛載的內容工作區則會保留在其主機路徑上。選用的額外套件應設定在部署層級，而不是在 shell 裡：設定 `DEEPTUTOR_EXTRAS`（系統函式庫則另設 `DEEPTUTOR_APT_PACKAGES`），由它啟動的每個容器都會重新套用；相較之下，`docker exec … pip install` 這類做法會在下一次 `compose down` 時消失。
 
 - **不同的主機連接埠：** 變更各 `-p host:container` 對應左側的值（例如 `-p 127.0.0.1:8088:3782`）。若你在 `/app/data/user/settings/system.json` 變更容器側連接埠，請重新啟動，並同步更新各對應右側的值。
-- **背景執行：** 加上 `-d`；接著以 `docker logs -f deeptutor` 查看記錄、`docker stop deeptutor` 停止，並在重複使用名稱前執行 `docker rm deeptutor`。`deeptutor-data` volume 會在重新啟動後保留設定與工作區。
+- **背景執行：** 加上 `-d`；接著以 `docker logs -f deeptutor` 查看記錄、`docker stop deeptutor` 停止，並在重複使用名稱前執行 `docker rm deeptutor`。`deeptutor-data` volume 會在重新啟動後保留私有的執行階段資料與預設的內容工作區；另行掛載的內容工作區則會保留在其主機路徑上。
 
 **遠端 Docker／反向代理：** 瀏覽器只會與前端 origin（`:3782`）通訊；容器內的 Next.js middleware 會在伺服器端將 `/api/*` 與 `/ws/*` 轉送到後端。在常見的單容器情境中，完全不必設定 API base，只要將反向代理／TLS terminator 指向 `:3782`。只有在**拆分部署**（後端位於其他容器／主機）時才需要 API base：將 `data/user/settings/system.json` 中的 `next_public_api_base` 設為前端伺服器用來連接後端的網路內位址（此值只在伺服器端讀取，不會傳送至瀏覽器）。
 
@@ -272,7 +303,7 @@ deeptutor config show
 <details>
 <summary><b>程式碼執行沙箱（office skills）</b> · 執行模型為 docx／pdf／pptx／xlsx 產生的程式碼</summary>
 
-內建的 office skills（**docx／pdf／pptx／xlsx**）會讓模型撰寫一段簡短的 Python 指令碼（`python-docx`、`reportlab`、`openpyxl` 等），透過 `exec`／`code_execution` 工具執行，再提供下載 URL。只要有啟用中的沙箱後端，這些工具就會掛載。DeepTutor 會依下列順序選用已設定的最強後端：
+內建的 office skills（**docx／pdf／pptx／xlsx**）會讓模型撰寫一段簡短的 Python 指令碼（`python-docx`、`reportlab`、`openpyxl` 等），透過唯一的 `exec` 工具執行，再提供下載 URL。只要有啟用中的沙箱後端，該工具就會掛載。DeepTutor 會依下列順序選用已設定的最強後端：
 
 - **Runner sidecar：** `DEEPTUTOR_SANDBOX_RUNNER_URL` 會將執行工作導向 `Dockerfile.runner` 所提供、經過強化且採最低權限的服務。
 - **Linux bubblewrap：** 若可使用 `bwrap`，它會隔離處理程序與檔案。
@@ -294,6 +325,7 @@ deeptutor config show
 | `auth.json` | 選用的驗證開關、使用者名稱、密碼雜湊、token／cookie 設定 |
 | `integrations.json` | 選用的 PocketBase 與 sidecar 整合設定 |
 | `interface.json` | UI 與模型輸出語言／主題／側邊欄偏好設定 |
+| `content_workspace.json` | 內容工作區的資料夾綁定，以及目前使用中的工作區選擇 |
 | `video_learning.json` | 預設 YouTube／Invidious 播放供應商、Invidious 來源與選用的逐字稿介面卡 |
 | `main.yaml` | 執行階段行為預設值與路徑注入 |
 | `agents.yaml` | 能力／工具的 temperature 與 token 設定 |
@@ -314,14 +346,14 @@ Web Search 參考來源預設會經過篩選：只會顯示未內嵌憑證、未
 
 專案根目錄的 `.env` **不會**被讀取為應用程式設定檔。若只需最基本的模型設定，請開啟 **Settings → Models**、加入 LLM 設定檔（Base URL／API key／模型名稱）並儲存。只有在打算使用 Knowledge Base／RAG 功能時才需要加入 embedding 設定檔。
 
-OpenAI 相容 LLM 設定檔也提供 **API protocol** 設定。一般供應商偵測與相容備援請保留 `Auto`；僅實作 `/responses` 的 endpoint 請選擇 `Responses API`；要求 `/chat/completions` 的 endpoint 則選擇 `Chat Completions`。強制 Responses 模式會採用失敗即停止策略：endpoint 錯誤會直接傳回，不會默默改用 Chat Completions 重試。`model_catalog.json` 中對應的設定檔欄位是 `wire_api`（`auto`、`responses` 或 `chat_completions`）。
+當供應商支援選擇時，LLM 與任務模型設定檔會提供 **API format** 設定。一般路由與備援請保留 `Auto`，也可以選擇 `OpenAI Chat Completions`、`OpenAI Responses` 或 `Anthropic Messages`；強制使用 Responses 時仍採用失敗即停止（fail-closed）策略。持久化欄位為 `api_format`（`auto`、`openai_chat`、`openai_responses` 或 `anthropic`）；`wire_api` 則是由此衍生出的相容性狀態。每個模型可個別以 `Auto`／`Supported`／`Not supported` 覆寫工具呼叫、影像輸入、JSON 輸出與推理控制等能力。
 
 </details>
 
 <details>
 <summary><b>解除安裝與清理</b></summary>
 
-DeepTutor 會將已安裝的程式碼與執行階段工作區分開。預設工作區是你執行 `deeptutor init`／`deeptutor start` 的目錄；`--home PATH` 或 `DEEPTUTOR_HOME` 可覆寫此位置。執行階段輸出位於該工作區內的 `data` 目錄，因此啟動橫幅中以 `Workspace:` 開頭的那一行會指出要清理的位置。
+DeepTutor 會將已安裝的程式碼、私有執行環境目錄與選用的內容工作區分開管理。預設情況下，執行環境目錄就是你執行 `deeptutor init`／`deeptutor start` 的目錄；`--home PATH` 或 `DEEPTUTOR_HOME` 可覆寫此位置。私有應用程式狀態位於該目錄內的 `data` 子目錄，因此啟動橫幅中以 `Workspace:` 開頭的那一行，指出的就是這個執行環境位置。若 **Settings → Workspace** 指向其他資料夾，請另行備份或移除該內容資料夾；解除安裝 DeepTutor 並不會清除它，這是刻意的設計。
 
 1. 停止應用程式。在執行 `deeptutor start` 的終端機按下 `Ctrl+C`；若 launcher 是以 `--detach` 啟動，請執行 `deeptutor stop [--home PATH]`。刪除資料前，也請停止所有執行中的 Partner 與 detached Docker 容器。
 2. 只有在你也想清除所有本機狀態時，才移除執行階段資料。這包括設定與 API key、聊天記錄、工作階段、Memory、Notebooks、Books、Reading 狀態、Skills、Partners 狀態、記錄、Knowledge Bases、解析快取、生成的產物，以及套件化前端的執行階段快取。
@@ -382,11 +414,11 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor Chat 代理程式迴圈" width="900">
 </div>
 
-使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github` 與 `consult_subagent` 等情境式工具，會在回合具有相符情境時自動掛載。
+使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 與 `workspace_export` 等情境式工具，會在回合具有相符情境時自動掛載。
 
 情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、題庫、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。語音按鈕只會轉錄目前的訊息。
 
-Home 讓 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 與 **Immersive Watching** 一鍵可達；用於建立附引用報告的 **Research** 與提供完整推理解題的 **Solve** 則位於 *More Capabilities* 之下。**Mastery Path** 與 **Immersive Reading** 是側邊欄中的專屬工作區。Reading 新增經驗證且可點擊的引用、已儲存的引文與筆記、以來源為依據的音訊／學習指南／詞彙／測驗／翻譯動作，以及擷取至筆記本的功能；Course Study 則保有自己的課程情境。
+Home 讓 **Chat**、**Ask Questions**、**Quiz** 與 **Visualize** 一鍵可達；用於建立附引用報告的 **Research**、提供完整推理解題的 **Solve**，以及 **Immersive Watching**，則位於 *More Capabilities* 之下。**Mastery Path** 與 **Immersive Reading** 是側邊欄中的專屬工作區。Reading 新增經驗證且可點擊的引用、已儲存的引文與筆記、以來源為依據的音訊／學習指南／詞彙／測驗／翻譯動作，以及擷取至筆記本的功能；Course Study 則保有自己的課程情境。
 
 </details>
 
@@ -532,7 +564,7 @@ Memory Graph 會呈現完整金字塔：L3 綜整位於中央、L2 位於中圈�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settings 中心" width="900">
 </div>
 
-Settings 是操作控制中心，提供即時狀態列（後端健康狀況，以及整個處理程序樹的常駐記憶體），並附有常駐顯示、可搜尋的導覽選單，一鍵即可抵達任何頁面：**Appearance**（主題、介面與模型輸出語言、程式碼區塊樣式）、**Network**（API base、連接埠、CORS）、**Models**（連線、LLM、任務模型、Embedding、Search、Text-to-Speech、Speech-to-Text、Image Generation、Video Generation）、**Knowledge Base**（文件解析引擎）、**Chat**（Video Learning、可搜尋工具、各能力參數、起始提示、附件上限）、**Partners & Agents**（九個本機代理程式執行框架）、**Learner profile**（年齡、年級、課綱、語言、閱讀程度、解說風格）、**Guardian**（已授權學習者、教材、報告、憑證重設）、**Memory**（綜整器預算），以及 **About**（版本檢查與安全更新）。**連線**會保存單一供應商憑證，並鏡射至該供應商可提供的每項服務，因此 API key 只需輸入一次，無須分別貼到五個不同頁面；**任務模型**會為那些沒人特別要求的工作 — 例如替對話命名、撰寫輸入框的起始提示 — 指定一個小巧、快速的模型，若留空則會回退至目前使用中的預設模型。
+Settings 是操作控制中心：開頭是即時狀態列（後端健康狀況與常駐記憶體）、介面與模型輸出語言，以及將每項能力評為 blocker、warning 或 suggestion 的 **Readiness** 矩陣；再往下是常駐顯示、可搜尋的導覽選單，一鍵即可抵達任何頁面：**Appearance**（主題、程式碼區塊樣式）、**Network**（API base、連接埠、CORS）、**Workspace**（代理程式可讀取的資料夾及其共用的 `outputs/`）、**Models**（連線、LLM、任務模型、Embedding、Search、Text-to-Speech、Speech-to-Text、Image Generation、Video Generation）、**Knowledge Base**（文件解析引擎）、**Chat**（Video Learning、可搜尋工具、各能力參數、起始提示、附件上限）、**Partners & Agents**（九個本機代理程式執行框架）、**Learner profile**（年齡、年級、課綱、語言、閱讀程度、解說風格）、**Guardian**（已授權學習者、教材、報告、憑證重設）、**Memory**（綜整器預算），以及 **About**（版本檢查與安全更新）。**連線**會保存單一供應商憑證，並鏡射至該供應商可提供的每項服務，因此 API key 只需輸入一次，無須分別貼到五個不同頁面；**任務模型**會為那些沒人特別要求的工作 — 例如替對話命名、撰寫輸入框的起始提示 — 指定一個小巧、快速的模型，若留空則會回退至目前使用中的預設模型。
 
 **Video Learning** 位於 Settings → Chat，預設使用官方隱私強化版 YouTube IFrame Player。若要讓播放保持在本機，請設定由管理員管理的 Invidious API 來源（例如 `http://127.0.0.1:3000`）、進行測試、選擇 Invidious 並儲存。新開啟或重新開啟的影片會立即採用該供應商，同時保留相同的素材 ID 與進度。Invidious 媒體會透過 DeepTutor 的 byte-range proxy 串流；上游 URL 不會暴露給瀏覽器，也不會儲存在磁碟上。若該執行個體發生故障，在學習者明確選擇原生 YouTube 備援前，DeepTutor 將維持離線而不連線至 YouTube。公開字幕教學為選用功能：安裝 `.[video-learning]`；未安裝時仍可繼續播放，但以逐字稿為基礎的 **Explain here** 會停用並顯示原因。
 
@@ -634,11 +666,12 @@ repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這份約 200 行的交接�
 
 | 指令 | 說明 |
 |:---|:---|
-| `deeptutor init` | 為目前工作區建立或更新 `data/user/settings` |
-| `deeptutor doctor [--online]` | 檢查工作區是否已就緒可開始工作階段；`--online` 也會探測目前設定的模型供應商，`--format json` 會輸出 JSON 格式報告 |
+| `deeptutor init` | 在目前的執行環境目錄中建立或更新 `data/user/settings` |
+| `deeptutor doctor [--online]` | 檢查此執行環境是否已就緒可開始工作階段；`--online` 也會探測目前設定的模型供應商，`--format json` 會輸出 JSON 格式報告 |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | 同時啟動後端與前端；可選擇 detached 模式或不開啟瀏覽器 |
 | `deeptutor stop [--home PATH]` | 停止以 `--detach` 啟動的 launcher |
 | `deeptutor serve [--port PORT]` | 只啟動 FastAPI 後端 |
+| `deeptutor workspace show/set/reset` | 檢視、選擇或還原每位使用者的內容工作區 |
 | `deeptutor run <capability> <message>` | 執行單一能力回合（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`）；加上 `--format json` 可輸出 NDJSON |
 | `deeptutor chat` | 具備能力、工具、知識庫、筆記本與記錄控制的互動式 REPL |
 | `deeptutor partner list/create/start/stop` | 管理連接 IM 的 partners |

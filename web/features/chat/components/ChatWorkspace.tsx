@@ -22,7 +22,6 @@ import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import ChatComposer from "@/components/chat/home/ChatComposer";
-import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
 import { ChatMessageList } from "@/features/chat/messages";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionLoadingView from "@/components/chat/home/SessionLoadingView";
@@ -73,8 +72,14 @@ import {
 } from "@/features/chat/controllers/pending-attachments";
 import { readChatLaunchIntent } from "@/lib/chat-launch-intent";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
-import { hasPendingAskUser } from "@/lib/ask-user-state";
+import {
+  hasPendingAskUser,
+  hasPendingUserCard,
+  REPLY_NOT_DELIVERED,
+} from "@/lib/ask-user-state";
+import { notify } from "@/lib/notifications";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { useContextBudget } from "@/hooks/useContextBudget";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useSetupSync } from "@/hooks/useSetupSync";
 import { listCourses, type StudyCourse } from "@/lib/courses-api";
@@ -228,33 +233,6 @@ interface KnowledgeBase {
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-/**
- * Read the context-window measurement a finished turn attached to its
- * `result` event. Scanned newest-first because one turn can emit several
- * results (a consulted subagent emits its own) and only the chat loop's
- * closing one carries the budget; older backends emit none at all, and the
- * measurement is allowed to degrade to "absent" rather than fail a turn.
- */
-function readContextBudget(
-  events: StreamEvent[] | undefined,
-): ContextBudget | null {
-  if (!events) return null;
-  for (let i = events.length - 1; i >= 0; i -= 1) {
-    const ev = events[i];
-    if (ev.type !== "result") continue;
-    const meta = ev.metadata?.metadata as Record<string, unknown> | undefined;
-    const budget = meta?.context_budget as ContextBudget | undefined;
-    if (
-      budget &&
-      typeof budget.window === "number" &&
-      typeof budget.used_tokens === "number" &&
-      Array.isArray(budget.segments)
-    ) {
-      return budget;
-    }
-  }
-  return null;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Chat page                                                         */
@@ -287,6 +265,8 @@ export default function ChatWorkspace() {
     newSession,
     loadSession,
     showCachedSession,
+    loadMessageTrace,
+    releaseMessageTrace,
     renameSessionTitle,
     setCourseId,
   } = useChatStateAdapter();
@@ -999,19 +979,24 @@ export default function ChatWorkspace() {
      precedes it normally scrolls up, which releases the streaming pin — so a
      quiz card would appear below the fold, under the composer, and the
      conversation looked stalled. Re-arm the pin and land on the card. */
+  /* Two questions, and a mastery card answers them differently. It must be on
+     screen — it is the learner's move — but it did not pause its turn, so
+     their next message is a new turn, not a reply into a finished one. Hence
+     the wider predicate for the pin and the pause-only one for routing. */
+  const awaitingUserCard = hasPendingUserCard(lastMessage?.events);
   const awaitingUserReply = hasPendingAskUser(lastMessage?.events);
   // Read inside ``handleSend`` without adding a dependency that would rebuild
   // the callback (and so the composer) on every streamed event.
   const awaitingUserReplyRef = useRef(awaitingUserReply);
   awaitingUserReplyRef.current = awaitingUserReply;
   useEffect(() => {
-    if (!awaitingUserReply) return;
+    if (!awaitingUserCard) return;
     shouldAutoScrollRef.current = true;
     // One frame later: the card has to be laid out before the bottom it
     // defines exists.
     const frame = requestAnimationFrame(() => scrollToBottom("instant"));
     return () => cancelAnimationFrame(frame);
-  }, [awaitingUserReply, scrollToBottom, shouldAutoScrollRef]);
+  }, [awaitingUserCard, scrollToBottom, shouldAutoScrollRef]);
 
   const copyAssistantMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
@@ -1490,15 +1475,7 @@ export default function ChatWorkspace() {
   // while a new turn streams — the in-flight assistant message has no result
   // event yet, so the walk falls through to the last completed turn and the
   // chip flips exactly once, when the new measurement lands.
-  const contextBudget = useMemo(() => {
-    for (let i = state.messages.length - 1; i >= 0; i -= 1) {
-      const msg = state.messages[i];
-      if (msg.role !== "assistant") continue;
-      const budget = readContextBudget(msg.events);
-      if (budget) return budget;
-    }
-    return null;
-  }, [state.messages]);
+  const contextBudget = useContextBudget(state.messages);
 
   /**
    * Capability-config card rendered at the bottom of the Activity panel.
@@ -1795,7 +1772,12 @@ export default function ChatWorkspace() {
       // not the only one — and a card that never rendered no longer strands
       // the learner with a turn they can only cancel.
       if (awaitingUserReplyRef.current) {
-        if (content.trim()) submitUserReply({ text: content });
+        if (content.trim()) {
+          const sent = await submitUserReply({ text: content });
+          // The composer already cleared what they typed, so a silent drop
+          // would look like the assistant simply never replied.
+          if (!sent) notify(t(REPLY_NOT_DELIVERED), { tone: "error" });
+        }
         return;
       }
       if (
@@ -2002,6 +1984,54 @@ export default function ChatWorkspace() {
       shouldAutoScrollRef.current = true;
     },
     [researchConfig, sendMessage, shouldAutoScrollRef],
+  );
+
+  // Answering a mastery card starts the next turn rather than resuming a
+  // paused one: posing the question ended its turn. The learner's pick is the
+  // message (a bare "C" reads fine directly under the card that offered it),
+  // and ``masteryAnswer`` tells the backend which question it settles so the
+  // engine has the answer committed before the tutor reads anything.
+  const answerMasteryQuestion = useCallback(
+    (answer: { questionId: string; text: string }) => {
+      const text = answer.text.trim();
+      // One live turn per path: submitting into a running one is refused, and
+      // ``false`` reopens the card rather than surfacing that refusal.
+      if (!text || state.isStreaming) return false;
+      sendMessage(
+        text,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          masteryAnswer: { question_id: answer.questionId, text },
+        },
+      );
+      shouldAutoScrollRef.current = true;
+      return true;
+    },
+    [sendMessage, shouldAutoScrollRef, state.isStreaming],
+  );
+
+  // Declining one is the same kind of move, and has to be a turn for the same
+  // reason: the engine holds one open question per path, so a question left
+  // open is the one the tutor's next ``mastery_quiz`` re-presents. The message
+  // says out loud what the learner did, so the transcript still reads.
+  const skipMasteryQuestion = useCallback(
+    (questionId: string) => {
+      if (!questionId || state.isStreaming) return false;
+      sendMessage(
+        t("Let's skip this question."),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { masterySkip: { question_id: questionId } },
+      );
+      shouldAutoScrollRef.current = true;
+      return true;
+    },
+    [sendMessage, shouldAutoScrollRef, state.isStreaming, t],
   );
 
   const handleRegenerateMessage = useCallback(() => {
@@ -2406,6 +2436,18 @@ export default function ChatWorkspace() {
                         onEditMessage={editMessage}
                         onSwitchBranch={switchBranch}
                         onSubmitUserReply={submitUserReply}
+                        onAnswerMasteryQuestion={answerMasteryQuestion}
+                        onSkipMasteryQuestion={skipMasteryQuestion}
+                        onLoadMessageTrace={(messageId) =>
+                          state.sessionId
+                            ? loadMessageTrace(state.sessionId, messageId)
+                            : Promise.resolve()
+                        }
+                        onReleaseMessageTrace={(messageId) => {
+                          if (state.sessionId) {
+                            releaseMessageTrace(state.sessionId, messageId);
+                          }
+                        }}
                         availableKbNames={
                           knowledgeBasesLoaded ? availableKbNames : undefined
                         }

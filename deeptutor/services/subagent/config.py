@@ -1,8 +1,9 @@
 """Subagent settings — the consult budget and per-backend permission knobs.
 
 Stored as ``data/user/settings/subagent.json`` (same convention as the other
-runtime settings files). Everything has a safe default so the feature works the
-moment a CLI is detected, with no configuration step required.
+runtime settings files). Everything has a safe default so local backends work
+the moment a CLI is detected; remote backends remain unavailable until their
+endpoint and credential source are configured.
 
 * ``consult_budget`` — the user-facing "max rounds": the maximum number of times
   DeepTutor may put a question to the subagent in one turn. Enforced
@@ -36,10 +37,10 @@ CONSULT_BUDGET_MAX = 12
 @dataclass(slots=True)
 class BackendConfig:
     enabled: bool = True
-    # Model + reasoning effort the agent runs with. Empty = the CLI's own
-    # default. Set from the /settings page; the option lists are synced live
-    # from the CLI (models/efforts change over time). CC: --model / --effort;
-    # Codex: -m / -c model_reasoning_effort.
+    # Model + reasoning effort the agent runs with. Empty = the backend's own
+    # default. Set from the /settings page; local option lists can be synced
+    # live because models/efforts change over time. CC: --model / --effort;
+    # Codex: -m / -c model_reasoning_effort; Hermes remote: request fields.
     model: str = ""
     effort: str = ""
     # Instruction injected so the agent knows it's being consulted
@@ -73,6 +74,12 @@ class BackendConfig:
     # input; OpenClaw and DeepSeek receive opted-in paths as file references.
     forward_images: bool = False
     extra_args: list[str] = field(default_factory=list)
+    # Remote Hermes gateway connection. Credentials stay in the environment;
+    # ``api_key_env`` is only the name read at request time.
+    base_url: str = ""
+    api_key_env: str = "DEEPTUTOR_HERMES_REMOTE_API_KEY"
+    profile: str = ""
+    idle_timeout_seconds: int = 600
 
 
 @dataclass(slots=True)
@@ -86,12 +93,12 @@ class SubagentSettings:
     def to_dict(self) -> dict[str, Any]:
         return {
             "consult_budget": self.consult_budget,
-            "backends": {kind: _backend_to_dict(cfg) for kind, cfg in self.backends.items()},
+            "backends": {kind: _backend_to_dict(kind, cfg) for kind, cfg in self.backends.items()},
         }
 
 
-def _backend_to_dict(cfg: BackendConfig) -> dict[str, Any]:
-    return {
+def _backend_to_dict(kind: str, cfg: BackendConfig) -> dict[str, Any]:
+    payload = {
         "enabled": cfg.enabled,
         "model": cfg.model,
         "effort": cfg.effort,
@@ -106,6 +113,16 @@ def _backend_to_dict(cfg: BackendConfig) -> dict[str, Any]:
         "forward_images": cfg.forward_images,
         "extra_args": list(cfg.extra_args),
     }
+    if kind == "hermes_remote":
+        payload.update(
+            {
+                "base_url": cfg.base_url,
+                "api_key_env": cfg.api_key_env,
+                "profile": cfg.profile,
+                "idle_timeout_seconds": cfg.idle_timeout_seconds,
+            }
+        )
+    return payload
 
 
 def _coerce_budget(value: Any) -> int:
@@ -121,6 +138,10 @@ def _coerce_backend(raw: Any) -> BackendConfig:
     if not isinstance(raw, dict):
         return base
     extra = raw.get("extra_args")
+    try:
+        idle_timeout = int(raw.get("idle_timeout_seconds", base.idle_timeout_seconds))
+    except (TypeError, ValueError):
+        idle_timeout = base.idle_timeout_seconds
     return BackendConfig(
         enabled=bool(raw.get("enabled", base.enabled)),
         model=str(raw.get("model") or "").strip(),
@@ -135,6 +156,10 @@ def _coerce_backend(raw: Any) -> BackendConfig:
         thinking=bool(raw.get("thinking", base.thinking)),
         forward_images=bool(raw.get("forward_images", base.forward_images)),
         extra_args=[str(a) for a in extra] if isinstance(extra, list) else [],
+        base_url=str(raw.get("base_url") or "").strip(),
+        api_key_env=str(raw.get("api_key_env") or base.api_key_env).strip() or base.api_key_env,
+        profile=str(raw.get("profile") or "").strip(),
+        idle_timeout_seconds=max(1, min(86_400, idle_timeout)),
     )
 
 

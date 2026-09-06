@@ -11,7 +11,7 @@ import {
   addBookmark,
   deleteBookmark,
   getMaterial,
-  getUnitText,
+  getReadingTranscript,
   listBookmarks,
   type ReadingBookmark,
 } from "@/lib/reading-api";
@@ -240,40 +240,29 @@ export function useReadingWorkspace(
   useEffect(() => {
     if (!material || material.unit !== "segment") return;
     const requestId = ++transcriptRequestRef.current;
-    const limit = Math.min(material.unit_count, 160);
-    void Promise.allSettled(
-      Array.from({ length: limit }, (_, index) => index + 1).map(
-        async (locator) => {
-          const unit = await getUnitText(material.material_id, locator);
-          const ref = material.unit_refs.find((row) => row.locator === locator);
-          if (unit.text === "[Transcript unavailable for this video.]") {
-            return null;
-          }
-          return {
-            locator,
-            title: ref?.title || `${locator}`,
-            text: unit.text,
-            sourceHref: ref?.source_href || "",
-          };
-        },
-      ),
-      // allSettled, not all: one unreadable segment must not discard the other
-      // 159. `all` rejected the whole batch and, with no catch, left the
-      // transcript silently empty behind an unhandled rejection.
-    ).then((results) => {
-      if (transcriptRequestRef.current !== requestId) return;
-      const rows = results
-        .filter(
-          (result): result is PromiseFulfilledResult<TranscriptRow | null> =>
-            result.status === "fulfilled",
-        )
-        .map((result) => result.value)
-        .filter((row): row is TranscriptRow => row !== null);
-      setTranscript(rows);
-      if (!rows.length && results.some((r) => r.status === "rejected")) {
+    // One request for the whole transcript. Segments follow the speaker's
+    // sentences, so a lecture has hundreds of them and fetching each on its own
+    // meant hundreds of round trips before the panel could draw anything.
+    void getReadingTranscript(material.material_id)
+      .then((payload) => {
+        if (transcriptRequestRef.current !== requestId) return;
+        const rows: TranscriptRow[] = payload.segments
+          .filter(
+            (row) => row.text !== "[Transcript unavailable for this video.]",
+          )
+          .map((row) => ({
+            locator: row.locator,
+            title: row.title || `${row.locator}`,
+            text: row.text,
+            sourceHref: row.source_href,
+          }));
+        setTranscript(rows);
+      })
+      .catch(() => {
+        if (transcriptRequestRef.current !== requestId) return;
+        setTranscript([]);
         setNotice(t("This transcript could not be loaded."));
-      }
-    });
+      });
   }, [material, t]);
 
   const activeConversation = useMemo(

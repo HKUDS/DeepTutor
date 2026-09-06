@@ -98,6 +98,7 @@ const SERVICE_LABEL: Record<ServiceName, string> = {
 export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   const { t } = useTranslation();
   const {
+    catalog,
     draft,
     catalogEditable,
     settingsError,
@@ -107,6 +108,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     embeddingDefaultDim,
     logs,
     testRunning,
+    applying,
     mutateCatalog,
     addProfile,
     removeActiveProfile,
@@ -121,6 +123,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     llmContextDetection,
     applyDetectedContextWindow,
     runDetailedTest,
+    applyService,
     setToast,
   } = useSettings();
 
@@ -242,6 +245,25 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   const [editingProfileName, setEditingProfileName] = useState("");
   const [modelsSyncing, setModelsSyncing] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  const closeProviderEditor = useCallback(() => {
+    setOpenProfileId(null);
+    setExpandedModelId(null);
+  }, []);
+
+  const finishProviderEditing = useCallback(async () => {
+    const serviceChanged =
+      JSON.stringify(catalog.services[service]) !==
+      JSON.stringify(draft.services[service]);
+    if (serviceChanged && !(await applyService(service))) return;
+    closeProviderEditor();
+  }, [
+    applyService,
+    catalog.services,
+    closeProviderEditor,
+    draft.services,
+    service,
+  ]);
 
   // Reset API-key visibility whenever we land on a different profile or
   // switch services — same effect the old code had, but using React's
@@ -511,10 +533,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           {openedProfile && (
             <Modal
               isOpen
-              onClose={() => {
-                setOpenProfileId(null);
-                setExpandedModelId(null);
-              }}
+              onClose={closeProviderEditor}
               title={openedProfile.name}
               titleIcon={
                 <ProviderIcon
@@ -539,12 +558,11 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setOpenProfileId(null);
-                      setExpandedModelId(null);
-                    }}
-                    className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/40"
+                    onClick={() => void finishProviderEditing()}
+                    disabled={applying}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/40 disabled:opacity-40"
                   >
+                    {applying && <Loader2 className="h-3 w-3 animate-spin" />}
                     {t("Done")}
                   </button>
                 </div>

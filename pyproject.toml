@@ -473,6 +473,7 @@ testpaths = ["tests", "deeptutor/learning/tests"]
 pythonpath = ["."]
 markers = [
     "asyncio: mark async tests that require pytest-asyncio",
+    "integration: requires explicitly configured external services",
     "redis_integration: requires DEEPTUTOR_TEST_REDIS_URL",
 ]
 asyncio_default_fixture_loop_scope = "function"

@@ -73,7 +73,36 @@ DeepTutor คือ workspace การเรียนรู้แบบ agent-n
 
 ## 🚀 เริ่มต้น
 
-DeepTutor มีเส้นทางการติดตั้งสี่เส้นทาง ทั้งหมดแชร์ layout workspace เดียว: การตั้งค่าอยู่ใน `data/user/settings/` ภายใต้ไดเร็กทอรีที่คุณเปิดตัว (หรือภายใต้ `DEEPTUTOR_HOME` / `deeptutor start --home` หากคุณตั้งค่าไว้อย่างชัดเจน) สำหรับแอปเต็มรูปแบบ ขั้นตอนที่แนะนำคือ **เลือกไดเร็กทอรี workspace → ติดตั้ง → `deeptutor init` → `deeptutor start`**
+DeepTutor มีเส้นทางการติดตั้งสี่เส้นทาง ทั้งหมดแชร์ layout runtime home เดียวกัน: การตั้งค่าส่วนตัวอยู่ใน `data/user/settings/` ภายใต้ไดเร็กทอรีที่คุณเปิดตัว (หรือภายใต้ `DEEPTUTOR_HOME` / `deeptutor start --home` หากคุณตั้งค่าไว้อย่างชัดเจน) สำหรับแอปเต็มรูปแบบ ขั้นตอนที่แนะนำคือ **เลือกไดเร็กทอรี runtime home → ติดตั้ง → `deeptutor init` → `deeptutor start`**
+
+### Content Workspace
+
+**Content Workspace** แยกออกจาก runtime home ส่วนตัวของ DeepTutor เป็นโฟลเดอร์ที่ agent
+อ่านได้ และเป็นที่ที่ไฟล์ที่ agent สร้างขึ้น, การดาวน์โหลด, การรันโค้ด, cache และ asset ที่ render
+ทุกอย่างจะถูกวางไว้ภายใต้ไดเร็กทอรีที่ผูกกับ turn คือ
+`outputs/<capability>/<session>/<turn>/` การตั้งค่า, API keys,
+ฐานข้อมูล, Memory และ internal application state ยังคงอยู่นอกโฟลเดอร์นี้
+
+หากไม่ได้กำหนดค่า content workspace จะเป็น
+`<runtime-home>/data/user/workspace` การติดตั้งแบบ local PyPI, CLI และ source
+สามารถเลือกโฟลเดอร์ที่อ่าน/เขียนได้ที่มีอยู่แล้วใน **Settings → Workspace** หรือ:
+
+```bash
+deeptutor workspace show
+deeptutor workspace set /absolute/path/to/my-folder
+deeptutor workspace reset
+```
+
+ทุกความสามารถสามารถตรวจสอบโฟลเดอร์เดียวกันนี้ผ่านเครื่องมือ workspace
+ในตัว model จะได้รับเฉพาะ relative path เช่น `outputs/...`; เมื่อ model
+ใช้ `workspace_present` UI จะ render snapshot ที่ authenticated และเปิดได้
+relative path เดียวกันเป๊ะนี้ยังใช้ได้ในลิงก์หรือรูปภาพ Markdown ปกติ การเปลี่ยนไฟล์ต้นทางในภายหลังจะไม่เปลี่ยน snapshot ที่นำเสนอไปแล้ว
+
+การรันโค้ดเป็นแบบ read-only นอก `outputs/` การคัดลอกไฟล์ที่สร้างขึ้นไปยังที่อื่น
+ใน content workspace ต้องมีการยืนยัน **Allow once** อย่างชัดเจนสำหรับ
+ต้นทางและปลายทางที่ตรงกันเป๊ะ system sandbox หรือ Docker runner
+จะบังคับใช้ขอบเขตนี้เมื่อมี; local restricted-subprocess fallback จะแสดงเป็น
+**best effort** ใน Workspace settings
 
 <details>
 <summary><b>ตัวเลือกที่ 1 — ติดตั้งจาก PyPI</b> · แอป Web local แบบเต็มรูปแบบ + CLI ไม่ต้องโคลน</summary>
@@ -177,12 +206,31 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
+หากต้องการเลือกโฟลเดอร์เนื้อหาบน host ตอนเริ่ม container ให้ mount มันที่
+container path ที่ตายตัว และล็อก DeepTutor ให้ใช้ path นั้น:
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+สำหรับ Compose ให้ตั้งค่า `DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder` ก่อน
+รัน `python scripts/docker_compose.py up -d` หากไม่ระบุจะใช้
+`./data/user/workspace` path ของ Docker จะถูกเลือกตอนเริ่มต้นและด้วยเหตุนี้จะ
+ปรากฏเป็น locked ในหน้า Web settings
+
 > **จำเป็นต้อง publish เฉพาะ `3782`** เบราว์เซอร์คุยกับ frontend origin เท่านั้น; Next.js middleware (`web/proxy.ts`) ส่งต่อ `/api/*` และ `/ws/*` ไปยัง FastAPI backend **ภายใน container** การ publish `8001` (`-p 127.0.0.1:8001:8001`) เป็นทางเลือก — มีประโยชน์เฉพาะเมื่อต้องการเรียก API โดยตรงด้วย curl หรือ scripts
 
-เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782) Container จะสร้าง `/app/data/user/settings/*.json` เมื่อบูตครั้งแรก กำหนดค่า model providers จากหน้า Web Settings Config, API keys, logs, ไฟล์ workspace, memory และ knowledge bases จะคงอยู่ใน volume `deeptutor-data` ส่วนเสริมที่เป็นทางเลือกควรอยู่ที่การปรับใช้ ไม่ใช่ใน shell: ตั้งค่า `DEEPTUTOR_EXTRAS` (และ `DEEPTUTOR_APT_PACKAGES` สำหรับ system libraries) แล้ว container ทุกตัวที่เริ่มจากมันจะ apply ส่วนเสริมเหล่านั้นซ้ำโดยอัตโนมัติ ในขณะที่ `docker exec … pip install` จะหายไปเมื่อ `compose down` ครั้งถัดไป
+เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782) Container จะสร้าง `/app/data/user/settings/*.json` เมื่อบูตครั้งแรก กำหนดค่า model providers จากหน้า Web Settings Config, API keys, logs, Content Workspace เริ่มต้น, memory และ knowledge bases จะคงอยู่ใน volume `deeptutor-data` ส่วน Content Workspace ที่ mount แยกต่างหากจะคงอยู่ที่ host path ของมันแทน ส่วนเสริมที่เป็นทางเลือกควรอยู่ที่การปรับใช้ ไม่ใช่ใน shell: ตั้งค่า `DEEPTUTOR_EXTRAS` (และ `DEEPTUTOR_APT_PACKAGES` สำหรับ system libraries) แล้ว container ทุกตัวที่เริ่มจากมันจะ apply ส่วนเสริมเหล่านั้นซ้ำโดยอัตโนมัติ ในขณะที่ `docker exec … pip install` จะหายไปเมื่อ `compose down` ครั้งถัดไป
 
 - **พอร์ต host ที่แตกต่าง:** เปลี่ยนด้านซ้ายของการ mapping `-p host:container` แต่ละอัน (เช่น `-p 127.0.0.1:8088:3782`) หากคุณเปลี่ยนพอร์ตฝั่ง container ใน `/app/data/user/settings/system.json` ให้รีสตาร์ทและอัปเดตด้านขวาของการ mapping แต่ละอันให้ตรงกัน
-- **แบบ detached:** เพิ่ม `-d` จากนั้น `docker logs -f deeptutor` เพื่อติดตาม, `docker stop deeptutor` เพื่อหยุด, `docker rm deeptutor` ก่อนนำชื่อมาใช้ซ้ำ Volume `deeptutor-data` จะเก็บการตั้งค่าและ workspace ของคุณข้ามการรีสตาร์ท
+- **แบบ detached:** เพิ่ม `-d` จากนั้น `docker logs -f deeptutor` เพื่อติดตาม, `docker stop deeptutor` เพื่อหยุด, `docker rm deeptutor` ก่อนนำชื่อมาใช้ซ้ำ Volume `deeptutor-data` จะเก็บ runtime data ส่วนตัวและ Content Workspace เริ่มต้นข้ามการรีสตาร์ท; Content Workspace ที่ mount แยกต่างหากจะคงอยู่ที่ host path ของมัน
 
 **Remote Docker / reverse proxy:** เบราว์เซอร์คุยกับ frontend origin (`:3782`) เท่านั้น; Next.js middleware ภายใน container ส่งต่อ `/api/*` และ `/ws/*` ไปยัง backend server-side สำหรับกรณี single-container ทั่วไปคุณไม่ต้องกำหนดค่า API base เลย — แค่ชี้ reverse proxy / TLS terminator ไปที่ `:3782` คุณต้องการ API base เฉพาะสำหรับ **split deployment** (backend ใน container/host แยกต่างหาก): ตั้งค่า `next_public_api_base` ใน `data/user/settings/system.json` เป็นที่อยู่ in-network ที่ frontend server ใช้เข้าถึง backend (อ่านฝั่ง server ไม่ส่งไปยังเบราว์เซอร์)
 
@@ -272,7 +320,7 @@ deeptutor config show
 <details>
 <summary><b>Sandbox การรันโค้ด (office skills)</b> · รันโค้ดที่ model สร้างสำหรับ docx / pdf / pptx / xlsx</summary>
 
-office skills ที่ติดตั้งมา — **docx / pdf / pptx / xlsx** — ทำงานโดยให้ model เขียน Python script สั้น ๆ (`python-docx`, `reportlab`, `openpyxl`, …), รันผ่านเครื่องมือ `exec` / `code_execution` และส่งคืน URL ดาวน์โหลด เครื่องมือเหล่านี้จะ mount เมื่อ sandbox backend ทำงานอยู่ DeepTutor จะเลือก backend ที่แข็งแกร่งที่สุดซึ่งกำหนดค่าไว้ตามลำดับนี้:
+office skills ที่ติดตั้งมา — **docx / pdf / pptx / xlsx** — ทำงานโดยให้ model เขียน Python script สั้น ๆ (`python-docx`, `reportlab`, `openpyxl`, …), รันผ่านเครื่องมือ `exec` เพียงตัวเดียว และแสดงไฟล์ workspace ที่บันทึกไว้ เครื่องมือนี้จะ mount เมื่อ sandbox backend ทำงานอยู่ DeepTutor จะเลือก backend ที่แข็งแกร่งที่สุดซึ่งกำหนดค่าไว้ตามลำดับนี้:
 
 - **Runner sidecar:** `DEEPTUTOR_SANDBOX_RUNNER_URL` จะ route การรันไปยังบริการที่มีความปลอดภัยสูงและมีสิทธิ์น้อยที่สุดจาก `Dockerfile.runner`
 - **Linux bubblewrap:** เมื่อมี `bwrap` จะใช้แยก process และไฟล์ออกจากกัน
@@ -294,6 +342,7 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 | `auth.json` | สวิตช์ auth แบบเสริม, ชื่อผู้ใช้, password hash, การตั้งค่า token/cookie |
 | `integrations.json` | การตั้งค่า PocketBase แบบเสริมและการรวม sidecar |
 | `interface.json` | ความชอบภาษา UI และภาษา output ของ model / ธีม / แถบด้านข้างของ UI |
+| `content_workspace.json` | การผูกโฟลเดอร์ Content Workspace และการเลือก workspace ที่ใช้งานอยู่ |
 | `video_learning.json` | provider การเล่น YouTube/Invidious เริ่มต้น, ต้นทาง Invidious และ transcript adapter แบบเสริม |
 | `main.yaml` | ค่าเริ่มต้นพฤติกรรม runtime และการ inject path |
 | `agents.yaml` | การตั้งค่า temperature และ token ของ capability/tool |
@@ -321,7 +370,7 @@ office skills ที่ติดตั้งมา — **docx / pdf / pptx / xls
 <details>
 <summary><b>ถอนการติดตั้งและทำความสะอาด</b></summary>
 
-DeepTutor แยกโค้ดที่ติดตั้งออกจาก runtime workspace โดยค่าเริ่มต้น workspace คือไดเร็กทอรีที่คุณรัน `deeptutor init` / `deeptutor start`; `--home PATH` หรือ `DEEPTUTOR_HOME` จะ override ค่านี้ ผลลัพธ์ runtime คือไดเร็กทอรี `data` ภายใน workspace ดังกล่าว ดังนั้นบรรทัดใน startup banner ที่ขึ้นต้นด้วย `Workspace:` จึงระบุสิ่งที่ต้องทำความสะอาด
+DeepTutor แยกโค้ดที่ติดตั้ง, runtime home ส่วนตัว และ Content Workspace ที่เป็นทางเลือกออกจากกัน โดยค่าเริ่มต้น runtime home คือไดเร็กทอรีที่คุณรัน `deeptutor init` / `deeptutor start`; `--home PATH` หรือ `DEEPTUTOR_HOME` จะ override ค่านี้ private application state คือไดเร็กทอรี `data` ภายใน home ดังกล่าว ดังนั้นบรรทัดใน startup banner ที่ขึ้นต้นด้วย `Workspace:` จึงระบุตำแหน่ง runtime นั้น หาก **Settings → Workspace** ชี้ไปที่โฟลเดอร์อื่น ให้สำรองหรือลบโฟลเดอร์เนื้อหานั้นแยกต่างหาก การถอนการติดตั้ง DeepTutor จะไม่ลบโฟลเดอร์นั้นโดยเจตนา
 
 1. หยุดแอป กด `Ctrl+C` ใน terminal ที่กำลังรัน `deeptutor start` หรือรัน `deeptutor stop [--home PATH]` สำหรับ launcher ที่เริ่มด้วย `--detach`; หยุด Partner ที่กำลังรันอยู่และ detached Docker containers ก่อนลบข้อมูล
 2. ลบข้อมูล runtime เฉพาะเมื่อคุณต้องการลบ local state ทั้งหมดด้วย ซึ่งรวมถึง settings และ API keys, ประวัติ chat, sessions, Memory, Notebooks, Books, สถานะ Reading, Skills, สถานะ Partners, logs, Knowledge Bases, parse caches, artifacts ที่สร้างขึ้น และ runtime cache ของ frontend ที่แพ็คไว้
@@ -382,11 +431,11 @@ Chat คือความสามารถเริ่มต้นและส
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="ลูป agent ของ Chat ใน DeepTutor" width="900">
 </div>
 
-เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, และ `consult_subagent` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
+เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `reason`, และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่าโมเดลสร้างที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` และ `workspace_export` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
 
 บริบทมีสองประเภท: **sticky session context** (capability, workspace หรือ course, tools, knowledge bases, persona, model และสถานะ Reading / Mastery) คงอยู่ตลอด turns; **one-time references** (ไฟล์, ประวัติ chat, หนังสือ, ส่วนการอ่าน, notebooks, question bank, imported agents) มาจากเมนู `+` สำหรับ turn เดียว ปุ่ม voice ทำหน้าที่ถอดเสียงเฉพาะข้อความปัจจุบัน
 
-Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research**, **Solve** และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Mastery Path** และ **Immersive Reading** เป็น workspace เฉพาะในแถบด้านข้าง; Reading เพิ่ม citations ที่ตรวจสอบแล้วและคลิกได้, citations และ notes ที่บันทึกไว้, การอ่านออกเสียง / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปลที่อ้างอิง source และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
+Home ทำให้ **Chat**, **Ask Questions**, **Quiz** และ **Visualize** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มีการอ้างอิง, **Solve** สำหรับการให้เหตุผลแบบละเอียด และ **Immersive Watching** อยู่ภายใต้ *More Capabilities* **Mastery Path** และ **Immersive Reading** เป็น workspace เฉพาะในแถบด้านข้าง; Reading เพิ่ม citations ที่ตรวจสอบแล้วและคลิกได้, citations และ notes ที่บันทึกไว้, การอ่านออกเสียง / คำแนะนำการเรียน / คำศัพท์ / quiz / การแปลที่อ้างอิง source และการบันทึกลง notebook ขณะที่ Course Study มีบริบทที่ผูกกับ course ของตัวเอง
 
 </details>
 
@@ -532,7 +581,7 @@ Memory Graph แสดงพีระมิดทั้งหมด — กา�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="ศูนย์กลาง Settings ของ DeepTutor" width="900">
 </div>
 
-Settings คือ control plane การดำเนินงาน พร้อม live status strip (สถานะ Backend และ resident memory ที่ใช้งานอยู่ทั่วทั้ง process tree) และตัวนำทางแบบค้นหาได้ที่คงอยู่ตลอด เข้าถึงหน้าใดก็ได้ในคลิกเดียว: **Appearance** (ธีม, ภาษา UI และภาษา output ของ model, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (Video Learning, เครื่องมือที่ค้นหาได้, พารามิเตอร์ต่อความสามารถ, จุดเริ่มต้น, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (agent harness ในเครื่องเก้ารายการ), **Learner profile** (อายุ, ระดับชั้น, หลักสูตร, ภาษา, ระดับการอ่าน, รูปแบบการอธิบาย), **Guardian** (ผู้เรียนที่ได้รับอนุญาต, สื่อ, รายงาน, การรีเซ็ต credentials), **Memory** (งบประมาณของ consolidator) และ **About** (การตรวจสอบเวอร์ชันและการอัปเดตอย่างปลอดภัย) **connection** หนึ่งรายการเก็บ credential ของ vendor เดียวและ mirror มันเข้าสู่ทุกบริการที่ vendor นั้นให้บริการได้ ดังนั้นคุณกรอก key เพียงครั้งเดียวแทนที่จะต้องวางซ้ำในห้าหน้า; **task models** ปักหมุด model ที่เล็กและเร็วสำหรับงานที่ไม่มีใครร้องขอ — ตั้งชื่อบทสนทนา, เขียนจุดเริ่มต้นของ composer — และจะ resolve กลับไปเป็นค่าเริ่มต้นที่ใช้งานอยู่เมื่อปล่อยว่างไว้
+Settings คือ control plane การดำเนินงาน เปิดมาพร้อม live status strip (สถานะ Backend และ resident memory ที่ใช้งานอยู่), ภาษา UI และภาษา output ของ model และเมทริกซ์ **Readiness** ที่ให้เกรดทุกความสามารถเป็น blocker, warning หรือ suggestion — ตามด้วยตัวนำทางแบบค้นหาได้ที่คงอยู่ตลอด เข้าถึงหน้าใดก็ได้ในคลิกเดียว: **Appearance** (ธีม, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Workspace** (โฟลเดอร์ที่ agent อ่านได้และ `outputs/` ที่แชร์ร่วมกัน), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (Video Learning, เครื่องมือที่ค้นหาได้, พารามิเตอร์ต่อความสามารถ, จุดเริ่มต้น, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (agent harness ในเครื่องเก้ารายการ), **Learner profile** (อายุ, ระดับชั้น, หลักสูตร, ภาษา, ระดับการอ่าน, รูปแบบการอธิบาย), **Guardian** (ผู้เรียนที่ได้รับอนุญาต, สื่อ, รายงาน, การรีเซ็ต credentials), **Memory** (งบประมาณของ consolidator) และ **About** (การตรวจสอบเวอร์ชันและการอัปเดตอย่างปลอดภัย) **connection** หนึ่งรายการเก็บ credential ของ vendor เดียวและ mirror มันเข้าสู่ทุกบริการที่ vendor นั้นให้บริการได้ ดังนั้นคุณกรอก key เพียงครั้งเดียวแทนที่จะต้องวางซ้ำในห้าหน้า; **task models** ปักหมุด model ที่เล็กและเร็วสำหรับงานที่ไม่มีใครร้องขอ — ตั้งชื่อบทสนทนา, เขียนจุดเริ่มต้นของ composer — และจะ resolve กลับไปเป็นค่าเริ่มต้นที่ใช้งานอยู่เมื่อปล่อยว่างไว้
 
 **Video Learning** ภายใต้ Settings → Chat ใช้ YouTube IFrame Player อย่างเป็นทางการที่เพิ่มความเป็นส่วนตัวเป็นค่าเริ่มต้น หากต้องการให้การเล่นอยู่ในระบบ local ให้ตั้งค่า Invidious API origin ที่ผู้ดูแลระบบจัดการ (ตัวอย่างเช่น `http://127.0.0.1:3000`), ทดสอบ, เลือก Invidious แล้วบันทึก วิดีโอใหม่หรือวิดีโอที่เปิดอีกครั้งจะใช้ provider ทันทีโดยมี material ID และความคืบหน้าเดิม สื่อ Invidious จะ stream ผ่าน byte-range proxy ของ DeepTutor; upstream URLs จะไม่ถูกเปิดเผยต่อเบราว์เซอร์หรือเก็บไว้บนดิสก์ หาก instance ล้มเหลว DeepTutor จะยังคงออฟไลน์จาก YouTube จนกว่าผู้เรียนจะเลือก fallback ไปยัง native YouTube อย่างชัดเจน การสอนพิเศษจากคำบรรยายสาธารณะเป็นทางเลือก: ติดตั้ง `.[video-learning]`; การเล่นยังคงทำงานได้หากไม่มี ส่วน **Explain here** ที่อิง transcript จะถูกปิดใช้งานพร้อมระบุเหตุผล
 
@@ -634,11 +683,12 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~2
 
 | คำสั่ง | คำอธิบาย |
 |:---|:---|
-| `deeptutor init` | สร้างหรืออัพเดต `data/user/settings` สำหรับ workspace ปัจจุบัน |
+| `deeptutor init` | สร้างหรืออัพเดต `data/user/settings` ใน runtime home ปัจจุบัน |
 | `deeptutor doctor [--online]` | ตรวจสอบว่า workspace พร้อมเริ่ม session หรือไม่; `--online` ยังตรวจสอบ model provider ที่กำหนดค่าไว้ด้วย, `--format json` พิมพ์รายงานออกมา |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | เปิดตัว backend + frontend ด้วยกัน; เลือก detach หรือปิดการเปิดเบราว์เซอร์ได้ |
 | `deeptutor stop [--home PATH]` | หยุด launcher ที่เริ่มด้วย `--detach` |
 | `deeptutor serve [--port PORT]` | เริ่มเฉพาะ FastAPI backend |
+| `deeptutor workspace show/set/reset` | ตรวจสอบ, เลือก หรือคืนค่า Content Workspace ต่อผู้ใช้ |
 | `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`); เพิ่ม `--format json` สำหรับ NDJSON output |
 | `deeptutor chat` | Interactive REPL พร้อม capability, tool, KB, notebook และ history controls |
 | `deeptutor partner list/create/start/stop` | จัดการ partners ที่เชื่อมต่อผ่าน IM |

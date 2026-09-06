@@ -1,16 +1,19 @@
-"""Mastery Path capability — mastery-based tutoring driven by the chat loop.
+"""Mastery Path capability — mastery-based tutoring on its own agent loop.
 
-There is no bespoke state machine here anymore. The chat agent loop IS the
-tutor: this capability only marks the turn as mastery mode and resolves the
-*initial* active path id, then runs the standard agentic chat pipeline. The
-pipeline mounts the mastery tools — the gate tools (``mastery_status`` /
+There is no bespoke state machine here. An agent loop IS the tutor: this
+capability marks the turn as mastery mode, resolves the *initial* active path
+id, owns the path lease, and runs
+:class:`~deeptutor.capabilities.mastery.pipeline.MasteryLoopPipeline` — the
+same loop engine chat runs, assembled from the tutor's own prompt pack instead
+of chat's (see that module for why the two are separated).
+
+The loop mounts the mastery tools — the gate tools (``mastery_status`` /
 ``mastery_quiz`` / ``mastery_grade`` / ``mastery_skip_question`` /
 ``mastery_assess`` / ``mastery_build``) and the binding tools
-(``mastery_paths`` / ``mastery_switch`` / ``mastery_leave``), through which
-the tutor can move the conversation between paths mid-turn — and injects the
-tutor playbook; the pure engine in
-:mod:`deeptutor.learning` owns the hard, per-type mastery gate and the
-spaced-repetition arithmetic.
+(``mastery_paths`` / ``mastery_switch`` / ``mastery_leave``), through which the
+tutor can move the conversation between paths mid-turn — on top of the surface
+a chat turn would get. The pure engine in :mod:`deeptutor.learning` owns the
+hard, per-type mastery gate and the spaced-repetition arithmetic.
 
 Design axiom (shared with chat): the intelligence lives at the loop's exit —
 the model decides what to teach and how to question — while the gate that
@@ -24,7 +27,7 @@ import contextlib
 from typing import cast
 import uuid
 
-from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
+from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
 from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
 from deeptutor.core.capability_protocol import (
     CapabilityManifest,
@@ -55,7 +58,7 @@ class MasteryPathCapability(TurnCapability):
     manifest = CapabilityManifest(
         name="mastery_path",
         description=(
-            "Mastery-based tutoring: the chat agent loop drives an adaptive "
+            "Mastery-based tutoring: a dedicated agent loop drives an adaptive "
             "mastery path with a hard, per-type mastery gate and spaced review."
         ),
         stages=["responding"],
@@ -71,7 +74,7 @@ class MasteryPathCapability(TurnCapability):
         )
         context.metadata["mastery_mode"] = True
         context.metadata["mastery_path_id"] = binding.path_id
-        pipeline = AgenticChatPipeline(language=context.language)
+        pipeline = MasteryLoopPipeline(language=context.language)
         concrete_stream = cast(StreamBus, stream)
         if context.metadata.get("mastery_path_lease_managed"):
             await pipeline.run(context, concrete_stream)

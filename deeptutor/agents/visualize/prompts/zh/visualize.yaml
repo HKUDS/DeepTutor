@@ -9,3 +9,6 @@ status:
   manim_artifacts_one: "已准备 {count} 个产物。"
   manim_artifacts_many: "已准备 {count} 个产物。"
   llm_call_failed: "LLM 调用失败。"
+  tool_calling_disabled: "{target} 未启用工具调用，而可视化只能通过 submit_visualization 工具调用提交到画布。请在 设置 → 模型 → LLM → 能力 → 工具调用 中选择「已支持」。"
+  no_payload: "可视化智能体结束时没有产出有效的画布内容。"
+  no_payload_tool_calling_disabled: "本次没有提交任何可视化：{target} 未启用工具调用，模型无法调用 submit_visualization，而这是把内容交给画布的唯一途径。本地服务（LM Studio、Ollama、vLLM、llama.cpp）默认关闭工具调用；请在 设置 → 模型 → LLM → 能力 → 工具调用 中把该模型声明为「已支持」，然后重新生成。"

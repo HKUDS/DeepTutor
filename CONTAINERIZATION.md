@@ -14,10 +14,11 @@ file is only about running the published image.
 
 The published `ghcr.io/hkuds/deeptutor` image runs both the FastAPI
 backend (`:8001`) and the Next.js frontend (`:3782`) under `supervisord`
-inside a single container, on top of `python:3.11-slim`. There is one
-data tree (`/app/data` inside the container) that holds settings,
-workspaces, memory, knowledge bases, and logs. Bind-mount that tree to
-the host to make state survive container restarts.
+inside a single container, on top of `python:3.11-slim`. The private runtime
+tree (`/app/data` inside the container) holds settings, credentials, databases,
+memory, knowledge bases, and logs. The default Content Workspace also lives
+there, but may instead be mounted separately at `/workspace`. Bind-mount the
+runtime tree and any separate Content Workspace to make both survive restarts.
 
 The image is built so it works under three deployment shapes:
 
@@ -55,8 +56,8 @@ The full per-installation guide follows.
 
 ## Docker (default)
 
-The simplest possible deployment. One container, one volume, two port
-mappings.
+The simplest possible deployment. One container, one private-data volume, and
+one port mapping.
 
 ```bash
 docker run --rm --name deeptutor \
@@ -69,6 +70,44 @@ Open <http://127.0.0.1:3782>. The container creates
 `/app/data/user/settings/*.json` on first boot; configure model providers
 from the Web Settings page. Config, API keys, logs, workspace files,
 memory, and knowledge bases persist in the `deeptutor-data` named volume.
+
+### Select a host Content Workspace
+
+The application data mount contains private settings, credentials, databases,
+Memory, and other runtime state. Keep that separate from the **Content
+Workspace** that agents can read. To expose a host folder, mount it at the
+stable `/workspace` path and lock the deployment to that path:
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+For the supplied Compose files:
+
+```bash
+DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder \
+  python scripts/docker_compose.py -f docker-compose.yml up -d
+```
+
+The helper creates the host folder and its nested `outputs/` directory before
+Compose starts, avoiding root-owned bind mounts. If the variable is omitted,
+`./data/user/workspace` is used. The container always sees `/workspace`, so
+stored settings and model-facing paths remain portable across hosts. This is a
+startup/deployment choice and is shown as locked in **Settings → Workspace**.
+
+With `docker-compose.yml`, the sandbox runner receives the content tree
+read-only plus a writable overlay for `/workspace/outputs`; it does not receive
+`/app/data`, user settings, or credentials. Generated programs therefore read
+the selected content and write only turn-scoped output. The single-container
+and rootless-Podman forms use the best isolation backend available in that
+container and report the effective level in Workspace settings.
 
 Notes:
 
@@ -87,8 +126,9 @@ Notes:
   each mapping to match.
 - **Detached:** add `-d`, then `docker logs -f deeptutor` to follow,
   `docker stop deeptutor` to stop, `docker rm deeptutor` before reusing
-  the name. The `deeptutor-data` volume keeps your settings and workspace
-  across restarts.
+  the name. The `deeptutor-data` volume keeps private runtime data and the
+  default Content Workspace across restarts; a separately mounted Content
+  Workspace persists at its host path.
 
 ### Temporary local Codex OAuth bridge
 
@@ -269,7 +309,7 @@ What `compose.yaml` does, and why:
 
 - **`read_only: true` on every service.** The container's rootfs is
   read-only. The only writable surface is the `tmpfs:` mounts listed
-  per service plus the bind-mounted `./data` directory.
+  per service plus the bind-mounted `./data` and Content Workspace directories.
 - **`userns_mode: keep-id`.** The container's UID 0 maps to your host
   UID; the container's UID 1000 (the `deeptutor` user inside the image)
   maps to your host UID 1000 (which most distros reserve for the first

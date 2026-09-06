@@ -23,6 +23,7 @@ import { MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import ChatComposer from "@/components/chat/home/ChatComposer";
+import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
 import type { CapabilityDef } from "@/features/capabilities/presentation";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
@@ -187,6 +188,12 @@ interface StandaloneComposerProps {
   agentsAvailable?: boolean;
   /** Receives a function that drops text into the textarea (ask_user chips). */
   prefillInputRef?: React.MutableRefObject<((text: string) => void) | null>;
+  /**
+   * How full the model's context window was at the end of the last measured
+   * turn. Omitted, the chip does not render — which is also what happens on a
+   * transcript no backend has measured.
+   */
+  contextBudget?: ContextBudget | null;
 }
 
 function StandaloneComposerImpl({
@@ -209,6 +216,7 @@ function StandaloneComposerImpl({
   onPersonaSelectionChange,
   agentsAvailable = false,
   prefillInputRef,
+  contextBudget = null,
 }: StandaloneComposerProps) {
   const { t } = useTranslation();
 
@@ -830,6 +838,7 @@ function StandaloneComposerImpl({
         capMenuOpen={capMenuOpen}
         spaceMenuOpen={spaceMenuOpen}
         hasMessages={hasMessages}
+        contextBudget={contextBudget ?? null}
         attachments={attachments}
         attachmentError={attachmentError}
         activeCap={activeCap}

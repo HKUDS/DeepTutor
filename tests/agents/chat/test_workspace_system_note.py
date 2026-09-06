@@ -1,87 +1,40 @@
-"""The turn-workspace note must describe the host shell the model will get.
-
-`exec` runs through PowerShell on Windows and a POSIX shell elsewhere, so the
-note has to teach the matching way to write a script to a file — a Bash heredoc
-is a syntax error in PowerShell, and the model would silently produce no file.
-Everything else in the note is host-independent and must stay identical, which
-is what keeps the two variants from drifting apart.
-"""
+"""The workspace note exposes logical paths only."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.agents.chat import agentic_pipeline
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
-
-
-@pytest.fixture
-def note(monkeypatch: pytest.MonkeyPatch):
-    def render(*, language: str, platform: str) -> str:
-        monkeypatch.setattr(agentic_pipeline.sys, "platform", platform)
-        monkeypatch.setattr(
-            AgenticChatPipeline,
-            "_workspace_key",
-            staticmethod(lambda context: "session-1"),
-        )
-        monkeypatch.setattr(
-            "deeptutor.services.path_service.get_path_service",
-            lambda: SimpleNamespace(
-                get_task_workspace=lambda *a, **k: Path("/tmp/ws"),
-            ),
-        )
-        pipeline = SimpleNamespace(
-            _exec_enabled=True,
-            language=language,
-            _workspace_key=lambda context: "session-1",
-        )
-        return AgenticChatPipeline._workspace_system_note(pipeline, object())
-
-    return render
+from deeptutor.core.context import TurnRuntimeContext, UnifiedContext, WorkspaceRuntimeContext
 
 
 @pytest.mark.parametrize("language", ["en", "zh"])
-def test_windows_note_teaches_powershell_not_heredoc(note, language: str) -> None:
-    windows = note(language=language, platform="win32")
-    assert "Set-Content" in windows
-    assert "python -m pip" in windows
-    assert "Get-ChildItem" in windows
-    assert "Select-Object" in windows
-    # A Bash heredoc as the *instruction* is what breaks on Windows; the note
-    # may name it only to tell the model not to use it.
-    assert "python - <<'PY'" not in windows
-    for incompatible in ("ls -la", "| head", "| tail", "cd /d"):
-        assert incompatible not in windows
-    if language == "zh":
-        assert "不要把命令语法或依赖错误说成沙箱无权访问" in windows
-    else:
-        assert "Do not describe a syntax or dependency failure as denied sandbox access" in windows
-
-
-@pytest.mark.parametrize("language", ["en", "zh"])
-def test_posix_note_teaches_heredoc_and_never_powershell(note, language: str) -> None:
-    posix = note(language=language, platform="linux")
-    assert "python - <<'PY'" in posix
-    assert "Set-Content" not in posix
-    assert "PowerShell" not in posix
-
-
-@pytest.mark.parametrize("language", ["en", "zh"])
-def test_host_independent_guidance_is_identical(note, language: str) -> None:
-    """Only the script-writing clause may differ between hosts."""
-    windows = note(language=language, platform="win32")
-    posix = note(language=language, platform="linux")
-    for shared in ("/tmp/ws", "exec"):
-        assert shared in windows and shared in posix
-    tail = "不要粘贴原始 URL。" if language == "zh" else "do not paste raw URLs."
-    assert windows.endswith(tail) and posix.endswith(tail)
-    header = "[本轮工作区]" if language == "zh" else "[Turn workspace]"
-    assert windows.startswith(header) and posix.startswith(header)
-
-
-def test_note_is_empty_when_exec_is_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    pipeline = SimpleNamespace(_exec_enabled=False, language="en")
+def test_note_is_empty_without_runtime_workspace(language: str) -> None:
+    pipeline = SimpleNamespace(_exec_enabled=True, language=language)
     assert AgenticChatPipeline._workspace_system_note(pipeline, object()) == ""
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_runtime_note_exposes_only_the_logical_output_path(language: str) -> None:
+    physical_root = "/private/host/learning-files"
+    context = UnifiedContext(
+        runtime=TurnRuntimeContext(
+            workspace=WorkspaceRuntimeContext(
+                workspace_id="ws_test",
+                root=physical_root,
+                output_dir=f"{physical_root}/outputs/chat/s/t",
+                logical_output_dir="outputs/chat/s/t",
+            )
+        )
+    )
+    pipeline = SimpleNamespace(language=language)
+
+    note = AgenticChatPipeline._workspace_system_note(pipeline, context)
+
+    assert "outputs/chat/s/t" in note
+    assert physical_root not in note
+    assert "workspace_present" in note
+    assert "workspace_export" in note
+    assert "DEEPTUTOR_WORKSPACE_ROOT" in note

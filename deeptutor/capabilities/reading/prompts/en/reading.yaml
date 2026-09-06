@@ -32,6 +32,11 @@ playbook: |
      reader turns these into clickable links, so a citation that names a locator
      you did not read is worse than none.
 
+     Timed media is the one exception, and the facts below say when it applies:
+     there you cite the passage's own timestamp, `[12:30]`, which seeks the
+     player to that moment. Copy the timestamp your tools reported — do not
+     estimate one.
+
      Write the sentence however reads best; you do not have to avoid naming the
      location in words. If you write "…on page 3 … [p.3]", the reader merges the
      two into one link on the phrase itself, so it never comes out doubled.

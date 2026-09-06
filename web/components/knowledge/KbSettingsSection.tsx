@@ -8,6 +8,7 @@ import {
   providerUsesEmbeddingMetadata,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
+import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
 
 interface KbSettingsSectionProps {
   kb: KnowledgeBase;
@@ -39,6 +40,12 @@ export default function KbSettingsSection({
   const created = formatKnowledgeTimestamp(meta.created_at);
   const updated = formatKnowledgeTimestamp(meta.last_updated);
   const lastIndexed = formatKnowledgeTimestamp(meta.last_indexed_at);
+  const publishedLightRagVersion =
+    provider === "lightrag"
+      ? kb.statistics?.index_versions?.find(
+          (version) => version.provider === "lightrag" && version.ready,
+        )
+      : undefined;
 
   return (
     <div className="space-y-6">
@@ -79,6 +86,18 @@ export default function KbSettingsSection({
               )}
         </dl>
       </section>
+
+      {provider === "lightrag" && (
+        <section className="space-y-3">
+          <div className="text-[13px] font-medium text-[var(--foreground)]">
+            {t("Indexing model provenance")}
+          </div>
+          <LightRagIndexingProvenance
+            policy={meta.indexing_policy}
+            version={publishedLightRagVersion}
+          />
+        </section>
+      )}
 
       <section className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
         <div>

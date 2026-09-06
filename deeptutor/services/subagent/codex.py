@@ -22,7 +22,14 @@ from typing import Any
 
 from deeptutor.services.subagent.base import OnEvent, SubagentBackend
 from deeptutor.services.subagent.config import BackendConfig
-from deeptutor.services.subagent.process import probe_version, stream_process_lines
+from deeptutor.services.subagent.process import (
+    compact_field as _compact,
+)
+from deeptutor.services.subagent.process import (
+    probe_version,
+    stream_process_lines,
+    truncate_field,
+)
 from deeptutor.services.subagent.types import (
     EVENT_ERROR,
     EVENT_LOG,
@@ -37,7 +44,6 @@ from deeptutor.services.subagent.types import (
 
 logger = logging.getLogger(__name__)
 
-_MAX_FIELD_CHARS = 4000
 
 # Sandbox values that mean "turn the sandbox off entirely" — mapped to the
 # explicit Codex flag instead of a ``sandbox_mode`` config override.
@@ -270,13 +276,13 @@ def _render_item(item: dict[str, Any], etype: str) -> tuple[str, str]:
         exit_code = item.get("exit_code")
         header = f"$ {command}" if command else "command"
         suffix = f" (exit {exit_code})" if exit_code not in (None, "") else ""
-        return EVENT_TOOL_RESULT, _truncate(f"{header}{suffix}\n{output}".strip())
+        return EVENT_TOOL_RESULT, truncate_field(f"{header}{suffix}\n{output}".strip())
     if itype == "file_change":
         changes = item.get("changes") or item.get("files") or item.get("path")
-        return EVENT_TOOL, _truncate(f"file change · {_compact(changes)}")
+        return EVENT_TOOL, truncate_field(f"file change · {_compact(changes)}")
     if itype in ("mcp_tool_call", "tool_call"):
         name = str(item.get("name") or item.get("tool") or "tool")
-        return EVENT_TOOL, _truncate(
+        return EVENT_TOOL, truncate_field(
             f"{name} · {_compact(item.get('arguments') or item.get('input') or {})}"
         )
     if itype == "web_search":
@@ -284,9 +290,9 @@ def _render_item(item: dict[str, Any], etype: str) -> tuple[str, str]:
         # Start (or no query yet) → placeholder; completion → fill in the query.
         if etype.endswith(".started") or not query:
             return EVENT_TOOL, "web search"
-        return EVENT_TOOL, _truncate(f"web search · {query}")
+        return EVENT_TOOL, truncate_field(f"web search · {query}")
     if itype in ("todo_list", "plan_update", "plan"):
-        return EVENT_LOG, _truncate(_compact(item.get("items") or item.get("plan") or item))
+        return EVENT_LOG, truncate_field(_compact(item.get("items") or item.get("plan") or item))
     # Unknown item type: render whatever text we can find, else the raw object.
     return EVENT_LOG, _item_text(item) or _compact(item)
 
@@ -309,21 +315,6 @@ def _error_message(event: dict[str, Any]) -> str:
             if isinstance(inner, str) and inner:
                 return inner
     return "Codex reported a failure"
-
-
-def _compact(obj: Any) -> str:
-    try:
-        text = json.dumps(obj, ensure_ascii=False)
-    except (TypeError, ValueError):
-        text = str(obj)
-    return _truncate(text)
-
-
-def _truncate(text: str) -> str:
-    text = text.strip()
-    if len(text) > _MAX_FIELD_CHARS:
-        return text[:_MAX_FIELD_CHARS].rstrip() + " …"
-    return text
 
 
 __all__ = ["CodexBackend"]

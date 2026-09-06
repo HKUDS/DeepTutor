@@ -28,12 +28,24 @@ import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import { buildStartTurnInput } from "@/features/chat/controllers/buildStartTurnInput";
 import {
   getSession,
+  getMessageTrace,
   deleteMessage,
   updateBranchSelection,
   updateSessionTitle,
+  type MessageTracePage,
   type SessionMessage,
 } from "@/lib/session-api";
-import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
+import {
+  TraceCache,
+  compactTracePreview,
+  settleMessageTrace,
+  type MessageTraceMetadata,
+} from "@/features/chat/trace/memory";
+import {
+  appendWithEmphasisRepair,
+  normalizeMarkdownForDisplay,
+  repairChineseEmphasis,
+} from "@/lib/markdown-display";
 import { normalizeMessageContent } from "@/lib/message-content";
 import {
   buildVisiblePath,
@@ -112,6 +124,16 @@ export interface SendMessageOptions {
    *  sibling under this parent rather than appended to the session tail.
    *  ``null`` means "explicitly attach to the session root". */
   parentMessageId?: number | null;
+  /** Which mastery question this message is answering. Set when the message
+   *  came from a question card, so the backend can commit the answer to the
+   *  engine before the tutor's first token instead of pairing a bare "C"
+   *  with a question from scrollback. */
+  masteryAnswer?: { question_id: string; text: string } | null;
+  /** Which mastery question this message drops. Set when the learner used the
+   *  card's skip control, so the engine is clear of it before the tutor's
+   *  first ``mastery_status`` — otherwise the next ``mastery_quiz`` simply
+   *  re-presents the question they just declined. */
+  masterySkip?: { question_id: string } | null;
 }
 
 export interface ChatState {
@@ -125,6 +147,11 @@ export interface ChatState {
   llmSelection: LLMSelection | null;
   /** Persistent mastery state associated with this conversation. */
   masteryPathId: string | null;
+  /** What this mastery conversation is for — "outline" | "study" | "review".
+   *  Durable like the path id and decided when the conversation is opened: it
+   *  picks the tutor's prompt block and narrows its tool surface, so a session
+   *  that changed it mid-way would hand itself tools its kind withholds. */
+  masterySessionMode: string | null;
   /** Study course this conversation belongs to; "" = unclassified.
    *  Read by the composer's course pill and sent with every turn, so Course
    *  Study senses the same course the learner can see it is bound to. */
@@ -146,6 +173,7 @@ export interface SessionConfiguration {
   workspaceMode?: WorkspaceMode | null;
   knowledgeBases?: string[];
   masteryPathId?: string | null;
+  masterySessionMode?: string | null;
   courseId?: string;
   enabledTools?: string[];
 }
@@ -168,12 +196,21 @@ export interface MessageAttachment {
   /** Plain-text rendering of office docs, populated by the backend extractor.
    *  Used by the preview drawer to show "what the LLM saw" for binary docs. */
   extracted_text?: string;
-  /** Set on files the assistant produced this turn (exec/code_execution
+  /** Set on files the assistant produced this turn (exec
    *  artifacts) rather than files the user uploaded. Rendered as openable
    *  cards under the assistant message. */
   generated?: boolean;
   /** Byte size of the generated file, for the card's subtitle. */
   size_bytes?: number;
+  /** Unified content-workspace presentation metadata. Physical paths are
+   * deliberately never sent to the browser. */
+  origin?: "workspace";
+  workspace_id?: string;
+  workspace_item_id?: string;
+  relative_path?: string;
+  sha256?: string;
+  title?: string;
+  caption?: string;
 }
 
 export interface MessageRequestSnapshot {
@@ -191,6 +228,7 @@ export interface MessageRequestSnapshot {
   bookReferences?: BookReferencePayload[];
   readingReferences?: ReadingReferencePayload[];
   masteryPathId?: string;
+  masterySessionMode?: string;
   timedMediaId?: string;
   persona?: string;
   memoryReferences?: MemoryReferencePayload;
@@ -205,10 +243,14 @@ export interface MessageItem {
   id?: number;
   role: "user" | "assistant" | "system";
   content: string;
+  /** Original model text accumulated during a live stream. Kept separate from
+   * `content`, which may be Markdown-normalized for display. */
+  rawContent?: string;
   capability?: string;
   events?: StreamEvent[];
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
+  trace?: MessageTraceMetadata;
   /** Edit-branching: id of the message this row continues. */
   parentMessageId?: number | null;
 }
@@ -246,6 +288,7 @@ interface SessionSnapshot {
   knowledgeBases?: string[];
   llmSelection?: LLMSelection | null;
   masteryPathId?: string | null;
+  masterySessionMode?: string | null;
   courseId?: string;
   personaSelection?: string;
   language?: string;
@@ -261,6 +304,7 @@ type Action =
   // session that produced it, which may no longer be the selected one. The
   // composer omits it and means "the one on screen".
   | { type: "SET_MASTERY_PATH_ID"; masteryPathId: string | null; key?: string }
+  | { type: "SET_MASTERY_SESSION_MODE"; mode: string | null; key?: string }
   | { type: "SET_COURSE_ID"; courseId: string }
   | { type: "SET_PERSONA_SELECTION"; persona: string }
   | { type: "SET_LANGUAGE"; lang: string }
@@ -301,6 +345,19 @@ type Action =
       userMessageId?: number | null;
       assistantMessageId?: number | null;
     }
+  | {
+      type: "SET_MESSAGE_TRACE";
+      key: string;
+      messageId: number;
+      events: StreamEvent[];
+      trace: MessageTraceMetadata;
+    }
+  | {
+      type: "SETTLE_MESSAGE_TRACE";
+      key: string;
+      messageId: number;
+      turnId: string | null;
+    }
   | { type: "DELETE_TURN"; key: string; messageId: number }
   | {
       type: "NEW_SESSION";
@@ -340,6 +397,7 @@ function createSessionEntry(
     knowledgeBases: [],
     llmSelection: null,
     masteryPathId: null,
+    masterySessionMode: null,
     courseId: "",
     personaSelection: "",
     messages: [],
@@ -402,6 +460,10 @@ function applySessionConfiguration(
       configuration.masteryPathId !== undefined
         ? configuration.masteryPathId
         : session.masteryPathId,
+    masterySessionMode:
+      configuration.masterySessionMode !== undefined
+        ? configuration.masterySessionMode
+        : session.masterySessionMode,
     courseId:
       configuration.courseId !== undefined
         ? configuration.courseId
@@ -467,6 +529,26 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         ...session,
         llmSelection: action.selection,
       }));
+    case "SET_MASTERY_SESSION_MODE": {
+      // ``key`` targets the conversation that produced the change: a backend
+      // push belongs to the session it came from, which may no longer be the
+      // one on screen. The mode buttons omit it and mean "the one I am in".
+      if (!action.key) {
+        return updateSelectedSession(state, (session) => ({
+          ...session,
+          masterySessionMode: action.mode,
+        }));
+      }
+      const target = state.sessions[action.key];
+      if (!target) return state;
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: { ...target, masterySessionMode: action.mode },
+        },
+      };
+    }
     case "SET_MASTERY_PATH_ID": {
       if (!action.key) {
         return updateSelectedSession(state, (session) => ({
@@ -605,6 +687,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                 id: nextOptimisticId(),
                 role: "assistant",
                 content: "",
+                rawContent: "",
                 events: [],
                 capability: session.activeCapability || "",
                 parentMessageId: tip?.id ?? null,
@@ -641,6 +724,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
           id: nextOptimisticId(),
           role: "assistant",
           content: "",
+          rawContent: "",
           events: [],
           capability: session.activeCapability || "",
           parentMessageId: last?.id ?? null,
@@ -655,19 +739,29 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         return state;
       }
       const events = [...(last?.events || []), action.event];
-      let content = last?.content || "";
+      const language = session.language;
+      let rawContent = last?.rawContent ?? last?.content ?? "";
+      let content = last?.content ?? "";
       if (isNarrationMarker(action.event)) {
         // A round just resolved as narration (preamble before a tool call):
         // drop its already-streamed text from the answer — it stays in the
-        // trace. Recomputing is cheap here (only fires per narration round).
-        content = recomputeAnswerContent(events);
+        // trace. Recompute from immutable event content, never from display text.
+        rawContent = recomputeAnswerContent(events);
+        content = repairChineseEmphasis(rawContent, language);
       } else if (shouldAppendEventContent(action.event)) {
-        content += action.event.content;
+        const delta = action.event.content;
+        rawContent += delta;
+        content = appendWithEmphasisRepair(content, delta, rawContent, language);
       }
+      // Any other event (progress, tool rows, stage markers) leaves the text
+      // alone, so it reuses the display string as-is. Re-deriving it here was
+      // running the Chinese emphasis repair over the whole reply for events
+      // that could not have changed a character of it.
       const capability = last?.capability || session.activeCapability || "";
       msgs[msgs.length - 1] = {
         ...(last || { role: "assistant", content: "" }),
         content,
+        rawContent,
         events,
         capability,
       };
@@ -691,13 +785,28 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         },
       };
     }
-    case "STREAM_END":
+    case "STREAM_END": {
+      const ending = state.sessions[action.key];
+      // Settle the trailing line: during streaming the emphasis repair runs
+      // only when a newline completes a line, so the last one is still raw.
+      const settled = (() => {
+        if (!ending?.messages?.length) return ending?.messages ?? [];
+        const messages = [...ending.messages];
+        const last = messages[messages.length - 1];
+        if (last?.role !== "assistant") return messages;
+        const raw = last.rawContent ?? last.content ?? "";
+        const repaired = repairChineseEmphasis(raw, ending.language);
+        if (repaired === last.content) return messages;
+        messages[messages.length - 1] = { ...last, content: repaired };
+        return messages;
+      })();
       return {
         ...state,
         sessions: {
           ...state.sessions,
           [action.key]: {
             ...(state.sessions[action.key] ?? createSessionEntry(action.key)),
+            messages: settled,
             isStreaming: false,
             currentStage: "",
             status: action.status ?? "completed",
@@ -712,6 +821,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         },
         sidebarRefreshToken: state.sidebarRefreshToken + 1,
       };
+    }
     case "BIND_SERVER_SESSION": {
       const current =
         state.sessions[action.key] ?? createSessionEntry(action.key);
@@ -857,6 +967,51 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         },
       };
     }
+    case "SET_MESSAGE_TRACE": {
+      const session = state.sessions[action.key];
+      if (!session) return state;
+      const messages = session.messages.map((message) =>
+        message.id === action.messageId && message.role === "assistant"
+          ? { ...message, events: action.events, trace: action.trace }
+          : message,
+      );
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: { ...session, messages, updatedAt: Date.now() },
+        },
+      };
+    }
+    case "SETTLE_MESSAGE_TRACE": {
+      // The finished message trades its full event list for the compact
+      // preview it keeps in memory. Done here, from the events the reducer
+      // holds, rather than from a snapshot taken in the ``done`` handler: that
+      // snapshot lags React's commit, and the last round's content, tool call
+      // and card arrive in the same burst as ``done`` — a stale snapshot
+      // settled the message on a trace without its card.
+      const session = state.sessions[action.key];
+      if (!session) return state;
+      let changed = false;
+      const messages = session.messages.map((message) => {
+        if (message.id !== action.messageId || message.role !== "assistant") {
+          return message;
+        }
+        changed = true;
+        return {
+          ...message,
+          ...settleMessageTrace(message.events ?? [], action.turnId),
+        };
+      });
+      if (!changed) return state;
+      return {
+        ...state,
+        sessions: {
+          ...state.sessions,
+          [action.key]: { ...session, messages, updatedAt: Date.now() },
+        },
+      };
+    }
     case "SET_SELECTED_BRANCH": {
       const session = state.sessions[action.key];
       if (!session) return state;
@@ -995,6 +1150,8 @@ interface ChatContextValue {
   setKBs: (kbs: string[]) => void;
   setLLMSelection: (selection: LLMSelection | null) => void;
   setMasteryPathId: (masteryPathId: string | null) => void;
+  /** What this mastery conversation is doing — see lib/mastery-mode. */
+  setMasterySessionMode: (mode: string | null) => void;
   setCourseId: (courseId: string) => void;
   setPersonaSelection: (persona: string) => void;
   setLanguage: (lang: string) => void;
@@ -1014,8 +1171,14 @@ interface ChatContextValue {
    * Deliver the user's reply for a turn that is paused on an
    * ``ask_user`` tool call. Sends the reply via the unified WS so the
    * backend can substitute it into the matching ``role=tool`` message
-   * and resume the agentic loop on the **same** turn. No-op when the
-   * active session has no live turn waiting on input.
+   * and resume the agentic loop on the **same** turn.
+   *
+   * Resolves with whether the reply actually reached a turn that was
+   * waiting for it. A question card outlives the turn that asked it — a
+   * backend restart drops the waiter while the card stays on screen, fully
+   * interactive — so "did this land?" has to be answerable by whoever is
+   * showing the card, or the learner is left watching a spinner that will
+   * never resolve.
    *
    * Accepts a plain string (legacy single-question reply) or a
    * structured object with ``answers`` (v2 multi-question reply).
@@ -1027,7 +1190,7 @@ interface ChatContextValue {
           text?: string;
           answers?: Array<{ questionId: string; text: string }>;
         },
-  ) => void;
+  ) => Promise<boolean>;
   regenerateLastMessage: () => void;
   deleteTurn: (messageId: number) => Promise<void>;
   /** Re-send a user message under a new branch (sibling of the original).
@@ -1056,6 +1219,10 @@ interface ChatContextValue {
   /** Select an already-loaded session without fetching. Returns false when
    *  it isn't in memory, i.e. the caller must load it. */
   showCachedSession: (sessionId: string) => boolean;
+  /** Lazily fetch one persisted turn trace and retain its compact preview. */
+  loadMessageTrace: (sessionId: string, messageId: number) => Promise<void>;
+  /** Restore the compact preview when a full trace is collapsed. */
+  releaseMessageTrace: (sessionId: string, messageId: number) => void;
   selectedSessionId: string | null;
   sessionStatuses: Record<string, SessionStatusSnapshot>;
   sidebarRefreshToken: number;
@@ -1063,7 +1230,7 @@ interface ChatContextValue {
 
 const ChatCtx = createContext<ChatContextValue | null>(null);
 
-function hydrateMessageAttachments(
+export function hydrateMessageAttachments(
   attachments: SessionMessage["attachments"],
 ): MessageAttachment[] {
   return Array.isArray(attachments)
@@ -1077,6 +1244,13 @@ function hydrateMessageAttachments(
         extracted_text: item.extracted_text,
         generated: item.generated,
         size_bytes: item.size_bytes,
+        origin: item.origin,
+        workspace_id: item.workspace_id,
+        workspace_item_id: item.workspace_item_id,
+        relative_path: item.relative_path,
+        sha256: item.sha256,
+        title: item.title,
+        caption: item.caption,
       }))
     : [];
 }
@@ -1251,6 +1425,8 @@ export function ChatStateAdapterProvider({
   // assistant message if the server rejects the request (e.g. ``regenerate_busy``
   // or ``nothing_to_regenerate``). Keyed by session entry key.
   const pendingRegenerateRef = useRef<Map<string, MessageItem>>(new Map());
+  const traceCacheRef = useRef<TraceCache>(new TraceCache());
+  const traceRequestsRef = useRef<Map<string, AbortController>>(new Map());
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
@@ -1262,12 +1438,34 @@ export function ChatStateAdapterProvider({
     stateRef.current = state;
   }, [state]);
 
+  useEffect(() => {
+    if (!state.selectedKey) return;
+    for (const [key, controller] of traceRequestsRef.current) {
+      if (key.startsWith(`${state.selectedKey}:`)) continue;
+      controller.abort();
+      traceRequestsRef.current.delete(key);
+    }
+    const released = traceCacheRef.current.releaseExcept(state.selectedKey);
+    for (const [key, snapshot] of released) {
+      const [sessionId, messageId] = key.split(":");
+      dispatch({
+        type: "SET_MESSAGE_TRACE",
+        key: sessionId,
+        messageId: Number(messageId),
+        events: snapshot.events,
+        trace: snapshot.metadata ?? {},
+      });
+    }
+  }, [state.selectedKey]);
+
   useEffect(
     () => () => {
       runnersRef.current.forEach(({ client }) => client.disconnect());
       runnersRef.current.clear();
       retryTimersRef.current.forEach((id) => clearTimeout(id));
       retryTimersRef.current.clear();
+      traceRequestsRef.current.forEach((controller) => controller.abort());
+      traceRequestsRef.current.clear();
     },
     [],
   );
@@ -1313,6 +1511,7 @@ export function ChatStateAdapterProvider({
             capability: message.capability || "",
             events: Array.isArray(message.events) ? message.events : [],
             attachments,
+            trace: message.trace,
             parentMessageId:
               message.parent_message_id === undefined
                 ? null
@@ -1368,7 +1567,11 @@ export function ChatStateAdapterProvider({
         // so applying it here only catches the open client up to what a
         // reload would already show.
         const meta = event.metadata as
-          | { title?: string; mastery_path_id?: string }
+          | {
+              title?: string;
+              mastery_path_id?: string;
+              mastery_session_mode?: string;
+            }
           | undefined;
         // The tutor can move a conversation between mastery paths mid-turn;
         // without this the composer would keep naming the path it started on.
@@ -1377,6 +1580,18 @@ export function ChatStateAdapterProvider({
             type: "SET_MASTERY_PATH_ID",
             key: effectiveKey,
             masteryPathId: meta.mastery_path_id.trim() || null,
+          });
+        }
+        // …and it can change what the conversation is doing. The three mode
+        // buttons above the transcript are the learner's only sign of which
+        // tools the tutor may reach for, so a switch the tutor made itself has
+        // to move them: "I've switched to outline mode" over a header still
+        // reading "Study" is the product contradicting itself out loud.
+        if (typeof meta?.mastery_session_mode === "string") {
+          dispatch({
+            type: "SET_MASTERY_SESSION_MODE",
+            key: effectiveKey,
+            mode: meta.mastery_session_mode.trim() || null,
           });
         }
         const title = String(meta?.title || "").trim();
@@ -1444,6 +1659,15 @@ export function ChatStateAdapterProvider({
               turnId: event.turn_id || null,
               userMessageId: doneMeta?.user_message_id ?? null,
               assistantMessageId,
+            });
+            // Compact the finished message's trace inside the reducer — never
+            // from ``stateRef``, which still lacks whatever arrived in the
+            // same burst as this ``done``.
+            dispatch({
+              type: "SETTLE_MESSAGE_TRACE",
+              key: effectiveKey,
+              messageId: assistantMessageId,
+              turnId: event.turn_id || null,
             });
           } else {
             // Older backend without ids on ``done`` — fall back to the
@@ -1564,8 +1788,9 @@ export function ChatStateAdapterProvider({
     function dispatchToRunner(
       key: string,
       msg: ChatMessage | ClientCommand,
-      attempt = 0,
-    ) {
+      options: { awaitAck?: boolean; attempt?: number } = {},
+    ): Promise<boolean> {
+      const attempt = options.attempt ?? 0;
       const runner = ensureRunner(key);
       if (!runner.client.connected) {
         if (attempt >= 10) {
@@ -1583,16 +1808,23 @@ export function ChatStateAdapterProvider({
               durationMs: 6000,
             },
           );
-          return;
+          return Promise.resolve(false);
         }
-        const timerId = setTimeout(() => {
-          retryTimersRef.current.delete(timerId);
-          dispatchToRunner(key, msg, attempt + 1);
-        }, 200);
-        retryTimersRef.current.add(timerId);
-        return;
+        return new Promise<boolean>((resolve) => {
+          const timerId = setTimeout(() => {
+            retryTimersRef.current.delete(timerId);
+            resolve(
+              dispatchToRunner(key, msg, { ...options, attempt: attempt + 1 }),
+            );
+          }, 200);
+          retryTimersRef.current.add(timerId);
+        });
+      }
+      if (options.awaitAck) {
+        return runner.client.sendAwaitingAck(msg as ClientCommand);
       }
       runner.client.send(msg);
+      return Promise.resolve(true);
     },
     [ensureRunner],
   );
@@ -1609,6 +1841,92 @@ export function ChatStateAdapterProvider({
     dispatch({ type: "SELECT_SESSION", key: sessionId });
     return true;
   }, []);
+
+  const releaseMessageTrace = useCallback((sessionId: string, messageId: number) => {
+    const key = `${sessionId}:${messageId}`;
+    traceRequestsRef.current.get(key)?.abort();
+    traceRequestsRef.current.delete(key);
+    const preview = traceCacheRef.current.release(key);
+    if (!preview) return;
+    dispatch({
+      type: "SET_MESSAGE_TRACE",
+      key: sessionId,
+      messageId,
+      events: preview.events,
+      trace: preview.metadata ?? {},
+    });
+  }, []);
+
+  const loadMessageTrace = useCallback(
+    async (sessionId: string, messageId: number) => {
+      const key = `${sessionId}:${messageId}`;
+      if (traceCacheRef.current.has(key) || traceRequestsRef.current.has(key)) return;
+      const session = stateRef.current.sessions[sessionId];
+      if (!session || session.isStreaming || session.status === "running") return;
+      const message = session.messages.find(
+        (item) => item.id === messageId && item.role === "assistant",
+      );
+      if (!message?.trace?.turn_id) return;
+
+      const controller = new AbortController();
+      traceRequestsRef.current.set(key, controller);
+      try {
+        const events: StreamEvent[] = [];
+        let afterSeq = 0;
+        let page: MessageTracePage | null = null;
+        for (let pageCount = 0; pageCount < 1000; pageCount += 1) {
+          page = await getMessageTrace(
+            sessionId,
+            messageId,
+            afterSeq,
+            controller.signal,
+          );
+          events.push(...page.events);
+          if (page.complete || page.next_seq == null) break;
+          if (page.next_seq <= afterSeq) return;
+          afterSeq = page.next_seq;
+        }
+        if (!page || controller.signal.aborted) return;
+        const metadata: MessageTraceMetadata = {
+          turn_id: page.turn_id,
+          total: page.total,
+          last_seq: page.last_seq,
+          truncated: false,
+        };
+        const preview = compactTracePreview(message.events ?? []);
+        const evicted = traceCacheRef.current.retain(key, {
+          events: preview.events,
+          metadata: message.trace,
+        });
+        for (const [evictedKey, snapshot] of evicted) {
+          const [evictedSession, evictedMessage] = evictedKey.split(":");
+          dispatch({
+            type: "SET_MESSAGE_TRACE",
+            key: evictedSession,
+            messageId: Number(evictedMessage),
+            events: snapshot.events,
+            trace: snapshot.metadata ?? {},
+          });
+        }
+        dispatch({
+          type: "SET_MESSAGE_TRACE",
+          key: sessionId,
+          messageId,
+          events,
+          trace: metadata,
+        });
+      } catch (reason) {
+        if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+          console.warn("Failed to load message trace", reason);
+        }
+      } finally {
+        if (traceRequestsRef.current.get(key) === controller) {
+          traceRequestsRef.current.delete(key);
+        }
+      }
+    },
+    [],
+  );
 
   const loadSession = useCallback(
     async (
@@ -1629,6 +1947,7 @@ export function ChatStateAdapterProvider({
         const local = stateRef.current.sessions[key];
         if (!local || local.isStreaming || local.status === "running") return;
       }
+      traceCacheRef.current.clear();
       const messages = hydrateMessages(session.messages ?? []);
       const loadedWorkspaceMode = normalizeWorkspaceMode(
         session.preferences?.workspace_mode,
@@ -1672,6 +1991,10 @@ export function ChatStateAdapterProvider({
         masteryPathId:
           typeof session.preferences?.mastery_path_id === "string"
             ? session.preferences.mastery_path_id
+            : null,
+        masterySessionMode:
+          typeof session.preferences?.mastery_session_mode === "string"
+            ? session.preferences.mastery_session_mode
             : null,
         // The server is the truth for which course a conversation belongs to:
         // it is set from the launch URL, from the composer's pill, and from the
@@ -1844,6 +2167,8 @@ export function ChatStateAdapterProvider({
           : session.llmSelection;
       const effectiveMasteryPathId =
         replaySnapshot?.masteryPathId ?? session.masteryPathId;
+      const effectiveMasterySessionMode =
+        replaySnapshot?.masterySessionMode ?? session.masterySessionMode;
       const effectiveLanguage =
         replaySnapshot?.language ?? readStoredResponseLanguage();
       // Persona resolution: replay snapshot wins; then an explicit per-call
@@ -1929,6 +2254,9 @@ export function ChatStateAdapterProvider({
           : {}),
         ...(effectiveMasteryPathId
           ? { masteryPathId: effectiveMasteryPathId }
+          : {}),
+        ...(effectiveMasterySessionMode
+          ? { masterySessionMode: effectiveMasterySessionMode }
           : {}),
         ...(effectivePersona ? { persona: effectivePersona } : {}),
         ...(effectiveMemoryReferences?.length
@@ -2026,6 +2354,8 @@ export function ChatStateAdapterProvider({
         bookReferences: effectiveBookReferences,
         readingReferences: effectiveReadingReferences,
         masteryPathId: effectiveMasteryPathId || null,
+        masteryAnswer: options?.masteryAnswer ?? null,
+        masterySkip: options?.masterySkip ?? null,
         // Immersive reading. Gated on the stable workspace mode as well as on
         // an open document: the reader outlives action switches and new
         // sessions, so Home must never inherit its source context.
@@ -2083,17 +2413,17 @@ export function ChatStateAdapterProvider({
   }, []);
 
   const submitUserReply = useCallback(
-    (
+    async (
       reply:
         | string
         | {
             text?: string;
             answers?: Array<{ questionId: string; text: string }>;
           },
-    ) => {
+    ): Promise<boolean> => {
       const currentState = stateRef.current;
       const key = currentState.selectedKey;
-      if (!key) return;
+      if (!key) return false;
       const session = currentState.sessions[key];
       const turnId = session?.activeTurnId;
       const pendingAskUser = session
@@ -2103,7 +2433,7 @@ export function ChatStateAdapterProvider({
       // silent long enough for the socket to reconnect, so allow submission
       // whenever the unresolved card and active turn id are still present.
       if (!session || !turnId || (!session.isStreaming && !pendingAskUser)) {
-        return;
+        return false;
       }
       const message: import("@/features/chat/model/protocol").SubmitUserReplyMessage =
         {
@@ -2116,7 +2446,7 @@ export function ChatStateAdapterProvider({
         if (typeof reply.text === "string") message.text = reply.text;
         if (Array.isArray(reply.answers)) message.answers = reply.answers;
       }
-      sendThroughRunner(key, message);
+      return sendThroughRunner(key, message, { awaitAck: true });
     },
     [sendThroughRunner],
   );
@@ -2163,6 +2493,7 @@ export function ChatStateAdapterProvider({
       knowledgeBases: current.knowledgeBases,
       llmSelection: current.llmSelection,
       masteryPathId: current.masteryPathId,
+      masterySessionMode: current.masterySessionMode,
       courseId: current.courseId,
       personaSelection: current.personaSelection,
       messages: current.messages,
@@ -2206,6 +2537,13 @@ export function ChatStateAdapterProvider({
   const setMasteryPathId = useCallback((masteryPathId: string | null) => {
     const normalized = masteryPathId?.trim() || null;
     dispatch({ type: "SET_MASTERY_PATH_ID", masteryPathId: normalized });
+  }, []);
+
+  const setMasterySessionMode = useCallback((mode: string | null) => {
+    dispatch({
+      type: "SET_MASTERY_SESSION_MODE",
+      mode: mode?.trim() || null,
+    });
   }, []);
 
   const setCourseId = useCallback((courseId: string) => {
@@ -2382,6 +2720,7 @@ export function ChatStateAdapterProvider({
       setKBs,
       setLLMSelection,
       setMasteryPathId,
+      setMasterySessionMode,
       setCourseId,
       setPersonaSelection,
       setLanguage,
@@ -2397,6 +2736,8 @@ export function ChatStateAdapterProvider({
       configureSession,
       loadSession,
       showCachedSession,
+      loadMessageTrace,
+      releaseMessageTrace,
       selectedSessionId: derivedState.sessionId,
       sessionStatuses,
       sidebarRefreshToken: state.sidebarRefreshToken,
@@ -2408,6 +2749,7 @@ export function ChatStateAdapterProvider({
       setKBs,
       setLLMSelection,
       setMasteryPathId,
+      setMasterySessionMode,
       setCourseId,
       setPersonaSelection,
       setLanguage,
@@ -2423,6 +2765,8 @@ export function ChatStateAdapterProvider({
       configureSession,
       loadSession,
       showCachedSession,
+      loadMessageTrace,
+      releaseMessageTrace,
       sessionStatuses,
       state.sidebarRefreshToken,
     ],

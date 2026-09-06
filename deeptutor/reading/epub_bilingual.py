@@ -11,18 +11,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
 from pathlib import Path, PurePosixPath
 import re
 import threading
 from typing import TYPE_CHECKING, Any
-import uuid
 import zipfile
 
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
 from deeptutor.reading.models import MaterialManifest, ReadingError
+from deeptutor.services.file_io import atomic_write_text as _atomic_write
 
 if TYPE_CHECKING:
     from deeptutor.reading.store import ReadingStore
@@ -162,16 +161,6 @@ def _raw_epub(store: ReadingStore, material_id: str, error: str) -> Path:
 
 def _pairing_path(store: ReadingStore) -> Path:
     return store.root / PAIRINGS_NAME
-
-
-def _atomic_write(path: Path, payload: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.parent / f".{path.name}.{uuid.uuid4().hex[:8]}.tmp"
-    try:
-        temporary.write_text(payload, encoding="utf-8")
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def list_epub_pairings(store: ReadingStore) -> list[dict[str, Any]]:

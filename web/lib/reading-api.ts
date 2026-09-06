@@ -138,6 +138,26 @@ export interface ReadingPosition {
   updated_at: number;
 }
 
+export function parseReadingPosition(payload: unknown): ReadingPosition {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Invalid reading position response");
+  }
+  const position = payload as Record<string, unknown>;
+  if (
+    typeof position.locator !== "number" ||
+    !Number.isFinite(position.locator) ||
+    position.locator < 1 ||
+    typeof position.source_anchor !== "string" ||
+    typeof position.percentage !== "number" ||
+    !Number.isFinite(position.percentage) ||
+    typeof position.updated_at !== "number" ||
+    !Number.isFinite(position.updated_at)
+  ) {
+    throw new Error("Invalid reading position response");
+  }
+  return position as unknown as ReadingPosition;
+}
+
 /**
  * A place the reader chose to keep, as opposed to the position above — which
  * is the single automatic "where I got to", overwritten on every move. These
@@ -257,6 +277,35 @@ export async function getUnitText(
   );
 }
 
+export interface ReadingTranscript {
+  material_id: string;
+  revision: number;
+  unit_count: number;
+  truncated: boolean;
+  segments: {
+    locator: number;
+    text: string;
+    title: string;
+    source_href: string;
+  }[];
+}
+
+/**
+ * Every transcript segment of a timed material in one round trip.
+ *
+ * Segments follow the speaker's sentences, so a lecture has hundreds of them —
+ * one request each would be hundreds of requests to draw a single panel.
+ */
+export async function getReadingTranscript(
+  materialId: string,
+): Promise<ReadingTranscript> {
+  return unwrap(
+    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/transcript`), {
+      cache: "no-store",
+    }),
+  );
+}
+
 export async function listReadingExtensions(): Promise<
   ReadingExtensionManifest[]
 > {
@@ -305,10 +354,12 @@ export function rawMaterialUrl(materialId: string): string {
 export async function getReadingPosition(
   materialId: string,
 ): Promise<ReadingPosition> {
-  return unwrap(
-    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
-      cache: "no-store",
-    }),
+  return parseReadingPosition(
+    await unwrap(
+      await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
+        cache: "no-store",
+      }),
+    ),
   );
 }
 
@@ -316,12 +367,14 @@ export async function saveReadingPosition(
   materialId: string,
   position: Pick<ReadingPosition, "locator" | "source_anchor" | "percentage">,
 ): Promise<ReadingPosition> {
-  return unwrap(
-    await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(position),
-    }),
+  return parseReadingPosition(
+    await unwrap(
+      await apiFetch(apiUrl(`${BASE}/materials/${materialId}/position`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(position),
+      }),
+    ),
   );
 }
 

@@ -180,7 +180,7 @@ export interface QuizFollowupController {
           text?: string;
           answers?: Array<{ questionId: string; text: string }>;
         },
-  ): void;
+  ): Promise<boolean>;
   /** Tab open helper — forwards to whoever registered an open handler. */
   openFollowupTab(context: QuizFollowupTabContext): void;
   /**
@@ -382,7 +382,12 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
   );
 
   const sendThroughRunner = useCallback(
-    function send(key: string, message: ChatMessage, attempt = 0) {
+    function send(
+      key: string,
+      message: ChatMessage,
+      options: { awaitAck?: boolean; attempt?: number } = {},
+    ): Promise<boolean> {
+      const attempt = options.attempt ?? 0;
       const runner = ensureRunner(key);
       if (!runner.client.connected) {
         if (attempt >= 10) {
@@ -392,12 +397,20 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
             currentStage: "",
             error: "Follow-up chat failed to connect.",
           }));
-          return;
+          return Promise.resolve(false);
         }
-        window.setTimeout(() => send(key, message, attempt + 1), 200);
-        return;
+        return new Promise<boolean>((resolve) => {
+          window.setTimeout(
+            () => resolve(send(key, message, { ...options, attempt: attempt + 1 })),
+            200,
+          );
+        });
+      }
+      if (options.awaitAck) {
+        return runner.client.sendAwaitingAck(message);
       }
       runner.client.send(message);
+      return Promise.resolve(true);
     },
     [ensureRunner, updateThread],
   );
@@ -476,7 +489,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
   );
 
   const submitAskUserReply = useCallback(
-    (
+    async (
       key: string,
       reply:
         | string
@@ -484,17 +497,17 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
             text?: string;
             answers?: Array<{ questionId: string; text: string }>;
           },
-    ) => {
+    ): Promise<boolean> => {
       const current = threadsRef.current[key];
       const turnId = current?.activeTurnId;
-      if (!current || !turnId) return;
+      if (!current || !turnId) return false;
       // Allow submission either while the turn is still streaming OR while
       // it's paused on an unresolved ask_user card (matches the main chat's
       // ``submitUserReply`` guard).
       const pendingAskUser = current.messages.some((m) =>
         hasPendingAskUser(m.events, turnId),
       );
-      if (!current.isStreaming && !pendingAskUser) return;
+      if (!current.isStreaming && !pendingAskUser) return false;
 
       const message: import("@/features/chat/model/protocol").SubmitUserReplyMessage =
         {
@@ -516,7 +529,14 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         isStreaming: true,
         error: null,
       }));
-      sendThroughRunner(key, message);
+      const accepted = await sendThroughRunner(key, message, {
+        awaitAck: true,
+      });
+      if (!accepted) {
+        // The turn is gone; stop showing a spinner for work nobody is doing.
+        updateThread(key, (prev) => ({ ...prev, isStreaming: false }));
+      }
+      return accepted;
     },
     [sendThroughRunner, updateThread],
   );

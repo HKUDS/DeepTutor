@@ -221,11 +221,13 @@ def main():
                 {"name": "state_version", "type": "number", "required": False},
                 {"name": "failure_code", "type": "text", "required": False},
                 {"name": "retryable", "type": "bool", "required": False},
+                {"name": "assistant_message_id", "type": "text", "required": False},
             ],
             "indexes": [
                 "CREATE UNIQUE INDEX idx_turns_turn_id ON turns (turn_id)",
                 "CREATE UNIQUE INDEX idx_turns_one_active_session ON turns (session_id) "
                 "WHERE status IN ('queued', 'running', 'waiting_input')",
+                "CREATE UNIQUE INDEX idx_turns_assistant_message ON turns (assistant_message_id)",
             ],
             "listRule": "",
             "viewRule": "",

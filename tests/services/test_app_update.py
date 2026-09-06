@@ -151,6 +151,7 @@ def test_detect_installation_keeps_source_and_docker_host_managed(
     assert app_update.detect_installation().mode == "docker"
 
     monkeypatch.setattr(app_update, "_running_in_container", lambda: False)
+    monkeypatch.setattr(app_update, "_running_from_source_checkout", lambda: False)
     monkeypatch.setattr(
         app_update,
         "_distribution_direct_url",
@@ -164,6 +165,33 @@ def test_detect_installation_keeps_source_and_docker_host_managed(
     installation = app_update.detect_installation()
     assert installation.mode == "pypi"
     assert installation.automatic_update is True
+
+
+def test_detect_installation_prefers_source_checkout_when_metadata_is_shadowed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout_root = tmp_path / "DeepTutor"
+    module_path = checkout_root / "deeptutor" / "services" / "app_update.py"
+    module_path.parent.mkdir(parents=True)
+    module_path.touch()
+    (checkout_root / ".git").mkdir()
+    (checkout_root / "pyproject.toml").write_text(
+        '[project]\nname = "deeptutor"\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(app_update, "__file__", str(module_path))
+    monkeypatch.setattr(app_update, "_running_in_container", lambda: False)
+    monkeypatch.setattr(app_update, "_distribution_direct_url", lambda: {})
+    monkeypatch.setattr(app_update.sys, "prefix", str(tmp_path / "venv"))
+    monkeypatch.setattr(app_update.sys, "base_prefix", str(tmp_path / "base"))
+
+    installation = app_update.detect_installation()
+
+    assert installation.mode == "source"
+    assert installation.automatic_update is False
+    assert installation.command == "git pull && pip install -e ."
 
 
 def test_update_job_store_persists_trusted_lifecycle(tmp_path: Path) -> None:

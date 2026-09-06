@@ -7,17 +7,47 @@ import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { listKnowledgeBaseFiles } from "@/features/knowledge/api/client";
 import { SUBAGENT_KB_TYPE } from "@/lib/knowledge-helpers";
 import type { TopicSourceInput, TopicSourceKind } from "@/lib/learning-api";
-import { getNotebook, listNotebooks } from "@/lib/notebook-api";
+import { listCoWriterDocuments } from "@/lib/co-writer-api";
+import {
+  getNotebook,
+  listCategories,
+  listNotebookEntries,
+  listNotebooks,
+} from "@/lib/notebook-api";
+import { listPartnerGroups, listPartnerGroupSessions } from "@/lib/partner-groups-api";
+import { getPartnerSessions, listPartners } from "@/lib/partners-api";
+import { listSessions } from "@/lib/session-api";
 
-export type SourceCandidateKind = Exclude<TopicSourceKind, "goal" | "chat">;
+export type SourceCandidateKind = Exclude<TopicSourceKind, "goal">;
+
+/**
+ * A row that only exists to be opened: a question-bank category, a study
+ * partner, a partner group. It holds no text of its own — its children do —
+ * so it renders without a checkbox and never enters the selection.
+ */
+export type SourceContainerKind = "category" | "partner" | "partner_group_root";
 
 export interface SourceCandidate {
   key: string;
-  kind: SourceCandidateKind;
+  kind: SourceCandidateKind | SourceContainerKind;
   sourceId: string;
   label: string;
   detail: string;
   available: boolean;
+  /**
+   * False for a container row — one that is opened rather than chosen. The
+   * selection and the hydration both skip these, so a partner or a category
+   * can never travel to the server as a material.
+   */
+  selectable?: boolean;
+  /** Whether opening this row fetches a child list. */
+  expandable?: boolean;
+  /**
+   * Prompt context carried from the listing that produced this row, so
+   * hydration does not re-fetch what the list already showed. Only the
+   * outline generator reads it; tutoring reads the real text server-side.
+   */
+  excerpt?: string;
   /**
    * For a `file` candidate, the knowledge base it lives in.
    *
@@ -34,22 +64,43 @@ export interface SourceLibrary {
   books: SourceCandidate[];
   notebooks: SourceCandidate[];
   knowledgeBases: SourceCandidate[];
+  /** Past conversations — what the learner has already worked through. */
+  chats: SourceCandidate[];
+  /** Question-bank categories; their entries load on open. */
+  questionSets: SourceCandidate[];
+  /** Co-Writer drafts — the learner's own writing on the subject. */
+  drafts: SourceCandidate[];
+  /** Study partners and partner groups; their transcripts load on open. */
+  partners: SourceCandidate[];
   failures: string[];
 }
 
-/** What one knowledge base's document list is doing right now. */
-export interface KnowledgeBaseFiles {
+/** What one expandable row's child list is doing right now. */
+export interface SourceChildren {
   candidates: SourceCandidate[];
   loading: boolean;
   error: string;
 }
 
+/** @deprecated Kept as the old name for {@link SourceChildren}. */
+export type KnowledgeBaseFiles = SourceChildren;
+
 const EMPTY_LIBRARY: SourceLibrary = {
   books: [],
   notebooks: [],
   knowledgeBases: [],
+  chats: [],
+  questionSets: [],
+  drafts: [],
+  partners: [],
   failures: [],
 };
+
+//: How many rows one flat listing contributes. A picker is a place to choose
+//: from recent work, not a full archive browser.
+const MAX_FLAT_ROWS = 30;
+//: Entries listed under one question-bank category.
+const MAX_CATEGORY_ENTRIES = 50;
 
 type Translate = (cn: string, en: string) => string;
 
@@ -63,7 +114,21 @@ export function useTopicSourceLibrary(tr: Translate) {
       bookApi.list(),
       listNotebooks(),
       listKnowledgeBases(),
-    ]).then(([booksResult, notebooksResult, knowledgeResult]) => {
+      listSessions(MAX_FLAT_ROWS, 0),
+      listCategories(),
+      listCoWriterDocuments(),
+      listPartners(),
+      listPartnerGroups(),
+    ]).then(([
+      booksResult,
+      notebooksResult,
+      knowledgeResult,
+      chatResult,
+      categoryResult,
+      draftResult,
+      partnerResult,
+      groupResult,
+    ]) => {
       if (disposed) return;
       const failures: string[] = [];
       if (booksResult.status === "rejected") failures.push(tr("书架", "Books"));
@@ -73,6 +138,21 @@ export function useTopicSourceLibrary(tr: Translate) {
       if (knowledgeResult.status === "rejected") {
         failures.push(tr("知识库", "Knowledge bases"));
       }
+      if (chatResult.status === "rejected") {
+        failures.push(tr("聊天历史", "Conversations"));
+      }
+      if (categoryResult.status === "rejected") {
+        failures.push(tr("题库", "Question bank"));
+      }
+      if (draftResult.status === "rejected") {
+        failures.push(tr("智能写作", "Co-Writer"));
+      }
+      // Partners are admin-scoped: a learner without access gets an empty
+      // section, not an error they can do nothing about.
+      const partnerRows =
+        partnerResult.status === "fulfilled" ? partnerResult.value : [];
+      const groupRows =
+        groupResult.status === "fulfilled" ? groupResult.value : [];
       setLibrary({
         books:
           booksResult.status === "fulfilled"
@@ -125,8 +205,76 @@ export function useTopicSourceLibrary(tr: Translate) {
                         : "Index status unknown",
                     ),
                   available: knowledgeBase.available !== false,
+                  expandable: true,
                 }))
             : [],
+        chats:
+          chatResult.status === "fulfilled"
+            ? chatResult.value.map((session) => ({
+                key: `chat:${session.session_id}`,
+                kind: "chat" as const,
+                sourceId: session.session_id,
+                label: session.title || tr("未命名会话", "Untitled session"),
+                detail: tr(
+                  `${session.message_count ?? 0} 条消息`,
+                  `${session.message_count ?? 0} messages`,
+                ),
+                available: true,
+                excerpt: session.last_message || "",
+              }))
+            : [],
+        questionSets:
+          categoryResult.status === "fulfilled"
+            ? categoryResult.value.map((category) => ({
+                key: `category:${category.id}`,
+                kind: "category" as const,
+                sourceId: String(category.id),
+                label: category.name,
+                detail: tr(
+                  `${category.entry_count} 道题`,
+                  `${category.entry_count} questions`,
+                ),
+                available: category.entry_count > 0,
+                // A category is a folder over questions; only a question
+                // carries text, so the folder is opened, never chosen.
+                selectable: false,
+                expandable: true,
+              }))
+            : [],
+        drafts:
+          draftResult.status === "fulfilled"
+            ? draftResult.value.map((document) => ({
+                key: `cowriter:${document.id}`,
+                kind: "cowriter" as const,
+                sourceId: document.id,
+                label: document.title || tr("未命名草稿", "Untitled draft"),
+                detail: document.preview || "",
+                available: true,
+                excerpt: document.preview || "",
+              }))
+            : [],
+        partners: [
+          ...partnerRows.map((partner) => ({
+            key: `partner:${partner.partner_id}`,
+            kind: "partner" as const,
+            sourceId: partner.partner_id,
+            label: partner.name,
+            detail: tr("学习伙伴", "Study partner"),
+            available: true,
+            selectable: false,
+            expandable: true,
+          })),
+          ...groupRows.map((group) => ({
+            key: `partner_group_root:${group.group_id}`,
+            kind: "partner_group_root" as const,
+            sourceId: group.group_id,
+            label: group.name,
+            detail: tr("伙伴组", "Partner group"),
+            available: true,
+            selectable: false,
+            expandable: true,
+          })),
+        ],
         failures,
       });
       setLoading(false);
@@ -136,16 +284,15 @@ export function useTopicSourceLibrary(tr: Translate) {
     };
   }, [tr]);
 
-  // Document lists are fetched per knowledge base, only when the learner
-  // opens one: a workspace with a dozen libraries would otherwise pay for
-  // every listing to answer a question about one of them.
-  const [files, setFiles] = useState<Record<string, KnowledgeBaseFiles>>({});
+  // Child lists are fetched per row, only when the learner opens one: a
+  // workspace with a dozen libraries, categories and partners would otherwise
+  // pay for every listing to answer a question about one of them.
+  const [childLists, setChildLists] = useState<Record<string, SourceChildren>>({});
 
-  const loadKnowledgeBaseFiles = useCallback(
+  const loadChildren = useCallback(
     async (candidate: SourceCandidate) => {
       const parentKey = candidate.key;
-      const kbName = candidate.sourceId;
-      setFiles((previous) =>
+      setChildLists((previous) =>
         previous[parentKey]?.candidates.length
           ? previous
           : {
@@ -154,34 +301,13 @@ export function useTopicSourceLibrary(tr: Translate) {
             },
       );
       try {
-        const listed = await listKnowledgeBaseFiles(kbName);
-        setFiles((previous) => ({
+        const listed = await fetchChildren(candidate, tr);
+        setChildLists((previous) => ({
           ...previous,
-          [parentKey]: {
-            loading: false,
-            error: "",
-            candidates: listed
-              // Folders are organisational only — they hold no text to ground
-              // an outline in, and their files are listed by full path anyway.
-              .filter((entry) => entry.type !== "folder")
-              .map((entry) => ({
-                key: `file:${kbName}:${entry.name}`,
-                kind: "file" as const,
-                sourceId: entry.name,
-                label: entry.name,
-                detail: tr(
-                  `${kbName} 中的文件`,
-                  `File in ${kbName}`,
-                ),
-                available: true,
-                kbName,
-                path: entry.name,
-                parentKey,
-              })),
-          },
+          [parentKey]: { loading: false, error: "", candidates: listed },
         }));
       } catch (reason) {
-        setFiles((previous) => ({
+        setChildLists((previous) => ({
           ...previous,
           [parentKey]: {
             candidates: [],
@@ -189,7 +315,7 @@ export function useTopicSourceLibrary(tr: Translate) {
             error:
               reason instanceof Error
                 ? reason.message
-                : tr("无法读取文件列表", "Could not list files"),
+                : tr("无法读取列表", "Could not load the list"),
           },
         }));
       }
@@ -198,15 +324,102 @@ export function useTopicSourceLibrary(tr: Translate) {
   );
 
   const candidates = useMemo(
-    () => [
-      ...library.books,
-      ...library.notebooks,
-      ...library.knowledgeBases,
-      ...Object.values(files).flatMap((entry) => entry.candidates),
-    ],
-    [library, files],
+    () =>
+      [
+        ...library.books,
+        ...library.notebooks,
+        ...library.knowledgeBases,
+        ...library.chats,
+        ...library.questionSets,
+        ...library.drafts,
+        ...library.partners,
+        ...Object.values(childLists).flatMap((entry) => entry.candidates),
+        // Containers are opened, never chosen — keeping them out here means
+        // neither the selection nor hydration has to know about them.
+      ].filter((candidate) => candidate.selectable !== false),
+    [library, childLists],
   );
-  return { library, loading, candidates, files, loadKnowledgeBaseFiles };
+  return { library, loading, candidates, childLists, loadChildren };
+}
+
+/** One expandable row's children, by kind. Throws so the caller can show why. */
+async function fetchChildren(
+  candidate: SourceCandidate,
+  tr: Translate,
+): Promise<SourceCandidate[]> {
+  const parentKey = candidate.key;
+  if (candidate.kind === "knowledge_base") {
+    const kbName = candidate.sourceId;
+    const listed = await listKnowledgeBaseFiles(kbName);
+    return (
+      listed
+        // Folders are organisational only — they hold no text to ground an
+        // outline in, and their files are listed by full path anyway.
+        .filter((entry) => entry.type !== "folder")
+        .map((entry) => ({
+          key: `file:${kbName}:${entry.name}`,
+          kind: "file" as const,
+          sourceId: entry.name,
+          label: entry.name,
+          detail: tr(`${kbName} 中的文件`, `File in ${kbName}`),
+          available: true,
+          kbName,
+          path: entry.name,
+          parentKey,
+        }))
+    );
+  }
+  if (candidate.kind === "category") {
+    const { items } = await listNotebookEntries({
+      category_id: Number(candidate.sourceId),
+      limit: MAX_CATEGORY_ENTRIES,
+    });
+    return items.map((entry) => ({
+      key: `question_bank:${entry.id}`,
+      kind: "question_bank" as const,
+      sourceId: String(entry.id),
+      label: entry.question.slice(0, 80) || tr("未命名题目", "Untitled question"),
+      detail: entry.is_correct
+        ? tr("已答对", "Answered correctly")
+        : tr("答错过", "Answered wrong"),
+      available: true,
+      excerpt: entry.question,
+      parentKey,
+    }));
+  }
+  if (candidate.kind === "partner") {
+    const sessions = await getPartnerSessions(candidate.sourceId);
+    return sessions.map((session) => ({
+      key: `chat:partner:${candidate.sourceId}:${session.session_key}`,
+      kind: "chat" as const,
+      // The reference form chat's own transcript reader understands.
+      sourceId: `partner:${candidate.sourceId}:${session.session_key}`,
+      label: session.title || tr("未命名对话", "Untitled conversation"),
+      detail: tr(
+        `${session.message_count} 条消息`,
+        `${session.message_count} messages`,
+      ),
+      available: true,
+      excerpt: session.last_message || "",
+      parentKey,
+    }));
+  }
+  if (candidate.kind === "partner_group_root") {
+    const sessions = await listPartnerGroupSessions(candidate.sourceId);
+    return sessions.map((session) => ({
+      key: `partner_group:${candidate.sourceId}:${session.session_key}`,
+      kind: "partner_group" as const,
+      sourceId: `${candidate.sourceId}:${session.session_key}`,
+      label: session.title || tr("未命名讨论", "Untitled discussion"),
+      detail: tr(
+        `${session.message_count} 条消息`,
+        `${session.message_count} messages`,
+      ),
+      available: true,
+      parentKey,
+    }));
+  }
+  return [];
 }
 
 /**
@@ -298,6 +511,23 @@ export async function hydrateTopicSource(
         },
       };
     }
+    if (
+      candidate.kind === "chat" ||
+      candidate.kind === "question_bank" ||
+      candidate.kind === "cowriter" ||
+      candidate.kind === "partner_group"
+    ) {
+      // The listing already showed enough to ground an outline, and the full
+      // text is read server-side during tutoring — so hydration here is an
+      // address plus what the learner just looked at, not another fetch.
+      return {
+        kind: candidate.kind,
+        source_id: candidate.sourceId,
+        label: candidate.label,
+        excerpt: (candidate.excerpt || candidate.detail).slice(0, 4_000),
+        available: candidate.available,
+      };
+    }
     return {
       kind: "knowledge_base",
       source_id: candidate.sourceId,
@@ -307,7 +537,9 @@ export async function hydrateTopicSource(
     };
   } catch {
     return {
-      kind: candidate.kind,
+      // Containers never reach hydration (they are filtered out of
+      // `candidates`), so the cast is narrowing a type, not a guess.
+      kind: candidate.kind as TopicSourceKind,
       source_id: candidate.sourceId,
       label: candidate.label,
       excerpt: "",

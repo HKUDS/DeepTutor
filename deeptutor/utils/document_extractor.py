@@ -270,13 +270,19 @@ def extract_text_from_bytes(
 def extract_text_from_path(
     file_path: str | Path,
     *,
+    filename_hint: str | None = None,
     max_bytes: int | None = MAX_DOC_BYTES,
     max_chars: int | None = MAX_EXTRACTED_CHARS_PER_DOC,
 ) -> str:
-    """Extract text from a file path using the same bytes-based parsers."""
+    """Extract text from a path, optionally using a logical filename.
+
+    Immutable workspace snapshots use content hashes as their physical names.
+    ``filename_hint`` preserves the original extension so format routing never
+    depends on that private storage detail.
+    """
     path = Path(file_path)
     return extract_text_from_bytes(
-        path.name,
+        filename_hint or path.name,
         path.read_bytes(),
         max_bytes=max_bytes,
         max_chars=max_chars,
@@ -286,6 +292,7 @@ def extract_text_from_path(
 async def extract_text_from_path_isolated(
     file_path: str | Path,
     *,
+    filename_hint: str | None = None,
     max_bytes: int | None = MAX_DOC_BYTES,
     max_chars: int | None = MAX_EXTRACTED_CHARS_PER_DOC,
     timeout: float = 120.0,
@@ -303,7 +310,11 @@ async def extract_text_from_path_isolated(
             "deeptutor.runtime.worker_tasks:extract_document_text",
             str(path),
             timeout=timeout,
-            kwargs={"max_bytes": max_bytes, "max_chars": max_chars},
+            kwargs={
+                "filename_hint": filename_hint,
+                "max_bytes": max_bytes,
+                "max_chars": max_chars,
+            },
         )
     except IsolatedWorkerError as exc:
         error_types: dict[str, type[DocumentExtractionError]] = {
@@ -318,7 +329,7 @@ async def extract_text_from_path_isolated(
         }
         error_type = error_types.get(exc.remote_type)
         if error_type is not None:
-            filename = str(exc.remote_attrs.get("filename") or path.name)
+            filename = str(exc.remote_attrs.get("filename") or filename_hint or path.name)
             raise error_type(str(exc), filename=filename) from exc
         if exc.remote_module == "builtins" and exc.remote_type in {
             "OSError",
@@ -329,8 +340,8 @@ async def extract_text_from_path_isolated(
         raise
     if not isinstance(result, str):
         raise DocumentExtractionError(
-            f"{path.name}: isolated extractor returned invalid output",
-            filename=path.name,
+            f"{filename_hint or path.name}: isolated extractor returned invalid output",
+            filename=filename_hint or path.name,
         )
     return result
 

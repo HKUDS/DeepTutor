@@ -52,7 +52,7 @@ class TurnCapability(ABC):
                 name="deep_solve",
                 description="Multi-agent problem solving.",
                 stages=["planning", "reasoning", "writing"],
-                tools_used=["rag", "web_search", "code_execution"],
+                tools_used=["rag", "web_search", "exec"],
             )
 
             async def run(self, context, stream):

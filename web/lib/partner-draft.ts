@@ -1,4 +1,5 @@
 import type { StreamEvent } from "@/features/chat/model/protocol";
+import { toolResultMetadata } from "@/lib/tool-event";
 
 /** Versioned payload emitted by the Chat engine's `propose_partner` tool. */
 export interface PartnerDraftData {
@@ -22,10 +23,7 @@ export function extractPartnerDraft(
   let latest: PartnerDraftData | null = null;
   for (const event of events) {
     if (event.type !== "tool_result") continue;
-    const metadata = (event.metadata ?? {}) as Record<string, unknown>;
-    const toolMetadata = metadata.tool_metadata;
-    if (!toolMetadata || typeof toolMetadata !== "object") continue;
-    const raw = (toolMetadata as Record<string, unknown>).partner_draft;
+    const raw = toolResultMetadata(event.metadata)?.partner_draft;
     if (!raw || typeof raw !== "object") continue;
     const payload = raw as Record<string, unknown>;
     const draftId = String(payload.draft_id ?? "").trim();

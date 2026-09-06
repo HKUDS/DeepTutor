@@ -63,6 +63,14 @@ import {
   extractMessageSegments,
   leadingTraceEvents,
 } from "@/components/chat/home/AskUserOptions";
+import { MasteryQuestionCard } from "@/components/chat/home/MasteryQuestionCard";
+import {
+  collectMasteryGrades,
+  collectMasterySkips,
+  extractMasteryQuestion,
+  type MasteryGradeResult,
+  type MasteryQuestion,
+} from "@/lib/mastery-question";
 import { SetupCredentialCard } from "@/components/chat/home/SetupCredentialCard";
 import { extractSetupCredential } from "@/lib/setup-signals";
 import { PartnerDraftCard } from "@/components/chat/home/PartnerDraftCard";
@@ -81,6 +89,7 @@ import {
   AssistantActivity,
   NestedTraceFlow,
 } from "@/features/chat/trace/TracePresentation";
+import type { MessageTraceMetadata } from "@/features/chat/trace/memory";
 import { agentGlyph } from "@/components/agents/agent-icons";
 import { useConnectedAgentKinds } from "@/hooks/useConnectedAgentKinds";
 import {
@@ -112,6 +121,7 @@ interface ChatMessageItem {
   content: string;
   capability?: string;
   events?: StreamEvent[];
+  trace?: MessageTraceMetadata;
   attachments?: MessageAttachment[];
   requestSnapshot?: MessageRequestSnapshot;
   parentMessageId?: number | null;
@@ -223,12 +233,12 @@ export function GeneratedFileCards({
     <div className="mt-3 flex flex-col gap-2">
       {files.map((a, i) => {
         const filename = a.filename || t("File");
-        const key = a.id || a.url || `gen-${i}`;
+        const key = a.workspace_item_id || a.id || a.url || `gen-${i}`;
         const mime = a.mime_type || "";
         const mediaSrc = imageSrcForAttachment(a);
+        const caption = a.caption?.trim() || "";
 
-        // Generated images / videos render inline (preview the moment they
-        // arrive); everything else stays a compact openable file card.
+        // Generated media renders inline; other MIME types use a file card.
         if (mime.startsWith("image/") && mediaSrc) {
           return (
             <button
@@ -245,8 +255,15 @@ export function GeneratedFileCards({
                 className="block max-h-[360px] w-full bg-[var(--background)] object-contain"
               />
               <span className="flex items-center justify-between gap-2 px-3 py-2">
-                <span className="min-w-0 truncate text-[12.5px] font-medium text-[var(--foreground)]">
-                  {humanizeFilename(filename)}
+                <span className="min-w-0">
+                  <span className="block truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                    {a.title || humanizeFilename(filename)}
+                  </span>
+                  {caption ? (
+                    <span className="block truncate text-[11px] text-[var(--muted-foreground)]">
+                      {caption}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="shrink-0 text-[11px] text-[var(--muted-foreground)] transition group-hover:text-[var(--foreground)]">
                   {t("Open")}
@@ -273,8 +290,15 @@ export function GeneratedFileCards({
                 onClick={onOpen ? () => onOpen(a) : undefined}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition hover:bg-[var(--muted)]/30"
               >
-                <span className="min-w-0 truncate text-[12.5px] font-medium text-[var(--foreground)]">
-                  {humanizeFilename(filename)}
+                <span className="min-w-0">
+                  <span className="block truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                    {a.title || humanizeFilename(filename)}
+                  </span>
+                  {caption ? (
+                    <span className="block truncate text-[11px] text-[var(--muted-foreground)]">
+                      {caption}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
                   {t("Open")}
@@ -299,10 +323,10 @@ export function GeneratedFileCards({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
-                {humanizeFilename(filename)}
+                {a.title || humanizeFilename(filename)}
               </span>
               <span className="block text-[11px] text-[var(--muted-foreground)]">
-                {spec.label}
+                {caption || spec.label}
                 {size ? ` · ${size}` : ""}
               </span>
             </span>
@@ -324,14 +348,35 @@ export const AssistantMessage = memo(function AssistantMessage({
   language,
   onConfirmOutline,
   onSubmitUserReply,
+  onAnswerMasteryQuestion,
+  onSkipMasteryQuestion,
   researchRequestSnapshot,
+  onTraceToggle,
+  masteryGrades,
+  masterySkips,
 }: {
-  msg: { content: string; capability?: string; events?: StreamEvent[] };
+  msg: {
+    id?: number;
+    content: string;
+    capability?: string;
+    events?: StreamEvent[];
+    trace?: MessageTraceMetadata;
+  };
   isStreaming?: boolean;
+  /**
+   * Every mastery verdict in the conversation, by question id. Collected once
+   * for the whole list because a question answered in the composer is graded a
+   * turn later than it was posed, and its card should still show the answer.
+   */
+  masteryGrades?: Map<string, MasteryGradeResult>;
+  /** Every question the learner dropped, by id — collected the same way and
+   *  for the same reason: the skip lands on a later turn than the card. */
+  masterySkips?: Set<string>;
   outlineStatus?: "editing" | "researching" | "done" | "failed";
   sessionId?: string | null;
   language?: string;
   researchRequestSnapshot?: MessageRequestSnapshot | null;
+  onTraceToggle?: (open: boolean) => void;
   onConfirmOutline?: (
     outline: Array<{ title: string; overview: string }>,
     topic: string,
@@ -353,7 +398,23 @@ export const AssistantMessage = memo(function AssistantMessage({
           text?: string;
           answers?: Array<{ questionId: string; text: string }>;
         },
-  ) => void;
+  ) => void | boolean | Promise<void | boolean>;
+  /**
+   * Answer a mastery question card. Unlike ``onSubmitUserReply`` this does
+   * NOT resume a paused turn — posing a mastery question ends its turn, so
+   * the answer starts the next one, exactly as typing it would. That is what
+   * keeps the learner free to answer, ask something else, or come back later.
+   */
+  onAnswerMasteryQuestion?: (answer: {
+    questionId: string;
+    text: string;
+  }) => void | boolean | Promise<void | boolean>;
+  /** Drop a question the learner does not want to answer. Same turn-starting
+   *  shape as answering it, because the engine holds one open question per
+   *  path: without this the tutor's next question is this same one again. */
+  onSkipMasteryQuestion?: (
+    questionId: string,
+  ) => void | boolean | Promise<void | boolean>;
 }) {
   const events = useMemo(() => msg.events ?? [], [msg.events]);
   const readingMaterialId = researchRequestSnapshot?.readingMaterialId;
@@ -414,10 +475,64 @@ export const AssistantMessage = memo(function AssistantMessage({
   // ended via the ``ask_user`` tool, this is the question the user is
   // expected to answer next. Render option chips below the message.
   const askUserPayload = useMemo(
-    () => extractAskUserPayload(msg.events),
+    () => extractAskUserPayload(msg.events, { streaming: isStreaming }),
+    [msg.events, isStreaming],
+  );
+  // A graded mastery question travels on the same pause channel as a
+  // clarifying one: the study card that renders it shows the objective, the
+  // attempt and the verdict, none of which the generic card has anywhere to
+  // put.
+  //
+  // Only the last one is read here, for the surfaces that pin a single card
+  // below the body. The default surface renders a card per segment instead —
+  // a turn resumes on this same message after every answer, so working one
+  // objective leaves a run of questions, and each card must show the question
+  // it actually asked.
+  const latestMasteryQuestion = useMemo(
+    () => extractMasteryQuestion(msg.events),
     [msg.events],
   );
-
+  // ``false`` — never a silent no-op — so a card with nowhere to send its
+  // answer reopens instead of spinning forever. See ``submitUserReply``.
+  const submitReply = useCallback(
+    (reply: {
+      text?: string;
+      answers?: Array<{ questionId: string; text: string }>;
+    }) => (onSubmitUserReply ? onSubmitUserReply(reply) : false),
+    [onSubmitUserReply],
+  );
+  // The card is answered by sending the next message, so "already answered"
+  // cannot come from a resolved pause any more — the turn that posed it is
+  // long over. The verdict is the durable signal, and it survives a reload.
+  const renderMasteryCard = useCallback(
+    (question: MasteryQuestion) => {
+      const grade = masteryGrades?.get(question.questionId) ?? null;
+      return (
+        <MasteryQuestionCard
+          question={question}
+          grade={grade}
+          answered={Boolean(grade)}
+          skipped={masterySkips?.has(question.questionId) ?? false}
+          submittedAnswer={grade?.learnerAnswer ?? ""}
+          onSubmit={({ text }) =>
+            onAnswerMasteryQuestion
+              ? onAnswerMasteryQuestion({
+                  questionId: question.questionId,
+                  text: String(text ?? ""),
+                })
+              : false
+          }
+          onSkip={onSkipMasteryQuestion}
+        />
+      );
+    },
+    [
+      masteryGrades,
+      masterySkips,
+      onAnswerMasteryQuestion,
+      onSkipMasteryQuestion,
+    ],
+  );
   // Set by ``request_credential`` when a configuration step needs a secret the
   // assistant must not handle itself.
   const setupCredential = useMemo(
@@ -460,32 +575,39 @@ export const AssistantMessage = memo(function AssistantMessage({
   );
 
   // Interleaved segments for the default chat surface — text emitted
-  // before the ask_user call renders above the card; text emitted by
-  // the resumed iteration renders below it. Only walked when this
-  // message will actually render through the default branch (the
-  // research / quiz / animator / visualize branches have their own
-  // layout and pin the card elsewhere).
-  const useInlineAskUserSegments =
+  // before the card renders above it; text emitted by the round that
+  // follows renders below. Only walked when this message will actually
+  // render through the default branch (the research / quiz / animator /
+  // visualize branches have their own layout and pin the card elsewhere).
+  const useInlineCardSegments =
     !outlinePreview &&
     !mathAnimatorResult &&
     !visualizeResult &&
     !(quizQuestions && quizQuestions.length > 0);
   const messageSegments = useMemo(
-    () => (useInlineAskUserSegments ? extractMessageSegments(msg.events) : []),
-    [useInlineAskUserSegments, msg.events],
+    () =>
+      useInlineCardSegments
+        ? extractMessageSegments(msg.events, msg.content, {
+            streaming: isStreaming,
+          })
+        : [],
+    [useInlineCardSegments, msg.events, msg.content, isStreaming],
   );
-  const hasInlineAskUser =
-    useInlineAskUserSegments &&
-    messageSegments.some((seg) => seg.kind === "ask_user");
+  // Either card kind: a clarifying ask_user, or a posed mastery question.
+  // Both interleave with the prose, and a message that has one lays itself
+  // out from the segments rather than from a single body string.
+  const hasInlineCards =
+    useInlineCardSegments &&
+    messageSegments.some(
+      (seg) => seg.kind === "ask_user" || seg.kind === "mastery_question",
+    );
   // The activity block is pinned to the top of the message, so it can only
   // show the rounds that ran BEFORE the first card. What the resumed rounds
   // reason about renders below the card they answer, in stream order.
   const headerTraceEvents = useMemo(
     () =>
-      hasInlineAskUser
-        ? leadingTraceEvents(events, messageSegments)
-        : undefined,
-    [hasInlineAskUser, messageSegments, events],
+      hasInlineCards ? leadingTraceEvents(events, messageSegments) : undefined,
+    [hasInlineCards, messageSegments, events],
   );
 
   const researchInProgress =
@@ -506,7 +628,24 @@ export const AssistantMessage = memo(function AssistantMessage({
         traceEvents={headerTraceEvents}
         isStreaming={isStreaming}
         content={msg.content}
+        // ``events`` is a preview of a persisted turn — the events marking
+        // where it began are not in it — so the header times the turn from
+        // this span instead of from what survived the preview.
+        traceBounds={msg.trace}
+        // The settled preview drops ``thinking``, which for a round that
+        // called no tools is the whole trace. Say that the server still holds
+        // it, so the header stays openable and the click can fetch it.
+        hasStoredTrace={Boolean(
+          msg.trace?.turn_id &&
+            (msg.trace?.truncated ||
+              (msg.trace?.total ?? 0) > (msg.events?.length ?? 0)),
+        )}
         className="mb-3"
+        onTraceToggle={
+          msg.id != null && msg.trace?.turn_id
+            ? (open) => onTraceToggle?.(open)
+            : undefined
+        }
       />
       {outlinePreview && outlinePreview.sub_topics.length > 0 ? (
         <>
@@ -521,10 +660,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           {askUserPayload ? (
             <AskUserOptions
               data={askUserPayload}
-              onSubmit={(reply) => {
-                if (!onSubmitUserReply) return;
-                onSubmitUserReply(reply);
-              }}
+              onSubmit={submitReply}
               collapsible={researchInProgress}
               defaultCollapsed={researchInProgress}
             />
@@ -545,6 +681,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           {showResearchBody ? (
             <AssistantResponse
               content={msg.content}
+              language={language}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -570,6 +707,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           {msg.content ? (
             <AssistantResponse
               content={msg.content}
+              language={language}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -583,16 +721,17 @@ export const AssistantMessage = memo(function AssistantMessage({
             language={language}
           />
         </>
-      ) : hasInlineAskUser ? (
-        // Default chat surface with one or more ask_user calls: render
-        // text and cards in the exact order they were streamed, so the
-        // pre-ask_user narration sits above the card and the resumed
-        // iteration's text sits below.
+      ) : hasInlineCards ? (
+        // Default chat surface with one or more cards: render text and
+        // cards in the exact order they were streamed, so the narration
+        // that introduced a card sits above it and whatever the next round
+        // said sits below.
         messageSegments.map((seg) =>
           seg.kind === "text" ? (
             <AssistantResponse
               key={seg.key}
               content={seg.text}
+              language={language}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -606,38 +745,38 @@ export const AssistantMessage = memo(function AssistantMessage({
               events={seg.events}
               isStreaming={isStreaming}
             />
+          ) : seg.kind === "mastery_question" ? (
+            <div key={seg.key}>{renderMasteryCard(seg.question)}</div>
           ) : (
             <AskUserOptions
               key={seg.key}
               data={seg.data}
-              onSubmit={(reply) => {
-                if (!onSubmitUserReply) return;
-                onSubmitUserReply(reply);
-              }}
+              onSubmit={submitReply}
             />
           ),
         )
       ) : (
         <AssistantResponse
           content={body}
+          language={language}
           isStreaming={isStreaming}
           readingMaterialId={readingMaterialId}
           readingMaterialRevision={readingMaterialRevision}
           events={events}
         />
       )}
-      {/* Non-default branches (quiz, math animator, visualize) keep
-          ask_user below the body. The default branch inlines the card
-          via ``messageSegments``; the research branch renders its own
-          card above the outline editor — both skip this fallback. */}
-      {!outlinePreview && !hasInlineAskUser && askUserPayload ? (
-        <AskUserOptions
-          data={askUserPayload}
-          onSubmit={(reply) => {
-            if (!onSubmitUserReply) return;
-            onSubmitUserReply(reply);
-          }}
-        />
+      {/* Non-default branches (quiz, math animator, visualize) keep the
+          card below the body. The default branch inlines it via
+          ``messageSegments``; the research branch renders its own card
+          above the outline editor — both skip this fallback. */}
+      {!outlinePreview && !hasInlineCards && latestMasteryQuestion
+        ? renderMasteryCard(latestMasteryQuestion)
+        : null}
+      {!outlinePreview &&
+      !hasInlineCards &&
+      !latestMasteryQuestion &&
+      askUserPayload ? (
+        <AskUserOptions data={askUserPayload} onSubmit={submitReply} />
       ) : null}
       {/* Credential hand-off sits below whichever body branch rendered: it
           supplements the answer ("here's where to paste the key") rather than
@@ -1101,53 +1240,43 @@ export const UserMessage = memo(function UserMessage({
           label: name,
         };
       }),
-    ...(snap?.bookReferences ?? []).map(
-      (ref): ContextTreeItem => ({
-        key: `book-${ref.book_id}`,
-        icon: BookOpen,
-        kind: t("Book"),
-        label: `${ref.page_ids.length} ${t("chapters")}`,
-      }),
-    ),
-    ...(snap?.readingReferences ?? []).map(
-      (ref): ContextTreeItem => ({
-        key: `reading-${ref.material_id}-r${ref.revision}`,
-        icon: BookMarked,
-        kind: t("Reading"),
-        label: `${ref.locators.length} ${t("reading sections")}`,
-      }),
-    ),
-    ...(snap?.notebookReferences ?? []).map(
-      (ref): ContextTreeItem => ({
-        key: `nb-${ref.notebook_id}`,
-        icon: BookOpen,
-        kind: t("Notebook"),
-        label: `${ref.record_ids.length} ${t("records")}`,
-      }),
-    ),
+    ...(snap?.bookReferences ?? []).map((ref): ContextTreeItem => ({
+      key: `book-${ref.book_id}`,
+      icon: BookOpen,
+      kind: t("Book"),
+      label: `${ref.page_ids.length} ${t("chapters")}`,
+    })),
+    ...(snap?.readingReferences ?? []).map((ref): ContextTreeItem => ({
+      key: `reading-${ref.material_id}-r${ref.revision}`,
+      icon: BookMarked,
+      kind: t("Reading"),
+      label: `${ref.locators.length} ${t("reading sections")}`,
+    })),
+    ...(snap?.notebookReferences ?? []).map((ref): ContextTreeItem => ({
+      key: `nb-${ref.notebook_id}`,
+      icon: BookOpen,
+      kind: t("Notebook"),
+      label: `${ref.record_ids.length} ${t("records")}`,
+    })),
     // Imported agent conversations are folded into the same history_references
     // payload but carry the `imported_` id prefix — split them back out so they
     // read as "My Agents" rather than "Chat History" (mirrors the composer).
     ...(snap?.historyReferences ?? [])
       .filter((sid) => !sid.startsWith("imported_"))
-      .map(
-        (sid): ContextTreeItem => ({
-          key: `hist-${sid}`,
-          icon: MessageSquare,
-          kind: t("Chat History"),
-          label: "",
-        }),
-      ),
+      .map((sid): ContextTreeItem => ({
+        key: `hist-${sid}`,
+        icon: MessageSquare,
+        kind: t("Chat History"),
+        label: "",
+      })),
     ...(snap?.historyReferences ?? [])
       .filter((sid) => sid.startsWith("imported_"))
-      .map(
-        (sid): ContextTreeItem => ({
-          key: `agent-${sid}`,
-          icon: Bot,
-          kind: t("My Agents"),
-          label: "",
-        }),
-      ),
+      .map((sid): ContextTreeItem => ({
+        key: `agent-${sid}`,
+        icon: Bot,
+        kind: t("My Agents"),
+        label: "",
+      })),
     ...(snap?.questionNotebookReferences?.length
       ? [
           {
@@ -1168,14 +1297,12 @@ export const UserMessage = memo(function UserMessage({
           } satisfies ContextTreeItem,
         ]
       : []),
-    ...(snap?.memoryReferences ?? []).map(
-      (file): ContextTreeItem => ({
-        key: `mem-${file}`,
-        icon: Brain,
-        kind: t("Memory"),
-        label: file === "summary" ? t("Summary") : t("Profile"),
-      }),
-    ),
+    ...(snap?.memoryReferences ?? []).map((file): ContextTreeItem => ({
+      key: `mem-${file}`,
+      icon: Brain,
+      kind: t("Memory"),
+      label: file === "summary" ? t("Summary") : t("Profile"),
+    })),
   ];
 
   return (
@@ -1303,7 +1430,11 @@ export const ChatMessageList = memo(function ChatMessageList({
   onSwitchBranch,
   availableKbNames,
   onSubmitUserReply,
+  onAnswerMasteryQuestion,
+  onSkipMasteryQuestion,
   showModeBadge = true,
+  onLoadMessageTrace,
+  onReleaseMessageTrace,
 }: {
   messages: ChatMessageItem[];
   isStreaming: boolean;
@@ -1338,12 +1469,27 @@ export const ChatMessageList = memo(function ChatMessageList({
           text?: string;
           answers?: Array<{ questionId: string; text: string }>;
         },
-  ) => void;
+  ) => void | boolean | Promise<void | boolean>;
+  /**
+   * Answer a mastery question card by starting the next turn (see
+   * ``AssistantMessage``). Separate from ``onSubmitUserReply`` because these
+   * cards outlive their turn by design.
+   */
+  onAnswerMasteryQuestion?: (answer: {
+    questionId: string;
+    text: string;
+  }) => void | boolean | Promise<void | boolean>;
+  /** Drop a question instead of answering it; also starts a turn. */
+  onSkipMasteryQuestion?: (
+    questionId: string,
+  ) => void | boolean | Promise<void | boolean>;
   /** Names of KBs confirmed to exist. Omitted when the KB list is unavailable. */
   availableKbNames?: Set<string>;
   /** Label each user bubble with its capability. Off on surfaces that run a
    *  single capability and already name it in their own chrome. */
   showModeBadge?: boolean;
+  onLoadMessageTrace?: (messageId: number) => Promise<void>;
+  onReleaseMessageTrace?: (messageId: number) => void;
 }) {
   const { t } = useTranslation();
   // Visible path: when no branching has happened the result is identical
@@ -1408,6 +1554,17 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
     return { mergedByParent: map, followupIndices };
   }, [visibleMessages]);
+
+  // One pass for the whole conversation: a question posed in one turn can be
+  // graded in a later one, and the card that asked it shows the verdict.
+  const masteryGrades = useMemo(
+    () => collectMasteryGrades(visibleMessages),
+    [visibleMessages],
+  );
+  const masterySkips = useMemo(
+    () => collectMasterySkips(visibleMessages),
+    [visibleMessages],
+  );
 
   const outlineStatusByIndex = useMemo(() => {
     const map = new Map<
@@ -1563,8 +1720,7 @@ export const ChatMessageList = memo(function ChatMessageList({
           const resultEv = msg.events?.find((e) => e.type === "result");
           if (!resultEv) return null;
           const meta = resultEv.metadata?.metadata as
-            | Record<string, unknown>
-            | undefined;
+            Record<string, unknown> | undefined;
           const cs = meta?.cost_summary as
             | {
                 total_cost_usd?: number;
@@ -1596,9 +1752,21 @@ export const ChatMessageList = memo(function ChatMessageList({
                 language={language}
                 onConfirmOutline={onConfirmOutline}
                 onSubmitUserReply={onSubmitUserReply}
+                onAnswerMasteryQuestion={onAnswerMasteryQuestion}
+                onSkipMasteryQuestion={onSkipMasteryQuestion}
                 researchRequestSnapshot={
                   pairedUserMessage?.requestSnapshot ?? null
                 }
+                onTraceToggle={(open) => {
+                  if (msg.id == null) return;
+                  if (open) {
+                    void onLoadMessageTrace?.(msg.id);
+                  } else {
+                    onReleaseMessageTrace?.(msg.id);
+                  }
+                }}
+                masteryGrades={masteryGrades}
+                masterySkips={masterySkips}
               />
             </InlineFileCardProvider>
             <GeneratedFileCards

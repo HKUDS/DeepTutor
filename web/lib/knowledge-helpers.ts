@@ -91,13 +91,68 @@ export interface KnowledgeIndexFailure {
 }
 
 export interface IndexVersion {
+  version?: string;
   signature?: string;
+  provider?: string;
+  state?: string;
   model?: string;
   dimension?: number;
   binding?: string;
   created_at?: string;
   ready?: boolean;
   legacy?: boolean;
+  failure_summary?: string;
+  indexing_policy?: LightRagIndexingPolicy;
+}
+
+export interface LightRagIndexingPolicy {
+  policy: "pending_pinned" | "pinned" | "legacy_unpinned" | string;
+  selection?: {
+    profile_id: string;
+    model_id: string;
+    reasoning_effort?: string;
+  };
+  descriptor?: {
+    model?: string;
+    binding?: string;
+    provider_mode?: string;
+    reasoning_effort?: string | null;
+  };
+  fingerprint?: string | null;
+  vision_available?: boolean;
+  vlm_used?: boolean;
+}
+
+export type LightRagVersionDisplayState =
+  | "published"
+  | "building"
+  | "failed"
+  | "legacy"
+  | "inactive";
+
+export function currentLightRagBuildCandidate(
+  versions: IndexVersion[],
+  rebuildActive: boolean,
+): IndexVersion | undefined {
+  if (!rebuildActive) return undefined;
+  return versions.find((version) => version.ready !== true);
+}
+
+export function lightRagVersionDisplayState(
+  version: IndexVersion,
+  options: {
+    published: boolean;
+    rebuildActive: boolean;
+    kbError: boolean;
+    legacy: boolean;
+  },
+): LightRagVersionDisplayState {
+  if (options.published) return "published";
+  if (options.legacy || version.legacy) return "legacy";
+  if (version.ready) return "inactive";
+  if (options.rebuildActive) return "building";
+  if (options.kbError || version.failure_summary) return "failed";
+  return "inactive";
 }
 
 export interface KnowledgeBase {
@@ -127,6 +182,7 @@ export interface KnowledgeBase {
     agent_kind?: string;
     /** Bound partner id when agent_kind === "partner". */
     partner_id?: string;
+    indexing_policy?: LightRagIndexingPolicy;
   };
   progress?: ProgressInfo;
   statistics?: {
@@ -150,10 +206,7 @@ export interface KnowledgeBase {
 }
 
 export type ProviderConnectionStatus =
-  | "ready"
-  | "needs_key"
-  | "needs_setup"
-  | "unavailable";
+  "ready" | "needs_key" | "needs_setup" | "unavailable";
 
 export const providerUsesEmbeddingMetadata = (provider?: string): boolean =>
   provider !== "pageindex" && provider !== "pageindex-oss";
@@ -364,10 +417,28 @@ export const kbNeedsReindex = (kb: KnowledgeBase): boolean =>
   Boolean(kb.statistics?.needs_reindex) ||
   resolveKbStatus(kb) === "needs_reindex";
 
+export const kbRequiresLightRagRebuildBeforeAppend = (
+  kb: KnowledgeBase,
+): boolean =>
+  kbProvider(kb) === "lightrag" &&
+  kb.metadata?.indexing_policy?.policy === "legacy_unpinned";
+
 export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
-  resolveKbStatus(kb) === "ready" && !kbNeedsReindex(kb);
+  resolveKbStatus(kb) === "ready" &&
+  !kbNeedsReindex(kb) &&
+  !kbRequiresLightRagRebuildBeforeAppend(kb);
+
+export const kbCanUploadDocuments = (
+  kb: KnowledgeBase,
+  indexingActive: boolean,
+): boolean =>
+  kbIsUploadable(kb) ||
+  (resolveKbStatus(kb) === "error" &&
+    !indexingActive &&
+    !kbRequiresLightRagRebuildBeforeAppend(kb));
 
 export const kbCanReindex = (kb: KnowledgeBase): boolean => {
+  if (kb.read_only) return false;
   const status = resolveKbStatus(kb);
   const hasSourceFiles =
     typeof kb.statistics?.raw_documents === "number"
@@ -375,6 +446,7 @@ export const kbCanReindex = (kb: KnowledgeBase): boolean => {
       : true;
   if (!hasSourceFiles) return false;
   if (status === "error") return true;
+  if (kbProvider(kb) === "lightrag") return !kbHasLiveProgress(kb);
   return (
     Boolean(kb.statistics?.needs_reindex) ||
     kb.statistics?.active_match === false

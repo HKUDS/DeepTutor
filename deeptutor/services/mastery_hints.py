@@ -40,6 +40,7 @@ import logging
 import time
 from typing import Any
 
+from deeptutor.services.prompt.language import is_chinese as _is_zh
 from deeptutor.services.singleflight_cache import AsyncSingleFlightTTLCache
 
 logger = logging.getLogger(__name__)
@@ -232,10 +233,6 @@ _SYSTEM_ZH = """你要写出学习者此刻**可以问导师的一个问题**。
 好："如果跳过反思那一步，会在哪里出问题？"
 差："能讲讲路由吗？"              <- 要的是一段讲解，没点到任何边界
 差："路由是按意图选工具，对吧？"  <- 把答案说出来了"""
-
-
-def _is_zh(language: str) -> bool:
-    return str(language or "en").lower().startswith("zh")
 
 
 def _render(material: _Material, zh: bool) -> str:

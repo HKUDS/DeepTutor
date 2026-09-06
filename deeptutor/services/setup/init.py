@@ -36,7 +36,7 @@ DEFAULT_MAIN_SETTINGS = {
         "console_output": True,
     },
     "tools": {
-        "run_code": {
+        "exec": {
             "allowed_roots": ["./data/user"],
         },
         "web_search": {
@@ -135,7 +135,7 @@ def init_user_directories(project_root: Path | None = None) -> None:
             ├── deep_question/
             ├── deep_research/
             ├── math_animator/
-            └── _detached_code_execution/
+            └── _detached_exec/
 
     Args:
         project_root: Project root directory (ignored, kept for API compatibility)

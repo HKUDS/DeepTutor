@@ -32,6 +32,7 @@ import re
 import time
 from typing import Any
 
+from deeptutor.services.prompt.language import is_chinese as _is_zh
 from deeptutor.services.singleflight_cache import AsyncSingleFlightTTLCache
 
 logger = logging.getLogger(__name__)
@@ -156,10 +157,6 @@ _SYSTEM_ZH = """你要预测用户接下来最可能在聊天框里打出的**�
 差："你可以问问重试上限"          <- 描述了一句话，而不是把它写出来
 差："讲得真好！"                  <- 不值得打出来，也没往下接
 差："这是更随意一点的版本：……"    <- 这是助手的口吻，不是用户的"""
-
-
-def _is_zh(language: str) -> bool:
-    return str(language or "en").lower().startswith("zh")
 
 
 def _render(material: _Material, zh: bool) -> str:

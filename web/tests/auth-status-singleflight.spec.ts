@@ -52,4 +52,3 @@ describe("fetchAuthStatus single-flight cache", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
-

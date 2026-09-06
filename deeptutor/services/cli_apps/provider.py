@@ -214,6 +214,14 @@ class CliAppTool(BaseTool):
         user_id = str(kwargs.get("_sandbox_user_id") or "anonymous")
         workdir = str(kwargs.get("_sandbox_workdir") or "")
         mounts = tuple(kwargs.get("_sandbox_mounts") or ())
+        sandbox_env = dict(kwargs.get("_sandbox_env") or {})
+        workspace_id = str(kwargs.get("_workspace_id") or "")
+        if workdir:
+            from deeptutor.services.sandbox.artifacts import snapshot_public_artifact_files
+
+            artifact_snapshot = snapshot_public_artifact_files(workdir)
+        else:
+            artifact_snapshot = {}
 
         result = await _with_heartbeat(
             run_app(
@@ -222,40 +230,74 @@ class CliAppTool(BaseTool):
                 user_id=user_id,
                 workdir=workdir,
                 mounts=mounts,
+                env=sandbox_env,
                 timeout_s=kwargs.get("timeout_s"),
             ),
             event_sink=event_sink,
             app_id=self._app.id,
         )
 
-        content = result.render(MAX_OUTPUT_CHARS)
+        from deeptutor.services.workspace.execution import logicalize_workspace_text
+
+        workspace_root = str(kwargs.get("_workspace_root") or "")
+        internal_root = str(kwargs.get("_sandbox_internal_root") or "")
+
+        def _logicalize(value: str) -> str:
+            rendered = logicalize_workspace_text(value, workspace_root)
+            return logicalize_workspace_text(rendered, internal_root)
+
+        content = _logicalize(result.render(MAX_OUTPUT_CHARS))
         sources: list[dict[str, Any]] = []
         artifact_rows: list[dict[str, Any]] = []
+        artifact_total_count = 0
+        artifacts_truncated = False
         if workdir:
             # Same treatment as exec: a file the app wrote is the point of the
             # call as often as its stdout is, and it needs a link to be usable.
             from deeptutor.services.sandbox.artifacts import (
-                collect_public_artifacts,
+                collect_public_artifact_batch,
                 render_artifacts_for_tool,
             )
 
-            artifacts = collect_public_artifacts(workdir)
+            batch = (
+                collect_public_artifact_batch(
+                    workdir,
+                    workspace_id=workspace_id,
+                    changed_since=artifact_snapshot,
+                )
+                if workspace_id
+                else collect_public_artifact_batch(
+                    workdir,
+                    changed_since=artifact_snapshot,
+                )
+            )
+            artifacts = list(batch.artifacts)
             artifact_rows = [artifact.to_dict() for artifact in artifacts]
-            rendered = render_artifacts_for_tool(artifacts)
+            artifact_total_count = batch.total_count
+            artifacts_truncated = batch.truncated
+            rendered = render_artifacts_for_tool(
+                artifacts,
+                already_presented=not bool(workspace_id),
+                total_count=batch.total_count,
+                empty_message="No new or changed artifacts were produced by this call.",
+            )
             if rendered:
                 content = f"{content}\n\n{rendered}"
-            sources = [
-                {
-                    "type": "artifact",
-                    "filename": row["filename"],
-                    "url": row["url"],
-                    "path": row["path"],
-                    "mime_type": row["mime_type"],
-                    "size_bytes": row["size_bytes"],
-                }
-                for row in artifact_rows
-            ]
-
+            sources = (
+                []
+                if workspace_id
+                else [
+                    {
+                        "type": "artifact",
+                        "filename": row["filename"],
+                        "url": row["url"],
+                        "path": row["path"],
+                        "mime_type": row["mime_type"],
+                        "size_bytes": row["size_bytes"],
+                    }
+                    for row in artifact_rows
+                ]
+            )
         return ToolResult(
             content=content,
             # A non-zero exit is the *app's* answer, not a tool failure: "no
@@ -268,8 +310,11 @@ class CliAppTool(BaseTool):
                 "cli_argv": args,
                 "exit_code": result.exit_code,
                 "timed_out": result.timed_out,
-                "sandbox_error": result.error,
+                "sandbox_error": _logicalize(result.error),
                 "artifacts": artifact_rows,
+                "workspace_items": [],
+                "artifact_total_count": artifact_total_count,
+                "artifacts_truncated": artifacts_truncated,
             },
         )
 

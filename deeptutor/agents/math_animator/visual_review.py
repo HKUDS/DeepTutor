@@ -19,11 +19,16 @@ class VisualReviewService:
         self,
         turn_id: str,
         progress_callback: Callable[[str, bool], Awaitable[None]] | None = None,
+        *,
+        output_dir: str | Path | None = None,
     ) -> None:
         self.turn_id = turn_id
         self.progress_callback = progress_callback
-        path_service = get_path_service()
-        self.base_dir = path_service.get_agent_dir("math_animator") / turn_id
+        self.base_dir = (
+            Path(output_dir).resolve()
+            if output_dir
+            else get_path_service().get_agent_dir("math_animator") / turn_id
+        )
         self.artifacts_dir = self.base_dir / "artifacts"
         self.review_dir = self.base_dir / "review"
         self.review_dir.mkdir(parents=True, exist_ok=True)

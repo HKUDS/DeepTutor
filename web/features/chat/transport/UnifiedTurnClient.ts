@@ -104,6 +104,11 @@ export class UnifiedTurnClient {
     this.runtime.send(command(message));
   }
 
+  /** Send, and resolve with whether the server accepted the command. */
+  sendAwaitingAck(message: OutboundTurnCommand): Promise<boolean> {
+    return this.runtime.sendAwaitingAck(command(message));
+  }
+
   disconnect(): void {
     this.runtime.stop();
     this.runtime.setResumeCursor(null, 0);

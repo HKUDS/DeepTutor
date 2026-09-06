@@ -19,8 +19,14 @@ A `.docx` is a ZIP of XML parts. Body text lives in `word/document.xml`. Two tie
 - **Default — `python-docx`** (preinstalled): create, read, and simple edits. Use for almost everything.
 - **Advanced — raw OOXML via `zipfile`**: only for what python-docx cannot express — tracked changes (redlines), comments, and exact-fidelity edits that must preserve every untouched byte. See [Raw OOXML](#raw-ooxml-advanced).
 
-Work in the current directory (uploaded files land here). Write output to a new filename; don't overwrite the source.
-Run Python through `code_execution`, save output in the current directory, and refer to the document exactly as the Generated artifacts list names it. Use `exec` only for a genuinely shell-only command; never put this source in `python -c` or a heredoc.
+## Runtime
+
+Use `exec` with complete Python source (`language: python`). `python-docx` is
+preinstalled. Prefer creating, saving, reopening, and validating the deliverable
+in one call; later calls can revise the same relative filename. Follow the
+turn's **User workspace** instructions for locating inputs, output boundaries,
+and presenting the finished file. When editing, write a new output unless the
+user explicitly requested an authorized replacement.
 
 ## Read / extract
 
@@ -72,6 +78,13 @@ for k, v in [("Revenue", "1.2M"), ("Growth", "15%")]:
 doc.add_picture("chart.png", width=Inches(5))  # image, scaled to width
 doc.add_page_break()
 doc.save("out.docx")
+
+# Validate immediately; later exec calls can also reopen this relative path.
+check = Document("out.docx")
+assert check.paragraphs, "generated DOCX has no paragraphs"
+import zipfile
+with zipfile.ZipFile("out.docx") as package:
+    assert package.testzip() is None, "generated DOCX has a corrupt ZIP member"
 ```
 
 Rules:
@@ -135,14 +148,26 @@ Gotcha: Word splits text across runs, so a phrase may not live in one `run.text`
 
 ## .doc → .docx and PDF export (LibreOffice, optional)
 
-Legacy binary `.doc` can't be read by python-docx, and there is no built-in PDF export. Both need LibreOffice, which is often **absent** — probe first and degrade with a clear note if missing:
+Legacy binary `.doc` can't be read by python-docx, and there is no built-in PDF
+export. Both need LibreOffice, which is optional and often **absent**. Only use
+it from `exec`; locate it with `shutil.which("soffice")`, keep its
+profile/conversion directory relative to the stable working directory, and clean
+conversion intermediates when finished. Never search for a desktop installation
+by absolute path and never write conversion files to `/tmp`. If it is absent,
+degrade with a clear note.
 
-```bash
-command -v soffice >/dev/null && soffice --headless --convert-to docx legacy.doc || echo "soffice unavailable — cannot convert .doc; ask user for a .docx"
-command -v soffice >/dev/null && soffice --headless --convert-to pdf out.docx   || echo "soffice unavailable — cannot export PDF"
+```python
+import shutil
+
+soffice = shutil.which("soffice")
+if soffice is None:
+    print("soffice unavailable — ask the user for .docx or omit PDF export")
+# If present, invoke it with subprocess.run([...], check=True) here, using only
+# relative paths below this run directory, then validate the result immediately.
 ```
 
-Network egress is off — never `pip install` or download. If a needed tool is absent, say so and stop, don't improvise.
+Never fetch or install authoring dependencies during a document task. If a
+declared runtime dependency is absent, report an incomplete deployment and stop.
 
 ## Raw OOXML (advanced)
 
@@ -203,4 +228,6 @@ d = Document("out.docx")
 print(len(d.paragraphs), "paragraphs OK")
 ```
 
-For raw-OOXML edits also run `python -c "import zipfile; zipfile.ZipFile('out.docx').testzip()"` and well-formedness-check each edited XML part with `lxml.etree.parse`.
+For raw-OOXML edits, run `zipfile.ZipFile('out.docx').testzip()` and
+well-formedness-check each edited XML part with `lxml.etree.parse` in the same
+`exec` Python call that saves `out.docx`.

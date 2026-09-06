@@ -1,6 +1,8 @@
 import type {
   BookReference,
   LLMSelection,
+  MasteryCardAnswer,
+  MasteryCardSkip,
   MemoryReferences,
   NotebookReference,
   OutgoingAttachment,
@@ -31,7 +33,10 @@ export interface StartTurnInput {
   llmSelection?: LLMSelection | null;
   workspaceMode?: string | null;
   masteryPathId?: string | null;
+  masterySessionMode?: string | null;
   masteryPathLeaseManaged?: boolean;
+  masteryAnswer?: MasteryCardAnswer | null;
+  masterySkip?: MasteryCardSkip | null;
   readingMaterialId?: string | null;
   readingMaterialRevision?: number | null;
   readingWorkspaceId?: string | null;
