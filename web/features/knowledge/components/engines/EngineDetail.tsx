@@ -1229,6 +1229,7 @@ export function LightRagModelsForm({
       <LightRagRoleModelsEditor
         models={roleModels}
         options={catalog.options}
+        initialMaxAsync={form.llm_model_max_async}
         loading={catalog.loading}
         error={catalog.error}
         disabled={saving}

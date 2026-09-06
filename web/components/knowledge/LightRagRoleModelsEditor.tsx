@@ -75,8 +75,10 @@ export function roleModelsValidationError(
       return "The selected VLM model does not support image inputs.";
     }
     if (
-      value.reasoning_effort &&
-      !option.supported_reasoning_efforts?.includes(value.reasoning_effort)
+      effective.reasoning_effort &&
+      !option.supported_reasoning_efforts?.includes(
+        effective.reasoning_effort,
+      )
     ) {
       return "The selected reasoning effort is no longer supported.";
     }
@@ -103,6 +105,7 @@ export function resolvedRole(
 export default function LightRagRoleModelsEditor({
   models,
   options,
+  initialMaxAsync,
   loading,
   error,
   disabled,
@@ -110,6 +113,7 @@ export default function LightRagRoleModelsEditor({
 }: {
   models: LightRagRoleModels | null;
   options: LLMOption[];
+  initialMaxAsync?: number;
   loading: boolean;
   error: boolean;
   disabled?: boolean;
@@ -134,7 +138,11 @@ export default function LightRagRoleModelsEditor({
           disabled={disabled}
           onChange={(base) => {
             if (base)
-              onChange(models ? { ...models, base } : newRoleModels(base));
+              onChange(
+                models
+                  ? { ...models, base }
+                  : newRoleModels(base, false, initialMaxAsync),
+              );
           }}
         />
         <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">

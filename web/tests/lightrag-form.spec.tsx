@@ -12,6 +12,8 @@ import { LightRagModelsForm } from "@/features/knowledge/components/engines/Engi
 const fixture = vi.hoisted(() => ({
   version: 2,
   maxAsync: 4,
+  profileId: "",
+  modelId: "",
   save: vi.fn(),
 }));
 vi.mock("react-i18next", () => ({
@@ -48,8 +50,8 @@ vi.mock("@/features/knowledge/api/engines", async (original) => ({
   ...(await original<typeof import("@/features/knowledge/api/engines")>()),
   getLightRagConfig: async () => ({
     version: fixture.version,
-    llm_profile_id: "",
-    llm_model_id: "",
+    llm_profile_id: fixture.profileId,
+    llm_model_id: fixture.modelId,
     top_k: 60,
     response_type: "Multiple Paragraphs",
     max_concurrent_files: 1,
@@ -62,7 +64,10 @@ vi.mock("@/features/knowledge/api/engines", async (original) => ({
   },
 }));
 beforeEach(() => {
+  fixture.version = 2;
   fixture.maxAsync = 4;
+  fixture.profileId = "";
+  fixture.modelId = "";
   fixture.save.mockClear();
 });
 
@@ -94,6 +99,25 @@ it("preserves the legacy base concurrency when creating role settings", async ()
   fireEvent.click(
     await screen.findByRole("button", { name: "Save changes" }),
   );
+  await waitFor(() => expect(fixture.save).toHaveBeenCalledOnce());
+  const roles = fixture.save.mock.calls[0][0].role_models;
+  expect(roles.extract.max_async).toBe(8);
+  expect(roles.keyword.max_async).toBe(8);
+  expect(roles.query.max_async).toBe(8);
+  expect(roles.vlm.max_async).toBe(8);
+});
+
+it("preserves legacy concurrency after replacing a missing base model", async () => {
+  fixture.version = 1;
+  fixture.maxAsync = 8;
+  fixture.profileId = "missing";
+  fixture.modelId = "missing";
+  render(<LightRagModelsForm onChanged={vi.fn()} onError={vi.fn()} />);
+  fireEvent.change(
+    await screen.findByRole("combobox", { name: "LightRAG base model" }),
+    { target: { value: "vision:large" } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(fixture.save).toHaveBeenCalledOnce());
   const roles = fixture.save.mock.calls[0][0].role_models;
   expect(roles.extract.max_async).toBe(8);

@@ -98,6 +98,13 @@ describe("LightRAG role editor", () => {
     expect(roleModelsValidationError(invalidLimit, options)).toBe(
       "Concurrency and timeout values must stay within the displayed limits.",
     );
+    const invalidBaseReasoning = newRoleModels({
+      ...textModel,
+      reasoning_effort: "high",
+    });
+    expect(roleModelsValidationError(invalidBaseReasoning, options)).toBe(
+      "The selected reasoning effort is no longer supported.",
+    );
   });
   it("preserves explicit none and limits when the base model changes", () => {
     render(<Editor />);
