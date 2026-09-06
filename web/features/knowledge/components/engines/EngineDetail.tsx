@@ -114,15 +114,14 @@ const MODE_DESCRIPTIONS: Record<string, string> = {
 };
 
 // Model kinds each engine needs (for the in-place pickers). "vision" isn't a
-// catalog service — it rides on the active chat model — so LightRAG only lists
-// llm + embedding and shows a vision note under the chat picker. LightRAG Server
-// owns its own models on the remote instance, so it needs none here.
+// catalog service — it rides on the active chat model. LightRAG owns its role
+// models separately and only uses the shared embedding selection here.
 const ENGINE_MODEL_KINDS: Record<string, ("llm" | "embedding")[]> = {
   llamaindex: ["embedding"],
   pageindex: [],
   "pageindex-oss": ["llm"],
   graphrag: ["llm", "embedding"],
-  lightrag: ["llm", "embedding"],
+  lightrag: ["embedding"],
   "lightrag-server": [],
   weknora: [],
 };
@@ -1058,6 +1057,103 @@ export function LightRagForm({
   onError: (message: string) => void;
 }) {
   const { t } = useTranslation();
+  const auth = useAuthStatus();
+  const canEdit = auth.statusAvailable && (!auth.enabled || auth.isAdmin);
+  const { form, setLoaded, setForm, saving, setSaving, dirty, patch } =
+    useEngineForm<LightRagConfig>(
+      () => getLightRagConfig({ force: true }),
+      onError,
+    );
+
+  if (!form) return <FormSkeleton />;
+  const save = async () => {
+    setSaving(true);
+    try {
+      const next = await updateLightRagConfig({
+        top_k: form.top_k,
+        response_type: form.response_type,
+        max_concurrent_files: form.max_concurrent_files,
+        entity_extract_max_gleaning: form.entity_extract_max_gleaning,
+      });
+      setLoaded(next);
+      setForm(next);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <fieldset
+      disabled={!canEdit || saving}
+      className="space-y-5 rounded-2xl border border-[var(--border)] p-4"
+    >
+      {!auth.loading && !canEdit && (
+        <p className="text-xs text-[var(--muted-foreground)]">
+          {t("Only administrators can change shared LightRAG engine settings.")}
+        </p>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <NumberField
+          label={t("Results per query")}
+          value={form.top_k}
+          min={1}
+          max={200}
+          onChange={(v) => patch({ top_k: v })}
+        />
+        <ResponseTypeSelect
+          value={form.response_type}
+          onChange={(v) => patch({ response_type: v })}
+        />
+      </div>
+
+      {/* Indexing knobs are a separate axis from the two above: they shape how
+          a knowledge base is built, so changing them only affects the next
+          build — the divider and note keep that from surprising anyone. */}
+      <div className="space-y-4 border-t border-[var(--border)] pt-4">
+        <div className="space-y-0.5">
+          <div className="text-[12px] font-medium text-[var(--foreground)]">
+            {t("Indexing")}
+          </div>
+          <div className="text-[11px] text-[var(--muted-foreground)]">
+            {t("Applies the next time a knowledge base is built or rebuilt.")}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <NumberField
+            label={t("Files in parallel")}
+            hint={t("Higher finishes sooner but uses more memory")}
+            value={form.max_concurrent_files}
+            min={1}
+            max={16}
+            onChange={(v) => patch({ max_concurrent_files: v })}
+          />
+          <NumberField
+            label={t("Extra extraction passes")}
+            hint={t("Recovers missed entities; each pass costs another call")}
+            value={form.entity_extract_max_gleaning}
+            min={0}
+            max={5}
+            onChange={(v) => patch({ entity_extract_max_gleaning: v })}
+          />
+        </div>
+      </div>
+
+      <SaveButton dirty={dirty} saving={saving} onSave={() => void save()} />
+    </fieldset>
+  );
+}
+
+export function LightRagModelsForm({
+  onChanged,
+  onError,
+}: {
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const { t } = useTranslation();
   const catalog = useLLMOptions(getLightRagModelOptions);
   const auth = useAuthStatus();
   const canEdit = auth.statusAvailable && (!auth.enabled || auth.isAdmin);
@@ -1094,14 +1190,7 @@ export function LightRagForm({
     }
     setSaving(true);
     try {
-      const next = await updateLightRagConfig({
-        top_k: form.top_k,
-        response_type: form.response_type,
-        max_concurrent_files: form.max_concurrent_files,
-        llm_model_max_async: form.llm_model_max_async,
-        entity_extract_max_gleaning: form.entity_extract_max_gleaning,
-        role_models: roleModels ?? undefined,
-      });
+      const next = await updateLightRagConfig({ role_models: roleModels });
       setLoaded(next);
       setForm(next);
       onChanged();
@@ -1115,27 +1204,13 @@ export function LightRagForm({
   return (
     <fieldset
       disabled={!canEdit || saving}
-      className="space-y-5 rounded-2xl border border-[var(--border)] p-4"
+      className="space-y-4 rounded-2xl border border-[var(--border)] p-4"
     >
       {!auth.loading && !canEdit && (
         <p className="text-xs text-[var(--muted-foreground)]">
           {t("Only administrators can change shared LightRAG engine settings.")}
         </p>
       )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <NumberField
-          label={t("Results per query")}
-          value={form.top_k}
-          min={1}
-          max={200}
-          onChange={(v) => patch({ top_k: v })}
-        />
-        <ResponseTypeSelect
-          value={form.response_type}
-          onChange={(v) => patch({ response_type: v })}
-        />
-      </div>
-
       {!form.role_models && form.version !== 2 && (
         <p className="text-xs text-[var(--muted-foreground)]">
           {t(
@@ -1156,44 +1231,6 @@ export function LightRagForm({
           "KEYWORD and QUERY apply to subsequent queries. EXTRACT and VLM apply to new or fully rebuilt indexes; published indexes keep their pinned models.",
         )}
       </p>
-      <p className="text-xs text-[var(--muted-foreground)]">
-        {t(
-          "Role concurrency and timeouts apply to subsequent tasks without rebuilding.",
-        )}
-      </p>
-
-      {/* Indexing knobs are a separate axis from the two above: they shape how
-          a knowledge base is built, so changing them only affects the next
-          build — the divider and note keep that from surprising anyone. */}
-      <div className="space-y-4 border-t border-[var(--border)] pt-4">
-        <div className="space-y-0.5">
-          <div className="text-[12px] font-medium text-[var(--foreground)]">
-            {t("Indexing")}
-          </div>
-          <div className="text-[11px] text-[var(--muted-foreground)]">
-            {t("Applies the next time a knowledge base is built or rebuilt.")}
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <NumberField
-            label={t("Files in parallel")}
-            hint={t("Higher finishes sooner but uses more memory")}
-            value={form.max_concurrent_files}
-            min={1}
-            max={16}
-            onChange={(v) => patch({ max_concurrent_files: v })}
-          />
-          <NumberField
-            label={t("Extra extraction passes")}
-            hint={t("Recovers missed entities; each pass costs another call")}
-            value={form.entity_extract_max_gleaning}
-            min={0}
-            max={5}
-            onChange={(v) => patch({ entity_extract_max_gleaning: v })}
-          />
-        </div>
-      </div>
-
       <SaveButton
         dirty={dirty || (!form.role_models && roleModels !== null)}
         saving={saving}
@@ -1386,9 +1423,11 @@ function FormSkeleton() {
 
 function ModelsSection({
   providerId,
+  onChanged,
   onError,
 }: {
   providerId: string;
+  onChanged: () => void;
   onError: (message: string) => void;
 }) {
   const { t } = useTranslation();
@@ -1630,6 +1669,11 @@ function ModelsSection({
               </div>
             );
           })}
+        </div>
+      )}
+      {providerId === "lightrag" && (
+        <div className="mt-4">
+          <LightRagModelsForm onChanged={onChanged} onError={onError} />
         </div>
       )}
     </Section>
@@ -1891,7 +1935,11 @@ export default function EngineDetail({
         )}
 
         {/* Models — in-place pickers for the kinds this engine needs */}
-        <ModelsSection providerId={provider.id} onError={onError} />
+        <ModelsSection
+          providerId={provider.id}
+          onChanged={onChanged}
+          onError={onError}
+        />
 
         {/* Knowledge bases on this engine */}
         <Section

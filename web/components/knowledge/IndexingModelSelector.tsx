@@ -60,7 +60,11 @@ export function selectionFromLightRagDefault(
 
 interface IndexingModelSelectorProps {
   label?: string;
+  labelClassName?: string;
+  defaultSelection?: IndexingLLMSelection | null;
+  defaultLabel?: string;
   lockModel?: boolean;
+  reasoningOnly?: boolean;
   inheritBaseReasoning?: string | null;
   options: LLMOption[];
   selection: IndexingLLMSelection | null;
@@ -74,7 +78,11 @@ interface IndexingModelSelectorProps {
 
 export default function IndexingModelSelector({
   label = "Indexing model",
+  labelClassName = "text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]",
+  defaultSelection,
+  defaultLabel,
   lockModel = false,
+  reasoningOnly = false,
   inheritBaseReasoning,
   options,
   selection,
@@ -90,6 +98,13 @@ export default function IndexingModelSelector({
     (option) =>
       option.profile_id === selection?.profile_id &&
       option.model_id === selection?.model_id,
+  );
+  const usesDefault = Boolean(
+    defaultSelection &&
+      selection?.profile_id === defaultSelection.profile_id &&
+      selection?.model_id === defaultSelection.model_id &&
+      (selection.reasoning_effort ?? "") ===
+        (defaultSelection.reasoning_effort ?? ""),
   );
   const reasoningOptions = (
     selected
@@ -134,14 +149,24 @@ export default function IndexingModelSelector({
 
   return (
     <div className="space-y-3">
-      <label className="block">
-        <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+      {!reasoningOnly && <label className="block">
+        <span className={`mb-1.5 block ${labelClassName}`}>
           {t(label)}
         </span>
         <select
-          value={selected ? `${selected.profile_id}:${selected.model_id}` : ""}
+          value={
+            usesDefault
+              ? "__engine_default__"
+              : selected
+                ? `${selected.profile_id}:${selected.model_id}`
+                : ""
+          }
           disabled={disabled || lockModel}
           onChange={(event) => {
+            if (event.target.value === "__engine_default__") {
+              onChange(defaultSelection ?? null);
+              return;
+            }
             const option = options.find(
               (item) =>
                 `${item.profile_id}:${item.model_id}` === event.target.value,
@@ -153,6 +178,9 @@ export default function IndexingModelSelector({
           <option value="" disabled>
             {t("Select an indexing model")}
           </option>
+          {defaultSelection && defaultLabel && (
+            <option value="__engine_default__">{defaultLabel}</option>
+          )}
           {options.map((option) => (
             <option
               key={`${option.profile_id}:${option.model_id}`}
@@ -164,16 +192,16 @@ export default function IndexingModelSelector({
             </option>
           ))}
         </select>
-      </label>
+      </label>}
 
-      {defaultUnavailable && !selection && (
+      {!reasoningOnly && defaultUnavailable && !selection && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
           {t(
             "The current LightRAG query model is unavailable here. Choose an accessible indexing model.",
           )}
         </div>
       )}
-      {defaultLoadError && !selection && (
+      {!reasoningOnly && defaultLoadError && !selection && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
           {t(
             "The LightRAG query-model setting could not be loaded. Choose an indexing model or try again.",

@@ -9,6 +9,16 @@ import type {
 import type { LLMOption } from "@/lib/llm-options";
 import IndexingModelSelector from "./IndexingModelSelector";
 
+const ROLE_DESCRIPTIONS = {
+  extract:
+    "Used to extract entities and relationships during indexing. Choose a fast, economical model with reasoning disabled.",
+  keyword:
+    "Used to generate retrieval keywords before a query. Choose a fast model with reasoning disabled.",
+  query:
+    "Used to produce the final answer from long, complex retrieval context. Choose a capable model; reasoning can be enabled.",
+  vlm: "Used to analyze images during indexing. The model must support image input.",
+} as const;
+
 export const inheritedRole = (): LightRagRoleModel => ({
   mode: "inherit",
   max_async: 4,
@@ -59,22 +69,43 @@ export default function LightRagRoleModelsEditor({
   const { t } = useTranslation();
   return (
     <div className="space-y-4">
-      <IndexingModelSelector
-        label="LightRAG base model"
-        options={options}
-        selection={models?.base ?? null}
-        loading={loading}
-        error={error}
-        disabled={disabled}
-        onChange={(base) => {
-          if (base)
-            onChange(models ? { ...models, base } : newRoleModels(base));
-        }}
-      />
+      <div className="space-y-1.5">
+        <IndexingModelSelector
+          label="LightRAG base model"
+          labelClassName="text-[12px] font-medium text-[var(--foreground)]"
+          options={options}
+          selection={models?.base ?? null}
+          loading={loading}
+          error={error}
+          disabled={disabled}
+          onChange={(base) => {
+            if (base)
+              onChange(models ? { ...models, base } : newRoleModels(base));
+          }}
+        />
+        <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+          {t(
+            "The default model when no role model is specified. Role models can inherit its model and reasoning setting.",
+          )}
+        </p>
+      </div>
       {models &&
         (["extract", "keyword", "query", "vlm"] as const).map((role) => {
           const value = models[role];
           const effective = resolvedRole(models, role);
+          const roleOptions =
+            role === "vlm"
+              ? options.filter((option) => option.supports_vision)
+              : options;
+          const effectiveOption = options.find(
+            (option) =>
+              option.profile_id === effective?.profile_id &&
+              option.model_id === effective?.model_id,
+          );
+          const selectionKey =
+            value.mode === "model" && value.selection
+              ? `${value.selection.profile_id}:${value.selection.model_id}`
+              : value.mode;
           const update = (patch: Partial<LightRagRoleModel>) =>
             onChange({ ...models, [role]: { ...value, ...patch } });
           return (
@@ -83,29 +114,42 @@ export default function LightRagRoleModelsEditor({
               className="space-y-3 rounded-lg border border-[var(--border)] p-3"
               disabled={disabled}
             >
-              <legend className="px-1 text-sm font-medium">
+              <legend className="px-1 text-[12px] font-medium text-[var(--foreground)]">
                 {role.toUpperCase()}
               </legend>
-              <label className="block text-xs">
-                {t("Model source")}
+              <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                {t(ROLE_DESCRIPTIONS[role])}
+              </p>
+              <label className="block text-xs font-medium">
+                {t("Model")}
                 <select
-                  aria-label={`${role.toUpperCase()} ${t("Model source")}`}
-                  value={value.mode}
+                  aria-label={`${role.toUpperCase()} ${t("Model")}`}
+                  value={selectionKey}
                   className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] p-2"
                   onChange={(event) => {
-                    const mode = event.target
-                      .value as LightRagRoleModel["mode"];
-                    update({
-                      mode,
-                      selection:
-                        mode === "model"
-                          ? {
-                              profile_id: models.base.profile_id,
-                              model_id: models.base.model_id,
-                            }
-                          : null,
-                      reasoning_effort: null,
-                    });
+                    const next = event.target.value;
+                    if (next === "disabled" || next === "inherit") {
+                      update({
+                        mode: next,
+                        selection: null,
+                        reasoning_effort: null,
+                      });
+                      return;
+                    }
+                    const option = roleOptions.find(
+                      (item) =>
+                        `${item.profile_id}:${item.model_id}` === next,
+                    );
+                    if (option) {
+                      update({
+                        mode: "model",
+                        selection: {
+                          profile_id: option.profile_id,
+                          model_id: option.model_id,
+                        },
+                        reasoning_effort: null,
+                      });
+                    }
                   }}
                 >
                   {role === "vlm" && (
@@ -114,19 +158,39 @@ export default function LightRagRoleModelsEditor({
                     </option>
                   )}
                   <option value="inherit">
-                    {t("Inherit LightRAG base model")}
+                    {t("Inherit LightRAG base model")} ·{" "}
+                    {options.find(
+                      (option) =>
+                        option.profile_id === models.base.profile_id &&
+                        option.model_id === models.base.model_id,
+                    )?.model_name ?? models.base.model_id}
                   </option>
-                  <option value="model">{t("Choose a model")}</option>
+                  {value.mode === "model" &&
+                    value.selection &&
+                    !roleOptions.some(
+                      (option) =>
+                        option.profile_id === value.selection?.profile_id &&
+                        option.model_id === value.selection?.model_id,
+                    ) && (
+                      <option value={selectionKey} disabled>
+                        {t("Unavailable model")} · {value.selection.model_id}
+                      </option>
+                    )}
+                  {roleOptions.map((option) => (
+                    <option
+                      key={`${option.profile_id}:${option.model_id}`}
+                      value={`${option.profile_id}:${option.model_id}`}
+                    >
+                      {option.provider_label || option.profile_name} ·{" "}
+                      {option.model_name}
+                    </option>
+                  ))}
                 </select>
               </label>
               {value.mode !== "disabled" && (
                 <IndexingModelSelector
-                  label={`${role.toUpperCase()} ${t("effective model")}`}
-                  options={
-                    role === "vlm" && value.mode === "model"
-                      ? options.filter((option) => option.supports_vision)
-                      : options
-                  }
+                  reasoningOnly
+                  options={roleOptions}
                   selection={
                     effective
                       ? {
@@ -142,7 +206,6 @@ export default function LightRagRoleModelsEditor({
                   }
                   loading={loading}
                   error={error}
-                  lockModel={value.mode === "inherit"}
                   onChange={(selection) => {
                     if (selection)
                       update({
@@ -158,6 +221,12 @@ export default function LightRagRoleModelsEditor({
                   }}
                 />
               )}
+              {effectiveOption && value.mode !== "disabled" && (
+                <p className="text-[11px] text-[var(--muted-foreground)]">
+                  {t("Currently effective")}: {effectiveOption.provider_label || effectiveOption.profile_name} ·{" "}
+                  {effectiveOption.model_name}
+                </p>
+              )}
               {role === "vlm" &&
                 value.mode !== "disabled" &&
                 !options.some(
@@ -171,7 +240,11 @@ export default function LightRagRoleModelsEditor({
                   </p>
                 )}
               {value.mode !== "disabled" && (
-                <div className="grid grid-cols-2 gap-3">
+                <details className="rounded-lg border border-[var(--border)] px-3 py-2">
+                  <summary className="cursor-pointer text-xs font-medium">
+                    {t("Advanced")}
+                  </summary>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
                   <label className="text-xs">
                     {t("Concurrent LLM calls")}
                     <input
@@ -200,7 +273,8 @@ export default function LightRagRoleModelsEditor({
                       className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--background)] p-2"
                     />
                   </label>
-                </div>
+                  </div>
+                </details>
               )}
             </fieldset>
           );

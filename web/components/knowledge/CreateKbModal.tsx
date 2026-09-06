@@ -184,6 +184,34 @@ export default function CreateKbModal({
     active: linkIsIma,
   });
   const llmCatalog = useLLMOptions(getLightRagModelOptions);
+  const lightRagIndexingDefaults = lightRagConfig
+    ? indexingSelectionFromDefaults(
+        llmCatalog.options,
+        lightRagConfig,
+        llmCatalog.activeDefault,
+      )
+    : null;
+  const lightRagModelName = (value?: {
+    profile_id: string;
+    model_id: string;
+  }) =>
+    llmCatalog.options.find(
+      (option) =>
+        option.profile_id === value?.profile_id &&
+        option.model_id === value?.model_id,
+    )?.model_name ?? value?.model_id;
+  const visibleEngineDefaultSummary =
+    provider === "lightrag" && lightRagIndexingDefaults
+      ? [
+          ...engineDefaultSummary,
+          `EXTRACT: ${lightRagModelName(lightRagIndexingDefaults.extract)}`,
+          `VLM: ${
+            lightRagIndexingDefaults.vlm.mode === "enabled"
+              ? lightRagModelName(lightRagIndexingDefaults.vlm.selection)
+              : t("Image analysis disabled")
+          }`,
+        ]
+      : engineDefaultSummary;
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
 
@@ -299,7 +327,7 @@ export default function CreateKbModal({
           summary = [
             `${t("Results per query")}: ${config.top_k}`,
             `${t("Files in parallel")}: ${config.max_concurrent_files}`,
-            `${t("Concurrent LLM calls")}: ${config.llm_model_max_async}`,
+            `${t("Extra extraction passes")}: ${config.entity_extract_max_gleaning}`,
           ];
         } else if (provider === "pageindex") {
           const config = await getPageIndexConfig();
@@ -605,7 +633,7 @@ export default function CreateKbModal({
             providerNeedsKey={providerNeedsKey}
             onConfigureProvider={onConfigureProvider}
             activeProvider={activeProvider}
-            engineDefaultSummary={engineDefaultSummary}
+            engineDefaultSummary={visibleEngineDefaultSummary}
             modeOptions={modeOptions}
             retrievalMode={retrievalMode}
             setRetrievalMode={setRetrievalMode}
@@ -621,6 +649,8 @@ export default function CreateKbModal({
                 <LightRagIndexingSelector
                   options={llmCatalog.options}
                   selection={indexingLLM}
+                  defaults={lightRagIndexingDefaults}
+                  collapsible
                   loading={llmCatalog.loading}
                   error={llmCatalog.error}
                   defaultUnavailable={
@@ -956,9 +986,7 @@ function NewModeFields({
       )}
 
       {indexingModelField && (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3">
-          {indexingModelField}
-        </div>
+        <div>{indexingModelField}</div>
       )}
 
       {modeOptions.length > 0 && (

@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { LightRagForm } from "@/features/knowledge/components/engines/EngineDetail";
+import { LightRagModelsForm } from "@/features/knowledge/components/engines/EngineDetail";
 
 const fixture = vi.hoisted(() => ({ version: 2, save: vi.fn() }));
 vi.mock("react-i18next", () => ({
@@ -66,9 +66,9 @@ it.each([
   "saves version %s prefilled vision as %s",
   async (version, mode) => {
     fixture.version = version;
-    render(<LightRagForm onChanged={vi.fn()} onError={vi.fn()} />);
+    render(<LightRagModelsForm onChanged={vi.fn()} onError={vi.fn()} />);
     const vlm = within(await screen.findByRole("group", { name: "VLM" }));
-    expect(vlm.getByRole("combobox", { name: "VLM Model source" })).toHaveValue(
+    expect(vlm.getByRole("combobox", { name: "VLM Model" })).toHaveValue(
       mode,
     );
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));

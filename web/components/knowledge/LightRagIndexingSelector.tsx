@@ -86,11 +86,15 @@ export function isCompleteIndexingSelection(
 export default function LightRagIndexingSelector({
   options,
   selection,
+  defaults,
+  collapsible = false,
   onChange,
   ...state
 }: {
   options: LLMOption[];
   selection: LightRagIndexingSelection | null;
+  defaults?: LightRagIndexingSelection | null;
+  collapsible?: boolean;
   onChange: (value: LightRagIndexingSelection | null) => void;
   loading: boolean;
   error: boolean;
@@ -99,16 +103,74 @@ export default function LightRagIndexingSelector({
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
-  return (
+  const optionFor = (value?: { profile_id: string; model_id: string }) =>
+    options.find(
+      (option) =>
+        option.profile_id === value?.profile_id &&
+        option.model_id === value?.model_id,
+    );
+  const optionName = (value?: { profile_id: string; model_id: string }) => {
+    const option = optionFor(value);
+    return option?.model_name ?? value?.model_id ?? t("Not selected");
+  };
+  const optionLabel = (value?: { profile_id: string; model_id: string }) => {
+    const option = optionFor(value);
+    return option
+      ? `${option.provider_label || option.profile_name} · ${option.model_name}`
+      : (value?.model_id ?? t("Not selected"));
+  };
+  const sameSelection = (
+    left?: { profile_id: string; model_id: string; reasoning_effort?: string },
+    right?: { profile_id: string; model_id: string; reasoning_effort?: string },
+  ) =>
+    Boolean(
+      left &&
+        right &&
+        left.profile_id === right.profile_id &&
+        left.model_id === right.model_id &&
+        (left.reasoning_effort ?? "") === (right.reasoning_effort ?? ""),
+    );
+  const usesDefaultVlm = Boolean(
+    selection &&
+      defaults &&
+      selection.vlm.mode === defaults.vlm.mode &&
+      (selection.vlm.mode === "disabled" ||
+        (defaults.vlm.mode === "enabled" &&
+          sameSelection(selection.vlm.selection, defaults.vlm.selection))),
+  );
+  const vlmValue = usesDefaultVlm
+    ? "__engine_default__"
+    : selection?.vlm.mode === "enabled" && selection.vlm.selection
+      ? `${selection.vlm.selection.profile_id}:${selection.vlm.selection.model_id}`
+      : "disabled";
+  const defaultVlmLabel =
+    defaults?.vlm.mode === "enabled"
+      ? optionLabel(defaults.vlm.selection)
+      : t("Image analysis disabled");
+
+  const fields = (
     <div className="space-y-4">
       <p className="text-xs text-[var(--muted-foreground)]">
         {t(
-          "Prefilled from the engine's EXTRACT and VLM settings. Changes here apply only to this new or rebuilt index.",
+          defaults
+            ? "Engine model settings are used by default. The resolved models are pinned when this index is created."
+            : "Prefilled from the engine's EXTRACT and VLM settings. Changes here apply only to this new or rebuilt index.",
+        )}
+      </p>
+      <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+        {t(
+          "Used to extract entities and relationships during indexing. Choose a fast, economical model with reasoning disabled.",
         )}
       </p>
       <IndexingModelSelector
         {...state}
         label="EXTRACT model"
+        defaultSelection={defaults?.extract}
+        defaultLabel={
+          defaults
+            ? `${t("Use engine default")} · ${optionLabel(defaults.extract)}`
+            : undefined
+        }
         options={options}
         selection={selection?.extract ?? null}
         onChange={(extract) =>
@@ -121,33 +183,71 @@ export default function LightRagIndexingSelector({
       />
       {selection && (
         <>
-          <label className="block text-xs">
+          <div className="space-y-1">
+            <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+              {t(
+                "Used to analyze images during indexing. The model must support image input.",
+              )}
+            </p>
+          </div>
+          <label className="block text-xs font-medium">
             {t("VLM image analysis")}
             <select
               aria-label={t("VLM image analysis")}
-              value={selection.vlm.mode}
+              value={vlmValue}
               disabled={state.disabled}
               onChange={(event) => {
+                if (event.target.value === "__engine_default__" && defaults) {
+                  onChange({ ...selection, vlm: defaults.vlm });
+                  return;
+                }
+                if (event.target.value === "disabled") {
+                  onChange({ ...selection, vlm: { mode: "disabled" } });
+                  return;
+                }
+                const option = options.find(
+                  (item) =>
+                    `${item.profile_id}:${item.model_id}` === event.target.value,
+                );
+                if (!option) return;
                 onChange({
                   ...selection,
-                  vlm:
-                    event.target.value === "enabled"
-                      ? { mode: "enabled" }
-                      : { mode: "disabled" },
+                  vlm: {
+                    mode: "enabled",
+                    selection: {
+                      profile_id: option.profile_id,
+                      model_id: option.model_id,
+                    },
+                  },
                 });
               }}
               className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] p-2"
             >
+              {defaults && (
+                <option value="__engine_default__">
+                  {t("Use engine default")} · {defaultVlmLabel}
+                </option>
+              )}
               <option value="disabled">{t("Image analysis disabled")}</option>
-              <option value="enabled">{t("Choose a vision model")}</option>
+              {options
+                .filter((option) => option.supports_vision)
+                .map((option) => (
+                  <option
+                    key={`${option.profile_id}:${option.model_id}`}
+                    value={`${option.profile_id}:${option.model_id}`}
+                  >
+                    {option.provider_label || option.profile_name} ·{" "}
+                    {option.model_name}
+                  </option>
+                ))}
             </select>
           </label>
-          {selection.vlm.mode === "enabled" && (
+          {selection.vlm.mode === "enabled" && selection.vlm.selection && (
             <IndexingModelSelector
               {...state}
-              label="VLM model"
+              reasoningOnly
               options={options.filter((option) => option.supports_vision)}
-              selection={selection.vlm.selection ?? null}
+              selection={selection.vlm.selection}
               onChange={(vlm) =>
                 onChange({
                   ...selection,
@@ -158,11 +258,40 @@ export default function LightRagIndexingSelector({
           )}
           <p className="text-xs text-[var(--muted-foreground)]">
             {t(
-              "After publication, enabling, disabling or replacing VLM requires a full rebuild. A VLM pinned now can process later image uploads.",
+              defaults
+                ? "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild."
+                : "After publication, enabling, disabling or replacing VLM requires a full rebuild. A VLM pinned now can process later image uploads.",
             )}
           </p>
         </>
       )}
     </div>
+  );
+
+  if (!collapsible) return fields;
+  const summary = selection
+    ? `EXTRACT: ${optionName(selection.extract)} · VLM: ${
+        selection.vlm.mode === "enabled"
+          ? optionName(selection.vlm.selection)
+          : t("Image analysis disabled")
+      }`
+    : t("Choose indexing models");
+  return (
+    <details
+      className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-3"
+      open={
+        state.error || state.defaultLoadError || !selection ? true : undefined
+      }
+    >
+      <summary className="cursor-pointer list-none">
+        <span className="block text-[12px] font-medium text-[var(--foreground)]">
+          {t("Indexing models (optional override)")}
+        </span>
+        <span className="mt-1 block text-[11px] text-[var(--muted-foreground)]">
+          {summary}
+        </span>
+      </summary>
+      <div className="mt-4 border-t border-[var(--border)] pt-4">{fields}</div>
+    </details>
   );
 }

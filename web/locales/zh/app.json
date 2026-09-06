@@ -3999,7 +3999,7 @@
   "Choose a vision model": "选择视觉模型",
   "EXTRACT model": "EXTRACT 模型",
   "Effective reasoning": "实际推理强度",
-  "Image analysis disabled": "图片分析已禁用",
+  "Image analysis disabled": "禁用图片分析",
   "Image analysis is disabled. Enable a VLM through a full rebuild.": "图片分析已禁用。请通过完整重建启用 VLM。",
   "Inherit LightRAG base model": "继承 LightRAG 基础模型",
   "KEYWORD and QUERY apply to subsequent queries. EXTRACT and VLM apply to new or fully rebuilt indexes; published indexes keep their pinned models.": "KEYWORD 和 QUERY 应用于后续查询。EXTRACT 和 VLM 应用于新建或完整重建的索引；已发布的索引保留固定的模型。",
@@ -4017,5 +4017,18 @@
   "effective model": "实际模型",
   "Finalizing index publication": "正在完成索引发布",
   "Inherit base reasoning": "继承基础模型推理设置",
-  "With no role override, reasoning follows the LightRAG base.": "未设置角色覆盖值时，推理强度继承 LightRAG 基础模型。"
+  "With no role override, reasoning follows the LightRAG base.": "未设置角色覆盖值时，推理强度继承 LightRAG 基础模型。",
+  "The default model when no role model is specified. Role models can inherit its model and reasoning setting.": "未单独指定角色模型时使用的默认模型；角色模型可以继承它的模型和推理设置。",
+  "Used to extract entities and relationships during indexing. Choose a fast, economical model with reasoning disabled.": "用于索引时抽取实体和关系；调用频繁，建议选择快速、经济并关闭推理的模型。",
+  "Used to generate retrieval keywords before a query. Choose a fast model with reasoning disabled.": "用于查询前生成检索关键词；延迟敏感，应选择快速并关闭推理的模型。",
+  "Used to produce the final answer from long, complex retrieval context. Choose a capable model; reasoning can be enabled.": "用于根据较长且复杂的检索上下文生成最终回答；宜选择能力较强的模型，可开启推理。",
+  "Used to analyze images during indexing. The model must support image input.": "用于索引时分析图片；必须选择支持视觉输入的模型。",
+  "Currently effective": "当前生效",
+  "Unavailable model": "不可用的模型",
+  "Use engine default": "使用引擎默认值",
+  "Not selected": "未选择",
+  "Choose indexing models": "选择索引模型",
+  "Indexing models (optional override)": "索引模型（可选覆盖）",
+  "Engine model settings are used by default. The resolved models are pinned when this index is created.": "默认使用 LightRAG 引擎的索引模型设置；创建时会将实际模型固定到这个索引版本。",
+  "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild.": "创建后，更换 EXTRACT 模型或启用、禁用、更换 VLM 均需完整重建索引。"
 }

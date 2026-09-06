@@ -70,20 +70,14 @@ describe("LightRAG role editor", () => {
   it("keeps disabled, inherited, and explicit VLM choices distinct", () => {
     render(<Editor />);
     const vlm = within(screen.getByRole("group", { name: "VLM" }));
-    const mode = vlm.getByRole("combobox", { name: "VLM Model source" });
+    const mode = vlm.getByRole("combobox", { name: "VLM Model" });
     expect(state().vlm.mode).toBe("disabled");
     fireEvent.change(mode, { target: { value: "inherit" } });
     expect(
       vlm.getByText("The selected VLM model does not support image inputs."),
     ).toBeInTheDocument();
     expect(state().vlm.selection).toBeNull();
-    fireEvent.change(mode, { target: { value: "model" } });
-    fireEvent.change(
-      vlm.getByRole("combobox", { name: "VLM effective model" }),
-      {
-        target: { value: "vision:large" },
-      },
-    );
+    fireEvent.change(mode, { target: { value: "vision:large" } });
     expect(resolvedRole(state(), "vlm")).toEqual(visionModel);
     fireEvent.change(mode, { target: { value: "disabled" } });
     expect(resolvedRole(state(), "vlm")).toBeNull();
@@ -91,6 +85,7 @@ describe("LightRAG role editor", () => {
   it("preserves explicit none and limits when the base model changes", () => {
     render(<Editor />);
     const extract = within(screen.getByRole("group", { name: "EXTRACT" }));
+    fireEvent.click(extract.getByText("Advanced"));
     fireEvent.change(
       extract.getByRole("combobox", { name: "Reasoning effort" }),
       {
@@ -115,6 +110,28 @@ describe("LightRAG role editor", () => {
     });
     expect(state().extract.timeout).toBe(321);
     expect(state().vlm.mode).toBe("disabled");
+  });
+  it("shows concise role guidance and one model selector per role", () => {
+    render(<Editor />);
+    const extract = within(screen.getByRole("group", { name: "EXTRACT" }));
+    expect(
+      extract.getByText(
+        "Used to extract entities and relationships during indexing. Choose a fast, economical model with reasoning disabled.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The default model when no role model is specified. Role models can inherit its model and reasoning setting.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      extract.getAllByRole("combobox", { name: "EXTRACT Model" }),
+    ).toHaveLength(1);
+    expect(
+      within(screen.getByRole("group", { name: "VLM" })).getByText(
+        "Used to analyze images during indexing. The model must support image input.",
+      ),
+    ).toBeInTheDocument();
   });
   it("shows an invalid saved effort without offering unsupported replacements", () => {
     const initial = newRoleModels(textModel);
@@ -167,7 +184,7 @@ it("prefills independent indexing roles and preserves a saved disabled policy", 
     }),
   ).toEqual({ extract: textModel, vlm: { mode: "disabled" } });
 });
-it("requires an explicit vision selection when enabling it in a rebuild draft", () => {
+it("selects a vision model without a duplicate VLM control", () => {
   function Draft() {
     const [selection, setSelection] =
       useState<LightRagIndexingSelection | null>({
@@ -194,18 +211,9 @@ it("requires an explicit vision selection when enabling it in a rebuild draft", 
   fireEvent.change(
     screen.getByRole("combobox", { name: "VLM image analysis" }),
     {
-      target: { value: "enabled" },
+      target: { value: "vision:large" },
     },
   );
-  expect(
-    JSON.parse(screen.getByTestId("draft").textContent ?? "{}").vlm,
-  ).toEqual({
-    mode: "enabled",
-  });
-  expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
-  fireEvent.change(screen.getByRole("combobox", { name: "VLM model" }), {
-    target: { value: "vision:large" },
-  });
   expect(
     JSON.parse(screen.getByTestId("draft").textContent ?? "{}").vlm,
   ).toEqual({
@@ -213,6 +221,37 @@ it("requires an explicit vision selection when enabling it in a rebuild draft", 
     selection: visionModel,
   });
   expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
+  expect(
+    screen.queryByRole("combobox", { name: "VLM model" }),
+  ).not.toBeInTheDocument();
+});
+
+it("shows engine defaults in the collapsed create-index summary", () => {
+  const defaults: LightRagIndexingSelection = {
+    extract: textModel,
+    vlm: { mode: "disabled" },
+  };
+  render(
+    <LightRagIndexingSelector
+      options={options}
+      selection={defaults}
+      defaults={defaults}
+      collapsible
+      onChange={vi.fn()}
+      loading={false}
+      error={false}
+    />,
+  );
+  expect(
+    screen.getByText("EXTRACT: Small · VLM: Image analysis disabled"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Indexing models (optional override)"));
+  expect(
+    screen.getByRole("combobox", { name: "EXTRACT model" }),
+  ).toHaveValue("__engine_default__");
+  expect(
+    screen.getByRole("combobox", { name: "VLM image analysis" }),
+  ).toHaveValue("__engine_default__");
 });
 
 it("distinguishes inherited reasoning from an explicit override with the same value", () => {

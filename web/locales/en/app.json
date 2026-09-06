@@ -4017,5 +4017,18 @@
   "effective model": "effective model",
   "Finalizing index publication": "Finalizing index publication",
   "Inherit base reasoning": "Inherit base reasoning",
-  "With no role override, reasoning follows the LightRAG base.": "With no role override, reasoning follows the LightRAG base."
+  "With no role override, reasoning follows the LightRAG base.": "With no role override, reasoning follows the LightRAG base.",
+  "The default model when no role model is specified. Role models can inherit its model and reasoning setting.": "The default model when no role model is specified. Role models can inherit its model and reasoning setting.",
+  "Used to extract entities and relationships during indexing. Choose a fast, economical model with reasoning disabled.": "Used to extract entities and relationships during indexing. Choose a fast, economical model with reasoning disabled.",
+  "Used to generate retrieval keywords before a query. Choose a fast model with reasoning disabled.": "Used to generate retrieval keywords before a query. Choose a fast model with reasoning disabled.",
+  "Used to produce the final answer from long, complex retrieval context. Choose a capable model; reasoning can be enabled.": "Used to produce the final answer from long, complex retrieval context. Choose a capable model; reasoning can be enabled.",
+  "Used to analyze images during indexing. The model must support image input.": "Used to analyze images during indexing. The model must support image input.",
+  "Currently effective": "Currently effective",
+  "Unavailable model": "Unavailable model",
+  "Use engine default": "Use engine default",
+  "Not selected": "Not selected",
+  "Choose indexing models": "Choose indexing models",
+  "Indexing models (optional override)": "Indexing models (optional override)",
+  "Engine model settings are used by default. The resolved models are pinned when this index is created.": "Engine model settings are used by default. The resolved models are pinned when this index is created.",
+  "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild.": "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild."
 }
