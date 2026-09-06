@@ -177,11 +177,13 @@ def test_default_snapshot_prefers_released_lightrag_selection(monkeypatch) -> No
 
 
 def test_default_snapshot_rejects_unreadable_released_setting(monkeypatch) -> None:
+    from deeptutor.services import config as settings_config
     from deeptutor.services.rag.pipelines.lightrag import config
 
     def fail():
         raise OSError("settings unreadable")
 
+    monkeypatch.setattr(settings_config, "load_lightrag_settings", lambda: {"version": 1})
     monkeypatch.setattr(config, "lightrag_indexing_selection_from_settings", fail)
 
     with pytest.raises(indexing_policy.IndexingPolicyError, match="could not be resolved"):

@@ -11,9 +11,11 @@ import pytest
 
 EmbeddingFunc = pytest.importorskip("lightrag.utils").EmbeddingFunc
 
+from deeptutor.services import config
+from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.rag.index_versioning import list_kb_versions
-from deeptutor.services.rag.pipelines.lightrag import engine, ingress, storage
+from deeptutor.services.rag.pipelines.lightrag import engine, ingress, roles, storage
 
 
 async def _fake_llm(_prompt, **_kwargs) -> str:
@@ -28,6 +30,23 @@ async def _fake_embedding(texts: list[str]) -> np.ndarray:
 
 
 def _configure_real_sdk(monkeypatch, llm=_fake_llm) -> None:
+    # Resolve real role settings against a synthetic model instead of depending
+    # on an existing developer settings file or a configured provider.
+    monkeypatch.setattr(
+        config,
+        "load_lightrag_settings",
+        lambda: {
+            "version": 2,
+            "role_models": {"base": {"profile_id": "fixture", "model_id": "fixture"}},
+        },
+    )
+    monkeypatch.setattr(
+        roles,
+        "resolve_selection",
+        lambda *_args, **_kwargs: LLMConfig(
+            model="fixture", binding="openai", api_key="offline-fixture"
+        ),
+    )
     monkeypatch.setattr(engine, "build_llm_model_func", lambda **_kwargs: llm)
     monkeypatch.setattr(
         engine,
