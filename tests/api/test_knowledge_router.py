@@ -2244,6 +2244,10 @@ def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path
 
 
 def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.indexing_policy.bind_target",
+        lambda snapshot, _kb_dir, **_kwargs: snapshot,
+    )
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     snapshot = SimpleNamespace(
         persisted_policy=lambda: {
@@ -2289,6 +2293,10 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
 def test_create_empty_lightrag_kb_persists_redacted_pending_policy(
     monkeypatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.indexing_policy.bind_target",
+        lambda snapshot, _kb_dir, **_kwargs: snapshot,
+    )
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     snapshot = SimpleNamespace(
         persisted_policy=lambda: {
@@ -2434,6 +2442,10 @@ def test_reindex_passes_frozen_lightrag_snapshot_to_background_task(
         "status": "ready",
     }
     (manager.base_dir / "kb" / "raw").mkdir(parents=True)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.indexing_policy.bind_target",
+        lambda snapshot, _kb_dir, **_kwargs: snapshot,
+    )
     snapshot = object()
     captured: dict[str, object] = {}
 
@@ -2760,3 +2772,58 @@ def test_lightrag_config_validates_dedicated_llm_selection(monkeypatch, tmp_path
         json={"llm_profile_id": "", "llm_model_id": ""},
     )
     assert cleared.status_code == 200
+
+
+@pytest.mark.parametrize("role, expected", [("user", 403), ("admin", 200)])
+def test_shared_lightrag_settings_require_admin_over_http(monkeypatch, tmp_path, role, expected):
+    auth = importlib.import_module("deeptutor.api.routers.auth")
+    service = RuntimeSettingsService(tmp_path, process_env={})
+    monkeypatch.setattr(config_module, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    app = _build_app()
+
+    async def authenticated():
+        return SimpleNamespace(role=role)
+
+    app.dependency_overrides[auth.require_auth] = authenticated
+    before = service.load_lightrag()
+    response = TestClient(app).put(
+        "/api/knowledge-bases/rag-pipelines/lightrag/config", json={"top_k": 31}
+    )
+    assert response.status_code == expected
+    assert service.load_lightrag()["top_k"] == (31 if role == "admin" else before["top_k"])
+
+
+def test_lightrag_role_settings_validate_before_save(monkeypatch, tmp_path):
+    from deeptutor.services.rag.pipelines.lightrag import roles
+
+    service = RuntimeSettingsService(tmp_path, process_env={})
+    monkeypatch.setattr(config_module, "get_runtime_settings_service", lambda: service)
+    observed = []
+
+    def validate(models):
+        observed.append(models)
+        if models.base.model_id == "deleted":
+            raise ValueError("Selected model is unavailable.")
+
+    monkeypatch.setattr(roles, "validate_models", validate)
+    client = TestClient(_build_app())
+    url = "/api/knowledge-bases/rag-pipelines/lightrag/config"
+    models = {
+        "base": {"profile_id": "public", "model_id": "ok"},
+        "query": {"mode": "inherit", "reasoning_effort": "adaptive"},
+    }
+    response = client.put(url, json={"role_models": models})
+    assert response.status_code == 200
+    before = client.get(url).json()
+    assert before["role_models"]["query"]["reasoning_effort"] == "adaptive"
+    assert before["role_models"]["vlm"]["mode"] == "disabled"
+    assert len(observed) == 1
+    for invalid in (
+        {"role_models": {**models, "base": {"profile_id": "public", "model_id": "deleted"}}},
+        {"role_models": {**models, "vlm": {"mode": "disabled", "selection": models["base"]}}},
+        {"role_models": None},
+        {"llm_profile_id": "other", "llm_model_id": "other"},
+    ):
+        assert client.put(url, json=invalid).status_code == 422
+        assert client.get(url).json() == before

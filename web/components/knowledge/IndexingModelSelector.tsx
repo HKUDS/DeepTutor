@@ -19,6 +19,7 @@ const INDEXING_REASONING_EFFORTS = new Set([
   "high",
   "xhigh",
   "max",
+  "adaptive",
 ]);
 
 export function selectionFromLLMOption(
@@ -58,6 +59,8 @@ export function selectionFromLightRagDefault(
 }
 
 interface IndexingModelSelectorProps {
+  label?: string;
+  lockModel?: boolean;
   options: LLMOption[];
   selection: IndexingLLMSelection | null;
   loading: boolean;
@@ -69,6 +72,8 @@ interface IndexingModelSelectorProps {
 }
 
 export default function IndexingModelSelector({
+  label = "Indexing model",
+  lockModel = false,
   options,
   selection,
   loading,
@@ -86,7 +91,7 @@ export default function IndexingModelSelector({
   );
   const reasoningOptions = (
     selected
-      ? selected.supported_reasoning_efforts?.length
+      ? selected.supported_reasoning_efforts !== undefined
         ? reasoningEffortOptionsFromSupportedLevels(
             selected.supported_reasoning_efforts,
           )
@@ -129,11 +134,11 @@ export default function IndexingModelSelector({
     <div className="space-y-3">
       <label className="block">
         <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {t("Indexing model")}
+          {t(label)}
         </span>
         <select
           value={selected ? `${selected.profile_id}:${selected.model_id}` : ""}
-          disabled={disabled}
+          disabled={disabled || lockModel}
           onChange={(event) => {
             const option = options.find(
               (item) =>
@@ -157,11 +162,6 @@ export default function IndexingModelSelector({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-          {t(
-            "Defaults to the current LightRAG query model. Once published, incremental indexing keeps this selection.",
-          )}
-        </p>
       </label>
 
       {defaultUnavailable && !selection && (
@@ -179,30 +179,49 @@ export default function IndexingModelSelector({
         </div>
       )}
 
-      {selected && reasoningOptions.length > 0 && (
-        <label className="block">
-          <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-            {t("Reasoning effort")}
-          </span>
-          <select
-            value={selection?.reasoning_effort ?? ""}
-            disabled={disabled}
-            onChange={(event) =>
-              onChange(selectionFromLLMOption(selected, event.target.value))
-            }
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] disabled:opacity-50"
-          >
-            {reasoningOptions.map((option) => (
-              <option key={option.value || "auto"} value={option.value}>
-                {t(option.label)}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-            {t("Auto inherits the selected model's saved reasoning effort.")}
-          </p>
-        </label>
-      )}
+      {selected &&
+        (reasoningOptions.length > 0 || selection?.reasoning_effort) && (
+          <label className="block">
+            <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+              {t("Reasoning effort")}
+            </span>
+            <select
+              aria-label={t("Reasoning effort")}
+              value={selection?.reasoning_effort ?? ""}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange(selectionFromLLMOption(selected, event.target.value))
+              }
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] disabled:opacity-50"
+            >
+              <option value="">{t("Model default / unspecified")}</option>
+              {selection?.reasoning_effort &&
+                !reasoningOptions.some(
+                  (option) => option.value === selection.reasoning_effort,
+                ) && (
+                  <option value={selection.reasoning_effort} disabled>
+                    {t("Unsupported reasoning effort")}:{" "}
+                    {selection.reasoning_effort}
+                  </option>
+                )}
+              {reasoningOptions
+                .filter((option) => option.value)
+                .map((option) => (
+                  <option key={option.value || "auto"} value={option.value}>
+                    {t(option.label)}
+                  </option>
+                ))}
+            </select>
+            <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+              {t("Effective reasoning")}:{" "}
+              {selection?.reasoning_effort ||
+                selected.reasoning_effort ||
+                t("Model default")}
+              .{" "}
+              {t("Auto inherits the selected model's saved reasoning effort.")}
+            </p>
+          </label>
+        )}
     </div>
   );
 }

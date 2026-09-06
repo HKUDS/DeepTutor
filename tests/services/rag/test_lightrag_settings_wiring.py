@@ -8,7 +8,7 @@ import types
 
 import pytest
 
-from deeptutor.services.rag.pipelines.lightrag import engine
+from deeptutor.services.rag.pipelines.lightrag import engine, roles
 
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("lightrag") is None,
@@ -28,7 +28,11 @@ def _stub_build(monkeypatch) -> None:
     monkeypatch.setattr(engine, "_controlled_class", lambda: _NativeLightRag)
     monkeypatch.setattr(engine, "build_llm_model_func", lambda **_kwargs: "llm")
     monkeypatch.setattr(engine, "build_embedding_func", lambda **_kwargs: "embedding")
-    monkeypatch.setattr(engine, "resolve_lightrag_query_llm_config", lambda: query_config)
+    monkeypatch.setattr(
+        roles,
+        "resolve_query_roles",
+        lambda: {role: roles.RoleCall(query_config, None, 4, 240) for role in ("keyword", "query")},
+    )
     monkeypatch.setattr(
         "deeptutor.services.rag.pipelines.lightrag.indexing_policy.cache_identity_for_config",
         lambda _config: "query-fingerprint",
@@ -79,13 +83,17 @@ def test_global_dedicated_selection_drives_query_roles_not_embedding(
 
     monkeypatch.setattr(engine, "build_llm_model_func", build_llm)
     monkeypatch.setattr(engine, "build_embedding_func", build_embedding)
-    monkeypatch.setattr(engine, "resolve_lightrag_query_llm_config", lambda: query_config)
+    monkeypatch.setattr(
+        roles,
+        "resolve_query_roles",
+        lambda: {role: roles.RoleCall(query_config, None, 4, 240) for role in ("keyword", "query")},
+    )
     monkeypatch.setattr(engine, "indexing_kwargs_from_settings", dict)
     monkeypatch.setattr(engine, "constructor_kwargs_from_settings", dict)
 
     engine.build_rag(tmp_path)
 
-    assert llm_calls == [{"llm_config": query_config}]
+    assert llm_calls == [{"llm_config": query_config, "owner": None}] * 3
     assert embedding_calls == [{}]
 
 
@@ -105,14 +113,15 @@ def test_vlm_role_is_only_configured_when_enabled(monkeypatch, tmp_path: Path) -
         lambda _snapshot: "snapshot-fingerprint",
     )
 
-    rag = engine.build_rag(tmp_path, enable_vlm=True, indexing_snapshot=snapshot)
+    pair = types.SimpleNamespace(extract=snapshot, vlm=snapshot, limits={})
+    rag = engine.build_rag(tmp_path, enable_vlm=True, indexing_snapshot=pair)
 
     role = rag.kwargs["role_llm_configs"]["vlm"]
     assert role.func == "vision"
     assert rag.kwargs["vlm_process_enable"] is True
 
 
-def test_snapshot_routes_only_extract_and_vlm_while_query_base_stays_global(
+def test_indexing_uses_frozen_roles_without_resolving_query_models(
     monkeypatch, tmp_path: Path
 ) -> None:
     _stub_build(monkeypatch)
@@ -141,13 +150,13 @@ def test_snapshot_routes_only_extract_and_vlm_while_query_base_stays_global(
         lambda _snapshot: "snapshot-fingerprint",
     )
 
-    rag = engine.build_rag(tmp_path, enable_vlm=True, indexing_snapshot=snapshot)
+    pair = types.SimpleNamespace(extract=snapshot, vlm=snapshot, limits={})
+    rag = engine.build_rag(tmp_path, enable_vlm=True, indexing_snapshot=pair)
 
     assert "llm_config" in llm_calls[0]
     assert llm_calls[1] == {"llm_config": snapshot.config, "owner": snapshot.owner}
     assert vision_calls == [{"llm_config": snapshot.config, "owner": snapshot.owner}]
-    assert rag.kwargs["llm_model_func"] == "llm-1"
-    assert rag.kwargs["role_llm_configs"]["extract"].func == "llm-2"
+    assert rag.kwargs["llm_model_func"] == "llm-2"
+    assert rag.kwargs["role_llm_configs"]["extract"].func == "llm-1"
     assert rag.kwargs["role_llm_configs"]["vlm"].func == "vision"
-    assert rag.kwargs["role_llm_configs"]["keyword"].func == "llm-1"
-    assert rag.kwargs["role_llm_configs"]["query"].func == "llm-1"
+    assert set(rag.kwargs["role_llm_configs"]) == {"extract", "vlm"}

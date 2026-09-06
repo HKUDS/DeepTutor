@@ -58,9 +58,18 @@ class _Bridge:
         return await value if inspect.isawaitable(value) else value
 
 
+@pytest.fixture(autouse=True)
+def _isolate_role_revalidation(monkeypatch):
+    # Lifecycle tests use synthetic policies; real catalog/access revalidation
+    # is covered by test_lightrag_roles and test_lightrag_indexing_policy.
+    monkeypatch.setattr(indexing_policy, "revalidate_snapshot", lambda snapshot: snapshot)
+
+
 def _indexing_snapshot():
     return types.SimpleNamespace(
         vision_available=True,
+        image_analysis=None,
+        target_bound=False,
         persisted_policy=lambda: {"policy": "pinned", "fingerprint": "a" * 64},
     )
 
@@ -145,7 +154,7 @@ def test_query_model_resolver_falls_back_only_when_selected_entry_is_missing(
     )
 
     assert config.resolve_lightrag_query_llm_config() is fallback
-    assert calls == [selection, None]
+    assert calls == [selection, indexing_policy._active_catalog_selection()]
 
 
 def test_lightrag_llm_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
@@ -254,7 +263,13 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
     monkeypatch.setattr(engine, "indexing_kwargs_from_settings", dict)
     monkeypatch.setattr(engine, "constructor_kwargs_from_settings", dict)
     query_config = types.SimpleNamespace(binding="openai")
-    monkeypatch.setattr(engine, "resolve_lightrag_query_llm_config", lambda: query_config)
+    from deeptutor.services.rag.pipelines.lightrag import roles
+
+    monkeypatch.setattr(
+        roles,
+        "resolve_query_roles",
+        lambda: {role: roles.RoleCall(query_config, None, 4, 240) for role in ("keyword", "query")},
+    )
     monkeypatch.setattr(indexing_policy, "cache_identity_for_config", lambda _config: "query-id")
     llm_calls: list[dict[str, object]] = []
     embedding_calls: list[object] = []
@@ -272,7 +287,7 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
 
     rag = engine.build_rag(tmp_path)
 
-    assert llm_calls == [{"llm_config": query_config}]
+    assert llm_calls == [{"llm_config": query_config, "owner": None}] * 3
     assert embedding_calls == [None]
     assert rag.kwargs["embedding_func"] == "embedding"
 
@@ -1218,6 +1233,8 @@ def test_public_initial_ingestion_retains_uncertain_ingress(
                 [str(source)],
                 indexing_snapshot=types.SimpleNamespace(
                     vision_available=True,
+                    image_analysis=None,
+                    target_bound=False,
                     persisted_policy=lambda: {"policy": "legacy_unpinned"},
                 ),
             )

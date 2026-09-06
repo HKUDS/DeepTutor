@@ -1534,10 +1534,7 @@ export interface paths {
      */
     readonly get: operations["list_knowledge_bases_api_knowledge_bases_get"];
     readonly put?: never;
-    /**
-     * Create Knowledge Base
-     * @description Create a new knowledge base and initialize it with files.
-     */
+    /** Create Knowledge Base */
     readonly post: operations["create_knowledge_base_api_knowledge_bases_post"];
     readonly delete?: never;
     readonly options?: never;
@@ -1775,10 +1772,7 @@ export interface paths {
       readonly cookie?: never;
     };
     readonly get?: never;
-    /**
-     * Update Pending Indexing Policy
-     * @description Change the pending model of an empty, unpublished LightRAG KB.
-     */
+    /** Update Pending Indexing Policy */
     readonly put: operations["update_pending_indexing_policy_api_knowledge_bases__kb_name__indexing_policy_put"];
     readonly post?: never;
     readonly delete?: never;
@@ -2590,6 +2584,26 @@ export interface paths {
      *     build or rebuild.
      */
     readonly put: operations["update_lightrag_pipeline_config_api_knowledge_bases_rag_pipelines_lightrag_config_put"];
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/knowledge-bases/rag-pipelines/lightrag/model-options": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Get Lightrag Model Options
+     * @description Return accessible catalog models with supported role capabilities.
+     */
+    readonly get: operations["get_lightrag_model_options_api_knowledge_bases_rag_pipelines_lightrag_model_options_get"];
+    readonly put?: never;
     readonly post?: never;
     readonly delete?: never;
     readonly options?: never;
@@ -9312,6 +9326,11 @@ export interface components {
       readonly dest_subdir?: string;
       /** Files */
       readonly files: readonly string[];
+      /**
+       * Image Analysis
+       * @description Require image analysis with the pinned VLM; false skips images, omitted follows the pinned policy.
+       */
+      readonly image_analysis?: boolean | null;
       /** Rag Provider */
       readonly rag_provider?: string;
       /** Rel Paths */
@@ -10864,8 +10883,90 @@ export interface components {
       readonly max_concurrent_files?: number | null;
       /** Response Type */
       readonly response_type?: string | null;
+      readonly role_models?: components["schemas"]["LightRagRoleModels"] | null;
       /** Top K */
       readonly top_k?: number | null;
+    };
+    /**
+     * LightRagIndexingSelection
+     * @description Resolved create/rebuild overrides, without mutable engine inheritance.
+     */
+    readonly LightRagIndexingSelection: {
+      readonly extract: components["schemas"]["LightRagModelSelection"];
+      readonly vlm?: components["schemas"]["LightRagIndexingVision"];
+    };
+    /** LightRagIndexingVision */
+    readonly LightRagIndexingVision: {
+      /**
+       * Mode
+       * @default disabled
+       * @enum {string}
+       */
+      readonly mode: "disabled" | "enabled";
+      readonly selection?:
+        components["schemas"]["LightRagModelSelection"] | null;
+    };
+    /** LightRagModelSelection */
+    readonly LightRagModelSelection: {
+      /** Model Id */
+      readonly model_id: string;
+      /** Profile Id */
+      readonly profile_id: string;
+      /** Reasoning Effort */
+      readonly reasoning_effort?:
+        | (
+            | "none"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh"
+            | "max"
+            | "adaptive"
+          )
+        | null;
+    };
+    /** LightRagRoleModel */
+    readonly LightRagRoleModel: {
+      /**
+       * Max Async
+       * @default 4
+       */
+      readonly max_async: number;
+      /**
+       * Mode
+       * @default inherit
+       * @enum {string}
+       */
+      readonly mode: "inherit" | "model";
+      /** Reasoning Effort */
+      readonly reasoning_effort?:
+        | (
+            | "none"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh"
+            | "max"
+            | "adaptive"
+          )
+        | null;
+      readonly selection?:
+        components["schemas"]["LightRagModelSelection"] | null;
+      /**
+       * Timeout
+       * @default 240
+       */
+      readonly timeout: number;
+    };
+    /** LightRagRoleModels */
+    readonly LightRagRoleModels: {
+      readonly base: components["schemas"]["LightRagModelSelection"];
+      readonly extract?: components["schemas"]["LightRagRoleModel"];
+      readonly keyword?: components["schemas"]["LightRagRoleModel"];
+      readonly query?: components["schemas"]["LightRagRoleModel"];
+      readonly vlm?: components["schemas"]["LightRagVisionModel"];
     };
     /**
      * LightRagServerConfigUpdate
@@ -10876,6 +10977,40 @@ export interface components {
       readonly api_key?: string | null;
       /** Server Url */
       readonly server_url?: string | null;
+    };
+    /** LightRagVisionModel */
+    readonly LightRagVisionModel: {
+      /**
+       * Max Async
+       * @default 4
+       */
+      readonly max_async: number;
+      /**
+       * Mode
+       * @default disabled
+       * @enum {string}
+       */
+      readonly mode: "disabled" | "inherit" | "model";
+      /** Reasoning Effort */
+      readonly reasoning_effort?:
+        | (
+            | "none"
+            | "minimal"
+            | "low"
+            | "medium"
+            | "high"
+            | "xhigh"
+            | "max"
+            | "adaptive"
+          )
+        | null;
+      readonly selection?:
+        components["schemas"]["LightRagModelSelection"] | null;
+      /**
+       * Timeout
+       * @default 240
+       */
+      readonly timeout: number;
     };
     /**
      * LinkedFolderInfo
@@ -13683,8 +13818,20 @@ export type SchemaLearningCaptureUpdateRequest =
   components["schemas"]["LearningCaptureUpdateRequest"];
 export type SchemaLightRagConfigUpdate =
   components["schemas"]["LightRagConfigUpdate"];
+export type SchemaLightRagIndexingSelection =
+  components["schemas"]["LightRagIndexingSelection"];
+export type SchemaLightRagIndexingVision =
+  components["schemas"]["LightRagIndexingVision"];
+export type SchemaLightRagModelSelection =
+  components["schemas"]["LightRagModelSelection"];
+export type SchemaLightRagRoleModel =
+  components["schemas"]["LightRagRoleModel"];
+export type SchemaLightRagRoleModels =
+  components["schemas"]["LightRagRoleModels"];
 export type SchemaLightRagServerConfigUpdate =
   components["schemas"]["LightRagServerConfigUpdate"];
+export type SchemaLightRagVisionModel =
+  components["schemas"]["LightRagVisionModel"];
 export type SchemaLinkedFolderInfo = components["schemas"]["LinkedFolderInfo"];
 export type SchemaLinkFolderRequest =
   components["schemas"]["LinkFolderRequest"];
@@ -17905,7 +18052,9 @@ export interface operations {
     };
     readonly requestBody: {
       readonly content: {
-        readonly "application/json": components["schemas"]["IndexingLLMSelectionRequest"];
+        readonly "application/json":
+          | components["schemas"]["LightRagIndexingSelection"]
+          | components["schemas"]["IndexingLLMSelectionRequest"];
       };
     };
     readonly responses: {
@@ -19380,6 +19529,39 @@ export interface operations {
         readonly "application/json": components["schemas"]["LightRagConfigUpdate"];
       };
     };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_lightrag_model_options_api_knowledge_bases_rag_pipelines_lightrag_model_options_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
     readonly responses: {
       /** @description Successful Response */
       readonly 200: {

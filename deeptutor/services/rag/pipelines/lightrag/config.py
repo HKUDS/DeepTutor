@@ -227,18 +227,24 @@ def lightrag_indexing_selection_from_settings() -> dict[str, str] | None:
 
 
 def resolve_lightrag_query_llm_config():
-    """Resolve the current LightRAG query model with the released fallback contract."""
+    """Resolve legacy settings, access-checking the active fallback as well."""
+    from deeptutor.multi_user.model_access import apply_allowed_llm_selection
     from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
 
-    selection = lightrag_llm_selection_from_settings()
+    from .indexing_policy import _active_catalog_selection
+
+    selection = lightrag_llm_selection_from_settings() or _active_catalog_selection()
+    if selection is None:
+        raise LightRagNotConfiguredError("Choose an accessible LightRAG model in engine settings.")
+    apply_allowed_llm_selection(selection)
     try:
         return resolve_llm_config_for_selection(selection)
     except ValueError:
-        logger.warning(
-            "LightRAG LLM selection %s no longer exists in the catalog; using the active model",
-            selection,
-        )
-        return resolve_llm_config_for_selection(None)
+        fallback = _active_catalog_selection()
+        if fallback is None or fallback == selection:
+            raise
+        apply_allowed_llm_selection(fallback)
+        return resolve_llm_config_for_selection(fallback)
 
 
 def build_llm_model_func(

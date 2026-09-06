@@ -12,7 +12,7 @@ import {
   decodeResourceSegment,
   knowledgeBaseRoute,
 } from "@/lib/resource-routes";
-import type { IndexingLLMSelection } from "@/features/knowledge/model/types";
+import type { LightRagIndexingSelection } from "@/features/knowledge/model/types";
 
 const panelLoading = () => (
   <div
@@ -31,7 +31,9 @@ const KnowledgeBaseDetail = dynamic(() => import("./KnowledgeBaseDetail"), {
 });
 const EngineDetail = dynamic(
   () => import("@/features/knowledge/components/engines/EngineDetail"),
-  { loading: panelLoading },
+  {
+    loading: panelLoading,
+  },
 );
 const CreateKbModal = dynamic(() => import("./CreateKbModal"));
 
@@ -250,7 +252,7 @@ export default function KnowledgePage() {
   );
 
   const handleReindex = useCallback(
-    async (kbName: string, indexingLLM?: IndexingLLMSelection) => {
+    async (kbName: string, indexingLLM?: LightRagIndexingSelection) => {
       try {
         await reindex(kbName, indexingLLM);
       } catch (err) {
@@ -262,7 +264,7 @@ export default function KnowledgePage() {
   );
 
   const handleUpdatePendingIndexingPolicy = useCallback(
-    async (kbName: string, indexingLLM: IndexingLLMSelection) => {
+    async (kbName: string, indexingLLM: LightRagIndexingSelection) => {
       try {
         await updatePendingIndexingPolicy(kbName, indexingLLM);
       } catch (err) {

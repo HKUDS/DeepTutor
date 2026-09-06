@@ -23,6 +23,7 @@ export {
 
 export type {
   IndexingLLMSelection,
+  LightRagIndexingSelection,
   ImaKnowledgeBasePage,
   ImaProbe,
   KnowledgeBaseSummary,

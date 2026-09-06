@@ -22,10 +22,24 @@ export default function LightRagIndexingProvenance({
   const resolved = policy ?? { policy: "legacy_unpinned" };
   const pending = resolved.policy === "pending_pinned";
   const pinned = resolved.policy === "pinned" || pending;
-  const model = resolved.descriptor?.model;
-  const binding = resolved.descriptor?.binding;
+  const extract = resolved.schema_version === 2 ? resolved.extract : resolved;
+  const visionEnabled =
+    resolved.schema_version === 2
+      ? resolved.vlm?.mode === "enabled"
+        ? true
+        : resolved.vlm?.mode === "disabled"
+          ? false
+          : undefined
+      : resolved.vision_available;
+  const vision =
+    resolved.schema_version === 2 ? resolved.vlm?.snapshot : resolved;
+  const visionLabel = [vision?.descriptor?.binding, vision?.descriptor?.model]
+    .filter(Boolean)
+    .join(" · ");
+  const model = extract?.descriptor?.model;
+  const binding = extract?.descriptor?.binding;
   const modelLabel = [binding, model].filter(Boolean).join(" · ");
-  const effort = resolved.descriptor?.reasoning_effort;
+  const effort = extract?.descriptor?.reasoning_effort;
   const title = pending
     ? t("Pending pinned indexing model")
     : pinned
@@ -49,26 +63,37 @@ export default function LightRagIndexingProvenance({
       <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
         {summary}
       </p>
+      {visionEnabled === false && (
+        <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+          {t(
+            "Image analysis is disabled. Enable a VLM through a full rebuild.",
+          )}
+        </p>
+      )}
       {compact && (
         <p className="mt-1 text-[11px] font-medium text-[var(--foreground)]">
+          {"EXTRACT: "}
           {modelLabel || t("Unverified historical indexing model")}
           {` · ${t("Reasoning effort")}: ${effort || t("Model default")}`}
+          {` · VLM: ${visionEnabled === true ? visionLabel || t("Unknown") : visionEnabled === false ? t("Image analysis disabled") : t("Unknown")}`}
         </p>
       )}
       {!compact && (
         <dl className="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-2">
-          <ProvenanceField label={t("Model")}>
+          <ProvenanceField label={t("EXTRACT model")}>
             {modelLabel || t("Unverified historical indexing model")}
           </ProvenanceField>
           <ProvenanceField label={t("Reasoning effort")}>
             {effort || t("Model default")}
           </ProvenanceField>
-          <ProvenanceField label={t("VLM capability")}>
-            {typeof resolved.vision_available === "boolean"
-              ? resolved.vision_available
-                ? t("Available")
-                : t("Unavailable")
-              : t("Unknown")}
+          <ProvenanceField label={t("VLM model")}>
+            {visionEnabled === true
+              ? visionLabel || t("Unknown")
+              : visionEnabled === false
+                ? t("Image analysis disabled")
+                : t("Unknown")}
+            {visionEnabled === true &&
+              ` · ${t("Reasoning effort")}: ${vision?.descriptor?.reasoning_effort || t("Model default")}`}
             {resolved.vlm_used === true
               ? ` · ${t("used for this version")}`
               : resolved.vlm_used === false

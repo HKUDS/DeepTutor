@@ -17,7 +17,7 @@ import {
   Upload,
 } from "lucide-react";
 import type {
-  IndexingLLMSelection,
+  LightRagIndexingSelection,
   KnowledgeUploadPolicy,
 } from "@/features/knowledge/model/types";
 import {
@@ -57,11 +57,11 @@ interface KnowledgeBaseDetailProps {
   ) => Promise<void>;
   onReindex: (
     kbName: string,
-    indexingLLM?: IndexingLLMSelection,
+    indexingLLM?: LightRagIndexingSelection,
   ) => Promise<void>;
   onUpdatePendingIndexingPolicy: (
     kbName: string,
-    indexingLLM: IndexingLLMSelection,
+    indexingLLM: LightRagIndexingSelection,
   ) => Promise<void>;
   onRetry: (kbName: string) => Promise<void>;
   onSetDefault: (kbName: string) => Promise<void>;

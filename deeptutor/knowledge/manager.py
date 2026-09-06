@@ -1404,7 +1404,12 @@ class KnowledgeBaseManager:
                 indexing_policy = (
                     pending if isinstance(pending, dict) else {"policy": "legacy_unpinned"}
                 )
-            metadata["indexing_policy"] = indexing_policy
+            from deeptutor.services.rag.pipelines.lightrag.indexing_policy import public_policy
+
+            metadata["indexing_policy"] = public_policy(indexing_policy)
+            for version in index_versions:
+                if isinstance(version.get("indexing_policy"), dict):
+                    version["indexing_policy"] = public_policy(version["indexing_policy"])
 
         metadata.update(self._embedding_fields(kb_config))
 

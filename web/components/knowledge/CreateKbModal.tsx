@@ -20,6 +20,7 @@ import { useLLMOptions } from "@/hooks/useLLMOptions";
 import {
   getGraphRagConfig,
   getLightRagConfig,
+  getLightRagModelOptions,
   getLightRagServerConfig,
   getLlamaIndexConfig,
   getPageIndexConfig,
@@ -30,7 +31,7 @@ import {
   probeLinkedFolder,
   probeWeKnora,
   type KnowledgeUploadPolicy,
-  type IndexingLLMSelection,
+  type LightRagIndexingSelection,
   type LinkedFolderProbe,
   type RagProviderSummary,
   type WeKnoraProbe,
@@ -47,9 +48,10 @@ import {
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
-import IndexingModelSelector, {
-  selectionFromLightRagDefault,
-} from "./IndexingModelSelector";
+import LightRagIndexingSelector, {
+  indexingSelectionFromDefaults,
+  isCompleteIndexingSelection,
+} from "./LightRagIndexingSelector";
 
 const OBSIDIAN_SOURCE = "obsidian";
 const MARGINNOTE4_SOURCE = "marginnote4";
@@ -72,7 +74,7 @@ interface CreateKbModalProps {
     files: File[];
     pageindexMode?: "flash" | "standard";
     searchMode?: string;
-    indexingLLM?: IndexingLLMSelection;
+    indexingLLM?: LightRagIndexingSelection;
   }) => Promise<void>;
   /** Link a pre-built engine index folder in place (no copy, no re-index). */
   onConnectLinkedFolder: (params: {
@@ -164,9 +166,8 @@ export default function CreateKbModal({
   const [weKnoraProbe, setWeKnoraProbe] = useState<WeKnoraProbe | null>(null);
   const [weKnoraProbing, setWeKnoraProbing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
-    null,
-  );
+  const [indexingLLM, setIndexingLLM] =
+    useState<LightRagIndexingSelection | null>(null);
   const [lightRagConfig, setLightRagConfig] = useState<Awaited<
     ReturnType<typeof getLightRagConfig>
   > | null>(null);
@@ -182,7 +183,7 @@ export default function CreateKbModal({
     onError: setError,
     active: linkIsIma,
   });
-  const llmCatalog = useLLMOptions();
+  const llmCatalog = useLLMOptions(getLightRagModelOptions);
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
 
@@ -251,7 +252,7 @@ export default function CreateKbModal({
       return;
     }
     setIndexingLLM(
-      selectionFromLightRagDefault(
+      indexingSelectionFromDefaults(
         llmCatalog.options,
         lightRagConfig,
         llmCatalog.activeDefault,
@@ -390,7 +391,8 @@ export default function CreateKbModal({
           !!weKnoraProbe?.ok
         );
       }
-      if (provider === "lightrag" && !indexingLLM) return false;
+      if (provider === "lightrag" && !isCompleteIndexingSelection(indexingLLM))
+        return false;
       return !providerUnavailable;
     }
     if (linkIsIma) return imaConnection.canSubmit;
@@ -616,7 +618,7 @@ export default function CreateKbModal({
             policyForProvider={policyForProvider}
             indexingModelField={
               provider === "lightrag" ? (
-                <IndexingModelSelector
+                <LightRagIndexingSelector
                   options={llmCatalog.options}
                   selection={indexingLLM}
                   loading={llmCatalog.loading}

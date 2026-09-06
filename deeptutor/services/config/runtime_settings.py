@@ -613,6 +613,17 @@ class RuntimeSettingsService:
         return payload
 
     def load_lightrag(self) -> dict[str, Any]:
+        path = self.path_for("lightrag")
+        if path.exists():
+            # Invalid role settings must never become legacy chat-model fallback.
+            with path.open(encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if not isinstance(loaded, dict):
+                raise ValueError("LightRAG settings must be an object.")
+            normalized = self._normalize_lightrag({**DEFAULT_LIGHTRAG_SETTINGS, **loaded})
+            if normalized != loaded:
+                _atomic_write_json(path, normalized)
+            return normalized
         return self._load_or_create("lightrag", DEFAULT_LIGHTRAG_SETTINGS, self._normalize_lightrag)
 
     def save_lightrag(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -955,7 +966,17 @@ class RuntimeSettingsService:
         }
 
     def _normalize_lightrag(self, settings: dict[str, Any]) -> dict[str, Any]:
-        return {
+        from .lightrag_roles import LightRagRoleModels
+
+        # Missing means a released, legacy setting. Never turn malformed new
+        # configuration back into a legacy model fallback.
+        role_models = settings.get("role_models")
+        roles = (
+            LightRagRoleModels.model_validate(role_models).model_dump()
+            if "role_models" in settings
+            else None
+        )
+        result = {
             "version": 1,
             "top_k": _coerce_clamped_int(settings.get("top_k"), 60, 1, 200),
             "response_type": self._normalize_response_type(settings.get("response_type")),
@@ -971,6 +992,9 @@ class RuntimeSettingsService:
             "llm_profile_id": _string(settings.get("llm_profile_id"))[:128],
             "llm_model_id": _string(settings.get("llm_model_id"))[:128],
         }
+        if roles is not None:
+            result["role_models"] = roles
+        return result
 
     def _normalize_lightrag_server(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {

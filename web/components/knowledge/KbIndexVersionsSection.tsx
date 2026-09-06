@@ -22,56 +22,52 @@ import {
   resolveKbStatus,
   resolveProgressPercent,
   type IndexVersion,
+  type LightRagIndexingPolicy,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import ProcessLogs from "@/components/common/ProcessLogs";
 import Modal from "@/components/common/Modal";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
-import { getLightRagConfig } from "@/features/knowledge/api/engines";
+import {
+  getLightRagConfig,
+  getLightRagModelOptions,
+} from "@/features/knowledge/api/engines";
 import type { LLMOption } from "@/lib/llm-options";
 import type {
-  IndexingLLMSelection,
+  LightRagIndexingSelection,
   LightRagConfig,
 } from "@/features/knowledge/model/types";
 import KbIndexFailureBanner from "./KbIndexFailureBanner";
-import IndexingModelSelector, {
-  selectionFromLightRagDefault,
-  selectionFromLLMOption,
-} from "./IndexingModelSelector";
+import LightRagIndexingSelector, {
+  indexingSelectionFromDefaults,
+  isCompleteIndexingSelection,
+  indexingSelectionFromPolicy,
+} from "./LightRagIndexingSelector";
 import LightRagIndexingProvenance from "./LightRagIndexingProvenance";
 
 export function selectionForLightRagModelDialog(
   options: LLMOption[],
-  config: Pick<LightRagConfig, "llm_profile_id" | "llm_model_id">,
-  activeDefault: {
-    profile_id?: string | null;
-    model_id?: string | null;
-  } | null,
-  savedPending: IndexingLLMSelection | undefined,
+  config: Pick<
+    LightRagConfig,
+    "llm_profile_id" | "llm_model_id" | "role_models"
+  >,
+  activeDefault: import("@/lib/llm-options").LLMOptionsResponse["active"],
+  savedPending: LightRagIndexingPolicy | undefined,
   preserveSavedPending: boolean,
-): IndexingLLMSelection | null {
-  const savedOption = preserveSavedPending
-    ? options.find(
-        (option) =>
-          option.profile_id === savedPending?.profile_id &&
-          option.model_id === savedPending?.model_id,
-      )
-    : undefined;
-  return savedOption
-    ? selectionFromLLMOption(
-        savedOption,
-        savedPending?.reasoning_effort || "",
-      )
-    : selectionFromLightRagDefault(options, config, activeDefault);
+): LightRagIndexingSelection | null {
+  return (
+    (preserveSavedPending ? indexingSelectionFromPolicy(savedPending) : null) ??
+    indexingSelectionFromDefaults(options, config, activeDefault)
+  );
 }
 
 interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
   task?: TaskState;
-  onReindex: (indexingLLM?: IndexingLLMSelection) => Promise<void>;
+  onReindex: (indexingLLM?: LightRagIndexingSelection) => Promise<void>;
   onUpdatePendingIndexingPolicy: (
-    indexingLLM: IndexingLLMSelection,
+    indexingLLM: LightRagIndexingSelection,
   ) => Promise<void>;
 }
 
@@ -84,16 +80,15 @@ export default function KbIndexVersionsSection({
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
-  const [indexingLLM, setIndexingLLM] = useState<IndexingLLMSelection | null>(
-    null,
-  );
+  const [indexingLLM, setIndexingLLM] =
+    useState<LightRagIndexingSelection | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [lightRagConfig, setLightRagConfig] = useState<LightRagConfig | null>(
     null,
   );
   const [lightRagConfigLoaded, setLightRagConfigLoaded] = useState(false);
   const [lightRagConfigError, setLightRagConfigError] = useState(false);
-  const llmCatalog = useLLMOptions();
+  const llmCatalog = useLLMOptions(getLightRagModelOptions);
   const provider = kb.statistics?.rag_provider || "llamaindex";
   const isLightRag = provider === "lightrag";
   const pageIndexProvider = !providerUsesEmbeddingMetadata(provider);
@@ -157,14 +152,14 @@ export default function KbIndexVersionsSection({
         llmCatalog.options,
         lightRagConfig,
         llmCatalog.activeDefault,
-        kb.metadata?.indexing_policy?.selection,
+        kb.metadata?.indexing_policy,
         emptyPendingEligible,
       ),
     );
   }, [
     emptyPendingEligible,
     indexingLLM,
-    kb.metadata?.indexing_policy?.selection,
+    kb.metadata?.indexing_policy,
     llmCatalog.activeDefault,
     llmCatalog.options,
     lightRagConfig,
@@ -192,7 +187,7 @@ export default function KbIndexVersionsSection({
   };
 
   const handleModelSubmit = async () => {
-    if (!indexingLLM) return;
+    if (!isCompleteIndexingSelection(indexingLLM)) return;
     setSubmitting(true);
     setDialogError(null);
     try {
@@ -404,7 +399,7 @@ export default function KbIndexVersionsSection({
             <button
               type="button"
               onClick={() => void handleModelSubmit()}
-              disabled={submitting || !indexingLLM}
+              disabled={submitting || !isCompleteIndexingSelection(indexingLLM)}
               className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -425,7 +420,7 @@ export default function KbIndexVersionsSection({
                   "A full re-index publishes a new version and then makes this model the pinned identity for future incremental uploads.",
                 )}
           </p>
-          <IndexingModelSelector
+          <LightRagIndexingSelector
             options={llmCatalog.options}
             selection={indexingLLM}
             loading={llmCatalog.loading}
@@ -492,11 +487,11 @@ function IndexVersionRow({
     ? t("Failed rebuild candidate")
     : isBuildingLightRagCandidate
       ? t("Rebuild candidate in progress")
-    : isLegacy
-      ? t("Legacy index")
-      : version.model
-        ? version.model
-        : (version.signature ?? t("Unknown"));
+      : isLegacy
+        ? t("Legacy index")
+        : version.model
+          ? version.model
+          : (version.signature ?? t("Unknown"));
 
   const created = formatKnowledgeTimestamp(version.created_at);
 

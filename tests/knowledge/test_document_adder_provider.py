@@ -140,7 +140,12 @@ def test_lightrag_hash_bookkeeping_failure_does_not_deny_published_success(
             return True
 
     monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _SuccessfulRagService)
-    adder = DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="lightrag")
+    adder = DocumentAdder(
+        kb_name="kb",
+        base_dir=str(tmp_path),
+        rag_provider="lightrag",
+        accepted_indexing_snapshot=object(),
+    )
     monkeypatch.setattr(
         adder,
         "_record_successful_hash",

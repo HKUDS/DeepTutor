@@ -814,6 +814,18 @@
             "title": "Files",
             "type": "array"
           },
+          "image_analysis": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Require image analysis with the pinned VLM; false skips images, omitted follows the pinned policy.",
+            "title": "Image Analysis"
+          },
           "rag_provider": {
             "title": "Rag Provider",
             "type": "string"
@@ -4383,6 +4395,16 @@
             ],
             "title": "Response Type"
           },
+          "role_models": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LightRagRoleModels"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "top_k": {
             "anyOf": [
               {
@@ -4396,6 +4418,179 @@
           }
         },
         "title": "LightRagConfigUpdate",
+        "type": "object"
+      },
+      "LightRagIndexingSelection": {
+        "additionalProperties": false,
+        "description": "Resolved create/rebuild overrides, without mutable engine inheritance.",
+        "properties": {
+          "extract": {
+            "$ref": "#/components/schemas/LightRagModelSelection"
+          },
+          "vlm": {
+            "$ref": "#/components/schemas/LightRagIndexingVision"
+          }
+        },
+        "required": [
+          "extract"
+        ],
+        "title": "LightRagIndexingSelection",
+        "type": "object"
+      },
+      "LightRagIndexingVision": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "disabled",
+            "enum": [
+              "disabled",
+              "enabled"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LightRagModelSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "LightRagIndexingVision",
+        "type": "object"
+      },
+      "LightRagModelSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "adaptive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          }
+        },
+        "required": [
+          "profile_id",
+          "model_id"
+        ],
+        "title": "LightRagModelSelection",
+        "type": "object"
+      },
+      "LightRagRoleModel": {
+        "additionalProperties": false,
+        "properties": {
+          "max_async": {
+            "default": 4,
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Max Async",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "inherit",
+            "enum": [
+              "inherit",
+              "model"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "adaptive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LightRagModelSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout": {
+            "default": 240,
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Timeout",
+            "type": "integer"
+          }
+        },
+        "title": "LightRagRoleModel",
+        "type": "object"
+      },
+      "LightRagRoleModels": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/LightRagModelSelection"
+          },
+          "extract": {
+            "$ref": "#/components/schemas/LightRagRoleModel"
+          },
+          "keyword": {
+            "$ref": "#/components/schemas/LightRagRoleModel"
+          },
+          "query": {
+            "$ref": "#/components/schemas/LightRagRoleModel"
+          },
+          "vlm": {
+            "$ref": "#/components/schemas/LightRagVisionModel"
+          }
+        },
+        "required": [
+          "base"
+        ],
+        "title": "LightRagRoleModels",
         "type": "object"
       },
       "LightRagServerConfigUpdate": {
@@ -4425,6 +4620,68 @@
           }
         },
         "title": "LightRagServerConfigUpdate",
+        "type": "object"
+      },
+      "LightRagVisionModel": {
+        "additionalProperties": false,
+        "properties": {
+          "max_async": {
+            "default": 4,
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Max Async",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "disabled",
+            "enum": [
+              "disabled",
+              "inherit",
+              "model"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max",
+                  "adaptive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LightRagModelSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout": {
+            "default": 240,
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Timeout",
+            "type": "integer"
+          }
+        },
+        "title": "LightRagVisionModel",
         "type": "object"
       },
       "LinkFolderRequest": {
@@ -16991,7 +17248,6 @@
         ]
       },
       "post": {
-        "description": "Create a new knowledge base and initialize it with files.",
         "operationId": "create_knowledge_base_api_knowledge_bases_post",
         "parameters": [
           {
@@ -18900,6 +19156,70 @@
         ]
       }
     },
+    "/api/knowledge-bases/rag-pipelines/lightrag/model-options": {
+      "get": {
+        "description": "Return accessible catalog models with supported role capabilities.",
+        "operationId": "get_lightrag_model_options_api_knowledge_bases_rag_pipelines_lightrag_model_options_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Lightrag Model Options",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
     "/api/knowledge-bases/rag-pipelines/llamaindex/config": {
       "get": {
         "description": "Read the LlamaIndex engine's retrieval + chunking knobs.",
@@ -20633,7 +20953,6 @@
     },
     "/api/knowledge-bases/{kb_name}/indexing-policy": {
       "put": {
-        "description": "Change the pending model of an empty, unpublished LightRAG KB.",
         "operationId": "update_pending_indexing_policy_api_knowledge_bases__kb_name__indexing_policy_put",
         "parameters": [
           {
@@ -20682,7 +21001,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/IndexingLLMSelectionRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LightRagIndexingSelection"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IndexingLLMSelectionRequest"
+                  }
+                ],
+                "title": "Payload"
               }
             }
           },

@@ -194,16 +194,23 @@ test("late catalog loading preserves an empty knowledge base's saved pending mod
       { llm_profile_id: "current-profile", llm_model_id: "current-model" },
       null,
       {
-        profile_id: "saved-profile",
-        model_id: "saved-model",
-        reasoning_effort: "none",
+        policy: "pending_pinned",
+        vision_available: false,
+        selection: {
+          profile_id: "saved-profile",
+          model_id: "saved-model",
+          reasoning_effort: "none",
+        },
       },
       true,
     ),
     {
-      profile_id: "saved-profile",
-      model_id: "saved-model",
-      reasoning_effort: "none",
+      extract: {
+        profile_id: "saved-profile",
+        model_id: "saved-model",
+        reasoning_effort: "none",
+      },
+      vlm: { mode: "disabled" },
     },
   );
 });

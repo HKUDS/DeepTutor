@@ -172,7 +172,7 @@ def test_default_snapshot_prefers_released_lightrag_selection(monkeypatch) -> No
         ),
     )
 
-    assert indexing_policy.freeze_default_snapshot() is expected
+    assert indexing_policy._freeze_legacy_default_snapshot() is expected
     assert calls == [(selection, indexing_policy.POLICY_PINNED, False)]
 
 

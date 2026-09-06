@@ -20,8 +20,8 @@ from deeptutor.services.rag.kb_paths import resolve_kb_dir
 from . import block_policy, engine, indexing_policy, ingress, storage
 from . import config as lr_config
 from .indexing_policy import (
-    IndexingLLMSnapshot,
     IndexingPolicyError,
+    IndexingPolicySnapshot,
     effective_policy,
     freeze_default_snapshot,
     resolve_write_snapshot,
@@ -279,7 +279,7 @@ class LightRagPipeline:
         working_dir: Path,
         file_paths: List[str],
         progress_callback: Callable[[int, int], Any] | None,
-        snapshot: IndexingLLMSnapshot | None = None,
+        snapshot: IndexingPolicySnapshot | None = None,
     ) -> BatchOutcome:
         if snapshot is None:
             snapshot = freeze_default_snapshot()
@@ -289,7 +289,7 @@ class LightRagPipeline:
             staged, preflight_failed = self._stage_documents(
                 working_dir,
                 file_paths,
-                vision_available=snapshot.vision_available,
+                vision_available=snapshot.vision_available and snapshot.image_analysis is not False,
             )
             if not staged:
                 raise LightRagBatchError(
@@ -356,7 +356,10 @@ class LightRagPipeline:
                         ingress.remove_unaccepted(item)
 
         outcome = await run_in_worker_loop(job)
-        return replace(outcome, indexing_policy=snapshot.persisted_policy())
+        published_policy = snapshot.persisted_policy()
+        if published_policy.get("policy") == "pending_pinned":
+            published_policy["policy"] = "pinned"
+        return replace(outcome, indexing_policy=published_policy)
 
     def _remove_zero_accepted_candidate(self, root_dir: Path) -> None:
         if not root_dir.is_dir() or storage.has_any_doc_status(root_dir):
@@ -367,9 +370,26 @@ class LightRagPipeline:
         shutil.rmtree(root_dir)
 
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
+        from .write_lock import write_ownership
+
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        with write_ownership(kb_dir):
+            snapshot = kwargs.get("indexing_snapshot") or kwargs.get("accepted_indexing_snapshot")
+            if snapshot is not None:
+                indexing_policy.validate_target(snapshot, kb_dir)
+                fresh = indexing_policy.revalidate_snapshot(snapshot)
+                key = (
+                    "indexing_snapshot"
+                    if kwargs.get("indexing_snapshot") is not None
+                    else "accepted_indexing_snapshot"
+                )
+                kwargs[key] = fresh
+            return await self._initialize_owned(kb_name, file_paths, **kwargs)
+
+    async def _initialize_owned(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self._ensure_available()
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        snapshot = kwargs.get("indexing_snapshot")
+        snapshot = kwargs.get("indexing_snapshot") or kwargs.get("accepted_indexing_snapshot")
         if snapshot is None:
             policy = effective_policy(
                 kb_dir,
@@ -380,6 +400,8 @@ class LightRagPipeline:
                 snapshot = indexing_policy.snapshot_from_persisted(policy)
             else:
                 snapshot = freeze_default_snapshot()
+        if "image_analysis" in kwargs:
+            snapshot = indexing_policy.with_image_analysis(snapshot, kwargs["image_analysis"])
         root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
         try:
             outcome = await self._run_indexing(
@@ -389,6 +411,9 @@ class LightRagPipeline:
                 raise RuntimeError(f"LightRAG did not produce a ready index for {kb_name!r}")
             policy = dict(outcome.indexing_policy)
             policy["vlm_used"] = outcome.vlm_used
+            before_publish = kwargs.get("before_publish")
+            if before_publish is not None:
+                before_publish(root_dir)
             storage.write_meta(root_dir, indexing_policy=policy)
             self._clear_pending_policy(kb_name)
             return outcome.complete
@@ -403,27 +428,48 @@ class LightRagPipeline:
             raise
 
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
+        from .write_lock import write_ownership
+
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        with write_ownership(kb_dir):
+            if kwargs.get("indexing_snapshot") is not None and (
+                storage.latest_published_root(kb_dir) is not None or list_kb_versions(kb_dir)
+            ):
+                raise IndexingPolicyError(
+                    "An explicit LightRAG indexing model cannot override an existing index; "
+                    "run a full re-index."
+                )
+            snapshot = kwargs.get("indexing_snapshot") or kwargs.get("accepted_indexing_snapshot")
+            if snapshot is not None:
+                indexing_policy.validate_target(snapshot, kb_dir)
+                fresh = indexing_policy.revalidate_snapshot(snapshot)
+                key = (
+                    "indexing_snapshot"
+                    if kwargs.get("indexing_snapshot") is not None
+                    else "accepted_indexing_snapshot"
+                )
+                kwargs[key] = fresh
+            return await self._add_documents_owned(kb_name, file_paths, **kwargs)
+
+    async def _add_documents_owned(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         self._ensure_available()
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         existing = storage.latest_published_root(kb_dir)
         versions = list_kb_versions(kb_dir)
         explicit = kwargs.get("indexing_snapshot")
-        if explicit is not None and (existing is not None or versions):
-            raise IndexingPolicyError(
-                "An explicit LightRAG indexing model cannot override an existing index; "
-                "run a full re-index."
-            )
         if existing is None and versions:
             raise LightRagNeedsReindexError(
                 "This LightRAG index is legacy, unpublished, or corrupt and must be rebuilt "
                 "before appending."
             )
-        snapshot = resolve_write_snapshot(
+        snapshot = kwargs.get("accepted_indexing_snapshot") or resolve_write_snapshot(
             kb_dir,
             base_dir=self.kb_base_dir,
             kb_name=kb_name,
             explicit=explicit,
         )
+        if "image_analysis" in kwargs:
+            snapshot = indexing_policy.with_image_analysis(snapshot, kwargs["image_analysis"])
         if existing is not None:
             root_dir = existing
             is_update = True
@@ -437,8 +483,12 @@ class LightRagPipeline:
             if not storage.has_output(root_dir):
                 raise RuntimeError(f"LightRAG did not produce a ready index for {kb_name!r}")
             policy = dict(outcome.indexing_policy)
-            policy["vlm_used"] = outcome.vlm_used
+            previous_policy = storage.read_published_policy(existing) or {}
+            policy["vlm_used"] = outcome.vlm_used or previous_policy.get("vlm_used") is True
             if not is_update:
+                before_publish = kwargs.get("before_publish")
+                if before_publish is not None:
+                    before_publish(root_dir)
                 storage.write_meta(root_dir, indexing_policy=policy)
                 self._clear_pending_policy(kb_name)
             else:
@@ -494,8 +544,12 @@ class LightRagPipeline:
         try:
             self._ensure_available()
 
+            from .roles import resolve_query_roles
+
+            query_roles = resolve_query_roles()
+
             async def job(io_bridge: OwnerLoopBridge):
-                rag = engine.build_rag(root_dir, io_bridge=io_bridge)
+                rag = engine.build_rag(root_dir, io_bridge=io_bridge, query_roles=query_roles)
                 failed = True
                 try:
                     await engine.initialize(rag)

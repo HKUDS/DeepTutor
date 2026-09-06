@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 import hashlib
 import json
 from pathlib import Path
@@ -152,8 +152,7 @@ def freeze_snapshot(
 
 
 def pending_policy_for_selection(selection_value: Any) -> dict[str, Any]:
-    snapshot = freeze_snapshot(selection_value, policy=POLICY_PENDING)
-    return snapshot.persisted_policy()
+    return freeze_roles(selection_value, policy=POLICY_PENDING).persisted_policy()
 
 
 def _active_catalog_selection() -> dict[str, str] | None:
@@ -168,7 +167,7 @@ def _active_catalog_selection() -> dict[str, str] | None:
     return {"profile_id": profile_id, "model_id": model_id}
 
 
-def freeze_default_snapshot() -> IndexingLLMSnapshot:
+def _freeze_legacy_default_snapshot() -> IndexingLLMSnapshot:
     """Freeze the released LightRAG model, or the active model when it is unset."""
     from .config import lightrag_indexing_selection_from_settings
 
@@ -187,9 +186,13 @@ def freeze_default_snapshot() -> IndexingLLMSnapshot:
     )
 
 
-def snapshot_from_persisted(policy: dict[str, Any]) -> IndexingLLMSnapshot:
+def _single_snapshot_from_persisted(policy: dict[str, Any]) -> IndexingLLMSnapshot:
+    if type(policy.get("vision_available")) is not bool:
+        raise IndexingModelChangedError(
+            "The historical vision capability is unknown; run a full re-index."
+        )
     selection = policy.get("selection")
-    if selection is not None and not isinstance(selection, dict):
+    if not isinstance(selection, dict):
         raise IndexingPolicyError("Pinned LightRAG metadata has an invalid model selection.")
     snapshot = freeze_snapshot(selection, policy=POLICY_PINNED)
     expected = str(policy.get("fingerprint") or "")
@@ -199,6 +202,283 @@ def snapshot_from_persisted(policy: dict[str, Any]) -> IndexingLLMSnapshot:
             "the new model identity."
         )
     return snapshot
+
+
+@dataclass(frozen=True, slots=True)
+class IndexingPolicySnapshot:
+    extract: IndexingLLMSnapshot
+    vlm: IndexingLLMSnapshot | None
+    policy: str = POLICY_PINNED
+    limits: dict[str, dict[str, int]] = field(default_factory=dict)
+    legacy_policy: dict[str, Any] | None = None
+    target_version: str | None = None
+    target_bound: bool = False
+    target_policy: str | None = None
+    image_analysis: bool | None = None
+    target_revision: str | None = None
+
+    @property
+    def vision_available(self) -> bool:
+        return self.vlm is not None and self.vlm.vision_available
+
+    def persisted_policy(self) -> dict[str, Any]:
+        if self.legacy_policy is not None:
+            # Appending must not rewrite the old fingerprint as a v2 identity.
+            return dict(self.legacy_policy)
+        return {
+            "schema_version": 2,
+            "policy": self.policy,
+            "extract": self.extract.persisted_policy(),
+            "vlm": {
+                "mode": "enabled" if self.vlm else "disabled",
+                **({"snapshot": self.vlm.persisted_policy()} if self.vlm else {}),
+            },
+        }
+
+
+def _role_identity(snapshot: IndexingLLMSnapshot, *, vision: bool) -> dict[str, Any]:
+    config = snapshot.config
+    return {
+        **_canonical_identity(
+            snapshot.selection,
+            config,
+            vision_available=snapshot.vision_available if vision else None,
+        ),
+        "wire_api": config.wire_api,
+        "api_format": config.api_format,
+        "context_window": config.context_window,
+    }
+
+
+def _with_role_identity(snapshot: IndexingLLMSnapshot, *, vision: bool) -> IndexingLLMSnapshot:
+    snapshot = replace(
+        snapshot,
+        selection=replace(snapshot.selection, reasoning_effort=snapshot.config.reasoning_effort),
+    )
+    identity = _role_identity(snapshot, vision=vision)
+    return replace(snapshot, descriptor=identity, fingerprint=_fingerprint(identity))
+
+
+def _freeze_role(selection_value: Any, *, vision: bool = False) -> IndexingLLMSnapshot:
+    from deeptutor.services.config.lightrag_roles import LightRagModelSelection
+
+    from .roles import resolve_selection
+
+    if isinstance(selection_value, LLMSelection):
+        selection_value = selection_value.to_dict()
+    selected = LightRagModelSelection.model_validate(selection_value)
+    selection = LLMSelection(**selected.model_dump())
+    try:
+        config = resolve_selection(selection, vision=vision)
+    except (ValueError, PermissionError, LLMConfigError) as exc:
+        raise IndexingPolicyError(str(exc)) from exc
+    explicit_user = get_current_user_or_none()
+    if config.binding in OWNER_BOUND_BINDINGS and explicit_user is None:
+        raise IndexingPolicyError(
+            "Owner-bound indexing models require an explicit initiating user scope."
+        )
+    snapshot = IndexingLLMSnapshot(
+        config=config,
+        owner=explicit_user or get_current_user(),
+        policy=POLICY_PINNED,
+        selection=replace(selection, reasoning_effort=config.reasoning_effort),
+        descriptor={},
+        fingerprint=None,
+        vision_available=supports_vision(config.binding, config.model),
+    )
+    return _with_role_identity(snapshot, vision=vision)
+
+
+def freeze_roles(
+    selection_value: Any = None, *, policy: str = POLICY_PINNED
+) -> IndexingPolicySnapshot:
+    """Freeze create/rebuild choices; old request bodies still mean one model."""
+    from deeptutor.services.config import load_lightrag_settings
+    from deeptutor.services.config.lightrag_roles import LightRagIndexingSelection
+
+    from .roles import runtime_limits, settings_models
+
+    settings = load_lightrag_settings()
+    models = settings_models(settings)
+    limits = runtime_limits(settings)
+    if selection_value is None and models is not None:
+        extract_selection = models.selection_for("extract").model_dump()
+        vlm_selection = models.selection_for("vlm")
+        value = {
+            "extract": extract_selection,
+            "vlm": {"mode": "enabled", "selection": vlm_selection.model_dump()}
+            if vlm_selection
+            else {"mode": "disabled"},
+        }
+    elif (
+        selection_value is not None
+        and isinstance(selection_value, dict)
+        and "extract" in selection_value
+    ):
+        value = selection_value
+    else:
+        # Supported v1 settings and form producer: freeze the one known model,
+        # including its known vision capability, before constructing v2 roles.
+        single = (
+            freeze_snapshot(selection_value, policy=POLICY_PINNED)
+            if selection_value is not None
+            else _freeze_legacy_default_snapshot()
+        )
+        if single.selection is None:
+            raise IndexingPolicyError("Choose a catalog model before creating a LightRAG index.")
+        selected = single.selection.to_dict()
+        value = {
+            "extract": selected,
+            "vlm": {"mode": "enabled", "selection": selected}
+            if single.vision_available
+            else {"mode": "disabled"},
+        }
+    parsed = LightRagIndexingSelection.model_validate(value)
+    extract = _freeze_role(parsed.extract.model_dump())
+    vlm = (
+        _freeze_role(parsed.vlm.selection.model_dump(), vision=True)
+        if parsed.vlm.selection
+        else None
+    )
+    return IndexingPolicySnapshot(extract, vlm, policy=policy, limits=limits)
+
+
+def freeze_default_snapshot() -> IndexingPolicySnapshot:
+    return freeze_roles()
+
+
+def snapshot_from_persisted(policy: dict[str, Any]) -> IndexingPolicySnapshot:
+    from deeptutor.services.config import load_lightrag_settings
+
+    from .roles import runtime_limits
+
+    if not isinstance(policy, dict) or policy.get("policy") not in {POLICY_PINNED, POLICY_PENDING}:
+        raise IndexingModelChangedError(
+            "The index has no verified model policy; run a full re-index."
+        )
+    limits = runtime_limits(load_lightrag_settings())
+    if "schema_version" not in policy:
+        single = _single_snapshot_from_persisted(policy)
+        if policy["policy"] == POLICY_PENDING:
+            return IndexingPolicySnapshot(
+                _with_role_identity(single, vision=False),
+                _with_role_identity(single, vision=True) if single.vision_available else None,
+                policy=POLICY_PENDING,
+                limits=limits,
+            )
+        return IndexingPolicySnapshot(
+            single,
+            single if single.vision_available else None,
+            policy=policy["policy"],
+            limits=limits,
+            legacy_policy=dict(policy),
+        )
+    if type(policy["schema_version"]) is not int or policy["schema_version"] != 2:
+        raise IndexingPolicyError("Unsupported LightRAG indexing-policy version.")
+    vision = policy.get("vlm")
+    if not isinstance(vision, dict) or vision.get("mode") not in {"disabled", "enabled"}:
+        raise IndexingPolicyError("Invalid LightRAG vision policy.")
+    if vision["mode"] == "disabled" and "snapshot" in vision:
+        raise IndexingPolicyError("A disabled VLM cannot have an indexing snapshot.")
+
+    def restore(value: Any, *, vision: bool = False) -> IndexingLLMSnapshot:
+        if not isinstance(value, dict) or not isinstance(value.get("selection"), dict):
+            raise IndexingPolicyError("Invalid LightRAG role snapshot.")
+        result = _freeze_role(value["selection"], vision=vision)
+        if not value.get("fingerprint") or result.fingerprint != value["fingerprint"]:
+            raise IndexingModelChangedError("The pinned role model changed; run a full re-index.")
+        return result
+
+    return IndexingPolicySnapshot(
+        restore(policy.get("extract")),
+        restore(vision.get("snapshot"), vision=True) if vision["mode"] == "enabled" else None,
+        policy=policy["policy"],
+        limits=limits,
+    )
+
+
+def revalidate_snapshot(snapshot: IndexingPolicySnapshot) -> IndexingPolicySnapshot:
+    """Refresh credentials and permissions without changing frozen task settings."""
+    from deeptutor.multi_user.paths import user_context
+
+    with user_context(snapshot.extract.owner):
+        fresh = snapshot_from_persisted(snapshot.persisted_policy())
+    return replace(
+        fresh,
+        limits=snapshot.limits,
+        target_version=snapshot.target_version,
+        target_bound=snapshot.target_bound,
+        target_policy=snapshot.target_policy,
+        image_analysis=snapshot.image_analysis,
+        target_revision=snapshot.target_revision,
+    )
+
+
+def _target_policy_key(kb_dir: Path) -> str | None:
+    policy = effective_policy(kb_dir, base_dir=str(kb_dir.parent), kb_name=kb_dir.name)
+    return (
+        _fingerprint({key: value for key, value in policy.items() if key != "vlm_used"})
+        if policy is not None
+        else None
+    )
+
+
+def _content_revision(root: Path | None) -> str:
+    # Native document-status flushes are atomic. Track inode and nanosecond
+    # timestamps as well as size so a same-version append invalidates a queued rebuild.
+    revisions = {}
+    if root is not None:
+        for name in ("meta.json", "kv_store_doc_status.json"):
+            try:
+                stat = (root / name).stat()
+                revisions[name] = [stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+            except FileNotFoundError:
+                revisions[name] = None
+    return _fingerprint(revisions)
+
+
+def bind_target(
+    snapshot: IndexingPolicySnapshot, kb_dir: Path, *, protect_contents: bool = False
+) -> IndexingPolicySnapshot:
+    from .storage import latest_published_root
+
+    target = latest_published_root(kb_dir)
+    return replace(
+        snapshot,
+        target_version=str(target) if target else None,
+        target_bound=True,
+        target_policy=_target_policy_key(kb_dir),
+        target_revision=_content_revision(target) if protect_contents else None,
+    )
+
+
+def validate_target(snapshot: IndexingPolicySnapshot, kb_dir: Path) -> None:
+    from .storage import latest_published_root
+
+    if not snapshot.target_bound:
+        return
+    target = latest_published_root(kb_dir)
+    if (
+        snapshot.target_version != (str(target) if target else None)
+        or snapshot.target_policy != _target_policy_key(kb_dir)
+        or (
+            snapshot.target_revision is not None
+            and snapshot.target_revision != _content_revision(target)
+        )
+    ):
+        raise IndexingPolicyError(
+            "The target index or pending policy changed while queued; resubmit this operation."
+        )
+
+
+def with_image_analysis(
+    snapshot: IndexingPolicySnapshot, requested: bool | None
+) -> IndexingPolicySnapshot:
+    if requested is True and not snapshot.vision_available:
+        raise IndexingModelChangedError(
+            "Image analysis is disabled for this index; run a full re-index with a VLM."
+        )
+    return replace(snapshot, image_analysis=requested)
 
 
 def effective_policy(kb_dir: Path, *, base_dir: str, kb_name: str) -> dict[str, Any] | None:
@@ -215,7 +495,9 @@ def effective_policy(kb_dir: Path, *, base_dir: str, kb_name: str) -> dict[str, 
     manager = KnowledgeBaseManager(base_dir=base_dir)
     entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
     pending = entry.get("pending_indexing_policy")
-    return pending if isinstance(pending, dict) else None
+    if pending is not None and not isinstance(pending, dict):
+        raise IndexingPolicyError("Invalid pending LightRAG indexing policy.")
+    return pending
 
 
 def resolve_write_snapshot(
@@ -223,8 +505,8 @@ def resolve_write_snapshot(
     *,
     base_dir: str,
     kb_name: str,
-    explicit: IndexingLLMSnapshot | None = None,
-) -> IndexingLLMSnapshot:
+    explicit: IndexingPolicySnapshot | None = None,
+) -> IndexingPolicySnapshot:
     if explicit is not None:
         return explicit
     policy = effective_policy(kb_dir, base_dir=base_dir, kb_name=kb_name)
@@ -253,11 +535,53 @@ def cache_identity(snapshot: IndexingLLMSnapshot) -> str:
 
 def cache_identity_for_config(config: LLMConfig) -> str:
     """Return a credential-free cache identity for a resolved query model."""
-    return _fingerprint(_canonical_identity(None, config))
+    return _fingerprint(
+        {
+            **_canonical_identity(None, config),
+            "wire_api": config.wire_api,
+            "api_format": config.api_format,
+            "context_window": config.context_window,
+        }
+    )
+
+
+def public_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    """Expose provenance without private endpoint or owner metadata."""
+    result = {
+        key: policy[key]
+        for key in ("schema_version", "policy", "fingerprint", "vision_available", "vlm_used")
+        if key in policy
+    }
+    selection = policy.get("selection")
+    if isinstance(selection, dict):
+        result["selection"] = {
+            key: selection[key]
+            for key in ("profile_id", "model_id", "reasoning_effort")
+            if key in selection
+        }
+    descriptor = policy.get("descriptor")
+    if isinstance(descriptor, dict):
+        result["descriptor"] = {
+            key: descriptor[key]
+            for key in ("model", "binding", "provider_mode", "reasoning_effort", "vision_available")
+            if key in descriptor
+        }
+    if isinstance(policy.get("extract"), dict):
+        result["extract"] = public_policy(policy["extract"])
+    vlm = policy.get("vlm")
+    if isinstance(vlm, dict):
+        result["vlm"] = {"mode": vlm.get("mode")}
+        if isinstance(vlm.get("snapshot"), dict):
+            result["vlm"]["snapshot"] = public_policy(vlm["snapshot"])
+    return result
 
 
 __all__ = [
     "IndexingLLMSnapshot",
+    "IndexingPolicySnapshot",
+    "freeze_roles",
+    "bind_target",
+    "revalidate_snapshot",
     "IndexingModelChangedError",
     "IndexingPolicyError",
     "POLICY_LEGACY",

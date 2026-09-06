@@ -28,6 +28,7 @@ import {
   getEnginePreflight,
   getGraphRagConfig,
   getLightRagConfig,
+  getLightRagModelOptions,
   getLightRagServerConfig,
   getImaConfig,
   getLlamaIndexConfig,
@@ -61,6 +62,13 @@ import {
 } from "@/lib/knowledge-helpers";
 import { PageIndexConfigForm } from "@/components/knowledge/PageIndexSettingsModal";
 import KnowledgeEngineIcon from "@/components/knowledge/KnowledgeEngineIcon";
+
+import { useAuthStatus } from "@/hooks/useAuthStatus";
+import { useLLMOptions } from "@/hooks/useLLMOptions";
+import LightRagRoleModelsEditor, {
+  newRoleModels,
+} from "@/components/knowledge/LightRagRoleModelsEditor";
+import { selectionFromLightRagDefault } from "@/components/knowledge/IndexingModelSelector";
 
 export interface EngineDetailProps {
   provider: RagProviderSummary;
@@ -1050,45 +1058,37 @@ export function LightRagForm({
   onError: (message: string) => void;
 }) {
   const { t } = useTranslation();
-  const [modelOptions, setModelOptions] = useState<ModelOptionsByKind | null>(
-    null,
-  );
+  const catalog = useLLMOptions(getLightRagModelOptions);
+  const auth = useAuthStatus();
+  const canEdit = auth.statusAvailable && (!auth.enabled || auth.isAdmin);
   const { form, setLoaded, setForm, saving, setSaving, dirty, patch } =
     useEngineForm<LightRagConfig>(
       () => getLightRagConfig({ force: true }),
       onError,
     );
 
-  useEffect(() => {
-    let cancelled = false;
-    getEngineModelOptions(["llm"])
-      .then((data) => !cancelled && setModelOptions(data))
-      .catch(
-        () =>
-          !cancelled &&
-          setModelOptions({
-            llm: { active: { profile_id: null, model_id: null }, options: [] },
-          }),
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   if (!form) return <FormSkeleton />;
-
-  const llmEntry = modelOptions?.llm;
-  const selectedProfileId = form.llm_profile_id;
-  const selectedModelId = form.llm_model_id;
-  const selectedValue =
-    selectedProfileId && selectedModelId
-      ? `${selectedProfileId}::${selectedModelId}`
-      : "";
-  const selectedOption = llmEntry?.options.find(
-    (option) => `${option.profile_id}::${option.model_id}` === selectedValue,
+  const legacyBase = selectionFromLightRagDefault(
+    catalog.options,
+    form,
+    catalog.activeDefault,
   );
+  const legacyOption = catalog.options.find(
+    (option) =>
+      option.profile_id === legacyBase?.profile_id &&
+      option.model_id === legacyBase?.model_id,
+  );
+  const roleModels =
+    form.role_models ??
+    (legacyBase
+      ? newRoleModels(legacyBase, legacyOption?.supports_vision === true)
+      : null);
 
   const save = async () => {
+    if (!roleModels) {
+      onError(t("Choose a LightRAG base model before saving."));
+      return;
+    }
     setSaving(true);
     try {
       const next = await updateLightRagConfig({
@@ -1097,8 +1097,7 @@ export function LightRagForm({
         max_concurrent_files: form.max_concurrent_files,
         llm_model_max_async: form.llm_model_max_async,
         entity_extract_max_gleaning: form.entity_extract_max_gleaning,
-        llm_profile_id: form.llm_profile_id,
-        llm_model_id: form.llm_model_id,
+        role_models: roleModels ?? undefined,
       });
       setLoaded(next);
       setForm(next);
@@ -1111,7 +1110,15 @@ export function LightRagForm({
   };
 
   return (
-    <div className="space-y-5 rounded-2xl border border-[var(--border)] p-4">
+    <fieldset
+      disabled={!canEdit || saving}
+      className="space-y-5 rounded-2xl border border-[var(--border)] p-4"
+    >
+      {!auth.loading && !canEdit && (
+        <p className="text-xs text-[var(--muted-foreground)]">
+          {t("Only administrators can change shared LightRAG engine settings.")}
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <NumberField
           label={t("Results per query")}
@@ -1124,53 +1131,33 @@ export function LightRagForm({
           value={form.response_type}
           onChange={(v) => patch({ response_type: v })}
         />
-        <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium text-[var(--foreground)]">
-            {t("LightRAG query model")}
-          </span>
-          <select
-            value={selectedValue}
-            disabled={!llmEntry}
-            onChange={(event) => {
-              const [profileId, modelId] = event.target.value.split("::");
-              patch({
-                llm_profile_id: profileId || "",
-                llm_model_id: modelId || "",
-              });
-            }}
-            className="w-full cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-          >
-            {!llmEntry ? (
-              <option value="">{t("Loading models…")}</option>
-            ) : (
-              <>
-                <option value="">{t("Use active chat model")}</option>
-                {selectedValue && !selectedOption && (
-                  <option value={selectedValue}>
-                    {t("Selected model unavailable")}
-                  </option>
-                )}
-                {llmEntry.options.map((option) => (
-                  <option
-                    key={`${option.profile_id}::${option.model_id}`}
-                    value={`${option.profile_id}::${option.model_id}`}
-                  >
-                    {option.label}
-                    {option.model && option.model !== option.label
-                      ? ` · ${option.model}`
-                      : ""}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
-          <span className="text-[11px] text-[var(--muted-foreground)]">
-            {t(
-              "Used for current LightRAG queries and as the default indexing model for new or fully rebuilt knowledge bases. Published indexes keep their pinned indexing model.",
-            )}
-          </span>
-        </label>
       </div>
+
+      {!form.role_models && (
+        <p className="text-xs text-[var(--muted-foreground)]">
+          {t(
+            "Legacy model settings are shown below. Saving fixes the LightRAG base selection independently of chat.",
+          )}
+        </p>
+      )}
+      <LightRagRoleModelsEditor
+        models={roleModels}
+        options={catalog.options}
+        loading={catalog.loading}
+        error={catalog.error}
+        disabled={saving}
+        onChange={(role_models) => patch({ role_models })}
+      />
+      <p className="text-xs text-[var(--muted-foreground)]">
+        {t(
+          "KEYWORD and QUERY apply to subsequent queries. EXTRACT and VLM apply to new or fully rebuilt indexes; published indexes keep their pinned models.",
+        )}
+      </p>
+      <p className="text-xs text-[var(--muted-foreground)]">
+        {t(
+          "Role concurrency and timeouts apply to subsequent tasks without rebuilding.",
+        )}
+      </p>
 
       {/* Indexing knobs are a separate axis from the two above: they shape how
           a knowledge base is built, so changing them only affects the next
@@ -1194,14 +1181,6 @@ export function LightRagForm({
             onChange={(v) => patch({ max_concurrent_files: v })}
           />
           <NumberField
-            label={t("Concurrent LLM calls")}
-            hint={t("Lower this if your provider rate-limits you")}
-            value={form.llm_model_max_async}
-            min={1}
-            max={32}
-            onChange={(v) => patch({ llm_model_max_async: v })}
-          />
-          <NumberField
             label={t("Extra extraction passes")}
             hint={t("Recovers missed entities; each pass costs another call")}
             value={form.entity_extract_max_gleaning}
@@ -1212,8 +1191,12 @@ export function LightRagForm({
         </div>
       </div>
 
-      <SaveButton dirty={dirty} saving={saving} onSave={() => void save()} />
-    </div>
+      <SaveButton
+        dirty={dirty || (!form.role_models && roleModels !== null)}
+        saving={saving}
+        onSave={() => void save()}
+      />
+    </fieldset>
   );
 }
 

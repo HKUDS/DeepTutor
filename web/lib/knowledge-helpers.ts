@@ -106,6 +106,9 @@ export interface IndexVersion {
 }
 
 export interface LightRagIndexingPolicy {
+  schema_version?: number;
+  extract?: LightRagIndexingPolicy;
+  vlm?: { mode: "disabled" | "enabled"; snapshot?: LightRagIndexingPolicy };
   policy: "pending_pinned" | "pinned" | "legacy_unpinned" | string;
   selection?: {
     profile_id: string;
@@ -124,11 +127,7 @@ export interface LightRagIndexingPolicy {
 }
 
 export type LightRagVersionDisplayState =
-  | "published"
-  | "building"
-  | "failed"
-  | "legacy"
-  | "inactive";
+  "published" | "building" | "failed" | "legacy" | "inactive";
 
 export function currentLightRagBuildCandidate(
   versions: IndexVersion[],
