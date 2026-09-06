@@ -18,7 +18,7 @@ from typing import Any
 
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
-from deeptutor.services.prompt.language import append_language_directive
+from deeptutor.services.prompt.language import append_language_directive, prompt_locale
 
 
 class LoopPromptAssembler:
@@ -26,7 +26,8 @@ class LoopPromptAssembler:
 
     def __init__(self, *, prompts: dict[str, Any], language: str) -> None:
         self.prompts = prompts
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        self.output_language = language or "en"
+        self.language = prompt_locale(self.output_language)
 
     def system_prompt(
         self,
@@ -68,7 +69,9 @@ class LoopPromptAssembler:
         # different language mid-conversation, and the strict directive plus
         # the runtime policy above it otherwise make the model refuse them.
         # Books, quizzes and research keep the strict form — nobody is asking.
-        return append_language_directive(joined, self.language, allow_user_override=True)
+        # The reply language rides in verbatim (any BCP-47 code); the directive
+        # itself still normalizes zh/en for the prompt-file locale.
+        return append_language_directive(joined, self.output_language, allow_user_override=True)
 
     def blocks(
         self,
