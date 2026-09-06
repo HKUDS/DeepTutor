@@ -1,63 +1,74 @@
-"""ACP backend — drive any Agent Client Protocol (ACP) host as a subagent.
+"""ACP backend — drive an Agent Client Protocol (ACP) agent as a subagent.
 
-Part of #1028 (stage 1): DeepTutor plays the *client* side of the Agent Client
-Protocol — a JSON-RPC 2.0 dialect over newline-delimited stdio — against a
-spawnable ACP *host* process. The host command is not hard-coded (ACP is a
-transport standard, not one binary): it comes from the ``DEEPTUTOR_ACP_COMMAND``
-environment variable (a JSON array of argv, or a shell-quoted string), or from
-the per-backend ``BackendConfig.extra_args`` when the env var is unset — so the
-same backend can drive ``claude --acp``-style agent CLIs, ``acp-remote``
-bridges, or any future ACP host, once those binaries exist on the machine.
+Part of #1028 (stage 1): DeepTutor plays the ACP *client* side — JSON-RPC 2.0
+over newline-delimited stdio — against a spawnable ACP *agent* process. The
+agent command is not hard-coded (ACP is a transport standard, not one binary):
+it comes from the ``DEEPTUTOR_ACP_COMMAND`` environment variable (a JSON array
+of argv, or a shell-quoted string), or from the per-backend
+``BackendConfig.extra_args`` when the env var is unset.
 
-Wire transcript this backend drives (client → host unless noted):
+Wire transcript (schema-verified against ACP v1; see the note below for what
+was and was not confirmed):
 
-1. client ``initialize`` → host replies with the negotiated ``protocolVersion``
-   and its capabilities (some hosts notify ``initialize_result`` instead; both
-   shapes are accepted).
-2. client ``session/new`` (fresh) or ``session/load`` with ``session_id``
-   (resume) → the host returns the session id in the JSON-RPC result and/or
-   announces acceptance with a ``session/update`` notification
-   (``status: accepted | rejected``). Either source of the id ends the
-   handshake; ``rejected`` fails the consult.
-3. client ``prompt`` (the question plus ``tools: []``; the working directory is
-   set on the process spawn, not carried in the message) → the host streams
-   ``agent/message`` notifications whose content blocks are translated
-   one-to-one into :class:`SubagentEvent` channels: ``text``/``textDelta`` →
-   ``text`` (deltas stream as partial rows), ``tool_call`` → ``tool``,
-   ``tool_call_result`` → ``tool_result``, ``progress``/``system``/unknown →
-   ``log``, ``error`` → ``error`` (fails the run). A ``result`` content block
-   closes the turn.
-4. A host ``session/input_request`` is surfaced as a log event and auto-replied
-   with an empty input (``{"input": ""}``) so a headless run never stalls; the
-   request-reply shape and the empty-input default are the same headless
-   contract the other backends use for approval prompts.
+1. client → agent: ``initialize`` (``protocolVersion`` + ``clientCapabilities``).
+   The agent replies with the negotiated version and its capabilities.
+2. client → agent: ``session/new`` with ``cwd`` (absolute) + ``mcpServers: []``,
+   or ``session/load`` with ``mcpServers: []`` + ``cwd`` + ``sessionId`` when
+   resuming a prior session. The agent replies with the ``sessionId`` in the
+   JSON-RPC result (a JSON-RPC error rejects the request).
+3. client → agent: ``session/prompt`` with ``sessionId`` and a ``prompt`` array
+   of content blocks (``[{"type": "text", "text": …}]``). While it works, the
+   agent streams ``session/update`` notifications whose ``update.sessionUpdate``
+   discriminator picks the shape:
+   ``agent_message_chunk`` → ``text`` (streamed text pieces),
+   ``agent_thought_chunk`` → ``reasoning``, ``tool_call`` → ``tool``,
+   ``tool_call_update`` (``completed``/``failed``) → ``tool_result`` (tool start
+   and finish share a ``merge_id`` of the ``toolCallId`` so the UI collapses
+   them), ``plan*`` / ``session_info_update`` / ``usage_update`` /
+   ``compaction*`` / mode/config/command updates → ``log``, and any unknown
+   ``sessionUpdate`` kind is kept visible as ``log`` rather than dropped.
+   The turn ends when the ``session/prompt`` request gets its JSON-RPC response
+   (``result.stopReason``); ``refusal``/``cancelled`` fail the consult, other
+   stop reasons succeed with whatever text streamed.
+4. Interactive prompts in v1 are *elicitation*, not ``input_request``: the agent
+   sends an ``elicitation/create`` **request** and the client answers with a
+   ``CreateElicitationResponse``. This backend answers ``{"action": "decline"}``
+   (no input from a headless run — a valid v1 response for any elicitation
+   mode) and surfaces a log event; the follow-up ``elicitation/complete``
+   notification is consumed. Full elicitation (form/URL/text collection) is
+   future work. ``session/request_permission`` and any other unsolicited agent
+   request (``fs/*``, ``terminal/*``, ``mcp/*``) are answered with JSON-RPC
+   method-not-found — this client advertises none of those capabilities, so a
+   conformant agent should not call them; auto-approving permissions is
+   deliberately not done.
 
-Consult waits for the host's own turn end — the ``result`` content block, an
-``error`` block, or the process exiting. Only the protocol handshake
-(initialize → session ready) is bounded by ``_HANDSHAKE_TIMEOUT_SECONDS``, so a
-non-ACP binary pointed at this backend fails fast instead of hanging the turn;
-once a turn is running, consult waits unconditionally, matching the subagent
-driver contract. After the turn ends the child is reaped within a short grace
+Consult waits for the agent's own turn end — the ``session/prompt`` response,
+or the process exiting. Only the protocol handshake (initialize → session
+ready) is bounded by ``_HANDSHAKE_TIMEOUT_SECONDS``, so a non-ACP binary
+pointed at this backend fails fast instead of hanging the turn; once a turn is
+running, consult waits unconditionally, matching the subagent driver contract.
+After the turn ends the child is reaped within a short grace
 (``_SHUTDOWN_GRACE_SECONDS``) so a long-lived host cannot leak a process per
 consult.
 
-⚠️ Schema-verification note: this is stage 1 of #1028 and the ACP spec is still
-settling. The method names, message directions, and framing above match the
-widely deployed ACP v1 shape (``agentclientprotocol.com``), but the primary
-schema could not be fetched from this environment, so every field this module
-**emits** is deliberately minimal and each one this module **reads** is parsed
-defensively. Fields a maintainer must check against the official JSON Schema /
-TS types before wiring a real host: ``initialize`` params (``protocolVersion``
-and ``clientCapabilities``) and the host's capability reply; the
-``session/new`` vs ``session/load`` request params and whether acceptance is a
-plain result, ``initialize_result``, or a ``session/update`` notification
-(``status`` values and the ``session_id``/``sessionId`` key spellings); the
-``prompt`` params (string vs structured ``content`` prompt, and where ``tools``
-and ``cwd`` belong); the ``agent/message`` envelope (``message.content`` block
-types and delta spellings such as ``textDelta``) and how turn end is signalled
-(``result`` block vs a message-level completion flag); and the
-``session/input_request`` request/response shape. Nothing here is asserted as
-required beyond the JSON-RPC 2.0 envelope itself.
+✏️ Schema-verification note (updated): stage-1 shapes were verified against the
+official ACP v1 schema — ``schema/v1/schema.json`` in
+``agentclientprotocol/agent-client-protocol``, cross-checked with the types
+generated from it in ``@agentclientprotocol/sdk`` (``InitializeRequest``,
+``NewSessionRequest`` ``{cwd, mcpServers}``, ``LoadSessionRequest``
+``{mcpServers, cwd, sessionId}``, ``PromptRequest`` ``{sessionId,
+prompt: ContentBlock[]}``, the ``session/update`` notification envelope
+``{sessionId, update}`` with the ``SessionUpdate`` variant union, the
+``elicitation/create`` request with its ``CreateElicitationResponse`` result,
+and ``session/prompt`` → ``PromptResponse.stopReason``). Fields still only
+documented, not exercised against a real agent: the full ``ClientCapabilities``
+/``AgentCapabilities`` matrices (we send an empty client-capabilities object),
+the auth flows some agents gate on ``authenticate`` (not implemented — such an
+agent will surface its own error at the handshake), the exact
+``session/request_permission`` response shape (answered method-not-found), and
+elicitation form/URL content formats (answered with a universal ``decline``).
+Nothing here is asserted as required beyond the JSON-RPC 2.0 envelope and the
+schema fields listed above.
 """
 
 from __future__ import annotations
@@ -84,7 +95,7 @@ from deeptutor.services.subagent.process import (
 from deeptutor.services.subagent.types import (
     EVENT_ERROR,
     EVENT_LOG,
-    EVENT_RESULT,
+    EVENT_REASONING,
     EVENT_TEXT,
     EVENT_TOOL,
     EVENT_TOOL_RESULT,
@@ -95,10 +106,10 @@ from deeptutor.services.subagent.types import (
 
 logger = logging.getLogger(__name__)
 
-#: Env var naming the ACP host argv (JSON array preferred; else shell-quoted).
+#: Env var naming the ACP agent argv (JSON array preferred; else shell-quoted).
 ACP_COMMAND_ENV = "DEEPTUTOR_ACP_COMMAND"
 
-#: ACP v1 protocol version we negotiate. See the schema-verification note above.
+#: ACP protocol version we negotiate (v1 — see the schema-verification note).
 _PROTOCOL_VERSION = 1
 #: How long the initialize → session handshake may take before consult fails.
 _HANDSHAKE_TIMEOUT_SECONDS = 30.0
@@ -106,32 +117,51 @@ _HANDSHAKE_TIMEOUT_SECONDS = 30.0
 _SHUTDOWN_GRACE_SECONDS = 5.0
 
 _NOT_CONFIGURED = (
-    f"No ACP host command configured: set {ACP_COMMAND_ENV} to the host argv "
+    f"No ACP agent command configured: set {ACP_COMMAND_ENV} to the agent argv "
     '(e.g. ["claude", "--acp"]) or provide it as the per-backend extra_args.'
 )
 
-#: Session id key spellings tolerated when parsing host frames.
+#: Session id key spellings tolerated when reading agent frames (v1 uses
+#: ``sessionId``; the snake_case spellings are kept defensively for forward
+#: compat with builds that leak them).
 _SESSION_ID_KEYS = ("sessionId", "session_id", "session.id")
-#: ``session/update`` statuses that end a session attempt in failure.
-_REJECTED_STATUSES = frozenset({"rejected", "refused", "error", "denied"})
-#: ``session/update`` statuses that mean the session is usable.
-_ACCEPTED_STATUSES = frozenset({"accepted", "ready", "ok", ""})
-#: Content block types that carry assistant answer text.
-_TEXT_BLOCK_TYPES = frozenset({"text"})
-#: Content block types that close the current turn.
-_RESULT_BLOCK_TYPES = frozenset({"result"})
-#: Content block types that represent a tool invocation.
-_TOOL_CALL_TYPES = frozenset({"tool_call", "tool_use"})
-_TOOL_UPDATE_TYPES = frozenset({"tool_call_update", "tool_use_update"})
-_TOOL_RESULT_TYPES = frozenset({"tool_call_result", "tool_result"})
+
+#: ``session/update`` kinds that carry the assistant's answer text pieces.
+_AGENT_TEXT_KINDS = frozenset({"agent_message_chunk"})
+#: ``session/update`` kinds that carry the agent's visible thinking.
+_THOUGHT_KINDS = frozenset({"agent_thought_chunk"})
+#: ``session/update`` kinds that echo the user's own message back (ignored —
+#: the question was already streamed by the capability that called consult).
+_USER_TEXT_KINDS = frozenset({"user_message_chunk"})
+#: ``session/update`` kinds that announce a tool invocation / its progress.
+_TOOL_CALL_KINDS = frozenset({"tool_call"})
+_TOOL_UPDATE_KINDS = frozenset({"tool_call_update"})
+#: ``session/update`` kinds rendered as plain log lines.
+_LOG_UPDATE_KINDS = frozenset(
+    {
+        "plan",
+        "plan_update",
+        "plan_removed",
+        "session_info_update",
+        "usage_update",
+        "current_mode_update",
+        "config_option_update",
+        "available_commands_update",
+        "compaction_update",
+        "compaction_summary_chunk",
+    }
+)
+
+#: ``session/prompt`` stop reasons that mean the agent declined to answer.
+_FAILED_STOP_REASONS = frozenset({"refusal", "cancelled"})
 
 
 class AcpHostError(Exception):
-    """The ACP host violated the protocol (or the handshake failed)."""
+    """The ACP agent violated the protocol (or the handshake failed)."""
 
 
 class AcpBackend(SubagentBackend):
-    """Consult any ACP host process as a subagent over stdio JSON-RPC."""
+    """Consult any ACP agent process as a subagent over stdio JSON-RPC."""
 
     kind = "acp"
     display_name = "ACP (Agent Client Protocol)"
@@ -144,26 +174,26 @@ class AcpBackend(SubagentBackend):
         self,
         host_factory: Callable[[], Awaitable[Any]] | None = None,
     ) -> None:
-        """Optionally inject a host spawner for offline tests.
+        """Optionally inject a process spawner for offline tests.
 
-        The default spawns the configured ACP host command as a subprocess with
+        The default spawns the configured ACP agent command as a subprocess with
         its stdio piped (see :func:`_spawn_host`). ``host_factory`` — awaited
         with no arguments and expected to return an object exposing the same
         duck-typed surface as an :class:`asyncio.subprocess.Process` (``stdin``
         writer, ``stdout`` reader, ``returncode``, ``wait``/``terminate``/
         ``kill``) — is the seam tests use to drive consult against an in-process
-        fake host when OS pipes are unavailable, mirroring the transport
+        fake agent when OS pipes are unavailable, mirroring the transport
         injection the remote Hermes backend already uses.
         """
         self._host_factory = host_factory
 
     async def detect(self) -> DetectResult:
-        """Report whether an ACP host command is configured and resolvable.
+        """Report whether an ACP agent command is configured and resolvable.
 
         ACP is a transport, so there is no universal ``--version`` probe and
         none is attempted (an ACP-mode CLI would wait for the handshake and
-        time out). Availability is "a host command is configured (env or
-        per-backend extra_args) and its first token resolves on PATH".
+        time out). Availability is "a command is configured (env or per-backend
+        extra_args) and its first token resolves on PATH".
         """
         command = acp_host_command(load_subagent_settings().backend(self.kind))
         if not command:
@@ -183,7 +213,7 @@ class AcpBackend(SubagentBackend):
             kind=self.kind,
             display_name=self.display_name,
             available=False,
-            detail=f"configured ACP host command not found on PATH: {command[0]}",
+            detail=f"configured ACP agent command not found on PATH: {command[0]}",
         )
 
     async def consult(
@@ -227,7 +257,7 @@ class AcpBackend(SubagentBackend):
             process = await spawn()
             session = _HostSession(process, emit)
             reader_task = asyncio.create_task(_pump_frames(process.stdout, session.frames))
-            sid = await _handshake(session, resume=session_id)
+            sid = await _handshake(session, resume=session_id, cwd=cwd)
             result.session_id = sid
             await emit(EVENT_LOG, f"ACP session {sid} started", {})
             await _run_turn(session, result, emit, sid, prompt)
@@ -246,7 +276,7 @@ class AcpBackend(SubagentBackend):
 
 
 def acp_host_command(config: BackendConfig | None = None) -> list[str]:
-    """The configured ACP host argv, or ``[]`` when nothing is configured.
+    """The configured ACP agent argv, or ``[]`` when nothing is configured.
 
     Precedence: the :data:`ACP_COMMAND_ENV` variable (JSON array of strings, or
     a shell-quoted string) wins; otherwise ``config.extra_args`` is treated as
@@ -314,7 +344,7 @@ def _build_prompt(
 async def _spawn_host(command: list[str], *, cwd: str | None) -> asyncio.subprocess.Process:
     env = {
         **os.environ,
-        # Whatever the host is, ask it to talk clean UTF-8 text on the pipes.
+        # Whatever the agent is, ask it to talk clean UTF-8 text on the pipes.
         "PYTHONIOENCODING": "utf-8",
         "PYTHONUNBUFFERED": "1",
     }
@@ -330,12 +360,12 @@ async def _spawn_host(command: list[str], *, cwd: str | None) -> asyncio.subproc
         )
     except FileNotFoundError as exc:
         raise AcpHostError(
-            f"ACP host command not found: {command[0]} (configure {ACP_COMMAND_ENV})"
+            f"ACP agent command not found: {command[0]} (configure {ACP_COMMAND_ENV})"
         ) from exc
 
 
 class _HostSession:
-    """One live host process plus the single queue its stdout feeds."""
+    """One live agent process plus the single queue its stdout feeds."""
 
     def __init__(self, process: asyncio.subprocess.Process, emit: Any) -> None:
         self.process = process
@@ -363,7 +393,7 @@ class _HostSession:
     async def _write(self, obj: dict[str, Any]) -> None:
         stdin = self.process.stdin
         if stdin is None:
-            raise AcpHostError("ACP host stdin closed unexpectedly")
+            raise AcpHostError("ACP agent stdin closed unexpectedly")
         stdin.write((json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8"))
         await stdin.drain()
 
@@ -395,63 +425,59 @@ async def _pump_frames(stream: asyncio.StreamReader | None, queue: asyncio.Queue
 # ---- handshake ---------------------------------------------------------------------
 
 
-async def _handshake(session: _HostSession, *, resume: str | None) -> str:
+async def _handshake(session: _HostSession, *, resume: str | None, cwd: str | None) -> str:
     try:
         return await asyncio.wait_for(
-            _establish_session(session, resume=resume),
+            _establish_session(session, resume=resume, cwd=cwd),
             timeout=_HANDSHAKE_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError as exc:
         raise AcpHostError(
-            "ACP host did not complete the initialize/session handshake within "
-            f"{_HANDSHAKE_TIMEOUT_SECONDS:.0f}s — is the configured command an ACP host?"
+            "ACP agent did not complete the initialize/session handshake within "
+            f"{_HANDSHAKE_TIMEOUT_SECONDS:.0f}s — is the configured command an ACP agent?"
         ) from exc
 
 
-async def _establish_session(session: _HostSession, *, resume: str | None) -> str:
+async def _establish_session(_session: _HostSession, *, resume: str | None, cwd: str | None) -> str:
     # 1. initialize
-    await session.send_request("initialize", {"protocolVersion": _PROTOCOL_VERSION})
-    await _await_initialize(session)
-    # 2. session/new (fresh) or session/load (resume)
-    method = "session/load" if resume else "session/new"
-    params = {"session_id": resume} if resume else {}
-    request_id = await session.send_request(method, params)
-    saw_response_without_id = False
+    request_id = await _session.send_request("initialize", {"protocolVersion": _PROTOCOL_VERSION})
+    await _await_initialize(_session, request_id)
+    # 2. session/new (fresh) or session/load (resume) — both carry cwd + mcpServers.
+    workdir = os.path.abspath(cwd) if cwd else os.getcwd()
+    if resume:
+        method = "session/load"
+        params: dict[str, Any] = {"mcpServers": [], "cwd": workdir, "sessionId": resume}
+    else:
+        method = "session/new"
+        params = {"cwd": workdir, "mcpServers": []}
+    request_id = await _session.send_request(method, params)
     while True:
-        item = await session.frames.get()
+        item = await _session.frames.get()
         if item[0] == "eof":
-            raise AcpHostError(_eof_during("the session handshake", session.process))
+            raise AcpHostError(_eof_during("the session handshake", _session.process))
         if item[0] == "raw":
             if item[1].strip():
-                await session.emit(EVENT_LOG, item[1], {"stream": "stdout"})
+                await _session.emit(EVENT_LOG, item[1], {"stream": "stdout"})
             continue
         frame: dict[str, Any] = item[1]
         if frame.get("id") == request_id:
             if "error" in frame:
                 raise AcpHostError(
-                    f"ACP host rejected the session request: {_rpc_error_text(frame)}"
+                    f"ACP agent rejected the session request: {_rpc_error_text(frame)}"
                 )
             sid = _pick_session_id(frame.get("result"))
             if sid:
                 return sid
-            saw_response_without_id = True
+            raise AcpHostError("ACP agent accepted the session request but returned no sessionId")
+        if str(frame.get("method") or "") == "session/update":
+            # Pre-prompt session state (e.g. after a load) is just logged.
+            await _log_update(frame, _session)
             continue
-        if frame.get("method") == "session/update":
-            status = _update_status(frame)
-            if status in _REJECTED_STATUSES:
-                detail = _update_detail(frame) or status
-                raise AcpHostError(f"ACP host rejected the session: {detail}")
-            if status in _ACCEPTED_STATUSES or saw_response_without_id:
-                sid = _pick_session_id(frame.get("params"))
-                if sid:
-                    return sid
-            continue
-        await _log_unknown(frame, session)
+        await _handle_agent_frame(frame, _session)
 
 
-async def _await_initialize(session: _HostSession) -> None:
-    """Wait for the initialize reply: an id-matched result or a notification."""
-    request_id = 1  # the initialize request is always the first one sent
+async def _await_initialize(session: _HostSession, request_id: int) -> None:
+    """Wait for the id-matched initialize response (error → fail)."""
     while True:
         item = await session.frames.get()
         if item[0] == "eof":
@@ -461,18 +487,12 @@ async def _await_initialize(session: _HostSession) -> None:
                 await session.emit(EVENT_LOG, item[1], {"stream": "stdout"})
             continue
         frame: dict[str, Any] = item[1]
-        method = str(frame.get("method") or "")
-        if method == "initialize_result":
-            return
         if frame.get("id") == request_id:
             if "error" in frame:
-                raise AcpHostError(f"ACP host initialize failed: {_rpc_error_text(frame)}")
+                raise AcpHostError(f"ACP agent initialize failed: {_rpc_error_text(frame)}")
             return
-        if method and "id" in frame:
-            # A host request before we are ready cannot be answered yet.
-            await session.send_error(frame.get("id"), -32601, "method not found")
-            continue
-        await _log_unknown(frame, session)
+        if frame.get("method"):
+            await _handle_agent_frame(frame, session)
 
 
 def _eof_during(phase: str, process: asyncio.subprocess.Process) -> str:
@@ -481,7 +501,7 @@ def _eof_during(phase: str, process: asyncio.subprocess.Process) -> str:
         code = "?"
     else:
         code = str(process.returncode)
-    return f"ACP host closed its output during {phase} (exit {code})"
+    return f"ACP agent closed its output during {phase} (exit {code})"
 
 
 # ---- the prompt turn ----------------------------------------------------------------
@@ -494,20 +514,19 @@ async def _run_turn(
     session_id: str,
     prompt: str,
 ) -> None:
-    """Send the prompt and translate the host's stream until the turn ends."""
+    """Send ``session/prompt`` and translate the stream until the agent responds.
+
+    v1 streams the run through ``session/update`` notifications and ends the
+    turn with the JSON-RPC *response* to the prompt request (``stopReason``).
+    """
     request_id = await session.send_request(
-        "prompt",
-        {
-            "session_id": session_id,
-            "prompt": prompt,
-            "tools": [],
-        },
+        "session/prompt",
+        {"sessionId": session_id, "prompt": [{"type": "text", "text": prompt}]},
     )
     chunks: list[str] = []
-    result_text = ""
-    end_of_turn = False
+    got_response = False
 
-    while not end_of_turn:
+    while True:
         item = await session.frames.get()
         if item[0] == "eof":
             break
@@ -516,165 +535,227 @@ async def _run_turn(
                 await emit(EVENT_LOG, item[1], {"stream": "stdout"})
             continue
         frame: dict[str, Any] = item[1]
-        if frame.get("id") == request_id and "error" in frame:
-            await _fail(result, emit, f"ACP host prompt failed: {_rpc_error_text(frame)}")
-            return
-        method = str(frame.get("method") or "")
-        if method == "agent/message":
-            message = frame.get("params")
-            if not isinstance(message, dict):
-                continue
-            message = message.get("message")
-            if not isinstance(message, dict):
-                continue
-            content = message.get("content")
-            if not isinstance(content, list):
-                continue
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                kind, text, meta, is_error, closes_turn = _map_block(block)
-                if is_error:
-                    await _fail(result, emit, text)
-                    return
-                if kind and text:
-                    await emit(kind, text, block, meta)
-                if kind == EVENT_TEXT:
-                    chunks.append(text)
-                elif kind == EVENT_RESULT and text:
-                    result_text = text
-                if closes_turn:
-                    end_of_turn = True
-                    break
-            continue
-        if method == "session/update":
-            status = _update_status(frame)
-            if status in _REJECTED_STATUSES:
-                detail = _update_detail(frame) or status
-                await _fail(result, emit, f"ACP host ended the session: {detail}")
+        if frame.get("id") == request_id:
+            if "error" in frame:
+                await _fail(result, emit, f"ACP agent prompt failed: {_rpc_error_text(frame)}")
                 return
+            got_response = True
+            stop_reason = str((frame.get("result") or {}).get("stopReason") or "")
+            if stop_reason in _FAILED_STOP_REASONS:
+                await _fail(result, emit, f"ACP agent stopped the turn ({stop_reason})")
+                return
+            break
+        method = str(frame.get("method") or "")
+        if method == "session/update":
+            await _handle_update(frame, result, chunks, emit)
             continue
-        if method == "session/input_request":
-            await _answer_input_request(session, emit, frame)
-            continue
-        await _log_unknown(frame, session)
+        await _handle_agent_frame(frame, session)
 
-    # EOF without a clean result block: only a non-zero exit with no answer text
-    # is a failure — otherwise the streamed text stands on its own.
-    if not end_of_turn and result.success and not chunks and not result_text:
+    if not got_response:
+        # The agent closed its output without answering the prompt.
         await session.process.wait()
         code = session.process.returncode
-        if code not in (0, None):
-            await _fail(result, emit, f"ACP host exited with code {code} before completing")
+        suffix = f" (exit {code})" if code not in (None, 0) else ""
+        await _fail(
+            result, emit, f"ACP agent closed its output before completing the prompt{suffix}"
+        )
+        return
+    result.final_text = "".join(chunks)
+
+
+# ---- session/update mapping ------------------------------------------------------------
+
+
+async def _handle_update(
+    frame: dict[str, Any], result: ConsultResult, chunks: list[str], emit: Any
+) -> None:
+    """Map one ``session/update`` notification into SubagentEvents."""
+    params = frame.get("params")
+    if not isinstance(params, dict):
+        return
+    update = params.get("update")
+    if not isinstance(update, dict):
+        await emit(EVENT_LOG, truncate_field(_compact(params)), params)
+        return
+    kind = str(update.get("sessionUpdate") or update.get("type") or "")
+
+    if kind in _USER_TEXT_KINDS:
+        return  # an echo of our own prompt — the capability already streamed it
+    if kind in _AGENT_TEXT_KINDS or kind in _THOUGHT_KINDS:
+        text = _content_text(update.get("content"))
+        if not text:
             return
-    result.final_text = "".join(chunks) or result_text
-
-
-async def _answer_input_request(session: _HostSession, emit: Any, frame: dict[str, Any]) -> None:
-    """Surface a host input request and auto-reply so a headless run never stalls."""
-    await emit(
-        EVENT_LOG,
-        "ACP host requested user input; auto-replied with empty input (headless consult).",
-        frame,
-    )
-    request_id = frame.get("id")
-    if request_id is not None:
-        # Accepted shapes for the empty auto-answer: see the schema note.
-        await session.send_response(request_id, {"input": ""})
-
-
-# ---- content mapping ----------------------------------------------------------------
-
-
-def _map_block(block: dict[str, Any]) -> tuple[str | None, str, dict[str, Any], bool, bool]:
-    """Map one ``agent/message`` content block to (kind, text, meta, error, end)."""
-    btype = str(block.get("type") or "")
-    if btype in _TEXT_BLOCK_TYPES:
-        delta = block.get("textDelta")
-        if isinstance(delta, str) and delta:
-            return EVENT_TEXT, delta, {"partial": True}, False, False
-        text = block.get("text")
-        if isinstance(text, str) and text:
-            return EVENT_TEXT, text, {}, False, False
-        return None, "", {}, False, False
-    if btype in _TOOL_CALL_TYPES:
-        return (
+        out_kind = EVENT_REASONING if kind in _THOUGHT_KINDS else EVENT_TEXT
+        if out_kind == EVENT_TEXT:
+            chunks.append(text)
+        await emit(
+            out_kind,
+            text,
+            update,
+            {"partial": True, "message_id": update.get("messageId")},
+        )
+        return
+    if kind in _TOOL_CALL_KINDS:
+        tool_call_id = str(update.get("toolCallId") or "")
+        await emit(
             EVENT_TOOL,
-            _tool_header(block),
-            {"tool": str(block.get("name") or "tool")},
-            False,
-            False,
+            _tool_call_header(update),
+            update,
+            {
+                "merge_id": tool_call_id,
+                "tool": str(update.get("name") or update.get("kind") or ""),
+            },
         )
-    if btype in _TOOL_UPDATE_TYPES:
-        text = _tool_header(block)
-        return (
-            EVENT_TOOL,
-            truncate_field(text),
-            {"tool": str(block.get("name") or "tool")},
-            False,
-            False,
-        )
-    if btype in _TOOL_RESULT_TYPES:
-        return (
-            EVENT_TOOL_RESULT,
-            truncate_field(_content_text(block.get("content")) or _compact(block)),
-            {},
-            False,
-            False,
-        )
-    if btype == "progress":
-        message = block.get("message")
-        if not isinstance(message, str) or not message.strip():
-            message = block.get("text")
-        return EVENT_LOG, truncate_field(str(message or _compact(block))), {}, False, False
-    if btype == "system":
-        return (
-            EVENT_LOG,
-            truncate_field(_content_text(block.get("content")) or _compact(block)),
-            {},
-            False,
-            False,
-        )
-    if btype == "error":
-        message = block.get("message")
-        if not isinstance(message, str) or not message.strip():
-            message = block.get("text")
-        return EVENT_ERROR, str(message or "ACP agent reported an error"), {}, True, True
-    if btype in _RESULT_BLOCK_TYPES:
-        text = block.get("text")
-        text = str(text) if isinstance(text, str) and text.strip() else ""
-        # The ``result`` block closes the turn; its text is only surfaced as the
-        # answer when nothing was already streamed (avoids duplication).
-        return (EVENT_RESULT, text, {}, False, True)
-    # Unknown block: keep it visible as a log rather than dropping it.
-    return EVENT_LOG, truncate_field(_compact(block)), {}, False, False
+        return
+    if kind in _TOOL_UPDATE_KINDS:
+        tool_call_id = str(update.get("toolCallId") or "")
+        status = str(update.get("status") or "")
+        if status in ("completed", "failed"):
+            title = str(update.get("title") or "")
+            label = f"{title} ({status})" if title else f"tool call {status}"
+            output = _tool_call_content(update)
+            await emit(
+                EVENT_TOOL_RESULT,
+                truncate_field(f"{label}\n{output}".strip() or label),
+                update,
+                {"merge_id": tool_call_id},
+            )
+        else:
+            # pending / in_progress — the row started by tool_call stays open.
+            title = str(update.get("title") or "")
+            await emit(
+                EVENT_TOOL,
+                truncate_field(f"{title} …" if title else "tool call …"),
+                update,
+                {"merge_id": tool_call_id},
+            )
+        return
+    if kind in _LOG_UPDATE_KINDS:
+        await emit(EVENT_LOG, _update_summary(update), update)
+        return
+    # Unknown sessionUpdate kind: keep it visible rather than dropping it.
+    await emit(EVENT_LOG, truncate_field(_compact(update)), update)
 
 
-def _tool_header(block: dict[str, Any]) -> str:
-    name = str(block.get("name") or block.get("tool") or "tool")
-    args = block.get("arguments")
-    if args is None:
-        args = block.get("input")
-    if not isinstance(args, (dict, list)) or not args:
-        return name
-    return truncate_field(f"{name} · {_compact(args)}")
+def _tool_call_header(update: dict[str, Any]) -> str:
+    title = str(update.get("title") or "").strip()
+    name = str(update.get("name") or update.get("kind") or "").strip()
+    if title and name:
+        return f"{title} ({name})"
+    return title or name or "tool call"
+
+
+def _tool_call_content(update: dict[str, Any]) -> str:
+    """Plain text of a completed tool call's ``content`` (tool results)."""
+    content = update.get("content")
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for entry in content:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("type") or "") in ("content", "diff", "terminal"):
+            if "content" in entry:
+                parts.append(_content_text(entry.get("content")))
+            else:
+                parts.append(_compact(entry))
+            continue
+        parts.append(_content_text(entry))
+    return "\n".join(part for part in parts if part)
+
+
+def _update_summary(update: dict[str, Any]) -> str:
+    """One readable line for lifecycle / status session updates."""
+    kind = str(update.get("sessionUpdate") or update.get("type") or "")
+    if kind in ("plan", "plan_update"):
+        # Plans carry their own content list of text blocks.
+        text = _content_text(update.get("content"))
+        if text:
+            return truncate_field(text)
+    return truncate_field(_compact(update))
 
 
 def _content_text(content: Any) -> str:
-    """Best-effort plain text of a content field (str, block dict, or list)."""
+    """Best-effort plain text of a ContentBlock / content field."""
     if isinstance(content, str):
         return content
     if isinstance(content, dict):
-        return str(content.get("text") or content.get("content") or "")
+        if content.get("type") == "text":
+            return str(content.get("text") or "")
+        text = content.get("text")
+        if isinstance(text, str):
+            return text
+        return str(content.get("content") or "") if "content" in content else ""
     if isinstance(content, list):
         parts: list[str] = []
         for entry in content:
-            if isinstance(entry, str):
-                parts.append(entry)
-            elif isinstance(entry, dict):
-                parts.append(_content_text(entry))
+            text = _content_text(entry)
+            if text:
+                parts.append(text)
         return "\n".join(parts)
     return ""
+
+
+# ---- other agent-initiated messages ---------------------------------------------------
+
+
+async def _handle_agent_frame(frame: dict[str, Any], session: _HostSession) -> None:
+    """Respond to agent requests we cannot serve; log the rest."""
+    method = str(frame.get("method") or "")
+    request_id = frame.get("id")
+    is_request = request_id is not None and "result" not in frame and "error" not in frame
+    if not method:
+        return  # a stray response to a request we never tracked
+    if method == "session/update":
+        await _log_update(frame, session)
+        return
+    if method == "elicitation/create":
+        await _answer_elicitation(session, frame)
+        return
+    if not is_request:
+        # A notification we do not model (e.g. elicitation/complete) — the
+        # lifecycle it announces is already handled at its request side.
+        return
+    # An unsolicited request (session/request_permission, fs/*, terminal/*,
+    # mcp/* …). This client advertises none of those capabilities, so say so —
+    # never auto-approve a permission or run a tool for the agent.
+    await session.emit(EVENT_LOG, f"ACP agent requested unsupported method {method!r}", frame)
+    await session.send_error(request_id, -32601, "method not found")
+
+
+async def _answer_elicitation(session: _HostSession, frame: dict[str, Any]) -> None:
+    """Auto-answer an ``elicitation/create`` request so a headless run never stalls.
+
+    The reply is a ``CreateElicitationResponse``; ``{"action": "decline"}`` is
+    valid for every elicitation mode and means "no input provided". The agent's
+    follow-up ``elicitation/complete`` notification is consumed by
+    :func:`_handle_agent_frame`. Full form/URL elicitation is future work.
+    """
+    request_id = frame.get("id")
+    message = ""
+    params = frame.get("params")
+    if isinstance(params, dict):
+        message = str(params.get("message") or "")
+    detail = f" ({message})" if message else ""
+    await session.emit(
+        EVENT_LOG,
+        f"ACP agent requested input; auto-replied decline (headless consult){detail}.",
+        frame,
+    )
+    if request_id is not None:
+        await session.send_response(request_id, {"action": "decline"})
+
+
+async def _log_update(frame: dict[str, Any], session: _HostSession) -> None:
+    """Pre-prompt session state: keep it visible but do not touch the answer."""
+    params = frame.get("params")
+    update = params.get("update") if isinstance(params, dict) else None
+    if isinstance(update, dict):
+        text = _update_summary(update)
+    else:
+        text = _compact(params) if params else ""
+    if text:
+        await session.emit(EVENT_LOG, text, frame)
 
 
 # ---- small frame helpers ---------------------------------------------------------------
@@ -690,27 +771,6 @@ def _pick_session_id(payload: Any) -> str:
     return ""
 
 
-def _update_status(frame: dict[str, Any]) -> str:
-    params = frame.get("params")
-    if not isinstance(params, dict):
-        return ""
-    value = params.get("status")
-    if value is None:
-        value = params.get("state")
-    return str(value or "").lower()
-
-
-def _update_detail(frame: dict[str, Any]) -> str:
-    params = frame.get("params")
-    if not isinstance(params, dict):
-        return ""
-    for key in ("detail", "message", "reason"):
-        value = params.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return ""
-
-
 def _rpc_error_text(frame: dict[str, Any]) -> str:
     error = frame.get("error")
     if isinstance(error, dict):
@@ -719,17 +779,6 @@ def _rpc_error_text(frame: dict[str, Any]) -> str:
             return message
         return _compact(error)
     return "JSON-RPC error"
-
-
-async def _log_unknown(frame: dict[str, Any], session: _HostSession) -> None:
-    """Anything not understood is kept visible (and answered) rather than dropped."""
-    if "id" in frame and "method" in frame and "result" not in frame and "error" not in frame:
-        # An unknown host request: tell the peer we cannot serve it so it can
-        # proceed instead of waiting on a reply that will never come.
-        await session.send_error(frame.get("id"), -32601, "method not found")
-    method = str(frame.get("method") or "")
-    if method:
-        await session.emit(EVENT_LOG, truncate_field(_compact(frame)), frame)
 
 
 async def _fail(result: ConsultResult, emit: Any, message: str) -> ConsultResult:
