@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import LightRagRoleModelsEditor, {
   newRoleModels,
   resolvedRole,
+  roleModelsValidationError,
 } from "@/components/knowledge/LightRagRoleModelsEditor";
 import LightRagIndexingSelector, {
   indexingSelectionFromDefaults,
@@ -72,15 +73,31 @@ describe("LightRAG role editor", () => {
     const vlm = within(screen.getByRole("group", { name: "VLM" }));
     const mode = vlm.getByRole("combobox", { name: "VLM Model" });
     expect(state().vlm.mode).toBe("disabled");
-    fireEvent.change(mode, { target: { value: "inherit" } });
     expect(
-      vlm.getByText("The selected VLM model does not support image inputs."),
-    ).toBeInTheDocument();
-    expect(state().vlm.selection).toBeNull();
+      within(mode).getByRole("option", {
+        name: "Inherit LightRAG base model · Small",
+      }),
+    ).toBeDisabled();
     fireEvent.change(mode, { target: { value: "vision:large" } });
     expect(resolvedRole(state(), "vlm")).toEqual(visionModel);
     fireEvent.change(mode, { target: { value: "disabled" } });
     expect(resolvedRole(state(), "vlm")).toBeNull();
+  });
+  it("rejects invalid role state before it reaches the API", () => {
+    const invalidVlm = newRoleModels(textModel);
+    invalidVlm.vlm.mode = "inherit";
+    expect(roleModelsValidationError(invalidVlm, options)).toBe(
+      "The selected VLM model does not support image inputs.",
+    );
+    const staleBase = newRoleModels({ profile_id: "gone", model_id: "gone" });
+    expect(roleModelsValidationError(staleBase, options)).toBe(
+      "The LightRAG base model is unavailable. Choose an accessible model.",
+    );
+    const invalidLimit = newRoleModels(textModel);
+    invalidLimit.query.max_async = 0;
+    expect(roleModelsValidationError(invalidLimit, options)).toBe(
+      "Concurrency and timeout values must stay within the displayed limits.",
+    );
   });
   it("preserves explicit none and limits when the base model changes", () => {
     render(<Editor />);
@@ -224,6 +241,32 @@ it("selects a vision model without a duplicate VLM control", () => {
   expect(
     screen.queryByRole("combobox", { name: "VLM model" }),
   ).not.toBeInTheDocument();
+});
+
+it("blocks structurally complete indexing selections whose models disappeared", () => {
+  const stale: LightRagIndexingSelection = {
+    extract: { profile_id: "gone", model_id: "gone" },
+    vlm: { mode: "disabled" },
+  };
+  expect(isCompleteIndexingSelection(stale)).toBe(true);
+  expect(isCompleteIndexingSelection(stale, options)).toBe(false);
+  render(
+    <LightRagIndexingSelector
+      options={options}
+      selection={stale}
+      onChange={vi.fn()}
+      loading={false}
+      error={false}
+    />,
+  );
+  expect(
+    screen.getByText(
+      "One or more selected indexing models are unavailable. Choose accessible models before continuing.",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("option", { name: "Unavailable model · gone" }),
+  ).toBeDisabled();
 });
 
 it("shows engine defaults in the collapsed create-index summary", () => {

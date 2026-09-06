@@ -19,21 +19,70 @@ const ROLE_DESCRIPTIONS = {
   vlm: "Used to analyze images during indexing. The model must support image input.",
 } as const;
 
-export const inheritedRole = (): LightRagRoleModel => ({
+export const inheritedRole = (maxAsync = 4): LightRagRoleModel => ({
   mode: "inherit",
-  max_async: 4,
+  max_async: maxAsync,
   timeout: 240,
 });
 export const newRoleModels = (
   base: IndexingLLMSelection,
   vision = false,
+  maxAsync = 4,
 ): LightRagRoleModels => ({
   base,
-  extract: inheritedRole(),
-  keyword: inheritedRole(),
-  query: inheritedRole(),
-  vlm: { ...inheritedRole(), mode: vision ? "inherit" : "disabled" },
+  extract: inheritedRole(maxAsync),
+  keyword: inheritedRole(maxAsync),
+  query: inheritedRole(maxAsync),
+  vlm: {
+    ...inheritedRole(maxAsync),
+    mode: vision ? "inherit" : "disabled",
+  },
 });
+
+export function roleModelsValidationError(
+  models: LightRagRoleModels | null,
+  options: LLMOption[],
+): string | null {
+  if (!models) return "Choose a LightRAG base model before saving.";
+  const findOption = (selection: IndexingLLMSelection | null | undefined) =>
+    options.find(
+      (option) =>
+        option.profile_id === selection?.profile_id &&
+        option.model_id === selection?.model_id,
+    );
+  if (!findOption(models.base)) {
+    return "The LightRAG base model is unavailable. Choose an accessible model.";
+  }
+  for (const role of ["extract", "keyword", "query", "vlm"] as const) {
+    const value = models[role];
+    if (
+      !Number.isInteger(value.max_async) ||
+      value.max_async < 1 ||
+      value.max_async > 32 ||
+      !Number.isInteger(value.timeout) ||
+      value.timeout < 1 ||
+      value.timeout > 3600
+    ) {
+      return "Concurrency and timeout values must stay within the displayed limits.";
+    }
+    const effective = resolvedRole(models, role);
+    if (!effective) continue;
+    const option = findOption(effective);
+    if (!option) {
+      return "One or more role models are unavailable. Choose accessible models before saving.";
+    }
+    if (role === "vlm" && option.supports_vision !== true) {
+      return "The selected VLM model does not support image inputs.";
+    }
+    if (
+      value.reasoning_effort &&
+      !option.supported_reasoning_efforts?.includes(value.reasoning_effort)
+    ) {
+      return "The selected reasoning effort is no longer supported.";
+    }
+  }
+  return null;
+}
 
 export function resolvedRole(
   models: LightRagRoleModels,
@@ -69,6 +118,11 @@ export default function LightRagRoleModelsEditor({
   const { t } = useTranslation();
   return (
     <div className="space-y-4">
+      <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+        {t(
+          "LightRAG recommends disabling reasoning for EXTRACT and KEYWORD and enabling it for QUERY when supported.",
+        )}
+      </p>
       <div className="space-y-1.5">
         <IndexingModelSelector
           label="LightRAG base model"
@@ -101,6 +155,11 @@ export default function LightRagRoleModelsEditor({
             (option) =>
               option.profile_id === effective?.profile_id &&
               option.model_id === effective?.model_id,
+          );
+          const baseOption = options.find(
+            (option) =>
+              option.profile_id === models.base.profile_id &&
+              option.model_id === models.base.model_id,
           );
           const selectionKey =
             value.mode === "model" && value.selection
@@ -157,7 +216,12 @@ export default function LightRagRoleModelsEditor({
                       {t("Image analysis disabled")}
                     </option>
                   )}
-                  <option value="inherit">
+                  <option
+                    value="inherit"
+                    disabled={
+                      role === "vlm" && baseOption?.supports_vision !== true
+                    }
+                  >
                     {t("Inherit LightRAG base model")} ·{" "}
                     {options.find(
                       (option) =>

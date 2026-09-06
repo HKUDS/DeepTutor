@@ -187,7 +187,7 @@ export default function KbIndexVersionsSection({
   };
 
   const handleModelSubmit = async () => {
-    if (!isCompleteIndexingSelection(indexingLLM)) return;
+    if (!isCompleteIndexingSelection(indexingLLM, llmCatalog.options)) return;
     setSubmitting(true);
     setDialogError(null);
     try {
@@ -399,7 +399,10 @@ export default function KbIndexVersionsSection({
             <button
               type="button"
               onClick={() => void handleModelSubmit()}
-              disabled={submitting || !isCompleteIndexingSelection(indexingLLM)}
+              disabled={
+                submitting ||
+                !isCompleteIndexingSelection(indexingLLM, llmCatalog.options)
+              }
               className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-3 w-3 animate-spin" />}

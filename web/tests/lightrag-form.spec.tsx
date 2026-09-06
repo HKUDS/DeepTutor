@@ -9,7 +9,11 @@ import {
 import { beforeEach, expect, it, vi } from "vitest";
 import { LightRagModelsForm } from "@/features/knowledge/components/engines/EngineDetail";
 
-const fixture = vi.hoisted(() => ({ version: 2, save: vi.fn() }));
+const fixture = vi.hoisted(() => ({
+  version: 2,
+  maxAsync: 4,
+  save: vi.fn(),
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -49,7 +53,7 @@ vi.mock("@/features/knowledge/api/engines", async (original) => ({
     top_k: 60,
     response_type: "Multiple Paragraphs",
     max_concurrent_files: 1,
-    llm_model_max_async: 4,
+    llm_model_max_async: fixture.maxAsync,
     entity_extract_max_gleaning: 1,
   }),
   updateLightRagConfig: async (value: unknown) => {
@@ -57,7 +61,10 @@ vi.mock("@/features/knowledge/api/engines", async (original) => ({
     return value;
   },
 }));
-beforeEach(() => fixture.save.mockClear());
+beforeEach(() => {
+  fixture.maxAsync = 4;
+  fixture.save.mockClear();
+});
 
 it.each([
   [2, "disabled"],
@@ -79,3 +86,18 @@ it.each([
     });
   },
 );
+
+it("preserves the legacy base concurrency when creating role settings", async () => {
+  fixture.version = 1;
+  fixture.maxAsync = 8;
+  render(<LightRagModelsForm onChanged={vi.fn()} onError={vi.fn()} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Save changes" }),
+  );
+  await waitFor(() => expect(fixture.save).toHaveBeenCalledOnce());
+  const roles = fixture.save.mock.calls[0][0].role_models;
+  expect(roles.extract.max_async).toBe(8);
+  expect(roles.keyword.max_async).toBe(8);
+  expect(roles.query.max_async).toBe(8);
+  expect(roles.vlm.max_async).toBe(8);
+});

@@ -419,7 +419,10 @@ export default function CreateKbModal({
           !!weKnoraProbe?.ok
         );
       }
-      if (provider === "lightrag" && !isCompleteIndexingSelection(indexingLLM))
+      if (
+        provider === "lightrag" &&
+        !isCompleteIndexingSelection(indexingLLM, llmCatalog.options)
+      )
         return false;
       return !providerUnavailable;
     }

@@ -67,6 +67,7 @@ import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
 import LightRagRoleModelsEditor, {
   newRoleModels,
+  roleModelsValidationError,
 } from "@/components/knowledge/LightRagRoleModelsEditor";
 import { selectionFromLightRagDefault } from "@/components/knowledge/IndexingModelSelector";
 
@@ -927,10 +928,12 @@ function ToggleField({
 function SaveButton({
   dirty,
   saving,
+  invalid = false,
   onSave,
 }: {
   dirty: boolean;
   saving: boolean;
+  invalid?: boolean;
   onSave: () => void;
 }) {
   const { t } = useTranslation();
@@ -939,7 +942,7 @@ function SaveButton({
       <button
         type="button"
         onClick={onSave}
-        disabled={!dirty || saving}
+        disabled={!dirty || saving || invalid}
         className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -1180,8 +1183,13 @@ export function LightRagModelsForm({
       ? newRoleModels(
           legacyBase,
           form.version !== 2 && legacyOption?.supports_vision === true,
+          form.llm_model_max_async,
         )
       : null);
+  const validationError = roleModelsValidationError(
+    roleModels,
+    catalog.options,
+  );
 
   const save = async () => {
     if (!roleModels) {
@@ -1231,9 +1239,13 @@ export function LightRagModelsForm({
           "KEYWORD and QUERY apply to subsequent queries. EXTRACT and VLM apply to new or fully rebuilt indexes; published indexes keep their pinned models.",
         )}
       </p>
+      {validationError && (
+        <p className="text-xs text-red-600">{t(validationError)}</p>
+      )}
       <SaveButton
         dirty={dirty || (!form.role_models && roleModels !== null)}
         saving={saving}
+        invalid={validationError !== null}
         onSave={() => void save()}
       />
     </fieldset>

@@ -255,7 +255,13 @@ def build_llm_model_func(
 ):
     """Wrap DeepTutor's unified LLM callable for LightRAG.
 
-    Drops LightRAG's internal kwargs while preserving explicit ``messages``.
+    Preserve provider-facing structured-output requests while keeping
+    LightRAG's orchestration-only kwargs out of DeepTutor's provider layer.
+
+    ``enable_cot`` is intentionally an output-formatting switch in LightRAG,
+    not a request to enable provider reasoning. DeepTutor controls reasoning
+    through the frozen role configuration and returns answer content without
+    exposing provider reasoning text.
     """
     if llm_config is None:
         from deeptutor.services.llm import get_llm_client
@@ -271,10 +277,17 @@ def build_llm_model_func(
         system_prompt=None,
         history_messages=None,
         messages=None,
+        response_format=None,
+        enable_cot=False,
         **_ignored,
     ):
+        del enable_cot
+
         async def request():
             async def complete():
+                provider_kwargs = {}
+                if response_format is not None:
+                    provider_kwargs["response_format"] = response_format
                 return await base(
                     prompt or "",
                     system_prompt=system_prompt,
@@ -282,6 +295,7 @@ def build_llm_model_func(
                     messages=messages,
                     max_retries=0,
                     allow_image_fallback=False,
+                    **provider_kwargs,
                 )
 
             if owner is None:
@@ -318,6 +332,7 @@ def build_vision_model_func(
         history_messages=None,
         image_inputs=None,
         messages=None,
+        response_format=None,
         **_ignored,
     ):
         if not isinstance(image_inputs, list) or len(image_inputs) != 1:
@@ -331,6 +346,9 @@ def build_vision_model_func(
 
         async def request():
             async def complete():
+                provider_kwargs = {}
+                if response_format is not None:
+                    provider_kwargs["response_format"] = response_format
                 return await base(
                     prompt or "",
                     system_prompt=system_prompt,
@@ -339,6 +357,7 @@ def build_vision_model_func(
                     messages=messages,
                     max_retries=0,
                     allow_image_fallback=False,
+                    **provider_kwargs,
                 )
 
             if owner is None:

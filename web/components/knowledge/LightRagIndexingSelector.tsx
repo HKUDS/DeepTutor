@@ -74,12 +74,29 @@ export function indexingSelectionFromPolicy(
 
 export function isCompleteIndexingSelection(
   value: LightRagIndexingSelection | null,
+  options?: LLMOption[],
 ): value is LightRagIndexingSelection {
-  return Boolean(
+  const structurallyComplete = Boolean(
     value?.extract.profile_id &&
     value.extract.model_id &&
     (value.vlm.mode === "disabled" ||
       (value.vlm.selection?.profile_id && value.vlm.selection.model_id)),
+  );
+  if (!structurallyComplete || !value || options === undefined) {
+    return structurallyComplete;
+  }
+  const available = (selection: { profile_id: string; model_id: string }) =>
+    options.find(
+      (option) =>
+        option.profile_id === selection.profile_id &&
+        option.model_id === selection.model_id,
+    );
+  if (!available(value.extract)) return false;
+  return (
+    value.vlm.mode === "disabled" ||
+    Boolean(
+      value.vlm.selection && available(value.vlm.selection)?.supports_vision,
+    )
   );
 }
 
@@ -147,6 +164,11 @@ export default function LightRagIndexingSelector({
     defaults?.vlm.mode === "enabled"
       ? optionLabel(defaults.vlm.selection)
       : t("Image analysis disabled");
+  const hasUnavailableSelection = Boolean(
+    selection &&
+    isCompleteIndexingSelection(selection) &&
+    !isCompleteIndexingSelection(selection, options),
+  );
 
   const fields = (
     <div className="space-y-4">
@@ -162,6 +184,13 @@ export default function LightRagIndexingSelector({
           "Used to extract entities and relationships during indexing. Choose a fast, economical model with reasoning disabled.",
         )}
       </p>
+      {hasUnavailableSelection && (
+        <p className="text-xs text-red-600">
+          {t(
+            "One or more selected indexing models are unavailable. Choose accessible models before continuing.",
+          )}
+        </p>
+      )}
       <IndexingModelSelector
         {...state}
         label="EXTRACT model"

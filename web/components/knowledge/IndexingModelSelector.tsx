@@ -99,6 +99,10 @@ export default function IndexingModelSelector({
       option.profile_id === selection?.profile_id &&
       option.model_id === selection?.model_id,
   );
+  const unavailableSelectionKey =
+    selection && !selected
+      ? `${selection.profile_id}:${selection.model_id}`
+      : null;
   const usesDefault = Boolean(
     defaultSelection &&
       selection?.profile_id === defaultSelection.profile_id &&
@@ -159,7 +163,7 @@ export default function IndexingModelSelector({
               ? "__engine_default__"
               : selected
                 ? `${selected.profile_id}:${selected.model_id}`
-                : ""
+                : (unavailableSelectionKey ?? "")
           }
           disabled={disabled || lockModel}
           onChange={(event) => {
@@ -178,6 +182,11 @@ export default function IndexingModelSelector({
           <option value="" disabled>
             {t("Select an indexing model")}
           </option>
+          {unavailableSelectionKey && (
+            <option value={unavailableSelectionKey} disabled>
+              {t("Unavailable model")} · {selection?.model_id}
+            </option>
+          )}
           {defaultSelection && defaultLabel && (
             <option value="__engine_default__">{defaultLabel}</option>
           )}

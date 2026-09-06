@@ -25,6 +25,12 @@ model or reasoning level. Concurrency and timeout limits apply per role to
 subsequent tasks and do not require rebuilding. Accepted tasks keep their effective
 models, reasoning and limits while queued and running.
 
+DeepTutor forwards LightRAG structured-output requests, including the JSON
+object contracts used by EXTRACT, KEYWORD and VLM, through its provider
+capability filter. Provider reasoning is controlled by the saved role effort.
+DeepTutor intentionally omits provider reasoning traces from the returned answer
+even when LightRAG requests its COT output format.
+
 ## Creating, appending and rebuilding
 
 Creation and full rebuild dialogs prefill EXTRACT and VLM from engine settings.

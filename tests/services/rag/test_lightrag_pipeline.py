@@ -158,11 +158,14 @@ def test_query_model_resolver_falls_back_only_when_selected_entry_is_missing(
 
 
 def test_lightrag_llm_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
+    captured = {}
+
     def build_model(config, *, allow_multimodal):
         assert config is selected_config
         assert allow_multimodal is False
 
         async def model_func(_prompt, **kwargs):
+            captured.update(kwargs)
             assert kwargs["max_retries"] == 0
             return "ok"
 
@@ -172,15 +175,35 @@ def test_lightrag_llm_adapter_uses_explicit_snapshot_config(monkeypatch) -> None
     monkeypatch.setattr("deeptutor.services.llm.client.build_model_func_for_config", build_model)
 
     adapter = config.build_llm_model_func(llm_config=selected_config)
-    assert asyncio.run(adapter("prompt")) == "ok"
+    assert (
+        asyncio.run(
+            adapter(
+                "prompt",
+                response_format={"type": "json_object"},
+                enable_cot=True,
+                stream=False,
+                _priority=3,
+                hashing_kv=object(),
+            )
+        )
+        == "ok"
+    )
+    assert captured["response_format"] == {"type": "json_object"}
+    assert "enable_cot" not in captured
+    assert "stream" not in captured
+    assert "_priority" not in captured
+    assert "hashing_kv" not in captured
 
 
 def test_lightrag_vision_adapter_uses_explicit_snapshot_config(monkeypatch) -> None:
+    captured = {}
+
     def build_model(config, *, allow_multimodal):
         assert config is selected_config
         assert allow_multimodal is True
 
         async def model_func(_prompt, **kwargs):
+            captured.update(kwargs)
             assert kwargs["allow_image_fallback"] is False
             assert kwargs["image_data"] == "sentinel"
             return "ok"
@@ -191,7 +214,23 @@ def test_lightrag_vision_adapter_uses_explicit_snapshot_config(monkeypatch) -> N
     monkeypatch.setattr("deeptutor.services.llm.client.build_model_func_for_config", build_model)
 
     adapter = config.build_vision_model_func(llm_config=selected_config)
-    assert asyncio.run(adapter("prompt", image_inputs=[{"base64": "sentinel"}])) == "ok"
+    assert (
+        asyncio.run(
+            adapter(
+                "prompt",
+                image_inputs=[{"base64": "sentinel"}],
+                response_format={"type": "json_object"},
+                stream=False,
+                _priority=3,
+                hashing_kv=object(),
+            )
+        )
+        == "ok"
+    )
+    assert captured["response_format"] == {"type": "json_object"}
+    assert "stream" not in captured
+    assert "_priority" not in captured
+    assert "hashing_kv" not in captured
 
 
 @pytest.mark.parametrize("role", ["user", "admin"])
