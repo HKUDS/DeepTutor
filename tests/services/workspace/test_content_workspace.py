@@ -131,6 +131,84 @@ def test_presentation_is_a_fixed_content_addressed_version(workspace_service) ->
     assert not (binding.root / "outputs" / ".deeptutor").exists()
 
 
+def test_human_resolves_a_visible_partner_presentation(
+    workspace_service,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, paths = workspace_service
+    from deeptutor.multi_user import partner_access
+    from deeptutor.multi_user import paths as multi_user_paths
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.paths import (
+        ensure_scope_workspace,
+        get_path_service_for_scope,
+        user_context,
+    )
+    from deeptutor.services.partners.scope import partner_user
+    from deeptutor.services.workspace import service as service_module
+
+    admin_root = tmp_path / "admin-data"
+    monkeypatch.setattr(multi_user_paths, "ADMIN_WORKSPACE_ROOT", admin_root)
+    monkeypatch.setattr(multi_user_paths, "USERS_ROOT", admin_root / "users")
+    monkeypatch.setattr(multi_user_paths, "_path_services", {})
+    monkeypatch.setattr(
+        partner_access,
+        "visible_partners",
+        lambda: [{"partner_id": "math-bot", "can_manage": True}],
+    )
+    monkeypatch.setattr(
+        service_module,
+        "get_path_service",
+        lambda: get_path_service_for_scope(get_current_user().scope),
+    )
+
+    human = CurrentUser(
+        id="u_alice",
+        username="alice",
+        role="user",
+        scope=UserScope(kind="user", user_id="u_alice", root=paths.workspace_root),
+    )
+    partner = partner_user("math-bot", name="Math Bot")
+    with user_context(partner):
+        ensure_scope_workspace(partner.scope)
+        partner_binding = service.current_binding(ensure_output=True)
+        source = partner_binding.root / "outputs" / "chat" / "s" / "t" / "exec" / "report.pdf"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"partner report")
+        item = service.publish(partner_binding, [{"path": "outputs/chat/s/t/exec/report.pdf"}])[0]
+
+    with user_context(human):
+        blob, loaded = service.resolve_published_item(item.workspace_id, item.workspace_item_id)
+
+        assert blob.read_bytes() == b"partner report"
+        assert loaded.workspace_id == item.workspace_id
+        assert loaded.relative_path == "outputs/chat/s/t/exec/report.pdf"
+
+        monkeypatch.setattr(partner_access, "visible_partners", lambda: [])
+        with pytest.raises(WorkspaceError, match="no longer registered|unavailable"):
+            service.resolve_published_item(item.workspace_id, item.workspace_item_id)
+
+
+def test_ambiguous_presentation_roots_fail_closed(workspace_service) -> None:
+    service, _paths = workspace_service
+    binding = service.current_binding(ensure_output=True)
+    source = binding.root / "lesson.pdf"
+    source.write_bytes(b"lesson")
+    item = service.publish(binding, [{"path": "lesson.pdf"}])[0]
+    root = service._presentation_root(binding)
+    monkeypatch_targets = [(binding, root), (binding, root)]
+
+    class ServiceWithAmbiguousRoots(ContentWorkspaceService):
+        def _published_item_roots(self, workspace_id: str):
+            return monkeypatch_targets
+
+    with pytest.raises(WorkspaceError, match="presented workspace item is unavailable"):
+        ServiceWithAmbiguousRoots().resolve_published_item(
+            item.workspace_id, item.workspace_item_id
+        )
+
+
 def test_private_presentation_store_rejects_symlink_redirection(
     workspace_service, tmp_path: Path
 ) -> None:

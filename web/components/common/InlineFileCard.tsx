@@ -42,30 +42,58 @@ export function parseAttachmentHref(href?: string): string | null {
 // ---------------------------------------------------------------------------
 // Generated-file collection (shared by the provider and the message's card
 // block). Persisted ``generated`` attachments merged with artifacts streamed
-// live in ``tool_result`` events, deduped by URL.
+// live in ``tool_result`` and ``sources`` events, deduped by URL.
 // ---------------------------------------------------------------------------
+
+type WorkspaceItemMetadata = {
+  workspace_id?: string;
+  workspace_item_id?: string;
+  relative_path?: string;
+  filename?: string;
+  url?: string;
+  mime_type?: string;
+  size_bytes?: number;
+  sha256?: string;
+  title?: string;
+  caption?: string;
+  generated?: boolean;
+};
+
+function workspaceAttachment(item: WorkspaceItemMetadata): MessageAttachment | null {
+  if (!item?.url || !item.workspace_item_id) return null;
+  return {
+    type: item.mime_type?.startsWith("image/") ? "image" : "document",
+    filename: item.filename,
+    url: item.url,
+    mime_type: item.mime_type,
+    size_bytes: item.size_bytes,
+    generated: item.generated ?? true,
+    origin: "workspace",
+    workspace_id: item.workspace_id,
+    workspace_item_id: item.workspace_item_id,
+    relative_path: item.relative_path,
+    sha256: item.sha256,
+    title: item.title,
+    caption: item.caption,
+  };
+}
 
 export function extractStreamedArtifacts(
   events?: StreamEvent[],
 ): MessageAttachment[] {
   const out: MessageAttachment[] = [];
+  const seen = new Set<string>();
+  const push = (attachment: MessageAttachment) => {
+    if (attachment.url && seen.has(attachment.url)) return;
+    if (attachment.url) seen.add(attachment.url);
+    out.push(attachment);
+  };
+
   for (const ev of events ?? []) {
-    if (ev.type !== "tool_result") continue;
+    if (ev.type !== "tool_result" && ev.type !== "sources") continue;
     const meta = (ev.metadata ?? {}) as {
       tool_metadata?: {
-        workspace_items?: Array<{
-          workspace_id?: string;
-          workspace_item_id?: string;
-          relative_path?: string;
-          filename?: string;
-          url?: string;
-          mime_type?: string;
-          size_bytes?: number;
-          sha256?: string;
-          title?: string;
-          caption?: string;
-          generated?: boolean;
-        }>;
+        workspace_items?: WorkspaceItemMetadata[];
         artifacts?: Array<{
           filename?: string;
           url?: string;
@@ -73,30 +101,27 @@ export function extractStreamedArtifacts(
           size_bytes?: number;
         }>;
       };
+      sources?: Array<WorkspaceItemMetadata & { type?: string }>;
     };
+
+    if (ev.type === "sources") {
+      for (const source of meta.sources ?? []) {
+        if (source?.type !== "workspace_item") continue;
+        const attachment = workspaceAttachment(source);
+        if (attachment) push(attachment);
+      }
+      continue;
+    }
+
     const workspaceItems = meta.tool_metadata?.workspace_items ?? [];
     for (const item of workspaceItems) {
-      if (!item?.url || !item.workspace_item_id) continue;
-      out.push({
-        type: item.mime_type?.startsWith("image/") ? "image" : "document",
-        filename: item.filename,
-        url: item.url,
-        mime_type: item.mime_type,
-        size_bytes: item.size_bytes,
-        generated: item.generated ?? true,
-        origin: "workspace",
-        workspace_id: item.workspace_id,
-        workspace_item_id: item.workspace_item_id,
-        relative_path: item.relative_path,
-        sha256: item.sha256,
-        title: item.title,
-        caption: item.caption,
-      });
+      const attachment = workspaceAttachment(item);
+      if (attachment) push(attachment);
     }
     if (workspaceItems.length) continue;
     for (const a of meta.tool_metadata?.artifacts ?? []) {
       if (!a?.url) continue;
-      out.push({
+      push({
         type: a.mime_type?.startsWith("image/") ? "image" : "document",
         filename: a.filename,
         url: a.url,

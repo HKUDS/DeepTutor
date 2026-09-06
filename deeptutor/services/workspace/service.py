@@ -380,12 +380,17 @@ class ContentWorkspaceService:
                 raise WorkspaceError(f"The {operation} path cannot contain symbolic links.")
 
     @staticmethod
-    def _presentation_root(binding: WorkspaceBinding, *, create: bool = False) -> Path:
+    def _presentation_root(
+        binding: WorkspaceBinding,
+        *,
+        create: bool = False,
+        runtime_state_dir: Path | None = None,
+    ) -> Path:
         """Return private snapshot storage for one user-scoped workspace id."""
 
         if not re.fullmatch(r"ws_[0-9a-f]{32}", binding.workspace_id):
             raise WorkspaceError("Invalid workspace id.")
-        base = get_path_service().get_runtime_state_dir()
+        base = runtime_state_dir or get_path_service().get_runtime_state_dir()
         presentations = base / "workspace_presentations"
         root = presentations / binding.workspace_id
         if create:
@@ -769,25 +774,75 @@ class ContentWorkspaceService:
             temporary.unlink(missing_ok=True)
         return request
 
-    def resolve_published_item(
-        self, workspace_id: str, workspace_item_id: str
-    ) -> tuple[Path, WorkspaceItem]:
-        if not re.fullmatch(r"wsi_[0-9a-f]{32}", workspace_item_id):
-            raise WorkspaceError("Invalid workspace item id.")
-        binding = self.binding_by_id(workspace_id)
-        root = self._presentation_root(binding)
+    @staticmethod
+    def _binding_for_partner_scope(partner_id: str) -> tuple[WorkspaceBinding, Path]:
+        """Build a visible partner's default binding and runtime-state root."""
+        from deeptutor.multi_user.paths import get_path_service_for_scope
+        from deeptutor.services.partners.scope import partner_scope
+
+        scope = partner_scope(partner_id)
+        path_service = get_path_service_for_scope(scope)
+        workspace_root = path_service.get_workspace_dir().resolve()
+        runtime_state_dir = path_service.get_runtime_state_dir().resolve()
+        return WorkspaceBinding(
+            workspace_id=_workspace_id(scope.user_id, workspace_root),
+            root=workspace_root,
+            display_name=partner_id,
+            is_default=True,
+            locked=True,
+        ), runtime_state_dir
+
+    def _published_item_roots(self, workspace_id: str) -> list[tuple[WorkspaceBinding, Path]]:
+        """Return readable presentation roots for the current principal.
+
+        Human chats publish into the current user's own runtime state. Partner
+        chats execute in synthetic partner scopes, so their snapshots live in
+        those scopes even though the human later opens the resulting URL.
+        """
+        candidates: list[tuple[WorkspaceBinding, Path]] = []
+        try:
+            binding = self.binding_by_id(workspace_id)
+        except WorkspaceError as exc:
+            if str(exc) != "The workspace is no longer registered for this user.":
+                raise
+        else:
+            candidates.append((binding, self._presentation_root(binding)))
+
+        from deeptutor.multi_user.partner_access import visible_partners
+
+        for row in visible_partners():
+            partner_id = _safe_component(row.get("partner_id"), "")
+            if not partner_id:
+                continue
+            binding, runtime_state_dir = self._binding_for_partner_scope(partner_id)
+            if binding.workspace_id != workspace_id:
+                continue
+            candidates.append(
+                (
+                    binding,
+                    self._presentation_root(binding, runtime_state_dir=runtime_state_dir),
+                )
+            )
+        return candidates
+
+    @staticmethod
+    def _load_published_item(
+        binding: WorkspaceBinding, root: Path, workspace_item_id: str
+    ) -> tuple[Path, WorkspaceItem] | None:
         for directory in (root / "items", root / "blobs"):
             if directory.is_symlink():
                 raise WorkspaceError(
                     "The private workspace presentation path cannot contain symbolic links."
                 )
         manifest_path = root / "items" / f"{workspace_item_id}.json"
+        if not manifest_path.is_file():
+            return None
         try:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
             item = WorkspaceItem(**payload)
         except (OSError, json.JSONDecodeError, TypeError) as exc:
             raise WorkspaceError("The presented workspace item is unavailable.") from exc
-        if item.workspace_id != workspace_id or item.workspace_item_id != workspace_item_id:
+        if item.workspace_id != binding.workspace_id or item.workspace_item_id != workspace_item_id:
             raise WorkspaceError("The workspace item manifest is invalid.")
         blob = (root / "blobs" / item.sha256).resolve()
         try:
@@ -797,6 +852,25 @@ class ContentWorkspaceService:
         if not blob.is_file():
             raise WorkspaceError("The presented workspace item is unavailable.")
         return blob, item
+
+    def resolve_published_item(
+        self, workspace_id: str, workspace_item_id: str
+    ) -> tuple[Path, WorkspaceItem]:
+        if not re.fullmatch(r"wsi_[0-9a-f]{32}", workspace_item_id):
+            raise WorkspaceError("Invalid workspace item id.")
+        candidates = self._published_item_roots(workspace_id)
+        if not candidates:
+            raise WorkspaceError("The workspace is no longer registered for this user.")
+        matches: list[tuple[Path, WorkspaceItem]] = []
+        for binding, root in candidates:
+            match = self._load_published_item(binding, root, workspace_item_id)
+            if match is not None:
+                matches.append(match)
+                if len(matches) > 1:
+                    raise WorkspaceError("The presented workspace item is unavailable.")
+        if not matches:
+            raise WorkspaceError("The presented workspace item is unavailable.")
+        return matches[0]
 
 
 _service = ContentWorkspaceService()

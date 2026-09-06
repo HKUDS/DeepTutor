@@ -118,6 +118,29 @@ test('streamed workspace items win over legacy artifacts and dedupe by URL', () 
   assert.equal(merged.length, 1)
 })
 
+test('workspace items streamed as sources become generated attachments', () => {
+  const item = {
+    type: 'workspace_item',
+    workspace_id: 'ws_partner',
+    workspace_item_id: 'wsi_partner',
+    relative_path: 'outputs/chat/s/t/exec/report.pdf',
+    filename: 'report.pdf',
+    url: '/files/workspace-items/ws_partner/wsi_partner',
+    mime_type: 'application/pdf',
+  }
+  const sources = {
+    type: 'sources' as const,
+    metadata: {
+      sources: [item],
+    },
+  }
+
+  const extracted = extractStreamedArtifacts([sources] as never)
+  assert.equal(extracted.length, 1)
+  assert.equal(extracted[0]?.origin, 'workspace')
+  assert.equal(extracted[0]?.workspace_item_id, 'wsi_partner')
+})
+
 test('persisted workspace presentation metadata survives session hydration', () => {
   const hydrated = hydrateMessageAttachments([
     {
