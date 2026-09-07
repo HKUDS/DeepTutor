@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -149,6 +150,63 @@ def test_private_presentation_store_rejects_symlink_redirection(
     with pytest.raises(WorkspaceError, match="symbolic links"):
         service.publish(binding, [{"path": "notes.md"}])
     assert not any(outside.iterdir())
+
+
+def test_resolve_published_item_searches_partner_workspaces(
+    workspace_service, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify that resolve_published_item falls back to partner workspaces (issue #1267).
+
+    When a workspace item is not found in the user's direct bindings, the service
+    should search visible partner workspace presentations before raising an error.
+    """
+    from deeptutor.services.workspace import service as service_module
+
+    user_service, paths = workspace_service
+
+    user_binding = user_service.current_binding(ensure_output=True)
+    (user_binding.root / "document.md").write_text("user document", encoding="utf-8")
+    user_item = user_service.publish(user_binding, [{"path": "document.md", "title": "Doc"}])[0]
+
+    blob, _loaded = user_service.resolve_published_item(
+        user_item.workspace_id, user_item.workspace_item_id
+    )
+    assert blob.read_text(encoding="utf-8") == "user document"
+
+    # Publish an item into a separate partner workspace tree. ContentWorkspaceService
+    # has no per-instance state, so building the partner's content means pointing the
+    # global path service at the partner's own runtime tree while publishing, then
+    # restoring it before exercising the fallback under test.
+    partner_paths = PathService(workspace_root=tmp_path / "partner_workspace" / "runtime")
+    partner_paths.ensure_all_directories()
+    monkeypatch.setattr(service_module, "get_path_service", lambda: partner_paths)
+    try:
+        partner_binding = user_service.current_binding(ensure_output=True)
+        (partner_binding.root / "partner_doc.md").write_text("partner document", encoding="utf-8")
+        partner_item = user_service.publish(
+            partner_binding, [{"path": "partner_doc.md", "title": "Partner Doc"}]
+        )[0]
+    finally:
+        monkeypatch.setattr(service_module, "get_path_service", lambda: paths)
+
+    # Mock visible_partners to surface the partner workspace to the user
+    mock_partner = {"partner_id": "test-partner-1", "name": "Test Partner"}
+
+    with patch(
+        "deeptutor.services.workspace.service.visible_partners",
+        return_value=[mock_partner],
+    ):
+        with patch(
+            "deeptutor.services.workspace.service.get_path_service_for_scope",
+            return_value=partner_paths,
+        ):
+            # User should be able to resolve the partner's item through fallback
+            blob, loaded = user_service.resolve_published_item(
+                partner_item.workspace_id, partner_item.workspace_item_id
+            )
+            assert blob.read_text(encoding="utf-8") == "partner document"
+            assert loaded.title == "Partner Doc"
+            assert loaded.workspace_item_id == partner_item.workspace_item_id
 
 
 def test_private_presentation_subdirectory_rejects_symlink_redirection(

@@ -19,7 +19,10 @@ import uuid
 
 from deeptutor.core.context import WorkspaceRuntimeContext
 from deeptutor.multi_user.context import get_current_user
-from deeptutor.services.path_service import get_path_service
+from deeptutor.multi_user.partner_access import visible_partners
+from deeptutor.multi_user.paths import get_path_service_for_scope
+from deeptutor.services.partners.scope import partner_scope
+from deeptutor.services.path_service import PathService, get_path_service
 from deeptutor.services.settings.interface_settings import atomic_update
 from deeptutor.utils.secret_files import ensure_private_directory
 
@@ -380,12 +383,18 @@ class ContentWorkspaceService:
                 raise WorkspaceError(f"The {operation} path cannot contain symbolic links.")
 
     @staticmethod
-    def _presentation_root(binding: WorkspaceBinding, *, create: bool = False) -> Path:
+    def _presentation_root(
+        binding: WorkspaceBinding,
+        *,
+        create: bool = False,
+        path_service: PathService | None = None,
+    ) -> Path:
         """Return private snapshot storage for one user-scoped workspace id."""
 
         if not re.fullmatch(r"ws_[0-9a-f]{32}", binding.workspace_id):
             raise WorkspaceError("Invalid workspace id.")
-        base = get_path_service().get_runtime_state_dir()
+        service = path_service if path_service is not None else get_path_service()
+        base = service.get_runtime_state_dir()
         presentations = base / "workspace_presentations"
         root = presentations / binding.workspace_id
         if create:
@@ -772,31 +781,76 @@ class ContentWorkspaceService:
     def resolve_published_item(
         self, workspace_id: str, workspace_item_id: str
     ) -> tuple[Path, WorkspaceItem]:
+        """Resolve a published workspace item from the user's or a partner's workspace.
+
+        Tries the user's direct workspace bindings first, then searches visible
+        partner workspace presentations if the item is not found (issue #1267).
+        """
         if not re.fullmatch(r"wsi_[0-9a-f]{32}", workspace_item_id):
             raise WorkspaceError("Invalid workspace item id.")
-        binding = self.binding_by_id(workspace_id)
-        root = self._presentation_root(binding)
-        for directory in (root / "items", root / "blobs"):
-            if directory.is_symlink():
-                raise WorkspaceError(
-                    "The private workspace presentation path cannot contain symbolic links."
-                )
-        manifest_path = root / "items" / f"{workspace_item_id}.json"
+
+        candidate_roots: list[Path] = []
+
+        # Try user's direct workspace binding first
         try:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-            item = WorkspaceItem(**payload)
-        except (OSError, json.JSONDecodeError, TypeError) as exc:
-            raise WorkspaceError("The presented workspace item is unavailable.") from exc
-        if item.workspace_id != workspace_id or item.workspace_item_id != workspace_item_id:
-            raise WorkspaceError("The workspace item manifest is invalid.")
-        blob = (root / "blobs" / item.sha256).resolve()
-        try:
-            blob.relative_to(root.resolve())
-        except ValueError as exc:
-            raise WorkspaceError("The workspace item path is invalid.") from exc
-        if not blob.is_file():
-            raise WorkspaceError("The presented workspace item is unavailable.")
-        return blob, item
+            binding = self.binding_by_id(workspace_id)
+            candidate_roots.append(self._presentation_root(binding))
+        except WorkspaceError:
+            pass
+
+        # Search visible partner workspace presentations if user's binding misses
+        # (issue #1267). ``ContentWorkspaceService`` has no per-instance state and
+        # always resolves through the global ``get_path_service()``, so partner
+        # lookups must go through the partner's own ``PathService`` directly
+        # rather than instantiating another service for it.
+        if not candidate_roots:
+            for partner in visible_partners():
+                partner_id = str(partner.get("partner_id") or "").strip()
+                if not partner_id:
+                    continue
+                try:
+                    partner_path_service = get_path_service_for_scope(partner_scope(partner_id))
+                    partner_binding = WorkspaceBinding(
+                        workspace_id=workspace_id,
+                        root=partner_path_service.get_workspace_dir().resolve(),
+                        display_name="",
+                    )
+                    candidate_roots.append(
+                        self._presentation_root(partner_binding, path_service=partner_path_service)
+                    )
+                except WorkspaceError:
+                    continue
+
+        if not candidate_roots:
+            raise WorkspaceError("The workspace is no longer registered for this user.")
+
+        # Search candidate roots for the workspace item
+        for root in candidate_roots:
+            for directory in (root / "items", root / "blobs"):
+                if directory.is_symlink():
+                    raise WorkspaceError(
+                        "The private workspace presentation path cannot contain symbolic links."
+                    )
+            manifest_path = root / "items" / f"{workspace_item_id}.json"
+            if not manifest_path.is_file():
+                continue
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                item = WorkspaceItem(**payload)
+            except (OSError, json.JSONDecodeError, TypeError) as exc:
+                raise WorkspaceError("The presented workspace item is unavailable.") from exc
+            if item.workspace_id != workspace_id or item.workspace_item_id != workspace_item_id:
+                raise WorkspaceError("The workspace item manifest is invalid.")
+            blob = (root / "blobs" / item.sha256).resolve()
+            try:
+                blob.relative_to(root.resolve())
+            except ValueError as exc:
+                raise WorkspaceError("The workspace item path is invalid.") from exc
+            if not blob.is_file():
+                raise WorkspaceError("The presented workspace item is unavailable.")
+            return blob, item
+
+        raise WorkspaceError("The presented workspace item is unavailable.")
 
 
 _service = ContentWorkspaceService()
