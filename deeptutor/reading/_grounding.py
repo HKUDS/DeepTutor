@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from deeptutor.reading.extensions import ReadingContext
+
 MAX_GROUNDING_CONTEXT_CHARS = 6_000
 
 
@@ -62,8 +68,28 @@ def grounding_context(
     return text[window_start:window_end]
 
 
+def grounded_prompt(context: ReadingContext) -> str:
+    """The user-turn payload every source-grounded reading extension sends.
+
+    All four of them ask the same question of the same two fields — the
+    selection, and a bounded window of the page around it — so they ask it
+    in one place.
+    """
+    return json.dumps(
+        {
+            "selection": context.selection,
+            "surrounding_context": grounding_context(
+                context.visible_text,
+                context.selection,
+            ),
+        },
+        ensure_ascii=False,
+    )
+
+
 __all__ = [
     "MAX_GROUNDING_CONTEXT_CHARS",
+    "grounded_prompt",
     "grounding_context",
     "normalized_with_map",
     "selection_range",

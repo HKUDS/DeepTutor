@@ -37,7 +37,7 @@ def _stub_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
     production uses. Constructing that instance reads the LLM config, which a
     checkout has no reason to carry.
     """
-    import deeptutor.agents.chat.agentic_pipeline as pipeline_module
+    import deeptutor.agents.loop.pipeline as pipeline_module
 
     monkeypatch.setattr(
         pipeline_module,

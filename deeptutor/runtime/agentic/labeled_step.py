@@ -45,6 +45,7 @@ from deeptutor.runtime.agentic.labels import (
     classify_label,
     strip_label_probe_prefix,
 )
+from deeptutor.runtime.agentic.think_stream import InlineThinkFilter
 from deeptutor.runtime.agentic.tool_call_stream import ToolCallAccumulator
 from deeptutor.runtime.agentic.usage import (
     UsageTracker,
@@ -181,6 +182,10 @@ async def run_labeled_step(
     saw_pre_label_think = False
     sub_trace_opened = False
     content_acc: list[str] = []
+    # A reasoning model may open a ``<think>`` block *after* the protocol
+    # label just as readily as before it. The pre-label case is handled by the
+    # prelude state machine below; this splitter covers the post-label body.
+    post_label_think = InlineThinkFilter()
     tc_acc = ToolCallAccumulator()
     usage_seen: Any = None
     output_chars_seen = 0
@@ -203,12 +208,42 @@ async def run_labeled_step(
         )
         sub_trace_opened = True
 
+    async def _emit_final_segments(segments: list[tuple[str, str]]) -> None:
+        """Route a final-label fragment, keeping inline reasoning out of it.
+
+        Streamed as content, a post-label ``<think>`` block put the model's
+        private deliberation into the reply — and ``clean_thinking_tags`` then
+        removed it from the returned text, so it reached the reader live and
+        existed nowhere afterwards. Sending it to the same reasoning sub-trace
+        the pre-label prelude uses keeps the reply clean and the reasoning
+        inspectable.
+        """
+        for kind, segment in segments:
+            if not segment:
+                continue
+            if kind == "thinking":
+                await _open_sub_trace()
+                await stream.thinking(
+                    segment,
+                    source=source,
+                    stage=stage,
+                    metadata=merge_trace_metadata(iter_meta, {"trace_kind": "llm_chunk"}),
+                )
+                continue
+            await stream.content(
+                segment,
+                source=source,
+                stage=stage,
+                metadata=merge_trace_metadata(final_meta, {"trace_kind": "llm_chunk"}),
+            )
+
     async def _emit_text(text: str) -> None:
         """Route post-label fragments.
 
         * Final-label text: buffered. If ``final_meta`` was supplied, the
           fragment is *also* emitted live as a ``content`` event so the chat
-          bubble streams chunk-by-chunk (call_kind ``llm_final_response``).
+          bubble streams chunk-by-chunk (call_kind ``llm_final_response``),
+          with any inline ``<think>`` block split off to the reasoning trace.
         * Non-final labels: streamed into the reasoning sub-trace.
         """
         nonlocal output_chars_seen
@@ -218,12 +253,7 @@ async def run_labeled_step(
         content_acc.append(text)
         if label in final_labels:
             if final_meta is not None:
-                await stream.content(
-                    text,
-                    source=source,
-                    stage=stage,
-                    metadata=merge_trace_metadata(final_meta, {"trace_kind": "llm_chunk"}),
-                )
+                await _emit_final_segments(post_label_think.feed(text))
             return
         await _open_sub_trace()
         await stream.thinking(
@@ -537,6 +567,10 @@ async def run_labeled_step(
         if label_buf:
             await _emit_text(label_buf)
             label_buf = ""
+
+    if final_meta is not None:
+        # Release a partial trailing tag the splitter was still waiting on.
+        await _emit_final_segments(post_label_think.flush())
 
     record_streamed_usage(
         usage,

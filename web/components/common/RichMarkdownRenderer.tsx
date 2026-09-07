@@ -21,6 +21,7 @@ import {
 } from "@/lib/markdown-display";
 import {
   InlineFileCard,
+  InlineWorkspaceImage,
   makeFileLinkRemarkPlugin,
   parseAttachmentHref,
   useInlineFileCardContext,
@@ -599,17 +600,30 @@ export default function RichMarkdownRenderer({
         </a>
       );
     },
-    img: ({ node, src, alt, ...props }: any) =>
-      enableImages ? (
+    img: ({ node, src, alt, ...props }: any) => {
+      if (!enableImages) return null;
+      const attachmentName = parseAttachmentHref(src);
+      const className = `${gap} inline-block max-w-full rounded-lg border border-[var(--border)]`;
+      if (attachmentName) {
+        return (
+          <InlineWorkspaceImage
+            name={attachmentName}
+            alt={alt || ""}
+            className={className}
+          />
+        );
+      }
+      return (
         <img
           src={src}
           alt={alt || ""}
           loading="lazy"
-          className={`${gap} inline-block max-w-full rounded-lg border border-[var(--border)]`}
+          className={className}
           {...lineAttr(node)}
           {...props}
         />
-      ) : null,
+      );
+    },
     blockquote: ({ node, ...props }: any) => (
       <blockquote
         className={`${gap} border-l-[3px] border-[var(--muted-foreground)] pl-4 italic text-[var(--muted-foreground)] [&>p]:mb-1`}

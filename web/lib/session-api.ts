@@ -20,12 +20,45 @@ export interface SessionMessage {
     extracted_text?: string;
     generated?: boolean;
     size_bytes?: number;
+    origin?: "workspace";
+    workspace_id?: string;
+    workspace_item_id?: string;
+    relative_path?: string;
+    sha256?: string;
+    title?: string;
+    caption?: string;
   }>;
   metadata?: Record<string, unknown>;
+  trace?: MessageTraceMetadata;
   created_at: number;
   /** Edit-branching: id of the message this row continues. `null` for the
    *  first message in a session. Siblings share the same parent. */
   parent_message_id?: number | null;
+}
+
+export interface MessageTraceMetadata {
+  turn_id?: string | null;
+  total?: number;
+  last_seq?: number;
+  truncated?: boolean;
+  /** Wall-clock start of the whole turn, epoch seconds. Supplied because the
+   *  preview keeps only tool and terminal events: the moment the turn began
+   *  is never among them, so timing the preview alone starts the clock at the
+   *  first tool call. */
+  started_at?: number | null;
+  /** Wall-clock end of the whole turn, epoch seconds. */
+  ended_at?: number | null;
+}
+
+export interface MessageTracePage {
+  session_id: string;
+  message_id: number;
+  turn_id?: string | null;
+  events: StreamEvent[];
+  total: number;
+  last_seq: number;
+  next_seq: number | null;
+  complete: boolean;
 }
 
 export interface SessionPreferences {
@@ -38,6 +71,8 @@ export interface SessionPreferences {
   llm_selection?: LLMSelection | null;
   /** Persistent mastery state associated with this conversation. */
   mastery_path_id?: string;
+  /** "outline" | "study" | "review" — what this mastery conversation is for. */
+  mastery_session_mode?: string;
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
   /** Edit-branching: maps a parent_message_id → the child id currently
@@ -219,6 +254,21 @@ export async function updateSessionTitle(
   const data = await expectJson<{ session: SessionDetail }>(response);
   invalidateClientCache("sessions:");
   return data.session;
+}
+
+export async function getMessageTrace(
+  sessionId: string,
+  messageId: number,
+  afterSeq = 0,
+  signal?: AbortSignal,
+): Promise<MessageTracePage> {
+  const response = await apiFetch(
+    apiUrl(
+      `/api/sessions/${sessionId}/messages/${messageId}/events?after_seq=${afterSeq}&limit=500`,
+    ),
+    { cache: "no-store", signal },
+  );
+  return expectJson<MessageTracePage>(response);
 }
 
 export type SessionOrganizationPatch = Partial<{

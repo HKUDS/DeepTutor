@@ -27,11 +27,20 @@ import type { StreamEvent } from "@/features/chat/model/protocol";
  * ``nowSeconds`` so the label ticks up in real time; once streaming
  * ends the bound collapses to the latest event timestamp and the
  * duration freezes.
+ *
+ * ``bounds`` carries the turn's real span when the caller has it. A persisted
+ * turn arrives as a *preview* — only its tool and terminal events survive —
+ * and the events that mark where the turn began are never among them. Timing
+ * the preview alone therefore starts the clock at the first tool call and
+ * discards however long the model spent thinking beforehand. A round that
+ * thinks and then answers in a single burst has its entire duration in that
+ * discarded span, and rendered as ``0s``.
  */
 export function getTurnDurationSeconds(
   events: StreamEvent[],
   nowSeconds: number,
   isStreaming: boolean,
+  bounds?: { started_at?: number | null; ended_at?: number | null } | null,
 ): number | null {
   let min = Number.POSITIVE_INFINITY;
   let max = 0;
@@ -41,7 +50,13 @@ export function getTurnDurationSeconds(
     if (ts < min) min = ts;
     if (ts > max) max = ts;
   }
+  const startedAt = bounds?.started_at;
+  if (typeof startedAt === "number" && startedAt < min) min = startedAt;
+  const endedAt = bounds?.ended_at;
+  if (typeof endedAt === "number" && endedAt > max) max = endedAt;
   if (!Number.isFinite(min)) return null;
+  // Still live: keep ticking against the wall clock. The recorded end is only
+  // authoritative once the turn has stopped producing events.
   const end = isStreaming ? Math.max(nowSeconds, max) : max;
   return Math.max(0, end - min);
 }

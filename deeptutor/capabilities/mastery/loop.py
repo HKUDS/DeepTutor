@@ -1,21 +1,20 @@
 """Mastery path loop-capability hooks.
 
-The pause/resume hooks commit against **the path's one open interaction**, not
-against the question id printed on the ``ask_user`` card. The engine allows a
-single open question per path, so that interaction is unambiguous — while the
-card's id is only as trustworthy as the round it was built in: a model may emit
-``mastery_quiz`` and ``ask_user`` in the *same* round, and every tool call in a
-round has its arguments bound before any of them runs. In that case nothing is
-persisted yet when ``ask_user`` is bound, so the card keeps the model's own id
-and ``_bind_pending_ask_user_args`` has nothing to rebind it to. Treating that
-id as authoritative used to abort the whole turn on a mismatch.
+A posed question ends its turn (see
+:meth:`MasteryLoopCapability.final_text_override`), which is what removed this
+module's most tangled machinery. A mastery question used to travel on the
+generic ``ask_user`` pause channel, so every clarifying card the tutor raised
+had to be inspected and rewritten in case it was really a quiz, and the
+learner's reply to any card had to be considered as a possible answer to the
+open question. Both were guesses about which card was which, made in the wrong
+place. Now the engine poses its own card and answers arrive as ordinary
+messages committed at turn start, so ``ask_user`` is left alone: in this mode
+it is only ever a clarifying question.
 """
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
-from importlib import resources
 import logging
 import re
 from typing import Any
@@ -23,6 +22,7 @@ from typing import Any
 from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
+from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +30,16 @@ logger = logging.getLogger(__name__)
 # the live binding rather than just the path id it started with.
 _PATH_BINDING_TOOLS = frozenset({"mastery_switch", "mastery_leave"})
 
+#: Set on the turn by :class:`~deeptutor.capabilities.mastery.pipeline.MasteryLoopPipeline`
+#: so this extension knows the playbook is already the foundation of the
+#: prompt and must not contribute a second copy of it. Declared here, next to
+#: its only reader, so the tutor loop can import one string without this
+#: module having to import the loop engine back.
+NATIVE_LOOP_FLAG = "mastery_native_loop"
 
-# The generic ask_user contract asks the model to mark a suggested choice with
-# a "(Recommended)" suffix — good for a preference card, disastrous on a quiz,
-# where the model attaches it to the answer it wants picked. Mastery cards are
-# assessments, so the marker is stripped structurally rather than merely
-# forbidden in the prompt.
-_RECOMMENDATION_SUFFIX = re.compile(
-    r"[\s　]*[（(]\s*(?:推荐|建议|recommended|recommend)\s*[)）][\s　]*$",
-    re.IGNORECASE,
-)
+
+# Shapes that betray a question written into the reply as prose instead of
+# posed through ``mastery_quiz`` — see ``finish_instruction``.
 _PLAIN_CHOICE_OPTION_RE = re.compile(
     r"^(?:[-*+]\s*)?(?:\*\*)?([A-D])(?:\*\*)?\s*[.、):：-]\s*(\S.*)$",
     re.IGNORECASE,
@@ -48,44 +48,30 @@ _PLAIN_QUIZ_PROMPT_RE = re.compile(
     r"\b(?:which|choose|select|answer)\b|选择|选哪个|请选择|请回答|答案",
     re.IGNORECASE,
 )
-
-
-def _without_recommendation(text: Any) -> Any:
-    if not isinstance(text, str):
-        return text
-    return _RECOMMENDATION_SUFFIX.sub("", text).strip()
-
-
-def _strip_answer_hints(kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Remove "recommended" markers from every option on an ask_user card."""
-    questions = kwargs.get("questions")
-    if not isinstance(questions, list):
-        return kwargs
-    cleaned_questions: list[Any] = []
-    for question in questions:
-        if not isinstance(question, dict):
-            cleaned_questions.append(question)
-            continue
-        options = question.get("options")
-        if not isinstance(options, list):
-            cleaned_questions.append(question)
-            continue
-        cleaned_questions.append(
-            {
-                **question,
-                "options": [
-                    {
-                        **option,
-                        "label": _without_recommendation(option.get("label")),
-                        "description": _without_recommendation(option.get("description")),
-                    }
-                    if isinstance(option, dict)
-                    else _without_recommendation(option)
-                    for option in options
-                ],
-            }
-        )
-    return {**kwargs, "questions": cleaned_questions}
+# A reply that announces a question without posing one. Matched against the
+# tail of the reply only, where an announcement lands, so ordinary discussion
+# of "this question" while reviewing an attempt does not trip it.
+_QUESTION_PROMISE_RE = re.compile(
+    # A bare "这道题" is how a *review* of the attempt just graded reads too,
+    # so the Chinese branch needs a forward-looking verb alongside it.
+    r"(?:来|下面|接下来|先|试试|做|回答)[^。！？\n]{0,12}(?:这道|一道|下一?道)题|"
+    r"出一?道题|考考你|试试这|看看你(?:对|的|是否|能不能)|检验一下你|"
+    # …and the same announcement with the noun left out: "再试一道，把这套
+    # 判别规则用起来" never says 题 at all, which is exactly how two real
+    # turns slipped past this guard and left the learner staring at a colon.
+    r"再(?:试|来|做)一(?:道|个)|来实战|练一?练|上手试|"
+    r"\bhere(?:\u2019s| is|'s) (?:a|the|this) question\b|"
+    r"\btry (?:this|the following|a|another) (?:question|one)\b|"
+    r"\blet(?:\u2019s|'s) (?:see|test|check) (?:if|whether|how|what) you\b",
+    re.IGNORECASE,
+)
+_PROMISE_TAIL_CHARS = 160
+# A reply that stops on a colon promised whatever was meant to follow it. The
+# lead-in for a question is supposed to share its round with the
+# ``mastery_quiz`` call that fills the space underneath, so a colon with
+# nothing after it is the most reliable evidence that the call never happened —
+# more reliable than recognising the wording, which varies every turn.
+_DANGLING_LEAD_IN_CHARS = frozenset(":：")
 
 
 def _looks_like_plain_choice_quiz(text: str) -> bool:
@@ -108,34 +94,29 @@ def _looks_like_plain_choice_quiz(text: str) -> bool:
     return len(labels) >= 3 and any(_PLAIN_QUIZ_PROMPT_RE.search(line) for line in prompt_lines)
 
 
-def _bind_pending_ask_user_args(kwargs: dict[str, Any], path_id: str) -> dict[str, Any]:
-    """Replace model-authored quiz display data with persisted public state.
+def _turn_has_graded(context: UnifiedContext) -> bool:
+    """Whether a ruling was made this turn, by the model or by the runtime.
 
-    Binding at this adapter boundary prevents the model from changing question
-    ids or reassigning A/B/C labels after a pause or on a later turn. Generic
-    clarification cards remain untouched when no mastery question is pending.
+    Two things can grade: the tutor calling ``mastery_grade``, and the runtime
+    ruling on a card answer before the turn starts. Only the first passes
+    through ``augment_kwargs``, so reading the extension alone made the
+    guard treat post-grade feedback — option-by-option prose, which is what
+    reviewing an attempt looks like — as a question written out in text, and
+    a rejected finish is discarded rather than shown.
     """
-    if not path_id:
-        return kwargs
-    try:
-        from deeptutor.learning.pending import public_pending_question
-        from deeptutor.learning.storage import LearningStore
+    if context.extension("mastery").get("quiz_graded"):
+        return True
+    return bool(context.metadata.get("mastery_card_grade"))
 
-        progress = LearningStore().load(path_id)
-        pending = progress.pending_question if progress is not None else None
-    except Exception:
-        logger.warning("Failed to load pending mastery question for ask_user", exc_info=True)
-        return kwargs
-    if pending is None:
-        return kwargs
 
-    updated = dict(kwargs)
-    updated["questions"] = [public_pending_question(pending).to_ask_user_dict()]
-    # Remove the accepted legacy shape so it cannot compete with the canonical
-    # question list in ``build_ask_user_payload``.
-    updated.pop("question", None)
-    updated.pop("options", None)
-    return updated
+def _announces_an_unposed_question(text: str) -> bool:
+    """Whether a reply promises a question it never put on a card."""
+    body = (text or "").strip()
+    if not body:
+        return False
+    if body[-1] in _DANGLING_LEAD_IN_CHARS:
+        return True
+    return bool(_QUESTION_PROMISE_RE.search(body[-_PROMISE_TAIL_CHARS:]))
 
 
 class MasteryLoopCapability:
@@ -179,11 +160,21 @@ class MasteryLoopCapability:
         language: str,
         prompts: dict[str, Any],
     ) -> PromptBlock | None:
+        """The tutor playbook, for a mastery turn that is not on the tutor loop.
+
+        :class:`~deeptutor.capabilities.mastery.pipeline.MasteryLoopPipeline`
+        makes the playbook the *foundation* of its prompt, so contributing it
+        again there would put two copies in the window. It is still needed on
+        the chat pipeline: a mastery workspace can run another action (a quiz,
+        a visualization) and that turn should still know it is inside a course
+        rather than being silently untutored.
+        """
         if not self.is_active(context):
             return None
+        if context.metadata.get(NATIVE_LOOP_FLAG):
+            return None
         override = _prompt_text(prompts, ("mastery", "system"))
-        content = override or _load_system_prompt(language)
-        return PromptBlock("mastery_tutor", content)
+        return PromptBlock("mastery_tutor", override or _load_playbook(language))
 
     def augment_kwargs(
         self,
@@ -194,11 +185,9 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return kwargs
         path_id = str(context.metadata.get("mastery_path_id") or "").strip()
-        if tool_name == "ask_user":
-            context.extension("mastery")["quiz_needs_card"] = False
-            # Strip hints last, so a card rebound from persisted state is
-            # cleaned too — the persisted options were model-authored as well.
-            return _strip_answer_hints(_bind_pending_ask_user_args(kwargs, path_id))
+        state = context.extension("mastery")
+        # ``ask_user`` is deliberately untouched here. It carries clarifying
+        # questions only; the graded ones are posed by ``mastery_quiz``.
         if tool_name == "read_source":
             # Deliberately a different key from chat's ``source_index``: that
             # one wakes the explore_context pre-pass (see the class docstring).
@@ -209,12 +198,25 @@ class MasteryLoopCapability:
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":
-                context.extension("mastery")["quiz_needs_card"] = True
+                state["quiz_awaiting_grade"] = True
+                updated["_end_turn_on_card"] = _card_end_marker(context)
             elif tool_name == "mastery_grade":
-                context.extension("mastery")["quiz_needs_card"] = False
+                state["quiz_awaiting_grade"] = False
+                state["quiz_graded"] = True
             updated["_mastery_path_id"] = path_id
+            # Raw, not normalised: "this conversation never recorded a mode"
+            # has to survive down to the tools, or every pre-modes conversation
+            # (and every CLI / SDK turn, which pass none) would be enforced as
+            # a study session and lose tools it has always been able to call.
+            updated["_mastery_session_mode"] = context.metadata.get("mastery_session_mode")
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
+            if tool_name == "mastery_mode":
+                # The narrowest handle on the turn for a tool that changes what
+                # the rest of it may do — the same shape as ``_bind_active_path``
+                # below, and for the same reason: the tool must not have to know
+                # a turn context exists.
+                updated["_bind_active_mode"] = _mode_binder(context)
             if tool_name in _PATH_BINDING_TOOLS:
                 # The narrowest possible handle on the turn: "point it at this
                 # path". A tool that can switch paths has to change what the
@@ -225,87 +227,174 @@ class MasteryLoopCapability:
         return kwargs
 
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
-        """Redirect a quantitative assessment away from a plain-text finish."""
+        """Catch a finish that leaves the learner with nothing to answer.
+
+        Only the *shape of the reply* can trigger this. Two states that read
+        like unfinished protocol are not:
+
+        ``mastery_quiz`` called without a grade no longer means the question
+        went unasked — that call now poses it on its own card — so a learner
+        who types a question instead of answering leaves the interaction open
+        on purpose, and the tutor answering them is the right reply, not a
+        skipped step.
+
+        And once ``mastery_grade`` has run, reviewing the options one by one —
+        "you picked C; A fails because…" — matches the plain-text-quiz
+        heuristic exactly while being the whole point of the turn. Blocking
+        that discarded the explanation and left the learner with a graded card
+        and no reason for the verdict.
+
+        That second exemption used to sit at the top of this method and so
+        waived *every* check on a grading turn — including the unposed-question
+        one. Grading turns are precisely where the tutor teaches the gap and
+        then reaches for the next question, so the one turn shape most likely
+        to end on an unkept promise was the one shape never examined. It now
+        guards only the heuristic it was written for.
+        """
         if not self.is_active(context):
             return None
-        needs_card = bool(context.extension("mastery").get("quiz_needs_card"))
-        if not needs_card and not _looks_like_plain_choice_quiz(final_text):
+        state = context.extension("mastery")
+        if _announces_an_unposed_question(final_text):
+            # "Let us see what you already know:" and then nothing. The learner
+            # is left reading a promise with no card under it, and the turn is
+            # over — this reply announced the question instead of posing it.
+            return (
+                "That reply announced a question but never posed one, so the "
+                "learner is looking at a promise and an empty space. Write the "
+                "lead-in and call mastery_quiz in the SAME round — the call is "
+                "what puts the question on their card, and it ends the turn. If "
+                "you did not mean to quiz them yet, say what you meant to say "
+                "without announcing a question."
+            )
+        if _turn_has_graded(context) or not _looks_like_plain_choice_quiz(final_text):
             return None
-
+        if state.get("quiz_awaiting_grade"):
+            return (
+                "That question is already on the learner's answer card — do not "
+                "write it out again in prose. Either end the turn on what you "
+                "have taught and let their answer arrive as the next message, or "
+                "call mastery_grade with the answer they already gave you (the "
+                "engine grades the question it is holding open)."
+            )
         return (
-            "The previous reply tried to finish a mastery assessment as plain text. "
-            "Do not repeat the question in prose. First ensure the question and its "
-            "answer are registered with mastery_quiz (retry it if the previous call "
-            "failed), then present the persisted question with ask_user and stop for "
-            "the learner's answer."
+            "The previous reply posed a mastery assessment as plain text. Do not "
+            "write the question or its choices in prose: call mastery_quiz "
+            "instead — that one call registers the expected answer and puts the "
+            "question on its own answer card, and the turn stops there for the "
+            "learner to answer."
         )
 
-    def pre_loop_seed(self, context: UnifiedContext) -> str:
-        _ = context
+    def final_text_override(self, context: UnifiedContext, final_text: str) -> str | None:
+        """End the turn on the card once a question has been posed.
+
+        A posed question used to park the turn inside ``pause_for_user``: the
+        runtime moved it to ``waiting_input`` and waited on a reply queue, so
+        one conversation held a live turn — and the path's lease — for as long
+        as the learner took, which could be forever. Everything they might do
+        instead of answering (ask something, come back tomorrow, reload) had to
+        be handled as an interruption of that parked turn, and the composer had
+        no honest state to show while it was parked.
+
+        Ending here inverts it. The card is this turn's artefact; answering it
+        is the next message, exactly like typing one. So the learner may answer,
+        ask something else, or walk away, and each is just the next turn —
+        which is what makes the conversation feel continuous instead of gated.
+
+        Returning ``""`` and not a sentence is deliberate: the tutor's own prose
+        from this round is already published (mastery tool rounds keep their
+        learner-facing text), and the question is on the card. There is nothing
+        left for the turn to say.
+        """
+        if not self.is_active(context):
+            return None
+        state = context.extension("mastery")
+        if not state.get("card_posted"):
+            return None
+        if final_text.strip():
+            # A tool-less finish round already wrote the answer; the card was
+            # posed earlier in the turn and has nothing to override.
+            return None
+        state["card_posted"] = False
         return ""
 
-    async def on_user_pause(
-        self,
-        context: UnifiedContext,
-        ask_user: dict[str, Any],
-    ) -> None:
-        """Commit ``awaiting_input`` before the runtime begins waiting."""
-        _ = ask_user
-        path_id = str(context.metadata.get("mastery_path_id") or "").strip()
-        if not path_id:
-            return
-        from deeptutor.learning.service import LearningService
+    def pre_loop_seed(self, context: UnifiedContext) -> str:
+        """Hand over whatever this turn already settled on the open card.
 
-        await asyncio.to_thread(
-            LearningService().mark_question_awaiting,
-            path_id,
-            session_id=str(context.session_id or ""),
-            turn_id=str(context.metadata.get("turn_id") or ""),
+        A card answer is graded when the turn starts, so by the time the tutor
+        reads anything the gate has ruled and the learner can already see the
+        verdict on their card. Without this the tutor would open the turn
+        looking at a bare "C" with no open question to match it to — and the
+        engine would have nothing left to grade, since it is already done.
+
+        So the ruling is stated here as fact, and what is left for the tutor is
+        the part only it can do: say what this attempt shows and carry on. A
+        declined question is the same story with no verdict in it.
+        """
+        if not self.is_active(context):
+            return ""
+        skipped = self._skip_seed(context)
+        graded = self._grade_seed(context)
+        return "\n\n".join(part for part in (skipped, graded) if part)
+
+    def _skip_seed(self, context: UnifiedContext) -> str:
+        """State that the learner's declined question is already gone.
+
+        Without this the tutor reads "let's skip this question" and reaches for
+        ``mastery_skip_question`` — which now finds nothing open and reports so,
+        costing a round to learn what the runtime already did. Worse, a tutor
+        that does not know the question is gone tends to re-pose it.
+        """
+        skip = context.metadata.get("mastery_card_skip")
+        if not isinstance(skip, dict) or not skip.get("skipped"):
+            return ""
+        return (
+            "[Mastery] The learner declined the open question and the engine has "
+            "already dropped it — do not call mastery_skip_question, and do not "
+            "pose that same question again. Nothing was graded and no mastery "
+            "credit was given, so the objective's gate is exactly where it was. "
+            "Answer whatever they asked, then continue the objective from "
+            "mastery_status.next — with a different question when you are ready "
+            "to ask one."
         )
 
-    async def on_user_resume(
-        self,
-        context: UnifiedContext,
-        ask_user: dict[str, Any],
-        *,
-        reply_text: str,
-        answers: list[dict[str, str]] | None,
-    ) -> None:
-        """Commit the learner answer before giving it back to the LLM.
-
-        Clarifying composer text on a *choice* card (no option picked) must not
-        be persisted as the formal answer — that freezes the gate when
-        ``mastery_grade`` later refuses to map the prose onto an option (#1004).
-        Leave the interaction awaiting so a later real pick can still commit.
-        """
-        path_id = str(context.metadata.get("mastery_path_id") or "").strip()
-        if not path_id:
-            return
-        from deeptutor.learning.pending import is_readable_choice_answer
-        from deeptutor.learning.service import LearningService
-
-        answer = _answer_from_reply(ask_user, reply_text=reply_text, answers=answers)
-        from_card = _reply_matches_card(ask_user, answers)
-
-        def _commit() -> None:
-            service = LearningService()
-            if not from_card:
-                interaction = service.store.get_active_interaction(path_id)
-                question = interaction.question if interaction is not None else None
-                if (
-                    question is not None
-                    and question.question_type == "choice"
-                    and not is_readable_choice_answer(answer, question.options)
-                ):
-                    return
-            service.record_question_answer(
-                path_id,
-                answer,
-                session_id=str(context.session_id or ""),
-                turn_id=str(context.metadata.get("turn_id") or ""),
+    def _grade_seed(self, context: UnifiedContext) -> str:
+        grade = context.metadata.get("mastery_card_grade")
+        if not isinstance(grade, dict) or not grade:
+            return ""
+        result = grade.get("result") if isinstance(grade.get("result"), dict) else {}
+        verdict = "correct" if grade.get("is_correct") else "incorrect"
+        learner_answer = str(result.get("learner_answer") or "").strip()
+        lines = [
+            "[Mastery] The learner answered the open question on its card and the "
+            f"engine has already graded it: {verdict}"
+            + (f' (they answered "{learner_answer}")' if learner_answer else "")
+            + ".",
+            "Their card already shows the verdict, the correct option and the "
+            "explanation the question was registered with, so do not restate the "
+            "answer key and do not call mastery_grade for it again.",
+        ]
+        if grade.get("mastered"):
+            lines.append(
+                "This cleared the objective's gate. Say what the attempt showed, "
+                "then continue with mastery_status.next."
             )
+        else:
+            lines.append(
+                "The gate is not cleared yet. Say what the attempt showed, teach "
+                "the gap if there is one, and pose the next question with "
+                "mastery_quiz when you are ready — that call ends the turn, so "
+                "put it last."
+            )
+        return "\n".join(lines)
 
-        await asyncio.to_thread(_commit)
+
+def _card_end_marker(context: UnifiedContext) -> Callable[[], None]:
+    """Return the callback ``mastery_quiz`` calls once the card is posed."""
+
+    def mark() -> None:
+        context.extension("mastery")["card_posted"] = True
+
+    return mark
 
 
 def _path_binder(context: UnifiedContext) -> Callable[[str], None]:
@@ -317,61 +406,47 @@ def _path_binder(context: UnifiedContext) -> Callable[[str], None]:
     return bind
 
 
-def _reply_matches_card(
-    ask_user: dict[str, Any],
-    answers: list[dict[str, str]] | None,
-) -> bool:
-    """Whether the resume carried a structured answer for this ask_user card."""
-    card_question_id = _first_question_id(ask_user)
-    if not card_question_id:
-        return False
-    return any(entry.get("questionId") == card_question_id for entry in answers or [])
+def _mode_binder(context: UnifiedContext) -> Callable[[str], None]:
+    """Return the callback that puts ``context`` into another mode.
 
-
-def _answer_from_reply(
-    ask_user: dict[str, Any],
-    *,
-    reply_text: str,
-    answers: list[dict[str, str]] | None,
-) -> str:
-    """The learner's reply to the card, by the id the card was rendered with.
-
-    That id is a *display* concern — the frontend echoes back whatever it was
-    shown — and is deliberately not used to pick the interaction to commit
-    against (see the module docstring).
+    Only the rest of *this* turn is repointed. Persisting the change onto the
+    conversation is the runtime's job — a tool cannot reach the session store,
+    and a mode that survived only in memory would be forgotten on reload.
     """
-    card_question_id = _first_question_id(ask_user)
-    for entry in answers or []:
-        if entry.get("questionId") == card_question_id:
-            return entry.get("text", "")
-    return reply_text
+
+    def bind(mode: str) -> None:
+        context.metadata["mastery_session_mode"] = mode
+        # Read back by the turn runtime after the turn, so the conversation
+        # resumes in the mode it ended in rather than the one it began in.
+        context.metadata["mastery_session_mode_changed"] = True
+
+    return bind
 
 
-def _first_question_id(ask_user: dict[str, Any]) -> str:
-    questions = ask_user.get("questions") or []
-    if not isinstance(questions, list):
-        return ""
-    for question in questions:
-        if isinstance(question, dict):
-            question_id = str(question.get("id") or "").strip()
-            if question_id:
-                return question_id
-    return ""
+def _load_playbook(language: str) -> str:
+    """Render the tutor playbook from the mastery prompt pack, as one block.
 
+    One source of truth with the tutor loop, which renders these very sections
+    as separate foundation blocks: a rule fixed in one place is fixed for both.
+    """
+    from deeptutor.services.prompt import get_prompt_manager
 
-def _prompt_text(prompts: dict[str, Any], path: tuple[str, ...]) -> str:
-    value: Any = prompts
-    for key in path:
-        if not isinstance(value, dict):
-            return ""
-        value = value.get(key)
-    return value if isinstance(value, str) and value else ""
-
-
-def _load_system_prompt(language: str) -> str:
-    lang = "zh" if language.lower().startswith("zh") else "en"
-    prompt = resources.files(__package__).joinpath("prompts", lang, "system.md")
-    return prompt.read_text(encoding="utf-8").strip()
+    pack = (
+        get_prompt_manager().load_prompts(
+            module_name="mastery",
+            agent_name="mastery_loop",
+            language=language,
+        )
+        or {}
+    )
+    loop_section = pack.get("loop") if isinstance(pack.get("loop"), dict) else {}
+    sections = (
+        pack.get("general"),
+        pack.get("runtime_policy"),
+        loop_section.get("system"),
+        pack.get("playbook"),
+    )
+    return "\n\n".join(text for section in sections if (text := str(section or "").strip()))
 
 
 __all__ = ["MasteryLoopCapability"]

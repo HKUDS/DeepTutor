@@ -76,17 +76,13 @@ loop:
 
     If a skill listed in the Skills block matches the task, call read_skill
     before attempting that workflow, then follow the skill instructions.
-    When a skill or request involves Python scripts or downloadable files
-    (PDFs, images, spreadsheets, archives), pass complete source to
-    code_execution and save outputs in the turn workspace. Use exec only for
-    genuinely shell-only commands; never embed Python source in `python -c`
-    or a heredoc. The tool result lists generated artifacts explicitly —
-    without that list, do not claim a file was created. If an extended tool is
-    listed but not loaded, call load_tools first with the exact tool name.
+    Use each tool according to its schema and tool-specific guidance. If an
+    extended tool is listed but not loaded, call load_tools first with the
+    exact tool name.
 
     Preserve explicit user quantities and other scope constraints exactly. If
-    code fails, exits nonzero, or an expected artifact is missing, diagnose the
-    stderr or root cause and change strategy; never resubmit identical code.
+    a tool fails or an expected result is missing, diagnose its output or root
+    cause and change strategy; never resubmit an identical failing call.
     After repeated failures with the same cause, stop and report the failure
     honestly instead of reducing scope or claiming success.
 
@@ -107,6 +103,13 @@ loop:
   continue_truncated: |-
     Your previous response stopped at the token limit. Continue from where it ended
     without repeating it, and complete the user-facing answer.
+  continue_truncated_reasoning: |-
+    Your previous round spent its entire output budget on internal reasoning and
+    hit the token limit before writing anything — so there is nothing to continue
+    from, and reasoning it through again will end the same way. Act now instead:
+    make the tool call, or write the answer with the judgement you already have.
+    Good enough is required; optimal is not. Do not redesign or second-guess what
+    you had already settled on.
   finish_empty_nudge: |-
     Your previous round produced only internal reasoning — no tool call and
     no user-facing answer. Continue now: either call the tools to execute

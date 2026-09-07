@@ -158,6 +158,13 @@ export interface SubagentBackendConfig {
   thinking?: boolean;
   forward_images?: boolean;
   extra_args?: string[];
+  /** Remote Hermes gateway URL; the API key itself is never persisted here. */
+  base_url?: string;
+  /** Environment variable name containing the remote gateway bearer. */
+  api_key_env?: string;
+  /** Informational profile name associated with the gateway deployment. */
+  profile?: string;
+  idle_timeout_seconds?: number;
 }
 
 export interface SubagentSettings {

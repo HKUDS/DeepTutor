@@ -21,6 +21,7 @@ import httpx
 from deeptutor.services.voice.base import (
     BaseSTTAdapter,
     BaseTTSAdapter,
+    TranscriptCue,
     VoiceProviderError,
     VoiceProviderHTTPError,
     build_auth_headers,
@@ -320,6 +321,59 @@ class OpenAICompatSTTAdapter(BaseSTTAdapter):
         _raise_for_provider(resp, "Transcription")
         return self._parse_text(resp)
 
+    async def transcribe_cues(
+        self,
+        audio: bytes,
+        config: STTConfig,
+        *,
+        filename: str = "audio.webm",
+        content_type: str = "application/octet-stream",
+    ) -> list[TranscriptCue]:
+        """Ask for ``verbose_json`` so the segment timings survive.
+
+        Whisper-compatible endpoints return per-utterance ``segments`` for this
+        response format; asking for plain ``json`` throws that away, which is
+        what forced timed media to fall back to whole-chunk timestamps. Any
+        provider that rejects the format — or answers without segments — is
+        served by the untimed base implementation instead of failing.
+        """
+        if config.request_style == STT_BASE64_JSON or not config.base_url:
+            return await super().transcribe_cues(
+                audio, config, filename=filename, content_type=content_type
+            )
+        if not audio:
+            raise VoiceProviderError("No audio data to transcribe.")
+        url = join_audio_path(config.base_url, "audio/transcriptions")
+        auth = build_auth_headers(config.auth_style, config.api_key)
+        try:
+            async with httpx.AsyncClient(timeout=config.request_timeout) as client:
+                resp = await self._post_multipart(
+                    client,
+                    url,
+                    auth,
+                    audio,
+                    filename,
+                    content_type,
+                    config,
+                    response_format="verbose_json",
+                )
+        except httpx.HTTPError as exc:
+            raise VoiceProviderError(f"STT request error: {exc}") from exc
+        if resp.status_code >= 400:
+            logger.info(
+                "STT verbose_json rejected (%s); falling back to plain transcript",
+                resp.status_code,
+            )
+            return await super().transcribe_cues(
+                audio, config, filename=filename, content_type=content_type
+            )
+        cues = _parse_cues(resp)
+        if cues:
+            return cues
+        return await super().transcribe_cues(
+            audio, config, filename=filename, content_type=content_type
+        )
+
     async def _post_multipart(
         self,
         client: httpx.AsyncClient,
@@ -329,11 +383,13 @@ class OpenAICompatSTTAdapter(BaseSTTAdapter):
         filename: str,
         content_type: str,
         config: STTConfig,
+        *,
+        response_format: str = "json",
     ) -> httpx.Response:
         files = {
             "file": (filename, audio, normalize_stt_content_type(content_type)),
         }
-        data: dict[str, str] = {"model": config.model, "response_format": "json"}
+        data: dict[str, str] = {"model": config.model, "response_format": response_format}
         if config.language:
             data["language"] = config.language
         headers = {**auth, **(config.extra_headers or {})}
@@ -376,6 +432,37 @@ class OpenAICompatSTTAdapter(BaseSTTAdapter):
             raise VoiceProviderError("Transcription response had no `text` field.")
         # response_format=text returns a bare string.
         return (resp.text or "").strip()
+
+
+def _parse_cues(resp: httpx.Response) -> list[TranscriptCue]:
+    """Read Whisper-style ``segments`` out of a verbose_json response."""
+    if "json" not in resp.headers.get("content-type", ""):
+        return []
+    try:
+        data = resp.json()
+    except ValueError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    rows = data.get("segments")
+    if not isinstance(rows, list):
+        return []
+    cues: list[TranscriptCue] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("text") or "").strip()
+        if not text:
+            continue
+        try:
+            start = float(row.get("start", 0.0))
+            end = float(row.get("end", start))
+        except (TypeError, ValueError):
+            continue
+        if start < 0 or end < start:
+            continue
+        cues.append(TranscriptCue(start, end, text))
+    return cues
 
 
 __all__ = ["OpenAICompatTTSAdapter", "OpenRouterTTSAdapter", "OpenAICompatSTTAdapter"]

@@ -51,6 +51,8 @@ class CodeBuddyHTTPProvider(OpenAICompatProvider):
         self,
         api_key: str | None = None,
         default_model: str = DEFAULT_CODEBUDDY_MODEL,
+        *,
+        configure_env: bool = True,
     ):
         self._explicit_api_key = normalize_api_key(api_key)
         self._credentials: CodeBuddyCredentials | None = (
@@ -70,6 +72,7 @@ class CodeBuddyHTTPProvider(OpenAICompatProvider):
             extra_headers=extra_headers,
             spec=find_by_name("codebuddy"),
             provider_name="codebuddy",
+            configure_env=configure_env,
         )
         if self._explicit_api_key:
             self._apply_token(self._explicit_api_key)
@@ -167,7 +170,13 @@ class CodeBuddyHTTPProvider(OpenAICompatProvider):
             **kwargs,
         )
 
-    async def chat_stream(
+    # Deliberately does not declare ``on_tool_args_delta``. The runtime probes
+    # for that parameter by name (``_provider_streams_tool_args``) and only
+    # hands the callback to a provider that opts in; this one forwards unknown
+    # keywords into the request body, so declaring it without implementing the
+    # streaming would serialise a function into an API call. Not opting in
+    # simply keeps the old behaviour: tool calls arrive whole.
+    async def chat_stream(  # type: ignore[override]
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
@@ -208,6 +217,8 @@ def sdk_installed() -> bool:
 def build_codebuddy_provider(
     api_key: str | None = None,
     default_model: str = DEFAULT_CODEBUDDY_MODEL,
+    *,
+    configure_env: bool = True,
 ) -> Any:
     """Return the HTTP transport when it can authenticate, else the Agent SDK.
 
@@ -226,7 +237,11 @@ def build_codebuddy_provider(
         use_http = codebuddy_http_available(api_key) or not has_sdk
 
     if use_http:
-        return CodeBuddyHTTPProvider(api_key=api_key, default_model=default_model)
+        return CodeBuddyHTTPProvider(
+            api_key=api_key,
+            default_model=default_model,
+            configure_env=configure_env,
+        )
 
     from deeptutor.services.llm.provider_core.codebuddy_provider import CodeBuddyProvider
 

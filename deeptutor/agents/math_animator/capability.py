@@ -55,12 +55,16 @@ class MathAnimatorCapability(TurnCapability):
         request_config = validate_math_animator_request_config(context.config_overrides)
         usage = UsageTracker(model=getattr(llm_config, "model", None))
         i18n = StatusI18n(self.name, context.language, module="math_animator")
+        workspace = context.runtime.workspace
         pipeline = MathAnimatorPipeline(
             api_key=llm_config.api_key,
             base_url=llm_config.base_url,
             api_version=llm_config.api_version,
             language=context.language,
             trace_callback=self._build_trace_bridge(stream, i18n=i18n),
+            workspace_output_dir=workspace.output_dir if workspace else None,
+            workspace_root=workspace.root if workspace else None,
+            workspace_id=workspace.workspace_id if workspace else "",
         )
 
         timings: dict[str, float] = {}
@@ -198,6 +202,13 @@ class MathAnimatorCapability(TurnCapability):
             )
         timings["render_output"] = 0.0
         visual_review = getattr(render_result, "visual_review", None)
+        workspace_items = list(getattr(render_result, "workspace_items", []) or [])
+        if workspace_items:
+            await stream.sources(
+                [{"type": "workspace_item", **item} for item in workspace_items],
+                source=self.name,
+                stage="render_output",
+            )
 
         await emit_capability_result(
             stream,
@@ -210,6 +221,7 @@ class MathAnimatorCapability(TurnCapability):
                 },
                 "output_mode": request_config.output_mode,
                 "artifacts": [artifact.model_dump() for artifact in render_result.artifacts],
+                "workspace_items": workspace_items,
                 "timings": timings,
                 "render": {
                     "quality": request_config.quality,

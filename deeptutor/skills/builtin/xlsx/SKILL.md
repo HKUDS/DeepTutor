@@ -14,16 +14,18 @@ requires:
 
 # Excel (.xlsx) workbooks
 
-Work in the workspace dir (where uploads land) by running complete Python
-source via `code_execution`. Two libraries, both preinstalled — pick by task:
-Refer to the workbook exactly as the Generated artifacts list names it. Use
-`exec` only for a genuinely shell-only command; never put this source in
-`python -c` or a heredoc.
+## Runtime
 
-- **pandas** — bulk tabular read/write/analysis. Use for "load this sheet,
-  compute, dump a table". Drops all formatting and formulas.
-- **openpyxl** — cells, formulas, styles, charts, merged cells, multi-sheet,
-  number formats. Use whenever formatting, formulas, or fidelity matter.
+Use `exec` with complete Python source (`language: python`). Prefer creating,
+saving, reopening, and validating the workbook in one call; later calls can
+revise the same relative filename. Follow the turn's **User workspace**
+instructions for locating inputs, output boundaries, and presenting the
+finished file.
+
+Use **openpyxl** for cells, formulas, styles, charts, merged cells, multi-sheet
+workbooks, number formats, and streaming large sheets. It is declared by every
+supported DeepTutor installation. Do not assume pandas is installed: it exists
+in the Docker runner but is not a direct dependency of every pip/source install.
 
 ## THE critical gotcha: openpyxl writes formulas but never computes them
 
@@ -43,25 +45,23 @@ Pick by what the deliverable needs:
    immediately, no recalc needed.
 2. **Live model** (formulas that recompute on the user's later edits). Write real
    formulas, and reference cells not literals (`=B5*(1+$B$6)`, not `=B5*1.05`).
-   openpyxl can't set the cached value too, so either recalc with LibreOffice if
-   present (gate it — often absent):
-   ```bash
-   command -v soffice >/dev/null && \
-     soffice --headless --convert-to xlsx --outdir /tmp out.xlsx \
-       >/dev/null 2>&1 && cp /tmp/out.xlsx out.xlsx
-   ```
-   `--convert-to xlsx` reopens and recalculates, repopulating cached values. If
-   `soffice` is missing, say so and warn the user the formulas populate when they
-   open the file in Excel — never assume soffice exists.
+   openpyxl can't set the cached value too. If `shutil.which("soffice")` succeeds,
+   recalculate through `exec` using `subprocess.run` and a
+   relative `_recalc/` directory, replace `out.xlsx` with the recalculated copy,
+   then remove `_recalc/`. Never use `/tmp` or search for a desktop installation.
+   A later exec call can see the same bare filename. If LibreOffice is
+   absent, warn that formulas populate when the user opens the file in Excel.
 
 ## Reading
 
 ```python
-import pandas as pd
+from openpyxl import load_workbook
 
-df = pd.read_excel("in.xlsx")  # first sheet
-sheets = pd.read_excel("in.xlsx", sheet_name=None)  # dict of all sheets
-df = pd.read_excel("in.xlsx", dtype={"id": str})  # stop id->float coercion
+wb = load_workbook("in.xlsx", read_only=True, data_only=False)
+for sheet_name in wb.sheetnames:
+    ws = wb[sheet_name]
+    for row in ws.iter_rows(values_only=True):
+        print(row)
 ```
 
 To read **computed results** of formulas (not the formula text), use openpyxl
@@ -83,7 +83,7 @@ Large file: `load_workbook(path, read_only=True)` streams rows cheaply.
 ## Creating
 
 ```python
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
 wb = Workbook()
@@ -102,11 +102,26 @@ ws.column_dimensions["A"].width = 18
 ws.freeze_panes = "A2"  # freeze header
 wb.create_sheet("Detail")  # second sheet
 wb.save("out.xlsx")
+
+# Validate immediately; later exec calls can also reopen this relative path.
+check = load_workbook("out.xlsx", data_only=False)
+assert check.sheetnames, "generated workbook has no worksheets"
+import zipfile
+with zipfile.ZipFile("out.xlsx") as package:
+    assert package.testzip() is None, "generated XLSX has a corrupt ZIP member"
 ```
 
-Bulk data is faster via pandas, then style with openpyxl after:
+For large exports, use openpyxl's write-only mode and append rows without
+holding every cell object in memory:
 ```python
-df.to_excel("out.xlsx", index=False, sheet_name="Data")
+from openpyxl import Workbook
+
+wb = Workbook(write_only=True)
+ws = wb.create_sheet("Data")
+ws.append(["id", "value"])
+for row in rows:
+    ws.append(row)
+wb.save("out.xlsx")
 ```
 
 ## Editing (preserve existing formatting)
@@ -121,7 +136,7 @@ from openpyxl import load_workbook
 wb = load_workbook("in.xlsx")  # keep formulas (data_only=False)
 ws = wb["Sheet1"]
 ws["C2"] = "Updated"
-wb.save("in.xlsx")
+wb.save("out.xlsx")  # preserve the source; present the new file
 ```
 
 Match the file's existing conventions (font, number formats, colors) rather than
@@ -148,7 +163,8 @@ LineChart / PieChart / ScatterChart follow the same shape.
 
 ## Verifying you produced clean output
 
-After writing, reload and scan for error strings — these mean broken formulas
+In the same `exec` Python call, reload and scan for error strings after writing.
+These mean broken formulas
 that recalc surfaced (`#REF!` bad reference, `#DIV/0!` zero denominator,
 `#VALUE!` type mismatch, `#NAME?` unknown function, `#N/A`):
 
@@ -173,11 +189,15 @@ sidesteps this.
 ## CSV / TSV
 
 ```python
-df = pd.read_csv("in.csv")  # sep="\t" for TSV
-df.to_csv("out.csv", index=False)
+import csv
+
+with open("in.csv", newline="", encoding="utf-8-sig") as source:
+    rows = list(csv.reader(source))  # delimiter="\t" for TSV
+with open("out.csv", "w", newline="", encoding="utf-8") as target:
+    csv.writer(target).writerows(rows)
 ```
-For messy input (junk rows, header not on row 1, ragged columns): inspect raw
-lines first, then `pd.read_csv(..., skiprows=, header=, usecols=, on_bad_lines="skip")`.
+For messy input (junk rows, header not on row 1, ragged columns), inspect a
+bounded sample and explicitly normalize only the requested rows/columns.
 
 ## Raw OOXML (rarely needed)
 

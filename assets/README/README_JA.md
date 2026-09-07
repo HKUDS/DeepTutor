@@ -73,7 +73,23 @@ DeepTutorは、個別指導、問題解決、クイズ生成、研究、ビジ�
 
 ## 🚀 はじめに
 
-DeepTutorは4つのインストールパスを提供しています。すべてのパスは同じワークスペースレイアウトを共有します。設定はデプロイするディレクトリ下の`data/user/settings/`に保存されます（明示的に設定した場合は`DEEPTUTOR_HOME`/`deeptutor start --home`の下）。完全なアプリの場合は **ワークスペースディレクトリの選択 → インストール → `deeptutor init` → `deeptutor start`** がお勧めのフローです。
+DeepTutorは4つのインストールパスを提供しています。どれも同じランタイムホームのレイアウトを共有します。プライベート設定は、起動元のディレクトリ（または明示的に設定した場合は`DEEPTUTOR_HOME`/`deeptutor start --home`）配下の`data/user/settings/`に保存されます。フルアプリの場合、推奨されるフローは **ランタイムホームディレクトリの選択 → インストール → `deeptutor init` → `deeptutor start`** です。
+
+### コンテンツワークスペース
+
+**コンテンツワークスペース**は、DeepTutorのプライベートなランタイムホームとは別のものです。これはエージェントが読み取れるフォルダで、エージェントが作成するすべてのファイル、ダウンロード、コード実行、キャッシュ、レンダリングされたアセットが、ターン単位の`outputs/<capability>/<session>/<turn>/`ディレクトリの下に置かれます。Settings、APIキー、データベース、Memory、内部アプリケーション状態はその外側にとどまります。
+
+設定しない場合、コンテンツワークスペースは`<runtime-home>/data/user/workspace`になります。ローカルのPyPI、CLI、ソースインストールでは、**Settings → Workspace**、または次のコマンドで、既存の読み書き可能な任意のフォルダを選択できます。
+
+```bash
+deeptutor workspace show
+deeptutor workspace set /absolute/path/to/my-folder
+deeptutor workspace reset
+```
+
+すべての機能は、組み込みのワークスペースツールを通じて同じフォルダを検査できます。モデルが受け取るのは`outputs/...`のような相対パスのみです。`workspace_present`を使用すると、UIは認証済みの開けるスナップショットをレンダリングします。同じ正確な相対パスは、通常のMarkdownリンクや画像でもそのまま機能します。後で元のファイルを変更しても、すでに提示されたスナップショットは変わりません。
+
+実行は`outputs/`の外では読み取り専用です。生成されたファイルをコンテンツワークスペース内の別の場所にコピーするには、その正確なコピー元とコピー先について明示的な**Allow once**の確認が必要です。利用可能な場合はシステムサンドボックスまたはDocker runnerがこの境界を強制します。ローカルの制限付きサブプロセスフォールバックは、Workspace設定で**best effort**として表示されます。
 
 <details>
 <summary><b>オプション1 — PyPIからインストール</b> · クローン不要のフルローカルWebアプリ + CLI</summary>
@@ -177,12 +193,27 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
+ホスト側のコンテンツフォルダをコンテナ起動時に選択するには、それを安定したコンテナパスにマウントし、DeepTutorをそのパスに固定します。
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+Composeの場合は、`python scripts/docker_compose.py up -d`を実行する前に`DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder`を設定してください。省略した場合は`./data/user/workspace`が使用されます。Dockerのパスは起動時に選択されるため、Web設定ページではロックされた状態で表示されます。
+
 > **公開が必要なのは`3782`のみです。** ブラウザはフロントエンドオリジンのみと通信し、Next.jsミドルウェア（`web/proxy.ts`）が`/api/*`と`/ws/*`をコンテナ**内部の**FastAPIバックエンドに転送します。`8001`を公開（`-p 127.0.0.1:8001:8001`）するのはオプションで、curlやスクリプトでAPIに直接アクセスする場合にのみ便利です。
 
-[http://127.0.0.1:3782](http://127.0.0.1:3782)を開いてください。コンテナは初回起動時に`/app/data/user/settings/*.json`を作成します。Web Settingsページからモデルプロバイダーを設定してください。設定、APIキー、ログ、ワークスペースファイル、メモリ、知識ベースは`deeptutor-data`ボリュームに永続化されます。オプションのエクストラはシェルではなくデプロイメント自体に属します：`DEEPTUTOR_EXTRAS`（システムライブラリには`DEEPTUTOR_APT_PACKAGES`も）を設定すれば、そこから起動するすべてのコンテナがそれらを再適用します。一方`docker exec … pip install`は次の`compose down`で失われてしまいます。
+[http://127.0.0.1:3782](http://127.0.0.1:3782)を開いてください。コンテナは初回起動時に`/app/data/user/settings/*.json`を作成します。Web Settingsページからモデルプロバイダーを設定してください。設定、APIキー、ログ、デフォルトのContent Workspace、メモリ、知識ベースは`deeptutor-data`ボリュームに永続化されます。別途マウントされたContent Workspaceは、代わりにそのホストパスに永続化されます。オプションのエクストラはシェルではなくデプロイメント自体に属します：`DEEPTUTOR_EXTRAS`（システムライブラリには`DEEPTUTOR_APT_PACKAGES`も）を設定すれば、そこから起動するすべてのコンテナがそれらを再適用します。一方`docker exec … pip install`は次の`compose down`で失われてしまいます。
 
 - **異なるホストポート：** 各`-p host:container`マッピングの左側を変更してください（例：`-p 127.0.0.1:8088:3782`）。`/app/data/user/settings/system.json`のコンテナ側ポートを変更する場合は、再起動して各マッピングの右側を一致するよう更新してください。
-- **デタッチ：** `-d`を追加し、`docker logs -f deeptutor`でログを追跡、`docker stop deeptutor`で停止、名前を再利用する前に`docker rm deeptutor`を実行。`deeptutor-data`ボリュームは再起動をまたいで設定とワークスペースを保持します。
+- **デタッチ：** `-d`を追加し、`docker logs -f deeptutor`でログを追跡、`docker stop deeptutor`で停止、名前を再利用する前に`docker rm deeptutor`を実行。`deeptutor-data`ボリュームは、再起動をまたいでプライベートなランタイムデータとデフォルトのContent Workspaceを保持します。別途マウントされたContent Workspaceは、そのホストパスに永続化されます。
 
 **リモートDocker / リバースプロキシ：** ブラウザはフロントエンドオリジン（`:3782`）のみと通信します。コンテナ内のNext.jsミドルウェアが`/api/*`と`/ws/*`をバックエンドサーバーサイドに転送します。一般的な単一コンテナの場合、APIベースをまったく設定しません — リバースプロキシ/TLS終端を`:3782`に向けるだけです。APIベースが必要なのは**分割デプロイメント**（バックエンドが別のコンテナ/ホスト）のみです：`data/user/settings/system.json`の`next_public_api_base`をフロントエンドサーバーがバックエンドに到達するためのネットワーク内アドレスに設定してください（サーバーサイドで読み取られ、ブラウザには送信されません）。
 
@@ -272,7 +303,7 @@ deeptutor config show
 <details>
 <summary><b>コード実行サンドボックス（オフィススキル）</b> · docx / pdf / pptx / xlsx 用にモデル生成コードを実行</summary>
 
-組み込みオフィススキル — **docx / pdf / pptx / xlsx** — は、モデルが短いPythonスクリプト（`python-docx`、`reportlab`、`openpyxl`など）を書き、`exec` / `code_execution`ツールで実行し、ダウンロードURLを返すことで機能します。これらのツールはサンドボックスバックエンドがアクティブなときにマウントされます。DeepTutorは、設定済みのバックエンドから次の順序で最も強力なものを選択します：
+組み込みオフィススキル — **docx / pdf / pptx / xlsx** — は、モデルが短いPythonスクリプト（`python-docx`、`reportlab`、`openpyxl`など）を書き、単一の`exec`ツールで実行し、保存されたワークスペースファイルを提示することで機能します。このツールはサンドボックスバックエンドがアクティブなときにマウントされます。DeepTutorは、設定済みのバックエンドから次の順序で最も強力なものを選択します：
 
 - **Runner sidecar：** `DEEPTUTOR_SANDBOX_RUNNER_URL`は、実行を`Dockerfile.runner`のハードニングされた最小権限サービスにルーティングします。
 - **Linux bubblewrap：** 利用可能な場合、`bwrap`がプロセスとファイルを分離します。
@@ -294,6 +325,7 @@ deeptutor config show
 | `auth.json` | オプション認証トグル、ユーザー名、パスワードハッシュ、トークン/クッキー設定 |
 | `integrations.json` | オプションのPocketBaseとサイドカー統合設定 |
 | `interface.json` | UIの言語とモデル出力言語/テーマ/サイドバー設定 |
+| `content_workspace.json` | Content Workspaceフォルダのバインディングとアクティブなワークスペース選択 |
 | `video_learning.json` | デフォルトのYouTube/Invidious再生プロバイダー、Invidiousオリジン、オプションの文字起こしアダプター |
 | `main.yaml` | ランタイム動作のデフォルトとパス注入 |
 | `agents.yaml` | 機能/ツールのtemperatureとトークン設定 |
@@ -321,7 +353,7 @@ deeptutor config show
 <details>
 <summary><b>アンインストールとクリーンアップ</b></summary>
 
-DeepTutorは、インストールされたコードとランタイムワークスペースを分離しています。デフォルトでは、ワークスペースは`deeptutor init` / `deeptutor start`を実行したディレクトリです。`--home PATH`または`DEEPTUTOR_HOME`で上書きできます。ランタイム出力はそのワークスペース内の`data`ディレクトリなので、起動バナーの`Workspace:`で始まる行を見れば、クリーンアップ対象が分かります。
+DeepTutorは、インストールされたコード、プライベートなランタイムホーム、そしてオプションのContent Workspaceを分離しています。デフォルトでは、ランタイムホームは`deeptutor init` / `deeptutor start`を実行したディレクトリです。`--home PATH`または`DEEPTUTOR_HOME`で上書きできます。プライベートなアプリケーション状態は、そのホーム内の`data`ディレクトリなので、起動バナーの`Workspace:`で始まる行を見れば、そのランタイムの場所が分かります。**Settings → Workspace**が別のフォルダを指している場合は、そのコンテンツフォルダを個別にバックアップまたは削除してください。DeepTutorのアンインストールによって意図的に消去されることはありません。
 
 1. アプリを停止します。`deeptutor start`を実行しているターミナルで`Ctrl+C`を押すか、`--detach`で起動したランチャーに対して`deeptutor stop [--home PATH]`を実行します。データを削除する前に、実行中のPartnerとデタッチされたDockerコンテナーも停止してください。
 2. すべてのローカル状態も消去したい場合のみ、ランタイムデータを削除します。これには、設定とAPIキー、チャット履歴、セッション、Memory、Notebooks、Books、Reading状態、Skills、Partners状態、ログ、Knowledge Bases、解析キャッシュ、生成されたアーティファクト、パッケージ済みフロントエンドのランタイムキャッシュが含まれます。
@@ -382,7 +414,7 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutorチャットエージェントループ" width="900">
 </div>
 
-ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
+ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present`、`workspace_export`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
 
 コンテキストには2種類あります：**スティッキーセッションコンテキスト**（機能、ワークスペースまたはコース、ツール、知識ベース、ペルソナ、モデル、Reading / Masteryの状態）はターンをまたいで持続します。**ワンタイム参照**（ファイル、チャット履歴、本、読書セクション、ノートブック、問題バンク、インポートしたエージェント）は単一のターンのために`+`メニューから追加します。音声ボタンが文字起こしするのは現在のメッセージだけです。
 
@@ -532,7 +564,7 @@ Memory Graphはピラミッド全体を表示します — L3合成が中心、L
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settingsハブ" width="900">
 </div>
 
-Settingsはオペレーションコントロールプレーンで、ライブステータスストリップ（バックエンドの健全性とプロセスツリー全体の常駐メモリ使用量）と、どのページにもワンクリックで到達できる常駐の検索可能なナビゲーターがあります：**外観**（テーマ、UI言語とモデル出力言語、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**モデル**（接続、LLM、タスクモデル、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（Video Learning、検索可能なツール、機能ごとのパラメーター、スターティングポイント、添付ファイル上限）、**Partners & Agents**（9つのローカルハーネス）、**Learner profile**（年齢、学年、カリキュラム、言語、読解レベル、説明スタイル）、**Guardian**（認可された学習者、教材、レポート、認証情報のリセット）、**Memory**（コンソリデーターのバジェット）、**About**（バージョン確認と安全なアップデート）。**接続**は1つのベンダー認証情報を保持し、そのベンダーが提供できるすべてのサービスにミラーするため、キーを5つのページに貼り付けるのではなく1回だけ入力すれば済みます。**タスクモデル**は誰も明示的に依頼していない作業 — 会話への命名、コンポーザーのスターティングポイントの生成 — のために小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトに解決されます。
+Settingsはオペレーションコントロールプレーンです。冒頭にはライブステータスストリップ（バックエンドの健全性と常駐メモリ使用量）、インターフェースおよびモデル出力言語、そしてすべての機能をblocker・warning・suggestionとして採点する**Readiness**マトリクスが並び、続いてどのページにもワンクリックで到達できる常駐の検索可能なナビゲーターがあります：**外観**（テーマ、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**Workspace**（エージェントが読み取れるフォルダと共有される`outputs/`）、**モデル**（接続、LLM、タスクモデル、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（Video Learning、検索可能なツール、機能ごとのパラメーター、スターティングポイント、添付ファイル上限）、**Partners & Agents**（9つのローカルハーネス）、**Learner profile**（年齢、学年、カリキュラム、言語、読解レベル、説明スタイル）、**Guardian**（認可された学習者、教材、レポート、認証情報のリセット）、**Memory**（コンソリデーターのバジェット）、**About**（バージョン確認と安全なアップデート）。**接続**は1つのベンダー認証情報を保持し、そのベンダーが提供できるすべてのサービスにミラーするため、キーを5つのページに貼り付けるのではなく1回だけ入力すれば済みます。**タスクモデル**は誰も明示的に依頼していない作業 — 会話への命名、コンポーザーのスターティングポイントの生成 — のために小さく高速なモデルを固定し、空欄の場合はアクティブなデフォルトに解決されます。
 
 Settings → Chatの**Video Learning**は、デフォルトで公式のプライバシー強化YouTube IFrame Playerを使用します。再生をローカルに保つには、管理者が管理するInvidious APIオリジン（例：`http://127.0.0.1:3000`）を設定してテストし、Invidiousを選択して保存します。新規または再度開いた動画には、同じ教材IDと進捗のままプロバイダーが直ちに反映されます。InvidiousメディアはDeepTutorのバイトレンジプロキシ経由でストリーミングされ、アップストリームURLがブラウザに公開されたりディスクに保存されたりすることはありません。インスタンスに障害が発生した場合、学習者がネイティブのYouTubeフォールバックを明示的に選択するまで、DeepTutorはYouTubeへ接続しないままです。公開字幕による個別指導はオプションです：`.[video-learning]`をインストールしてください。未インストールでも再生は続行しますが、文字起こしに基づく**Explain here**は理由とともに無効になります。
 
@@ -634,11 +666,12 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 
 | コマンド | 説明 |
 |:---|:---|
-| `deeptutor init` | 現在のワークスペースの`data/user/settings`を作成または更新 |
-| `deeptutor doctor [--online]` | ワークスペースがセッションを開始できる状態か確認；`--online`は設定済みのモデルプロバイダーもプローブし、`--format json`はレポートを出力 |
+| `deeptutor init` | 現在のランタイムホームの`data/user/settings`を作成または更新 |
+| `deeptutor doctor [--online]` | ランタイムがセッションを開始できる状態か確認；`--online`は設定済みのモデルプロバイダーもプローブし、`--format json`はレポートを出力 |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | バックエンド + フロントエンドを一緒に起動。必要に応じてデタッチ、またはブラウザを開かないようにできます |
 | `deeptutor stop [--home PATH]` | `--detach`で起動したランチャーを停止 |
 | `deeptutor serve [--port PORT]` | FastAPIバックエンドのみ起動 |
+| `deeptutor workspace show/set/reset` | ユーザーごとのContent Workspaceを検査、選択、または復元 |
 | `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`）；`--format json`でNDJSON出力 |
 | `deeptutor chat` | 機能、ツール、KB、ノートブック、履歴コントロール付きインタラクティブREPL |
 | `deeptutor partner list/create/start/stop` | IM接続Partnersを管理 |

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from deeptutor.agents.chat.dsml_tool_calls import (
+from deeptutor.agents.loop.dsml_tool_calls import (
     DSMLStreamFilter,
     extract_dsml_tool_calls,
     has_dsml_tool_calls,

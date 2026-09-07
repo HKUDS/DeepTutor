@@ -17,6 +17,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     adapt_chat_kwargs_to_responses,
     consume_sdk_stream,
     convert_messages,
+    convert_tool_choice,
     convert_tools,
     parse_response_output,
 )
@@ -148,7 +149,7 @@ class AzureOpenAIProvider(LLMProvider):
             body["include"] = ["reasoning.encrypted_content"]
         if tools:
             body["tools"] = convert_tools(tools)
-            body["tool_choice"] = tool_choice or "auto"
+            body["tool_choice"] = convert_tool_choice(tool_choice) or "auto"
         return body
 
     @staticmethod

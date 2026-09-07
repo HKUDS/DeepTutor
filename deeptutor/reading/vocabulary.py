@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from deeptutor.reading._grounding import grounding_context as _grounding_context
+from deeptutor.reading._grounding import grounded_prompt as _prompt
 from deeptutor.reading.extensions import (
     ReadingAction,
     ReadingContext,
@@ -16,6 +15,7 @@ from deeptutor.reading.extensions import (
     ReadingExtensionResult,
 )
 from deeptutor.services.llm import complete
+from deeptutor.services.prompt.language import is_chinese as _is_zh
 from deeptutor.utils.json_parser import parse_json_response
 
 _SYSTEM_EN = """You explain vocabulary from one verified reading selection.
@@ -68,23 +68,6 @@ def _term_comes_from_selection(term: str, selection: str) -> bool:
         pattern = rf"(?<!\w){re.escape(normalized_term)}(?!\w)"
         return re.search(pattern, normalized_selection) is not None
     return normalized_term in normalized_selection
-
-
-def _is_zh(locale: str) -> bool:
-    return locale.lower().startswith("zh")
-
-
-def _prompt(context: ReadingContext) -> str:
-    return json.dumps(
-        {
-            "selection": context.selection,
-            "surrounding_context": _grounding_context(
-                context.visible_text,
-                context.selection,
-            ),
-        },
-        ensure_ascii=False,
-    )
 
 
 def _vocabulary(raw: str, selection: str) -> _Vocabulary:

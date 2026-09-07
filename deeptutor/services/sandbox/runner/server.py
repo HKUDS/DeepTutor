@@ -48,14 +48,11 @@ Argv note:
   rolling deploy either image may be the one serving the request.
 
 Mounts note:
-  This server does **not** perform any mounting. The runner container shares
-  the task-workspace subtrees with the main app at the *same* paths
-  (``/app/data/user/workspace`` for the admin scope, ``/app/data/users`` for
-  per-user scopes — via docker-compose). So when ``host_path == sandbox_path``
-  the directory is already visible here and no action is needed. We only
-  read/record the ``mounts`` field; what is visible is decided by the compose
-  volume layout, and ``workdir`` is validated against the same roots
-  (``DEEPTUTOR_RUNNER_ALLOWED_WORKDIRS``) as defence in depth.
+  This server does **not** perform any mounting. Compose maps the selected
+  content workspace to ``/workspace`` in both services, read-only here except
+  for the nested ``/workspace/outputs`` bind. We only validate the request's
+  ``mounts`` shape; ``workdir`` must also remain below the configured writable
+  root (``DEEPTUTOR_RUNNER_ALLOWED_WORKDIRS``).
 """
 
 from __future__ import annotations
@@ -154,14 +151,14 @@ def _build_preexec_fn(memory_mb: int, cpu_seconds: int):
     return _apply
 
 
-# Workdirs must stay inside the shared workspace volumes (defence in depth:
-# the app only ever sends task-workspace paths; a request outside them means
-# a bug or a forged request). Colon-separated, overridable per deployment.
+# Workdirs must stay inside the workspace's writable outputs tree (defence in
+# depth: the app only sends turn-output paths; anything else means a bug or a
+# forged request). Colon-separated, overridable per deployment.
 _ALLOWED_WORKDIR_ROOTS = [
     root
     for root in os.environ.get(
         "DEEPTUTOR_RUNNER_ALLOWED_WORKDIRS",
-        "/app/data/user/workspace:/app/data/users",
+        "/workspace/outputs",
     ).split(":")
     if root
 ]

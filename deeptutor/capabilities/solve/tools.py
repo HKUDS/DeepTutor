@@ -4,7 +4,7 @@ Three tools auto-mounted only when a solve turn is active (via the solve loop
 capability). The chat agent loop IS the solver; these tools give it a deterministic
 spine — a plan it commits to, a per-step "done" gate, and a bounded replan —
 while the reasoning (how to actually solve each step) stays the model's job in
-the loop, using the shared built-in tools (rag / code_execution / geogebra / …).
+the loop, using the shared built-in tools (rag / exec / geogebra / …).
 
 The active session id is injected server-side by the pipeline as
 ``_solve_session_id``; the model never supplies it. ``solve_finish_step`` emits

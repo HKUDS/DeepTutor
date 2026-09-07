@@ -27,6 +27,15 @@ def normalize_language(language: str | None) -> str:
     return (language or "en").strip().lower() or "en"
 
 
+def is_chinese(language: str | None) -> bool:
+    """Whether reader-facing text for *language* should be written in Chinese.
+
+    One answer for a question eight modules used to answer for themselves,
+    two of them without the ``None`` guard.
+    """
+    return normalize_language(language).startswith("zh")
+
+
 def language_label(language: str | None) -> str:
     code = normalize_language(language)
     if code in _LANGUAGE_LABELS:
@@ -75,6 +84,7 @@ def append_language_directive(system_prompt: str | None, language: str | None) -
 
 __all__ = [
     "append_language_directive",
+    "is_chinese",
     "language_directive",
     "language_label",
     "normalize_language",

@@ -56,6 +56,7 @@ from deeptutor.reading.models import (
     TextQuoteSelector,
     UnitReference,
 )
+from deeptutor.services.file_io import atomic_write_text as _atomic_write
 from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
@@ -118,17 +119,6 @@ def _quote_context_matches(
     return (not wanted_prefix or preceding.endswith(wanted_prefix)) and (
         not wanted_suffix or following.startswith(wanted_suffix)
     )
-
-
-def _atomic_write(path: Path, payload: str) -> None:
-    """Write *payload* to *path* atomically within the same directory."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.parent / f".{path.name}.{uuid.uuid4().hex[:8]}.tmp"
-    try:
-        tmp.write_text(payload, encoding="utf-8")
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
 
 
 def _read_json(path: Path) -> Any:
@@ -386,6 +376,7 @@ class ReadingStore:
         source_type: str = "upload",
         source_url: str = "",
         assets: Mapping[str, bytes] | None = None,
+        carry_source: bool = False,
     ) -> MaterialManifest:
         """Install trusted, already-extracted units (web pages and transcripts).
 
@@ -406,7 +397,8 @@ class ReadingStore:
         if content_format not in {"plain_text", "web_markdown"}:
             raise ReadingError(f"unsupported content format: {content_format}")
         remote_video = render_mode == "video" and extractor.startswith(("youtube-", "bilibili-"))
-        if render_mode != "text" and not raw_data and not remote_video:
+        carried = carry_source and self._has_raw(material_id)
+        if render_mode != "text" and not raw_data and not remote_video and not carried:
             raise ReadingError(f"{render_mode} materials require playable source bytes")
 
         display_name = (filename or "material").strip() or "material"
@@ -425,11 +417,18 @@ class ReadingStore:
                 for name, data in assets.items():
                     safe_name = _safe_filename(str(name), fallback="asset")
                     (assets_dir / safe_name).write_bytes(bytes(data))
+            elif carry_source:
+                _carry_dir(material_dir / ASSETS_DIR, stage_dir / ASSETS_DIR)
 
             if raw_data is not None:
                 raw_dir = stage_dir / RAW_DIR
                 raw_dir.mkdir(parents=True, exist_ok=True)
                 (raw_dir / _safe_filename(display_name, fallback="material")).write_bytes(raw_data)
+            elif carry_source:
+                # Re-ingesting the *same* bytes with better text — a transcript
+                # replacing its placeholder. Linking beats re-reading a
+                # multi-hundred-megabyte upload back through memory.
+                _carry_dir(material_dir / RAW_DIR, stage_dir / RAW_DIR)
 
             resolved_outline = tuple(outline or synthesise_outline(clean_units))
             _atomic_write(
@@ -449,7 +448,11 @@ class ReadingStore:
                 title=(title or Path(display_name).stem).strip(),
                 source_hash=content_id,
                 extractor=extractor,
-                byte_size=len(raw_data or b""),
+                byte_size=(
+                    len(raw_data)
+                    if raw_data is not None
+                    else (existing.byte_size if carry_source and existing else 0)
+                ),
                 char_count=sum(len(value) for value in clean_units),
                 created_at=existing.created_at if existing else time.time(),
                 has_raw_view=render_mode == "pdf",
@@ -700,6 +703,14 @@ class ReadingStore:
             return None
         return self._find_raw(self._dir(material_id))
 
+    def _has_raw(self, material_id: str) -> bool:
+        """Whether original bytes are already on disk, without loading them."""
+        try:
+            content_id = self._content_id(material_id)
+        except ReadingError:
+            return False
+        return self._find_raw(self._dir(content_id)) is not None
+
     def unit_references(self, material_id: str) -> list[UnitReference]:
         """Source-native addresses aligned with the numeric locator space."""
         manifest = self.manifest(material_id)
@@ -750,10 +761,15 @@ class ReadingStore:
         return None
 
     def asset_path(self, material_id: str, asset_name: str) -> Path | None:
-        """Resolve one generated snapshot raster without permitting traversal."""
+        """Resolve one generated raster without permitting traversal.
+
+        Web snapshots name their images by content hash; media imports store a
+        single poster frame under a fixed name. Both are server-generated, and
+        the pattern is what keeps a request from walking out of the directory.
+        """
         self.manifest(material_id)
         name = str(asset_name or "").strip().lower()
-        if not re.fullmatch(r"[0-9a-f]{20}\.(?:png|jpg|gif|webp)", name):
+        if not re.fullmatch(r"(?:[0-9a-f]{20}|cover)\.(?:png|jpg|gif|webp)", name):
             return None
         path = self._dir(material_id) / ASSETS_DIR / name
         return path if path.is_file() else None
@@ -1027,6 +1043,28 @@ class ReadingStore:
                 return False
             self._write_annotations(material_id, remaining)
             return True
+
+
+def _carry_dir(source: Path, target: Path) -> None:
+    """Bring a previous revision's directory into the staging copy.
+
+    Hard links first: the payload here is the untouched original upload, so
+    copying it would double a large file on disk for no reason. Falls back to a
+    real copy across filesystems, where linking is not available.
+    """
+    if not source.is_dir():
+        return
+    target.mkdir(parents=True, exist_ok=True)
+    for entry in source.iterdir():
+        if not entry.is_file():
+            continue
+        destination = target / entry.name
+        if destination.exists():
+            continue
+        try:
+            os.link(entry, destination)
+        except OSError:
+            shutil.copy2(entry, destination)
 
 
 def _safe_filename(name: str, *, fallback: str) -> str:

@@ -51,14 +51,25 @@ def route_explicit_quiz_request(
     requested_capability: Any,
     *,
     enabled: bool,
+    workspace_mode: Any = "",
 ) -> CapabilityRoute | None:
     """Return a rule-based route before turn creation, or None to keep chat.
 
     The requested capability is retained even when routing does not occur so
     observability can distinguish an explicit chat selection from a missing one.
+
+    A conversation held inside a workspace is never routed. A workspace is a
+    standing commitment — a mastery path to advance, a document to stay in —
+    and only some actions carry it: routing a mastery turn to the static quiz
+    generator would drop the tutor loop, the objective map and the mastery
+    gate, leaving the learner being taught from their materials while their
+    path stands still. Learners in a workspace can still pick another action
+    themselves; what they cannot do is have it picked for them.
     """
     requested = str(requested_capability or "chat")
     if not enabled or requested != "chat":
+        return None
+    if str(workspace_mode or "").strip():
         return None
 
     message = str(content or "").strip()

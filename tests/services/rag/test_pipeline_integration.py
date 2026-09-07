@@ -14,7 +14,8 @@ Usage:
     python tests/services/rag/test_pipeline_integration.py --pipeline all
 
     # Using pytest
-    pytest tests/services/rag/test_pipeline_integration.py -v --pipeline llamaindex
+    RAG_INTEGRATION_TESTS=1 pytest tests/services/rag/test_pipeline_integration.py \
+        -v -m integration --pipeline llamaindex
 """
 
 import argparse
@@ -24,6 +25,8 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+
+import pytest
 
 project_root = Path(__file__).resolve().parents[3]
 
@@ -106,7 +109,7 @@ class PipelineIntegrationTest:
             shutil.rmtree(self.temp_dir)
             print_info(f"Cleaned up temp directory: {self.temp_dir}")
 
-    async def test_initialize(self) -> bool:
+    async def initialize(self) -> bool:
         """Test knowledge base initialization"""
         print("\n  📚 Testing initialization...")
 
@@ -127,7 +130,8 @@ class PipelineIntegrationTest:
                     contents = list(kb_dir.rglob("*"))
                     print_info(f"KB contains {len(contents)} files/directories")
                 else:
-                    print_warning("KB directory not found after initialization")
+                    print_error("KB directory not found after initialization")
+                    return False
 
                 return True
             else:
@@ -141,7 +145,7 @@ class PipelineIntegrationTest:
             traceback.print_exc()
             return False
 
-    async def test_search(self) -> bool:
+    async def search(self) -> bool:
         """Test search/retrieval"""
         print("\n  🔍 Testing search...")
 
@@ -175,7 +179,8 @@ class PipelineIntegrationTest:
                 required_fields = ["query", "answer", "content", "provider"]
                 missing = [f for f in required_fields if f not in result]
                 if missing:
-                    print_warning(f"Missing fields: {missing}")
+                    print_error(f"Missing fields: {missing}")
+                    all_passed = False
 
                 # Check content
                 answer = result.get("answer", "")
@@ -185,7 +190,8 @@ class PipelineIntegrationTest:
                     preview = answer[:200] + "..." if len(answer) > 200 else answer
                     print_info(f"Preview: {preview}")
                 else:
-                    print_warning("Empty answer")
+                    print_error("Empty answer")
+                    all_passed = False
 
             except Exception as e:
                 print_error(f"Search failed: {e}")
@@ -196,7 +202,7 @@ class PipelineIntegrationTest:
 
         return all_passed
 
-    async def test_search_via_rag_tool(self) -> bool:
+    async def search_via_rag_tool(self) -> bool:
         """Test search via rag_tool.py (the actual interface used by agents)"""
         print("\n  🔧 Testing via rag_tool.py...")
 
@@ -227,7 +233,7 @@ class PipelineIntegrationTest:
             traceback.print_exc()
             return False
 
-    async def test_delete(self) -> bool:
+    async def delete(self) -> bool:
         """Test knowledge base deletion"""
         print("\n  🗑️  Testing deletion...")
 
@@ -242,12 +248,13 @@ class PipelineIntegrationTest:
                 if not kb_dir.exists():
                     print_success("KB directory removed")
                 else:
-                    print_warning("KB directory still exists after deletion")
+                    print_error("KB directory still exists after deletion")
+                    return False
 
                 return True
             else:
-                print_warning("Deletion returned False (KB may not exist)")
-                return True  # Not necessarily a failure
+                print_error("Deletion returned False")
+                return False
 
         except Exception as e:
             print_error(f"Deletion failed: {e}")
@@ -273,15 +280,15 @@ class PipelineIntegrationTest:
             results["setup"] = True
 
             # Initialize
-            results["initialize"] = await self.test_initialize()
+            results["initialize"] = await self.initialize()
 
             # Search (only if initialize succeeded)
             if results["initialize"]:
-                results["search"] = await self.test_search()
-                results["rag_tool"] = await self.test_search_via_rag_tool()
+                results["search"] = await self.search()
+                results["rag_tool"] = await self.search_via_rag_tool()
 
             # Delete
-            results["delete"] = await self.test_delete()
+            results["delete"] = await self.delete()
 
         except Exception as e:
             print_error(f"Test failed with exception: {e}")
@@ -404,6 +411,7 @@ class TestPipelineIntegration:
     """Pytest test class"""
 
     @staticmethod
+    @pytest.mark.integration
     def test_pipeline(request):
         """Test the specified pipeline.
 
@@ -413,9 +421,7 @@ class TestPipelineIntegration:
         on Initialize.
         """
         if os.environ.get("RAG_INTEGRATION_TESTS") != "1":
-            import pytest as _pytest
-
-            _pytest.skip(
+            pytest.skip(
                 "RAG pipeline integration test skipped (set RAG_INTEGRATION_TESTS=1 to enable)."
             )
 
@@ -434,6 +440,7 @@ class TestPipelineIntegration:
                 assert result["search"], f"{result['pipeline']}: Search failed"
                 assert result["rag_tool"], f"{result['pipeline']}: rag_tool test failed"
                 assert result["delete"], f"{result['pipeline']}: Delete failed"
+                assert result["cleanup"], f"{result['pipeline']}: Cleanup failed"
 
         asyncio.run(_run())
 

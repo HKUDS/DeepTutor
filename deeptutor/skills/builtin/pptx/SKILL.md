@@ -17,10 +17,11 @@ Work with PowerPoint `.pptx` files using **python-pptx** (preinstalled). A `.ppt
 is a ZIP of XML parts; python-pptx handles the structure so you rarely touch XML.
 Drop to raw OOXML only for the few things the library can't express (see Advanced).
 
-Run complete Python source with `code_execution` in the current workspace dir
-where uploaded files land. Refer to the deck exactly as the Generated artifacts
-list names it. Use `exec` only for a genuinely shell-only command; never put
-this source in `python -c` or a heredoc.
+Use `exec` with complete Python source (`language: python`). Keep asset creation,
+deck generation, reopening, and structural verification in one call when
+possible; later calls can revise the same relative filename. Follow the turn's
+**User workspace** instructions for locating inputs, output boundaries, and
+presenting the finished deck.
 
 ## Mental model
 - A presentation has **slides**; each slide is built from a **layout**; layouts
@@ -115,6 +116,10 @@ rather than leaving empty placeholders.
 ### Replace an image in place (keep size/position)
 python-pptx has no direct setter; swap the bytes of the related image part. Read
 the picture's `r:embed` rId off its `<a:blip>`, then overwrite the part's blob.
+The replacement bytes must use the same image encoding as the original part
+(for example PNG for PNG). A different encoding also requires a new correctly
+typed media part and relationship; changing `_blob` alone would leave invalid
+content-type metadata.
 ```python
 from pptx.oxml.ns import qn
 
@@ -157,21 +162,46 @@ s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(1), Inches(
   there are overlap/overflow/contrast bugs and fix them before declaring done.
 
 ## Export to PDF / images (optional, needs LibreOffice)
-```bash
-command -v soffice >/dev/null || { echo "soffice not available — cannot export"; exit 0; }
-soffice --headless --convert-to pdf out.pptx
-command -v pdftoppm >/dev/null && pdftoppm -jpeg -r 150 out.pdf slide && ls -1 "$PWD"/slide-*.jpg
+Do the availability check and conversion through Python source sent to `exec`;
+this works with pip, source, Docker, and Windows deployments without
+assuming POSIX shell syntax or printing a physical working directory:
+```python
+from pathlib import Path
+import shutil
+import subprocess
+
+deck = Path("out.pptx")
+soffice = shutil.which("soffice")
+if not soffice:
+    print("soffice not available — cannot export")
+else:
+    subprocess.run([soffice, "--headless", "--convert-to", "pdf", str(deck)], check=True)
+    pdftoppm = shutil.which("pdftoppm")
+    if pdftoppm:
+        subprocess.run([pdftoppm, "-jpeg", "-r", "150", "out.pdf", "slide"], check=True)
+        print(*sorted(str(path) for path in Path(".").glob("slide-*.jpg")), sep="\n")
 ```
-Read the printed JPG paths with your image-view capability to verify visually.
-Re-run conversion after every edit — the PDF won't reflect a changed `.pptx`
-otherwise. If `soffice` (or `pdftoppm`) is absent, say so and skip export; do NOT
-pip-install.
+If an image-reading tool is actually mounted, use it to inspect every rendered
+slide. `workspace_present` only presents a file to the user; it does not let you
+see the rendered pixels. If no image-reading tool is available, perform the
+structural checks below and say that visual inspection was unavailable rather
+than claiming you inspected the slides. Re-run conversion after every edit — the
+PDF won't reflect a changed `.pptx` otherwise. If `soffice` (or `pdftoppm`) is
+absent, say so and skip export; do not install it during the task.
 
 ## .ppt → .pptx
 Legacy `.ppt` is a different binary format — python-pptx cannot open it. Convert
-first if `soffice` exists, else tell the user it can't be processed:
-```bash
-command -v soffice >/dev/null && soffice --headless --convert-to pptx old.ppt || echo "need soffice for .ppt"
+first if `soffice` exists, else tell the user it can't be processed. Route this
+through `exec` with `language: python`, not an implicit shell:
+```python
+import shutil
+import subprocess
+
+soffice = shutil.which("soffice")
+if not soffice:
+    print("need soffice for .ppt")
+else:
+    subprocess.run([soffice, "--headless", "--convert-to", "pptx", "old.ppt"], check=True)
 ```
 
 ## Advanced: raw OOXML (last resort)

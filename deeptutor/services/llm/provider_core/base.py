@@ -83,6 +83,10 @@ class LLMProvider(ABC):
         "overloaded",
         "timeout",
         "timed out",
+        # An idle stream that never delivered its final message: the wording
+        # ``chat_stream`` uses for its own stall guard, which is as retryable
+        # as the timeouts above and was being classified as permanent.
+        "stalled",
         "connection",
         "server error",
         "temporarily unavailable",

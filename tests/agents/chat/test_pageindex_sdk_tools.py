@@ -56,7 +56,7 @@ class FakeManager:
 
 def _prepare(monkeypatch, docs: dict[str, dict[str, str]]) -> AgenticChatPipeline:
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(
             binding="openai", model="gpt-test", api_key="k", base_url="u", api_version=None
         ),
@@ -159,7 +159,7 @@ def test_pageindex_kb_is_never_preseeded(monkeypatch) -> None:
 
 def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) -> None:
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(
             binding="openai", model="gpt-test", api_key="k", base_url="u", api_version=None
         ),

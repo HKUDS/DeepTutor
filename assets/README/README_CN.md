@@ -64,7 +64,7 @@ DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测�
 - **统一的运行时** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Course Study、Mastery Path、Immersive Reading 和 Immersive Watching 共享同一套能力运行时与会话上下文，同时保留各自为特定用途设计的循环和流水线。
 - **互联的学习上下文** — 知识库、书籍、Co-Writer 草稿、笔记本、题库、人格预设和 Memory 可在支持它们的工作流中复用，并受账号授权与学习策略约束。
 - **沉浸式视频学习** — 粘贴 YouTube 链接，即可使用隐私增强的原生播放、同步字幕、基于时间戳的辅导和可续接的学习进度；管理员可以将播放切换到自托管的 Invidious 实例，无需重新构建素材。
-- **子智能体与 Partners** — 在 Chat 中调用实时智能体运行框架（Claude Code、Codex、Antigravity、Kimi、opencode、MiMo、Hermes Agent、OpenClaw 或 DeepSeek Harness）或 Partner、导入历史对话，并让持久化 IM 伴侣运行在同一套大脑之上。
+- **子智能体与 Partners** — 在 Chat 中调用实时智能体运行框架（Claude Code、Codex、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw 或 DeepSeek）或 Partner、导入历史对话，并让持久化 IM 伴侣运行在同一套大脑之上。
 - **多引擎知识库** — 跨 LlamaIndex、PageIndex、GraphRAG、LightRAG、远程 LightRAG Server、自托管的 WeKnora 知识库、Tencent IMA 或 MarginNote 4 知识库，或链接的 Obsidian vault 的版本化 RAG 知识库，支持可插拔的文档解析。
 - **可扩展工具与技能** — 内置工具、MCP 服务器、CLI 应用、图像 / 视频 / 语音生成模型，以及从 EduHub 安装的社区技能。
 - **可审计的记忆** — L1 追踪、L2 表面摘要和 L3 综合让个性化透明可编辑；Memory Graph 将 L2 事实关联至 L1 证据，并将 L3 综合关联至参与的表面层。
@@ -73,7 +73,23 @@ DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测�
 
 ## 🚀 快速开始
 
-DeepTutor 提供四种安装方式，共享同一个工作区布局：设置存储在启动目录下的 `data/user/settings/`（或通过 `DEEPTUTOR_HOME` / `deeptutor start --home` 指定的位置）。完整应用的推荐流程为：**选择工作目录 → 安装 → `deeptutor init` → `deeptutor start`**。
+DeepTutor 提供四种安装方式，四者共享同一套运行时主目录布局：私有设置存储在启动目录下的 `data/user/settings/` 中（如果显式指定了 `DEEPTUTOR_HOME` / `deeptutor start --home`，则存储在该位置）。完整应用的推荐流程为：**选定运行时主目录 → 安装 → `deeptutor init` → `deeptutor start`**。
+
+### 内容工作区
+
+**内容工作区（Content Workspace）** 与 DeepTutor 的私有运行时主目录相互独立。它是智能体可以读取的文件夹，也是每个由智能体创建的文件、下载、代码运行结果、缓存和渲染产物存放的位置 — 全部置于按轮次划分的 `outputs/<capability>/<session>/<turn>/` 目录下。Settings、API Key、数据库、Memory 和内部应用状态均不在其中。
+
+未经配置时，内容工作区默认为 `<runtime-home>/data/user/workspace`。本地 PyPI、CLI 和源码安装可以在 **Settings → Workspace** 中选择任意已存在且可读写的文件夹，或者：
+
+```bash
+deeptutor workspace show
+deeptutor workspace set /absolute/path/to/my-folder
+deeptutor workspace reset
+```
+
+每项能力都可以通过内置的 workspace 工具查看同一个文件夹。模型只会收到形如 `outputs/...` 的相对路径；当它使用 `workspace_present` 时，界面会渲染出一份可打开的、经过鉴权的快照。同样的相对路径在普通的 Markdown 链接或图片中也同样有效。之后修改源文件不会改变已经呈现过的快照。
+
+`outputs/` 之外的执行是只读的。要把生成的文件复制到内容工作区内的其他位置，需要针对那个确切的源与目标显式确认一次**允许一次**。系统沙箱或 Docker runner 在可用时会强制执行这一边界；本地受限子进程回退方案在 Workspace 设置中会被标注为**尽力而为**。
 
 <details>
 <summary><b>方式一 — 从 PyPI 安装</b> · 完整本地 Web 应用 + CLI，无需克隆仓库</summary>
@@ -177,12 +193,27 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
+要在容器启动时选定宿主机上的内容文件夹，将其挂载到固定的容器路径，并把 DeepTutor 锁定到该路径：
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+对于 Compose，在运行 `python scripts/docker_compose.py up -d` 前设置 `DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder`；省略时默认使用 `./data/user/workspace`。Docker 路径在启动时就已选定，因此在 Web Settings 页面中会显示为已锁定。
+
 > **只需发布 `3782` 端口。** 浏览器只与前端源通信；Next.js 中间件（`web/proxy.ts`）在**容器内部**将 `/api/*` 和 `/ws/*` 转发给 FastAPI 后端。发布 `8001`（`-p 127.0.0.1:8001:8001`）是可选的 — 仅在需要用 curl 或脚本直接访问 API 时才有用。
 
-打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器首次启动时会创建 `/app/data/user/settings/*.json`；通过 Web Settings 页面配置模型提供商。配置、API Key、日志、工作区文件、记忆和知识库均持久化在 `deeptutor-data` 卷中。可选的额外依赖应配置在部署层面，而不是在 shell 中临时安装：设置 `DEEPTUTOR_EXTRAS`（系统库则用 `DEEPTUTOR_APT_PACKAGES`），由此启动的每个容器都会重新应用这些依赖；而 `docker exec … pip install` 这类临时安装会在下一次 `compose down` 后丢失。
+打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器首次启动时会创建 `/app/data/user/settings/*.json`；通过 Web Settings 页面配置模型提供商。配置、API Key、日志、默认内容工作区、记忆和知识库均持久化在 `deeptutor-data` 卷中。若单独挂载了内容工作区，则会持久化在其宿主机路径下。可选的额外依赖应配置在部署层面，而不是在 shell 中临时安装：设置 `DEEPTUTOR_EXTRAS`（系统库则用 `DEEPTUTOR_APT_PACKAGES`），由此启动的每个容器都会重新应用这些依赖；而 `docker exec … pip install` 这类临时安装会在下一次 `compose down` 后丢失。
 
 - **不同宿主机端口：** 修改每个 `-p host:container` 映射的左侧（例如 `-p 127.0.0.1:8088:3782`）。如果修改了 `/app/data/user/settings/system.json` 中容器侧的端口，重启并更新映射右侧以匹配。
-- **后台运行：** 添加 `-d`，然后用 `docker logs -f deeptutor` 查看日志，`docker stop deeptutor` 停止，重用名称前执行 `docker rm deeptutor`。`deeptutor-data` 卷在重启之间保留设置和工作区。
+- **后台运行：** 添加 `-d`，然后用 `docker logs -f deeptutor` 查看日志，`docker stop deeptutor` 停止，重用名称前执行 `docker rm deeptutor`。`deeptutor-data` 卷在重启之间保留私有运行时数据和默认内容工作区；单独挂载的内容工作区则持久化在其宿主机路径下。
 
 **远程 Docker / 反向代理：** 浏览器只与前端源（`:3782`）通信；容器内的 Next.js 中间件在服务端将 `/api/*` 和 `/ws/*` 转发给后端服务器。对于常见的单容器场景，完全不需要配置 API base — 只需将反向代理 / TLS 终止器指向 `:3782` 即可。只有在**拆分部署**（后端在独立容器/主机上）时才需要设置 API base：将 `data/user/settings/system.json` 中的 `next_public_api_base` 设置为前端服务器用于访问后端的内网地址（它在服务端读取，永远不会发送到浏览器）。
 
@@ -272,7 +303,7 @@ deeptutor config show
 <details>
 <summary><b>代码执行沙箱（Office 技能）</b> · 运行 docx / pdf / pptx / xlsx 的模型生成代码</summary>
 
-内置的 Office 技能 — **docx / pdf / pptx / xlsx** — 通过让模型编写短 Python 脚本（`python-docx`、`reportlab`、`openpyxl` 等），经 `exec` / `code_execution` 工具运行，并返回下载 URL 来工作。这些工具会在有可用沙箱后端时挂载。DeepTutor 按以下顺序选择已配置的最强后端：
+内置的 Office 技能 — **docx / pdf / pptx / xlsx** — 通过让模型编写一段简短的 Python 脚本（`python-docx`、`reportlab`、`openpyxl` 等），经唯一的 `exec` 工具运行，并呈现保存下来的工作区文件来完成工作。只要有沙箱后端处于激活状态，这些工具就会挂载。DeepTutor 按以下顺序选择已配置的最强后端：
 
 - **Runner sidecar：** `DEEPTUTOR_SANDBOX_RUNNER_URL` 将执行路由至 `Dockerfile.runner` 提供的加固最小权限服务。
 - **Linux bubblewrap：** `bwrap` 可用时，由它隔离进程和文件。
@@ -294,6 +325,7 @@ deeptutor config show
 | `auth.json` | 可选认证开关、用户名、密码哈希、token/cookie 设置 |
 | `integrations.json` | 可选的 PocketBase 和 sidecar 集成设置 |
 | `interface.json` | UI 语言与模型输出语言 / 主题 / 侧边栏偏好 |
+| `content_workspace.json` | 内容工作区的文件夹绑定与当前选中的工作区 |
 | `video_learning.json` | 默认的 YouTube/Invidious 播放提供商、Invidious 来源和可选的转录适配器 |
 | `main.yaml` | 运行时行为默认值和路径注入 |
 | `agents.yaml` | 能力/工具的 temperature 和 token 设置 |
@@ -321,7 +353,7 @@ Web Search 引用默认经过过滤：只会展示公开的 `http`/`https` URL�
 <details>
 <summary><b>卸载与清理</b></summary>
 
-DeepTutor 将已安装的代码与运行时工作区分开。默认情况下，工作区就是你运行 `deeptutor init` / `deeptutor start` 的目录；`--home PATH` 或 `DEEPTUTOR_HOME` 可以覆盖该位置。运行时输出位于这个工作区内的 `data` 目录，因此启动横幅中以 `Workspace:` 开头的行会标明需要清理的位置。
+DeepTutor 将已安装的代码、私有运行时主目录与可选的内容工作区三者分开。默认情况下，运行时主目录就是你运行 `deeptutor init` / `deeptutor start` 的目录；`--home PATH` 或 `DEEPTUTOR_HOME` 可以覆盖该位置。私有应用状态位于该目录内的 `data` 子目录，因此启动横幅中以 `Workspace:` 开头的行会标明这个运行时位置。如果 **Settings → Workspace** 指向了另一个文件夹，请单独备份或移除那个内容文件夹；卸载 DeepTutor 并不会清除它，这是刻意的设计。
 
 1. 停止应用。在运行 `deeptutor start` 的终端中按 `Ctrl+C`；若启动器通过 `--detach` 启动，则运行 `deeptutor stop [--home PATH]`。删除数据前，还应停止所有正在运行的 Partner 和后台 Docker 容器。
 2. 只有在确实要清除所有本地状态时，才移除运行时数据。其中包括设置和 API Key、聊天历史、会话、Memory、Notebooks、Books、Reading 状态、Skills、Partners 状态、日志、Knowledge Bases、解析缓存、生成的产物以及打包的前端运行时缓存。
@@ -382,7 +414,7 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor 聊天智能体循环" width="900">
 </div>
 
-用户可切换的工具有 `brainstorm`、`web_search`、`paper_search`、`reason` 和 `geogebra_analysis` — 配置了对应生成模型后还有 `imagegen` 和 `videogen`。上下文工具如 `rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github` 和 `consult_subagent` 会在当前轮次具备相应上下文时自动挂载。
+用户可切换的工具有 `brainstorm`、`web_search`、`paper_search`、`reason` 和 `geogebra_analysis` — 配置了对应生成模型后还有 `imagegen` 和 `videogen`。上下文工具如 `rag`、`kb_files`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_notebook`、`write_note`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 和 `workspace_export` 会在当前轮次具备相应上下文时自动挂载。
 
 上下文分为两类：**粘性会话上下文**（能力、工作区或课程、工具、知识库、人格预设、模型，以及 Reading / Mastery 状态）会在各轮次间持续保留；**一次性引用**（文件、聊天历史、书籍、阅读章节、笔记本、题库、导入的智能体）通过 `+` 菜单添加，仅用于单次对话轮次。语音按钮只会转录当前消息。
 
@@ -532,7 +564,7 @@ Memory Graph 展示整个金字塔 — L3 综合位于中心，L2 在中间圆�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor 设置中心" width="900">
 </div>
 
-Settings 是操作控制面板，带有实时状态条（后端健康状况与整个进程树的常驻内存占用）和一个常驻的可搜索导航栏，一键直达任意页面：**外观**（主题、UI 语言与模型输出语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（Connections 连接、LLM、任务模型、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（Video Learning、可搜索工具、每个能力的参数、起始建议、附件上限）、**Partners 与智能体**（九种本地智能体运行框架）、**学习者档案**（年龄、年级、课程体系、语言、阅读水平、讲解风格）、**监护人**（已授权学习者、素材、报告、凭证重置）、**记忆**（整合器预算），以及**关于**（版本检查与安全更新）。**连接**保存一份厂商凭证，并将其镜像到该厂商可服务的每一处 — 一把密钥只需录入一次，无需在五个页面里分别粘贴；**任务模型**为那些没人特意关心的后台工作（比如给会话命名、撰写输入框的起始建议）指定一个小而快的模型，留空时则回退到当前的默认模型。
+Settings 是操作控制面板：开屏是实时状态条（后端健康状况与常驻内存占用）、界面与模型输出语言，以及一个把每项能力评为阻断项、警告或建议的**就绪度**（Readiness）矩阵；再往下是一个常驻的可搜索导航栏，一键直达任意页面：**外观**（主题、代码块样式）、**网络**（API 基础地址、端口、CORS）、**工作区**（智能体可读取的文件夹及其共享的 `outputs/`）、**模型**（Connections 连接、LLM、任务模型、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（Video Learning、可搜索工具、每个能力的参数、起始建议、附件上限）、**Partners 与智能体**（九种本地智能体运行框架）、**学习者档案**（年龄、年级、课程体系、语言、阅读水平、讲解风格）、**监护人**（已授权学习者、素材、报告、凭证重置）、**记忆**（整合器预算），以及**关于**（版本检查与安全更新）。**连接**保存一份厂商凭证，并将其镜像到该厂商可服务的每一处 — 一把密钥只需录入一次，无需在五个页面里分别粘贴；**任务模型**为那些没人特意关心的后台工作（比如给会话命名、撰写输入框的起始建议）指定一个小而快的模型，留空时则回退到当前的默认模型。
 
 Settings → Chat 下的 **Video Learning** 默认使用 YouTube 官方的隐私增强型 IFrame Player。若要让播放保持在本地，请设置由管理员管理的 Invidious API 来源（例如 `http://127.0.0.1:3000`），测试后选择 Invidious 并保存。新建或重新打开的视频会立即采用该提供商，同时保留相同的素材 ID 和进度。Invidious 媒体通过 DeepTutor 的字节范围代理进行流式传输；上游 URL 既不会暴露给浏览器，也不会存储到磁盘。如果实例发生故障，DeepTutor 将保持与 YouTube 离线，直到学习者明确选择原生 YouTube 回退方案。公共字幕辅导是可选功能：安装 `.[video-learning]`；即使未安装，播放仍会继续，但基于转录的 **在此解释** 功能会被禁用并说明原因。
 
@@ -639,6 +671,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | 同时启动后端 + 前端；可选择后台运行或禁止自动打开浏览器 |
 | `deeptutor stop [--home PATH]` | 停止通过 `--detach` 启动的启动器 |
 | `deeptutor serve [--port PORT]` | 仅启动 FastAPI 后端 |
+| `deeptutor workspace show/set/reset` | 查看、选择或还原当前用户的内容工作区 |
 | `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`ask_questions`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`、`immersive_reading`、`course_study`、`immersive_watching`）；添加 `--format json` 可获得 NDJSON 输出 |
 | `deeptutor chat` | 交互式 REPL，支持能力、工具、知识库、笔记本和历史控制 |
 | `deeptutor partner list/create/start/stop` | 管理 IM 连接的 Partners |

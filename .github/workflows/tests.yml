@@ -155,6 +155,8 @@ jobs:
   import-check:
     name: Import Check (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      PYTHONIOENCODING: utf-8
     strategy:
       fail-fast: false
       matrix:
@@ -198,21 +200,21 @@ jobs:
 
       - name: Check module imports
         run: |
-          echo "🐍 Testing with Python ${{ matrix.python-version }}"
-          python -c "from deeptutor.runtime.orchestrator import ChatOrchestrator; print('✅ Orchestrator imports OK')"
-          python -c "from deeptutor.runtime.registry.tool_registry import get_tool_registry; print('✅ Tool registry imports OK')"
-          python -c "from deeptutor.runtime.registry.capability_registry import get_capability_registry; print('✅ Capability registry imports OK')"
-          python -c "from deeptutor.services.config.runtime_settings import RuntimeSettingsService; print('✅ RuntimeSettingsService imports OK')"
-          python -c "from deeptutor.api.routers.unified_ws import unified_websocket; print('✅ Unified WS imports OK')"
-          python -c "from deeptutor.services.prompt.manager import PromptManager; print('✅ Prompt manager imports OK')"
-          python -c "from deeptutor.logging import configure_logging, bind_log_context, capture_process_logs, ProcessLogEvent; print('✅ Logging imports OK')"
+          echo "Testing with Python ${{ matrix.python-version }}"
+          python -c "from deeptutor.runtime.orchestrator import ChatOrchestrator; print('Orchestrator imports OK')"
+          python -c "from deeptutor.runtime.registry.tool_registry import get_tool_registry; print('Tool registry imports OK')"
+          python -c "from deeptutor.runtime.registry.capability_registry import get_capability_registry; print('Capability registry imports OK')"
+          python -c "from deeptutor.services.config.runtime_settings import RuntimeSettingsService; print('RuntimeSettingsService imports OK')"
+          python -c "from deeptutor.api.routers.unified_ws import unified_websocket; print('Unified WS imports OK')"
+          python -c "from deeptutor.services.prompt.manager import PromptManager; print('Prompt manager imports OK')"
+          python -c "from deeptutor.logging import configure_logging, bind_log_context, capture_process_logs, ProcessLogEvent; print('Logging imports OK')"
         env:
           PYTHONPATH: ${{ github.workspace }}
 
       - name: Check lazy startup and isolated worker protocol
         run: |
-          python -c "import sys; import deeptutor.runtime.registry.tool_registry; assert 'deeptutor.agents.chat.agentic_pipeline' not in sys.modules; print('✅ Tool implementations stay cold')"
-          python -c "from deeptutor.runtime.isolated_worker import run_in_isolated_process_sync; assert run_in_isolated_process_sync('operator:add', 20, 22, timeout=15) == 42; print('✅ Isolated worker protocol OK')"
+          python -c "import sys; import deeptutor.runtime.registry.tool_registry; assert 'deeptutor.agents.chat.agentic_pipeline' not in sys.modules; print('Tool implementations stay cold')"
+          python -c "from deeptutor.runtime.isolated_worker import run_in_isolated_process_sync; assert run_in_isolated_process_sync('operator:add', 20, 22, timeout=15) == 42; print('Isolated worker protocol OK')"
         env:
           PYTHONPATH: ${{ github.workspace }}
 
@@ -248,7 +250,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements/server.txt', 'requirements/cli.txt', 'requirements/partners.txt') }}
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements/server.txt', 'requirements/cli.txt', 'requirements/partners.txt', 'pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
@@ -262,6 +264,10 @@ jobs:
       - name: Install optional LightRAG SDK
         if: matrix.python-version == '3.12'
         run: pip install "lightrag-hku==1.5.7rc2"
+
+      - name: Install optional GraphRAG SDK
+        if: matrix.python-version == '3.12'
+        run: pip install "graphrag>=3.0.1,<4.0.0"
 
       - name: Create minimal runtime config
         run: |

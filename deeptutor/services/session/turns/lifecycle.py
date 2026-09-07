@@ -13,7 +13,6 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.services.path_service import get_path_service
 from deeptutor.services.session.protocol import SessionStoreProtocol
 from deeptutor.services.session.scope import store_scope
 
@@ -534,6 +533,33 @@ class TurnLifecycle:
             ),
         )
 
+    async def _publish_mastery_mode_change(
+        self,
+        execution: _TurnExecution,
+        *,
+        started_in: str,
+        ended_in: str,
+    ) -> None:
+        """Announce a mode the tutor switched into, so the client stops lying.
+
+        The three mode buttons above the transcript are the learner's only sign
+        of which tools the tutor may reach for. A switch the tutor made itself
+        already reached the conversation's stored preference, but an open
+        client would keep the old one highlighted until a reload — so the tutor
+        would say "I have switched to outline mode" over a header still reading
+        "Study", which is the product contradicting itself out loud.
+        """
+        if not ended_in or ended_in == started_in:
+            return
+        await self._publish_live_event(
+            execution,
+            StreamEvent(
+                type=StreamEventType.SESSION_META,
+                source="turn_runtime",
+                metadata={"mastery_session_mode": ended_in},
+            ),
+        )
+
     async def _publish_live_event(
         self,
         execution: _TurnExecution,
@@ -614,12 +640,10 @@ class TurnLifecycle:
                 return
             execution.persisted_events = persisted_events + list(persisted_batch)
             execution.events_persisted = len(execution.persisted_events) == len(events)
-            await self._mirror_events_to_workspace(execution, persisted_batch)
             execution.events_flushed = True
             return
 
         try:
-            mirrored: list[dict[str, Any]] = []
             for index, payload in enumerate(pending):
                 try:
                     persisted = await self.store.append_turn_event(execution.turn_id, payload)
@@ -639,7 +663,6 @@ class TurnLifecycle:
                     )
                     break
                 persisted_events.append(persisted)
-                mirrored.append(persisted)
         except Exception:
             # Cache a committed prefix so retries continue after it instead of
             # duplicating already persisted events on non-batching backends.
@@ -647,37 +670,4 @@ class TurnLifecycle:
             raise
         execution.persisted_events = persisted_events
         execution.events_persisted = len(persisted_events) == len(events)
-        await self._mirror_events_to_workspace(execution, mirrored)
         execution.events_flushed = True
-
-    async def _mirror_events_to_workspace(
-        self, execution: _TurnExecution, payloads: list[dict[str, Any]]
-    ) -> None:
-        """Mirror turn events to the task-local ``events.jsonl`` under ``data/user/workspace``.
-
-        One open/write for the whole batch, off the event loop: the previous
-        per-event ``open()+append`` ran synchronously on the loop thread and
-        stretched turn finalisation (and every other connection) on slow
-        storage. ``to_thread`` copies contextvars, so the per-user path scope
-        resolves the same as on the loop.
-        """
-        if not payloads:
-            return
-        await asyncio.to_thread(self._mirror_events_to_workspace_sync, execution, payloads)
-
-    @staticmethod
-    def _mirror_events_to_workspace_sync(
-        execution: _TurnExecution, payloads: list[dict[str, Any]]
-    ) -> None:
-        try:
-            path_service = get_path_service()
-            task_dir = path_service.get_task_workspace(execution.capability, execution.turn_id)
-            task_dir.mkdir(parents=True, exist_ok=True)
-            event_file = task_dir / "events.jsonl"
-            lines = "".join(
-                json.dumps(payload, ensure_ascii=False, default=str) + "\n" for payload in payloads
-            )
-            with open(event_file, "a", encoding="utf-8") as f:
-                f.write(lines)
-        except Exception:
-            logger.debug("Failed to mirror turn events to workspace", exc_info=True)

@@ -23,6 +23,9 @@ import {
   CODE_BLOCK_SETTINGS_EVENT,
   CODE_BLOCK_THEME_STORAGE_KEY,
   CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
+  DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS,
+  DEFAULT_CODE_BLOCK_THEME,
+  DEFAULT_CODE_BLOCK_WRAP_LONG_LINES,
   LANGUAGE_EVENT,
   LANGUAGE_STORAGE_KEY,
   hasStoredLanguage,
@@ -82,13 +85,13 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   // Always start expanded to match SSR; hydrate from localStorage after mount
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
   // Code block settings - start with defaults, hydrate from localStorage after mount
-  const [codeBlockTheme, setCodeBlockThemeState] = useState<string>(() =>
-    readStoredCodeBlockTheme(),
+  const [codeBlockTheme, setCodeBlockThemeState] = useState<string>(
+    DEFAULT_CODE_BLOCK_THEME,
   );
   const [codeBlockShowLineNumbers, setCodeBlockShowLineNumbersState] =
-    useState<boolean>(() => readStoredCodeBlockShowLineNumbers());
+    useState<boolean>(DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS);
   const [codeBlockWrapLongLines, setCodeBlockWrapLongLinesState] =
-    useState<boolean>(() => readStoredCodeBlockWrapLongLines());
+    useState<boolean>(DEFAULT_CODE_BLOCK_WRAP_LONG_LINES);
 
   useEffect(() => {
     // Hydrate client-only preferences after SSR-safe first render.

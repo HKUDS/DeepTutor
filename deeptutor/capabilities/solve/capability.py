@@ -6,7 +6,7 @@ the standard agentic chat pipeline. The solve loop capability
 (:class:`deeptutor.capabilities.solve.loop.SolveLoopCapability`) mounts the
 solve tools (``solve_plan`` / ``solve_finish_step`` / ``solve_replan``) plus a
 curated built-in toolset
-(``rag`` / ``code_execution`` / ``geogebra_analysis`` / …) and injects the
+(``rag`` / unified ``exec`` / ``geogebra_analysis`` / …) and injects the
 solver playbook; the in-memory :class:`SolveSession` holds the plan, the
 per-step gate, and the replan budget.
 
@@ -66,7 +66,7 @@ class DeepSolveCapability(TurnCapability):
         name="deep_solve",
         description="Multi-step problem solving driven by the chat agent loop.",
         stages=["responding"],
-        tools_used=[*SOLVE_TOOL_NAMES, "rag", "code_execution", "geogebra_analysis", "reason"],
+        tools_used=[*SOLVE_TOOL_NAMES, "rag", "exec", "geogebra_analysis", "reason"],
         cli_aliases=["solve"],
         request_schema=get_capability_request_schema("deep_solve"),
     )

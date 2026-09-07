@@ -318,3 +318,72 @@ test("stopping cancels retries and idle hidden sessions do not reconnect", () =>
   assert.equal(client.state, "stopped");
   assert.equal(scheduler.tasks.length, 0);
 });
+
+test("a rejected reply resolves its waiter instead of leaving the card pending", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({
+      turnId: "turn-1",
+      text: "B",
+      commandId: "reply-1",
+    }),
+  );
+  sockets[0].message({
+    type: "command_ack",
+    command_id: "reply-1",
+    command_type: "submit_user_reply",
+    accepted: false,
+    turn_id: "turn-1",
+    error_code: "turn_not_waiting_input",
+    message: "not awaiting",
+    protocol_version: "2.0",
+  });
+
+  assert.equal(await verdict, false);
+});
+
+test("an accepted reply resolves true", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({
+      turnId: "turn-1",
+      text: "B",
+      commandId: "reply-2",
+    }),
+  );
+  sockets[0].message({
+    type: "command_ack",
+    command_id: "reply-2",
+    command_type: "submit_user_reply",
+    accepted: true,
+    turn_id: "turn-1",
+    error_code: "",
+    message: "",
+    protocol_version: "2.0",
+  });
+
+  assert.equal(await verdict, true);
+});
+
+test("stopping releases waiters that will never be acknowledged", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({
+      turnId: "turn-1",
+      text: "B",
+      commandId: "reply-3",
+    }),
+  );
+  client.stop();
+
+  assert.equal(await verdict, false);
+});

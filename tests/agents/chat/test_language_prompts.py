@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
-from deeptutor.agents.chat.prompt_blocks import ChatPromptAssembler
+from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +18,7 @@ def _fake_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
         api_version=None,
     )
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: cfg,
     )
     monkeypatch.setattr("deeptutor.agents.base_agent.get_llm_config", lambda: cfg)
@@ -32,7 +32,7 @@ def test_agentic_chat_final_prompt_uses_selected_language(
             return "- tool"
 
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
         lambda: FakeRegistry(),
     )
 
@@ -60,7 +60,7 @@ def test_mastery_plugin_system_prompt_uses_localized_fallback(
             return "- tool"
 
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
         lambda: FakeRegistry(),
     )
 
@@ -71,9 +71,9 @@ def test_mastery_plugin_system_prompt_uses_localized_fallback(
     en_prompt = AgenticChatPipeline(language="en")._build_system_prompt([], ctx)
 
     assert "## mastery_tutor" in zh_prompt
-    assert "精通导师模式" in zh_prompt
+    assert "掌握式导师" in zh_prompt
     assert "## mastery_tutor" in en_prompt
-    assert "Mastery Tutor mode" in en_prompt
+    assert "mastery tutor" in en_prompt
 
 
 def test_ask_questions_plugin_system_prompt_uses_localized_fallback(
@@ -84,7 +84,7 @@ def test_ask_questions_plugin_system_prompt_uses_localized_fallback(
             return "- tool"
 
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
         lambda: FakeRegistry(),
     )
 

@@ -1,0 +1,5 @@
+short_description: "Generate an original video with the configured video-generation service and save it under the active workspace's outputs/."
+when_to_use: "Use when the user asks for a generated video, moving scene, cinematic clip, or text-to-video result. This is a long-running media service. Use exec for programmatic rendering or post-processing."
+input_format: "A vivid, self-contained scene-and-motion prompt; optionally aspect_ratio and duration."
+guideline: "Call videogen directly for generative video. Wait for its render/download result; only claim generation success when it returns an exact workspace-relative path. Then call workspace_present with that path before linking it in Markdown. Never paste a provider URL or host path."
+phase: "synthesis"

@@ -73,7 +73,23 @@ DeepTutor एक agent-native learning workspace है जो tutoring, problem
 
 ## 🚀 शुरू करें
 
-DeepTutor चार installation paths के साथ आता है। वे सभी एक workspace layout साझा करते हैं: settings उस directory के नीचे `data/user/settings/` में रहती हैं जहां से आप launch करते हैं (या `DEEPTUTOR_HOME` / `deeptutor start --home` के नीचे अगर आप explicitly set करते हैं)। पूरे app के लिए, recommended flow है **workspace directory चुनें → install करें → `deeptutor init` → `deeptutor start`**।
+DeepTutor चार installation paths के साथ आता है। वे सभी एक runtime-home layout साझा करते हैं: private settings उस directory के नीचे `data/user/settings/` में रहती हैं जहां से आप launch करते हैं (या `DEEPTUTOR_HOME` / `deeptutor start --home` के नीचे अगर आप explicitly set करते हैं)। पूरे app के लिए, recommended flow है **एक runtime-home directory चुनें → install करें → `deeptutor init` → `deeptutor start`**।
+
+### Content Workspace
+
+**Content Workspace** DeepTutor के private runtime home से अलग है। यह वह folder है जिसे agents पढ़ सकते हैं और जहां हर agent-created file, download, code run, cache, और rendered asset एक turn-scoped `outputs/<capability>/<session>/<turn>/` directory के अंदर रखा जाता है। Settings, API keys, databases, Memory, और internal application state इसके बाहर रहते हैं।
+
+बिना किसी configuration के, content workspace `<runtime-home>/data/user/workspace` होता है। Local PyPI, CLI, और source installs **Settings → Workspace** में कोई भी existing readable/writable folder select कर सकते हैं, या:
+
+```bash
+deeptutor workspace show
+deeptutor workspace set /absolute/path/to/my-folder
+deeptutor workspace reset
+```
+
+हर capability built-in workspace tools के जरिए same folder inspect कर सकती है। Model को केवल `outputs/...` जैसे relative paths मिलते हैं; जब वह `workspace_present` उपयोग करता है, तो UI एक authenticated, openable snapshot render करता है। वही exact relative path एक normal Markdown link या image में भी काम करता है। बाद में source file बदलने से पहले से presented snapshot नहीं बदलता।
+
+`outputs/` के बाहर execution read-only है। Content workspace में कहीं और किसी generated file को copy करने के लिए उस exact source और destination के लिए एक explicit **Allow once** confirmation चाहिए। उपलब्ध होने पर एक system sandbox या Docker runner इस boundary को enforce करता है; local restricted-subprocess fallback को Workspace settings में **best effort** के रूप में दिखाया जाता है।
 
 <details>
 <summary><b>Option 1 — PyPI से Install करें</b> · पूरा local Web app + CLI, clone की जरूरत नहीं</summary>
@@ -177,12 +193,27 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
+Container startup पर एक host content folder चुनने के लिए, इसे stable container path पर mount करें और DeepTutor को उस path पर lock करें:
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+Compose के लिए, `python scripts/docker_compose.py up -d` चलाने से पहले `DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder` set करें। छोड़ने पर यह `./data/user/workspace` उपयोग करता है। Docker paths startup पर select होते हैं और इसलिए Web settings page में locked दिखते हैं।
+
 > **केवल `3782` publish करना जरूरी है।** Browser exclusively frontend origin से बात करता है; Next.js middleware (`web/proxy.ts`) **container के अंदर** `/api/*` और `/ws/*` को FastAPI backend पर forward करता है। `8001` publish करना (`-p 127.0.0.1:8001:8001`) optional है — केवल curl या scripts से API directly hit करने के लिए उपयोगी।
 
-[http://127.0.0.1:3782](http://127.0.0.1:3782) खोलें। Container पहले boot पर `/app/data/user/settings/*.json` बनाता है; Web Settings page से model providers configure करें। Config, API keys, logs, workspace files, memory, और knowledge bases `deeptutor-data` volume में persist करते हैं। वैकल्पिक extras deployment पर belong करते हैं, किसी shell में नहीं: `DEEPTUTOR_EXTRAS` (और system libraries के लिए `DEEPTUTOR_APT_PACKAGES`) set करें, और उससे शुरू होने वाला हर container उन्हें फिर से apply करता है — जबकि एक `docker exec … pip install` अगले `compose down` पर खो जाता है।
+[http://127.0.0.1:3782](http://127.0.0.1:3782) खोलें। Container पहले boot पर `/app/data/user/settings/*.json` बनाता है; Web Settings page से model providers configure करें। Config, API keys, logs, default Content Workspace, memory, और knowledge bases `deeptutor-data` volume में persist करते हैं। अलग से mount किया गया Content Workspace इसके बजाय अपने host path पर persist करता है। वैकल्पिक extras deployment पर belong करते हैं, किसी shell में नहीं: `DEEPTUTOR_EXTRAS` (और system libraries के लिए `DEEPTUTOR_APT_PACKAGES`) set करें, और उससे शुरू होने वाला हर container उन्हें फिर से apply करता है — जबकि एक `docker exec … pip install` अगले `compose down` पर खो जाता है।
 
 - **अलग host ports:** प्रत्येक `-p host:container` mapping के left side को बदलें (जैसे `-p 127.0.0.1:8088:3782`)। अगर आप `/app/data/user/settings/system.json` में container-side ports बदलते हैं, तो restart करें और match करने के लिए प्रत्येक mapping के right side को update करें।
-- **Detached:** `-d` add करें, फिर follow करने के लिए `docker logs -f deeptutor`, stop करने के लिए `docker stop deeptutor`, नाम reuse करने से पहले `docker rm deeptutor`। `deeptutor-data` volume आपकी settings और workspace को restarts के पार रखता है।
+- **Detached:** `-d` add करें, फिर follow करने के लिए `docker logs -f deeptutor`, stop करने के लिए `docker stop deeptutor`, नाम reuse करने से पहले `docker rm deeptutor`। `deeptutor-data` volume restarts के पार private runtime data और default Content Workspace रखता है; अलग से mount किया गया Content Workspace अपने host path पर persist करता है।
 
 **Remote Docker / reverse proxy:** browser केवल frontend origin (`:3782`) से बात करता है; in-container Next.js middleware `/api/*` और `/ws/*` को backend server-side पर forward करता है। सामान्य single-container case के लिए API base configure करने की जरूरत नहीं — बस अपना reverse proxy / TLS terminator `:3782` पर point करें। **Split deployment** (backend अलग container/host में) के लिए ही API base चाहिए: `data/user/settings/system.json` में `next_public_api_base` को वह in-network address set करें जो frontend server backend तक पहुंचने के लिए उपयोग करता है (यह server-side read होता है, browser को कभी नहीं भेजा जाता)।
 
@@ -272,7 +303,7 @@ Local `deeptutor-cli` install में कोई Web assets या server depen
 <details>
 <summary><b>Code Execution Sandbox (office skills)</b> · docx / pdf / pptx / xlsx के लिए model-generated code run करना</summary>
 
-Built-in office skills — **docx / pdf / pptx / xlsx** — model द्वारा एक short Python script (`python-docx`, `reportlab`, `openpyxl`, …) लिखकर, इसे `exec` / `code_execution` tools के जरिए run करके, और download URL वापस करके काम करती हैं। वे tools तब mount होते हैं जब एक sandbox backend active होता है। DeepTutor इस क्रम में सबसे मजबूत configured backend चुनता है:
+Built-in office skills — **docx / pdf / pptx / xlsx** — model द्वारा एक short Python script (`python-docx`, `reportlab`, `openpyxl`, …) लिखकर, इसे केवल `exec` tool के जरिए run करके, और saved workspace file present करके काम करती हैं। यह tool तब mount होता है जब एक sandbox backend active होता है। DeepTutor इस क्रम में सबसे मजबूत configured backend चुनता है:
 
 - **Runner sidecar:** `DEEPTUTOR_SANDBOX_RUNNER_URL` execution को `Dockerfile.runner` की hardened, least-privileged service पर route करता है।
 - **Linux bubblewrap:** उपलब्ध होने पर `bwrap` process और files को isolate करता है।
@@ -294,6 +325,7 @@ Built-in office skills — **docx / pdf / pptx / xlsx** — model द्वा�
 | `auth.json` | Optional auth toggle, username, password hash, token/cookie settings |
 | `integrations.json` | Optional PocketBase और sidecar integration settings |
 | `interface.json` | UI और model output language / theme / sidebar preferences |
+| `content_workspace.json` | Content Workspace folder bindings और active workspace selection |
 | `video_learning.json` | Default YouTube/Invidious playback provider, Invidious origins, और optional transcript adapter |
 | `main.yaml` | Runtime behavior defaults और path injection |
 | `agents.yaml` | Capability/tool temperature और token settings |
@@ -321,7 +353,7 @@ LLM और task-model profiles तब **API format** setting expose करते
 <details>
 <summary><b>Uninstall और cleanup</b></summary>
 
-DeepTutor installed code को runtime workspace से अलग रखता है। Default रूप से workspace वही directory है जहां आप `deeptutor init` / `deeptutor start` चलाते हैं; `--home PATH` या `DEEPTUTOR_HOME` इसे override करता है। Runtime output उस workspace के भीतर `data` directory में होता है, इसलिए startup banner में `Workspace:` से शुरू होने वाली line बताती है कि क्या clean करना है।
+DeepTutor अपने installed code, private runtime home, और optional Content Workspace को अलग रखता है। Default रूप से runtime home वही directory है जहां आप `deeptutor init` / `deeptutor start` चलाते हैं; `--home PATH` या `DEEPTUTOR_HOME` इसे override करता है। Private application state उस home के भीतर `data` directory में होता है, इसलिए startup banner में `Workspace:` से शुरू होने वाली line उस runtime location की पहचान कराती है। अगर **Settings → Workspace** किसी दूसरे folder की ओर point करता है, तो उस content folder को अलग से backup या remove करें; यह DeepTutor uninstall करने पर जानबूझकर erase नहीं होता।
 
 1. App रोकें। `deeptutor start` चलाने वाले terminal में `Ctrl+C` दबाएं, या `--detach` से शुरू किए गए launcher के लिए `deeptutor stop [--home PATH]` चलाएं; data delete करने से पहले किसी running Partner और detached Docker containers को भी रोकें।
 2. Runtime data केवल तभी हटाएं जब आप पूरी local state भी मिटाना चाहते हों। इसमें settings और API keys, chat history, sessions, Memory, Notebooks, Books, Reading state, Skills, Partners state, logs, Knowledge Bases, parse caches, generated artifacts, और packaged frontend runtime cache शामिल हैं।
@@ -382,7 +414,7 @@ Loop जानबूझकर simple है: model rounds में सोचत
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="DeepTutor Chat agent loop" width="900">
 </div>
 
-User-toggleable tools हैं `brainstorm`, `web_search`, `paper_search`, `reason`, और `geogebra_analysis` — साथ ही `imagegen` और `videogen` जब आप matching generation model configure करें। Contextual tools जैसे `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, और `consult_subagent` तब automatically mount होते हैं जब turn के पास सही context हो।
+User-toggleable tools हैं `brainstorm`, `web_search`, `paper_search`, `reason`, और `geogebra_analysis` — साथ ही `imagegen` और `videogen` जब आप matching generation model configure करें। Contextual tools जैसे `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present`, और `workspace_export` तब automatically mount होते हैं जब turn के पास सही context हो।
 
 Context दो प्रकार की होती है: **sticky session context** (capability, workspace या course, tools, knowledge bases, persona, model, और Reading / Mastery state) turns के पार persist करती है; **एक-बार references** (files, chat history, books, reading sections, notebooks, question bank, imported agents) एक single turn के लिए `+` menu से आते हैं। Voice button केवल current message को transcribe करता है।
 
@@ -532,7 +564,7 @@ Memory Graph पूरा pyramid दिखाता है — L3 synthesis cen
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settings केंद्र" width="900">
 </div>
 
-Settings operational control plane है, एक live status strip (Backend health और पूरे process tree में resident memory) और एक persistent, searchable navigator के साथ जो एक ही क्लिक में किसी भी page तक पहुंचाता है: **Appearance** (theme, UI और model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (Video Learning, searchable tools, per-capability parameters, starting points, attachment caps), **Partners & Agents** (नौ local harnesses), **Learner profile** (age, grade, curriculum, language, reading level, explanation style), **Guardian** (authorized learners, materials, reports, credential resets), **Memory** (consolidator के budgets), और **About** (version checks और safe updates)। एक **connection** एक vendor credential रखती है और उसे हर उस service में mirror करती है जिसे वह vendor serve कर सकता है, इसलिए एक key पांच pages में paste करने की बजाय एक बार enter की जाती है; **task models** उस काम के लिए एक छोटा, तेज़ model pin करते हैं जो किसी ने नहीं मांगा — किसी conversation को नाम देना, composer के starting points लिखना — और खाली छोड़े जाने पर active default पर resolve हो जाते हैं।
+Settings operational control plane है, जो एक live status strip (backend health और resident memory), interface और model output language, और एक **Readiness** matrix के साथ खुलता है जो हर capability को blocker, warning, या suggestion के रूप में grade करता है — फिर एक persistent, searchable navigator जो एक ही क्लिक में किसी भी page तक पहुंचाता है: **Appearance** (theme, code-block styling), **Network** (API base, ports, CORS), **Workspace** (agent-readable folder और इसका shared `outputs/`), **Models** (Connections, LLM, Task models, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (Video Learning, searchable tools, per-capability parameters, starting points, attachment caps), **Partners & Agents** (नौ local harnesses), **Learner profile** (age, grade, curriculum, language, reading level, explanation style), **Guardian** (authorized learners, materials, reports, credential resets), **Memory** (consolidator के budgets), और **About** (version checks और safe updates)। एक **connection** एक vendor credential रखती है और उसे हर उस service में mirror करती है जिसे वह vendor serve कर सकता है, इसलिए एक key पांच pages में paste करने की बजाय एक बार enter की जाती है; **task models** उस काम के लिए एक छोटा, तेज़ model pin करते हैं जो किसी ने नहीं मांगा — किसी conversation को नाम देना, composer के starting points लिखना — और खाली छोड़े जाने पर active default पर resolve हो जाते हैं।
 
 Settings → Chat के तहत **Video Learning** default रूप से official privacy-enhanced YouTube IFrame Player उपयोग करता है। Playback को local रखने के लिए administrator-managed Invidious API origin (उदाहरण के लिए `http://127.0.0.1:3000`) set करें, इसे test करें, Invidious select करें, और save करें। नई या फिर से खोली गई videos वही material ID और progress रखते हुए तुरंत provider अपना लेती हैं। Invidious media DeepTutor के byte-range proxy से stream होता है; upstream URLs न browser के सामने expose होते हैं, न disk पर store किए जाते हैं। अगर instance fail हो जाए, तो learner के explicitly native YouTube fallback चुनने तक DeepTutor YouTube से offline रहता है। Public-caption tutoring optional है: `.[video-learning]` install करें; इसके बिना playback जारी रहता है, जबकि transcript-based **Explain here** कारण के साथ disabled रहता है।
 
@@ -542,7 +574,7 @@ Settings → Chat के तहत **Video Learning** default रूप से o
 
 अधिकांश sections एक draft-and-apply flow उपयोग करते हैं, इसलिए आप provider को commit करने से पहले test कर सकते हैं। आप बस Chat में भी पूछ सकते हैं: assistant current configuration पढ़ता है, एक change apply करता है, और बताता है कि उसे restart या re-index चाहिए या नहीं — एक नए model को commit करने से पहले probe करते हुए, इसलिए यह खुद को किसी unreachable चीज़ पर switch नहीं कर सकता। API keys कभी model से नहीं गुजरतीं, जो इसकी बजाय आपके लिए matching form खोल देता है। चार themes box में आते हैं — Default, Cream, Dark, और Glass। Project-root `.env` files जानबूझकर ignored हैं; runtime configuration `data/user/settings/*.json` के नीचे रहती है जब तक कि `DEEPTUTOR_HOME` या `deeptutor start --home` app को कहीं और point न करे।
 
-**OpenAI Codex OAuth (experimental).** **Models → LLM** के तहत **OpenAI Codex** चुनना API-key fields को एक browser sign-in से replace कर देता है जो आपके अपने ChatGPT plan के विरुद्ध चलता है, इसलिए किसी `OPENAI_API_KEY` की जरूरत नहीं। Tokens केवल `data/system/user-secrets/<owner>/private/openai-codex/` में रहते हैं — multi-container Compose deployment में, उस हर tree के बाहर जहां exec sandbox पहुंच सकता है — और DeepTutor कभी आपकी `~/.codex` CLI login को न तो पढ़ता है न ही modify करता है। Model list उस account के live catalog से आती है; sign in करना profile को publish करता है लेकिन यह active model तभी बनता है जब अभी तक कोई LLM configure न हो, इसलिए यह कभी भी आपकी जानकारी के बिना किसी deployment को repoint नहीं करता। क्योंकि एक token एक व्यक्ति के plan को authorize करता है, profile user grants के जरिए shareable नहीं है — हर account खुद के लिए sign in करता है, सामान्य users भी शामिल: उनका card **Models → LLM** के तहत रहता है, और resulting models, catalog, और sign-out उस account के लिए private रहते हैं।
+**OpenAI Codex OAuth (experimental).** **Models → LLM** के तहत **OpenAI Codex** चुनना API-key fields को एक browser sign-in से replace कर देता है जो आपके अपने ChatGPT plan के विरुद्ध चलता है, इसलिए किसी `OPENAI_API_KEY` की जरूरत नहीं। Tokens केवल `data/system/user-secrets/<owner>/private/openai-codex/` में रहते हैं — multi-container Compose deployment में, उस हर tree के बाहर जहां exec sandbox पहुंच सकता है — और DeepTutor कभी आपकी `~/.codex` CLI login को न तो पढ़ता है न ही modify करता है। Model list उस account के live catalog से आती है; sign in करना profile को publish करता है लेकिन यह active model तभी बनता है जब अभी तक कोई LLM configure न हो। क्योंकि एक token एक व्यक्ति के plan को authorize करता है, profile user grants के जरिए shareable नहीं है — हर account खुद के लिए sign in करता है, सामान्य users भी शामिल: उनका card **Models → LLM** के तहत रहता है, और resulting models, catalog, और sign-out उस account के लिए private रहते हैं।
 
 Default local Docker और Podman deployments separate loopback networks उपयोग करते हैं और sign-in के दौरान एक temporary bridge की जरूरत होती है। Docker, Compose, Podman, और teardown के exact commands के लिए [temporary local Codex OAuth bridge guide](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) follow करें।
 
@@ -634,11 +666,12 @@ Repo एक root [`SKILL.md`](../../SKILL.md) ship करता है — ए�
 
 | Command | विवरण |
 |:---|:---|
-| `deeptutor init` | Current workspace के लिए `data/user/settings` create या update करें |
-| `deeptutor doctor [--online]` | Check करें कि workspace session शुरू करने के लिए ready है या नहीं; `--online` configured model provider को भी probe करता है, `--format json` report print करता है |
+| `deeptutor init` | Current runtime home में `data/user/settings` create या update करें |
+| `deeptutor doctor [--online]` | Check करें कि runtime session शुरू करने के लिए ready है या नहीं; `--online` configured model provider को भी probe करता है, `--format json` report print करता है |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | Backend + frontend को एक साथ launch करें; वैकल्पिक रूप से detach करें या browser खुलना रोकें |
 | `deeptutor stop [--home PATH]` | `--detach` से शुरू किए launcher को stop करें |
 | `deeptutor serve [--port PORT]` | केवल FastAPI backend start करें |
+| `deeptutor workspace show/set/reset` | Per-user Content Workspace inspect, select, या restore करें |
 | `deeptutor run <capability> <message>` | एक single capability turn run करें (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`); NDJSON output के लिए `--format json` add करें |
 | `deeptutor chat` | capability, tool, KB, notebook, और history controls के साथ interactive REPL |
 | `deeptutor partner list/create/start/stop` | IM-connected partners manage करें |

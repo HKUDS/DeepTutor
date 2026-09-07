@@ -44,7 +44,10 @@ import SessionViewerPanel, {
 } from "@/components/chat/home/SessionViewerPanel";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import Tooltip from "@/components/common/Tooltip";
-import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
+import {
+  type MessageAttachment,
+  useChatStateAdapter,
+} from "@/features/chat/ChatStateAdapter";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
@@ -118,6 +121,8 @@ export function ReadingCompanion({
     deleteTurn,
     editMessage,
     switchBranch,
+    loadMessageTrace,
+    releaseMessageTrace,
   } = useChatStateAdapter();
   const confirmResearchOutline = useResearchOutlineContinuation();
 
@@ -127,6 +132,17 @@ export function ReadingCompanion({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const viewerPanelRef = useRef<SessionViewerPanelHandle | null>(null);
+
+  // Attachment cards were rendered without a click handler here, so a
+  // generated file or image in the transcript simply did nothing when
+  // clicked. The viewer panel below is already mounted; this opens the
+  // attachment in it, the same way chat does.
+  const handlePreviewMessageAttachment = useCallback(
+    (attachment: MessageAttachment) => {
+      viewerPanelRef.current?.openFileTab(attachment);
+    },
+    [],
+  );
 
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
@@ -523,6 +539,17 @@ export function ReadingCompanion({
             onSwitchBranch={switchBranch}
             onSubmitUserReply={submitUserReply}
             onConfirmOutline={confirmResearchOutline}
+            onPreviewAttachment={handlePreviewMessageAttachment}
+            onLoadMessageTrace={(messageId) =>
+              state.sessionId
+                ? loadMessageTrace(state.sessionId, messageId)
+                : Promise.resolve()
+            }
+            onReleaseMessageTrace={(messageId) => {
+              if (state.sessionId) {
+                releaseMessageTrace(state.sessionId, messageId);
+              }
+            }}
             showModeBadge={false}
           />
         ) : (

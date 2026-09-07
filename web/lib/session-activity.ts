@@ -63,7 +63,7 @@ export interface SessionActivity {
   space: SpaceReferenceSummary;
   /** Files the user uploaded. */
   attachments: AttachmentWithOrigin[];
-  /** Files the assistant produced (exec/code_execution/media artifacts).
+  /** Files the assistant produced (exec/media artifacts).
    *  Split out from uploads so a session's output is one collected list
    *  instead of something you scroll the transcript to find again. */
   artifacts: AttachmentWithOrigin[];

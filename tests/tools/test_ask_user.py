@@ -15,6 +15,7 @@ from deeptutor.tools.ask_user import (
     MAX_QUESTION_CHARS,
     MAX_QUESTIONS,
     build_ask_user_payload,
+    build_ask_user_preview,
 )
 
 
@@ -357,3 +358,103 @@ def test_prompt_decodes_dense_unicode_escapes() -> None:
     assert payload is not None
     assert payload.intro == "「数制转换」"
     assert payload.questions[0].prompt == "「数制转换」"
+
+
+# --------------------------- streaming previews ---------------------------
+
+_STREAMED = (
+    '{"intro": "Which path?", "questions": [{"id": "which", "prompt": '
+    '"Where to?", "options": [{"label": "Advanced", "description": "15 goals"}, '
+    '{"label": "Core", "description": "4 goals"}]}]}'
+)
+
+
+def test_preview_ignores_text_with_nothing_to_render() -> None:
+    assert build_ask_user_preview("") is None
+    assert build_ask_user_preview("{") is None
+    assert build_ask_user_preview("not json at all") is None
+
+
+def test_preview_shows_the_intro_before_any_question_arrives() -> None:
+    preview = build_ask_user_preview('{"intro": "Which pa')
+    assert preview == {"intro": "Which pa", "questions": []}
+
+
+def test_preview_grows_monotonically_with_the_argument_text() -> None:
+    """Every prefix renders, and never loses ground it already had."""
+    shapes: list[tuple[int, int]] = []
+    for cut in range(1, len(_STREAMED) + 1):
+        preview = build_ask_user_preview(_STREAMED[:cut])
+        if preview is None:
+            continue
+        questions = preview["questions"]
+        shapes.append((len(questions), sum(len(q["options"]) for q in questions)))
+
+    assert shapes, "no prefix produced a preview"
+    assert shapes[-1] == (1, 2)
+    # Individual frames may dip (json_repair can momentarily read an
+    # unfinished key as unrenderable); what matters is that the finished
+    # text is complete and that no frame ever exceeds it.
+    assert max(shapes) == (1, 2)
+
+
+def test_preview_drops_the_option_repair_invents_from_a_half_written_key() -> None:
+    """``{"labe`` is closed as ``["labe"]``, which is not an option."""
+    truncated = _STREAMED[: _STREAMED.index('{"label": "Core"') + len('{"labe')]
+    preview = build_ask_user_preview(truncated)
+
+    assert preview is not None
+    labels = [option["label"] for option in preview["questions"][0]["options"]]
+    assert labels == ["Advanced"]
+
+
+def test_preview_matches_the_dispatched_payload_once_complete() -> None:
+    payload, err = build_ask_user_payload(
+        intro="Which path?",
+        questions=[
+            {
+                "id": "which",
+                "prompt": "Where to?",
+                "options": [
+                    {"label": "Advanced", "description": "15 goals"},
+                    {"label": "Core", "description": "4 goals"},
+                ],
+            }
+        ],
+    )
+    assert err is None and payload is not None
+    assert build_ask_user_preview(_STREAMED) == payload.to_dict()
+
+
+def test_a_dispatched_call_drops_the_artefact_of_a_cut_off_option() -> None:
+    """Truncated arguments reach the tool, not just the preview.
+
+    A provider that runs out of token budget mid-key leaves ``json_repair``
+    closing the fragment as a list (``["label"]``). The preview already
+    dropped that; the dispatched payload used to stringify it into a real,
+    pickable ``['label']`` choice — an answer the model never wrote, which
+    then became the learner's recorded reply.
+    """
+    payload, err = build_ask_user_payload(
+        questions=[
+            {
+                "question": "Which reducer?",
+                "options": [
+                    {"label": "operator.add", "description": "Appends."},
+                    ["label"],
+                ],
+            }
+        ],
+    )
+
+    assert err is None and payload is not None
+    assert _labels(payload.questions[0]) == ("operator.add",)
+
+
+def test_a_question_whose_every_option_was_cut_off_still_reads_as_free_text() -> None:
+    payload, err = build_ask_user_payload(
+        questions=[{"question": "Which reducer?", "options": [["labe"]]}],
+    )
+
+    assert err is None and payload is not None
+    assert _labels(payload.questions[0]) == ()

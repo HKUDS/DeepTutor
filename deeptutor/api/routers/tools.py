@@ -111,6 +111,24 @@ def _serialise_definition(
         )
         for p in definition.parameters
     ]
+    if not params and isinstance(definition.raw_parameters, dict):
+        properties = definition.raw_parameters.get("properties")
+        required = definition.raw_parameters.get("required")
+        required_names = set(required) if isinstance(required, list) else set()
+        if isinstance(properties, dict):
+            for name, raw in properties.items():
+                schema = raw if isinstance(raw, dict) else {}
+                enum = schema.get("enum")
+                params.append(
+                    ToolParameterPayload(
+                        name=str(name),
+                        type=str(schema.get("type") or "object"),
+                        description=str(schema.get("description") or ""),
+                        required=str(name) in required_names,
+                        default=schema.get("default"),
+                        enum=([str(value) for value in enum] if isinstance(enum, list) else None),
+                    )
+                )
     return definition.name, definition.description, params
 
 

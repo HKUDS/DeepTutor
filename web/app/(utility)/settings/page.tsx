@@ -22,6 +22,10 @@ const NetworkSettingsPage = dynamic(
   () => import("@/features/settings/sections/NetworkSettingsSection"),
   { loading: sectionLoading },
 );
+const WorkspaceSettingsPage = dynamic(
+  () => import("@/features/settings/sections/WorkspaceSettingsSection"),
+  { loading: sectionLoading },
+);
 const ModelsSettingsPage = dynamic(
   () => import("@/features/settings/sections/ModelsSettingsSection"),
   { loading: sectionLoading },
@@ -64,6 +68,7 @@ const SETTINGS_SECTIONS = [
   { key: "overview", Component: SettingsOverview },
   { key: "appearance", Component: AppearanceSettingsPage },
   { key: "network", Component: NetworkSettingsPage },
+  { key: "workspace", Component: WorkspaceSettingsPage },
   {
     key: "models",
     Component: ModelsSettingsPage,

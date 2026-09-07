@@ -18,6 +18,7 @@ class ToolParameter:
     """One parameter in a tool's function-calling schema.
 
     Attributes:
+        sensitive: Withhold the value from the trace event (see the field).
         items: Inner JSON Schema for ``type="array"`` parameters. **Required
             by strict providers (Gemini, Anthropic)** even though OpenAI
             silently tolerates its absence — leaving it out causes a 400
@@ -33,6 +34,13 @@ class ToolParameter:
     default: Any = None
     enum: list[str] | None = None
     items: dict[str, Any] | None = None
+    #: Keep this argument's value out of the ``tool_call`` event the trace
+    #: renders. The model still sends it and the tool still receives it — this
+    #: only stops it from being shown back to the person the tool is acting
+    #: for. Set it where the value is something they must not see: the
+    #: ``expected_answer`` of a question they are about to be asked is on
+    #: screen, one disclosure triangle away, for as long as that trace exists.
+    sensitive: bool = False
 
     def to_schema(self) -> dict[str, Any]:
         """Convert to JSON Schema property dict."""

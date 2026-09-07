@@ -18,6 +18,9 @@ const OpencodeAgentSettingsPage = () => (
 );
 const MimoAgentSettingsPage = () => <SubagentSettingsEditor kind="mimo" />;
 const HermesAgentSettingsPage = () => <SubagentSettingsEditor kind="hermes" />;
+const HermesRemoteAgentSettingsPage = () => (
+  <SubagentSettingsEditor kind="hermes_remote" />
+);
 const OpenClawAgentSettingsPage = () => (
   <SubagentSettingsEditor kind="openclaw" />
 );
@@ -33,6 +36,7 @@ const AGENT_SECTIONS = [
   { key: "agent-opencode", Component: OpencodeAgentSettingsPage },
   { key: "agent-mimo", Component: MimoAgentSettingsPage },
   { key: "agent-hermes", Component: HermesAgentSettingsPage },
+  { key: "agent-hermes-remote", Component: HermesRemoteAgentSettingsPage },
   { key: "agent-openclaw", Component: OpenClawAgentSettingsPage },
   {
     key: "agent-deepseek-harness",

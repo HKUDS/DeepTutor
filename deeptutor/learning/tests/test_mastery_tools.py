@@ -25,6 +25,22 @@ from deeptutor.tools.mastery_tool import (
 )
 
 
+def tool_payload(result):
+    """A tool's structured payload, wherever that tool carries it.
+
+    ``mastery_quiz`` now poses the question itself, so its body is prose for
+    the tutor and its payload rides in metadata. Every other tool still
+    returns it as JSON content.
+    """
+    payload = (result.metadata or {}).get("mastery_quiz")
+    return payload if isinstance(payload, dict) else json.loads(result.content)
+
+
+def posed_card(result):
+    """The learner-facing card ``mastery_quiz`` put in front of them."""
+    return (result.metadata or {}).get("mastery_question")
+
+
 @pytest.fixture
 def path_id(tmp_path, monkeypatch):
     """Point the LearningStore at a temp workspace and yield a stable path id."""
@@ -229,7 +245,7 @@ async def test_skip_question_unblocks_registration_without_credit(path_id):
     await _build_basic(path_id)
     status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = status["next"]["knowledge_point_id"]
-    first = json.loads(
+    first = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -237,7 +253,7 @@ async def test_skip_question_unblocks_registration_without_credit(path_id):
                 question="First?",
                 expected_answer="right",
             )
-        ).content
+        )
     )
     from deeptutor.learning.service import LearningService
 
@@ -267,7 +283,7 @@ async def test_skip_question_unblocks_registration_without_credit(path_id):
     assert abandoned.status == InteractionStatus.ABANDONED
     assert LearningStore().get_active_interaction(path_id) is None
 
-    replacement = json.loads(
+    replacement = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -275,7 +291,7 @@ async def test_skip_question_unblocks_registration_without_credit(path_id):
                 question="Replacement?",
                 expected_answer="right",
             )
-        ).content
+        )
     )
     assert replacement["status"] == "registered"
     assert replacement["question_id"] != first["question_id"]
@@ -331,7 +347,7 @@ async def test_grade_syncs_mastery_attempt_to_question_bank(path_id, session_sto
     await _build_basic(path_id)
     status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = status["next"]["knowledge_point_id"]
-    quiz = json.loads(
+    quiz = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -340,7 +356,7 @@ async def test_grade_syncs_mastery_attempt_to_question_bank(path_id, session_sto
                 expected_answer="4",
                 question_type="short",
             )
-        ).content
+        )
     )
 
     result = json.loads(
@@ -438,7 +454,7 @@ async def test_quiz_infers_choice_and_normalizes_expected_answer(
     assert pending is not None
     assert pending.question_type == "choice"
     assert pending.expected_answer == "B"
-    assert pending.options == ["A: red", "B: blue"]
+    assert pending.choice_map == {"A": "red", "B": "blue"}
 
 
 @pytest.mark.asyncio
@@ -516,6 +532,90 @@ async def test_choice_quiz_rejects_malformed_options(path_id, options, error):
 
     assert result.success is False
     assert error in result.content
+    assert LearningStore().load(path_id).pending_question is None
+
+
+@pytest.mark.asyncio
+async def test_choice_quiz_accepts_ask_user_key_names(path_id):
+    """``description`` is ask_user's word for the body; models mix them up.
+
+    Rejecting the shape used to cost the learner the question outright: the
+    model retried it every round until the budget was gone.
+    """
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="How does LangGraph merge that update?",
+        expected_answer="B",
+        question_type="choice",
+        options=[
+            {"label": "A: overwrite the old value", "description": "the reducer never ran"},
+            {"label": "B: concatenate both lists", "description": "the reducer ran"},
+            {"label": "C: raise, the reducer rejects a list", "description": "annotation clash"},
+        ],
+    )
+
+    assert result.success is True
+    pending = LearningStore().load(path_id).pending_question
+    assert pending is not None
+    assert pending.choice_map == {
+        "A": "overwrite the old value",
+        "B": "concatenate both lists",
+        "C": "raise, the reducer rejects a list",
+    }
+    assert pending.expected_answer == "B"
+    assert [option["body"] for option in posed_card(result)["options"]] == [
+        "overwrite the old value",
+        "concatenate both lists",
+        "raise, the reducer rejects a list",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_choice_quiz_rejoins_bare_labels_sent_with_descriptions(path_id):
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Pick a colour",
+        expected_answer="blue",
+        options=[{"label": "A", "description": "red"}, {"label": "B", "description": "blue"}],
+    )
+
+    assert result.success is True
+    pending = LearningStore().load(path_id).pending_question
+    assert pending is not None
+    assert pending.question_type == "choice"
+    assert pending.choice_map == {"A": "red", "B": "blue"}
+    assert pending.expected_answer == "B"
+
+
+@pytest.mark.asyncio
+async def test_choice_quiz_names_an_option_it_cannot_read(path_id):
+    """A rejection has to say which entry was unusable, or the retry repeats it."""
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Pick one",
+        expected_answer="A",
+        question_type="choice",
+        options=[{"note": "first"}, "B: second"],
+    )
+
+    assert result.success is False
+    assert "must each be an option" in result.content
+    assert "{'note': 'first'}" in result.content
     assert LearningStore().load(path_id).pending_question is None
 
 
@@ -642,32 +742,38 @@ async def test_pending_choice_status_reuses_public_contract_without_answer(path_
     initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = initial["next"]["knowledge_point_id"]
 
-    registered = json.loads(
-        (
-            await MasteryQuizTool().execute(
-                _mastery_path_id=path_id,
-                knowledge_point_id=kp_id,
-                question="Pick a colour",
-                expected_answer="blue",
-                question_type="choice",
-                options=["A: red", "B: blue"],
-            )
-        ).content
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Pick a colour",
+        expected_answer="blue",
+        question_type="choice",
+        options=["A: red", "B: blue"],
     )
+    registered = tool_payload(result)
     status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
 
     pending = status["next"]["pending_question"]
     assert pending == registered["pending_question"]
-    assert registered["ask_user"]["questions"][0] == {
-        "id": pending["question_id"],
-        "prompt": "Pick a colour",
-        "options": [
-            {"label": "A", "description": "red"},
-            {"label": "B", "description": "blue"},
-        ],
-        "multi_select": False,
-        "allow_free_text": True,
-    }
+    # Posing the question and registering it are the same call: the turn ends
+    # on a card derived from what was just persisted.
+    card = posed_card(result)
+    assert card is not None
+    # The card is mastery's own shape on its own key — it no longer doubles as
+    # an ask_user payload.
+    assert "questions" not in card
+    assert card["question_id"] == pending["question_id"]
+    assert card["prompt"] == "Pick a colour"
+    assert card["allow_free_text"] is True
+    assert card["options"] == [
+        {"label": "A", "body": "red"},
+        {"label": "B", "body": "blue"},
+    ]
+    assert card["objective"]["id"] == kp_id
+    assert card["attempt"] == 1
+    # The answer key never travels to the learner.
+    rendered = json.dumps(card, ensure_ascii=False)
+    assert "expected_answer" not in rendered
     assert "expected_answer" not in registered
     assert "expected_answer" not in pending
 
@@ -677,7 +783,7 @@ async def test_choice_grade_accepts_unique_persisted_body(path_id):
     await _build_basic(path_id)
     initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = initial["next"]["knowledge_point_id"]
-    quiz = json.loads(
+    quiz = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -687,7 +793,7 @@ async def test_choice_grade_accepts_unique_persisted_body(path_id):
                 question_type="choice",
                 options=["A: red", "B: blue"],
             )
-        ).content
+        )
     )
 
     grade = json.loads(
@@ -758,12 +864,74 @@ async def test_choice_grade_keeps_legacy_bare_label_pending_compatible(path_id):
 
 
 @pytest.mark.asyncio
+async def test_a_repeat_quiz_call_says_it_posed_nothing(path_id):
+    """The second call in a round must not read like a fresh question.
+
+    The engine holds one open question per path, so a repeat call re-presents
+    the existing card. Reported with the same wording as a new question, a
+    model that had already posed one this round could not tell that its extra
+    call did nothing — and kept making it.
+    """
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+
+    posed = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _session_id="session-1",
+        _turn_id="turn-1",
+        knowledge_point_id=kp_id,
+        question="2+2?",
+        expected_answer="4",
+    )
+    repeated = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _session_id="session-1",
+        _turn_id="turn-1",
+        knowledge_point_id=kp_id,
+        question="a different question",
+        expected_answer="5",
+    )
+
+    assert "on the learner's answer card" in posed.content
+    assert "No new question was posed" in repeated.content
+    assert "do not call any further tools after mastery_quiz" in repeated.content
+    # Both still end the turn: the card is in front of the learner either way.
+    assert tool_payload(repeated)["status"] == "already_pending"
+
+
+@pytest.mark.asyncio
+async def test_quiz_strips_options_restated_in_the_question(path_id):
+    """A stem that repeats its options would show every choice twice."""
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _session_id="session-1",
+        _turn_id="turn-1",
+        knowledge_point_id=kp_id,
+        question="Which one accumulates? A: plain list B: Annotated with a reducer",
+        expected_answer="B",
+        options=["A: plain list", "B: Annotated with a reducer"],
+    )
+
+    stem = tool_payload(result)["pending_question"]["prompt"]
+    assert stem == "Which one accumulates?"
+    # The options themselves are untouched; only the duplicate prose is gone.
+    card = posed_card(result)
+    assert "your question text also listed the options" in result.content
+    assert card is not None
+
+
+@pytest.mark.asyncio
 async def test_duplicate_quiz_and_grade_are_idempotent(path_id):
     await _build_basic(path_id)
     initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = initial["next"]["knowledge_point_id"]
 
-    first_quiz = json.loads(
+    first_quiz = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -773,9 +941,9 @@ async def test_duplicate_quiz_and_grade_are_idempotent(path_id):
                 question="2+2?",
                 expected_answer="4",
             )
-        ).content
+        )
     )
-    retry_quiz = json.loads(
+    retry_quiz = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -785,7 +953,7 @@ async def test_duplicate_quiz_and_grade_are_idempotent(path_id):
                 question="A model-authored replacement must not win",
                 expected_answer="5",
             )
-        ).content
+        )
     )
     assert retry_quiz["question_id"] == first_quiz["question_id"]
     assert retry_quiz["pending_question"]["prompt"] == "2+2?"
@@ -830,7 +998,7 @@ async def test_new_quiz_repairs_stale_legacy_pending_after_grade(path_id):
     await _build_basic(path_id)
     initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = initial["next"]["knowledge_point_id"]
-    first = json.loads(
+    first = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -838,7 +1006,7 @@ async def test_new_quiz_repairs_stale_legacy_pending_after_grade(path_id):
                 question="First?",
                 expected_answer="yes",
             )
-        ).content
+        )
     )
     await MasteryGradeTool().execute(
         _mastery_path_id=path_id,
@@ -858,7 +1026,7 @@ async def test_new_quiz_repairs_stale_legacy_pending_after_grade(path_id):
         question="Second?",
         expected_answer="yes",
     )
-    second = json.loads(second_result.content)
+    second = tool_payload(second_result)
 
     assert second_result.success is True
     assert second["status"] == "registered"
@@ -870,7 +1038,7 @@ async def test_status_recovers_answered_interaction_without_exposing_answer_key(
     await _build_basic(path_id)
     initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = initial["next"]["knowledge_point_id"]
-    quiz = json.loads(
+    quiz = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -878,7 +1046,7 @@ async def test_status_recovers_answered_interaction_without_exposing_answer_key(
                 question="2+2?",
                 expected_answer="4",
             )
-        ).content
+        )
     )
     from deeptutor.learning.service import LearningService
 
@@ -916,7 +1084,7 @@ async def test_grade_recovers_unreadable_choice_answer(path_id):
     await _build_basic(path_id)
     initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = initial["next"]["knowledge_point_id"]
-    quiz = json.loads(
+    quiz = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -925,7 +1093,7 @@ async def test_grade_recovers_unreadable_choice_answer(path_id):
                 expected_answer="A",
                 options=["A: -8", "B: -6", "C: 8", "D: -2"],
             )
-        ).content
+        )
     )
     from deeptutor.learning.service import LearningService
 
@@ -1185,25 +1353,24 @@ async def test_quiz_explanation_reaches_the_question_bank(path_id, session_store
     status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = status["next"]["knowledge_point_id"]
 
-    quiz = json.loads(
-        (
-            await MasteryQuizTool().execute(
-                _mastery_path_id=path_id,
-                knowledge_point_id=kp_id,
-                question="What does NAND return for (1, 1)?",
-                expected_answer="0",
-                question_type="short",
-                explanation="NAND is NOT AND, so two true inputs give false.",
-                difficulty="medium",
-            )
-        ).content
+    posed = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="What does NAND return for (1, 1)?",
+        expected_answer="0",
+        question_type="short",
+        explanation="NAND is NOT AND, so two true inputs give false.",
+        difficulty="medium",
     )
+    quiz = tool_payload(posed)
 
     # The reference explanation is answer-adjacent: it must never ride along
     # on the card the learner is about to answer.
-    rendered = json.dumps(quiz["ask_user"], ensure_ascii=False)
+    rendered = json.dumps(posed_card(posed), ensure_ascii=False)
     assert "NOT AND" not in rendered
     assert "NOT AND" not in json.dumps(quiz["pending_question"], ensure_ascii=False)
+    # Difficulty is shown, so it has to reach the card.
+    assert posed_card(posed)["difficulty"] == "medium"
 
     await MasteryGradeTool().execute(
         _mastery_path_id=path_id,
@@ -1227,7 +1394,7 @@ async def test_unusable_difficulty_is_dropped_not_rejected(path_id, session_stor
     status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
     kp_id = status["next"]["knowledge_point_id"]
 
-    quiz = json.loads(
+    quiz = tool_payload(
         (
             await MasteryQuizTool().execute(
                 _mastery_path_id=path_id,
@@ -1237,7 +1404,7 @@ async def test_unusable_difficulty_is_dropped_not_rejected(path_id, session_stor
                 question_type="short",
                 difficulty="extremely tricky",
             )
-        ).content
+        )
     )
     assert quiz["status"] == "registered"
 
@@ -1265,3 +1432,219 @@ async def test_pending_question_without_explanation_still_deserializes(path_id):
     )
     assert legacy.explanation == ""
     assert legacy.difficulty == ""
+
+
+# ── revising one module's waypoints ─────────────────────────────────────────
+
+
+async def _build_with_objective(path_id):
+    build = MasteryBuildTool()
+    return await build.execute(
+        _mastery_path_id=path_id,
+        path_name="命题逻辑",
+        modules=[
+            {
+                "name": "布尔基础",
+                "objective": "读懂一个真值表并判断两个命题是否等价",
+                "knowledge_points": [
+                    {"name": "真值表", "type": "memory"},
+                    {"name": "XOR 的意义", "type": "concept"},
+                ],
+            }
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_keeps_the_module_objective(path_id):
+    """The objective is the contract a revision is later measured against, so
+    it has to survive the build that wrote it."""
+    payload = json.loads((await _build_with_objective(path_id)).content)
+    module = payload["map"]["modules"][0]
+    assert module["objective"] == "读懂一个真值表并判断两个命题是否等价"
+
+
+@pytest.mark.asyncio
+async def test_revise_rewrites_a_waypoint_and_resets_only_its_progress(path_id):
+    from deeptutor.tools.mastery_tool import MasteryReviseTool
+
+    built = json.loads((await _build_with_objective(path_id)).content)
+    module = built["map"]["modules"][0]
+    target = module["knowledge_points"][1]
+
+    revised = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id=module["id"],
+        rewrite=[
+            {
+                "knowledge_point_id": target["id"],
+                "name": "用 XOR 判断两个命题何时等价",
+                "type": "procedure",
+            }
+        ],
+    )
+    payload = json.loads(revised.content)
+    assert payload["status"] == "revised"
+    # The promise the revision had to stay inside is echoed back with it.
+    assert payload["module_objective"] == "读懂一个真值表并判断两个命题是否等价"
+    names = [kp["name"] for kp in payload["knowledge_points"]]
+    assert names == ["真值表", "用 XOR 判断两个命题何时等价"]
+    # A restated waypoint is a different waypoint: fresh id, progress reset,
+    # and the tutor is told so it can say so.
+    assert payload["knowledge_points"][1]["id"] != target["id"]
+    assert payload["knowledge_points"][1]["type"] == "procedure"
+    assert payload["progress_reset"] == ["XOR 的意义"]
+    # The untouched waypoint keeps its identity, and so its evidence.
+    assert payload["knowledge_points"][0]["id"] == module["knowledge_points"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_revise_adds_and_removes_within_one_module(path_id):
+    from deeptutor.tools.mastery_tool import MasteryReviseTool
+
+    built = json.loads((await _build_with_objective(path_id)).content)
+    module = built["map"]["modules"][0]
+
+    revised = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id=module["id"],
+        remove=[module["knowledge_points"][0]["id"]],
+        add=[{"name": "德摩根定律", "type": "memory"}],
+    )
+    payload = json.loads(revised.content)
+    assert [kp["name"] for kp in payload["knowledge_points"]] == ["XOR 的意义", "德摩根定律"]
+    assert payload["progress_reset"] == []
+
+
+@pytest.mark.asyncio
+async def test_revise_refuses_to_erase_a_mastered_waypoint(path_id):
+    """Proven work is the one thing a passing dislike must not delete."""
+    from deeptutor.tools.mastery_tool import MasteryReviseTool
+
+    built = json.loads((await _build_with_objective(path_id)).content)
+    module = built["map"]["modules"][0]
+    concept = module["knowledge_points"][1]
+
+    assessed = await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=concept["id"],
+        passed=True,
+        explanation="学习者说清楚了 XOR 与等价的关系。",
+    )
+    assert json.loads(assessed.content)["mastered"] is True
+
+    refused = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id=module["id"],
+        rewrite=[{"knowledge_point_id": concept["id"], "name": "换一个说法"}],
+    )
+    assert refused.success is False
+    assert "already mastered" in refused.content
+    # …and nothing moved: the waypoint keeps both its id and its pass.
+    status = tool_payload(await MasteryStatusTool().execute(_mastery_path_id=path_id))
+    survivor = status["map"]["modules"][0]["knowledge_points"][1]
+    assert survivor["id"] == concept["id"]
+    assert survivor["status"] == "mastered"
+
+
+@pytest.mark.asyncio
+async def test_revise_rejects_an_unknown_module_by_listing_the_real_ones(path_id):
+    from deeptutor.tools.mastery_tool import MasteryReviseTool
+
+    await _build_with_objective(path_id)
+    result = await MasteryReviseTool().execute(
+        _mastery_path_id=path_id,
+        module_id="not_a_module",
+        remove=["whatever"],
+    )
+    assert result.success is False
+    assert "布尔基础" in result.content
+
+
+# ── intake: who is learning this goal ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_status_asks_for_intake_until_the_learner_has_been_asked(path_id):
+    """A goal nobody has been asked about must say so, not quietly design a
+    route for an average learner who does not exist."""
+    from deeptutor.tools.mastery_tool import MasteryProfileTool
+
+    before = tool_payload(await MasteryStatusTool().execute(_mastery_path_id=path_id))
+    assert before["intake_needed"] is True
+    assert before["learner_profile"] is None
+    assert "how much time" in before["intake_instruction"]
+
+    await MasteryProfileTool().execute(
+        _mastery_path_id=path_id,
+        prior_knowledge="矩阵乘法会，特征值忘了",
+        time_budget="两周，每天晚上一小时",
+    )
+    after = tool_payload(await MasteryStatusTool().execute(_mastery_path_id=path_id))
+    assert after["intake_needed"] is False
+    assert after["learner_profile"]["time_budget"] == "两周，每天晚上一小时"
+
+
+@pytest.mark.asyncio
+async def test_the_profile_travels_with_every_status_call_not_just_the_first(path_id):
+    """The failure intake exists to prevent is being forgotten by the thirtieth
+    knowledge point — so the profile rides on the built path's status too."""
+    from deeptutor.tools.mastery_tool import MasteryProfileTool
+
+    await MasteryProfileTool().execute(
+        _mastery_path_id=path_id, preferences="中文讲解，术语保留英文"
+    )
+    await _build_basic(path_id)
+
+    status = tool_payload(await MasteryStatusTool().execute(_mastery_path_id=path_id))
+    assert status["status"] == "active"
+    assert status["learner_profile"]["preferences"] == "中文讲解，术语保留英文"
+    assert status["intake_needed"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_correction_merges_instead_of_wiping_the_other_answers(path_id):
+    from deeptutor.tools.mastery_tool import MasteryProfileTool
+
+    profile = MasteryProfileTool()
+    await profile.execute(
+        _mastery_path_id=path_id,
+        prior_knowledge="学过一学期线性代数",
+        target_level="能看懂论文里的推导",
+        time_budget="一个月",
+    )
+    # Months later: only the time changed.
+    corrected = json.loads(
+        (await profile.execute(_mastery_path_id=path_id, time_budget="改成两周")).content
+    )
+    assert corrected["updated_fields"] == ["time_budget"]
+    assert corrected["learner_profile"] == {
+        "prior_knowledge": "学过一学期线性代数",
+        "target_level": "能看懂论文里的推导",
+        "time_budget": "改成两周",
+        "preferences": "",
+        "notes": "",
+    }
+
+
+@pytest.mark.asyncio
+async def test_resending_an_unchanged_answer_reports_no_new_information(path_id):
+    """Re-sending what is already on file must not read back as the learner
+    having said something new."""
+    from deeptutor.tools.mastery_tool import MasteryProfileTool
+
+    profile = MasteryProfileTool()
+    await profile.execute(_mastery_path_id=path_id, target_level="能自己实现一遍")
+    again = json.loads(
+        (await profile.execute(_mastery_path_id=path_id, target_level="能自己实现一遍")).content
+    )
+    assert again["updated_fields"] == []
+
+
+@pytest.mark.asyncio
+async def test_an_empty_profile_call_is_refused_with_the_fields_it_wanted(path_id):
+    from deeptutor.tools.mastery_tool import MasteryProfileTool
+
+    result = await MasteryProfileTool().execute(_mastery_path_id=path_id)
+    assert result.success is False
+    assert "time_budget" in result.content

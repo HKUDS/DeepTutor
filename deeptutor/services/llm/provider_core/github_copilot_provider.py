@@ -24,7 +24,12 @@ _EXPIRY_SKEW_SECONDS = 60
 class GitHubCopilotProvider(OpenAICompatProvider):
     """Provider that first tries existing Copilot auth, then oauth-cli-kit tokens."""
 
-    def __init__(self, default_model: str = "github-copilot/gpt-4.1"):
+    def __init__(
+        self,
+        default_model: str = "github-copilot/gpt-4.1",
+        *,
+        configure_env: bool = True,
+    ):
         self._copilot_access_token: str | None = None
         self._copilot_expires_at: float = 0.0
         super().__init__(
@@ -38,6 +43,7 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             },
             spec=find_by_name("github_copilot"),
             provider_name="github_copilot",
+            configure_env=configure_env,
         )
 
     async def _try_existing_local_auth(self) -> None:
@@ -194,7 +200,13 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             **kwargs,
         )
 
-    async def chat_stream(
+    # Deliberately does not declare ``on_tool_args_delta``. The runtime probes
+    # for that parameter by name (``_provider_streams_tool_args``) and only
+    # hands the callback to a provider that opts in; this one forwards unknown
+    # keywords into the request body, so declaring it without implementing the
+    # streaming would serialise a function into an API call. Not opting in
+    # simply keeps the old behaviour: tool calls arrive whole.
+    async def chat_stream(  # type: ignore[override]
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,

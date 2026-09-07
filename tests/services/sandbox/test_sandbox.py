@@ -215,6 +215,39 @@ def test_restricted_subprocess_request_path_keeps_virtualenv_first(
     assert env["PATH"].split(os.pathsep) == [str(bin_dir.resolve()), "turn-tools"]
 
 
+def test_backends_inherit_the_conda_environment_that_launched_deeptutor(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A base Conda env has prefix == base_prefix but is still authoritative."""
+    conda_env = tmp_path / "miniconda" / "envs" / "deeptutor"
+    bin_dir = conda_env / ("Scripts" if sys.platform == "win32" else "bin")
+    bin_dir.mkdir(parents=True)
+    executable = bin_dir / ("python.exe" if sys.platform == "win32" else "python")
+    executable.touch()
+
+    monkeypatch.setattr(sys, "prefix", str(conda_env))
+    monkeypatch.setattr(sys, "base_prefix", str(conda_env))
+    monkeypatch.setattr(sys, "executable", str(executable))
+    monkeypatch.setenv("PATH", "system-tools")
+
+    subprocess_backend = RestrictedSubprocessBackend()
+    env = subprocess_backend._build_env({})
+
+    assert env["VIRTUAL_ENV"] == str(conda_env.resolve())
+    assert env["PATH"].split(os.pathsep)[0] == str(bin_dir.resolve())
+
+    if sys.platform != "win32":
+        argv = BwrapBackend()._build_argv(ExecRequest(command="python3 -V"))
+        resolved_env = str(conda_env.resolve())
+        ro_binds = [
+            tuple(argv[index + 1 : index + 3])
+            for index, item in enumerate(argv)
+            if item == "--ro-bind"
+        ]
+        assert (resolved_env, resolved_env) in ro_binds
+        assert _bwrap_setenv(argv)["PATH"].split(os.pathsep)[0] == str(bin_dir.resolve())
+
+
 def test_windows_process_output_falls_back_to_the_console_encoding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

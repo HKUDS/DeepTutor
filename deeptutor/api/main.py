@@ -513,6 +513,7 @@ from deeptutor.api.routers import (
     video_learning,
     visualizers,
     voice,
+    workspace,
 )
 from deeptutor.api.routers import (
     tools as tools_router,
@@ -522,6 +523,11 @@ from deeptutor.api.routers.multi_user import router as multi_user_router  # noqa
 # Auth router is public — login/logout/register/status require no token
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(outputs.router, prefix="/files/outputs", tags=["outputs"])
+app.include_router(
+    workspace.files_router,
+    prefix="/files/workspace-items",
+    tags=["workspace"],
+)
 
 # All other routers require a valid session when AUTH_ENABLED=true.
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
@@ -607,6 +613,12 @@ app.include_router(
     tags=["settings"],
 )
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"], dependencies=_auth)
+app.include_router(
+    workspace.settings_router,
+    prefix="/api/settings/workspace",
+    tags=["workspace-settings"],
+    dependencies=_auth,
+)
 app.include_router(
     video_learning.settings_router,
     prefix="/api/settings/video-learning",

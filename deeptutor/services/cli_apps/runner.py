@@ -41,6 +41,7 @@ async def run_app(
     user_id: str,
     workdir: str = "",
     mounts: tuple[Mount, ...] = (),
+    env: dict[str, str] | None = None,
     timeout_s: int | None = None,
 ) -> ExecResult:
     """Invoke *app* with *args*, returning the sandbox's result.
@@ -80,7 +81,7 @@ async def run_app(
         # it or the executable is not there at all; the sidecar already has it
         # from the compose layout and ignores the duplicate.
         mounts=(*mounts, Mount(host_path=str(app_root), sandbox_path=str(app_root))),
-        env=_env_for(app),
+        env={**_env_for(app), **(env or {})},
         limits=limits,
     )
     from deeptutor.services.sandbox import get_sandbox_service

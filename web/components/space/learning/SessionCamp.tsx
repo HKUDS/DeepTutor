@@ -34,12 +34,16 @@ export function SessionCamp({
     );
 
   return (
-    <aside className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] ">
-      <div className="relative border-b border-[var(--border)] bg-[var(--secondary)] px-4 py-2.5">
+    // The one panel that grows without limit: a goal worked over months has
+    // dozens of sessions. It takes whatever height is left in the column and
+    // scrolls inside, so a long history can never push the rest of the
+    // dashboard off screen.
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] lg:flex-1">
+      <div className="relative shrink-0 border-b border-[var(--border)] bg-[var(--secondary)] px-4 py-2.5">
         <div className="relative z-[1] flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <h2 className="text-[12px] font-semibold text-[var(--foreground)]">
-              {t("Your sessions")}
+              {t("Mastery sessions")}
             </h2>
             {stale && (
               <button
@@ -61,7 +65,7 @@ export function SessionCamp({
           </button>
         </div>
       </div>
-      <div className="p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {loading ? (
           <div className="flex min-h-28 items-center justify-center text-[var(--muted-foreground)]">
             <Loader2 className="h-4 w-4 animate-spin" />
