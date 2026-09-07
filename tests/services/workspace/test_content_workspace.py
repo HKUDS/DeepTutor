@@ -156,19 +156,22 @@ def test_resolve_published_item_searches_partner_workspaces(
     workspace_service, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Verify that resolve_published_item falls back to partner workspaces (issue #1267).
-
+    
     When a workspace item is not found in the user's direct bindings, the service
     should search visible partner workspace presentations before raising an error.
     """
-    from deeptutor.services.workspace import service as service_module
+
 
     user_service, paths = workspace_service
-
+    
+    # Create item in user's workspace
     user_binding = user_service.current_binding(ensure_output=True)
-    (user_binding.root / "document.md").write_text("user document", encoding="utf-8")
+    user_source = user_binding.root / "document.md"
+    user_source.write_text("user document", encoding="utf-8")
     user_item = user_service.publish(user_binding, [{"path": "document.md", "title": "Doc"}])[0]
 
-    blob, _loaded = user_service.resolve_published_item(
+    # Verify user can resolve their own item
+    blob, loaded = user_service.resolve_published_item(
         user_item.workspace_id, user_item.workspace_item_id
     )
     assert blob.read_text(encoding="utf-8") == "user document"

@@ -781,8 +781,8 @@ class ContentWorkspaceService:
     def resolve_published_item(
         self, workspace_id: str, workspace_item_id: str
     ) -> tuple[Path, WorkspaceItem]:
-        """Resolve a published workspace item from the user's or a partner's workspace.
-
+        """Resolve a published workspace item from the user's workspace or visible partner workspaces.
+        
         Tries the user's direct workspace bindings first, then searches visible
         partner workspace presentations if the item is not found (issue #1267).
         """
@@ -790,7 +790,7 @@ class ContentWorkspaceService:
             raise WorkspaceError("Invalid workspace item id.")
 
         candidate_roots: list[Path] = []
-
+        
         # Try user's direct workspace binding first
         try:
             binding = self.binding_by_id(workspace_id)
