@@ -4439,6 +4439,7 @@
       },
       "LightRagIndexingVision": {
         "additionalProperties": false,
+        "description": "Represent an explicitly enabled or disabled indexing vision model.",
         "properties": {
           "mode": {
             "default": "disabled",
@@ -4465,6 +4466,7 @@
       },
       "LightRagModelSelection": {
         "additionalProperties": false,
+        "description": "Identify a catalog model and its optional reasoning selection.",
         "properties": {
           "model_id": {
             "maxLength": 128,
@@ -4509,6 +4511,7 @@
       },
       "LightRagRoleModel": {
         "additionalProperties": false,
+        "description": "Configure a text role through base inheritance or an explicit model.",
         "properties": {
           "max_async": {
             "default": 4,
@@ -4570,6 +4573,7 @@
       },
       "LightRagRoleModels": {
         "additionalProperties": false,
+        "description": "Group the independent base model and its four role overrides.",
         "properties": {
           "base": {
             "$ref": "#/components/schemas/LightRagModelSelection"
@@ -4624,6 +4628,7 @@
       },
       "LightRagVisionModel": {
         "additionalProperties": false,
+        "description": "Configure disabled, inherited, or explicit vision model execution.",
         "properties": {
           "max_async": {
             "default": 4,

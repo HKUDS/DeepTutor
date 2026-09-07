@@ -41,6 +41,7 @@ def model_options() -> dict[str, Any]:
 
 
 def resolve_selection(selection: LLMSelection, *, vision: bool = False) -> LLMConfig:
+    """Resolve an accessible model and validate its reasoning and vision support."""
     apply_allowed_llm_selection(selection.to_dict())
     config = resolve_llm_config_for_selection(selection)
     if config.reasoning_effort is not None:
@@ -61,11 +62,13 @@ def resolve_selection(selection: LLMSelection, *, vision: bool = False) -> LLMCo
 
 
 def settings_models(settings: dict[str, Any]) -> LightRagRoleModels | None:
+    """Parse configured role models, returning None for legacy settings."""
     value = settings.get("role_models")
     return LightRagRoleModels.model_validate(value) if "role_models" in settings else None
 
 
 def validate_models(models: LightRagRoleModels) -> None:
+    """Validate access and capabilities for the base and all enabled roles."""
     resolve_selection(LLMSelection(**models.base.model_dump()))
     for role in ROLES:
         selection = models.selection_for(role)
@@ -75,6 +78,8 @@ def validate_models(models: LightRagRoleModels) -> None:
 
 @dataclass(frozen=True)
 class RoleCall:
+    """Carry a resolved role model, initiating user, and execution limits."""
+
     config: LLMConfig
     owner: CurrentUser
     max_async: int
@@ -82,6 +87,7 @@ class RoleCall:
 
 
 def runtime_limits(settings: dict[str, Any]) -> dict[str, dict[str, int]]:
+    """Resolve per-role concurrency and timeouts, including legacy defaults."""
     models = settings_models(settings)
     return {
         role: {
@@ -95,6 +101,7 @@ def runtime_limits(settings: dict[str, Any]) -> dict[str, dict[str, int]]:
 
 
 def resolve_query_roles() -> dict[str, RoleCall]:
+    """Resolve keyword and query models within the initiating user scope."""
     from deeptutor.services.config import load_lightrag_settings
 
     from .config import resolve_lightrag_query_llm_config

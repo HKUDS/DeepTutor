@@ -1,5 +1,6 @@
 """One nonblocking writer per knowledge base, shared across worker processes."""
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 import hashlib
 import os
@@ -9,7 +10,14 @@ from .indexing_policy import IndexingPolicyError
 
 
 @contextmanager
-def write_ownership(kb_dir: Path):
+def write_ownership(kb_dir: Path) -> Iterator[None]:
+    """Hold exclusive nonblocking write ownership for a knowledge base.
+
+    Yields:
+        None while the cross-process indexing lock is held.
+
+    Raises:
+        IndexingPolicyError: The target uses a symlink or another writer owns it."""
     kb_dir = Path(kb_dir)
     if kb_dir.is_symlink():
         raise IndexingPolicyError("A writable knowledge-base directory cannot be a symbolic link.")

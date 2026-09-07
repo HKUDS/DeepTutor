@@ -16,7 +16,11 @@ from pathlib import Path
 import re
 import shutil
 import traceback
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingPolicySnapshot
 
 from fastapi import (
     APIRouter,
@@ -702,8 +706,8 @@ def _freeze_indexing_llm_form(raw: str):
 
 
 def _freeze_append_indexing(
-    kb_name: str, base_dir, provider: str, image_analysis: bool | None = None
-):
+    kb_name: str, base_dir: str | Path, provider: str, image_analysis: bool | None = None
+) -> "IndexingPolicySnapshot | None":
     if provider != LIGHTRAG_PROVIDER:
         return None
     from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
@@ -1576,8 +1580,8 @@ async def get_lightrag_pipeline_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/knowledge-bases/rag-pipelines/lightrag/model-options")
-async def get_lightrag_model_options():
+@router.get("/knowledge-bases/rag-pipelines/lightrag/model-options", response_model=None)
+async def get_lightrag_model_options() -> dict[str, Any]:
     """Return accessible catalog models with supported role capabilities."""
     from deeptutor.services.rag.pipelines.lightrag.roles import model_options
 
@@ -3070,7 +3074,7 @@ async def _create_knowledge_base_owned(
     search_mode: str = Form(""),
     rel_paths: list[str] = Form(None),
     indexing_llm: str = Form(""),
-):
+) -> dict[str, Any]:
     """Create a new knowledge base and initialize it with files."""
     try:
         try:
@@ -3583,7 +3587,7 @@ async def update_pending_indexing_policy(
 async def _update_pending_indexing_policy_owned(
     kb_name: str,
     payload: LightRagIndexingSelection | IndexingLLMSelectionRequest,
-):
+) -> dict[str, Any]:
     """Change the pending model of an empty, unpublished LightRAG KB."""
     manager, kb_name, kb_base_dir = _writable_kb(kb_name)
     kb_entry = _load_kb_entry_or_404(manager, kb_name)

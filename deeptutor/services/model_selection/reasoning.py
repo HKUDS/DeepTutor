@@ -16,6 +16,7 @@ from deeptutor.services.provider_registry import find_by_name
 def supported_reasoning_efforts(
     binding: str, model: str, *, metadata: dict[str, Any] | None = None
 ) -> list[str]:
+    """Return supported reasoning choices, preferring managed catalog metadata."""
     metadata = metadata or {}
     declared = metadata.get("codex_supported_reasoning_levels")
     capabilities = metadata.get("capabilities") or {}

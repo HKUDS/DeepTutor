@@ -206,6 +206,8 @@ def _single_snapshot_from_persisted(policy: dict[str, Any]) -> IndexingLLMSnapsh
 
 @dataclass(frozen=True, slots=True)
 class IndexingPolicySnapshot:
+    """Freeze role identities, runtime limits, and accepted indexing target state."""
+
     extract: IndexingLLMSnapshot
     vlm: IndexingLLMSnapshot | None
     policy: str = POLICY_PINNED
@@ -219,9 +221,11 @@ class IndexingPolicySnapshot:
 
     @property
     def vision_available(self) -> bool:
+        """Return whether the pinned vision model supports image inputs."""
         return self.vlm is not None and self.vlm.vision_available
 
     def persisted_policy(self) -> dict[str, Any]:
+        """Serialize role identities while preserving an existing legacy policy."""
         if self.legacy_policy is not None:
             # Appending must not rewrite the old fingerprint as a v2 identity.
             return dict(self.legacy_policy)
@@ -448,6 +452,7 @@ def _content_revision(root: Path | None) -> str:
 def bind_target(
     snapshot: IndexingPolicySnapshot, kb_dir: Path, *, protect_contents: bool = False
 ) -> IndexingPolicySnapshot:
+    """Bind a snapshot to the current index and optionally its content revision."""
     from .storage import latest_published_root
 
     target = latest_published_root(kb_dir)
@@ -461,6 +466,7 @@ def bind_target(
 
 
 def validate_target(snapshot: IndexingPolicySnapshot, kb_dir: Path) -> None:
+    """Reject a queued write if its bound index, policy, or revision changed."""
     from .storage import latest_published_root
 
     if not snapshot.target_bound:
@@ -482,6 +488,7 @@ def validate_target(snapshot: IndexingPolicySnapshot, kb_dir: Path) -> None:
 def with_image_analysis(
     snapshot: IndexingPolicySnapshot, requested: bool | None
 ) -> IndexingPolicySnapshot:
+    """Record the requested image mode, rejecting unavailable pinned vision."""
     if requested is True and not snapshot.vision_available:
         raise IndexingModelChangedError(
             "Image analysis is disabled for this index; run a full re-index with a VLM."

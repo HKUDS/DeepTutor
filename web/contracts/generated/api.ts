@@ -10895,7 +10895,10 @@ export interface components {
       readonly extract: components["schemas"]["LightRagModelSelection"];
       readonly vlm?: components["schemas"]["LightRagIndexingVision"];
     };
-    /** LightRagIndexingVision */
+    /**
+     * LightRagIndexingVision
+     * @description Represent an explicitly enabled or disabled indexing vision model.
+     */
     readonly LightRagIndexingVision: {
       /**
        * Mode
@@ -10906,7 +10909,10 @@ export interface components {
       readonly selection?:
         components["schemas"]["LightRagModelSelection"] | null;
     };
-    /** LightRagModelSelection */
+    /**
+     * LightRagModelSelection
+     * @description Identify a catalog model and its optional reasoning selection.
+     */
     readonly LightRagModelSelection: {
       /** Model Id */
       readonly model_id: string;
@@ -10926,7 +10932,10 @@ export interface components {
           )
         | null;
     };
-    /** LightRagRoleModel */
+    /**
+     * LightRagRoleModel
+     * @description Configure a text role through base inheritance or an explicit model.
+     */
     readonly LightRagRoleModel: {
       /**
        * Max Async
@@ -10960,7 +10969,10 @@ export interface components {
        */
       readonly timeout: number;
     };
-    /** LightRagRoleModels */
+    /**
+     * LightRagRoleModels
+     * @description Group the independent base model and its four role overrides.
+     */
     readonly LightRagRoleModels: {
       readonly base: components["schemas"]["LightRagModelSelection"];
       readonly extract?: components["schemas"]["LightRagRoleModel"];
@@ -10978,7 +10990,10 @@ export interface components {
       /** Server Url */
       readonly server_url?: string | null;
     };
-    /** LightRagVisionModel */
+    /**
+     * LightRagVisionModel
+     * @description Configure disabled, inherited, or explicit vision model execution.
+     */
     readonly LightRagVisionModel: {
       /**
        * Max Async
