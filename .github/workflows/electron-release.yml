@@ -126,7 +126,7 @@ jobs:
       - name: Install Python build deps
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          pip install -e .[all]
       - name: Set up Node.js (web)
         uses: actions/setup-node@v4
         with:
