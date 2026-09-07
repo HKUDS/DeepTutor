@@ -10,6 +10,7 @@ intentionally thin so the order of steps is easy to read top-to-bottom.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +115,15 @@ def _llm_step(
         display_provider = "Custom"
         env_key = ""
 
+    if binding == "github_copilot":
+        return _github_copilot_step(
+            console,
+            strings,
+            base_url=default_base,
+            current_model=str(current_model.get("model") or ""),
+            display_provider=display_provider,
+        )
+
     edit_base = typer.confirm(strings["init.edit_base_url"], default=not bool(default_base))
     if edit_base:
         base_url = typer.prompt(strings["init.new_base_url"], default=default_base or "")
@@ -157,6 +167,62 @@ def _llm_step(
         _probe_llm_with_retry(console, strings, choice)
 
     return choice
+
+
+def _github_copilot_step(
+    console: Console,
+    strings: dict,
+    *,
+    base_url: str,
+    current_model: str,
+    display_provider: str,
+) -> wiz.LLMChoice:
+    from deeptutor.services.github_copilot_auth import (
+        list_github_copilot_models,
+        load_github_token,
+        login_github_copilot,
+    )
+
+    try:
+        token = load_github_token()
+        reuse = bool(token) and typer.confirm(
+            strings["init.copilot_reuse_login"].format(
+                account=getattr(token, "account_id", None) or "GitHub"
+            ),
+            default=True,
+        )
+        if not reuse:
+            wiz.info(console, strings["init.copilot_login_start"])
+            token = asyncio.run(login_github_copilot(print_fn=console.print))
+            wiz.ok(
+                console,
+                strings["init.copilot_login_ok"].format(
+                    account=getattr(token, "account_id", None) or "GitHub"
+                ),
+            )
+        models = asyncio.run(list_github_copilot_models())
+        wiz.ok(console, strings["init.fetch_models_ok"].format(count=len(models)))
+    except Exception as exc:
+        wiz.fail(console, strings["init.copilot_login_fail"].format(error=str(exc)[:200]))
+        raise typer.Exit(code=1) from exc
+
+    if not models:
+        models = list(wiz.LLM_FALLBACK_MODELS["github_copilot"])
+    model = wiz.select_model(
+        console,
+        strings,
+        models=models,
+        current=current_model,
+    )
+    return wiz.LLMChoice(
+        binding="github_copilot",
+        base_url=base_url,
+        api_key="",
+        model=model,
+        display_provider=display_provider,
+        probed=True,
+        probe_ok=True,
+    )
 
 
 def _probe_llm_with_retry(console: Console, strings: dict, choice: wiz.LLMChoice) -> None:

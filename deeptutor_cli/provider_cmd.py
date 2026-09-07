@@ -19,7 +19,7 @@ def register(app: typer.Typer) -> None:
             ...,
             help=(
                 "Provider: openai-codex (OAuth login) | github-copilot "
-                "(validate existing Copilot auth) | codebuddy (validate CodeBuddy SDK auth)"
+                "(GitHub device login) | codebuddy (validate CodeBuddy SDK auth)"
             ),
         ),
     ) -> None:
@@ -83,30 +83,33 @@ async def _login_openai_codex() -> None:
 
 
 async def _login_github_copilot() -> None:
-    """Validate an existing GitHub Copilot auth session via a lightweight request."""
+    """Authenticate with GitHub device flow and validate Copilot access."""
     try:
-        from openai import AsyncOpenAI
+        from deeptutor.services.github_copilot_auth import login_github_copilot
+        from deeptutor.services.llm.provider_core.github_copilot_provider import (
+            GitHubCopilotProvider,
+        )
     except ImportError:
         typer.echo(
-            "openai is not installed. Install CLI deps from a local checkout: "
+            "GitHub Copilot login dependencies are not installed. Install CLI deps: "
             "python -m pip install -e ./packaging/deeptutor-cli"
         )
         raise typer.Exit(code=1)
     try:
-        client = AsyncOpenAI(
-            api_key="copilot",
-            base_url="https://api.githubcopilot.com",
-            max_retries=0,
-        )
-        await client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "ping"}],
-            max_tokens=1,
-        )
+        token = await login_github_copilot(print_fn=typer.echo)
+        provider = GitHubCopilotProvider(default_model="github-copilot/gpt-4.1")
+        try:
+            await provider.chat(
+                messages=[{"role": "user", "content": "Reply with OK."}],
+                max_tokens=1,
+            )
+        finally:
+            await provider.aclose()
     except Exception as exc:
-        typer.echo(f"GitHub Copilot auth validation failed: {exc}")
+        typer.echo(f"GitHub Copilot login failed: {exc}")
         raise typer.Exit(code=1) from exc
-    typer.echo("GitHub Copilot auth validation succeeded.")
+    account = getattr(token, "account_id", None) or "current account"
+    typer.echo(f"GitHub Copilot login succeeded for {account}.")
 
 
 async def _login_codebuddy() -> None:

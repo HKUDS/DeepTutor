@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import StringIO
 from types import SimpleNamespace
 
+import pytest
 from rich.console import Console
 
 
@@ -15,6 +16,58 @@ def test_gemini_embedding_fallback_prefers_stable_embedding2() -> None:
         "gemini-embedding-2",
         "gemini-embedding-001",
     )
+
+
+def test_github_copilot_is_featured_with_prefixed_fallback_models() -> None:
+    from deeptutor_cli.init_wizard import FEATURED_LLM_PROVIDERS, LLM_FALLBACK_MODELS
+
+    assert "github_copilot" in FEATURED_LLM_PROVIDERS
+    assert LLM_FALLBACK_MODELS["github_copilot"][0] == "github-copilot/gpt-4.1"
+
+
+def test_github_copilot_init_logs_in_and_uses_live_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services import github_copilot_auth
+    from deeptutor_cli import init_cmd
+
+    async def login(*, print_fn):
+        print_fn("Code: ABCD-1234")
+        return SimpleNamespace(account_id="octocat")
+
+    async def models():
+        return ["github-copilot/gpt-4.1", "github-copilot/gpt-5"]
+
+    monkeypatch.setattr(github_copilot_auth, "load_github_token", lambda: None)
+    monkeypatch.setattr(github_copilot_auth, "login_github_copilot", login)
+    monkeypatch.setattr(github_copilot_auth, "list_github_copilot_models", models)
+    monkeypatch.setattr(
+        init_cmd.wiz,
+        "select_model",
+        lambda _console, _strings, *, models, current: models[-1],
+    )
+
+    output = StringIO()
+    choice = init_cmd._github_copilot_step(
+        Console(file=output, force_terminal=False),
+        {
+            "init.copilot_reuse_login": "Reuse {account}?",
+            "init.copilot_login_start": "Starting login",
+            "init.copilot_login_ok": "Logged in {account}",
+            "init.copilot_login_fail": "Login failed: {error}",
+            "init.fetch_models_ok": "Found {count}",
+        },
+        base_url="https://api.githubcopilot.com",
+        current_model="",
+        display_provider="GitHub Copilot",
+    )
+
+    assert choice.binding == "github_copilot"
+    assert choice.api_key == ""
+    assert choice.model == "github-copilot/gpt-5"
+    assert choice.probed is True
+    assert choice.probe_ok is True
+    assert "Code: ABCD-1234" in output.getvalue()
 
 
 def test_embedding_setup_preserves_saved_endpoint_for_same_provider() -> None:

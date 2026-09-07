@@ -225,11 +225,13 @@ deeptutor config show
 
 ```bash
 deeptutor provider login openai-codex      # 执行 OpenAI Codex OAuth 登录
-deeptutor provider login github-copilot    # 校验现有 GitHub Copilot 认证是否可用
+deeptutor provider login github-copilot    # 通过 GitHub 设备授权登录 Copilot
 deeptutor provider login codebuddy         # 校验 CodeBuddy SDK 登录；未登录时打开登录入口
 ```
 
 `openai-codex` 使用 DeepTutor 自己的独立 OAuth 流程登录。它不需要 `OPENAI_API_KEY`，也不会读取或同步本机 `~/.codex`；凭据保存在 `data/system/user-secrets/<owner>/private/openai-codex/`（沙箱访问不到的目录），与 Web 设置页共用。
+
+`github-copilot` 使用 GitHub Device Flow。命令会显示一次性验证码并打开 GitHub 授权页；登录成功后会保存 GitHub token，运行时再自动换取短期 Copilot API token。`deeptutor init` 也会在选择 GitHub Copilot 后直接进入同一登录流程。
 
 远程部署时，浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，仅有普通反向代理无法把浏览器的 localhost callback 送到服务器，必须用 SSH 隧道建立 callback 桥。隧道通向已发布的 Web 端口；Next.js 只把精确的 callback 路径改写到 public callback broker，broker 校验 `state` 后才路由到原 OAuth operation。callback listener 仍位于后端 loopback，不发布 `1455`/`1457`，并支持默认 Docker bridge 网络。
 

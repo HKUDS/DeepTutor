@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 
 from typer.testing import CliRunner
@@ -13,28 +14,28 @@ ROOT_README = (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 class ProviderCliDocsContractTest(unittest.TestCase):
-    def test_provider_contract_describes_copilot_as_validation_not_oauth_login(self) -> None:
+    def test_provider_contract_describes_copilot_device_login(self) -> None:
         self.assertIn(
             '"Provider: openai-codex (OAuth login) | github-copilot "',
             PROVIDER_CMD,
         )
         self.assertIn("| codebuddy (validate CodeBuddy SDK auth)", PROVIDER_CMD)
         self.assertIn('"""Authenticate or validate provider access."""', PROVIDER_CMD)
-        self.assertIn("GitHub Copilot auth validation succeeded.", PROVIDER_CMD)
-        self.assertIn("GitHub Copilot auth validation failed:", PROVIDER_CMD)
+        self.assertIn("(GitHub device login)", PROVIDER_CMD)
+        self.assertIn("GitHub Copilot login succeeded for", PROVIDER_CMD)
+        self.assertIn("GitHub Copilot login failed:", PROVIDER_CMD)
         self.assertIn("CodeBuddy auth validation succeeded.", PROVIDER_CMD)
         self.assertIn("CodeBuddy auth validation failed:", PROVIDER_CMD)
         self.assertIn("Starting CodeBuddy login flow", PROVIDER_CMD)
         self.assertNotIn("OAuth provider: openai-codex | github-copilot", PROVIDER_CMD)
-        self.assertNotIn("GitHub Copilot OAuth authentication succeeded.", PROVIDER_CMD)
 
     def test_readmes_match_the_cli_contract(self) -> None:
         self.assertIn(
-            "Provider auth (`openai-codex` OAuth login; `github-copilot` validates an existing Copilot auth session; `codebuddy` validates CodeBuddy SDK auth and starts login when needed)",
+            "Provider auth (`openai-codex` OAuth login; `github-copilot` GitHub device login; `codebuddy` validates CodeBuddy SDK auth and starts login when needed)",
             ROOT_README,
         )
         self.assertIn(
-            "deeptutor provider login github-copilot    # 校验现有 GitHub Copilot 认证是否可用",
+            "deeptutor provider login github-copilot    # 通过 GitHub 设备授权登录 Copilot",
             CLI_README,
         )
         self.assertIn(
@@ -124,6 +125,38 @@ def test_cli_opens_authorize_url_and_waits_for_completion(monkeypatch) -> None:
     # The CLI speaks English like every other command in this app.
     assert "private directory" in result.stdout
     assert "gpt-5.6-sol" in result.stdout
+
+
+def test_github_copilot_cli_runs_device_login_and_validates_access(monkeypatch) -> None:
+    from deeptutor.services import github_copilot_auth
+    from deeptutor.services.llm.provider_core import github_copilot_provider
+
+    events: list[str] = []
+
+    async def login(*, print_fn):
+        print_fn("Code: ABCD-1234")
+        events.append("login")
+        return SimpleNamespace(account_id="octocat")
+
+    class FakeProvider:
+        def __init__(self, *, default_model: str) -> None:
+            events.append(default_model)
+
+        async def chat(self, **_kwargs) -> None:
+            events.append("chat")
+
+        async def aclose(self) -> None:
+            events.append("close")
+
+    monkeypatch.setattr(github_copilot_auth, "login_github_copilot", login)
+    monkeypatch.setattr(github_copilot_provider, "GitHubCopilotProvider", FakeProvider)
+
+    result = CliRunner().invoke(app, ["provider", "login", "github-copilot"])
+
+    assert result.exit_code == 0
+    assert "Code: ABCD-1234" in result.stdout
+    assert "GitHub Copilot login succeeded for octocat." in result.stdout
+    assert events == ["login", "github-copilot/gpt-4.1", "chat", "close"]
 
 
 if __name__ == "__main__":
