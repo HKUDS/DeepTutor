@@ -2952,6 +2952,7 @@
   "Selected text": "Selected text",
   "Ask anything about the selected text.": "Ask anything about the selected text.",
   "My courses": "My courses",
+  "Courses could not load": "Courses could not load",
   "Create a course": "Create a course",
   "Create your first course": "Create your first course",
   "Course name": "Course name",
@@ -4047,5 +4048,12 @@
   "Index configuration": "Index configuration",
   "The pinned EXTRACT or VLM configuration is unavailable. Restore model access in Settings, or update defaults and rebuild to replace the model. Existing text retrieval does not require these indexing models.": "The pinned EXTRACT or VLM configuration is unavailable. Restore model access in Settings, or update defaults and rebuild to replace the model. Existing text retrieval does not require these indexing models.",
   "Restore access to the pinned indexing models in Settings before adding documents.": "Restore access to the pinned indexing models in Settings before adding documents.",
-  "Default configuration changed. Review the updated configuration and confirm again.": "Default configuration changed. Review the updated configuration and confirm again."
+  "Default configuration changed. Review the updated configuration and confirm again.": "Default configuration changed. Review the updated configuration and confirm again.",
+  "Could not copy": "Could not copy",
+  "The clipboard is not available in this browser.": "The clipboard is not available in this browser.",
+  "attachments": "attachments",
+  "references": "references",
+  "That question is no longer waiting for an answer, so this was sent as a new message.": "That question is no longer waiting for an answer, so this was sent as a new message.",
+  "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.",
+  "Select text in the document first.": "Select text in the document first."
 }

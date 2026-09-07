@@ -800,6 +800,13 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         messages[messages.length - 1] = { ...last, content: repaired };
         return messages;
       })();
+      const endedTurnId = action.turnId || ending?.activeTurnId || null;
+      // A completed turn can still own an unanswered card (for example, a
+      // replay/sentinel race). Keep its address so submit_user_reply can
+      // reach the backend waiter instead of failing the visible card.
+      const pendingAskUser =
+        action.status === "completed" &&
+        hasPendingAskUserInMessages(settled, endedTurnId);
       return {
         ...state,
         sessions: {
@@ -811,7 +818,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             currentStage: "",
             status: action.status ?? "completed",
             activeTurnId:
-              action.status === "running"
+              action.status === "running" || pendingAskUser
                 ? action.turnId ||
                   state.sessions[action.key]?.activeTurnId ||
                   null

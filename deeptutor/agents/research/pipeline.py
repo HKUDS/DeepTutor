@@ -80,6 +80,7 @@ from deeptutor.runtime.agentic import (
     run_agentic_loop,
     run_labeled_step,
 )
+from deeptutor.runtime.agentic.messages import assistant_message
 from deeptutor.runtime.agentic.tool_dispatch import (
     MAX_PARALLEL_TOOL_CALLS,
 )
@@ -1004,7 +1005,13 @@ class ResearchPipeline:
             calls += 1
             if result.label == LABEL_FINISH and result.text.strip():
                 return result.text, True, calls
-            messages.append({"role": "assistant", "content": result.text[:500]})
+            messages.append(
+                assistant_message(
+                    result.text[:500],
+                    reasoning_content=result.reasoning_content or None,
+                    thinking_blocks=list(result.thinking_blocks) or None,
+                )
+            )
             messages.append({"role": "user", "content": self._t("protocol.force_finish_repair")})
         return self._t("protocol.fallback_final"), False, calls
 

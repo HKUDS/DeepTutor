@@ -150,7 +150,9 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
       socketTargetsRef.current[kbName] = {
         taskId: expectedTaskId,
         retry:
-          existingTarget?.taskId === expectedTaskId ? existingTarget.retry : 0,
+          existingTarget && existingTarget.taskId === expectedTaskId
+            ? existingTarget.retry
+            : 0,
       };
       const query = expectedTaskId
         ? `?task_id=${encodeURIComponent(expectedTaskId)}`
@@ -164,7 +166,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
 
       socket.onopen = () => {
         const target = socketTargetsRef.current[kbName];
-        if (target?.taskId === expectedTaskId) target.retry = 0;
+        if (target && target.taskId === expectedTaskId) target.retry = 0;
       };
 
       socket.onmessage = (event) => {

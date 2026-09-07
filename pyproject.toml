@@ -252,10 +252,10 @@ math-animator = ["manim>=0.19.0"]
 graphrag = ["graphrag>=3.0.1,<4.0.0; python_version < '3.14'"]
 
 # Built-in LightRAG provider. The exact release is intentional: the adapter
-# isolates a private rc2 source-resolver seam and locks it with smoke tests.
+# isolates a private source-resolver seam and locks it with smoke tests.
 # MinerU remains an independently selected DeepTutor parser and is not a
 # transitive dependency of this extra.
-rag-lightrag = ["lightrag-hku==1.5.7rc2"]
+rag-lightrag = ["lightrag-hku==1.5.7"]
 
 # Optional cross-encoder reranker for the default LlamaIndex engine. The
 # sentence-transformers/torch stack is heavy and model-dependent, so it stays

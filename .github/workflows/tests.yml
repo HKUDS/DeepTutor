@@ -263,7 +263,7 @@ jobs:
 
       - name: Install optional LightRAG SDK
         if: matrix.python-version == '3.12'
-        run: pip install "lightrag-hku==1.5.7rc2"
+        run: pip install "lightrag-hku==1.5.7"
 
       - name: Install optional GraphRAG SDK
         if: matrix.python-version == '3.12'

@@ -55,4 +55,25 @@ def assistant_message_with_tool_calls(
     return message
 
 
-__all__ = ["assistant_message_with_tool_calls"]
+def assistant_message(
+    content: str,
+    *,
+    reasoning_content: str | None = None,
+    thinking_blocks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build a plain assistant turn, carrying its reasoning when there was any.
+
+    The tool-call builder above and this one exist for the same reason: a
+    thinking model's history has to keep the reasoning that produced each
+    assistant turn, or the provider refuses the continuation. Which of the two
+    a round needs depends only on whether it called tools.
+    """
+    message: dict[str, Any] = {"role": "assistant", "content": content}
+    if reasoning_content:
+        message["reasoning_content"] = reasoning_content
+    if thinking_blocks:
+        message["thinking_blocks"] = thinking_blocks
+    return message
+
+
+__all__ = ["assistant_message", "assistant_message_with_tool_calls"]

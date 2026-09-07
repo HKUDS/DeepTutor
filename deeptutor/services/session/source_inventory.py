@@ -1,9 +1,9 @@
 """Branch-isolated, cumulative source inventory for the chat capability.
 
-The chat pipeline shows the LLM an "Attached Sources" manifest each turn so
-it can decide whether to call ``read_source(id)`` for full text. Historically
-this manifest only listed sources the user attached in the *current* turn —
-so the model forgot anything uploaded in earlier turns unless re-attached.
+The chat pipeline shows the LLM an "Attached Sources" manifest each turn.
+Historically this manifest only listed sources the user attached in the
+*current* turn — so the model forgot anything uploaded in earlier turns unless
+re-attached.
 
 This module materialises the manifest as a **session-cumulative inventory**:
 
@@ -11,8 +11,7 @@ This module materialises the manifest as a **session-cumulative inventory**:
   in the manifest, just like before.
 * Sources attached in *prior* turns on the active branch's ancestor chain
   (the "historical" set) get a compact one-line row: id, name, kind, size,
-  and the turn ordinal where they first appeared. The LLM can call
-  ``read_source(id)`` to load full text when the question warrants it.
+  and the turn ordinal where they first appeared.
 
 Both sets dedupe by source id; fresh always wins on collision. Branch
 isolation is enforced by walking ``parent_message_id`` from the active
@@ -23,8 +22,9 @@ The output is decoupled from the rest of ``turn_runtime``:
     inventory = await build_inventory(store, ..., fresh_*=...)
     manifest_text, source_index = render_manifest(inventory)
 
-``source_index`` is the per-turn ``{source_id: full_text}`` map handed to
-``ReadSourceTool`` via tool-call kwargs injection.
+``source_index`` is the per-turn ``{source_id: full_text}`` map consumed by the
+Context Investigator. The answer loop receives that investigation and does not
+mount ``ReadSourceTool`` itself.
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 
 # Per-source text-preview caps. Fresh sources get a meaningful preview so
 # the model can answer simple "is this the right one?" questions without
-# read_source. Historical sources surface only their identity — the model
-# pays the read_source cost only when it actually needs them.
+# reading the full source. Historical sources surface only their identity —
+# the investigator pays the full-text cost only when it needs a source.
 MANIFEST_PREVIEW_CHARS_FRESH = 2000
 # Image attachments flow through the multimodal block path; never list them.
 _IMAGE_MIME_PREFIX = "image/"
@@ -176,10 +176,10 @@ async def build_inventory(
 def render_manifest(inv: SourceInventory) -> tuple[str, dict[str, str]]:
     """Render the inventory into (manifest_text, source_index).
 
-    ``manifest_text`` is the human/LLM-readable block injected at the tail
-    of the chat system prompt. ``source_index`` maps each source id to its
-    full extracted text and is handed to ``ReadSourceTool`` so the LLM can
-    read on demand.
+    ``manifest_text`` is the human/LLM-readable block injected into both the
+    Context Investigator and the chat prompt. ``source_index`` maps each source
+    id to its full extracted text and is consumed by the investigator's
+    ``ReadSourceTool``.
     """
     if inv.is_empty():
         return "", {}
@@ -194,8 +194,9 @@ def render_manifest(inv: SourceInventory) -> tuple[str, dict[str, str]]:
         "An index of the sources the user has attached in this conversation. "
         "Rows with a `preview` field were attached **this turn**; rows marked "
         "`previously attached (turn N)` were uploaded in earlier turns and show "
-        "only their identity. Their full text can be loaded on demand when a "
-        "source is relevant. Refer to sources by name; never invent source ids."
+        "only their identity. Relevant full text is examined by the Context "
+        "Investigator. Refer to sources by name; never invent source ids or "
+        "call a file/PDF tool to reopen them."
     )
     return header + "\n\n" + "\n\n".join(rendered_rows), source_index
 

@@ -64,7 +64,11 @@ class LoopPromptAssembler:
         joined = "\n\n---\n\n".join(
             f"## {block.name}\n{block.content.strip()}" for block in blocks if block.content.strip()
         )
-        return append_language_directive(joined, self.language)
+        # ``allow_user_override`` only here: chat has a user who can ask for a
+        # different language mid-conversation, and the strict directive plus
+        # the runtime policy above it otherwise make the model refuse them.
+        # Books, quizzes and research keep the strict form — nobody is asking.
+        return append_language_directive(joined, self.language, allow_user_override=True)
 
     def blocks(
         self,
