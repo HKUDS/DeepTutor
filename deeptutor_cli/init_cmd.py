@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import time
 from typing import Any
 
+import httpx
 from rich.console import Console
 import typer
 
@@ -182,6 +184,9 @@ def _github_copilot_step(
         load_github_token,
         login_github_copilot,
     )
+    from deeptutor.services.llm.provider_core.github_copilot_provider import (
+        validate_github_copilot_model,
+    )
 
     try:
         token = load_github_token()
@@ -201,28 +206,41 @@ def _github_copilot_step(
                 ),
             )
         models = asyncio.run(list_github_copilot_models())
+        if not models:
+            raise RuntimeError("No usable GitHub Copilot models are available for this account.")
         wiz.ok(console, strings["init.fetch_models_ok"].format(count=len(models)))
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, RuntimeError, ValueError, KeyError) as exc:
         wiz.fail(console, strings["init.copilot_login_fail"].format(error=str(exc)[:200]))
         raise typer.Exit(code=1) from exc
 
-    if not models:
-        models = list(wiz.LLM_FALLBACK_MODELS["github_copilot"])
     model = wiz.select_model(
         console,
         strings,
         models=models,
         current=current_model,
     )
-    return wiz.LLMChoice(
+    choice = wiz.LLMChoice(
         binding="github_copilot",
         base_url=base_url,
         api_key="",
         model=model,
         display_provider=display_provider,
-        probed=True,
-        probe_ok=True,
     )
+    wiz.info(console, strings["init.probe_running"].format(what=display_provider))
+    started = time.monotonic()
+    try:
+        asyncio.run(validate_github_copilot_model(model))
+    except (httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
+        wiz.fail(
+            console,
+            strings["init.probe_fail"].format(what=display_provider, error=str(exc)[:200]),
+        )
+        raise typer.Exit(code=1) from exc
+    choice.probed = True
+    choice.probe_ok = True
+    choice.probe_ms = int((time.monotonic() - started) * 1000)
+    wiz.ok(console, strings["init.probe_ok"].format(what=display_provider, ms=choice.probe_ms))
+    return choice
 
 
 def _probe_llm_with_retry(console: Console, strings: dict, choice: wiz.LLMChoice) -> None:

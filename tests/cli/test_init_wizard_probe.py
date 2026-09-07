@@ -21,22 +21,48 @@ def test_gemini_embedding_fallback_prefers_stable_embedding2() -> None:
 def test_github_copilot_is_featured_with_prefixed_fallback_models() -> None:
     from deeptutor_cli.init_wizard import FEATURED_LLM_PROVIDERS, LLM_FALLBACK_MODELS
 
-    assert "github_copilot" in FEATURED_LLM_PROVIDERS
+    assert FEATURED_LLM_PROVIDERS[9] == "github_copilot"
     assert LLM_FALLBACK_MODELS["github_copilot"][0] == "github-copilot/gpt-4.1"
 
 
+@pytest.mark.parametrize("outcome", ["success", "error", "exception", "no-models"])
 def test_github_copilot_init_logs_in_and_uses_live_models(
     monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
 ) -> None:
+    import typer
+
+    from deeptutor.runtime.banner import labels_for
     from deeptutor.services import github_copilot_auth
+    from deeptutor.services.llm.provider_core import github_copilot_provider
     from deeptutor_cli import init_cmd
+
+    probes = []
+
+    class FakeProvider:
+        def __init__(self, *, default_model):
+            probes.append(default_model)
+
+        async def chat(self, **kwargs):
+            probes.append("chat")
+            if outcome == "exception":
+                raise RuntimeError("unavailable model")
+            return SimpleNamespace(
+                finish_reason="error" if outcome == "error" else "stop",
+                content="unavailable model" if outcome == "error" else "OK",
+            )
+
+        async def aclose(self):
+            probes.append("close")
+
+    monkeypatch.setattr(github_copilot_provider, "GitHubCopilotProvider", FakeProvider)
 
     async def login(*, print_fn):
         print_fn("Code: ABCD-1234")
         return SimpleNamespace(account_id="octocat")
 
     async def models():
-        return ["github-copilot/gpt-4.1", "github-copilot/gpt-5"]
+        return [] if outcome == "no-models" else ["github-copilot/gpt-4.1", "github-copilot/gpt-5"]
 
     monkeypatch.setattr(github_copilot_auth, "load_github_token", lambda: None)
     monkeypatch.setattr(github_copilot_auth, "login_github_copilot", login)
@@ -48,15 +74,23 @@ def test_github_copilot_init_logs_in_and_uses_live_models(
     )
 
     output = StringIO()
+    if outcome != "success":
+        with pytest.raises(typer.Exit) as exc:
+            init_cmd._github_copilot_step(
+                Console(file=output),
+                labels_for("en"),
+                base_url="https://api.githubcopilot.com",
+                current_model="",
+                display_provider="GitHub Copilot",
+            )
+        assert exc.value.exit_code == 1
+        assert probes == (
+            [] if outcome == "no-models" else ["github-copilot/gpt-5", "chat", "close"]
+        )
+        return
     choice = init_cmd._github_copilot_step(
         Console(file=output, force_terminal=False),
-        {
-            "init.copilot_reuse_login": "Reuse {account}?",
-            "init.copilot_login_start": "Starting login",
-            "init.copilot_login_ok": "Logged in {account}",
-            "init.copilot_login_fail": "Login failed: {error}",
-            "init.fetch_models_ok": "Found {count}",
-        },
+        labels_for("en"),
         base_url="https://api.githubcopilot.com",
         current_model="",
         display_provider="GitHub Copilot",
@@ -68,6 +102,7 @@ def test_github_copilot_init_logs_in_and_uses_live_models(
     assert choice.probed is True
     assert choice.probe_ok is True
     assert "Code: ABCD-1234" in output.getvalue()
+    assert probes == ["github-copilot/gpt-5", "chat", "close"]
 
 
 def test_embedding_setup_preserves_saved_endpoint_for_same_provider() -> None:

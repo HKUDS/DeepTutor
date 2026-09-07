@@ -38,7 +38,6 @@ from deeptutor.services.provider_registry import PROVIDERS, ProviderSpec, find_b
 # via the "Show all" option. Names match ProviderSpec.name in provider_registry.
 
 FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
-    "github_copilot",
     "openai",
     "anthropic",
     "deepseek",
@@ -48,6 +47,7 @@ FEATURED_LLM_PROVIDERS: tuple[str, ...] = (
     "gemini",
     "siliconflow",
     "openrouter",
+    "github_copilot",
     "ollama",
 )
 

@@ -233,6 +233,10 @@ deeptutor provider login codebuddy         # 校验 CodeBuddy SDK 登录；未�
 
 `github-copilot` 使用 GitHub Device Flow。命令会显示一次性验证码并打开 GitHub 授权页；登录成功后会保存 GitHub token，运行时再自动换取短期 Copilot API token。`deeptutor init` 也会在选择 GitHub Copilot 后直接进入同一登录流程。
 
+凭据仅保存在当前 DeepTutor home 的 `data/system/user-secrets/<owner-id>/private/github-copilot/credentials.v1.json`，不写入模型配置、不共享给其他用户，也不会自动读取 nanobot 等外部应用的登录文件。升级后请重新运行 `deeptutor provider login github-copilot`。CLI/本地管理员和其 Partner 使用管理员所属凭据；普通用户必须独立登录，Copilot 模型不能通过管理员授权借用。
+
+登录命令使用实时发现的可用模型验证推理访问；`init` 验证用户选中的模型，失败时中止而非显示验证成功或保存配置。GitHub 登录成功不等于 Copilot 模型可用，失败后登录凭据仍保留。运行时遵循 token 交换返回的 API 地址（包括刷新后的变化），并根据模型的 `supported_endpoints` 选择 Responses 或 Chat Completions；只支持其他协议的模型不在列表中。
+
 远程部署时，浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，仅有普通反向代理无法把浏览器的 localhost callback 送到服务器，必须用 SSH 隧道建立 callback 桥。隧道通向已发布的 Web 端口；Next.js 只把精确的 callback 路径改写到 public callback broker，broker 校验 `state` 后才路由到原 OAuth operation。callback listener 仍位于后端 loopback，不发布 `1455`/`1457`，并支持默认 Docker bridge 网络。
 
 ```bash

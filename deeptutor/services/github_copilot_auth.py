@@ -8,10 +8,11 @@ from contextlib import suppress
 from dataclasses import dataclass
 import os
 import time
-from typing import Any
 import webbrowser
 
 import httpx
+
+from deeptutor.services.github_copilot_storage import GitHubToken, get_github_copilot_storage
 
 DEFAULT_GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code"
 DEFAULT_GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"
@@ -20,8 +21,6 @@ DEFAULT_COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token"
 DEFAULT_COPILOT_BASE_URL = "https://api.githubcopilot.com"
 GITHUB_COPILOT_CLIENT_ID = "Iv1.b507a08c87ecfe98"
 GITHUB_COPILOT_SCOPE = "read:user"
-TOKEN_FILENAME = "github-copilot.json"
-TOKEN_APP_NAME = "nanobot"
 USER_AGENT = "DeepTutor/1"
 EDITOR_VERSION = "vscode/1.99.0"
 EDITOR_PLUGIN_VERSION = "copilot-chat/0.26.0"
@@ -40,24 +39,7 @@ def _resolve(env_var: str, default: str) -> str:
     return value.strip() if value and value.strip() else default
 
 
-def get_github_copilot_storage() -> Any:
-    try:
-        from oauth_cli_kit.storage import FileTokenStorage
-    except ImportError as exc:
-        raise RuntimeError(
-            "oauth-cli-kit is required for GitHub Copilot login. "
-            "Install the DeepTutor CLI dependencies first."
-        ) from exc
-    # Keep compatibility with tokens created by nanobot, where this integration
-    # originated, so users do not have to sign in twice.
-    return FileTokenStorage(
-        token_filename=TOKEN_FILENAME,
-        app_name=TOKEN_APP_NAME,
-        import_codex_cli=False,
-    )
-
-
-def load_github_token() -> Any | None:
+def load_github_token() -> GitHubToken | None:
     token = get_github_copilot_storage().load()
     if not token or not getattr(token, "access", None):
         return None
@@ -76,16 +58,9 @@ def _github_headers(token: str) -> dict[str, str]:
 
 async def login_github_copilot(
     print_fn: Callable[[str], None] | None = None,
-) -> Any:
+) -> GitHubToken:
     """Run GitHub's device flow and persist the resulting OAuth token."""
-    try:
-        from oauth_cli_kit.models import OAuthToken
-    except ImportError as exc:
-        raise RuntimeError(
-            "oauth-cli-kit is required for GitHub Copilot login. "
-            "Install the DeepTutor CLI dependencies first."
-        ) from exc
-
+    storage = get_github_copilot_storage()
     printer = print_fn or print
     timeout = httpx.Timeout(20.0, connect=20.0)
     client_id = _resolve("DEEPTUTOR_GITHUB_COPILOT_CLIENT_ID", GITHUB_COPILOT_CLIENT_ID)
@@ -120,7 +95,7 @@ async def login_github_copilot(
         printer(f"Open: {verification_url}")
         printer(f"Code: {user_code}")
         if verification_complete:
-            with suppress(Exception):
+            with suppress(webbrowser.Error, OSError):
                 webbrowser.open(verification_complete)
 
         deadline = time.monotonic() + expires_in
@@ -172,13 +147,12 @@ async def login_github_copilot(
         user_payload = user.json()
         account_id = user_payload.get("login") or user_payload.get("id")
 
-    token = OAuthToken(
+    token = GitHubToken(
         access=access_token,
-        refresh="",
         expires=int((time.time() + token_expires_in) * 1000),
         account_id=str(account_id) if account_id else None,
     )
-    get_github_copilot_storage().save(token)
+    storage.save(token)
     return token
 
 
@@ -219,8 +193,14 @@ async def exchange_copilot_token(github_token: str | None = None) -> CopilotAcce
     return CopilotAccess(token=token, expires_at=float(expires_at), api_base=api_base)
 
 
-async def list_github_copilot_models() -> list[str]:
-    access = await exchange_copilot_token()
+@dataclass(frozen=True)
+class CopilotModel:
+    id: str
+    supported_endpoints: tuple[str, ...] | None = None
+
+
+async def fetch_github_copilot_models(access: CopilotAccess) -> list[CopilotModel]:
+    """Keep protocol metadata alongside IDs; omit explicitly unsupported models."""
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(20.0, connect=20.0),
         follow_redirects=True,
@@ -242,7 +222,7 @@ async def list_github_copilot_models() -> list[str]:
     rows = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         return []
-    models: list[str] = []
+    models: dict[str, CopilotModel] = {}
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -255,13 +235,32 @@ async def list_github_copilot_models() -> list[str]:
             or (isinstance(policy, dict) and policy.get("state") == "disabled")
         ):
             continue
-        models.append(f"github-copilot/{model_id}")
-    return list(dict.fromkeys(models))
+        raw_endpoints = row.get("supported_endpoints")
+        endpoints = None
+        if raw_endpoints is not None:
+            if not isinstance(raw_endpoints, list):
+                continue
+            endpoints = tuple(
+                endpoint
+                for endpoint in raw_endpoints
+                if endpoint in ("/responses", "/chat/completions")
+            )
+            if not endpoints:
+                continue
+        models[model_id] = CopilotModel(model_id, endpoints)
+    return list(models.values())
+
+
+async def list_github_copilot_models() -> list[str]:
+    access = await exchange_copilot_token()
+    return [f"github-copilot/{model.id}" for model in await fetch_github_copilot_models(access)]
 
 
 __all__ = [
     "CopilotAccess",
+    "CopilotModel",
     "exchange_copilot_token",
+    "fetch_github_copilot_models",
     "get_github_copilot_storage",
     "list_github_copilot_models",
     "load_github_token",

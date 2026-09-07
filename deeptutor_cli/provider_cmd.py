@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import webbrowser
 
+import httpx
 import typer
 
 from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
@@ -85,9 +86,12 @@ async def _login_openai_codex() -> None:
 async def _login_github_copilot() -> None:
     """Authenticate with GitHub device flow and validate Copilot access."""
     try:
-        from deeptutor.services.github_copilot_auth import login_github_copilot
+        from deeptutor.services.github_copilot_auth import (
+            list_github_copilot_models,
+            login_github_copilot,
+        )
         from deeptutor.services.llm.provider_core.github_copilot_provider import (
-            GitHubCopilotProvider,
+            validate_github_copilot_model,
         )
     except ImportError:
         typer.echo(
@@ -97,19 +101,19 @@ async def _login_github_copilot() -> None:
         raise typer.Exit(code=1)
     try:
         token = await login_github_copilot(print_fn=typer.echo)
-        provider = GitHubCopilotProvider(default_model="github-copilot/gpt-4.1")
-        try:
-            await provider.chat(
-                messages=[{"role": "user", "content": "Reply with OK."}],
-                max_tokens=1,
-            )
-        finally:
-            await provider.aclose()
-    except Exception as exc:
+        typer.echo(
+            "GitHub sign-in saved in DeepTutor's owner-private storage. Validating Copilot..."
+        )
+        models = await list_github_copilot_models()
+        if not models:
+            raise RuntimeError("No usable GitHub Copilot models are available for this account.")
+        await validate_github_copilot_model(models[0])
+    except (httpx.HTTPError, OSError, RuntimeError, ValueError, KeyError) as exc:
         typer.echo(f"GitHub Copilot login failed: {exc}")
         raise typer.Exit(code=1) from exc
     account = getattr(token, "account_id", None) or "current account"
     typer.echo(f"GitHub Copilot login succeeded for {account}.")
+    typer.echo(f"Validated model access: {models[0]}")
 
 
 async def _login_codebuddy() -> None:
