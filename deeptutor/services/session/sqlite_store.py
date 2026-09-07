@@ -2302,8 +2302,8 @@ class SQLiteSessionStore:
                             user_answer, user_answer_images_json, source, material_id,
                             material_title, section_id, section_title, score_trend,
                             is_correct, resolved, bookmarked, followup_session_id,
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                            ai_judgment, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,
@@ -2340,6 +2340,7 @@ class SQLiteSessionStore:
                             *provenance,
                             is_correct,
                             1 if is_correct else 0,
+                            "",
                             now,
                             now,
                         ),
@@ -2353,8 +2354,8 @@ class SQLiteSessionStore:
                             user_answer, user_answer_images_json, source, material_id,
                             material_title, section_id, section_title, score_trend,
                             is_correct, resolved, bookmarked, followup_session_id,
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                            ai_judgment, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,
@@ -2393,6 +2394,7 @@ class SQLiteSessionStore:
                             *provenance,
                             is_correct,
                             1 if is_correct else 0,
+                            "",
                             now,
                             now,
                         ),
