@@ -129,11 +129,17 @@ export default function LightRagRoleModelsEditor({
   onChange: (value: LightRagRoleModels) => void;
 }) {
   const { t } = useTranslation();
+  const baseOption = options.find(
+    (option) =>
+      option.profile_id === models?.base.profile_id &&
+      option.model_id === models?.base.model_id,
+  );
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
         <IndexingModelSelector
           label="LightRAG base model"
+          description="The default model when no role model is specified. Role models can inherit its model and reasoning setting."
           labelClassName="text-[12px] font-medium text-[var(--foreground)]"
           options={options}
           selection={models?.base ?? null}
@@ -149,11 +155,13 @@ export default function LightRagRoleModelsEditor({
               );
           }}
         />
-        <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
-          {t(
-            "The default model when no role model is specified. Role models can inherit its model and reasoning setting.",
-          )}
-        </p>
+        {baseOption && (
+          <p className="text-[11px] text-[var(--muted-foreground)]">
+            {t("Currently effective")}: {baseOption.provider_label || baseOption.profile_name} ·{" "}
+            {baseOption.model_name} ·{" "}
+            {models?.base.reasoning_effort || t("Auto")}
+          </p>
+        )}
       </div>
       {models &&
         (["extract", "keyword", "query", "vlm"] as const).map((role) => {
@@ -167,11 +175,6 @@ export default function LightRagRoleModelsEditor({
             (option) =>
               option.profile_id === effective?.profile_id &&
               option.model_id === effective?.model_id,
-          );
-          const baseOption = options.find(
-            (option) =>
-              option.profile_id === models.base.profile_id &&
-              option.model_id === models.base.model_id,
           );
           const selectionKey =
             value.mode === "model" && value.selection
@@ -266,6 +269,7 @@ export default function LightRagRoleModelsEditor({
               {value.mode !== "disabled" && (
                 <IndexingModelSelector
                   reasoningOnly
+                  showReasoningHint={false}
                   options={roleOptions}
                   selection={
                     effective

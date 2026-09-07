@@ -61,6 +61,8 @@ export function selectionFromLightRagDefault(
 interface IndexingModelSelectorProps {
   label?: string;
   labelClassName?: string;
+  description?: string;
+  showReasoningHint?: boolean;
   defaultSelection?: IndexingLLMSelection | null;
   defaultLabel?: string;
   lockModel?: boolean;
@@ -79,6 +81,8 @@ interface IndexingModelSelectorProps {
 export default function IndexingModelSelector({
   label = "Indexing model",
   labelClassName = "text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]",
+  description,
+  showReasoningHint = true,
   defaultSelection,
   defaultLabel,
   lockModel = false,
@@ -157,7 +161,13 @@ export default function IndexingModelSelector({
         <span className={`mb-1.5 block ${labelClassName}`}>
           {t(label)}
         </span>
+        {description && (
+          <span className="mb-1.5 block text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+            {t(description)}
+          </span>
+        )}
         <select
+          aria-label={t(label)}
           value={
             usesDefault
               ? "__engine_default__"
@@ -255,13 +265,15 @@ export default function IndexingModelSelector({
                   </option>
                 ))}
             </select>
-            <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-              {inheritBaseReasoning !== undefined
-                ? t("With no role override, reasoning follows the LightRAG base.")
-                : t(
-                    "Sets this model's default reasoning depth. Auto leaves the choice to the provider.",
-                  )}
-            </p>
+            {showReasoningHint && (
+              <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+                {inheritBaseReasoning !== undefined
+                  ? t("With no role override, reasoning follows the LightRAG base.")
+                  : t(
+                      "Sets this model's default reasoning depth. Auto leaves the choice to the provider.",
+                    )}
+              </p>
+            )}
           </label>
         )}
     </div>
