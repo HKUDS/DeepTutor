@@ -171,12 +171,15 @@ def test_real_stable_sidecar_bridge_reaches_processed(monkeypatch, tmp_path: Pat
         descriptor={"endpoint": "offline://fixture"},
         fingerprint="fixture-indexing-model",
     )
+    indexing_roles = SimpleNamespace(
+        extract=snapshot, vlm=snapshot, limits={}, embedding_config=None
+    )
     rows = asyncio.run(
         _process(
             working,
             staged,
             enable_vlm=True,
-            indexing_snapshot=snapshot,
+            indexing_snapshot=indexing_roles,
         )
     )
 
