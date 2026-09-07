@@ -263,7 +263,9 @@ def _with_role_identity(snapshot: IndexingLLMSnapshot, *, vision: bool) -> Index
     return replace(snapshot, descriptor=identity, fingerprint=_fingerprint(identity))
 
 
-def _freeze_role(selection_value: Any, *, vision: bool = False) -> IndexingLLMSnapshot:
+def _freeze_role(
+    selection_value: Any, *, vision: bool = False, provider_default: bool = True
+) -> IndexingLLMSnapshot:
     from deeptutor.services.config.lightrag_roles import LightRagModelSelection
 
     from .roles import resolve_selection
@@ -273,7 +275,7 @@ def _freeze_role(selection_value: Any, *, vision: bool = False) -> IndexingLLMSn
     selected = LightRagModelSelection.model_validate(selection_value)
     selection = LLMSelection(**selected.model_dump())
     try:
-        config = resolve_selection(selection, vision=vision)
+        config = resolve_selection(selection, vision=vision, provider_default=provider_default)
     except (ValueError, PermissionError, LLMConfigError) as exc:
         raise IndexingPolicyError(str(exc)) from exc
     explicit_user = get_current_user_or_none()
@@ -390,7 +392,13 @@ def snapshot_from_persisted(policy: dict[str, Any]) -> IndexingPolicySnapshot:
     def restore(value: Any, *, vision: bool = False) -> IndexingLLMSnapshot:
         if not isinstance(value, dict) or not isinstance(value.get("selection"), dict):
             raise IndexingPolicyError("Invalid LightRAG role snapshot.")
-        result = _freeze_role(value["selection"], vision=vision)
+        descriptor = value.get("descriptor")
+        result = _freeze_role(
+            value["selection"],
+            vision=vision,
+            provider_default=isinstance(descriptor, dict)
+            and descriptor.get("reasoning_effort") == "",
+        )
         if not value.get("fingerprint") or result.fingerprint != value["fingerprint"]:
             raise IndexingModelChangedError("The pinned role model changed; run a full re-index.")
         return result

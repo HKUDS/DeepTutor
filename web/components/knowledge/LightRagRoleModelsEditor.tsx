@@ -131,11 +131,6 @@ export default function LightRagRoleModelsEditor({
   const { t } = useTranslation();
   return (
     <div className="space-y-4">
-      <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
-        {t(
-          "LightRAG recommends disabling reasoning for EXTRACT and KEYWORD and enabling it for QUERY when supported.",
-        )}
-      </p>
       <div className="space-y-1.5">
         <IndexingModelSelector
           label="LightRAG base model"
@@ -305,7 +300,8 @@ export default function LightRagRoleModelsEditor({
               {effectiveOption && value.mode !== "disabled" && (
                 <p className="text-[11px] text-[var(--muted-foreground)]">
                   {t("Currently effective")}: {effectiveOption.provider_label || effectiveOption.profile_name} ·{" "}
-                  {effectiveOption.model_name}
+                  {effectiveOption.model_name} ·{" "}
+                  {effective?.reasoning_effort || t("Auto")}
                 </p>
               )}
               {role === "vlm" &&

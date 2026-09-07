@@ -40,11 +40,17 @@ def model_options() -> dict[str, Any]:
     return {**result, "options": options}
 
 
-def resolve_selection(selection: LLMSelection, *, vision: bool = False) -> LLMConfig:
+def resolve_selection(
+    selection: LLMSelection, *, vision: bool = False, provider_default: bool = True
+) -> LLMConfig:
     """Resolve an accessible model and validate its reasoning and vision support."""
     apply_allowed_llm_selection(selection.to_dict())
     config = resolve_llm_config_for_selection(selection)
-    if config.reasoning_effort is not None:
+    if provider_default and selection.reasoning_effort is None:
+        # Empty explicitly omits provider reasoning controls; None retains the
+        # legacy resolver defaults when restoring an older pinned index.
+        config = config.model_copy(update={"reasoning_effort": ""})
+    if config.reasoning_effort:
         option = next(
             (
                 item

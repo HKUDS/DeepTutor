@@ -1219,13 +1219,6 @@ export function LightRagModelsForm({
           {t("Only administrators can change shared LightRAG engine settings.")}
         </p>
       )}
-      {!form.role_models && form.version !== 2 && (
-        <p className="text-xs text-[var(--muted-foreground)]">
-          {t(
-            "Legacy model settings are shown below. Saving fixes the LightRAG base selection independently of chat.",
-          )}
-        </p>
-      )}
       <LightRagRoleModelsEditor
         models={roleModels}
         options={catalog.options}

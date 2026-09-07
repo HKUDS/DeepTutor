@@ -236,7 +236,7 @@ export default function IndexingModelSelector({
               <option value="">
                 {inheritBaseReasoning !== undefined
                   ? t("Inherit base reasoning")
-                  : t("Model default / unspecified")}
+                  : t("Provider default (Auto)")}
               </option>
               {selection?.reasoning_effort &&
                 !reasoningOptions.some(
@@ -256,18 +256,10 @@ export default function IndexingModelSelector({
                 ))}
             </select>
             <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
-              {t("Effective reasoning")}:{" "}
-              {selection?.reasoning_effort ||
-                inheritBaseReasoning ||
-                selected.reasoning_effort ||
-                t("Model default")}
-              .{" "}
               {inheritBaseReasoning !== undefined
-                ? t(
-                    "With no role override, reasoning follows the LightRAG base.",
-                  )
+                ? t("With no role override, reasoning follows the LightRAG base.")
                 : t(
-                    "Auto inherits the selected model's saved reasoning effort.",
+                    "Sets this model's default reasoning depth. Auto leaves the choice to the provider.",
                   )}
             </p>
           </label>

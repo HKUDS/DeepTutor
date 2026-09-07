@@ -775,3 +775,66 @@ def test_invalid_settings_version_never_becomes_legacy_fallback(tmp_path, versio
     with pytest.raises(ValueError, match="settings version"):
         service.load_lightrag()
     assert path.read_bytes() == before
+
+
+def test_provider_auto_ignores_saved_effort_and_survives_catalog_changes(role_environment):
+    """Automatic indexing keeps provider defaults across catalog edits and reloads."""
+    snapshot = policy.freeze_roles({"extract": choice(0), "vlm": {"mode": "disabled"}})
+    assert snapshot.extract.config.reasoning_effort == ""
+    persisted = snapshot.persisted_policy()
+    assert persisted["extract"]["descriptor"]["reasoning_effort"] == ""
+    role_environment["configs"]["p0"].reasoning_effort = "high"
+    restored = policy.snapshot_from_persisted(persisted)
+    assert restored.extract.config.reasoning_effort == ""
+    assert restored.extract.fingerprint == snapshot.extract.fingerprint
+    explicit = roles.resolve_selection(LLMSelection(**choice(0, "none")))
+    assert explicit.reasoning_effort == "none"
+
+
+def test_restoring_pre_auto_policy_preserves_legacy_resolution(role_environment):
+    """Old pinned policies do not silently acquire the new automatic semantics."""
+    role_environment["configs"]["p0"].reasoning_effort = None
+    original = policy._freeze_role(choice(0), provider_default=False)
+    persisted = policy.IndexingPolicySnapshot(original, None).persisted_policy()
+    assert persisted["extract"]["descriptor"]["reasoning_effort"] is None
+    restored = policy.snapshot_from_persisted(persisted)
+    assert restored.extract.config.reasoning_effort is None
+    assert restored.extract.fingerprint == original.fingerprint
+    role_environment["configs"]["p0"].reasoning_effort = "high"
+    with pytest.raises(policy.IndexingModelChangedError):
+        policy.snapshot_from_persisted(persisted)
+
+
+@pytest.mark.parametrize(
+    "binding,model",
+    [
+        ("gemini", "gemini-3.5-flash-lite"),
+        ("custom", "qwen3-32b"),
+        ("custom", "deepseek-v4-pro"),
+        ("openai", "gpt-5"),
+    ],
+)
+def test_provider_auto_omits_actual_reasoning_request_fields(role_environment, binding, model):
+    """Automatic roles produce no explicit reasoning or thinking request controls."""
+    from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
+    from deeptutor.services.provider_registry import find_by_name
+
+    role_environment["configs"]["p0"].binding = binding
+    role_environment["configs"]["p0"].model = model
+    config = roles.resolve_selection(LLMSelection(**choice(0)))
+    provider = OpenAICompatProvider(
+        api_key="synthetic", default_model=model, spec=find_by_name(binding), configure_env=False
+    )
+    body = provider._build_kwargs(
+        [{"role": "user", "content": "test"}],
+        None,
+        model,
+        100,
+        0,
+        config.reasoning_effort,
+        None,
+    )
+    assert "reasoning_effort" not in body
+    assert "reasoning" not in body
+    assert "thinking" not in body.get("extra_body", {})
+    assert "enable_thinking" not in body.get("extra_body", {})

@@ -353,3 +353,15 @@ it("prefills fresh indexing defaults with VLM disabled while preserving legacy v
     )?.vlm,
   ).toEqual({ mode: "enabled", selection: visionModel });
 });
+
+
+it("shows effective reasoning beside the model and resets automatic selection", () => {
+  render(<Editor initial={newRoleModels({ ...visionModel, reasoning_effort: "high" })} />);
+  const extract = within(screen.getByRole("group", { name: "EXTRACT" }));
+  expect(extract.getByText("Currently effective: Vision provider · Large · high")).toBeInTheDocument();
+  const baseReasoning = screen.getAllByRole("combobox", { name: "Reasoning effort" })[0];
+  fireEvent.change(baseReasoning, { target: { value: "" } });
+  expect(extract.getByText("Currently effective: Vision provider · Large · Auto")).toBeInTheDocument();
+  expect(within(baseReasoning).getByRole("option", { name: "Provider default (Auto)" })).toBeInTheDocument();
+  expect(screen.queryByText(/LightRAG recommends disabling/)).not.toBeInTheDocument();
+});
