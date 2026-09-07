@@ -12,7 +12,6 @@ import {
   decodeResourceSegment,
   knowledgeBaseRoute,
 } from "@/lib/resource-routes";
-import type { LightRagIndexingSelection } from "@/features/knowledge/model/types";
 
 const panelLoading = () => (
   <div
@@ -64,7 +63,6 @@ export default function KnowledgePage() {
     uploadFiles,
     setDefault,
     reindex,
-    updatePendingIndexingPolicy,
     retry,
     deleteKb,
     connectObsidian,
@@ -252,27 +250,15 @@ export default function KnowledgePage() {
   );
 
   const handleReindex = useCallback(
-    async (kbName: string, indexingLLM?: LightRagIndexingSelection) => {
+    async (kbName: string, configFingerprint?: string) => {
       try {
-        await reindex(kbName, indexingLLM);
+        await reindex(kbName, configFingerprint);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         throw err;
       }
     },
     [reindex, setError],
-  );
-
-  const handleUpdatePendingIndexingPolicy = useCallback(
-    async (kbName: string, indexingLLM: LightRagIndexingSelection) => {
-      try {
-        await updatePendingIndexingPolicy(kbName, indexingLLM);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        throw err;
-      }
-    },
-    [setError, updatePendingIndexingPolicy],
   );
 
   const handleRetry = useCallback(
@@ -373,7 +359,6 @@ export default function KnowledgePage() {
               onCreate={openCreate}
               onUpload={handleUpload}
               onReindex={handleReindex}
-              onUpdatePendingIndexingPolicy={handleUpdatePendingIndexingPolicy}
               onRetry={handleRetry}
               onSetDefault={handleSetDefault}
               onDelete={handleDelete}

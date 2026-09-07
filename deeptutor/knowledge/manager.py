@@ -596,9 +596,9 @@ class KnowledgeBaseManager:
                     continue
 
                 # Check if this is a valid KB directory (flat versions or legacy stores)
+                rag_storage = item / "rag_storage"
                 from deeptutor.services.rag.index_versioning import list_kb_versions
 
-                rag_storage = item / "rag_storage"
                 versions = list_kb_versions(item)
                 detected_provider = _detect_provider_from_versions(versions)
                 is_valid_kb = has_ready_provider_index(item, detected_provider) or (
@@ -1402,11 +1402,27 @@ class KnowledgeBaseManager:
             if indexing_policy is None:
                 pending = kb_config.get("pending_indexing_policy")
                 indexing_policy = (
-                    pending if isinstance(pending, dict) else {"policy": "legacy_unpinned"}
+                    {"policy": "defaults"}
+                    if not index_versions
+                    else pending
+                    if isinstance(pending, dict)
+                    else {"policy": "legacy_unpinned"}
                 )
             from deeptutor.services.rag.pipelines.lightrag.indexing_policy import public_policy
 
             metadata["indexing_policy"] = public_policy(indexing_policy)
+            if published_root is not None and indexing_policy.get("policy") == "pinned":
+                from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+                    IndexingPolicyError,
+                    snapshot_from_persisted,
+                )
+
+                try:
+                    snapshot_from_persisted(indexing_policy)
+                except (IndexingPolicyError, ValueError, PermissionError):
+                    # This is local catalog/access validation, not a model health probe.
+                    # Keep credential/provider exception details out of public metadata.
+                    metadata["indexing_model_unavailable"] = True
             for version in index_versions:
                 if isinstance(version.get("indexing_policy"), dict):
                     version["indexing_policy"] = public_policy(version["indexing_policy"])

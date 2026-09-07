@@ -16,7 +16,7 @@ from pathlib import Path
 import re
 import shutil
 import traceback
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -689,22 +689,6 @@ def _validate_registered_provider(raw_provider: str | None) -> str:
     return normalize_provider_name(raw_provider)
 
 
-def _freeze_indexing_llm_form(raw: str):
-    """Parse and resolve the optional LightRAG selection exactly once."""
-    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
-        IndexingPolicyError,
-        freeze_roles,
-    )
-
-    try:
-        selection = json.loads(raw)
-        if not isinstance(selection, dict) or not selection:
-            raise ValueError("indexing_llm must be a non-empty JSON object.")
-        return selection, freeze_roles(selection)
-    except (json.JSONDecodeError, ValueError, PermissionError, IndexingPolicyError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
 def _freeze_append_indexing(
     kb_name: str, base_dir: str | Path, provider: str, image_analysis: bool | None = None
 ) -> "IndexingPolicySnapshot | None":
@@ -729,15 +713,16 @@ def _freeze_append_indexing(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-def _freeze_default_indexing_llm():
+def _freeze_default_indexing_llm() -> "IndexingPolicySnapshot":
     """Freeze the released LightRAG model default for one create or rebuild."""
     from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
         IndexingPolicyError,
         freeze_default_snapshot,
+        with_embedding,
     )
 
     try:
-        return freeze_default_snapshot()
+        return with_embedding(freeze_default_snapshot())
     except (ValueError, PermissionError, IndexingPolicyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -3089,16 +3074,13 @@ async def _create_knowledge_base_owned(
 
         rag_provider = _validate_registered_provider(rag_provider)
         indexing_snapshot = None
-        if rag_provider == LIGHTRAG_PROVIDER:
-            if indexing_llm:
-                _, indexing_snapshot = _freeze_indexing_llm_form(indexing_llm)
-            else:
-                indexing_snapshot = _freeze_default_indexing_llm()
-        elif indexing_llm:
+        if indexing_llm:
             raise HTTPException(
                 status_code=400,
-                detail="indexing_llm is supported only for built-in LightRAG.",
+                detail="Configure LightRAG models in Settings; per-knowledge-base overrides are no longer supported.",
             )
+        if rag_provider == LIGHTRAG_PROVIDER:
+            indexing_snapshot = _freeze_default_indexing_llm()
         pageindex_mode = str(pageindex_mode or "").strip().lower()
         if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode not in {
             "",
@@ -3162,7 +3144,7 @@ async def _create_knowledge_base_owned(
                 manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
             if search_mode:
                 manager.config["knowledge_bases"][name]["search_mode"] = search_mode
-            if indexing_snapshot is not None:
+            if indexing_snapshot is not None and files:
                 pending_policy = indexing_snapshot.persisted_policy()
                 pending_policy["policy"] = "pending_pinned"
                 manager.config["knowledge_bases"][name]["pending_indexing_policy"] = pending_policy
@@ -3464,12 +3446,26 @@ async def run_reindex_task(
             task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
+@router.get("/knowledge-bases/{kb_name}/reindex-config")
+async def get_reindex_config(kb_name: str) -> dict[str, Any]:
+    """Read the exact current default configuration for rebuild confirmation."""
+    manager, kb_name, _ = _writable_kb(kb_name)
+    entry = _load_kb_entry_or_404(manager, kb_name)
+    _assert_not_connected_kb(kb_name, entry)
+    if _validate_registered_provider(entry.get("rag_provider")) != LIGHTRAG_PROVIDER:
+        raise HTTPException(status_code=400, detail="Rebuild configuration is only for LightRAG.")
+    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import public_rebuild_config
+
+    return public_rebuild_config(_freeze_default_indexing_llm())
+
+
 @router.post("/knowledge-bases/{kb_name}/reindex")
 async def reindex_knowledge_base(
     kb_name: str,
     background_tasks: BackgroundTasks,
     indexing_llm: str = Form(""),
-):
+    config_fingerprint: Annotated[str, Form()] = "",
+) -> dict[str, Any]:
     """Re-index ``kb_name`` through its bound RAG provider.
 
     LlamaIndex still keys versions by the active embedding model. The other
@@ -3486,17 +3482,24 @@ async def reindex_knowledge_base(
         )
         _assert_provider_ready(kb_provider)
         indexing_snapshot = None
-        if kb_provider == LIGHTRAG_PROVIDER:
-            if indexing_llm:
-                _, indexing_snapshot = _freeze_indexing_llm_form(indexing_llm)
-            else:
-                indexing_snapshot = _freeze_default_indexing_llm()
-        elif indexing_llm:
+        if indexing_llm:
             raise HTTPException(
                 status_code=400,
-                detail="indexing_llm is supported only for built-in LightRAG.",
+                detail="Configure LightRAG models in Settings; per-knowledge-base overrides are no longer supported.",
+            )
+        if kb_provider == LIGHTRAG_PROVIDER:
+            indexing_snapshot = _freeze_default_indexing_llm()
+
+        if indexing_snapshot is not None and config_fingerprint:
+            from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
+                public_rebuild_config,
             )
 
+            if public_rebuild_config(indexing_snapshot)["fingerprint"] != config_fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Default configuration changed. Review the updated configuration and confirm again.",
+                )
         kb_dir = kb_base_dir / kb_name
         if indexing_snapshot is not None:
             from deeptutor.services.rag.pipelines.lightrag.indexing_policy import bind_target
@@ -3572,110 +3575,21 @@ async def reindex_knowledge_base(
 async def update_pending_indexing_policy(
     kb_name: str,
     payload: LightRagIndexingSelection | IndexingLLMSelectionRequest,
-):
-    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import IndexingPolicyError
-    from deeptutor.services.rag.pipelines.lightrag.write_lock import write_ownership
-
-    _, resolved_name, base_dir = _writable_kb(kb_name)
-    try:
-        with write_ownership(base_dir / resolved_name):
-            return await _update_pending_indexing_policy_owned(kb_name, payload)
-    except IndexingPolicyError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-async def _update_pending_indexing_policy_owned(
-    kb_name: str,
-    payload: LightRagIndexingSelection | IndexingLLMSelectionRequest,
 ) -> dict[str, Any]:
-    """Change the pending model of an empty, unpublished LightRAG KB."""
-    manager, kb_name, kb_base_dir = _writable_kb(kb_name)
-    kb_entry = _load_kb_entry_or_404(manager, kb_name)
-    _assert_not_connected_kb(kb_name, kb_entry)
-    provider = _validate_registered_provider(kb_entry.get("rag_provider"))
-    if provider != LIGHTRAG_PROVIDER:
-        raise HTTPException(
-            status_code=400,
-            detail="Indexing-model policy is supported only for built-in LightRAG.",
-        )
-
-    def assert_no_active_task(entry: dict) -> None:
-        status = str(entry.get("status") or "").lower()
-        progress = entry.get("progress")
-        stage = str(progress.get("stage") or "").lower() if isinstance(progress, dict) else ""
-        if status in {"initializing", "processing"} and stage not in {
-            "completed",
-            "error",
-        }:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "The pending indexing model cannot change while an indexing task is active."
-                ),
-            )
-
-    assert_no_active_task(kb_entry)
-    kb_dir = kb_base_dir / kb_name
-    from deeptutor.services.rag.pipelines.lightrag.storage import latest_published_root
-
-    if latest_published_root(kb_dir) is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "This knowledge base already has a published index; run a full re-index "
-                "to change its model."
-            ),
-        )
-    raw_dir = kb_dir / "raw"
-    if raw_dir.is_dir() and any(path.is_file() for path in raw_dir.rglob("*")):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "The pending indexing model can change only while the knowledge base is empty."
-            ),
-        )
-
-    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
-        IndexingPolicyError,
-        pending_policy_for_selection,
+    """Reject obsolete model edits instead of saving a policy that will not apply."""
+    manager, kb_name, _ = _writable_kb(kb_name)
+    _load_kb_entry_or_404(manager, kb_name)
+    raise HTTPException(
+        status_code=409,
+        detail="Empty LightRAG knowledge bases follow defaults. Configure models in Settings.",
     )
-
-    try:
-        policy = pending_policy_for_selection(payload.model_dump(exclude_none=True))
-    except (ValueError, PermissionError, IndexingPolicyError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Re-read immediately before saving so a task queued during model
-    # resolution cannot be overwritten through a stale entry reference.
-    kb_entry = _load_kb_entry_or_404(manager, kb_name)
-    assert_no_active_task(kb_entry)
-    if latest_published_root(kb_dir) is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "This knowledge base already has a published index; run a full re-index "
-                "to change its model."
-            ),
-        )
-    if raw_dir.is_dir() and any(path.is_file() for path in raw_dir.rglob("*")):
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "The pending indexing model can change only while the knowledge base is empty."
-            ),
-        )
-    kb_entry["pending_indexing_policy"] = policy
-    manager._save_config()
-    from deeptutor.services.rag.pipelines.lightrag.indexing_policy import public_policy
-
-    return {"indexing_policy": public_policy(policy)}
 
 
 @router.post("/knowledge-bases/{kb_name}/retry")
 async def retry_knowledge_base(
     kb_name: str,
     background_tasks: BackgroundTasks,
-):
+) -> dict[str, Any]:
     """Retry a failed KB initialization/indexing run from its stored raw files."""
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
@@ -3691,7 +3605,14 @@ async def retry_knowledge_base(
                     "Use re-index when you want to rebuild a healthy knowledge base."
                 ),
             )
-        return await reindex_knowledge_base(resolved_name, background_tasks, indexing_llm="")
+        if normalize_provider_name(kb_entry.get("rag_provider")) == LIGHTRAG_PROVIDER:
+            raise HTTPException(
+                status_code=409,
+                detail="Review current defaults in Index versions and confirm the LightRAG rebuild.",
+            )
+        return await reindex_knowledge_base(
+            resolved_name, background_tasks, indexing_llm="", config_fingerprint=""
+        )
     except HTTPException:
         raise
     except Exception as e:

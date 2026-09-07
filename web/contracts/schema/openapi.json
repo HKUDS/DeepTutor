@@ -752,6 +752,11 @@
       },
       "Body_reindex_knowledge_base_api_knowledge_bases__kb_name__reindex_post": {
         "properties": {
+          "config_fingerprint": {
+            "default": "",
+            "title": "Config Fingerprint",
+            "type": "string"
+          },
           "indexing_llm": {
             "default": "",
             "title": "Indexing Llm",
@@ -20958,6 +20963,7 @@
     },
     "/api/knowledge-bases/{kb_name}/indexing-policy": {
       "put": {
+        "description": "Reject obsolete model edits instead of saving a policy that will not apply.",
         "operationId": "update_pending_indexing_policy_api_knowledge_bases__kb_name__indexing_policy_put",
         "parameters": [
           {
@@ -21024,7 +21030,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Pending Indexing Policy Api Knowledge Bases  Kb Name  Indexing Policy Put",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -21498,7 +21508,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reindex Knowledge Base Api Knowledge Bases  Kb Name  Reindex Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -21515,6 +21529,83 @@
           }
         },
         "summary": "Reindex Knowledge Base",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/api/knowledge-bases/{kb_name}/reindex-config": {
+      "get": {
+        "description": "Read the exact current default configuration for rebuild confirmation.",
+        "operationId": "get_reindex_config_api_knowledge_bases__kb_name__reindex_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_name",
+            "required": true,
+            "schema": {
+              "title": "Kb Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Reindex Config Api Knowledge Bases  Kb Name  Reindex Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Reindex Config",
         "tags": [
           "knowledge-bases"
         ]
@@ -21571,7 +21662,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Retry Knowledge Base Api Knowledge Bases  Kb Name  Retry Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"

@@ -21,10 +21,13 @@ import importlib.util
 import inspect
 import logging
 import re
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
+    from lightrag.utils import EmbeddingFunc
+
     from deeptutor.multi_user.models import CurrentUser
+    from deeptutor.services.embedding.config import EmbeddingConfig
     from deeptutor.services.llm.config import LLMConfig
 
     from .worker import OwnerLoopBridge
@@ -283,8 +286,8 @@ def build_llm_model_func(
     ):
         del enable_cot
 
-        async def request():
-            async def complete():
+        async def request() -> Any:
+            async def complete() -> Any:
                 provider_kwargs = {}
                 if response_format is not None:
                     provider_kwargs["response_format"] = response_format
@@ -344,8 +347,8 @@ def build_vision_model_func(
         if not isinstance(image_data, str) or not image_data.strip():
             raise ValueError("LightRAG vision image input requires a non-empty base64 value")
 
-        async def request():
-            async def complete():
+        async def request() -> Any:
+            async def complete() -> Any:
                 provider_kwargs = {}
                 if response_format is not None:
                     provider_kwargs["response_format"] = response_format
@@ -382,13 +385,17 @@ def vision_model_available() -> bool:
         return False
 
 
-def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
+def build_embedding_func(
+    *,
+    io_bridge: OwnerLoopBridge | None = None,
+    embedding_config: EmbeddingConfig | None = None,
+) -> EmbeddingFunc:
     """Wrap DeepTutor's embedding client in LightRAG's ``EmbeddingFunc``."""
     from lightrag.utils import EmbeddingFunc
 
     from deeptutor.services.embedding import get_embedding_client, get_embedding_config
 
-    cfg = get_embedding_config()
+    cfg = embedding_config if embedding_config is not None else get_embedding_config()
     dim = int(getattr(cfg, "dim", 0) or 0)
     if not dim:
         raise LightRagNotConfiguredError(
@@ -396,9 +403,14 @@ def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
             "Settings → Catalog before using a LightRAG knowledge base."
         )
 
-    client = get_embedding_client()
+    if embedding_config is None:
+        client = get_embedding_client()
+    else:
+        from deeptutor.services.embedding.client import EmbeddingClient
 
-    async def embedding_func(texts, context=None, **_ignored):
+        client = EmbeddingClient(config=cfg)
+
+    async def embedding_func(texts: list[str], context: str | None = None, **_ignored: Any) -> Any:
         import numpy as np
 
         # No context means no role. Defaulting to "document" would label
@@ -408,7 +420,7 @@ def build_embedding_func(*, io_bridge: OwnerLoopBridge | None = None):
             "document": "search_document",
         }.get(str(context or "").strip().lower())
 
-        async def request():
+        async def request() -> Any:
             return await client.embed(texts, input_type=input_type)
 
         vectors = await io_bridge.run(request) if io_bridge is not None else await request()

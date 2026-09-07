@@ -1772,7 +1772,10 @@ export interface paths {
       readonly cookie?: never;
     };
     readonly get?: never;
-    /** Update Pending Indexing Policy */
+    /**
+     * Update Pending Indexing Policy
+     * @description Reject obsolete model edits instead of saving a policy that will not apply.
+     */
     readonly put: operations["update_pending_indexing_policy_api_knowledge_bases__kb_name__indexing_policy_put"];
     readonly post?: never;
     readonly delete?: never;
@@ -1907,6 +1910,26 @@ export interface paths {
      *     without requiring an embedding-signature precheck.
      */
     readonly post: operations["reindex_knowledge_base_api_knowledge_bases__kb_name__reindex_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/knowledge-bases/{kb_name}/reindex-config": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Get Reindex Config
+     * @description Read the exact current default configuration for rebuild confirmation.
+     */
+    readonly get: operations["get_reindex_config_api_knowledge_bases__kb_name__reindex_config_get"];
+    readonly put?: never;
+    readonly post?: never;
     readonly delete?: never;
     readonly options?: never;
     readonly head?: never;
@@ -9302,6 +9325,11 @@ export interface components {
     };
     /** Body_reindex_knowledge_base_api_knowledge_bases__kb_name__reindex_post */
     readonly Body_reindex_knowledge_base_api_knowledge_bases__kb_name__reindex_post: {
+      /**
+       * Config Fingerprint
+       * @default
+       */
+      readonly config_fingerprint: string;
       /**
        * Indexing Llm
        * @default
@@ -18079,7 +18107,9 @@ export interface operations {
           readonly [name: string]: unknown;
         };
         content: {
-          readonly "application/json": unknown;
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
         };
       };
       /** @description Validation Error */
@@ -18298,7 +18328,46 @@ export interface operations {
           readonly [name: string]: unknown;
         };
         content: {
-          readonly "application/json": unknown;
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_reindex_config_api_knowledge_bases__kb_name__reindex_config_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly kb_name: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
         };
       };
       /** @description Validation Error */
@@ -18333,7 +18402,9 @@ export interface operations {
           readonly [name: string]: unknown;
         };
         content: {
-          readonly "application/json": unknown;
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
         };
       };
       /** @description Validation Error */

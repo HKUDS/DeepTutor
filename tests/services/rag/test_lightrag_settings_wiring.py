@@ -113,7 +113,7 @@ def test_vlm_role_is_only_configured_when_enabled(monkeypatch, tmp_path: Path) -
         lambda _snapshot: "snapshot-fingerprint",
     )
 
-    pair = types.SimpleNamespace(extract=snapshot, vlm=snapshot, limits={})
+    pair = types.SimpleNamespace(extract=snapshot, vlm=snapshot, limits={}, embedding_config=None)
     rag = engine.build_rag(tmp_path, enable_vlm=True, indexing_snapshot=pair)
 
     role = rag.kwargs["role_llm_configs"]["vlm"]
@@ -150,7 +150,7 @@ def test_indexing_uses_frozen_roles_without_resolving_query_models(
         lambda _snapshot: "snapshot-fingerprint",
     )
 
-    pair = types.SimpleNamespace(extract=snapshot, vlm=snapshot, limits={})
+    pair = types.SimpleNamespace(extract=snapshot, vlm=snapshot, limits={}, embedding_config=None)
     rag = engine.build_rag(tmp_path, enable_vlm=True, indexing_snapshot=pair)
 
     assert "llm_config" in llm_calls[0]

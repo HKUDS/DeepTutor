@@ -16,9 +16,10 @@ export {
   probeWeKnora,
   readErrorDetail,
   reindexKnowledgeBase,
+  getReindexConfig,
+  type LightRagRebuildConfig,
   retryKnowledgeBase,
   setDefaultKnowledgeBase,
-  updatePendingIndexingPolicy,
 } from "./client";
 
 export type {

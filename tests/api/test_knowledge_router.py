@@ -2290,7 +2290,7 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
     assert manager.config["knowledge_bases"]["kb-light"]["search_mode"] == "hybrid"
 
 
-def test_create_empty_lightrag_kb_persists_redacted_pending_policy(
+def test_create_empty_lightrag_kb_does_not_persist_creation_time_policy(
     monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
@@ -2307,17 +2307,11 @@ def test_create_empty_lightrag_kb_persists_redacted_pending_policy(
             "vision_available": True,
         }
     )
-    seen: list[str] = []
-
-    def freeze_form(raw: str):
-        seen.append(raw)
-        return {"profile_id": "profile-1", "model_id": "model-1"}, snapshot
-
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
     monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
     monkeypatch.setattr(knowledge_router_module, "_assert_provider_ready", lambda _provider: None)
-    monkeypatch.setattr(knowledge_router_module, "_freeze_indexing_llm_form", freeze_form)
+    monkeypatch.setattr(knowledge_router_module, "_freeze_default_indexing_llm", lambda: snapshot)
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -2325,16 +2319,12 @@ def test_create_empty_lightrag_kb_persists_redacted_pending_policy(
             data={
                 "name": "kb-pending",
                 "rag_provider": "lightrag",
-                "indexing_llm": json.dumps({"profile_id": "profile-1", "model_id": "model-1"}),
             },
         )
 
     assert response.status_code == 200
-    assert len(seen) == 1
-    pending = manager.config["knowledge_bases"]["kb-pending"]["pending_indexing_policy"]
-    assert pending["policy"] == "pending_pinned"
-    assert pending["fingerprint"] == "a" * 64
-    assert pending["selection"] == {"profile_id": "profile-1", "model_id": "model-1"}
+    assert response.json()["task_id"] is None
+    assert "pending_indexing_policy" not in manager.config["knowledge_bases"]["kb-pending"]
     assert not list((manager.base_dir / "kb-pending").glob("version-*"))
 
 
@@ -2359,7 +2349,9 @@ def test_create_rejects_indexing_selection_for_other_provider_before_registratio
     assert manager.config["knowledge_bases"] == {}
 
 
-def test_empty_lightrag_kb_can_update_pending_indexing_policy(monkeypatch, tmp_path: Path) -> None:
+def test_empty_lightrag_kb_rejects_obsolete_pending_model_edits(
+    monkeypatch, tmp_path: Path
+) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     manager.config["knowledge_bases"]["empty"] = {
         "rag_provider": "lightrag",
@@ -2398,9 +2390,9 @@ def test_empty_lightrag_kb_can_update_pending_indexing_policy(monkeypatch, tmp_p
             },
         )
 
-    assert response.status_code == 200
-    assert response.json()["indexing_policy"] == policy
-    assert manager.config["knowledge_bases"]["empty"]["pending_indexing_policy"] == policy
+    assert response.status_code == 409
+    assert "Settings" in response.json()["detail"]
+    assert "pending_indexing_policy" not in manager.config["knowledge_bases"]["empty"]
 
 
 @pytest.mark.parametrize("reason", ["published", "documents", "active"])
@@ -2457,15 +2449,14 @@ def test_reindex_passes_frozen_lightrag_snapshot_to_background_task(
     monkeypatch.setattr(knowledge_router_module, "_assert_provider_ready", lambda _provider: None)
     monkeypatch.setattr(
         knowledge_router_module,
-        "_freeze_indexing_llm_form",
-        lambda _raw: ({"profile_id": "profile-1", "model_id": "model-1"}, snapshot),
+        "_freeze_default_indexing_llm",
+        lambda: snapshot,
     )
     monkeypatch.setattr(knowledge_router_module, "run_reindex_task", capture_task)
 
     with TestClient(_build_app()) as client:
         response = client.post(
             "/api/knowledge-bases/kb/reindex",
-            data={"indexing_llm": json.dumps({"profile_id": "profile-1", "model_id": "model-1"})},
         )
 
     assert response.status_code == 200
@@ -2834,3 +2825,25 @@ def test_lightrag_role_settings_validate_before_save(monkeypatch, tmp_path):
     ):
         assert client.put(url, json=invalid).status_code == 422
         assert client.get(url).json() == before
+
+
+def test_lightrag_retry_requires_confirmed_rebuild(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["failed-kb"] = {
+        "path": "failed-kb",
+        "status": "error",
+        "rag_provider": "lightrag",
+    }
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    calls = []
+
+    async def reindex(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(knowledge_router_module, "reindex_knowledge_base", reindex)
+    with TestClient(_build_app()) as client:
+        response = client.post("/api/knowledge-bases/failed-kb/retry")
+    assert response.status_code == 409
+    assert "confirm" in response.json()["detail"]
+    assert calls == []
+    assert manager.config["knowledge_bases"]["failed-kb"]["status"] == "error"

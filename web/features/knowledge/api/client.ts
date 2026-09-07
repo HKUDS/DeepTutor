@@ -727,7 +727,6 @@ export async function createKnowledgeBase(payload: {
   files: File[];
   pageindexMode?: "flash" | "standard";
   searchMode?: string;
-  indexingLLM?: IndexingLLMSelection | LightRagIndexingSelection;
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   form.append("name", payload.name);
@@ -736,9 +735,6 @@ export async function createKnowledgeBase(payload: {
     form.append("pageindex_mode", payload.pageindexMode);
   }
   if (payload.searchMode) form.append("search_mode", payload.searchMode);
-  if (payload.indexingLLM) {
-    form.append("indexing_llm", JSON.stringify(payload.indexingLLM));
-  }
   appendFilesWithPaths(form, payload.files);
 
   const res = await apiFetch(apiUrl("/api/knowledge-bases"), {
@@ -1219,14 +1215,34 @@ export async function setDefaultKnowledgeBase(name: string): Promise<void> {
   invalidateKnowledgeCaches();
 }
 
+export interface LightRagRebuildConfig {
+  fingerprint: string;
+  indexing_policy: import("@/lib/knowledge-helpers").LightRagIndexingPolicy;
+  embedding: { model: string; dimension: number };
+}
+
+export async function getReindexConfig(
+  name: string,
+): Promise<LightRagRebuildConfig> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/reindex-config`),
+    { cache: "no-store" },
+  );
+  if (!res.ok)
+    throw new Error(
+      await readErrorDetail(res, "Failed to load rebuild configuration"),
+    );
+  return (await res.json()) as LightRagRebuildConfig;
+}
+
 export async function reindexKnowledgeBase(
   name: string,
-  indexingLLM?: IndexingLLMSelection | LightRagIndexingSelection,
+  configFingerprint?: string,
 ): Promise<KnowledgeTaskResponse> {
   const request: RequestInit = { method: "POST" };
-  if (indexingLLM) {
+  if (configFingerprint) {
     const form = new FormData();
-    form.append("indexing_llm", JSON.stringify(indexingLLM));
+    form.append("config_fingerprint", configFingerprint);
     request.body = form;
   }
   const res = await apiFetch(
@@ -1244,30 +1260,6 @@ export async function reindexKnowledgeBase(
   }
   invalidateKnowledgeCaches();
   return (await res.json()) as KnowledgeTaskResponse;
-}
-
-export async function updatePendingIndexingPolicy(
-  name: string,
-  indexingLLM: IndexingLLMSelection | LightRagIndexingSelection,
-): Promise<{ indexing_policy: Record<string, unknown> }> {
-  const res = await apiFetch(
-    apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/indexing-policy`),
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(indexingLLM),
-    },
-  );
-  if (!res.ok) {
-    throw new Error(
-      await readErrorDetail(
-        res,
-        `Failed to update indexing model (${res.status})`,
-      ),
-    );
-  }
-  invalidateKnowledgeCaches();
-  return (await res.json()) as { indexing_policy: Record<string, unknown> };
 }
 
 export async function retryKnowledgeBase(

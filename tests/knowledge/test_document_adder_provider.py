@@ -98,6 +98,14 @@ def test_document_adder_allows_empty_lightrag_kb_to_bootstrap(monkeypatch, tmp_p
             model="fixture", binding="openai", api_key="offline-fixture"
         ),
     )
+    from deeptutor.services.embedding.config import EmbeddingConfig
+
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.get_embedding_config",
+        lambda: EmbeddingConfig(
+            model="embed-fixture", api_key="fake", dim=3, base_url="https://embed.test"
+        ),
+    )
     (tmp_path / "empty-kb").mkdir()
 
     adder = DocumentAdder(

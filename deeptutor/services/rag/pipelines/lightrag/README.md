@@ -12,16 +12,18 @@ Shared engine settings require administrator access when authentication is enabl
 | VLM | Requested image analysis | Disabled, base or explicit vision model |
 
 Fresh settings are distinguished from historical settings. Choose and save a
-LightRAG base before querying; creation can also use explicit indexing selections.
+LightRAG base in Settings before querying or creating a knowledge base.
 New role configurations disable VLM by default. Inheriting the base for VLM
 requires a model that supports image inputs. Disabling VLM preserves text,
 table and equation processing. An explicit image-analysis request on a disabled
 index fails with full-rebuild guidance.
 
-Each enabled role can override supported reasoning effort. An unspecified value
-inherits the selected model's saved default; `none` explicitly disables reasoning
-where supported. Unsupported choices are rejected without substituting another
-model or reasoning level. Concurrency and timeout limits apply per role to
+Each enabled role can override supported reasoning effort. `Auto` leaves reasoning
+controls to the provider; `none` explicitly disables reasoning where supported.
+An inherited role follows the base reasoning unless it has its own override.
+Restoring an older pinned index retains its recorded reasoning semantics.
+Unsupported choices are rejected without substituting another model or reasoning
+level. Concurrency and timeout limits apply per role to
 subsequent tasks and do not require rebuilding. Accepted tasks keep their effective
 models, reasoning and limits while queued and running.
 
@@ -33,9 +35,15 @@ even when LightRAG requests its COT output format.
 
 ## Creating, appending and rebuilding
 
-Creation and full rebuild dialogs prefill EXTRACT and VLM from engine settings.
-You may change both for that index. An empty, idle knowledge base also allows
-editing its pending selection before first publication.
+Configure models in Settings. Creation and full rebuild do not offer per-index
+model overrides. An idle, unpublished empty knowledge base follows current valid
+defaults until its first accepted indexing task freezes the configuration.
+
+Before rebuilding, review the current default embedding model/dimension and
+EXTRACT/VLM models and reasoning. If defaults change before submission, review
+and confirm the refreshed configuration. Accepted tasks retain the same embedding
+and role settings through execution and version publication. Failed-task retry
+actions also use this confirmation flow.
 
 After publication, uploads and folder/GitHub sync use the index's pinned EXTRACT
 and VLM identities. Changing engine defaults does not change an existing index.
@@ -43,9 +51,13 @@ Enabling, disabling or replacing VLM, or replacing EXTRACT or their reasoning
 configuration, requires a full rebuild. If a valid VLM was pinned before the first
 image, later image uploads can use it without another rebuild.
 
-The index details show pending or published model provenance, effective vision
-state and whether VLM was used. A failed or cancelled rebuild keeps the previous
-published index. A queued operation whose target changed fails before writing;
+Index versions show their version identifier, state, timestamp and actual embedding,
+EXTRACT and VLM configuration. The display distinguishes provider-default reasoning,
+explicit `none` and disabled VLM. Returning from Settings refreshes default-role
+summaries. Unavailable pinned indexing models require restoring access or rebuilding
+with new defaults, but do not unconditionally block existing text retrieval.
+A failed or cancelled rebuild keeps the previous published index. A queued
+operation whose target changed fails before writing;
 resubmit it against the current index. Concurrent writers for one knowledge base
 are rejected, so wait for the active operation to finish before resubmitting.
 

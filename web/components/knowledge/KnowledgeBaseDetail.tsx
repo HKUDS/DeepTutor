@@ -16,10 +16,7 @@ import {
   Star,
   Upload,
 } from "lucide-react";
-import type {
-  LightRagIndexingSelection,
-  KnowledgeUploadPolicy,
-} from "@/features/knowledge/model/types";
+import type { KnowledgeUploadPolicy } from "@/features/knowledge/model/types";
 import {
   formatKnowledgeTimestamp,
   isMarginNoteKb,
@@ -55,14 +52,7 @@ interface KnowledgeBaseDetailProps {
     files: File[],
     destSubdir?: string,
   ) => Promise<void>;
-  onReindex: (
-    kbName: string,
-    indexingLLM?: LightRagIndexingSelection,
-  ) => Promise<void>;
-  onUpdatePendingIndexingPolicy: (
-    kbName: string,
-    indexingLLM: LightRagIndexingSelection,
-  ) => Promise<void>;
+  onReindex: (kbName: string, configFingerprint?: string) => Promise<void>;
   onRetry: (kbName: string) => Promise<void>;
   onSetDefault: (kbName: string) => Promise<void>;
   onDelete: (kbName: string) => Promise<void>;
@@ -94,7 +84,6 @@ export default function KnowledgeBaseDetail({
   onCreate,
   onUpload,
   onReindex,
-  onUpdatePendingIndexingPolicy,
   onRetry,
   onSetDefault,
   onDelete,
@@ -159,6 +148,10 @@ export default function KnowledgeBaseDetail({
 
   const handleRetry = async () => {
     if (!canRetry || retrySubmitting || isReindexingLocally) return;
+    if (kbProvider(kb) === "lightrag") {
+      setSection("versions");
+      return;
+    }
     setRetrySubmitting(true);
     try {
       await onRetry(kb.name);
@@ -245,7 +238,11 @@ export default function KnowledgeBaseDetail({
               )}
               {retrySubmitting || isReindexingLocally
                 ? t("Retrying…")
-                : t("Retry indexing")}
+                : t(
+                    kbProvider(kb) === "lightrag"
+                      ? "Review rebuild"
+                      : "Retry indexing",
+                  )}
             </button>
           )}
         </div>
@@ -300,17 +297,12 @@ export default function KnowledgeBaseDetail({
                 <KbIndexVersionsSection
                   kb={kb}
                   task={task}
-                  onReindex={(indexingLLM) =>
+                  onReindex={(configFingerprint) =>
                     kb.read_only
                       ? Promise.resolve()
                       : status === "error" && kbProvider(kb) !== "lightrag"
                         ? handleRetry()
-                        : onReindex(kb.name, indexingLLM)
-                  }
-                  onUpdatePendingIndexingPolicy={(indexingLLM) =>
-                    kb.read_only
-                      ? Promise.resolve()
-                      : onUpdatePendingIndexingPolicy(kb.name, indexingLLM)
+                        : onReindex(kb.name, configFingerprint)
                   }
                 />
               )}

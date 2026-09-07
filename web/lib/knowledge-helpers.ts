@@ -103,6 +103,8 @@ export interface IndexVersion {
   legacy?: boolean;
   failure_summary?: string;
   indexing_policy?: LightRagIndexingPolicy;
+  embedding_model?: string;
+  embedding_dim?: number;
 }
 
 export interface LightRagIndexingPolicy {
@@ -182,6 +184,7 @@ export interface KnowledgeBase {
     /** Bound partner id when agent_kind === "partner". */
     partner_id?: string;
     indexing_policy?: LightRagIndexingPolicy;
+    indexing_model_unavailable?: boolean;
   };
   progress?: ProgressInfo;
   statistics?: {
@@ -387,6 +390,8 @@ export const resolveKnowledgeIndexFailure = (
   ]);
   const completionConfigurationCodes = new Set([
     "graphrag_model_incompatible",
+    "indexing_model_unavailable",
+    "reindex_required",
     "graphrag_provider_unsupported",
     "graphrag_model_authentication_failed",
     "graphrag_model_endpoint_failed",
@@ -425,6 +430,7 @@ export const kbRequiresLightRagRebuildBeforeAppend = (
 export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
   resolveKbStatus(kb) === "ready" &&
   !kbNeedsReindex(kb) &&
+  !kb.metadata?.indexing_model_unavailable &&
   !kbRequiresLightRagRebuildBeforeAppend(kb);
 
 export const kbCanUploadDocuments = (
@@ -434,6 +440,7 @@ export const kbCanUploadDocuments = (
   kbIsUploadable(kb) ||
   (resolveKbStatus(kb) === "error" &&
     !indexingActive &&
+    !kb.metadata?.indexing_model_unavailable &&
     !kbRequiresLightRagRebuildBeforeAppend(kb));
 
 export const kbCanReindex = (kb: KnowledgeBase): boolean => {

@@ -1,4 +1,5 @@
 {
+  "Review rebuild": "查看重建配置",
   "language.english": "English",
   "language.chinese": "中文",
   "Start": "开始",
@@ -4036,5 +4037,15 @@
   "Choose indexing models": "选择索引模型",
   "Indexing models (optional override)": "索引模型（可选覆盖）",
   "Engine model settings are used by default. The resolved models are pinned when this index is created.": "默认使用 LightRAG 引擎的索引模型设置；创建时会将实际模型固定到这个索引版本。",
-  "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild.": "创建后，更换 EXTRACT 模型或启用、禁用、更换 VLM 均需完整重建索引。"
+  "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild.": "创建后，更换 EXTRACT 模型或启用、禁用、更换 VLM 均需完整重建索引。",
+  "Configure valid LightRAG defaults in Settings before creating a knowledge base.": "请先在设置中配置有效的 LightRAG 默认模型，再创建知识库。",
+  "Rebuild with current defaults. The previous index version is preserved until the rebuild succeeds.": "使用当前默认配置重建。重建成功前保留原索引版本。",
+  "Rebuild index with current defaults": "使用当前默认配置重建索引",
+  "Confirm rebuild": "确认重建",
+  "This rebuild uses the defaults shown below for the full index. Change models in Settings. The configuration is fixed when you confirm; the previous version is preserved if rebuilding fails.": "本次完整重建将采用下列默认配置。请在设置中修改模型。确认提交后固定本次配置；重建失败时保留原索引版本。",
+  "Rebuild configuration": "本次重建配置",
+  "Index configuration": "索引配置",
+  "The pinned EXTRACT or VLM configuration is unavailable. Restore model access in Settings, or update defaults and rebuild to replace the model. Existing text retrieval does not require these indexing models.": "此索引固定的 EXTRACT 或 VLM 配置不可用。请在设置中恢复模型访问；如需更换模型，请修改默认配置后重建。已有文本检索不依赖这些索引模型。",
+  "Restore access to the pinned indexing models in Settings before adding documents.": "请先在设置中恢复此索引固定模型的访问权限，再添加文档。",
+  "Default configuration changed. Review the updated configuration and confirm again.": "默认配置已更改。请查看更新后的配置并重新确认。"
 }

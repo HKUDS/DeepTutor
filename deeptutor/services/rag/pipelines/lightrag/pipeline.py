@@ -22,7 +22,6 @@ from . import config as lr_config
 from .indexing_policy import (
     IndexingPolicyError,
     IndexingPolicySnapshot,
-    effective_policy,
     freeze_default_snapshot,
     resolve_write_snapshot,
 )
@@ -391,15 +390,8 @@ class LightRagPipeline:
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         snapshot = kwargs.get("indexing_snapshot") or kwargs.get("accepted_indexing_snapshot")
         if snapshot is None:
-            policy = effective_policy(
-                kb_dir,
-                base_dir=self.kb_base_dir,
-                kb_name=kb_name,
-            )
-            if policy is not None and policy.get("policy") == "pending_pinned":
-                snapshot = indexing_policy.snapshot_from_persisted(policy)
-            else:
-                snapshot = freeze_default_snapshot()
+            snapshot = freeze_default_snapshot()
+        snapshot = indexing_policy.with_embedding(snapshot)
         if "image_analysis" in kwargs:
             snapshot = indexing_policy.with_image_analysis(snapshot, kwargs["image_analysis"])
         root_dir = resolve_storage_dir_for_rebuild(kb_dir, None)
@@ -414,7 +406,9 @@ class LightRagPipeline:
             before_publish = kwargs.get("before_publish")
             if before_publish is not None:
                 before_publish(root_dir)
-            storage.write_meta(root_dir, indexing_policy=policy)
+            storage.write_meta(
+                root_dir, indexing_policy=policy, embedding_config=snapshot.embedding_config
+            )
             self._clear_pending_policy(kb_name)
             return outcome.complete
         except asyncio.CancelledError:
@@ -468,6 +462,7 @@ class LightRagPipeline:
             kb_name=kb_name,
             explicit=explicit,
         )
+        snapshot = indexing_policy.with_embedding(snapshot)
         if "image_analysis" in kwargs:
             snapshot = indexing_policy.with_image_analysis(snapshot, kwargs["image_analysis"])
         if existing is not None:
@@ -489,11 +484,15 @@ class LightRagPipeline:
                 before_publish = kwargs.get("before_publish")
                 if before_publish is not None:
                     before_publish(root_dir)
-                storage.write_meta(root_dir, indexing_policy=policy)
+                storage.write_meta(
+                    root_dir, indexing_policy=policy, embedding_config=snapshot.embedding_config
+                )
                 self._clear_pending_policy(kb_name)
             else:
                 try:
-                    storage.write_meta(root_dir, indexing_policy=policy)
+                    storage.write_meta(
+                        root_dir, indexing_policy=policy, embedding_config=snapshot.embedding_config
+                    )
                     self._clear_pending_policy(kb_name)
                 except Exception:
                     self.logger.warning(
@@ -544,12 +543,22 @@ class LightRagPipeline:
         try:
             self._ensure_available()
 
+            from copy import deepcopy
+
+            from deeptutor.services.embedding import get_embedding_config
+
             from .roles import resolve_query_roles
 
+            embedding_config = deepcopy(get_embedding_config())
             query_roles = resolve_query_roles()
 
-            async def job(io_bridge: OwnerLoopBridge):
-                rag = engine.build_rag(root_dir, io_bridge=io_bridge, query_roles=query_roles)
+            async def job(io_bridge: OwnerLoopBridge) -> Any:
+                rag = engine.build_rag(
+                    root_dir,
+                    io_bridge=io_bridge,
+                    query_roles=query_roles,
+                    embedding_config=embedding_config,
+                )
                 failed = True
                 try:
                     await engine.initialize(rag)

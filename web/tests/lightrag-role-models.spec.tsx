@@ -6,9 +6,8 @@ import LightRagRoleModelsEditor, {
   resolvedRole,
   roleModelsValidationError,
 } from "@/components/knowledge/LightRagRoleModelsEditor";
-import LightRagIndexingSelector, {
+import {
   indexingSelectionFromDefaults,
-  indexingSelectionFromPolicy,
   isCompleteIndexingSelection,
 } from "@/components/knowledge/LightRagIndexingSelector";
 import type {
@@ -180,7 +179,7 @@ describe("LightRAG role editor", () => {
     ).not.toBeInTheDocument();
   });
 });
-it("prefills independent indexing roles and preserves a saved disabled policy", () => {
+it("resolves independent indexing role defaults", () => {
   const roles = newRoleModels(textModel);
   roles.vlm = {
     mode: "model",
@@ -202,109 +201,15 @@ it("prefills independent indexing roles and preserves a saved disabled policy", 
       selection: { ...visionModel, reasoning_effort: "none" },
     },
   });
-  expect(
-    indexingSelectionFromPolicy({
-      schema_version: 2,
-      policy: "pending_pinned",
-      extract: { policy: "pinned", selection: textModel },
-      vlm: { mode: "disabled" },
-    }),
-  ).toEqual({ extract: textModel, vlm: { mode: "disabled" } });
-});
-it("selects a vision model without a duplicate VLM control", () => {
-  function Draft() {
-    const [selection, setSelection] =
-      useState<LightRagIndexingSelection | null>({
-        extract: textModel,
-        vlm: { mode: "disabled" },
-      });
-    return (
-      <>
-        <LightRagIndexingSelector
-          options={options}
-          selection={selection}
-          onChange={setSelection}
-          loading={false}
-          error={false}
-        />
-        <output data-testid="draft">{JSON.stringify(selection)}</output>
-        <button disabled={!isCompleteIndexingSelection(selection)}>
-          Submit
-        </button>
-      </>
-    );
-  }
-  render(<Draft />);
-  fireEvent.change(
-    screen.getByRole("combobox", { name: "VLM image analysis" }),
-    {
-      target: { value: "vision:large" },
-    },
-  );
-  expect(
-    JSON.parse(screen.getByTestId("draft").textContent ?? "{}").vlm,
-  ).toEqual({
-    mode: "enabled",
-    selection: visionModel,
-  });
-  expect(screen.getByRole("button", { name: "Submit" })).toBeEnabled();
-  expect(
-    screen.queryByRole("combobox", { name: "VLM model" }),
-  ).not.toBeInTheDocument();
-});
+ });
 
-it("blocks structurally complete indexing selections whose models disappeared", () => {
+it("rejects default indexing models missing from the accessible catalog", () => {
   const stale: LightRagIndexingSelection = {
     extract: { profile_id: "gone", model_id: "gone" },
     vlm: { mode: "disabled" },
   };
   expect(isCompleteIndexingSelection(stale)).toBe(true);
   expect(isCompleteIndexingSelection(stale, options)).toBe(false);
-  render(
-    <LightRagIndexingSelector
-      options={options}
-      selection={stale}
-      onChange={vi.fn()}
-      loading={false}
-      error={false}
-    />,
-  );
-  expect(
-    screen.getByText(
-      "One or more selected indexing models are unavailable. Choose accessible models before continuing.",
-    ),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("option", { name: "Unavailable model · gone" }),
-  ).toBeDisabled();
-});
-
-it("shows engine defaults in the collapsed create-index summary", () => {
-  const defaults: LightRagIndexingSelection = {
-    extract: textModel,
-    vlm: { mode: "disabled" },
-  };
-  render(
-    <LightRagIndexingSelector
-      options={options}
-      selection={defaults}
-      defaults={defaults}
-      collapsible
-      onChange={vi.fn()}
-      loading={false}
-      error={false}
-    />,
-  );
-  expect(
-    screen.getByText("EXTRACT: Small · VLM: Image analysis disabled"),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByText("Indexing models (optional override)"));
-  expect(
-    screen.getByRole("combobox", { name: "EXTRACT model" }),
-  ).toHaveValue("__engine_default__");
-  expect(
-    screen.getByRole("combobox", { name: "VLM image analysis" }),
-  ).toHaveValue("__engine_default__");
 });
 
 it("distinguishes inherited reasoning from an explicit override with the same value", () => {

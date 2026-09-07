@@ -1,4 +1,5 @@
 {
+  "Review rebuild": "Review rebuild",
   "language.english": "English",
   "language.chinese": "中文",
   "Start": "Start",
@@ -4036,5 +4037,15 @@
   "Choose indexing models": "Choose indexing models",
   "Indexing models (optional override)": "Indexing models (optional override)",
   "Engine model settings are used by default. The resolved models are pinned when this index is created.": "Engine model settings are used by default. The resolved models are pinned when this index is created.",
-  "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild.": "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild."
+  "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild.": "After creation, changing EXTRACT or enabling, disabling, or replacing VLM requires a full rebuild.",
+  "Configure valid LightRAG defaults in Settings before creating a knowledge base.": "Configure valid LightRAG defaults in Settings before creating a knowledge base.",
+  "Rebuild with current defaults. The previous index version is preserved until the rebuild succeeds.": "Rebuild with current defaults. The previous index version is preserved until the rebuild succeeds.",
+  "Rebuild index with current defaults": "Rebuild index with current defaults",
+  "Confirm rebuild": "Confirm rebuild",
+  "This rebuild uses the defaults shown below for the full index. Change models in Settings. The configuration is fixed when you confirm; the previous version is preserved if rebuilding fails.": "This rebuild uses the defaults shown below for the full index. Change models in Settings. The configuration is fixed when you confirm; the previous version is preserved if rebuilding fails.",
+  "Rebuild configuration": "Rebuild configuration",
+  "Index configuration": "Index configuration",
+  "The pinned EXTRACT or VLM configuration is unavailable. Restore model access in Settings, or update defaults and rebuild to replace the model. Existing text retrieval does not require these indexing models.": "The pinned EXTRACT or VLM configuration is unavailable. Restore model access in Settings, or update defaults and rebuild to replace the model. Existing text retrieval does not require these indexing models.",
+  "Restore access to the pinned indexing models in Settings before adding documents.": "Restore access to the pinned indexing models in Settings before adding documents.",
+  "Default configuration changed. Review the updated configuration and confirm again.": "Default configuration changed. Review the updated configuration and confirm again."
 }

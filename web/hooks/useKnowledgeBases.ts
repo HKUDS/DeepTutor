@@ -15,10 +15,8 @@ import {
   listRagProviders,
   reindexKnowledgeBase as reindexKbApi,
   retryKnowledgeBase as retryKbApi,
-  updatePendingIndexingPolicy as updatePendingIndexingPolicyApi,
   setDefaultKnowledgeBase as setDefaultKbApi,
   type KnowledgeTaskResponse,
-  type LightRagIndexingSelection,
   type KnowledgeUploadPolicy,
   type RagProviderSummary,
 } from "@/features/knowledge/api/catalog";
@@ -182,8 +180,7 @@ export function useKnowledgeBases() {
       files: File[];
       pageindexMode?: "flash" | "standard";
       searchMode?: string;
-      indexingLLM?: LightRagIndexingSelection;
-    }): Promise<KnowledgeTaskResponse> => {
+      }): Promise<KnowledgeTaskResponse> => {
       const result = await createKbApi(params);
       invalidateKnowledgeCaches();
       const fileCount = params.files.length;
@@ -262,9 +259,9 @@ export function useKnowledgeBases() {
   const reindex = useCallback(
     async (
       kbName: string,
-      indexingLLM?: LightRagIndexingSelection,
+      configFingerprint?: string,
     ): Promise<KnowledgeTaskResponse> => {
-      const result = await reindexKbApi(kbName, indexingLLM);
+      const result = await reindexKbApi(kbName, configFingerprint);
       if (result.noop) {
         await load({ force: true, showSpinner: false });
         return result;
@@ -285,14 +282,6 @@ export function useKnowledgeBases() {
       return result;
     },
     [load, progress],
-  );
-
-  const updatePendingIndexingPolicy = useCallback(
-    async (kbName: string, indexingLLM: LightRagIndexingSelection) => {
-      await updatePendingIndexingPolicyApi(kbName, indexingLLM);
-      await load({ force: true, showSpinner: false });
-    },
-    [load],
   );
 
   const retry = useCallback(
@@ -415,7 +404,6 @@ export function useKnowledgeBases() {
     uploadFiles,
     setDefault,
     reindex,
-    updatePendingIndexingPolicy,
     retry,
     deleteKb,
     connectObsidian,

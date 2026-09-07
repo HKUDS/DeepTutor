@@ -6,13 +6,11 @@ import path from "node:path";
 import {
   createKnowledgeBase,
   reindexKnowledgeBase,
-  updatePendingIndexingPolicy,
 } from "../features/knowledge/api/client";
 import {
   selectionFromLightRagDefault,
   selectionFromLLMOption,
 } from "../components/knowledge/IndexingModelSelector";
-import { selectionForLightRagModelDialog } from "../components/knowledge/KbIndexVersionsSection";
 import {
   currentLightRagBuildCandidate,
   kbCanUploadDocuments,
@@ -39,61 +37,31 @@ function stubFetch(
   };
 }
 
-test("create and re-index send the exact pinned selection and preserve none", async () => {
+test("create uses defaults and re-index sends only the confirmed fingerprint", async () => {
   const requests: Array<{ url: string; form: FormData }> = [];
   const restore = stubFetch(async (input, init) => {
     requests.push({ url: String(input), form: init?.body as FormData });
     return jsonResponse(200, { task_id: "task-1", noop: false });
   });
-  const selection = {
-    profile_id: "profile-1",
-    model_id: "model-1",
-    reasoning_effort: "none",
-  };
   try {
     await createKnowledgeBase({
       name: "papers",
       provider: "lightrag",
       files: [],
-      indexingLLM: selection,
     });
-    await reindexKnowledgeBase("papers", selection);
+    await reindexKnowledgeBase("papers", "confirmed-fingerprint");
   } finally {
     restore();
   }
 
   assert.equal(requests[0].url, "/api/knowledge-bases");
-  assert.deepEqual(
-    JSON.parse(String(requests[0].form.get("indexing_llm"))),
-    selection,
-  );
+  assert.equal(requests[0].form.has("indexing_llm"), false);
   assert.equal(requests[1].url, "/api/knowledge-bases/papers/reindex");
-  assert.deepEqual(
-    JSON.parse(String(requests[1].form.get("indexing_llm"))),
-    selection,
+  assert.equal(
+    requests[1].form.get("config_fingerprint"),
+    "confirmed-fingerprint",
   );
-});
-
-test("pending-policy update is JSON-only and creates no indexing request", async () => {
-  let captured: { url: string; init?: RequestInit } | undefined;
-  const restore = stubFetch(async (input, init) => {
-    captured = { url: String(input), init };
-    return jsonResponse(200, { indexing_policy: { policy: "pending_pinned" } });
-  });
-  try {
-    await updatePendingIndexingPolicy("empty", {
-      profile_id: "p",
-      model_id: "m",
-    });
-  } finally {
-    restore();
-  }
-  assert.equal(captured?.url, "/api/knowledge-bases/empty/indexing-policy");
-  assert.equal(captured?.init?.method, "PUT");
-  assert.deepEqual(JSON.parse(String(captured?.init?.body)), {
-    profile_id: "p",
-    model_id: "m",
-  });
+  assert.equal(requests[1].form.has("indexing_llm"), false);
 });
 
 test("non-LightRAG re-index keeps the established bodyless request", async () => {
@@ -178,43 +146,6 @@ test("indexing defaults prefer the released LightRAG query model", () => {
   );
 });
 
-test("late catalog loading preserves an empty knowledge base's saved pending model", () => {
-  const option = {
-    profile_id: "saved-profile",
-    model_id: "saved-model",
-    profile_name: "Saved",
-    model_name: "Saved model",
-    model: "saved",
-    provider: "openai",
-    is_active_default: false,
-  };
-  assert.deepEqual(
-    selectionForLightRagModelDialog(
-      [option],
-      { llm_profile_id: "current-profile", llm_model_id: "current-model" },
-      null,
-      {
-        policy: "pending_pinned",
-        vision_available: false,
-        selection: {
-          profile_id: "saved-profile",
-          model_id: "saved-model",
-          reasoning_effort: "none",
-        },
-      },
-      true,
-    ),
-    {
-      extract: {
-        profile_id: "saved-profile",
-        model_id: "saved-model",
-        reasoning_effort: "none",
-      },
-      vlm: { mode: "disabled" },
-    },
-  );
-});
-
 test("healthy LightRAG knowledge bases retain a full re-index entry", () => {
   const kb: KnowledgeBase = {
     name: "graph",
@@ -288,39 +219,22 @@ test("LightRAG candidates distinguish active builds from failures", () => {
   );
 });
 
-test("model controls are scoped to built-in LightRAG create/rebuild surfaces", () => {
-  const root = path.resolve(process.cwd());
-  const createSource = readFileSync(
-    path.join(root, "components/knowledge/CreateKbModal.tsx"),
+test("model selectors are absent from create/rebuild and duplicate settings surfaces", () => {
+  const root = process.cwd();
+  for (const name of [
+    "CreateKbModal",
+    "KbIndexVersionsSection",
+    "KbDocumentsSection",
+  ]) {
+    const source = readFileSync(
+      path.join(root, `components/knowledge/${name}.tsx`),
+      "utf8",
+    );
+    assert.doesNotMatch(source, /<LightRagIndexingSelector/);
+  }
+  const settings = readFileSync(
+    path.join(root, "components/knowledge/KbSettingsSection.tsx"),
     "utf8",
   );
-  const uploadSource = readFileSync(
-    path.join(root, "components/knowledge/KbDocumentsSection.tsx"),
-    "utf8",
-  );
-  const detailSource = readFileSync(
-    path.join(root, "components/knowledge/KnowledgeBaseDetail.tsx"),
-    "utf8",
-  );
-  const provenanceSource = readFileSync(
-    path.join(root, "components/knowledge/LightRagIndexingProvenance.tsx"),
-    "utf8",
-  );
-  assert.match(createSource, /provider === ['"]lightrag['"] \? \(/);
-  assert.match(createSource, /indexingLLM:\s*provider === ['"]lightrag['"]/);
-  assert.doesNotMatch(uploadSource, /IndexingModelSelector/);
-  assert.match(uploadSource, /LightRagIndexingProvenance/);
-  assert.match(provenanceSource, /compact && \(/);
-  assert.match(
-    provenanceSource,
-    /modelLabel \|\| t\(['"]Unverified historical indexing model['"]\)/,
-  );
-  assert.match(
-    provenanceSource,
-    /t\(['"]Reasoning effort['"]\).*effort \|\| t\(['"]Model default['"]\)/s,
-  );
-  assert.match(
-    detailSource,
-    /status === ['"]error['"] && kbProvider\(kb\) !== ['"]lightrag['"]/,
-  );
+  assert.doesNotMatch(settings, /LightRagIndexingProvenance/);
 });

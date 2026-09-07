@@ -15,8 +15,10 @@ import pytest
 from deeptutor.multi_user.context import reset_current_user, set_current_user
 from deeptutor.multi_user.models import CurrentUser, UserScope
 from deeptutor.services.config.lightrag_roles import LightRagRoleModels
+from deeptutor.services.embedding.config import EmbeddingConfig
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.model_selection.llm import LLMSelection
+from deeptutor.services.rag.embedding_signature import embedding_meta_fields
 from deeptutor.services.rag.pipelines.lightrag import engine, roles, storage
 from deeptutor.services.rag.pipelines.lightrag import indexing_policy as policy
 from deeptutor.services.rag.pipelines.lightrag.pipeline import BatchOutcome, LightRagPipeline
@@ -72,6 +74,9 @@ def role_environment(tmp_path, monkeypatch):
         }
     )
     state = {
+        "embedding": EmbeddingConfig(
+            model="embed-one", api_key="fake", dim=3, base_url="https://embed.test/v1"
+        ),
         "settings": {"role_models": models.model_dump()},
         "allowed": {f"p{i}" for i in range(4)},
         "configs": {
@@ -133,6 +138,9 @@ def role_environment(tmp_path, monkeypatch):
         policy, "supports_vision", lambda _binding, model: state["vision"].get(model, False)
     )
     monkeypatch.setattr(policy, "_active_catalog_selection", lambda: choice(0))
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.get_embedding_config", lambda: state["embedding"]
+    )
     yield state
     reset_current_user(token)
 
@@ -331,6 +339,7 @@ def _published(path: Path, value: dict):
                 "parser_bridge_schema": 1,
                 "state": "published",
                 "indexing_policy": value,
+                **embedding_meta_fields(),
             }
         )
     )
@@ -491,7 +500,9 @@ def test_concurrent_first_writers_do_not_publish_different_policies(
     monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
     monkeypatch.setattr(pipeline, "_clear_pending_policy", lambda _name: None)
     monkeypatch.setattr(
-        storage, "write_meta", lambda root, *, indexing_policy: _published(root, indexing_policy)
+        storage,
+        "write_meta",
+        lambda root, *, indexing_policy, embedding_config: _published(root, indexing_policy),
     )
 
     async def exercise():
@@ -838,3 +849,148 @@ def test_provider_auto_omits_actual_reasoning_request_fields(role_environment, b
     assert "reasoning" not in body
     assert "thinking" not in body.get("extra_body", {})
     assert "enable_thinking" not in body.get("extra_body", {})
+
+
+def test_empty_existing_kb_ignores_old_pending_and_freezes_current_defaults(
+    role_environment, tmp_path
+):
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    kb = tmp_path / "empty"
+    kb.mkdir()
+    old = policy.freeze_roles()
+    manager.config["knowledge_bases"]["empty"] = {
+        "rag_provider": "lightrag",
+        "pending_indexing_policy": old.persisted_policy(),
+    }
+    manager._save_config()
+    role_environment["settings"]["role_models"]["extract"]["reasoning_effort"] = "high"
+    current = policy.resolve_write_snapshot(kb, base_dir=str(tmp_path), kb_name="empty")
+    accepted = policy.bind_target(current, kb)
+    assert accepted.extract.config.reasoning_effort == "high"
+    role_environment["settings"]["role_models"]["extract"]["reasoning_effort"] = "low"
+    role_environment["embedding"].model = "new-global-embedding"
+    fresh = policy.revalidate_snapshot(accepted)
+    assert fresh.extract.config.reasoning_effort == "high"
+    assert fresh.embedding_config.model == "embed-one"
+
+
+def test_task_publishes_actual_frozen_embedding_after_defaults_change(
+    role_environment, tmp_path, monkeypatch
+):
+    kb = tmp_path / "kb"
+    accepted = policy.bind_target(policy.freeze_roles(), kb, protect_contents=True)
+    role_environment["embedding"].model = "later-default"
+    pipeline = LightRagPipeline(str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+
+    async def index(root, _files, _progress, snapshot):
+        assert snapshot.embedding_config.model == "embed-one"
+        (root / "kv_store_doc_status.json").write_text('{"doc": {"status": "processed"}}')
+        return BatchOutcome(
+            1, accepted=1, processed=("doc.md",), indexing_policy=snapshot.persisted_policy()
+        )
+
+    monkeypatch.setattr(pipeline, "_run_indexing", index)
+    assert asyncio.run(pipeline.initialize("kb", ["doc.md"], indexing_snapshot=accepted))
+    published = storage.latest_published_root(kb)
+    meta = json.loads((published / "meta.json").read_text())
+    assert meta["embedding_model"] == "embed-one"
+    assert meta["embedding_dim"] == 3
+    assert "fake" not in json.dumps(meta)
+
+
+def test_rebuild_confirmation_rejects_changed_defaults_without_queueing(
+    role_environment, tmp_path, monkeypatch
+):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from deeptutor.api.routers import knowledge
+
+    entry = {"rag_provider": "lightrag", "status": "ready"}
+    monkeypatch.setattr(knowledge, "_writable_kb", lambda _name: (object(), "kb", tmp_path))
+    monkeypatch.setattr(knowledge, "_load_kb_entry_or_404", lambda *_a: entry)
+    monkeypatch.setattr(knowledge, "_assert_provider_ready", lambda _provider: None)
+    queued = []
+    monkeypatch.setattr(
+        knowledge, "_mark_kb_queued_for_processing", lambda *_a, **_k: queued.append(True)
+    )
+    captured = []
+
+    async def task(**kwargs):
+        captured.append(kwargs["indexing_snapshot"])
+
+    monkeypatch.setattr(knowledge, "run_reindex_task", task)
+    app = FastAPI()
+    app.include_router(knowledge.router, prefix="/api")
+    with TestClient(app) as client:
+        preview = client.get("/api/knowledge-bases/kb/reindex-config")
+        assert preview.status_code == 200
+        payload = preview.json()
+        assert "private-key" not in preview.text and "password" not in preview.text
+        role_environment["embedding"].model = "new-default"
+        response = client.post(
+            "/api/knowledge-bases/kb/reindex", data={"config_fingerprint": payload["fingerprint"]}
+        )
+        assert response.status_code == 409
+        assert not queued and not captured
+        refreshed = client.get("/api/knowledge-bases/kb/reindex-config").json()
+        assert refreshed["embedding"]["model"] == "new-default"
+        # Credential rotation is not an identity change.
+        role_environment["embedding"].api_key = "rotated-secret"
+        response = client.post(
+            "/api/knowledge-bases/kb/reindex", data={"config_fingerprint": refreshed["fingerprint"]}
+        )
+        assert response.status_code == 200
+        assert len(queued) == 1 and len(captured) == 1
+        assert captured[0].embedding_config.model == "new-default"
+
+
+def test_query_does_not_require_old_extract_or_vlm_access(role_environment, monkeypatch, tmp_path):
+    kb = tmp_path / "kb"
+    _published(kb / "version-1", policy.freeze_roles().persisted_policy())
+    role_environment["allowed"].remove("p3")
+    role_environment["allowed"].remove("p0")
+    pipeline = LightRagPipeline(str(tmp_path))
+    monkeypatch.setattr(pipeline, "_ensure_available", lambda: None)
+    monkeypatch.setattr(engine, "build_rag", lambda *_a, **_k: object())
+
+    async def noop(*_a, **_k):
+        return None
+
+    async def query(*_a, **_k):
+        return "answer", []
+
+    monkeypatch.setattr(engine, "initialize", noop)
+    monkeypatch.setattr(engine, "finalize", noop)
+    monkeypatch.setattr(engine, "query_with_sources", query)
+    assert asyncio.run(pipeline.search("q", "kb"))["answer"] == "answer"
+    with pytest.raises(policy.IndexingPolicyError, match="revoked"):
+        policy.resolve_write_snapshot(kb, base_dir=str(tmp_path), kb_name="kb")
+
+
+def test_embedding_adapter_calls_accepted_config_after_default_switch(
+    role_environment, monkeypatch
+):
+    from deeptutor.services.rag.pipelines.lightrag.config import build_embedding_func
+
+    accepted = policy.with_embedding(policy.freeze_roles())
+    role_environment["embedding"].model = "later-default"
+    calls = []
+
+    class Client:
+        def __init__(self, *, config):
+            self.config = config
+
+        async def embed(self, texts, *, input_type):
+            calls.append((self.config.model, texts, input_type))
+            return [[1.0, 2.0, 3.0]]
+
+    monkeypatch.setattr("deeptutor.services.embedding.client.EmbeddingClient", Client)
+    adapter = build_embedding_func(embedding_config=accepted.embedding_config)
+    result = asyncio.run(adapter.func(["fixture"], context="document"))
+    assert adapter.embedding_dim == 3
+    assert result.tolist() == [[1.0, 2.0, 3.0]]
+    assert calls == [("embed-one", ["fixture"], "search_document")]

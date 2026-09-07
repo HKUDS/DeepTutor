@@ -189,6 +189,7 @@ def build_rag(
     enable_vlm: bool = False,
     indexing_snapshot: Any | None = None,
     query_roles: dict[str, Any] | None = None,
+    embedding_config: Any | None = None,
 ) -> Any:
     """Construct one exact-version, version-isolated LightRAG instance."""
     _require_exact_version()
@@ -200,6 +201,10 @@ def build_rag(
     if io_bridge is not None:
         llm_adapter_kwargs["io_bridge"] = io_bridge
         embedding_adapter_kwargs["io_bridge"] = io_bridge
+    if indexing_snapshot is not None:
+        embedding_config = indexing_snapshot.embedding_config
+    if embedding_config is not None:
+        embedding_adapter_kwargs["embedding_config"] = embedding_config
     from .indexing_policy import cache_identity, cache_identity_for_config
     from .roles import resolve_query_roles
 

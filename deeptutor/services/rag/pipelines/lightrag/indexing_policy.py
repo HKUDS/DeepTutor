@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 import hashlib
 import json
@@ -218,6 +219,7 @@ class IndexingPolicySnapshot:
     target_policy: str | None = None
     image_analysis: bool | None = None
     target_revision: str | None = None
+    embedding_config: Any | None = field(default=None, repr=False, compare=False)
 
     @property
     def vision_available(self) -> bool:
@@ -425,6 +427,7 @@ def revalidate_snapshot(snapshot: IndexingPolicySnapshot) -> IndexingPolicySnaps
         target_policy=snapshot.target_policy,
         image_analysis=snapshot.image_analysis,
         target_revision=snapshot.target_revision,
+        embedding_config=snapshot.embedding_config,
     )
 
 
@@ -464,6 +467,7 @@ def bind_target(
     from .storage import latest_published_root
 
     target = latest_published_root(kb_dir)
+    snapshot = with_embedding(snapshot)
     return replace(
         snapshot,
         target_version=str(target) if target else None,
@@ -532,15 +536,49 @@ def resolve_write_snapshot(
 ) -> IndexingPolicySnapshot:
     if explicit is not None:
         return explicit
-    policy = effective_policy(kb_dir, base_dir=base_dir, kb_name=kb_name)
-    if policy is None:
+    # Empty KBs (including old creation-time pending policies) follow defaults.
+    # Published/partial versions still require verified historical identities.
+    from deeptutor.services.rag.index_versioning import list_kb_versions
+
+    from .storage import latest_published_root
+
+    if latest_published_root(kb_dir) is None and not list_kb_versions(kb_dir):
         return freeze_default_snapshot()
-    if policy.get("policy") == POLICY_LEGACY:
+    policy = effective_policy(kb_dir, base_dir=base_dir, kb_name=kb_name)
+    if policy is None or policy.get("policy") == POLICY_LEGACY:
         raise IndexingModelChangedError(
             "This LightRAG index has no verified indexing model; run a full re-index "
             "before appending documents."
         )
     return snapshot_from_persisted(policy)
+
+
+def with_embedding(snapshot: IndexingPolicySnapshot) -> IndexingPolicySnapshot:
+    """Freeze embedding configuration once, before accepting an indexing task."""
+    if snapshot.embedding_config is not None:
+        return snapshot
+    from deeptutor.services.embedding import get_embedding_config
+
+    config = deepcopy(get_embedding_config())
+    if not config.dim:
+        raise IndexingPolicyError(
+            "Configure an embedding model with a known dimension in Settings."
+        )
+    return replace(snapshot, embedding_config=config)
+
+
+def public_rebuild_config(snapshot: IndexingPolicySnapshot) -> dict[str, Any]:
+    """Bind the confirmation to resolved identities without exposing credentials."""
+    from deeptutor.services.rag.embedding_signature import signature_from_config
+
+    snapshot = with_embedding(snapshot)
+    signature = signature_from_config(snapshot.embedding_config)
+    policy = snapshot.persisted_policy()
+    return {
+        "fingerprint": _fingerprint({"indexing_policy": policy, "embedding": signature.hash()}),
+        "indexing_policy": public_policy(policy),
+        "embedding": {"model": signature.model, "dimension": signature.dimension},
+    }
 
 
 def cache_identity(snapshot: IndexingLLMSnapshot) -> str:
