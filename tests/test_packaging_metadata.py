@@ -170,7 +170,7 @@ def test_lightrag_extra_is_the_exact_native_sdk_without_parser_transitives() -> 
         extras = tomllib.load(file)["project"]["optional-dependencies"]
 
     requirements = extras["rag-lightrag"]
-    assert requirements == ["lightrag-hku==1.5.7rc2"]
+    assert requirements == ["lightrag-hku==1.5.7"]
     names = [requirement.lower().split("=", 1)[0].split("<", 1)[0] for requirement in requirements]
     assert "raganything" not in names
     assert "mineru" not in names

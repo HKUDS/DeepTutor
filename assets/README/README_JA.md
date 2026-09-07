@@ -387,7 +387,7 @@ DeepTutorは、インストールされたコード、プライベートなラ�
 回答が以前の制約を失ったり、弱い根拠を引用したり、選択した資料と矛盾したりする場合は、Issueを開く前に[`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md)に診断情報をまとめてください。
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
 </div>
 
 <details>

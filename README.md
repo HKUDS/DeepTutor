@@ -614,7 +614,7 @@ Start with the main surfaces you will use day to day: Chat, Partners, My Agents,
 If an answer loses an earlier constraint, cites weak evidence, or disagrees with selected material, collect the diagnostics in [`REASONING_SAFETY_CHECKLIST.md`](./REASONING_SAFETY_CHECKLIST.md) before opening an issue.
 
 <div align="center">
-<img src="assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
+<img src="assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
 </div>
 
 <details>

@@ -1251,13 +1251,21 @@ export async function retryKnowledgeBase(
   return (await res.json()) as KnowledgeTaskResponse;
 }
 
+/**
+ * Deletes by name in the body, not in the path.
+ *
+ * A name registered before the `register_*` methods validated one can contain
+ * a `/`. uvicorn decodes `%2F` back to a separator before routing, so the
+ * path route cannot match such a name and answers 404 — leaving a KB that is
+ * listed but not removable from the UI. A body has no such limit, so this is
+ * the one delete that reaches every registered entry.
+ */
 export async function deleteKnowledgeBase(name: string): Promise<void> {
-  const res = await apiFetch(
-    apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}`),
-    {
-      method: "DELETE",
-    },
-  );
+  const res = await apiFetch(apiUrl(`/api/knowledge-bases/delete`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
   if (!res.ok) {
     throw new Error(
       await readErrorDetail(res, `Delete failed (${res.status})`),

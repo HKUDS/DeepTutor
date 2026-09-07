@@ -88,7 +88,10 @@ def test_vendor_prefixed_routing_still_finds_the_model() -> None:
 def test_bare_k3_is_exact_and_does_not_capture_unrelated_short_ids() -> None:
     moonshot = find_by_name("moonshot")
     assert model_overrides_for("k3", moonshot) == {"temperature": None}
+    assert model_overrides_for("k3-256k", moonshot) == {"temperature": None}
     assert model_overrides_for("sk3", moonshot) == {}
     assert model_overrides_for("k30", moonshot) == {}
+    assert model_overrides_for("k3-256kx", moonshot) == {}
     assert find_by_model("k3") is moonshot
+    assert find_by_model("k3-256k") is moonshot
     assert find_by_model("sk3") is None

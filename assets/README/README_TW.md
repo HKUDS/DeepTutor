@@ -387,7 +387,7 @@ DeepTutor 會將已安裝的程式碼、私有執行環境目錄與選用的內�
 如果回答遺漏先前限制、引用薄弱證據，或與所選素材不一致，請先將診斷資料收集到 [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md)，再建立 issue。
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor 首頁 — 側邊欄包含所有功能入口的 Chat 工作區" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 首頁 — 側邊欄包含所有功能入口的 Chat 工作區" width="900">
 </div>
 
 <details>
