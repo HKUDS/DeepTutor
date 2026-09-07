@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Bot, Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
+import { useOutsideClick } from "@/hooks/use-outside-click";
 import ProviderIcon from "@/components/common/ProviderIcon";
 import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
@@ -144,18 +145,10 @@ export default function ModelSelector({
     [options, selectedSelection],
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (rootRef.current && !rootRef.current.contains(target)) {
-        setOpen(false);
-        linger();
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open, linger]);
+  useOutsideClick(rootRef, open, () => {
+    setOpen(false);
+    linger();
+  });
 
   const defaultLabel = systemDefaultLabel || t("System default");
   const defaultDetail =

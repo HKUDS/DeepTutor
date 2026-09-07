@@ -47,6 +47,30 @@ class SandboxBackend:
         return True, ""
 
 
+def _active_python_prefix(*, inherit: bool) -> tuple[Path | None, bool]:
+    """Return DeepTutor's Python prefix, including a base Conda environment.
+
+    ``sys.prefix != sys.base_prefix`` detects venv/uv environments but is false
+    for Conda.  In that case the interpreter still lives below ``sys.prefix``
+    and its ``bin``/``Scripts`` directory must lead PATH; otherwise a model can
+    run system ``python3`` with a different ``pip`` and install incompatible
+    binary wheels.  The boolean reports whether a separate base-Python runtime
+    may also need mounting (the uv/venv case).
+    """
+    if not inherit:
+        return None, False
+    prefix = Path(sys.prefix).resolve()
+    uses_external_runtime = sys.prefix != sys.base_prefix
+    if not uses_external_runtime:
+        executable = Path(sys.executable).resolve()
+        try:
+            executable.relative_to(prefix)
+        except ValueError:
+            return None, False
+    bin_dir = prefix / ("Scripts" if sys.platform == "win32" else "bin")
+    return (prefix, uses_external_runtime) if bin_dir.is_dir() else (None, False)
+
+
 class RunnerSidecarBackend(SandboxBackend):
     """Delegate execution to the runner sidecar over HTTP."""
 
@@ -128,18 +152,19 @@ class BwrapBackend(SandboxBackend):
         inherit_virtualenv: bool = True,
     ) -> None:
         self._bwrap = bwrap_path
-        detected_virtualenv = (
-            venv_path is None and inherit_virtualenv and sys.prefix != sys.base_prefix
-        )
+        detected_prefix, uses_external_runtime = _active_python_prefix(inherit=inherit_virtualenv)
         if venv_path is not None:
             candidate = Path(venv_path).resolve()
-        elif detected_virtualenv:
-            candidate = Path(sys.prefix).resolve()
+            uses_external_runtime = False
+        elif detected_prefix is not None:
+            candidate = detected_prefix
         else:
             candidate = None
         self._venv_path = candidate if candidate is not None and candidate.is_dir() else None
         self._python_runtime_mounts = (
-            self._detect_python_runtime_mounts() if self._venv_path and detected_virtualenv else ()
+            self._detect_python_runtime_mounts()
+            if self._venv_path and uses_external_runtime
+            else ()
         )
 
     @classmethod
@@ -274,8 +299,8 @@ class RestrictedSubprocessBackend(SandboxBackend):
         """
         if venv_path is not None:
             candidate = Path(venv_path).resolve()
-        elif inherit_virtualenv and sys.prefix != sys.base_prefix:
-            candidate = Path(sys.prefix).resolve()
+        elif inherit_virtualenv:
+            candidate, _uses_external_runtime = _active_python_prefix(inherit=True)
         else:
             candidate = None
         self._venv_path = candidate if candidate is not None and candidate.is_dir() else None

@@ -51,7 +51,7 @@ MAX_PARALLEL_TOOL_CALLS = 8
 # committed: a model that poses a question and shows it in one round would
 # otherwise have its card bound before the question existed, so the card could
 # not carry the persisted version of it.
-PAUSE_LAST_TOOLS = frozenset({"ask_user"})
+PAUSE_LAST_TOOLS = frozenset({"ask_user", "workspace_export"})
 
 
 KwargAugmenter = Callable[[str, dict[str, Any], UnifiedContext], dict[str, Any]]
@@ -123,9 +123,8 @@ async def dispatch_tool_calls(
     # Collapse duplicates within this parallel batch. Models occasionally
     # emit repeated tool_calls in one assistant message. For most tools,
     # "duplicate" means same tool + same JSON-normalised args. For
-    # ``ask_user``, any second call in the same batch is a duplicate even
-    # when args differ: multiple ask_user calls would render multiple
-    # cards while the runtime can only pause on one reply.
+    # a pause tool, any second pause call in the same batch is a duplicate
+    # even when its name or args differ: the runtime can await only one card.
     #
     # The first occurrence runs as normal; later duplicates short-circuit
     # to a stub role=tool result so OpenAI's tool-call/tool-message pairing
@@ -133,7 +132,7 @@ async def dispatch_tool_calls(
     # also hidden from the user-facing trace stream to avoid duplicate Ask
     # Me rows/cards during the live turn.
     duplicate_of = _detect_duplicate_calls(prepared)
-    suppress_ui_indices = {idx for idx in duplicate_of if prepared[idx][1] == "ask_user"}
+    suppress_ui_indices = {idx for idx in duplicate_of if prepared[idx][1] in PAUSE_LAST_TOOLS}
     per_tool_trace_meta = _build_per_tool_trace_meta(
         prepared,
         context=context,
@@ -150,8 +149,14 @@ async def dispatch_tool_calls(
         # Strip server-injected private kwargs (``_sandbox_mounts`` & co.)
         # from the event payload: they are execution plumbing, not display
         # args, and may not be JSON-serializable (a Mount dataclass in the
-        # event killed both the WS push and turn persistence).
-        display_args = {k: v for k, v in exec_args.items() if not k.startswith("_")}
+        # event killed both the WS push and turn persistence). Parameters the
+        # tool marked ``sensitive`` go too — the trace is shown to the person
+        # the tool acts for, and a quiz's ``expected_answer`` reaching them
+        # one disclosure triangle away defeats the question.
+        withheld = _sensitive_arg_names(registry, tool_name)
+        display_args = {
+            k: v for k, v in exec_args.items() if not k.startswith("_") and k not in withheld
+        }
         await stream.tool_call(
             tool_name=tool_name,
             args=display_args,
@@ -278,22 +283,22 @@ def _detect_duplicate_calls(
     """Map duplicate-call indices to their primary occurrence.
 
     Two calls are duplicates when their (tool_name, JSON-normalised
-    args) keys are identical. ``ask_user`` is stricter: the first
-    ``ask_user`` call is the primary and every later ``ask_user`` in the
-    same parallel batch maps to it, regardless of args, because the UI and
-    pause/resume runtime only support one pending Ask Me card per model
-    tool batch. Non-serialisable args fall through to ``str()`` so unusual
-    values still produce a deterministic key.
+    args) keys are identical. Pause tools are stricter: the first pause
+    call is the primary and every later pause call in the same parallel
+    batch maps to it, regardless of its name or args, because the UI and
+    pause/resume runtime support one pending card per model tool batch.
+    Non-serialisable args fall through to ``str()`` so unusual values still
+    produce a deterministic key.
     """
     duplicate_of: dict[int, int] = {}
     seen: dict[tuple[str, str], int] = {}
-    first_ask_user_idx: int | None = None
+    first_pause_idx: int | None = None
     for idx, (_tcid, tool_name, exec_args) in enumerate(prepared):
-        if tool_name == "ask_user":
-            if first_ask_user_idx is not None:
-                duplicate_of[idx] = first_ask_user_idx
+        if tool_name in PAUSE_LAST_TOOLS:
+            if first_pause_idx is not None:
+                duplicate_of[idx] = first_pause_idx
                 continue
-            first_ask_user_idx = idx
+            first_pause_idx = idx
         try:
             args_key = json.dumps(exec_args, sort_keys=True, default=str)
         except (TypeError, ValueError):
@@ -320,13 +325,11 @@ def _duplicate_stub_result(
     aimed at the model: a one-line explanation it can read in the next
     iteration so it learns not to emit identical parallel tool_calls.
     """
-    if tool_name == "ask_user":
+    if tool_name in PAUSE_LAST_TOOLS:
         result_text = (
-            "(duplicate parallel ask_user tool_call — skipped. The earlier "
-            f"ask_user call with id={primary_call_id!r} is the only one that "
-            "will pause for the user's reply. Ask all clarifying questions in "
-            "one ask_user call's `questions` list; never emit multiple "
-            "ask_user tool_calls in one assistant message.)"
+            f"(additional parallel {tool_name} tool_call — skipped. The earlier "
+            f"pause call with id={primary_call_id!r} is the only one that will "
+            "pause for the user's reply. Request one confirmation card at a time.)"
         )
     else:
         result_text = (
@@ -519,6 +522,20 @@ def _provider_of(registry: ToolLookup | None, tool_name: str) -> tuple[str, str]
     except Exception:
         return "", ""
     return provider_identity(tool) if tool is not None else ("", "")
+
+
+def _sensitive_arg_names(registry: ToolLookup, tool_name: str) -> frozenset[str]:
+    """Parameter names this tool keeps out of its trace event."""
+    try:
+        tool = registry.get(tool_name)
+        definition = tool.get_definition() if tool is not None else None
+    except Exception:
+        return frozenset()
+    if definition is None:
+        return frozenset()
+    return frozenset(
+        param.name for param in definition.parameters if getattr(param, "sensitive", False)
+    )
 
 
 async def execute_tool_call(

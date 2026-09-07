@@ -81,20 +81,6 @@ def test_lightrag_indexing_knobs_round_trip_and_clamp(tmp_path: Path) -> None:
     assert clamped["response_type"] == "Multiple Paragraphs"
 
 
-def test_lightrag_dedicated_llm_selection_round_trip(tmp_path: Path) -> None:
-    """Empty references mean the global model; a complete pair is preserved."""
-    svc = RuntimeSettingsService(tmp_path, process_env={})
-    assert svc.load_lightrag()["llm_profile_id"] == ""
-
-    saved = svc.save_lightrag({"llm_profile_id": " profile-1 ", "llm_model_id": " model-1 "})
-    assert saved["llm_profile_id"] == "profile-1"
-    assert saved["llm_model_id"] == "model-1"
-
-    cleared = svc.save_lightrag({"llm_profile_id": "", "llm_model_id": ""})
-    assert cleared["llm_profile_id"] == ""
-    assert cleared["llm_model_id"] == ""
-
-
 def test_lightrag_settings_written_before_the_indexing_knobs_still_load(
     tmp_path: Path,
 ) -> None:
@@ -110,6 +96,20 @@ def test_lightrag_settings_written_before_the_indexing_knobs_still_load(
     assert loaded["entity_extract_max_gleaning"] == 1
     assert loaded["llm_profile_id"] == ""
     assert loaded["llm_model_id"] == ""
+
+
+def test_lightrag_dedicated_llm_selection_round_trip(tmp_path: Path) -> None:
+    """Empty references mean the active model; a complete pair is preserved."""
+    svc = RuntimeSettingsService(tmp_path, process_env={})
+    assert svc.load_lightrag()["llm_profile_id"] == ""
+
+    saved = svc.save_lightrag({"llm_profile_id": " profile-1 ", "llm_model_id": " model-1 "})
+    assert saved["llm_profile_id"] == "profile-1"
+    assert saved["llm_model_id"] == "model-1"
+
+    cleared = svc.save_lightrag({"llm_profile_id": "", "llm_model_id": ""})
+    assert cleared["llm_profile_id"] == ""
+    assert cleared["llm_model_id"] == ""
 
 
 def test_lightrag_server_defaults_round_trip_without_exposing_shape_drift(

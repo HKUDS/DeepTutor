@@ -61,9 +61,9 @@ def _inject_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
     path_service = get_path_service()
     normalized = dict(config or {})
     tools = dict(normalized.get("tools", {}) or {})
-    run_code = dict(tools.get("run_code", {}) or {})
-    run_code["workspace"] = str(path_service.get_chat_feature_dir("_detached_code_execution"))
-    tools["run_code"] = run_code
+    exec_config = dict(tools.get("exec", {}) or {})
+    exec_config["workspace"] = str(path_service.get_chat_feature_dir("_detached_exec"))
+    tools["exec"] = exec_config
     normalized["tools"] = tools
     normalized["paths"] = {
         "user_data_dir": str(path_service.get_user_root()),
@@ -164,7 +164,7 @@ def get_path_from_config(config: dict[str, Any], path_key: str, default: str = N
     if "paths" in injected and path_key in injected["paths"]:
         return injected["paths"][path_key]
     if path_key == "workspace":
-        return injected.get("tools", {}).get("run_code", {}).get("workspace", default)
+        return injected.get("tools", {}).get("exec", {}).get("workspace", default)
     return default
 
 

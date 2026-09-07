@@ -73,6 +73,12 @@ export interface MapKnowledgePoint {
 export interface MapModule {
   id: string;
   name: string;
+  /**
+   * What this module is for, in one sentence, written when the outline was
+   * designed. Empty on outlines built before module objectives existed — every
+   * reader falls back to the module name.
+   */
+  objective: string;
   order: number;
   mastered: number;
   total: number;
@@ -112,6 +118,37 @@ export interface MasteryMapResult {
   map: MasteryMap;
 }
 
+// ── Visual learning board ─────────────────────────────────────────────────
+
+export interface BoardCard {
+  id: string;
+  name: string;
+  type: string;
+  module_id: string;
+  module_name: string;
+  status: ObjectiveStatus;
+  mastery_level: number;
+  next_review_at: number | null;
+  position: { column: number; row: number };
+}
+
+export interface BoardModule {
+  id: string;
+  name: string;
+  order: number;
+  mastered: number;
+  total: number;
+  cards: BoardCard[];
+}
+
+export interface BoardResult {
+  book_id: string;
+  name: string;
+  path_revision: number;
+  cards: BoardCard[];
+  modules: BoardModule[];
+}
+
 export async function fetchMasteryMap(
   pathId: string,
   init?: RequestInit,
@@ -122,6 +159,20 @@ export async function fetchMasteryMap(
   );
   if (!res.ok) throw new Error(`Failed to fetch mastery map: ${res.status}`);
   return res.json() as Promise<MasteryMapResult>;
+}
+
+export async function fetchLearningBoard(
+  pathId: string,
+  init?: RequestInit,
+): Promise<BoardResult> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/mastery-paths/progress/${encodeURIComponent(pathId)}/board`,
+    ),
+    init,
+  );
+  if (!res.ok) throw new Error(`Failed to fetch learning board: ${res.status}`);
+  return res.json() as Promise<BoardResult>;
 }
 
 /** Rename a path. An empty name restores the derived display name. */
@@ -322,13 +373,17 @@ export async function generateModulesFromNotebook(
 
 // ── Mastery Path V2 product surface ──────────────────────────────────────
 
+// Mirrors deeptutor/learning/models.py TopicSourceKind.
 export type TopicSourceKind =
   | "goal"
   | "book"
   | "notebook"
   | "knowledge_base"
   | "file"
-  | "chat";
+  | "chat"
+  | "question_bank"
+  | "cowriter"
+  | "partner_group";
 
 export interface TopicSource {
   id: string;
@@ -382,6 +437,8 @@ export interface MasteryTopic {
   next: NextStep;
   map: MasteryMap;
   reviews: TopicReview[];
+  /** Null until the tutor has asked the learner about themselves. */
+  learner_profile: LearnerProfile | null;
   session_count: number;
   updated_at: number;
 }
@@ -425,10 +482,26 @@ export interface GenerateTopicInput {
   must_cover?: string[];
 }
 
-export interface CreateTopicInput extends GenerateTopicInput {
+export interface CreateTopicInput extends Omit<GenerateTopicInput, "name"> {
+  /**
+   * Optional: a goal the learner did not name is named after its own goal
+   * text, server-side, and stays renameable afterwards.
+   */
+  name?: string;
   description?: string;
   emoji?: string;
+  /** Empty when the outline is to be designed in the goal's first session. */
   modules: ModuleInit[];
+}
+
+/** Mirrors deeptutor/learning/models.py LearnerProfile. */
+export interface LearnerProfile {
+  prior_knowledge: string;
+  target_level: string;
+  time_budget: string;
+  preferences: string;
+  notes: string;
+  updated_at: number;
 }
 
 export interface TopicSession {
@@ -528,6 +601,24 @@ export function fetchMasteryTopic(
     `/api/mastery-paths/topics/${encodeURIComponent(pathId)}`,
     init,
     "load topic",
+  );
+}
+
+/** Change what a conversation is doing, from the learner's own mode buttons. */
+export async function setMasterySessionMode(
+  pathId: string,
+  sessionId: string,
+  mode: string,
+): Promise<{ session_id: string; mode: string }> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/sessions/${encodeURIComponent(
+      sessionId,
+    )}/mode`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    },
   );
 }
 

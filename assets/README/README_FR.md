@@ -73,7 +73,23 @@ DeepTutor est un espace de travail d'apprentissage natif à l'agent qui connecte
 
 ## 🚀 Démarrage
 
-DeepTutor propose quatre chemins d'installation. Ils partagent tous une même structure d'espace de travail : les paramètres résident dans `data/user/settings/` sous le répertoire depuis lequel vous lancez l'application (ou sous `DEEPTUTOR_HOME` / `deeptutor start --home` si vous en définissez un explicitement). Pour l'application complète, le flux recommandé est **choisir un répertoire d'espace de travail → installer → `deeptutor init` → `deeptutor start`**.
+DeepTutor propose quatre chemins d'installation. Ils partagent tous une même structure de répertoire d'exécution : les paramètres résident dans `data/user/settings/` sous le répertoire depuis lequel vous lancez l'application (ou sous `DEEPTUTOR_HOME` / `deeptutor start --home` si vous en définissez un explicitement). Pour l'application complète, le flux recommandé est **choisir un répertoire d'exécution → installer → `deeptutor init` → `deeptutor start`**.
+
+### Content Workspace
+
+Le **Content Workspace** est distinct du répertoire d'exécution privé de DeepTutor. C'est le dossier que les agents peuvent lire, et où chaque fichier créé par un agent, téléchargement, exécution de code, cache et actif rendu est placé sous un répertoire `outputs/<capability>/<session>/<turn>/` propre à chaque tour. Les paramètres, les clés API, les bases de données, Memory et l'état interne de l'application restent en dehors.
+
+Sans configuration, le content workspace est `<runtime-home>/data/user/workspace`. Les installations locales PyPI, CLI et depuis les sources peuvent sélectionner n'importe quel dossier existant lisible/inscriptible dans **Paramètres → Workspace**, ou :
+
+```bash
+deeptutor workspace show
+deeptutor workspace set /absolute/path/to/my-folder
+deeptutor workspace reset
+```
+
+Chaque capacité peut inspecter le même dossier via les outils workspace intégrés. Le modèle ne reçoit que des chemins relatifs tels que `outputs/...` ; quand il utilise `workspace_present`, l'interface affiche un instantané authentifié et ouvrable. Le même chemin relatif exact fonctionne aussi dans un lien ou une image Markdown normal. Modifier le fichier source ultérieurement ne change pas un instantané déjà présenté.
+
+L'exécution est en lecture seule en dehors de `outputs/`. Copier un fichier généré ailleurs dans le content workspace nécessite une confirmation explicite **Allow once** pour cette source et cette destination exactes. Un sandbox système ou le runner Docker impose cette frontière quand il est disponible ; le repli local par sous-processus restreint est indiqué comme **best effort** dans les paramètres Workspace.
 
 <details>
 <summary><b>Option 1 — Installer depuis PyPI</b> · application Web locale complète + CLI, sans clonage</summary>
@@ -177,12 +193,27 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
+Pour choisir un dossier de contenu hôte au démarrage du conteneur, montez-le au chemin de conteneur stable et verrouillez DeepTutor sur ce chemin :
+
+```bash
+mkdir -p "$PWD/deeptutor-workspace/outputs"
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -v deeptutor-data:/app/data \
+  -v "$PWD/deeptutor-workspace:/workspace" \
+  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
+  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+Pour Compose, définissez `DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder` avant d'exécuter `python scripts/docker_compose.py up -d`. Si omis, `./data/user/workspace` est utilisé. Les chemins Docker sont sélectionnés au démarrage et apparaissent donc verrouillés dans la page Paramètres Web.
+
 > **Seul le port `3782` doit être publié.** Le navigateur parle exclusivement à l'origine frontend ; le middleware Next.js (`web/proxy.ts`) transmet `/api/*` et `/ws/*` au backend FastAPI **à l'intérieur du conteneur**. La publication de `8001` (`-p 127.0.0.1:8001:8001`) est optionnelle — utile uniquement pour accéder directement à l'API avec curl ou des scripts.
 
-Ouvrez [http://127.0.0.1:3782](http://127.0.0.1:3782). Le conteneur crée `/app/data/user/settings/*.json` au premier démarrage ; configurez les fournisseurs de modèles depuis la page Paramètres Web. La configuration, les clés API, les journaux, les fichiers d'espace de travail, la mémoire et les bases de connaissances persistent dans le volume `deeptutor-data`. Les extras optionnels appartiennent au déploiement, pas à un shell : définissez `DEEPTUTOR_EXTRAS` (et `DEEPTUTOR_APT_PACKAGES` pour les bibliothèques système) et chaque conteneur démarré à partir de celui-ci les réapplique, alors qu'un `docker exec … pip install` serait perdu au prochain `compose down`.
+Ouvrez [http://127.0.0.1:3782](http://127.0.0.1:3782). Le conteneur crée `/app/data/user/settings/*.json` au premier démarrage ; configurez les fournisseurs de modèles depuis la page Paramètres Web. La configuration, les clés API, les journaux, le Content Workspace par défaut, la mémoire et les bases de connaissances persistent dans le volume `deeptutor-data`. Un Content Workspace monté séparément persiste à son chemin hôte à la place. Les extras optionnels appartiennent au déploiement, pas à un shell : définissez `DEEPTUTOR_EXTRAS` (et `DEEPTUTOR_APT_PACKAGES` pour les bibliothèques système) et chaque conteneur démarré à partir de celui-ci les réapplique, alors qu'un `docker exec … pip install` serait perdu au prochain `compose down`.
 
 - **Ports hôte différents :** modifiez le côté gauche de chaque correspondance `-p host:container` (ex. `-p 127.0.0.1:8088:3782`). Si vous changez les ports côté conteneur dans `/app/data/user/settings/system.json`, redémarrez et mettez à jour le côté droit de chaque correspondance en conséquence.
-- **Détaché :** ajoutez `-d`, puis `docker logs -f deeptutor` pour suivre, `docker stop deeptutor` pour arrêter, `docker rm deeptutor` avant de réutiliser le nom. Le volume `deeptutor-data` conserve vos paramètres et votre espace de travail à travers les redémarrages.
+- **Détaché :** ajoutez `-d`, puis `docker logs -f deeptutor` pour suivre, `docker stop deeptutor` pour arrêter, `docker rm deeptutor` avant de réutiliser le nom. Le volume `deeptutor-data` conserve les données d'exécution privées et le Content Workspace par défaut à travers les redémarrages ; un Content Workspace monté séparément persiste à son chemin hôte.
 
 **Docker distant / proxy inverse :** le navigateur ne parle qu'à l'origine frontend
 (`:3782`) ; le middleware Next.js dans le conteneur transmet `/api/*` et
@@ -282,7 +313,7 @@ L'installation locale `deeptutor-cli` n'inclut pas de ressources Web ni de dépe
 <details>
 <summary><b>Sandbox d'exécution de code (compétences office)</b> · exécution du code généré par le modèle pour docx / pdf / pptx / xlsx</summary>
 
-Les compétences office intégrées — **docx / pdf / pptx / xlsx** — fonctionnent en demandant au modèle d'écrire un court script Python (`python-docx`, `reportlab`, `openpyxl`, …), de l'exécuter via les outils `exec` / `code_execution`, puis de renvoyer une URL de téléchargement. Ces outils se montent dès qu'un backend sandbox est actif. DeepTutor sélectionne le backend configuré le plus robuste dans l'ordre suivant :
+Les compétences office intégrées — **docx / pdf / pptx / xlsx** — fonctionnent en demandant au modèle d'écrire un court script Python (`python-docx`, `reportlab`, `openpyxl`, …), de l'exécuter via l'outil unique `exec`, puis de présenter le fichier d'espace de travail enregistré. Ces outils se montent dès qu'un backend sandbox est actif. DeepTutor sélectionne le backend configuré le plus robuste dans l'ordre suivant :
 
 - **Sidecar runner :** `DEEPTUTOR_SANDBOX_RUNNER_URL` achemine l'exécution vers le service durci et à moindres privilèges de `Dockerfile.runner`.
 - **Linux bubblewrap :** lorsqu'il est disponible, `bwrap` isole le processus et les fichiers.
@@ -304,6 +335,7 @@ Tout ce qui se trouve sous `data/user/settings/` est du JSON/YAML brut. La page 
 | `auth.json` | Basculement d'authentification optionnel, nom d'utilisateur, hachage de mot de passe, paramètres de jeton/cookie |
 | `integrations.json` | Paramètres d'intégration PocketBase et sidecar optionnels |
 | `interface.json` | Langue de l'interface et de sortie du modèle / thème / préférences de barre latérale |
+| `content_workspace.json` | Liaisons de dossier du Content Workspace et sélection active de l'espace de travail |
 | `video_learning.json` | Fournisseur de lecture YouTube/Invidious par défaut, origines Invidious et adaptateur de transcription optionnel |
 | `main.yaml` | Valeurs par défaut du comportement d'exécution et injection de chemin |
 | `agents.yaml` | Paramètres de température et de jetons pour les capacités/outils |
@@ -331,7 +363,7 @@ Les profils LLM et de modèles de tâche proposent un paramètre de format API l
 <details>
 <summary><b>Désinstallation et nettoyage</b></summary>
 
-DeepTutor sépare son code installé de son espace de travail d'exécution. Par défaut, l'espace de travail est le répertoire dans lequel vous exécutez `deeptutor init` / `deeptutor start` ; `--home PATH` ou `DEEPTUTOR_HOME` le remplace. La sortie d'exécution correspond au répertoire `data` de cet espace de travail ; la ligne de la bannière de démarrage commençant par `Workspace:` indique donc ce qu'il faut nettoyer.
+DeepTutor sépare son code installé, son répertoire d'exécution privé et son Content Workspace optionnel. Par défaut, le répertoire d'exécution est le répertoire dans lequel vous exécutez `deeptutor init` / `deeptutor start` ; `--home PATH` ou `DEEPTUTOR_HOME` le remplace. L'état privé de l'application est le répertoire `data` à l'intérieur de ce répertoire, donc la ligne de la bannière de démarrage commençant par `Workspace:` identifie cet emplacement d'exécution. Si **Paramètres → Workspace** pointe vers un autre dossier, sauvegardez ou supprimez ce dossier de contenu séparément ; il n'est volontairement pas effacé par la désinstallation de DeepTutor.
 
 1. Arrêtez l'application. Appuyez sur `Ctrl+C` dans le terminal où s'exécute `deeptutor start`, ou lancez `deeptutor stop [--home PATH]` pour un lanceur démarré avec `--detach` ; arrêtez tout Partner en cours d'exécution ainsi que les conteneurs Docker détachés avant de supprimer des données.
 2. Supprimez les données d'exécution uniquement si vous souhaitez également effacer tout l'état local. Cela comprend les paramètres et clés API, l'historique de chat, les sessions, Memory, Notebooks, Books, l'état de Reading, Skills, l'état de Partners, les journaux, Knowledge Bases, les caches d'analyse, les artefacts générés et le cache d'exécution du frontend packagé.
@@ -392,7 +424,7 @@ La boucle est délibérément simple : le modèle réfléchit en rounds, appelle
 <img src="../../assets/figs/system/chat-agent-loop.png" alt="Boucle d'agent Chat de DeepTutor" width="900">
 </div>
 
-Les outils basculables par l'utilisateur sont `brainstorm`, `web_search`, `paper_search`, `reason` et `geogebra_analysis` — plus `imagegen` et `videogen` une fois que vous avez configuré le modèle de génération correspondant. Les outils contextuels tels que `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github` et `consult_subagent` se montent automatiquement quand le tour dispose du bon contexte.
+Les outils basculables par l'utilisateur sont `brainstorm`, `web_search`, `paper_search`, `reason` et `geogebra_analysis` — plus `imagegen` et `videogen` une fois que vous avez configuré le modèle de génération correspondant. Les outils contextuels tels que `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` et `workspace_export` se montent automatiquement quand le tour dispose du bon contexte.
 
 Le contexte se présente en deux types : le **contexte de session persistant** (capacité, espace de travail ou cours, outils, bases de connaissances, persona, modèle et état Reading / Mastery) persiste entre les tours ; les **références ponctuelles** (fichiers, historique de chat, livres, sections de lecture, carnets, banque de questions, agents importés) proviennent du menu `+` pour un seul tour. Le bouton vocal ne transcrit que le message en cours.
 
@@ -542,7 +574,7 @@ Le Memory Graph montre toute la pyramide — la synthèse L3 au centre, L2 dans 
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Hub Settings de DeepTutor" width="900">
 </div>
 
-Settings est le plan de contrôle opérationnel, avec une bande de statut en direct (santé du backend et mémoire résidente en direct sur l'arborescence de processus) et un navigateur persistant et cherchable qui atteint n'importe quelle page en un clic : **Apparence** (thème, langue de l'interface et de sortie du modèle, style des blocs de code), **Réseau** (base d'API, ports, CORS), **Modèles** (Connexions, LLM, Modèles de tâche, Embedding, Recherche, Texte-à-Parole, Parole-à-Texte, Génération d'Images, Génération de Vidéos), **Base de Connaissances** (moteur d'analyse de documents), **Chat** (Video Learning, outils interrogeables, paramètres par capacité, suggestions de démarrage, limites des pièces jointes), **Partners & Agents** (neuf harnesses locaux), **Profil de l'apprenant** (âge, classe, programme, langue, niveau de lecture, style d'explication), **Guardian** (apprenants autorisés, supports, rapports, réinitialisation des identifiants), **Memory** (les budgets du consolidateur) et **About** (vérification des versions et mises à jour sécurisées). Une **connexion** détient un identifiant de fournisseur et le reflète dans chaque service que ce fournisseur peut desservir, de sorte qu'une clé est saisie une seule fois plutôt que collée dans cinq pages ; les **modèles de tâche** épinglent un modèle petit et rapide pour le travail que personne n'a demandé — nommer une conversation, écrire les suggestions de démarrage du compositeur — et se résolvent vers le défaut actif quand ils sont laissés vides.
+Settings est le plan de contrôle opérationnel : il s'ouvre sur une bande de statut en direct (santé du backend et mémoire résidente), la langue de l'interface et de sortie du modèle, ainsi qu'une matrice **Readiness** qui note chaque capacité comme bloquante, avertissement ou suggestion — puis un navigateur persistant et cherchable qui atteint n'importe quelle page en un clic : **Apparence** (thème, style des blocs de code), **Réseau** (base d'API, ports, CORS), **Workspace** (le dossier lisible par l'agent et son `outputs/` partagé), **Modèles** (Connexions, LLM, Modèles de tâche, Embedding, Recherche, Texte-à-Parole, Parole-à-Texte, Génération d'Images, Génération de Vidéos), **Base de Connaissances** (moteur d'analyse de documents), **Chat** (Video Learning, outils interrogeables, paramètres par capacité, suggestions de démarrage, limites des pièces jointes), **Partners & Agents** (neuf harnesses locaux), **Profil de l'apprenant** (âge, classe, programme, langue, niveau de lecture, style d'explication), **Guardian** (apprenants autorisés, supports, rapports, réinitialisation des identifiants), **Memory** (les budgets du consolidateur) et **About** (vérification des versions et mises à jour sécurisées). Une **connexion** détient un identifiant de fournisseur et le reflète dans chaque service que ce fournisseur peut desservir, de sorte qu'une clé est saisie une seule fois plutôt que collée dans cinq pages ; les **modèles de tâche** épinglent un modèle petit et rapide pour le travail que personne n'a demandé — nommer une conversation, écrire les suggestions de démarrage du compositeur — et se résolvent vers le défaut actif quand ils sont laissés vides.
 
 **Video Learning** sous Paramètres → Chat utilise par défaut le YouTube IFrame Player officiel avec protection renforcée de la confidentialité. Pour conserver la lecture locale, définissez l'origine de l'API Invidious gérée par l'administrateur (par exemple `http://127.0.0.1:3000`), testez-la, sélectionnez Invidious, puis enregistrez. Les vidéos nouvelles ou rouvertes adoptent immédiatement le fournisseur tout en conservant le même ID de support et la même progression. Les médias Invidious sont diffusés via le proxy byte-range de DeepTutor ; les URL en amont ne sont ni exposées au navigateur ni stockées sur disque. En cas de défaillance de l'instance, DeepTutor reste hors connexion à YouTube jusqu'à ce que l'apprenant choisisse explicitement la solution de repli YouTube native. Le tutorat basé sur les sous-titres publics est optionnel : installez `.[video-learning]` ; la lecture continue sans cet extra, tandis que la fonction **Explain here** basée sur les transcriptions est désactivée avec une explication.
 
@@ -644,11 +676,12 @@ Le dépôt inclut un [`SKILL.md`](../../SKILL.md) racine — un document de pass
 
 | Commande | Description |
 |:---|:---|
-| `deeptutor init` | Créer ou mettre à jour `data/user/settings` pour l'espace de travail actuel |
-| `deeptutor doctor [--online]` | Vérifier si l'espace de travail est prêt à démarrer une session ; `--online` sonde aussi le fournisseur de modèle configuré, `--format json` affiche le rapport |
+| `deeptutor init` | Créer ou mettre à jour `data/user/settings` dans le répertoire d'exécution actuel |
+| `deeptutor doctor [--online]` | Vérifier si l'environnement d'exécution est prêt à démarrer une session ; `--online` sonde aussi le fournisseur de modèle configuré, `--format json` affiche le rapport |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | Lancer le backend + frontend ensemble ; éventuellement détacher le processus ou empêcher l'ouverture du navigateur |
 | `deeptutor stop [--home PATH]` | Arrêter un lanceur démarré avec `--detach` |
 | `deeptutor serve [--port PORT]` | Démarrer uniquement le backend FastAPI |
+| `deeptutor workspace show/set/reset` | Inspecter, sélectionner ou restaurer le Content Workspace par utilisateur |
 | `deeptutor run <capability> <message>` | Exécuter un seul tour de capacité (`chat`, `ask_questions`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`, `immersive_reading`, `course_study`, `immersive_watching`) ; ajoutez `--format json` pour la sortie NDJSON |
 | `deeptutor chat` | REPL interactif avec contrôles de capacité, outil, KB, carnet et historique |
 | `deeptutor partner list/create/start/stop` | Gérer les partners connectés à IM |

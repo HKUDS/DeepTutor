@@ -33,6 +33,7 @@ from deeptutor.capabilities.setup.binding import (
 )
 from deeptutor.capabilities.setup.tools import SETUP_TOOL_NAMES
 from deeptutor.core.context import UnifiedContext
+from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
 
 
 class SetupCapability:
@@ -96,15 +97,6 @@ class SetupCapability:
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         _ = context
         return ""
-
-
-def _prompt_text(prompts: dict[str, Any], path: tuple[str, ...]) -> str:
-    value: Any = prompts
-    for key in path:
-        if not isinstance(value, dict):
-            return ""
-        value = value.get(key)
-    return value if isinstance(value, str) and value else ""
 
 
 def _load_system_prompt(language: str) -> str:

@@ -537,6 +537,212 @@ async def test_reconnect_after_turn_completion_still_carries_message_ids(
     assert done_events[0]["metadata"].get("assistant_message_id") == real_assistant_id
 
 
+def _open_mastery_question(path_id: str, *, question_id: str = "q-1"):
+    """A built path with one open choice question, answer key ``C``."""
+    from deeptutor.learning.models import (
+        KnowledgePoint,
+        KnowledgeType,
+        LearningModule,
+        LearningProgress,
+        PendingQuestion,
+    )
+    from deeptutor.learning.service import LearningService
+
+    progress = LearningProgress(
+        book_id=path_id,
+        modules=[
+            LearningModule(
+                id="module-1",
+                name="Routing",
+                order=0,
+                knowledge_points=[
+                    KnowledgePoint(
+                        id="kp-1",
+                        name="Adaptive routing",
+                        type=KnowledgeType.MEMORY,
+                        module_id="module-1",
+                    )
+                ],
+            )
+        ],
+    )
+    service = LearningService()
+    service.store.save(progress)
+    _, interaction, _ = service.register_question(
+        path_id,
+        PendingQuestion(
+            question_id=question_id,
+            knowledge_point_id="kp-1",
+            prompt="What does the router do on a miss?",
+            question_type="choice",
+            options=[
+                "A: give up and report no results",
+                "B: lower the similarity threshold until something matches",
+                "C: rewrite the query and retry",
+                "D: jump back to the router with goto",
+            ],
+            expected_answer="C",
+            explanation="A miss is feedback: rewrite the query and retry.",
+        ),
+    )
+    return interaction
+
+
+@pytest.mark.asyncio
+async def test_card_answer_is_committed_before_the_turn_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """An answer from a question card is engine state before the tutor reads it.
+
+    The card outlives the turn that posed it, so the answer arrives as the next
+    turn's message. Committing it at turn start is what lets the tutor's first
+    ``mastery_status`` report ``answered`` with the learner's own words instead
+    of having to pair a bare "C" with a question from scrollback.
+    """
+    _isolate_learning_store(monkeypatch, tmp_path)
+    from deeptutor.learning.models import InteractionStatus
+    from deeptutor.learning.service import LearningService
+
+    interaction = _open_mastery_question("shared")
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    payload = {
+        **_mastery_payload(session["id"], "shared"),
+        "content": "C",
+        "mastery_answer": {"question_id": interaction.interaction_id, "text": "C"},
+    }
+    _, turn = await runtime.start_turn(payload)
+
+    committed = LearningService().store.get_active_interaction("shared")
+    assert committed is not None
+    assert committed.status is InteractionStatus.ANSWERED
+    assert committed.user_answer == "C"
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_card_answer_is_ruled_on_before_the_tutor_speaks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The verdict reaches the card in milliseconds, not after an LLM round.
+
+    Everything it needs was registered when the question was posed, so making
+    the learner watch their own pick until the tutor got around to calling
+    ``mastery_grade`` was a wait for nothing. The ruling is published as the
+    same ``mastery_grade`` tool result the card already reads, so it renders
+    unchanged and survives a reload with the turn.
+    """
+    _isolate_learning_store(monkeypatch, tmp_path)
+    interaction = _open_mastery_question("shared")
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    _, turn = await runtime.start_turn(_mastery_payload(session["id"], "shared"))
+    execution = runtime._executions[turn["id"]]
+
+    grade = await runtime._grade_submitted_card_answer(
+        execution,
+        path_id="shared",
+        answer={"question_id": interaction.interaction_id, "text": "C"},
+    )
+
+    assert grade is not None
+    assert grade["is_correct"] is True
+    result = grade["result"]
+    assert result["correct_label"] == "C"
+    assert result["explanation"].startswith("A miss is feedback")
+    # The answer key travels to the card only now that the gate has ruled.
+    published = [
+        event
+        for event in execution.events
+        if event.get("type") == "tool_result"
+        and (event.get("metadata") or {}).get("tool_metadata", {}).get("mastery_grade")
+    ]
+    assert len(published) == 1
+    carried = published[0]["metadata"]["tool_metadata"]["mastery_grade"]["result"]
+    assert carried["question_id"] == interaction.interaction_id
+    assert carried["is_correct"] is True
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_declining_a_card_drops_the_question_before_the_tutor_speaks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A question the learner declined is gone by the time the tutor reads.
+
+    The engine holds one open question per path, so a question left open is the
+    one the tutor's next ``mastery_quiz`` re-presents: without this the learner
+    could never get past a question they did not want to answer.
+    """
+    _isolate_learning_store(monkeypatch, tmp_path)
+    from deeptutor.learning.service import LearningService
+
+    interaction = _open_mastery_question("shared")
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    _, turn = await runtime.start_turn(_mastery_payload(session["id"], "shared"))
+    execution = runtime._executions[turn["id"]]
+
+    # A card that is no longer the open question drops nothing: by then it is
+    # one the learner cannot have been declining.
+    assert (
+        await runtime._skip_card_question(
+            execution, path_id="shared", skip={"question_id": "some-other-question"}
+        )
+        is None
+    )
+    assert LearningService().store.get_active_interaction("shared") is not None
+
+    skip = await runtime._skip_card_question(
+        execution, path_id="shared", skip={"question_id": interaction.interaction_id}
+    )
+
+    assert skip is not None
+    assert skip["skipped"] is True
+    assert skip["question_id"] == interaction.interaction_id
+    assert LearningService().store.get_active_interaction("shared") is None
+    # The card reads the same channel a grade arrives on, so it can show that
+    # this question was set aside rather than staying answerable forever.
+    published = [
+        event
+        for event in execution.events
+        if event.get("type") == "tool_result"
+        and (event.get("metadata") or {}).get("tool_metadata", {}).get("mastery_skip_question")
+    ]
+    assert len(published) == 1
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])
+
+
 @pytest.mark.asyncio
 async def test_mastery_path_allows_only_one_live_turn_across_sessions(
     monkeypatch: pytest.MonkeyPatch, tmp_path
@@ -616,7 +822,7 @@ async def test_mastery_turn_rejects_session_from_an_unrelated_topic(
     assert detail is not None
     assert detail["preferences"]["mastery_path_id"] == "topic-a"
     assert await store.get_active_turn(session["id"]) is None
-    assert LearningStore().list_paths_for_session(session["id"])[0]["path_id"] == "topic-a"
+    assert LearningStore().path_id_for_session(session["id"]) == "topic-a"
 
 
 @pytest.mark.asyncio

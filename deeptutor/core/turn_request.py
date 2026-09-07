@@ -72,6 +72,36 @@ class TimedMediaViewport(BaseModel):
     time_seconds: float = Field(ge=0)
 
 
+class MasteryCardAnswer(BaseModel):
+    """An answer submitted from a mastery question card.
+
+    The card outlives the turn that posed it — posing a question ends that
+    turn — so the answer arrives as the next turn's message. This says which
+    question the message is answering, letting the runtime commit it to the
+    engine before the tutor's first token instead of asking the model to
+    recover the pairing from prose.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
+class MasteryCardSkip(BaseModel):
+    """A question the learner dropped instead of answering.
+
+    The same shape of problem as :class:`MasteryCardAnswer`: the card outlives
+    the turn that posed it, so "not this one" also arrives as the next turn's
+    message. Naming the question is what keeps the runtime from abandoning
+    whatever happens to be open by the time the turn starts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: str = Field(min_length=1)
+
+
 MemoryReference = Literal["recent", "profile", "scope", "preferences", "summary"]
 
 
@@ -107,7 +137,15 @@ class TurnRequest(BaseModel):
     llm_selection: LLMSelection | None = None
     workspace_mode: str | None = None
     mastery_path_id: str | None = None
+    #: What this mastery conversation is for — "outline" | "study" | "review".
+    #: Durable session state (see
+    #: :mod:`deeptutor.capabilities.mastery.mode`); an absent value is
+    #: read as the ordinary study session every mastery conversation was
+    #: before kinds existed.
+    mastery_session_mode: str | None = None
     mastery_path_lease_managed: bool = False
+    mastery_answer: MasteryCardAnswer | None = None
+    mastery_skip: MasteryCardSkip | None = None
     reading_material_id: str | None = None
     reading_material_revision: int | None = Field(default=None, ge=1)
     reading_workspace_id: str | None = None
@@ -164,6 +202,8 @@ class TurnRequest(BaseModel):
 __all__ = [
     "BookReference",
     "LLMSelection",
+    "MasteryCardAnswer",
+    "MasteryCardSkip",
     "MemoryReference",
     "NotebookReference",
     "OutgoingAttachment",

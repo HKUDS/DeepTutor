@@ -578,3 +578,57 @@ async def test_prelude_with_long_body_emits_chunks_progressively() -> None:
     # only holds back ~24 trailing chars).
     flushed = "".join(_thinking_texts(events))
     assert flushed.count("x") >= 500 - 24
+
+
+@pytest.mark.asyncio
+async def test_post_label_think_block_routes_to_the_reasoning_trace() -> None:
+    """A ``<think>`` block opened *after* the label is reasoning, not reply.
+
+    The prelude machine only recognises the tag at the head of the probe
+    buffer, so a model that labelled its answer and *then* started thinking
+    had that thinking streamed into the reply as content — and stripped from
+    the returned text afterwards by ``clean_thinking_tags``, so it reached the
+    reader live and was preserved nowhere.
+    """
+    events, result = await _run(
+        [
+            _chunk("FINISH: "),
+            _chunk("答案是 42。"),
+            _chunk("<think>"),
+            _chunk("再检查一遍"),
+            _chunk("</think>"),
+            _chunk("以上。"),
+        ],
+        final_meta={"label": "Final response", "trace_id": "final-1"},
+    )
+
+    content = "".join(e.content for e in events if e.type == StreamEventType.CONTENT)
+    thinking = "".join(e.content for e in events if e.type == StreamEventType.THINKING)
+
+    assert content == "答案是 42。以上。"
+    assert "再检查一遍" in thinking
+    assert "再检查一遍" not in content
+    assert "<think>" not in content
+    # The returned text still has the reasoning stripped for the next round.
+    assert "再检查一遍" not in result.text
+
+
+@pytest.mark.asyncio
+async def test_post_label_think_split_across_chunks_is_not_leaked() -> None:
+    """A tag arriving in pieces must not slip through as content."""
+    events, _ = await _run(
+        [
+            _chunk("FINISH: ok "),
+            _chunk("<thi"),
+            _chunk("nk>hidden</thi"),
+            _chunk("nk> done"),
+        ],
+        final_meta={"label": "Final response", "trace_id": "final-1"},
+    )
+
+    content = "".join(e.content for e in events if e.type == StreamEventType.CONTENT)
+    thinking = "".join(e.content for e in events if e.type == StreamEventType.THINKING)
+
+    assert "hidden" not in content
+    assert "hidden" in thinking
+    assert content.strip() == "ok  done".strip()

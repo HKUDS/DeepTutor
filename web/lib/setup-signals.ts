@@ -1,4 +1,5 @@
 import type { StreamEvent } from "@/features/chat/model/protocol";
+import { toolResultMetadata } from "@/lib/tool-event";
 
 /**
  * Reading the setup capability's signals off a turn's event stream.
@@ -21,10 +22,7 @@ export interface SetupCredentialData {
 
 function toolMetadataOf(event: StreamEvent): Record<string, unknown> | null {
   if (event.type !== "tool_result") return null;
-  const meta = (event.metadata ?? {}) as Record<string, unknown>;
-  const toolMetadata = meta.tool_metadata;
-  if (!toolMetadata || typeof toolMetadata !== "object") return null;
-  return toolMetadata as Record<string, unknown>;
+  return toolResultMetadata(event.metadata);
 }
 
 /**

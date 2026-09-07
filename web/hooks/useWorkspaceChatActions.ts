@@ -7,28 +7,55 @@ import { getChatCapability } from "@/features/capabilities/presentation";
 import { useCapabilityCatalog } from "@/features/capabilities/useCapabilityCatalog";
 import { getEnabledOptionalTools } from "@/lib/tools-settings";
 
-/** Keep Reading/Mastery action selection on the same tool policy as Home. */
-export function useWorkspaceChatActions() {
+/**
+ * Keep a workspace's action selection on the same tool policy as Home.
+ *
+ * `pinnedCapability` makes the workspace run one action and only that one:
+ * there is no menu, and the capability is asserted on mount so a session
+ * resumed with something else stored still opens on the right loop. Mastery
+ * uses it — its screen IS the tutor, so offering "Chat" there meant two ways
+ * to reach the same tutor and no way to tell which one you were in. Reading
+ * passes nothing and keeps the menu.
+ */
+export function useWorkspaceChatActions(
+  options: { pinnedCapability?: string } = {},
+) {
+  const { pinnedCapability } = options;
   const { state, setCapability, setTools } = useChatStateAdapter();
   const { capabilities: catalogCapabilities } = useCapabilityCatalog();
   const workspaceCapabilities = useMemo(
     () =>
-      catalogCapabilities.filter(
-        (capability) =>
-          capability.value !== "course_study" &&
-          capability.value !== "immersive_watching",
-      ),
-    [catalogCapabilities],
+      pinnedCapability
+        ? catalogCapabilities.filter(
+            (capability) => capability.value === pinnedCapability,
+          )
+        : catalogCapabilities.filter(
+            (capability) =>
+              capability.value !== "course_study" &&
+              capability.value !== "immersive_watching",
+          ),
+    [catalogCapabilities, pinnedCapability],
   );
   const [enabledOptionalTools, setEnabledOptionalTools] = useState<
     string[] | null
   >(null);
 
-  const activeValue = workspaceCapabilities.some(
-    (capability) => capability.value === (state.activeCapability || ""),
-  )
-    ? state.activeCapability || ""
-    : "";
+  const activeValue = pinnedCapability
+    ? pinnedCapability
+    : workspaceCapabilities.some(
+          (capability) => capability.value === (state.activeCapability || ""),
+        )
+      ? state.activeCapability || ""
+      : "";
+
+  // Assert the pinned action rather than assuming it: the turn is built from
+  // chat state, so a session that stored another capability would otherwise
+  // send that one from a screen offering no way to change it.
+  useEffect(() => {
+    if (!pinnedCapability) return;
+    if (state.activeCapability === pinnedCapability) return;
+    setCapability(pinnedCapability);
+  }, [pinnedCapability, setCapability, state.activeCapability]);
   const activeCapability = useMemo(
     () =>
       workspaceCapabilities.find(
@@ -36,6 +63,8 @@ export function useWorkspaceChatActions() {
       ) ?? getChatCapability(activeValue),
     [activeValue, workspaceCapabilities],
   );
+  // A pinned workspace has no menu to render.
+  const offeredCapabilities = pinnedCapability ? [] : workspaceCapabilities;
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +97,7 @@ export function useWorkspaceChatActions() {
 
   const selectCapability = useCallback(
     (value: string) => {
+      if (pinnedCapability) return;
       const selected = workspaceCapabilities.find(
         (capability) => capability.value === value,
       );
@@ -79,11 +109,17 @@ export function useWorkspaceChatActions() {
         setTools(enabledOptionalTools.filter((tool) => allowed.has(tool)));
       }
     },
-    [enabledOptionalTools, setCapability, setTools, workspaceCapabilities],
+    [
+      enabledOptionalTools,
+      pinnedCapability,
+      setCapability,
+      setTools,
+      workspaceCapabilities,
+    ],
   );
 
   return {
-    capabilities: workspaceCapabilities,
+    capabilities: offeredCapabilities,
     activeCapabilityValue: activeValue,
     selectCapability,
   };

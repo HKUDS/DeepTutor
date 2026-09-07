@@ -4,7 +4,7 @@ stale training-data dates when composing web_search queries.
 
 Regression guard for the bug where "今天上海天气怎样？" produced a web_search
 query of "上海天气 2025年6月" — a year stale relative to the real clock.
-See ``deeptutor/agents/chat/prompt_blocks.py:_runtime_context_block``.
+See ``deeptutor/agents/loop/prompt_blocks.py:_runtime_context_block``.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from deeptutor.agents.chat import prompt_blocks as prompt_blocks_module
-from deeptutor.agents.chat.prompt_blocks import ChatPromptAssembler
+from deeptutor.agents.loop import prompt_blocks as prompt_blocks_module
+from deeptutor.agents.loop.prompt_blocks import ChatPromptAssembler
 from deeptutor.core.context import UnifiedContext
 
 # Deliberately omits ``runtime_context``: exercises the code-default fallback,

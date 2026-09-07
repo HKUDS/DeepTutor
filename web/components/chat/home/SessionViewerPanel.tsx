@@ -72,6 +72,9 @@ const PdfPreview = dynamic(
 const ImagePreview = dynamic(
   () => import("@/components/chat/preview/previewers/ImagePreview"),
 );
+const VideoPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/VideoPreview"),
+);
 const SvgPreview = dynamic(
   () => import("@/components/chat/preview/previewers/SvgPreview"),
 );
@@ -1047,6 +1050,8 @@ const PreviewBody = memo(function PreviewBody({
       return <XlsxPreview url={previewUrl} />;
     case "image":
       return <ImagePreview url={previewUrl} filename={filename} />;
+    case "video":
+      return <VideoPreview url={previewUrl} filename={filename} />;
     case "svg":
       return <SvgPreview url={previewUrl} filename={filename} />;
     case "markdown":

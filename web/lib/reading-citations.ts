@@ -1,3 +1,4 @@
+import { toolResultMetadata } from "@/lib/tool-event";
 /**
  * Locator citations in assistant prose: `[p.12]`, `[p.12,17]`, `[p.12-14]`.
  *
@@ -341,9 +342,8 @@ export function verifiedReadingLocators(
     if (!READING_EVIDENCE_TOOLS.has(tool)) {
       continue;
     }
-    const nested = outer.tool_metadata;
-    if (!nested || typeof nested !== "object") continue;
-    const metadata = nested as Record<string, unknown>;
+    const metadata = toolResultMetadata(outer);
+    if (!metadata) continue;
     if (String(metadata.material_id ?? "").toLowerCase() !== expected) continue;
     if (materialRevision) {
       const evidenceRevision = Number(metadata.material_revision);

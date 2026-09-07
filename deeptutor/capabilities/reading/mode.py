@@ -47,7 +47,7 @@ class ImmersiveReadingCapability(TurnCapability):
             "page or section behind every claim."
         ),
         stages=["responding"],
-        tools_used=[*READING_TOOL_NAMES, "web_search", "code_execution", "reason"],
+        tools_used=[*READING_TOOL_NAMES, "web_search", "exec", "reason"],
         cli_aliases=["reading", "read"],
     )
 

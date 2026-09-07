@@ -1,27 +1,48 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import ProviderIcon from "@/components/common/ProviderIcon";
 import { apiFetch, apiUrl } from "@/lib/api";
+import SettingsReadinessPanel from "@/components/settings/SettingsReadinessPanel";
 import SettingsStatusPanel from "@/components/settings/SettingsStatusPanel";
+import { SettingRow, SettingSection } from "@/components/settings/shared";
 import { setPendingPrompt } from "@/lib/pending-prompt";
 import {
-  SETTINGS_CATEGORIES,
   settingsAnchorHref,
   type Lang,
-  type SettingsLeaf,
 } from "@/features/settings/navigation/settings-nav";
-import {
-  getActiveModel,
-  getActiveProfile,
-  serviceReadiness,
-  useSettings,
-  type ServiceReadiness,
-} from "@/features/settings/store/SettingsStore";
+import { useSettings } from "@/features/settings/store/SettingsStore";
+import { useUiSettings } from "@/features/settings/store";
+
+/** The en/zh segmented control both language rows use. */
+function LanguageToggle({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: "en" | "zh") => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
+      {(["en", "zh"] as const).map((option) => (
+        <button
+          key={option}
+          onClick={() => onChange(option)}
+          className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
+            value === option
+              ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
+              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          {option === "en" ? t("language.english") : t("language.chinese")}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /**
  * The settings landing page.
@@ -29,105 +50,25 @@ import {
  * It used to be a grid of seven cards whose only job was to link to the seven
  * categories — a directory, now that the navigator lists every page anyway.
  * What it could not answer, and what a landing page is for, is "what state am
- * I actually in": which services are set up, which failed their last test, and
- * whether something is sitting in a draft waiting to be applied.
+ * I actually in".
+ *
+ * That question now has exactly one answer on the page: `Readiness`. Two
+ * earlier lists — "needs attention" and "model services" — reported slices of
+ * it from the client's own view of the catalog, which meant the same service
+ * could be counted twice with two different totals. They were folded into the
+ * readiness rows, which carry the model name, the last test result, and what
+ * depends on the service on one line.
+ *
+ * Above it sits only what needs no diagnosis: the runtime strip, and the two
+ * language toggles that decide what the rest of the page reads like.
  */
 export default function SettingsOverview() {
   const { t, i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = useCallback((value: Lang) => (zh ? value.zh : value.en), [zh]);
-  const {
-    catalog,
-    catalogEditable,
-    diagnosticsResults,
-    draftState,
-    storedDraft,
-    startTour,
-  } = useSettings();
-
-  const modelLeaves = useMemo(
-    () =>
-      (
-        SETTINGS_CATEGORIES.find((category) => category.key === "models")
-          ?.children ?? []
-      ).filter(
-        (
-          leaf,
-        ): leaf is SettingsLeaf & {
-          service: NonNullable<SettingsLeaf["service"]>;
-        } => Boolean(leaf.service),
-      ),
-    [],
-  );
-
-  const states = useMemo(
-    () =>
-      catalogEditable !== true
-        ? []
-        : modelLeaves.map((leaf) => ({
-            leaf,
-            readiness: serviceReadiness(
-              catalog,
-              leaf.service,
-              diagnosticsResults,
-            ),
-          })),
-    [catalog, catalogEditable, diagnosticsResults, modelLeaves],
-  );
-
-  const failed = states.filter((item) => item.readiness === "failed");
-  const missing = states.filter((item) => item.readiness === "not_configured");
-  const ready = states.length - failed.length - missing.length;
-
-  // Everything the user can act on, most urgent first. An empty list is worth
-  // saying out loud — "nothing needs attention" is information, and the blank
-  // panel it replaces is not.
-  const attention: {
-    key: string;
-    text: string;
-    href: string;
-    label: string;
-  }[] = [];
-  if (draftState !== "clean") {
-    attention.push({
-      key: "draft",
-      text:
-        draftState === "saved"
-          ? t("A saved draft is waiting to be applied.")
-          : t("There are changes you have not saved anywhere yet."),
-      href: settingsAnchorHref("llm"),
-      label: t("Review"),
-    });
-  }
-  for (const item of failed) {
-    attention.push({
-      key: `failed-${item.leaf.key}`,
-      text: t("{{service}} failed its last connection test.", {
-        service: tr(item.leaf.label),
-      }),
-      href: settingsAnchorHref(item.leaf.key),
-      label: t("Open"),
-    });
-  }
-
-  // What each service actually resolves to right now. Search names a provider
-  // rather than a model, so it reports that instead of an empty string.
-  const { detail, binding } = useMemo(() => {
-    const detail: Record<string, string> = {};
-    const binding: Record<string, string> = {};
-    if (catalogEditable !== true) return { detail, binding };
-    for (const leaf of modelLeaves) {
-      const profile = getActiveProfile(catalog, leaf.service);
-      binding[leaf.key] =
-        (leaf.service === "search" ? profile?.provider : profile?.binding) ??
-        "";
-      detail[leaf.key] =
-        leaf.service === "search"
-          ? (profile?.provider ?? "")
-          : (getActiveModel(catalog, leaf.service)?.model ?? "");
-    }
-    return { detail, binding };
-  }, [catalog, catalogEditable, modelLeaves]);
+  const { language, responseLanguage, updateLanguage, updateResponseLanguage } =
+    useUiSettings();
+  const { catalogEditable, storedDraft, startTour } = useSettings();
 
   // The effective browser API base. The old hub previewed it on its Network
   // card, and it is the first thing to check on a Docker or LAN install, so it
@@ -160,12 +101,7 @@ export default function SettingsOverview() {
             {t("Settings")}
           </h1>
           <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
-            {catalogEditable === true && states.length > 0
-              ? t("{{ready}} of {{total}} model services set up.", {
-                  ready,
-                  total: states.length,
-                })
-              : t("Appearance, models, knowledge, chat, and memory.")}
+            {t("Appearance, models, knowledge, chat, and memory.")}
           </p>
         </div>
         <button
@@ -186,72 +122,36 @@ export default function SettingsOverview() {
 
       <SettingsStatusPanel />
 
-      {catalogEditable === true && (
-        <>
-          <Section title={t("Needs attention")}>
-            {attention.length === 0 ? (
-              <div className="flex items-center gap-2 py-3 text-[12.5px] text-[var(--muted-foreground)]">
-                <Check className="h-3.5 w-3.5 text-emerald-500" />
-                {t("Nothing to do — everything configured is working.")}
-              </div>
-            ) : (
-              attention.map((item, index) => (
-                <div
-                  key={item.key}
-                  className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 ${
-                    index === 0 ? "" : "border-t border-[var(--border)]/50"
-                  }`}
-                >
-                  <span className="text-[12.5px] text-[var(--foreground)]">
-                    {item.text}
-                  </span>
-                  <Link
-                    href={item.href}
-                    className="inline-flex items-center gap-1 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-                  >
-                    {item.label}
-                    <ArrowUpRight className="h-3 w-3" />
-                  </Link>
-                </div>
-              ))
+      <div className="mt-8">
+        <SettingSection
+          title={t("Language")}
+          description={t("Choose the interface language.")}
+        >
+          <SettingRow
+            title={t("Interface language")}
+            description={t(
+              "Controls navigation, settings, and status text only.",
             )}
-          </Section>
+            control={
+              <LanguageToggle value={language} onChange={updateLanguage} />
+            }
+          />
+          <SettingRow
+            title={t("Model output language")}
+            description={t(
+              "Sets the default language for chat and capability responses.",
+            )}
+            control={
+              <LanguageToggle
+                value={responseLanguage}
+                onChange={updateResponseLanguage}
+              />
+            }
+          />
+        </SettingSection>
+      </div>
 
-          <Section title={t("Model services")}>
-            {states.map((item, index) => (
-              <div
-                key={item.leaf.key}
-                className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 ${
-                  index === 0 ? "" : "border-t border-[var(--border)]/50"
-                }`}
-              >
-                <Link
-                  href={settingsAnchorHref(item.leaf.key)}
-                  className="text-[12.5px] text-[var(--foreground)] transition-opacity hover:opacity-70"
-                >
-                  {tr(item.leaf.label)}
-                </Link>
-                <span className="flex min-w-0 items-center gap-2">
-                  {detail[item.leaf.key] && (
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      {binding[item.leaf.key] && (
-                        <ProviderIcon
-                          provider={binding[item.leaf.key]}
-                          size={12}
-                        />
-                      )}
-                      <span className="truncate font-mono text-[11px] text-[var(--muted-foreground)]">
-                        {detail[item.leaf.key]}
-                      </span>
-                    </span>
-                  )}
-                  <ReadinessChip readiness={item.readiness} />
-                </span>
-              </div>
-            ))}
-          </Section>
-        </>
-      )}
+      <SettingsReadinessPanel enabled={catalogEditable === true} />
 
       {apiBase && (
         <p className="mt-5 text-[11.5px] text-[var(--muted-foreground)]">
@@ -278,43 +178,5 @@ export default function SettingsOverview() {
         </p>
       )}
     </div>
-  );
-}
-
-function ReadinessChip({ readiness }: { readiness: ServiceReadiness }) {
-  const { t } = useTranslation();
-  const label: Record<ServiceReadiness, string> = {
-    passed: t("Test passed"),
-    failed: t("Test failed"),
-    untested: t("Configured"),
-    not_configured: t("Not set"),
-  };
-  const tone: Record<ServiceReadiness, string> = {
-    passed: "text-emerald-600 dark:text-emerald-400",
-    failed: "text-red-500",
-    untested: "text-[var(--muted-foreground)]",
-    not_configured: "text-[var(--muted-foreground)]/60",
-  };
-  return (
-    <span className={`shrink-0 text-[11px] ${tone[readiness]}`}>
-      {label[readiness]}
-    </span>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mt-7">
-      <h2 className="mb-2 text-[12px] font-medium text-[var(--muted-foreground)]">
-        {title}
-      </h2>
-      <div className="border-t border-[var(--border)]/60">{children}</div>
-    </section>
   );
 }

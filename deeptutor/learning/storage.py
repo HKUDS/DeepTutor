@@ -379,13 +379,16 @@ class LearningStore:
                         state_json TEXT NOT NULL,
                         revision INTEGER NOT NULL,
                         created_at REAL NOT NULL,
-                        updated_at REAL NOT NULL
+                        updated_at REAL NOT NULL,
+                        owner_session_id TEXT NOT NULL DEFAULT ''
                     );
 
+                    -- Membership, not history: at most one row per session.
+                    -- The unique index below is what makes a conversation
+                    -- claimed by two paths structurally impossible.
                     CREATE TABLE IF NOT EXISTS mastery_path_sessions (
                         path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
                         session_id TEXT NOT NULL,
-                        owns_path INTEGER NOT NULL DEFAULT 0,
                         created_at REAL NOT NULL,
                         last_seen_at REAL NOT NULL,
                         PRIMARY KEY(path_id, session_id)
@@ -458,6 +461,7 @@ class LearningStore:
                         ON mastery_topic_sources(path_id, position);
                     """
                 )
+                self._converge_single_membership(conn)
                 # V2 metadata is a persisted part of every topic, not a
                 # runtime-only fallback. Existing V1 paths receive neutral,
                 # deterministic metadata during schema initialization; their
@@ -488,6 +492,66 @@ class LearningStore:
                 conn.commit()
             self._initialized = True
             _initialized_db_paths.add(db_path)
+
+    @staticmethod
+    def _converge_single_membership(conn: sqlite3.Connection) -> None:
+        """Bring an existing database onto the one-path-per-conversation rule.
+
+        Two things used to live in ``mastery_path_sessions``: which path a
+        conversation is *on*, and which conversation a scratch path belongs
+        *to*. Because the second one has to survive, nothing ever deleted a
+        row — so a conversation that moved to another path (``mastery_switch``,
+        or simply being reopened from another topic's screen) stayed listed
+        under the path it had left, and both topics went on claiming it.
+
+        The two are separated here: ownership moves onto the path it is a
+        property of, membership keeps only the most recent row per session,
+        and a unique index makes the old shape unrepresentable from now on.
+        Every step is idempotent, so this runs on each schema initialization.
+        """
+
+        columns = {str(row["name"]) for row in conn.execute("PRAGMA table_info(mastery_paths)")}
+        if "owner_session_id" not in columns:
+            conn.execute(
+                "ALTER TABLE mastery_paths ADD COLUMN owner_session_id TEXT NOT NULL DEFAULT ''"
+            )
+        binding_columns = {
+            str(row["name"]) for row in conn.execute("PRAGMA table_info(mastery_path_sessions)")
+        }
+        if "owns_path" in binding_columns:
+            # The owning session is the one that created the scratch path, so
+            # the earliest claim wins if a database somehow carries several.
+            conn.execute(
+                """
+                UPDATE mastery_paths SET owner_session_id = (
+                    SELECT b.session_id FROM mastery_path_sessions b
+                    WHERE b.path_id = mastery_paths.path_id AND b.owns_path = 1
+                    ORDER BY b.created_at ASC LIMIT 1
+                )
+                WHERE owner_session_id = '' AND EXISTS (
+                    SELECT 1 FROM mastery_path_sessions b
+                    WHERE b.path_id = mastery_paths.path_id AND b.owns_path = 1
+                )
+                """
+            )
+        conn.execute(
+            """
+            DELETE FROM mastery_path_sessions
+            WHERE rowid NOT IN (
+                SELECT rowid FROM (
+                    SELECT rowid, ROW_NUMBER() OVER (
+                        PARTITION BY session_id ORDER BY last_seen_at DESC, rowid DESC
+                    ) AS rank FROM mastery_path_sessions
+                ) WHERE rank = 1
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mastery_sessions_membership
+                ON mastery_path_sessions(session_id)
+            """
+        )
 
     @contextmanager
     def _connect(self, *, initialize: bool = True) -> Iterator[sqlite3.Connection]:
@@ -1118,6 +1182,15 @@ class LearningStore:
     # ---- explicit path/session ownership ---------------------------------
 
     def bind_session(self, path_id: str, session_id: str, *, owns_path: bool = False) -> None:
+        """Make ``path_id`` the one path this conversation is on.
+
+        Membership is exclusive and always current: a conversation that moves
+        to another path stops being listed under the one it left, so two
+        topics can never both claim it. ``owns_path`` is the separate,
+        permanent fact that this conversation *created* the path — recorded on
+        the path itself, so deleting the conversation still takes its scratch
+        path with it after the conversation has moved on.
+        """
         path_id = self._validate_id(path_id)
         self._import_legacy_if_needed(path_id)
         session_id = str(session_id or "").strip()
@@ -1125,9 +1198,26 @@ class LearningStore:
             raise ValueError("session_id must not be empty")
         now = time.time()
         current_revision = 0
+        released_path_id = ""
+        released_revision = 0
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                previous = conn.execute(
+                    "SELECT path_id FROM mastery_path_sessions WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+                if previous is not None and str(previous["path_id"]) != path_id:
+                    released_path_id = str(previous["path_id"])
+                    conn.execute(
+                        "DELETE FROM mastery_path_sessions WHERE session_id = ?",
+                        (session_id,),
+                    )
+                    released_row = conn.execute(
+                        "SELECT revision FROM mastery_paths WHERE path_id = ?",
+                        (released_path_id,),
+                    ).fetchone()
+                    released_revision = int(released_row["revision"]) if released_row else 0
                 row = conn.execute(
                     "SELECT 1 FROM mastery_paths WHERE path_id = ?", (path_id,)
                 ).fetchone()
@@ -1159,14 +1249,23 @@ class LearningStore:
                 conn.execute(
                     """
                     INSERT INTO mastery_path_sessions (
-                        path_id, session_id, owns_path, created_at, last_seen_at
-                    ) VALUES (?, ?, ?, ?, ?)
+                        path_id, session_id, created_at, last_seen_at
+                    ) VALUES (?, ?, ?, ?)
                     ON CONFLICT(path_id, session_id) DO UPDATE SET
-                        owns_path = MAX(mastery_path_sessions.owns_path, excluded.owns_path),
                         last_seen_at = excluded.last_seen_at
                     """,
-                    (path_id, session_id, int(owns_path), now, now),
+                    (path_id, session_id, now, now),
                 )
+                if owns_path:
+                    # Granted once and never transferred: a path has exactly
+                    # one creator, whatever conversations pass through later.
+                    conn.execute(
+                        """
+                        UPDATE mastery_paths SET owner_session_id = ?
+                        WHERE path_id = ? AND owner_session_id = ''
+                        """,
+                        (session_id, path_id),
+                    )
                 current_revision = int(
                     conn.execute(
                         "SELECT revision FROM mastery_paths WHERE path_id = ?", (path_id,)
@@ -1184,6 +1283,15 @@ class LearningStore:
             "session.bound",
             scope=self.event_scope,
         )
+        if released_path_id:
+            # The path it left lost a conversation from its list; its screen
+            # is as stale as the one it joined.
+            publish_topic_signal(
+                released_path_id,
+                released_revision,
+                "session.released",
+                scope=self.event_scope,
+            )
 
     def list_session_ids(self, path_id: str) -> list[str]:
         path_id = self._validate_id(path_id)
@@ -1198,23 +1306,47 @@ class LearningStore:
             ).fetchall()
         return [str(row["session_id"]) for row in rows]
 
-    def list_paths_for_session(self, session_id: str) -> list[dict[str, Any]]:
+    def path_id_for_session(self, session_id: str) -> str:
+        """The one path this conversation is on, or ``""`` when it is on none."""
         session_id = str(session_id or "").strip()
         if not session_id:
-            return []
+            return ""
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT path_id, owns_path, created_at, last_seen_at
-                FROM mastery_path_sessions
-                WHERE session_id = ? ORDER BY last_seen_at DESC
-                """,
+            row = conn.execute(
+                "SELECT path_id FROM mastery_path_sessions WHERE session_id = ?",
                 (session_id,),
-            ).fetchall()
-        return [dict(row) for row in rows]
+            ).fetchone()
+        return str(row["path_id"]) if row is not None else ""
+
+    @staticmethod
+    def _is_scratch_state(state_json: Any) -> bool:
+        """Whether a path never got a curriculum, and so is only a scratchpad.
+
+        A conversation that starts tutoring without naming a topic gets a path
+        of its own to write into. Until something is built there it is part of
+        the conversation and dies with it; once it holds objectives it is a
+        course the learner can return to from anywhere, and outlives whichever
+        conversation happened to create it.
+        """
+        try:
+            state = json.loads(str(state_json or "{}"))
+        except (TypeError, ValueError):
+            return False
+        modules = state.get("modules") if isinstance(state, dict) else None
+        if not isinstance(modules, list):
+            return True
+        return not any(
+            isinstance(module, dict) and module.get("knowledge_points") for module in modules
+        )
 
     def detach_session(self, session_id: str, *, delete_owned_orphans: bool = True) -> list[str]:
-        """Remove a session association and optionally delete owned orphan paths."""
+        """Forget this conversation, and delete the scratch path it created.
+
+        Deleting a conversation deletes what only it could see. Its membership
+        goes unconditionally; the path goes with it only when this conversation
+        created it, nothing was ever built there, and no other conversation has
+        since moved onto it.
+        """
         session_id = str(session_id or "").strip()
         if not session_id:
             return []
@@ -1228,34 +1360,26 @@ class LearningStore:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                rows = conn.execute(
-                    "SELECT path_id, owns_path FROM mastery_path_sessions WHERE session_id = ?",
-                    (session_id,),
+                # Ownership is a property of the path. The second clause covers
+                # data written before it was: an ad-hoc path was then named
+                # after the conversation that opened it.
+                owned = conn.execute(
+                    """
+                    SELECT path_id, state_json FROM mastery_paths
+                    WHERE owner_session_id = ?
+                       OR (owner_session_id = '' AND path_id = ?)
+                    """,
+                    (session_id, session_id),
                 ).fetchall()
                 conn.execute("DELETE FROM mastery_path_leases WHERE session_id = ?", (session_id,))
                 conn.execute(
                     "DELETE FROM mastery_path_sessions WHERE session_id = ?", (session_id,)
                 )
                 if delete_owned_orphans:
-                    if not rows:
-                        # Compatibility for pre-association data, where an
-                        # ad-hoc path was implicitly named after its session.
-                        # All new turns create an explicit binding, so this
-                        # narrow fallback cannot delete a newly shared path.
-                        legacy = conn.execute(
-                            "SELECT 1 FROM mastery_paths WHERE path_id = ?",
-                            (session_id,),
-                        ).fetchone()
-                        if legacy is not None:
-                            conn.execute(
-                                "DELETE FROM mastery_paths WHERE path_id = ?",
-                                (session_id,),
-                            )
-                            deleted_paths.append(session_id)
-                    for row in rows:
-                        if not bool(row["owns_path"]):
-                            continue
+                    for row in owned:
                         path_id = str(row["path_id"])
+                        if not self._is_scratch_state(row["state_json"]):
+                            continue
                         remaining = conn.execute(
                             "SELECT 1 FROM mastery_path_sessions WHERE path_id = ? LIMIT 1",
                             (path_id,),

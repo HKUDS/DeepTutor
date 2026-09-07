@@ -52,7 +52,11 @@ def _provider_cache_key(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> t
     )
 
 
-def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
+def _build_runtime_provider(
+    llm_config: LLMConfig,
+    *,
+    configure_env: bool = True,
+) -> LLMProvider:
     """Construct one provider, importing only the selected backend SDK."""
     provider_name = llm_config.provider_name or llm_config.binding
     api_key = llm_config.get_api_key()
@@ -75,7 +79,10 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
             GitHubCopilotProvider,
         )
 
-        provider = GitHubCopilotProvider(default_model=llm_config.model)
+        provider = GitHubCopilotProvider(
+            default_model=llm_config.model,
+            configure_env=configure_env,
+        )
     elif backend == "codebuddy":
         from deeptutor.services.llm.provider_core.codebuddy_http_provider import (
             build_codebuddy_provider,
@@ -84,6 +91,7 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
         provider = build_codebuddy_provider(
             api_key=api_key or None,
             default_model=llm_config.model,
+            configure_env=configure_env,
         )
     elif backend == "azure_openai":
         from deeptutor.services.llm.provider_core.azure_openai_provider import AzureOpenAIProvider
@@ -116,6 +124,7 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
             spec=spec,
             provider_name=provider_name,
             wire_api=llm_config.wire_api,
+            configure_env=configure_env,
         )
 
     provider.generation = GenerationSettings(
@@ -124,6 +133,11 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
         reasoning_effort=llm_config.reasoning_effort,
     )
     return provider
+
+
+def build_isolated_provider(config: LLMConfig) -> LLMProvider:
+    """Build an unpooled provider without mutating process-global provider env."""
+    return _build_runtime_provider(config, configure_env=False)
 
 
 def _schedule_close(provider: LLMProvider, loop: asyncio.AbstractEventLoop) -> None:
@@ -197,6 +211,7 @@ def runtime_provider_pool_size() -> int:
 
 
 __all__ = [
+    "build_isolated_provider",
     "close_runtime_provider_pool",
     "get_runtime_provider",
     "reset_runtime_provider_pool",

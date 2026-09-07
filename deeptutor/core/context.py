@@ -31,6 +31,21 @@ class Attachment:
     extracted_text: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceRuntimeContext:
+    """Resolved content workspace frozen for one turn.
+
+    Physical paths are runtime-only.  They must never be copied into model
+    messages, persisted message metadata, or public URLs.
+    """
+
+    workspace_id: str = ""
+    root: str = ""
+    output_dir: str = ""
+    logical_output_dir: str = "outputs"
+    security_level: str = "off"
+
+
 @dataclass
 class TurnRuntimeContext:
     """Non-serializable execution state owned by the runtime adapter."""
@@ -40,6 +55,7 @@ class TurnRuntimeContext:
     provider_response_state: dict[str, Any] | None = None
     subagent_consult_budget: int | None = None
     min_loop_rounds: int = 0
+    workspace: WorkspaceRuntimeContext | None = None
 
 
 @dataclass
@@ -139,4 +155,5 @@ __all__ = [
     "InteractionState",
     "TurnRuntimeContext",
     "UnifiedContext",
+    "WorkspaceRuntimeContext",
 ]

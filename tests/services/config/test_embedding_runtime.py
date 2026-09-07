@@ -327,12 +327,6 @@ def test_embedding_send_dimensions_parsed_from_catalog(
     assert resolved.send_dimensions is expected
 
 
-def test_embedding_send_dimensions_catalog_unset_stays_auto() -> None:
-    catalog = _build_catalog()
-    resolved = resolve_embedding_runtime_config(catalog=catalog)
-    assert resolved.send_dimensions is None
-
-
 def test_embedding_send_dimensions_resolves_from_catalog() -> None:
     catalog = _build_catalog(
         embedding_model={

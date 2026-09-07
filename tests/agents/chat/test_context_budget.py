@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from deeptutor.agents.chat.agent_loop import MAX_SETTLEMENT_ROUNDS
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
-from deeptutor.agents.chat.context_budget import (
+from deeptutor.agents.loop.agent_loop import MAX_SETTLEMENT_ROUNDS
+from deeptutor.agents.loop.context_budget import (
     LLMRequestSnapshot,
     build_context_budget,
     count_conversation_tokens,
@@ -395,7 +395,7 @@ async def _stream(chunks: list[SimpleNamespace]):
 @pytest.mark.asyncio
 async def test_turn_result_carries_the_context_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(
             binding="openai",
             model="gpt-test",
@@ -467,7 +467,7 @@ async def test_forced_finish_still_reports_the_tools_the_turn_carried(
     # available, so the model must keep requesting them to reach the hard
     # finish.
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(
             binding="openai",
             model="gpt-test",

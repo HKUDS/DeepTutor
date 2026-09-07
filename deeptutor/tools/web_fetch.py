@@ -11,8 +11,8 @@ Security stance (kept tight on purpose because the model decides
 arguments, not a human):
 
 * Only ``http://`` / ``https://`` schemes accepted.
-* IP literals and hostnames resolving to **private / loopback / link-local**
-  ranges are rejected up front. The strict-host check happens both
+* IP literals and hostnames resolving to **any private / loopback / link-local**
+  address are rejected up front. The strict-host check happens both
   pre-flight (against the parsed URL) and post-redirect (against the
   final resolved URL) so a redirect to ``127.0.0.1`` can't slip past.
 * Response size is hard-capped at ``MAX_RESPONSE_BYTES``; we stop reading
@@ -178,17 +178,9 @@ def _is_disallowed_host(host: str) -> bool:
     """Block hosts that resolve to private / loopback / link-local IPs.
 
     Handles both raw IP literals (``127.0.0.1`` / ``[::1]``) and DNS
-    names. A hostname is permitted when DNS gives at least one public address:
-    rejecting it because *some* record is unroutable blocks ordinary sites —
-    ``en.wikipedia.org`` resolves to a Teredo-range IPv6 address that
-    ``ipaddress`` reports as private, and an all-addresses rule made every
-    Wikipedia import fail. DNS failures are treated as disallowed to fail
-    closed.
-
-    The connection is then made by hostname, not by the validated address.
-    Pinning the address would defeat TLS certificate verification, and behind
-    an HTTP proxy it breaks outright — there the proxy, not this process, does
-    the name resolution that actually decides the destination.
+    names. Every resolved address must be public because the HTTP client later
+    connects by hostname and may select any answer. DNS failures and malformed
+    answer rows are treated as disallowed so validation fails closed.
     """
 
     candidate = host.strip("[]")
@@ -205,14 +197,16 @@ def _is_disallowed_host(host: str) -> bool:
         infos = socket.getaddrinfo(candidate, None)
     except OSError:
         return True
+    if not infos:
+        return True
     for info in infos:
         try:
             ip = ipaddress.ip_address(info[4][0])
-        except ValueError:
-            continue
-        if not _is_disallowed_ip(ip):
-            return False
-    return True
+        except (IndexError, TypeError, ValueError):
+            return True
+        if _is_disallowed_ip(ip):
+            return True
+    return False
 
 
 def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:

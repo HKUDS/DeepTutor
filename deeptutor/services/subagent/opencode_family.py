@@ -38,7 +38,13 @@ import httpx
 from deeptutor.services.subagent.base import OnEvent, SubagentBackend
 from deeptutor.services.subagent.config import BackendConfig
 from deeptutor.services.subagent.opencode_server import acquire_server
-from deeptutor.services.subagent.process import probe_version
+from deeptutor.services.subagent.process import (
+    compact_field as _compact,
+)
+from deeptutor.services.subagent.process import (
+    probe_version,
+    truncate_field,
+)
 from deeptutor.services.subagent.types import (
     EVENT_ERROR,
     EVENT_LOG,
@@ -53,7 +59,6 @@ from deeptutor.services.subagent.types import (
 
 logger = logging.getLogger(__name__)
 
-_MAX_FIELD_CHARS = 4000
 _TOOL_HEADER_CHARS = 160
 # MiMo's first run performs a local DB migration, so give the version probe
 # more headroom than the default.
@@ -333,10 +338,10 @@ class OpencodeFamilyBackend(SubagentBackend):
                     part,
                     {"merge_id": f"tool:{pid}"} if pid else None,
                 )
-                output = _truncate(str(tool_state.get("output") or ""))
+                output = truncate_field(str(tool_state.get("output") or ""))
                 await emit(EVENT_TOOL_RESULT, output or "(empty result)", part)
             elif status == "error":
-                error = _truncate(str(tool_state.get("error") or "tool failed"))
+                error = truncate_field(str(tool_state.get("error") or "tool failed"))
                 await emit(EVENT_TOOL_RESULT, error, part)
             return
 
@@ -498,21 +503,6 @@ def _inline(text: str) -> str:
     if len(one_line) > _TOOL_HEADER_CHARS:
         return one_line[:_TOOL_HEADER_CHARS].rstrip() + " …"
     return one_line
-
-
-def _compact(obj: Any) -> str:
-    try:
-        text = json.dumps(obj, ensure_ascii=False)
-    except (TypeError, ValueError):
-        text = str(obj)
-    return _truncate(text)
-
-
-def _truncate(text: str) -> str:
-    text = text.strip()
-    if len(text) > _MAX_FIELD_CHARS:
-        return text[:_MAX_FIELD_CHARS].rstrip() + " …"
-    return text
 
 
 __all__ = ["OpencodeFamilyBackend", "OpencodeBackend", "MimoBackend"]

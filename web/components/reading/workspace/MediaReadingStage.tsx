@@ -174,6 +174,17 @@ export function MediaReadingStage({
     [t],
   );
 
+  // A container the browser cannot decode (Matroska is the common one) shows
+  // as an inert black rectangle otherwise. Say so, and offer the file itself —
+  // the transcript and the companion are unaffected either way.
+  const handleUnplayable = useCallback(() => {
+    setPlayerError(
+      t(
+        "Your browser cannot play this file's format. The transcript and the companion still work — open the original to watch it elsewhere.",
+      ),
+    );
+  }, [t]);
+
   useEffect(() => {
     let cancelled = false;
     void getReadingPosition(material.material_id)
@@ -410,6 +421,7 @@ export function MediaReadingStage({
                 controls
                 preload="metadata"
                 src={rawMaterialUrl(material.material_id)}
+                onError={handleUnplayable}
                 className="w-full max-w-xl"
               />
             </div>
@@ -420,6 +432,7 @@ export function MediaReadingStage({
               preload="metadata"
               poster={material.cover_url || undefined}
               src={rawMaterialUrl(material.material_id)}
+              onError={handleUnplayable}
               className="aspect-video w-full rounded-2xl bg-black object-contain shadow-[0_18px_50px_rgba(0,0,0,.18)]"
             />
           )}
@@ -434,6 +447,17 @@ export function MediaReadingStage({
                   : t(
                       "This video has no accessible transcript. Playback works, but the companion cannot ground explanations in its spoken content.",
                     ))}
+              {playerError && !officialUrl && (
+                <a
+                  href={rawMaterialUrl(material.material_id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-1 inline-flex items-center gap-1 text-[var(--primary)] hover:underline"
+                >
+                  {t("Open the original file")}
+                  <ExternalLink size={9} />
+                </a>
+              )}
             </div>
           )}
 

@@ -21,6 +21,12 @@ import type { Translate } from "@/components/space/learning/format";
 import { topicDisplayName } from "@/components/space/learning/format";
 import { TopicAtlas } from "@/components/space/learning/TopicAtlas";
 import { fetchMasteryTopics, type MasteryTopic } from "@/lib/learning-api";
+import {
+  MASTERY_OPENING_SCOPE,
+  masteryOpeningMessage,
+  masterySessionRoute,
+} from "@/lib/mastery-mode";
+import { setPendingPrompt } from "@/lib/pending-prompt";
 
 function MasteryPathRoute() {
   const router = useRouter();
@@ -89,7 +95,17 @@ function MasteryPathRoute() {
               topic.path_id,
               topicDisplayName(topic, t as Translate),
             );
-            router.push(`/mastery/${encodeURIComponent(topic.path_id)}`);
+            // Straight into the goal's outline session: a goal is created
+            // without an outline, and that kind of session is the one that
+            // designs it — it cannot examine the learner, and it opens by
+            // reading their materials rather than waiting to be prompted.
+            // The button they pressed is the request; the conversation opens
+            // by sending it rather than by asking them to phrase it again.
+            setPendingPrompt(
+              masteryOpeningMessage("outline", t),
+              MASTERY_OPENING_SCOPE,
+            );
+            router.push(masterySessionRoute(topic.path_id, "outline"));
           }}
         />
       )}

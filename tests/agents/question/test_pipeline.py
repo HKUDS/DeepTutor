@@ -465,6 +465,39 @@ def test_use_native_tools_false_when_no_tools_resolved() -> None:
         assert pipeline._use_native_tools(ctx) is False
 
 
+def test_unconfigured_generation_tools_are_not_exposed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Question mode must not advertise media tools that cannot run."""
+    from deeptutor.agents.question import pipeline as pipeline_module
+    from deeptutor.core.context import UnifiedContext
+
+    class _CatalogService:
+        @staticmethod
+        def load() -> dict[str, Any]:
+            return {}
+
+        @staticmethod
+        def get_active_model(_catalog: dict[str, Any], _service: str) -> dict[str, Any]:
+            return {}
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "compose_enabled_tools",
+        lambda **_kwargs: ["imagegen", "videogen", "workspace_list"],
+    )
+    monkeypatch.setattr(QuestionPipeline, "_pageindex_tool_names", lambda _self: [])
+    monkeypatch.setattr(
+        "deeptutor.services.config.model_catalog.get_model_catalog_service",
+        lambda: _CatalogService(),
+    )
+
+    pipeline = _make_pipeline()
+    resolved = pipeline._resolved_tools(UnifiedContext(user_message="test"))
+
+    assert resolved == ["workspace_list"]
+
+
 # ---------------------------------------------------------------------------
 # Mimic mode — templates_override path
 # ---------------------------------------------------------------------------

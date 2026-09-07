@@ -11,17 +11,21 @@ import {
   Compass,
   Database,
   FlaskConical,
+  ListChecks,
   Loader2,
+  MessagesSquare,
   Mountain,
   Notebook,
   Orbit,
+  PenLine,
   Ruler,
   Sprout,
   Telescope,
+  Users,
 } from "lucide-react";
 
 import type {
-  KnowledgeBaseFiles,
+  SourceChildren,
   SourceCandidate,
   SourceLibrary,
 } from "@/hooks/useTopicSourceLibrary";
@@ -49,17 +53,13 @@ const EMBLEMS: { value: string; Icon: typeof Compass }[] = [
 ];
 
 export function GoalStep({
-  name,
   goal,
   emoji,
-  onName,
   onGoal,
   onEmoji,
 }: {
-  name: string;
   goal: string;
   emoji: string;
-  onName: (value: string) => void;
   onGoal: (value: string) => void;
   onEmoji: (value: string) => void;
 }) {
@@ -67,28 +67,18 @@ export function GoalStep({
   return (
     <div className="mx-auto max-w-xl">
       <h3 className="text-lg font-semibold text-[var(--foreground)]">
-        {t("What do you want to learn?")}
+        {t("What do you want to master?")}
       </h3>
       <p className="mt-1 text-sm leading-6 text-[var(--muted-foreground)]">
         {t(
-          "The more specific the goal, the closer each knowledge point lands to the ability you actually want.",
+          "Say what you want to be able to do. The tutor reads your materials and designs the outline with you in the first session — you can change it there.",
         )}
       </p>
       <label className="mt-6 block text-xs font-medium text-[var(--foreground)]">
-        {t("Topic name")}
-        <input
-          autoFocus
-          data-modal-initial-focus
-          value={name}
-          onChange={(event) => onName(event.target.value)}
-          maxLength={120}
-          placeholder={t("e.g. Linear algebra")}
-          className="mt-2 h-9 w-full rounded-lg border border-[var(--input)] bg-[var(--background)] px-3.5 text-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/15"
-        />
-      </label>
-      <label className="mt-5 block text-xs font-medium text-[var(--foreground)]">
         {t("Learning goal")}
         <textarea
+          autoFocus
+          data-modal-initial-focus
           value={goal}
           onChange={(event) => onGoal(event.target.value)}
           maxLength={2000}
@@ -101,7 +91,7 @@ export function GoalStep({
       </label>
       <fieldset className="mt-5">
         <legend className="text-xs font-medium text-[var(--foreground)]">
-          {t("Map emblem")}
+          {t("Goal emblem")}
         </legend>
         <div className="mt-2 flex flex-wrap gap-2">
           {EMBLEMS.map(({ value, Icon }) => (
@@ -110,7 +100,7 @@ export function GoalStep({
               type="button"
               onClick={() => onEmoji(value)}
               aria-pressed={emoji === value}
-              aria-label={t("Choose map emblem {{emblem}}", { emblem: value })}
+              aria-label={t("Choose goal emblem {{emblem}}", { emblem: value })}
               className={`flex h-10 w-10 items-center justify-center rounded-xl border transition ${
                 emoji === value
                   ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
@@ -131,15 +121,15 @@ export function SourcesStep({
   loading,
   selected,
   onToggle,
-  files,
+  childLists,
   onExpand,
 }: {
   library: SourceLibrary;
   loading: boolean;
   selected: Set<string>;
   onToggle: (key: string) => void;
-  /** Per-knowledge-base document lists, fetched when one is opened. */
-  files: Record<string, KnowledgeBaseFiles>;
+  /** Child lists per opened row, fetched on demand. */
+  childLists: Record<string, SourceChildren>;
   onExpand: (candidate: SourceCandidate) => void;
 }) {
   const { t } = useTranslation();
@@ -164,7 +154,7 @@ export function SourcesStep({
       </h3>
       <p className="mt-1 text-sm leading-6 text-[var(--muted-foreground)]">
         {t(
-          "Mix as many sources as useful. Your goal is always included; the rest grounds the outline in your own material.",
+          "Mix as many sources as useful — your library, and the work you have already done here. Your goal is always included; the rest grounds the outline in your own material.",
         )}
       </p>
       {loading ? (
@@ -199,7 +189,52 @@ export function SourcesStep({
             hint={t(
               "Take a whole library, or open one and pick just the lessons you mean.",
             )}
-            files={files}
+            childLists={childLists}
+            opened={opened}
+            onToggleOpen={toggleOpen}
+          />
+          <SourceSection
+            icon={MessagesSquare}
+            title={t("Conversations")}
+            empty={t("No conversations yet")}
+            items={library.chats}
+            selected={selected}
+            onToggle={onToggle}
+            hint={t(
+              "A conversation you have already had shows the tutor where you actually stand.",
+            )}
+          />
+          <SourceSection
+            icon={ListChecks}
+            title={t("Question bank")}
+            empty={t("No question sets yet")}
+            items={library.questionSets}
+            selected={selected}
+            onToggle={onToggle}
+            hint={t(
+              "Open a set and pick the questions you want the outline built around.",
+            )}
+            childLists={childLists}
+            opened={opened}
+            onToggleOpen={toggleOpen}
+          />
+          <SourceSection
+            icon={PenLine}
+            title={t("Co-Writer drafts")}
+            empty={t("No drafts yet")}
+            items={library.drafts}
+            selected={selected}
+            onToggle={onToggle}
+          />
+          <SourceSection
+            icon={Users}
+            title={t("Partners and groups")}
+            empty={t("No partner conversations yet")}
+            items={library.partners}
+            selected={selected}
+            onToggle={onToggle}
+            hint={t("Open one and pick the conversations you mean.")}
+            childLists={childLists}
             opened={opened}
             onToggleOpen={toggleOpen}
           />
@@ -243,11 +278,15 @@ function SourceRow({
   bare?: boolean;
 }) {
   const { t } = useTranslation();
+  // A container holds no text of its own — a question-bank category, a study
+  // partner. Showing it a checkbox would promise a selection the server has no
+  // way to honour, so it renders as a plain heading and only opens.
+  const selectable = item.selectable !== false;
   return (
     <button
       type="button"
       onClick={onToggle}
-      aria-pressed={active}
+      aria-pressed={selectable ? active : undefined}
       disabled={disabled || !item.available}
       className={`flex min-h-16 w-full items-center gap-3 border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${
         bare ? "border-transparent" : "rounded-xl"
@@ -257,15 +296,17 @@ function SourceRow({
           : `hover:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] ${bare ? "" : "border-[var(--border)]"}`
       }`}
     >
-      <span
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-          active
-            ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-            : "border-[var(--input)]"
-        }`}
-      >
-        {active && <Check className="h-3 w-3" />}
-      </span>
+      {selectable && (
+        <span
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+            active
+              ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+              : "border-[var(--input)]"
+          }`}
+        >
+          {active && <Check className="h-3 w-3" />}
+        </span>
+      )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-[var(--foreground)]">
           {item.label}
@@ -279,13 +320,14 @@ function SourceRow({
 }
 
 /**
- * The documents inside one knowledge base, once it has been opened.
+ * What sits inside one opened row: a library's documents, a category's
+ * questions, a partner's conversations.
  *
- * Retrieval over a whole library answers "what does this say about my goal?".
- * Picking one document answers "build this around chapter 3" — a different
- * question, and the only one that can be asked by naming a file.
+ * Taking the whole container answers "what does this say about my goal?".
+ * Picking one child answers "build this around chapter 3" — a different
+ * question, and the only one that can be asked by naming the thing itself.
  */
-function KnowledgeBaseDocuments({
+function ChildSourceList({
   parent,
   state,
   selected,
@@ -293,7 +335,7 @@ function KnowledgeBaseDocuments({
   parentSelected,
 }: {
   parent: SourceCandidate;
-  state: KnowledgeBaseFiles | undefined;
+  state: SourceChildren | undefined;
   selected: Set<string>;
   onToggle: (key: string) => void;
   parentSelected: boolean;
@@ -303,7 +345,7 @@ function KnowledgeBaseDocuments({
     return (
       <div className="flex items-center gap-2 px-3 py-3 text-xs text-[var(--muted-foreground)]">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        {t("Reading its files…")}
+        {t("Loading…")}
       </div>
     );
   }
@@ -320,23 +362,23 @@ function KnowledgeBaseDocuments({
       <div className="px-3 py-3 text-xs text-[var(--muted-foreground)]">
         {/* A connected external resource keeps its files where they live; the
             whole library is still selectable, one of its documents is not. */}
-        {t("This knowledge base has no local files to pick from.")}
+        {t("Nothing here to pick from.")}
       </div>
     );
   }
   return (
     <div className="max-h-56 space-y-1 overflow-y-auto px-2 pb-2">
-      {state.candidates.map((file) => (
+      {state.candidates.map((child) => (
         <SourceRow
-          key={file.key}
-          item={file}
-          active={selected.has(file.key)}
-          onToggle={() => onToggle(file.key)}
+          key={child.key}
+          item={child}
+          active={selected.has(child.key)}
+          onToggle={() => onToggle(child.key)}
           disabled={parentSelected}
           note={
             parentSelected
               ? t("Already covered by the whole library")
-              : `${parent.label} · ${file.path || file.sourceId}`
+              : `${parent.label} · ${child.path || child.detail}`
           }
         />
       ))}
@@ -352,7 +394,7 @@ function SourceSection({
   selected,
   onToggle,
   hint = "",
-  files,
+  childLists,
   opened,
   onToggleOpen,
 }: {
@@ -363,13 +405,13 @@ function SourceSection({
   selected: Set<string>;
   onToggle: (key: string) => void;
   hint?: string;
-  /** Present only for the knowledge-base section, which can be opened up. */
-  files?: Record<string, KnowledgeBaseFiles>;
+  /** Present for sections whose rows can be opened up. */
+  childLists?: Record<string, SourceChildren>;
   opened?: Set<string>;
   onToggleOpen?: (candidate: SourceCandidate) => void;
 }) {
   const { t } = useTranslation();
-  const expandable = Boolean(files && opened && onToggleOpen);
+  const expandable = Boolean(childLists && opened && onToggleOpen);
   return (
     <section>
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-[var(--muted-foreground)]">
@@ -390,7 +432,7 @@ function SourceSection({
         <div className="grid gap-2">
           {items.map((item) => {
             const isOpen = Boolean(opened?.has(item.key));
-            const state = files?.[item.key];
+            const state = childLists?.[item.key];
             const picked = state
               ? state.candidates.filter((file) => selected.has(file.key)).length
               : 0;
@@ -408,12 +450,14 @@ function SourceSection({
                     <SourceRow
                       item={item}
                       active={selected.has(item.key)}
-                      onToggle={() => onToggle(item.key)}
+                      onToggle={() =>
+                        item.selectable === false
+                          ? onToggleOpen?.(item)
+                          : onToggle(item.key)
+                      }
                       bare
                       note={
-                        picked > 0
-                          ? `${picked} ${t("of its files selected")}`
-                          : ""
+                        picked > 0 ? `${picked} ${t("selected inside")}` : ""
                       }
                     />
                   </div>
@@ -423,7 +467,7 @@ function SourceSection({
                     aria-expanded={isOpen}
                     disabled={!item.available}
                     className="flex w-11 shrink-0 items-center justify-center border-l border-[var(--border)] text-[var(--muted-foreground)] transition hover:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] hover:text-[var(--foreground)] disabled:opacity-40"
-                    aria-label={t("Show its files")}
+                    aria-label={t("Show what is inside")}
                   >
                     <span className="flex flex-col items-center gap-0.5">
                       <FileText className="h-3.5 w-3.5" />
@@ -437,7 +481,7 @@ function SourceSection({
                 </div>
                 {isOpen && (
                   <div className="border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_75%,transparent)]">
-                    <KnowledgeBaseDocuments
+                    <ChildSourceList
                       parent={item}
                       state={state}
                       selected={selected}

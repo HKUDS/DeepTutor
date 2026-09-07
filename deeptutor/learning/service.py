@@ -11,10 +11,12 @@ from deeptutor.learning.models import (
     ErrorRecord,
     InteractionStatus,
     LearnerMasteryOverride,
+    LearnerProfile,
     LearningModule,
     LearningProgress,
     LearningStage,
     MasteryInteraction,
+    PendingOption,
     PendingQuestion,
     QuizAttempt,
     RetryAttempt,
@@ -30,6 +32,18 @@ if TYPE_CHECKING:
 # Long enough for a course title, short enough that a list row stays a row.
 # Matches the cap module and objective names already use.
 _MAX_PATH_NAME_LEN = 200
+#: One intake answer. Free text, but a paragraph is an answer and a chapter is
+#: a paste — and the whole profile is injected into every turn's status.
+_MAX_PROFILE_FIELD_LEN = 600
+#: The intake fields a caller may set. Named here so the tool schema, the REST
+#: layer and this merge cannot drift apart.
+_LEARNER_PROFILE_FIELDS: tuple[str, ...] = (
+    "prior_knowledge",
+    "target_level",
+    "time_budget",
+    "preferences",
+    "notes",
+)
 
 
 class MasteryInteractionError(RuntimeError):
@@ -484,9 +498,10 @@ class LearningService:
 
                 stored = str(interaction.user_answer or "")
                 incoming = str(answer or "")
-                if not is_readable_choice_answer(
-                    stored, interaction.question.options
-                ) and is_readable_choice_answer(incoming, interaction.question.options):
+                option_map = interaction.question.choice_map
+                if not is_readable_choice_answer(stored, option_map) and is_readable_choice_answer(
+                    incoming, option_map
+                ):
                     interaction.user_answer = incoming
                     interaction.session_id = session_id or interaction.session_id
                     interaction.turn_id = turn_id or interaction.turn_id
@@ -553,11 +568,10 @@ class LearningService:
                     from deeptutor.learning.pending import (
                         has_option_bodies,
                         is_readable_choice_answer,
-                        parse_options,
                         resolve_choice_submission,
                     )
 
-                    option_map = parse_options(pending.options)
+                    option_map = pending.choice_map
                     if is_readable_choice_answer(stored, option_map):
                         raw_answer = stored
                     elif is_readable_choice_answer(raw_answer, option_map):
@@ -585,9 +599,13 @@ class LearningService:
                 pending.expected_answer if expected_answer is None else expected_answer
             )
             if pending.question_type == "choice" and resolved_choice_options:
-                from deeptutor.learning.pending import format_options
-
-                pending.options = format_options(resolved_choice_options)
+                # Bodies recovered for a legacy question (see the tool
+                # adapter): store them in the structured form so nothing has
+                # to recover them again.
+                pending.options = [
+                    PendingOption(label=label, body=body)
+                    for label, body in resolved_choice_options.items()
+                ]
                 pending.expected_answer = authoritative_answer
                 interaction.question = pending
             is_correct = self._apply_grade(
@@ -800,6 +818,50 @@ class LearningService:
 
         progress, _ = self._store.mutate(book_id, rename)
         return progress
+
+    def record_learner_profile(
+        self,
+        book_id: str,
+        *,
+        fields: dict[str, str],
+        session_id: str = "",
+        turn_id: str = "",
+    ) -> tuple[LearningProgress, list[str]]:
+        """Merge intake answers into this goal's learner profile.
+
+        Merge, never replace: intake is not a single moment. The first session
+        asks four questions, and months later "我时间变少了" has to be able to
+        change one of them without wiping the other three. Only fields the
+        caller actually names are touched, so an omitted field keeps whatever
+        the learner said about it before.
+
+        Returns the progress and the names of the fields that really changed,
+        so the caller can tell the learner what it recorded rather than
+        claiming to have recorded everything it was handed.
+        """
+        cleaned = {
+            key: str(value or "").strip()[:_MAX_PROFILE_FIELD_LEN]
+            for key, value in fields.items()
+            if key in _LEARNER_PROFILE_FIELDS and value is not None
+        }
+
+        def record(tx):
+            profile = tx.progress.learner_profile or LearnerProfile()
+            changed = [key for key, value in cleaned.items() if getattr(profile, key) != value]
+            if not changed:
+                return []
+            updated = profile.model_copy(update={**cleaned, "updated_at": time.time()})
+            tx.progress.learner_profile = updated
+            tx.touch()
+            tx.emit(
+                "path.learner_profile_recorded",
+                {"fields": changed},
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            return changed
+
+        return self._store.mutate(book_id, record, create=True)
 
     def abandon_active_question(self, book_id: str) -> tuple[LearningProgress, bool]:
         """Drop the outstanding question so the path can move on.

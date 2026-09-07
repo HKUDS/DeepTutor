@@ -48,6 +48,28 @@ Object.defineProperty(globalThis, "sessionStorage", {
   value: new MemoryStorage(),
 });
 
+Object.defineProperty(window, "matchMedia", {
+  configurable: true,
+  value: vi.fn((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => false),
+  })),
+});
+
+// jsdom intentionally leaves canvas rendering unimplemented and logs an error
+// every time a component probes for a 2D context. Tests that need drawing
+// provide their own mock; the shared default keeps unrelated render tests quiet.
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  configurable: true,
+  value: vi.fn(() => null),
+});
+
 const originalConsoleError = console.error;
 const actWarning =
   /(?:not wrapped in act|testing environment is not configured to support act)/i;

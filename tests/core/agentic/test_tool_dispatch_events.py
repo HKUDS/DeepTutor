@@ -24,7 +24,7 @@ import pytest
 
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.tool_protocol import ToolResult
+from deeptutor.core.tool_protocol import ToolDefinition, ToolParameter, ToolResult
 from deeptutor.core.trace import derive_trace_metadata
 from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
 from deeptutor.runtime.registry.tool_registry import ToolRegistry
@@ -35,6 +35,29 @@ from deeptutor.services.sandbox import Mount
 class _Registry:
     async def execute(self, name: str, **kwargs: Any) -> ToolResult:
         return ToolResult(content="ok", success=True)
+
+
+class _SensitiveArgRegistry(_Registry):
+    """A tool whose schema marks one argument as not-for-display."""
+
+    class _Tool:
+        def get_definition(self) -> ToolDefinition:
+            return ToolDefinition(
+                name="quiz",
+                description="Pose a question",
+                parameters=[
+                    ToolParameter(name="question", type="string", description="prompt"),
+                    ToolParameter(
+                        name="expected_answer",
+                        type="string",
+                        description="answer key",
+                        sensitive=True,
+                    ),
+                ],
+            )
+
+    def get(self, name: str) -> Any:
+        return self._Tool() if name == "quiz" else None
 
 
 class _RaisingRegistry:
@@ -138,7 +161,13 @@ def _call_id_of(event: StreamEvent) -> str:
 @pytest.mark.asyncio
 async def test_tool_call_event_args_exclude_private_kwargs() -> None:
     events = await _run_dispatch(
-        [{"id": "c1", "name": "exec", "arguments": json.dumps({"command": "true"})}],
+        [
+            {
+                "id": "c1",
+                "name": "exec",
+                "arguments": json.dumps({"code": "true", "language": "shell"}),
+            }
+        ],
         registry=_Registry(),
         kwarg_augmenter=_augment,
     )
@@ -146,16 +175,49 @@ async def test_tool_call_event_args_exclude_private_kwargs() -> None:
     tool_calls = [e for e in events if e.type == StreamEventType.TOOL_CALL]
     assert tool_calls, "tool_call event must be emitted"
     args = tool_calls[0].metadata.get("args") or {}
-    assert set(args.keys()) == {"command"}
+    assert args == {"code": "true", "language": "shell"}
     # The whole event must survive strict JSON serialization — this is what
     # the WS push and the turn-event store both rely on.
     json.dumps(tool_calls[0].to_dict())
 
 
 @pytest.mark.asyncio
+async def test_tool_call_event_withholds_sensitive_args() -> None:
+    """An answer key must not ride into the trace the learner can expand.
+
+    The trace is shown to the person the tool acts for. A quiz registers its
+    ``expected_answer`` through the same call that poses the question, so
+    displaying the call's arguments handed the answer to whoever opened the
+    disclosure triangle — while they still had the question in front of them.
+    """
+    events = await _run_dispatch(
+        [
+            {
+                "id": "c1",
+                "name": "quiz",
+                "arguments": json.dumps({"question": "Which one?", "expected_answer": "C"}),
+            }
+        ],
+        registry=_SensitiveArgRegistry(),
+    )
+
+    tool_calls = [e for e in events if e.type == StreamEventType.TOOL_CALL]
+    assert tool_calls
+    args = tool_calls[0].metadata.get("args") or {}
+    assert args == {"question": "Which one?"}
+    assert "C" not in json.dumps(tool_calls[0].to_dict(), ensure_ascii=False)
+
+
+@pytest.mark.asyncio
 async def test_non_retrieve_tool_emits_running_then_complete() -> None:
     events = await _run_dispatch(
-        [{"id": "c1", "name": "exec", "arguments": json.dumps({"command": "true"})}],
+        [
+            {
+                "id": "c1",
+                "name": "exec",
+                "arguments": json.dumps({"code": "true", "language": "shell"}),
+            }
+        ],
         registry=_Registry(),
     )
 
@@ -200,7 +262,13 @@ async def test_retrieve_tool_keeps_its_labelled_variant() -> None:
 @pytest.mark.asyncio
 async def test_raising_tool_emits_terminal_error() -> None:
     events = await _run_dispatch(
-        [{"id": "c1", "name": "exec", "arguments": json.dumps({"command": "true"})}],
+        [
+            {
+                "id": "c1",
+                "name": "exec",
+                "arguments": json.dumps({"code": "true", "language": "shell"}),
+            }
+        ],
         registry=_RaisingRegistry(),
     )
 
@@ -223,7 +291,13 @@ async def test_one_failed_tool_does_not_raise_a_turn_level_error() -> None:
     ``call_state``, which is all the frontend reads, on a PROGRESS event.
     """
     events = await _run_dispatch(
-        [{"id": "c1", "name": "exec", "arguments": json.dumps({"command": "true"})}],
+        [
+            {
+                "id": "c1",
+                "name": "exec",
+                "arguments": json.dumps({"code": "true", "language": "shell"}),
+            }
+        ],
         registry=_RaisingRegistry(),
     )
 
@@ -282,7 +356,11 @@ async def test_unknown_tool_name_emits_terminal_error() -> None:
 async def test_parallel_calls_get_their_own_status_pair() -> None:
     events = await _run_dispatch(
         [
-            {"id": "c1", "name": "exec", "arguments": json.dumps({"command": "one"})},
+            {
+                "id": "c1",
+                "name": "exec",
+                "arguments": json.dumps({"code": "one", "language": "shell"}),
+            },
             {"id": "c2", "name": "read_source", "arguments": json.dumps({"index": 1})},
         ],
         registry=_Registry(),
@@ -298,7 +376,13 @@ async def test_parallel_calls_get_their_own_status_pair() -> None:
 @pytest.mark.asyncio
 async def test_intermediate_progress_from_non_retrieve_tool_reaches_stream() -> None:
     events = await _run_dispatch(
-        [{"id": "c1", "name": "exec", "arguments": json.dumps({"command": "true"})}],
+        [
+            {
+                "id": "c1",
+                "name": "exec",
+                "arguments": json.dumps({"code": "true", "language": "shell"}),
+            }
+        ],
         registry=_ProgressRegistry(),
     )
 

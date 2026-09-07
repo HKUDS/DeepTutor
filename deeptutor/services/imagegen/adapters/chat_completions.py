@@ -14,7 +14,6 @@ base64 data URIs; an http URL is downloaded as a fallback.
 
 from __future__ import annotations
 
-import base64
 import logging
 from typing import Any
 
@@ -23,6 +22,7 @@ import httpx
 from deeptutor.services.generation_http import (
     GenerationProviderError,
     build_auth_headers,
+    decode_base64_media,
     join_api_path,
     raise_for_provider,
 )
@@ -102,12 +102,16 @@ class ChatCompletionsImagegenAdapter(BaseImagegenAdapter):
             if not encoded:
                 raise GenerationProviderError("Malformed image data URI.")
             content_type = header[5:].split(";", 1)[0].strip() or "image/png"
-            return base64.b64decode(encoded), content_type
+            if not content_type.startswith("image/"):
+                raise GenerationProviderError("Image data URI had a non-image content type.")
+            return decode_base64_media(encoded, "Image generation"), content_type
         resp = await client.get(src)
         raise_for_provider(resp, "Image download")
         content_type = resp.headers.get("content-type") or "image/png"
         if not content_type.startswith("image/"):
             content_type = "image/png"
+        if not resp.content:
+            raise GenerationProviderError("Image download returned empty data.")
         return resp.content, content_type
 
 

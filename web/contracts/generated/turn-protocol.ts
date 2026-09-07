@@ -38,8 +38,12 @@ export type KnowledgeBases = string[];
 export type Language = string | null;
 export type ModelId = string;
 export type ProfileId = string;
+export type QuestionId = string;
+export type Text = string;
 export type MasteryPathId = string | null;
 export type MasteryPathLeaseManaged = boolean;
+export type MasterySessionMode = string | null;
+export type QuestionId1 = string;
 export type MemoryReferences = (
   "recent" | "profile" | "scope" | "preferences" | "summary"
 )[];
@@ -102,10 +106,10 @@ export type SessionId3 = string;
 export type Type7 = "regenerate";
 export type Answers = UserAnswer[] | null;
 export type Questionid = string;
-export type Text = string;
+export type Text1 = string;
 export type CommandId1 = string;
 export type ProtocolVersion7 = "2.0";
-export type Text1 = string | null;
+export type Text2 = string | null;
 export type TurnId4 = string;
 export type Type8 = "submit_user_reply";
 export type CommandId2 = string;
@@ -274,8 +278,11 @@ export interface StartTurnCommand {
   knowledge_bases?: KnowledgeBases;
   language?: Language;
   llm_selection?: LLMSelection | null;
+  mastery_answer?: MasteryCardAnswer | null;
   mastery_path_id?: MasteryPathId;
   mastery_path_lease_managed?: MasteryPathLeaseManaged;
+  mastery_session_mode?: MasterySessionMode;
+  mastery_skip?: MasteryCardSkip | null;
   memory_references?: MemoryReferences;
   notebook_references?: NotebookReferences;
   parent_message_id?: ParentMessageId;
@@ -331,6 +338,36 @@ export interface Config {
 export interface LLMSelection {
   model_id: ModelId;
   profile_id: ProfileId;
+}
+/**
+ * An answer submitted from a mastery question card.
+ *
+ * The card outlives the turn that posed it — posing a question ends that
+ * turn — so the answer arrives as the next turn's message. This says which
+ * question the message is answering, letting the runtime commit it to the
+ * engine before the tutor's first token instead of asking the model to
+ * recover the pairing from prose.
+ *
+ * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
+ * via the `definition` "MasteryCardAnswer".
+ */
+export interface MasteryCardAnswer {
+  question_id: QuestionId;
+  text: Text;
+}
+/**
+ * A question the learner dropped instead of answering.
+ *
+ * The same shape of problem as :class:`MasteryCardAnswer`: the card outlives
+ * the turn that posed it, so "not this one" also arrives as the next turn's
+ * message. Naming the question is what keeps the runtime from abandoning
+ * whatever happens to be open by the time the turn starts.
+ *
+ * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
+ * via the `definition` "MasteryCardSkip".
+ */
+export interface MasteryCardSkip {
+  question_id: QuestionId1;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
@@ -435,7 +472,7 @@ export interface SubmitUserReplyCommand {
   answers?: Answers;
   command_id: CommandId1;
   protocol_version: ProtocolVersion7;
-  text?: Text1;
+  text?: Text2;
   turn_id: TurnId4;
   type?: Type8;
 }
@@ -445,7 +482,7 @@ export interface SubmitUserReplyCommand {
  */
 export interface UserAnswer {
   questionId: Questionid;
-  text?: Text;
+  text?: Text1;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema

@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import { asJsonOrThrow as asJson } from "@/lib/api";
 
 const SKILLS_CACHE_PREFIX = "skills:";
 const SKILL_TAGS_CACHE_KEY = `${SKILLS_CACHE_PREFIX}tags`;
@@ -49,20 +50,6 @@ function normalizeTags(raw: unknown): string[] {
     out.push(tag);
   }
   return out;
-}
-
-async function asJson(response: Response) {
-  if (!response.ok) {
-    let detail = `${response.status} ${response.statusText}`;
-    try {
-      const body = await response.json();
-      if (body?.detail) detail = String(body.detail);
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
-  }
-  return response.json();
 }
 
 export async function listSkills(options?: {

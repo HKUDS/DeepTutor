@@ -1,11 +1,9 @@
 """Generated-file attachments carried by a turn's stream events.
 
-The ``exec`` / ``code_execution`` / media tools write files into the turn
-workspace and publish them in two places: each ``tool_result`` event carries
-them in ``metadata.tool_metadata.artifacts`` the moment the tool finishes (the
-source that survives cancelled turns), and the loop's final SOURCES event
-aggregates them as ``type=="artifact"`` sources. Both are read — the caller
-dedupes by URL.
+The unified ``exec`` and media tools write files into the turn workspace and
+report their logical paths. ``workspace_present`` then publishes an immutable
+workspace item in its tool result and the loop's final SOURCES event. Legacy
+non-workspace artifact events remain readable for older stored sessions.
 
 Persisting them as assistant-message attachments is what lets the chat UI
 render openable cards (same Viewer path as user uploads) and list them in the
@@ -30,6 +28,7 @@ logger = logging.getLogger(__name__)
 # source of truth for locating the file again — no redundant path field has to
 # be persisted (or leaked to the client).
 _OUTPUTS_URL_PREFIX = "/files/outputs/"
+_WORKSPACE_ITEMS_URL_PREFIX = "/files/workspace-items/"
 
 # Extensions whose preview drawer has no in-browser renderer and therefore
 # falls back to the extractor's plain text (mirrors the frontend's
@@ -58,28 +57,45 @@ def artifact_attachments(event: StreamEvent) -> list[dict[str, Any]]:
         raw = [
             entry
             for entry in metadata.get("sources") or []
-            if isinstance(entry, dict) and entry.get("type") == "artifact"
+            if isinstance(entry, dict) and entry.get("type") in {"artifact", "workspace_item"}
         ]
     elif event.type == StreamEventType.TOOL_RESULT:
         tool_meta = metadata.get("tool_metadata")
         if isinstance(tool_meta, dict):
-            raw = [e for e in tool_meta.get("artifacts") or [] if isinstance(e, dict)]
+            workspace_items = [
+                e for e in tool_meta.get("workspace_items") or [] if isinstance(e, dict)
+            ]
+            raw = workspace_items or [
+                e for e in tool_meta.get("artifacts") or [] if isinstance(e, dict)
+            ]
     attachments: list[dict[str, Any]] = []
     for entry in raw:
         url = str(entry.get("url") or "")
         if not url:
             continue
         mime = str(entry.get("mime_type") or "")
-        attachments.append(
-            {
-                "type": "image" if mime.startswith("image/") else "document",
-                "filename": str(entry.get("filename") or "file"),
-                "mime_type": mime,
-                "url": url,
-                "size_bytes": entry.get("size_bytes"),
-                "generated": True,
-            }
-        )
+        attachment = {
+            "type": "image" if mime.startswith("image/") else "document",
+            "filename": str(entry.get("filename") or "file"),
+            "mime_type": mime,
+            "url": url,
+            "size_bytes": entry.get("size_bytes"),
+            "generated": bool(entry.get("generated", True)),
+        }
+        item_id = str(entry.get("workspace_item_id") or "")
+        if item_id:
+            attachment.update(
+                {
+                    "origin": "workspace",
+                    "workspace_id": str(entry.get("workspace_id") or ""),
+                    "workspace_item_id": item_id,
+                    "relative_path": str(entry.get("relative_path") or ""),
+                    "sha256": str(entry.get("sha256") or ""),
+                    "title": str(entry.get("title") or ""),
+                    "caption": str(entry.get("caption") or ""),
+                }
+            )
+        attachments.append(attachment)
     return attachments
 
 
@@ -106,6 +122,7 @@ async def fill_preview_text(attachments: list[dict[str, Any]]) -> None:
         try:
             text = await extract_text_from_path_isolated(
                 path,
+                filename_hint=str(attachment.get("filename") or path.name),
                 max_chars=_PREVIEW_TEXT_MAX_CHARS,
             )
         except DocumentExtractionError as exc:
@@ -130,6 +147,17 @@ def _resolve_artifact_path(url: str) -> Path | None:
     would itself serve — the same guard ``/files/outputs`` applies, so a crafted
     URL cannot walk this out of the public workspace.
     """
+    if url.startswith(_WORKSPACE_ITEMS_URL_PREFIX):
+        parts = url[len(_WORKSPACE_ITEMS_URL_PREFIX) :].split("/", 1)
+        if len(parts) != 2:
+            return None
+        try:
+            from deeptutor.services.workspace import get_content_workspace_service
+
+            path, _item = get_content_workspace_service().resolve_published_item(parts[0], parts[1])
+            return path
+        except (OSError, ValueError):
+            return None
     if not url.startswith(_OUTPUTS_URL_PREFIX):
         return None
     service = get_path_service()

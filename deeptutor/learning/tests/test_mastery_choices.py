@@ -11,15 +11,110 @@ import pytest
 
 from deeptutor.capabilities.mastery.choices import (
     canonical_labels,
-    format_options,
     has_option_bodies,
     is_readable_choice_answer,
+    labelled_options,
     option_label_intent,
     parse_options,
+    read_option_objects,
     recover_options_from_turn,
     resolve_answer,
     resolve_choice_submission,
+    split_label_and_body,
 )
+
+# ── read_option_objects ─────────────────────────────────────────────────────
+
+
+def test_read_option_objects_defers_plain_strings_to_the_legacy_path():
+    """A list of strings needs group inference, which parse_options owns."""
+    assert read_option_objects(["A: first", "B: second"]) is None
+
+
+def test_read_option_objects_reads_the_structured_shape():
+    assert read_option_objects(
+        [{"label": "A", "body": "first answer"}, {"label": "B", "body": "second answer"}]
+    ) == ([{"label": "A", "body": "first answer"}, {"label": "B", "body": "second answer"}], [])
+
+
+def test_read_option_objects_reads_ask_users_key_names():
+    """`description` is ask_user's word for the same field; models mix them up."""
+    assert read_option_objects(
+        [{"label": "A", "description": "first answer"}, {"label": "b)", "description": "second"}]
+    ) == ([{"label": "A", "body": "first answer"}, {"label": "B", "body": "second"}], [])
+
+
+def test_read_option_objects_splits_a_label_that_carries_the_answer():
+    """The description beside it describes the choice; the card must not show it."""
+    assert read_option_objects(
+        [
+            {"label": "A: overwrite the old value", "description": "the reducer never ran"},
+            {"label": "B: concatenate both lists", "description": "the reducer ran"},
+        ]
+    ) == (
+        [
+            {"label": "A", "body": "overwrite the old value"},
+            {"label": "B", "body": "concatenate both lists"},
+        ],
+        [],
+    )
+
+
+def test_read_option_objects_leaves_an_unlabelled_body_unlabelled():
+    """Position decides the label — see labelled_options."""
+    assert read_option_objects([{"body": "first"}, "second"]) == (
+        [{"label": "", "body": "first"}, {"label": "", "body": "second"}],
+        [],
+    )
+
+
+def test_read_option_objects_keeps_a_bare_label_with_no_body():
+    """So registration rejects it as a bare label, not as an unreadable entry."""
+    assert read_option_objects([{"label": "A"}, {"label": "B", "body": "second"}]) == (
+        [{"label": "A", "body": ""}, {"label": "B", "body": "second"}],
+        [],
+    )
+
+
+def test_read_option_objects_reads_a_label_to_body_mapping():
+    assert read_option_objects({"A": "first", "B": "second"}) == (
+        [{"label": "A", "body": "first"}, {"label": "B", "body": "second"}],
+        [],
+    )
+
+
+def test_read_option_objects_reads_numeric_options():
+    assert read_option_objects([1, 2.5]) == (
+        [{"label": "", "body": "1"}, {"label": "", "body": "2.5"}],
+        [],
+    )
+
+
+@pytest.mark.parametrize("raw", ["A: first, B: second", 3, {"A": {"body": "first"}}])
+def test_read_option_objects_returns_none_for_a_payload_that_is_not_options(raw):
+    assert read_option_objects(raw) is None
+
+
+def test_read_option_objects_hands_back_what_it_cannot_read():
+    """So the rejection can name the shape the model actually sent."""
+    assert read_option_objects([{"foo": "bar"}, {"label": "B", "body": "second"}]) == (
+        [{"label": "B", "body": "second"}],
+        [{"foo": "bar"}],
+    )
+
+
+def test_labelled_options_fills_in_positions_and_keeps_given_labels():
+    assert labelled_options([{"label": "", "body": "first"}, {"label": "B", "body": "second"}]) == [
+        {"label": "A", "body": "first"},
+        {"label": "B", "body": "second"},
+    ]
+
+
+def test_split_label_and_body_leaves_unlabelled_text_whole():
+    assert split_label_and_body("A) first") == ("A", "first")
+    assert split_label_and_body("x - 1 = 0") == ("X", "1 = 0")
+    assert split_label_and_body("first answer") == ("", "first answer")
+
 
 # ── parse_options ────────────────────────────────────────────────────────────
 
@@ -100,14 +195,6 @@ def test_has_option_bodies_false_for_bare_labels():
 
 def test_has_option_bodies_false_when_fewer_than_two():
     assert has_option_bodies({"A": "only one"}) is False
-
-
-# ── format_options ───────────────────────────────────────────────────────────
-
-
-def test_format_options_round_trips_with_parse():
-    options = {"A": "first", "B": "second"}
-    assert parse_options(format_options(options)) == options
 
 
 # ── resolve_answer ───────────────────────────────────────────────────────────
@@ -273,4 +360,4 @@ def test_public_pending_question_decodes_unicode_escapes() -> None:
     )
     public = public_pending_question(pending)
     assert public.prompt == "「数制转换」"
-    assert public.to_ask_user_dict()["prompt"] == "「数制转换」"
+    assert public.to_dict()["prompt"] == "「数制转换」"

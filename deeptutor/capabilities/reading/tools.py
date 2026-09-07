@@ -389,7 +389,7 @@ class ReadMaterialTool(_ReadingToolBase):
 
     @_guard
     async def execute(self, **kwargs: Any) -> ToolResult:
-        from deeptutor.reading import render_units
+        from deeptutor.reading import render_units, unit_timestamps
 
         material_id = self._material_id(kwargs)
         spec = kwargs.get("locators")
@@ -412,27 +412,20 @@ class ReadMaterialTool(_ReadingToolBase):
                     "locators": list(rendered.locators),
                 },
             )
-        refs = {
-            row.locator: row
-            for row in (
-                await asyncio.to_thread(store.unit_references, material_id)
-                if manifest.render_mode in {"video", "audio"}
-                else []
-            )
-        }
+        stamps = await asyncio.to_thread(unit_timestamps, store, manifest)
         timing = ""
-        if refs:
+        if stamps:
             timing = "\n\nTimestamp map:\n" + "\n".join(
-                f"- {manifest.unit} {locator}: [{refs[locator].title}]"
+                f"- {manifest.unit} {locator}: [{stamps[locator]}]"
                 for locator in rendered.locators
-                if locator in refs and refs[locator].title
+                if locator in stamps
             )
         followup = (
             "\n\n→ Now call reader_goto with the verbatim sentence you are "
             "about to cite, so the user sees it highlighted, and cite it in "
             + (
                 "prose with the exact [MM:SS] or [H:MM:SS] timestamp above."
-                if refs
+                if stamps
                 else "prose as [p.N]."
             )
         )
@@ -493,11 +486,14 @@ class ReaderGotoTool(_ReadingToolBase):
 
     @_guard
     async def execute(self, **kwargs: Any) -> ToolResult:
-        from deeptutor.reading import verify_quote
+        from deeptutor.reading import unit_timestamps, verify_quote
 
         material_id = self._material_id(kwargs)
         store = self._store()
         manifest = await asyncio.to_thread(store.manifest, material_id)
+        # Timed media is cited by clock time, so say where the reader landed in
+        # the same units the answer has to use.
+        stamps = await asyncio.to_thread(unit_timestamps, store, manifest)
 
         locator = _as_locator(kwargs.get("locator"))
         if not 1 <= locator <= manifest.unit_count:
@@ -508,7 +504,7 @@ class ReaderGotoTool(_ReadingToolBase):
 
         if not quote:
             # No claim to verify: a bare navigation request is honoured.
-            return _goto_result(material_id, locator, quote="", manifest=manifest)
+            return _goto_result(material_id, locator, quote="", manifest=manifest, stamps=stamps)
 
         check = await asyncio.to_thread(verify_quote, store, material_id, locator, quote)
         if not check.verified:
@@ -526,6 +522,7 @@ class ReaderGotoTool(_ReadingToolBase):
                 locator,
                 quote="",
                 manifest=manifest,
+                stamps=stamps,
                 unverified_quote=quote,
             )
         target = check.found_locator or locator
@@ -534,6 +531,7 @@ class ReaderGotoTool(_ReadingToolBase):
             target,
             quote=quote,
             manifest=manifest,
+            stamps=stamps,
             corrected_from=locator if target != locator else None,
         )
 
@@ -640,9 +638,12 @@ def _goto_result(
     *,
     quote: str,
     manifest: Any,
+    stamps: dict[int, str] | None = None,
     corrected_from: int | None = None,
     unverified_quote: str = "",
 ) -> ToolResult:
+    stamp = (stamps or {}).get(locator, "")
+    where = f"{manifest.unit} {locator}" + (f" [{stamp}]" if stamp else "")
     note = ""
     if corrected_from is not None:
         note = (
@@ -658,7 +659,7 @@ def _goto_result(
             "exactly as the document writes it, in its own language"
         )
     return ToolResult(
-        content=f"Reader moved to {manifest.unit} {locator}{note}.",
+        content=f"Reader moved to {where}{note}.",
         metadata={
             "material_id": material_id,
             "material_revision": manifest.revision,

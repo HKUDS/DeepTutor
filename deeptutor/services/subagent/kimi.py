@@ -33,7 +33,14 @@ import uuid
 
 from deeptutor.services.subagent.base import OnEvent, SubagentBackend
 from deeptutor.services.subagent.config import BackendConfig
-from deeptutor.services.subagent.process import probe_version, stream_process_lines
+from deeptutor.services.subagent.process import (
+    compact_field as _compact,
+)
+from deeptutor.services.subagent.process import (
+    probe_version,
+    stream_process_lines,
+    truncate_field,
+)
 from deeptutor.services.subagent.types import (
     EVENT_ERROR,
     EVENT_LOG,
@@ -48,7 +55,6 @@ from deeptutor.services.subagent.types import (
 
 logger = logging.getLogger(__name__)
 
-_MAX_FIELD_CHARS = 4000
 _TOOL_HEADER_CHARS = 160
 
 # Exit code the CLI uses for retryable provider failures (429/5xx/timeouts).
@@ -193,7 +199,7 @@ class KimiBackend(SubagentBackend):
             text = "\n".join(
                 str(p.get("text") or "") for p in _content_parts(event.get("content"))
             ).strip()
-            await emit(EVENT_TOOL_RESULT, _truncate(text) or "(empty result)", event)
+            await emit(EVENT_TOOL_RESULT, truncate_field(text) or "(empty result)", event)
             return
 
         if role:
@@ -205,7 +211,7 @@ class KimiBackend(SubagentBackend):
             body = str(event.get("body") or "").strip()
             text = " · ".join(p for p in (title, body) if p)
             if text:
-                await emit(EVENT_LOG, _truncate(text), event)
+                await emit(EVENT_LOG, truncate_field(text), event)
             return
         if event.get("file_path") and event.get("content"):
             await emit(EVENT_LOG, f"plan · {event.get('file_path')}", event)
@@ -257,21 +263,6 @@ def _inline(text: str) -> str:
     if len(one_line) > _TOOL_HEADER_CHARS:
         return one_line[:_TOOL_HEADER_CHARS].rstrip() + " …"
     return one_line
-
-
-def _compact(obj: Any) -> str:
-    try:
-        text = json.dumps(obj, ensure_ascii=False)
-    except (TypeError, ValueError):
-        text = str(obj)
-    return _truncate(text)
-
-
-def _truncate(text: str) -> str:
-    text = text.strip()
-    if len(text) > _MAX_FIELD_CHARS:
-        return text[:_MAX_FIELD_CHARS].rstrip() + " …"
-    return text
 
 
 __all__ = ["KimiBackend"]

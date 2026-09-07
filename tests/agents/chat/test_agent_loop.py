@@ -8,15 +8,16 @@ from typing import Any
 import httpx
 import pytest
 
-from deeptutor.agents.chat import agent_loop as agent_loop_mod
-from deeptutor.agents.chat.agent_loop import InlineThinkFilter
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
+from deeptutor.agents.loop import agent_loop as agent_loop_mod
+from deeptutor.agents.loop.agent_loop import InlineThinkFilter
 from deeptutor.capabilities.explore_context import explorer as explorer_mod
 from deeptutor.capabilities.mastery import MASTERY_TOOL_NAMES
 from deeptutor.capabilities.partner_group.tools import InvokeOtherTool
 from deeptutor.core.context import Attachment, TurnRuntimeContext, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.tool_protocol import ToolResult
+from deeptutor.core.trace import ANSWER_BEARING_CALL_KINDS
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm import LLMProviderTransportError
 
@@ -163,7 +164,7 @@ class _Registry:
 @pytest.fixture(autouse=True)
 def _fake_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
+        "deeptutor.agents.loop.pipeline.get_llm_config",
         lambda: SimpleNamespace(
             binding="openai",
             model="gpt-test",
@@ -188,6 +189,44 @@ async def _run(pipeline: AgenticChatPipeline, context: UnifiedContext):
 
 def _contents(events: list[StreamEvent]) -> list[str]:
     return [e.content for e in events if e.type == StreamEventType.CONTENT]
+
+
+def _answer_text(events: list[StreamEvent]) -> str:
+    """The reply a reader is left with, by the same rule the client applies.
+
+    Mirrors ``recomputeAnswerContent`` in ``web/lib/stream.ts``: append the
+    content of answer-bearing rounds, then take back out any round whose
+    completion marker resolved as ``narration``.
+
+    Rounds stream optimistically, so text that a capability's finish guard
+    rejects *is* briefly on the wire and then withdrawn. Asserting on this
+    function rather than on ``_contents`` therefore tests the property that
+    actually matters — what the reader ends up holding — instead of whether a
+    rejected round was buffered, which is an implementation choice.
+    """
+    narration = {
+        str(event.metadata.get("call_id"))
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and event.metadata.get("trace_kind") == "call_status"
+        and event.metadata.get("call_state") == "complete"
+        and event.metadata.get("call_role") == "narration"
+        and event.metadata.get("answer_visible") is not True
+        and event.metadata.get("call_id")
+    }
+    parts: list[str] = []
+    for event in events:
+        if event.type != StreamEventType.CONTENT:
+            continue
+        metadata = event.metadata or {}
+        call_id = metadata.get("call_id")
+        if call_id:
+            if metadata.get("call_kind") not in ANSWER_BEARING_CALL_KINDS:
+                continue
+            if str(call_id) in narration:
+                continue
+        parts.append(event.content)
+    return "".join(parts)
 
 
 def _call_roles(events: list[StreamEvent]) -> list[str]:
@@ -776,12 +815,16 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
             return schemas
 
         async def execute(self, name: str, **kwargs):
-            if name == "ask_user":
+            if name == "mastery_quiz":
+                # One call registers the question AND poses it on its own
+                # answer card — then ends the turn, the way the real tool
+                # signals it through the injected callback.
                 self.executed.append({"name": name, "kwargs": kwargs})
+                kwargs["_end_turn_on_card"]()
                 return ToolResult(
-                    content="Asked the learner.",
+                    content="The question is on the learner's answer card.",
                     success=True,
-                    pause_for_user={"questions": kwargs["questions"]},
+                    metadata={"ask_user": {"questions": [{"id": "q1", "prompt": "Which sum?"}]}},
                 )
             return await super().execute(name, **kwargs)
 
@@ -807,20 +850,6 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
                     ]
                 ),
             ],
-            [_llm_chunk(content="Choose the answer when you are ready.")],
-            [
-                _llm_chunk(
-                    tool_calls=[
-                        {
-                            "id": "ask-1",
-                            "name": "ask_user",
-                            "arguments": json.dumps(
-                                {"questions": [{"id": "q1", "prompt": "Which sum?"}]}
-                            ),
-                        }
-                    ]
-                )
-            ],
         ]
     )
     pipeline = AgenticChatPipeline(language="en")
@@ -828,7 +857,7 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
     monkeypatch.setattr(
         pipeline,
         "_compose_enabled_tools",
-        lambda _context: ["mastery_quiz", "ask_user"],
+        lambda _context: ["mastery_quiz"],
     )
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
 
@@ -853,16 +882,12 @@ async def test_mastery_tool_round_keeps_teaching_markdown_visible(
     assert markers[0]["answer_visible"] is True
     joined_content = "".join(_contents(events))
     assert joined_content.startswith(explanation)
-    assert "Choose the answer when you are ready." not in joined_content
-    assert "Which sum?" in joined_content
-    assert client.call_count == 3
-    assert [row["name"] for row in registry.executed] == ["mastery_quiz", "ask_user"]
-    redirect = client.calls[2]["messages"][-1]
-    assert redirect["role"] == "user"
-    assert "mastery_quiz" in redirect["content"]
-    assert "ask_user" in redirect["content"]
+    # Posing the card ends the turn: no second LLM round, no parked turn, and
+    # the teaching prose is the answer this turn leaves behind.
+    assert client.call_count == 1
+    assert [row["name"] for row in registry.executed] == ["mastery_quiz"]
     result = _result(events)
-    assert result.metadata["completed"] is False
+    assert result.metadata["completed"] is True
 
 
 @pytest.mark.asyncio
@@ -892,13 +917,27 @@ async def test_mastery_plain_choice_finish_gets_one_protocol_redirect(
     """A prose A-D quiz cannot bypass the registered-card assessment flow."""
 
     class _MasteryCardRegistry(_Registry):
+        def build_openai_schemas(self, enabled):
+            schemas = super().build_openai_schemas(enabled)
+            schemas.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mastery_quiz",
+                        "description": "Register a mastery quiz",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            )
+            return schemas
+
         async def execute(self, name: str, **kwargs):
-            if name == "ask_user":
+            if name == "mastery_quiz":
                 self.executed.append({"name": name, "kwargs": kwargs})
                 return ToolResult(
-                    content="Asked the learner.",
+                    content="[awaiting the learner's answer]",
                     success=True,
-                    pause_for_user={"questions": kwargs["questions"]},
+                    pause_for_user={"questions": [{"id": "q1", "prompt": "Which expression?"}]},
                 )
             return await super().execute(name, **kwargs)
 
@@ -910,11 +949,9 @@ async def test_mastery_plain_choice_finish_gets_one_protocol_redirect(
                 _llm_chunk(
                     tool_calls=[
                         {
-                            "id": "ask-1",
-                            "name": "ask_user",
-                            "arguments": json.dumps(
-                                {"questions": [{"id": "q1", "prompt": "Which expression?"}]}
-                            ),
+                            "id": "quiz-1",
+                            "name": "mastery_quiz",
+                            "arguments": "{}",
                         }
                     ]
                 )
@@ -923,7 +960,7 @@ async def test_mastery_plain_choice_finish_gets_one_protocol_redirect(
     )
     pipeline = AgenticChatPipeline(language="en")
     pipeline.registry = registry
-    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["mastery_quiz"])
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
 
     events = await _run(
@@ -931,20 +968,89 @@ async def test_mastery_plain_choice_finish_gets_one_protocol_redirect(
         UnifiedContext(
             session_id="s1",
             user_message="Continue",
-            enabled_tools=["ask_user"],
+            enabled_tools=["mastery_quiz"],
             metadata={"mastery_mode": True, "mastery_path_id": ""},
         ),
     )
 
     assert client.call_count == 2
-    assert [row["name"] for row in registry.executed] == ["ask_user"]
+    assert [row["name"] for row in registry.executed] == ["mastery_quiz"]
     redirect = client.calls[1]["messages"][-1]
     assert redirect["role"] == "user"
     assert "plain text" in redirect["content"]
     assert "mastery_quiz" in redirect["content"]
-    assert "ask_user" in redirect["content"]
+    # The card comes from mastery_quiz itself now; pointing the model at
+    # ask_user would send it back to a flow that no longer exists.
+    assert "ask_user" not in redirect["content"]
     assert _result(events).metadata["completed"] is False
-    assert plain_quiz not in "".join(_contents(events))
+    # The rejected round streamed, so its text was briefly on the wire; what
+    # matters is that the redirect took it back out of the reply.
+    assert plain_quiz not in _answer_text(events)
+
+
+@pytest.mark.asyncio
+async def test_graded_review_reaches_the_learner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Feedback on a graded answer must not read as a plain-text quiz.
+
+    Walking the options after grading ("you picked C; A fails because…") is
+    the whole point of the round, and it matches the plain-text-quiz shape
+    exactly. Guarding it there discarded the explanation twice and ended the
+    turn silent behind a card that only said "correct".
+    """
+
+    class _MasteryGradeRegistry(_Registry):
+        def build_openai_schemas(self, enabled):
+            schemas = super().build_openai_schemas(enabled)
+            schemas.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mastery_grade",
+                        "description": "Grade the open question",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            )
+            return schemas
+
+    review = (
+        "回答正确！你选择的 C 正是 Agentic RAG 的核心做法。\n\n"
+        "其他选项为什么不对：\n"
+        "- A. 直接返回“没找到”就结束，等于放弃了自愈能力。\n"
+        "- B. 无脑降低相似度阈值，会把噪声一起召回。\n"
+        "- D. goto 与 Agentic 架构无关，是干扰项。"
+    )
+    registry = _MasteryGradeRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": "grade-1", "name": "mastery_grade", "arguments": "{}"}]
+                )
+            ],
+            [_llm_chunk(content=review)],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["mastery_grade"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="C",
+            enabled_tools=["mastery_grade"],
+            metadata={"mastery_mode": True, "mastery_path_id": ""},
+        ),
+    )
+
+    assert client.call_count == 2
+    assert review in "".join(_contents(events))
+    assert _result(events).metadata["completed"] is True
 
 
 @pytest.mark.asyncio
@@ -972,7 +1078,9 @@ async def test_repeated_plain_choice_failure_is_never_published_as_a_finish(
     )
 
     assert client.call_count == 2
-    assert plain_quiz not in "".join(_contents(events))
+    # Both rounds streamed and both were withdrawn by their narration marker,
+    # so neither invalid quiz survives in the reply.
+    assert plain_quiz not in _answer_text(events)
     rejected_calls = [
         event.metadata
         for event in events
@@ -984,6 +1092,227 @@ async def test_repeated_plain_choice_failure_is_never_published_as_a_finish(
     result = _result(events)
     assert result.metadata["completed"] is False
     assert result.metadata["response"] == ""
+
+
+@pytest.mark.asyncio
+async def test_truncated_pure_reasoning_round_is_told_to_act_not_continue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A round that reasoned itself out of budget has nothing to continue from.
+
+    "Continue from where it ended" assumes visible output to resume. A reasoning
+    model that spends its whole budget revising a plan it had already settled
+    produces none, so that instruction sends it back into the same loop: rounds
+    burn, nothing reaches the reader, and the turn looks stuck.
+    """
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(content="<think>让我再想一遍这道题</think>", finish_reason="length")],
+            [_llm_chunk(content="答案是 42。")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="出题"))
+
+    assert client.call_count == 2
+    instruction = str(client.calls[1]["messages"][-1]["content"])
+    assert "没有「中断处」可以续" in instruction
+    assert "从中断处继续" not in instruction
+    assert _answer_text(events) == "答案是 42。"
+
+
+@pytest.mark.asyncio
+async def test_truncated_round_with_visible_text_still_continues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A partially written answer is resumed, as before."""
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(content="答案的前半段", finish_reason="length")],
+            [_llm_chunk(content="和后半段。")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="讲一下"))
+
+    instruction = str(client.calls[1]["messages"][-1]["content"])
+    assert "从中断处继续" in instruction
+    assert _answer_text(events) == "答案的前半段和后半段。"
+
+
+@pytest.mark.asyncio
+async def test_forced_tool_round_keeps_inline_reasoning_in_the_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forced tool round withholds its prose, not the model's thinking.
+
+    Some reasoning models write their deliberation inline in the content
+    channel wrapped in ``<think>`` tags. A forced round (Ask Questions) skipped
+    the whole emit path to keep its prose out of the answer, which discarded
+    that reasoning with it — the round showed no thinking at all.
+    """
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content="<think>先想清楚要问什么</think>"),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "ask-1",
+                            "name": "ask_user",
+                            "arguments": json.dumps({"questions": [{"id": "q1", "prompt": "?"}]}),
+                        }
+                    ]
+                ),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = _Registry()
+    pipeline.initial_tool_choice = "ask_user"
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="帮我问", enabled_tools=["ask_user"]),
+    )
+
+    thinking = "".join(e.content for e in events if e.type == StreamEventType.THINKING)
+    assert "先想清楚要问什么" in thinking
+    # The reasoning is trace-only: it must not become the answer.
+    assert "先想清楚要问什么" not in _answer_text(events)
+
+
+@pytest.mark.asyncio
+async def test_inline_think_is_never_answer_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ordinary round splits inline reasoning off the reply."""
+    client = _ScriptedChatClient([[_llm_chunk(content="<think>推导过程</think>结论是 A。")]])
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="算"))
+
+    thinking = "".join(e.content for e in events if e.type == StreamEventType.THINKING)
+    assert thinking == "推导过程"
+    assert _answer_text(events) == "结论是 A。"
+
+
+@pytest.mark.asyncio
+async def test_mastery_teaching_prose_streams_chunk_by_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A guarded surface still streams; it does not withhold the whole round.
+
+    Buffering used to be switched on by the mere presence of a capability
+    ``finish_instruction``, which is how mastery — whose guard fires only on an
+    uncommon turn shape — lost streaming altogether: every round was withheld
+    until it closed, so the learner watched a spinner and then received the
+    answer in one piece. Buffering is now declared per capability, and mastery
+    does not declare it.
+    """
+    pieces = ["先", "看", "这", "一", "步", "：", "分", "母", "不", "能", "为", "零"]
+    client = _ScriptedChatClient([[_llm_chunk(content=piece) for piece in pieces]])
+    pipeline = AgenticChatPipeline(language="zh")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="讲一下",
+            metadata={"mastery_mode": True, "mastery_path_id": ""},
+        ),
+    )
+
+    assert _contents(events) == pieces
+    assert _answer_text(events) == "".join(pieces)
+
+
+@pytest.mark.asyncio
+async def test_protocol_capabilities_still_withhold_their_rounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A capability that declares buffering keeps it.
+
+    Visualization's deliverable is the committed payload and its prose is
+    discarded, so streaming that prose would show the reader scaffolding that
+    is about to be thrown away.
+    """
+    pieces = ["draw", "ing ", "it"]
+    client = _ScriptedChatClient([[_llm_chunk(content=piece) for piece in pieces]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    monkeypatch.setattr(pipeline, "_capability_buffers_visible_output", lambda _context: True)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Draw it"))
+
+    assert _contents(events) == ["".join(pieces)]
+
+
+@pytest.mark.asyncio
+async def test_non_streaming_endpoint_is_served_through_one_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider declared non-streaming answers instead of failing the turn.
+
+    ``supports_streaming`` was declared for every binding and read by nobody:
+    the loop asked for SSE regardless, so an endpoint without it lost the turn.
+    """
+    requested: list[Any] = []
+
+    class _NonStreamingClient:
+        def __init__(self) -> None:
+            parent = self
+
+            class _Completions:
+                async def create(self, **kwargs):
+                    requested.append(kwargs.get("stream"))
+                    if kwargs.get("stream"):
+                        raise AssertionError("this endpoint cannot stream")
+                    return SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    content="one whole answer",
+                                    tool_calls=None,
+                                ),
+                                finish_reason="stop",
+                            )
+                        ],
+                        usage=None,
+                    )
+
+            self.chat = SimpleNamespace(completions=_Completions())
+            _ = parent
+
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", _NonStreamingClient)
+    monkeypatch.setattr(agent_loop_mod, "supports_streaming", lambda _binding, _model: False)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Answer"))
+
+    assert requested == [False]
+    assert _answer_text(events) == "one whole answer"
+    assert _result(events).metadata["response"] == "one whole answer"
 
 
 @pytest.mark.asyncio
@@ -2312,3 +2641,149 @@ def test_build_llm_tool_schemas_kb_name_enum_matches_attached() -> None:
     )
 
     assert schemas[0]["function"]["parameters"]["additionalProperties"] is False
+
+
+def _draft_payloads(events: list[StreamEvent]) -> list[dict[str, Any]]:
+    """Card previews the round published while ``ask_user`` was streaming."""
+    return [
+        event.metadata["ask_user_draft"]
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and isinstance(event.metadata.get("ask_user_draft"), dict)
+    ]
+
+
+def _ask_user_argument_chunks() -> list[str]:
+    """The card's arguments split the way a provider streams them."""
+    arguments = json.dumps(
+        {
+            "intro": "Which path?",
+            "questions": [
+                {
+                    "id": "which",
+                    "prompt": "Where should we pick up?",
+                    "options": [
+                        {"label": "Advanced route", "description": "15 goals in all"},
+                        {"label": "Core design", "description": "4 goals, focused"},
+                    ],
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    size = 30
+    return [arguments[start : start + size] for start in range(0, len(arguments), size)]
+
+
+@pytest.mark.asyncio
+async def test_ask_user_card_is_previewed_while_its_arguments_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A card is drawn as it is written, not dropped in whole at the end.
+
+    ``ask_user``'s arguments *are* what the reader is waiting on, and writing
+    a card with explained options takes seconds. The round used to go silent
+    for all of it. Now each fragment grows a preview, and the last preview
+    matches the payload the dispatched call carries.
+    """
+    chunks = _ask_user_argument_chunks()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content="Let me check which one you mean."),
+                _llm_chunk(tool_calls=[{"id": "ask-1", "name": "ask_user", "arguments": ""}]),
+                *(
+                    _llm_chunk(tool_calls=[{"id": "ask-1", "name": "ask_user", "arguments": chunk}])
+                    for chunk in chunks
+                ),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="take me back", enabled_tools=["ask_user"]),
+    )
+
+    drafts = _draft_payloads(events)
+    assert drafts, "the card was never previewed"
+    shapes = [(len(d["questions"]), sum(len(q["options"]) for q in d["questions"])) for d in drafts]
+    assert shapes == sorted(shapes), f"the previewed card shrank: {shapes}"
+    assert drafts[-1]["intro"] == "Which path?"
+    assert [
+        option["label"] for question in drafts[-1]["questions"] for option in question["options"]
+    ] == ["Advanced route", "Core design"]
+    # Every preview arrives before the call that replaces it.
+    types = [
+        event.type
+        for event in events
+        if event.type == StreamEventType.TOOL_CALL
+        or (
+            event.type == StreamEventType.PROGRESS
+            and isinstance(event.metadata.get("ask_user_draft"), dict)
+        )
+    ]
+    assert types.index(StreamEventType.TOOL_CALL) == len(drafts)
+
+
+@pytest.mark.asyncio
+async def test_native_adapter_tool_argument_previews_reach_the_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native-provider adapter reports arguments on the chunk, not the delta.
+
+    Responses-API providers hand the loop one finished tool call, so their
+    in-flight arguments ride on ``provider_specific_fields`` instead. Both
+    shapes must end at the same preview.
+    """
+    chunks = _ask_user_argument_chunks()
+    accumulated: list[str] = []
+    for chunk in chunks:
+        accumulated.append((accumulated[-1] if accumulated else "") + chunk)
+    client = _ScriptedChatClient(
+        [
+            [
+                *(
+                    _llm_chunk(
+                        provider_specific_fields={
+                            "tool_args_preview": {
+                                "id": "ask-1",
+                                "name": "ask_user",
+                                "arguments": text,
+                            }
+                        }
+                    )
+                    for text in accumulated
+                ),
+                _llm_chunk(
+                    tool_calls=[
+                        {"id": "ask-1|item-9", "name": "ask_user", "arguments": accumulated[-1]}
+                    ]
+                ),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="take me back", enabled_tools=["ask_user"]),
+    )
+
+    drafts = _draft_payloads(events)
+    assert drafts, "the card was never previewed"
+    assert drafts[-1]["intro"] == "Which path?"
+    # The composite dispatch id and the preview id name the same card.
+    call_ids = {
+        event.metadata.get("draft_call_id")
+        for event in events
+        if isinstance(event.metadata.get("ask_user_draft"), dict)
+    }
+    assert call_ids == {"ask-1"}

@@ -25,7 +25,7 @@ export type ToolName =
   | "brainstorm"
   | "geogebra_analysis"
   | "web_search"
-  | "code_execution"
+  | "exec"
   | "reason"
   | "paper_search"
   | "imagegen"
@@ -41,7 +41,7 @@ export const ALL_TOOLS: ToolDef[] = [
   { name: "brainstorm", label: "Brainstorm", icon: Lightbulb },
   { name: "geogebra_analysis", label: "GeoGebra", icon: Compass },
   { name: "web_search", label: "Web Search", icon: Globe },
-  { name: "code_execution", label: "Code", icon: Code2 },
+  { name: "exec", label: "Execute", icon: Code2 },
   { name: "reason", label: "Reason", icon: Sparkles },
   { name: "paper_search", label: "Arxiv Search", icon: FileSearch },
   { name: "imagegen", label: "Image Gen", icon: ImageIcon },
@@ -76,7 +76,7 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
       "brainstorm",
       "geogebra_analysis",
       "web_search",
-      "code_execution",
+      "exec",
       "reason",
       "paper_search",
       "imagegen",
@@ -89,8 +89,8 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     label: "Solve",
     description: "Multi-step reasoning & problem solving",
     icon: BrainCircuit,
-    allowedTools: ["web_search", "code_execution", "reason"],
-    defaultTools: ["web_search", "code_execution", "reason"],
+    allowedTools: ["web_search", "exec", "reason"],
+    defaultTools: ["web_search", "exec", "reason"],
     secondary: true,
   },
   {
@@ -102,7 +102,7 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
       "brainstorm",
       "geogebra_analysis",
       "web_search",
-      "code_execution",
+      "exec",
       "reason",
       "paper_search",
       "imagegen",
@@ -115,16 +115,16 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     label: "Quiz",
     description: "Auto-validated question generation",
     icon: PenLine,
-    allowedTools: ["web_search", "code_execution"],
-    defaultTools: ["web_search", "code_execution"],
+    allowedTools: ["web_search", "exec"],
+    defaultTools: ["web_search", "exec"],
   },
   {
     value: "deep_research",
     label: "Research",
     description: "Comprehensive multi-agent research",
     icon: Microscope,
-    allowedTools: ["web_search", "paper_search", "code_execution"],
-    defaultTools: ["web_search", "paper_search", "code_execution"],
+    allowedTools: ["web_search", "paper_search", "exec"],
+    defaultTools: ["web_search", "paper_search", "exec"],
     secondary: true,
   },
   {
@@ -141,7 +141,7 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     label: "Immersive Watching",
     description: "Learn from YouTube with timestamp-grounded tutoring",
     icon: Youtube,
-    allowedTools: ["web_search", "code_execution", "reason"],
+    allowedTools: ["web_search", "exec", "reason"],
     defaultTools: [],
     secondary: true,
   },
@@ -150,7 +150,7 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     label: "Course Study",
     description: "See where a course stands and what to do next",
     icon: Signpost,
-    allowedTools: ["web_search", "code_execution", "reason"],
+    allowedTools: ["web_search", "exec", "reason"],
     defaultTools: [],
   },
   {
@@ -158,11 +158,28 @@ export const CHAT_CAPABILITIES: ChatCapabilityDef[] = [
     label: "Mastery Path",
     description: "Mastery-based tutoring with a hard gate",
     icon: GraduationCap,
-    allowedTools: ["web_search", "code_execution"],
+    // The tutor runs its own loop, but on the same tool surface a chat turn
+    // gets: entering a course must not quietly take away a tool the learner
+    // turned on for themselves. Keep this in step with Chat's list above.
+    allowedTools: [
+      "brainstorm",
+      "geogebra_analysis",
+      "web_search",
+      "exec",
+      "reason",
+      "paper_search",
+      "imagegen",
+      "videogen",
+    ],
     defaultTools: [],
+    // Not offered in Home's action menu: it is the Mastery workspace's own
+    // loop, selected by being there rather than picked from a list.
     legacy: true,
   },
 ];
+
+/** The Mastery workspace's own action — the only one that screen runs. */
+export const MASTERY_CAPABILITY_VALUE = "mastery_path";
 
 export const VISIBLE_CHAT_CAPABILITIES = CHAT_CAPABILITIES.filter(
   (capability) =>

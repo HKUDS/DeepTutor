@@ -1,6 +1,6 @@
 """Tests for the CLI turn-stream renderer against the chat-loop protocol.
 
-The chat agent loop (deeptutor/agents/chat/agent_loop.py) streams every
+The shared agent loop (deeptutor/agents/loop/agent_loop.py) streams every
 round's text as ``content`` chunks with ``trace_kind=llm_chunk`` and labels
 the round afterwards via a ``call_status`` marker carrying ``call_role``
 (``narration`` | ``finish``). These tests feed that exact event shape into

@@ -1,4 +1,20 @@
 import type { StreamEvent } from "@/features/chat/model/protocol";
+import {
+  MASTERY_QUESTION_KIND,
+  readPosedQuestion,
+} from "@/lib/mastery-question";
+import { toolResultPayload } from "@/lib/tool-event";
+
+/**
+ * Shown when a reply could not be delivered — the turn that asked the
+ * question is gone (most often a backend restart since it was posed).
+ *
+ * One string, three surfaces: the question card renders it inline, the
+ * mastery and reading composers raise it as a toast. Keeping it here keeps
+ * them saying the same thing, and keeps a single key in the locale files.
+ */
+export const REPLY_NOT_DELIVERED =
+  "This question is no longer active, so your answer could not be sent. Send a new message to continue.";
 
 type MessageWithEvents = {
   events?: StreamEvent[];
@@ -21,9 +37,26 @@ function eventBelongsToTurn(
 function askUserPayloadFrom(
   event: StreamEvent,
 ): Record<string, unknown> | null {
-  const meta = asRecord(event.metadata);
-  const toolMetadata = asRecord(meta?.tool_metadata);
-  return asRecord(toolMetadata?.ask_user) ?? asRecord(meta?.ask_user);
+  return asRecord(toolResultPayload(event.metadata, "ask_user"));
+}
+
+/**
+ * A mastery card posed before mastery questions got their own event key: it
+ * arrived on the `ask_user` channel with a `kind` marker.
+ *
+ * It must not count as a live pause. `mastery_quiz` ends its turn and the
+ * answer opens the next one (see `MasteryStudy`'s `answerMasteryQuestion`),
+ * so no `ask_user_resolved` ever arrives for it — and treating one as a pause
+ * left every composer permanently convinced the learner owed a same-turn
+ * reply, routing their next message (a question about the material included)
+ * into a `submit_user_reply` for a turn that had already finished. The backend
+ * refused it, and the learner got "this question is no longer active".
+ *
+ * Cards posed now cannot reach this code at all: they are not `ask_user`
+ * payloads.
+ */
+function isLegacyMasteryCard(payload: Record<string, unknown>): boolean {
+  return payload.kind === MASTERY_QUESTION_KIND;
 }
 
 function askUserToolCallId(event: StreamEvent): string {
@@ -31,14 +64,11 @@ function askUserToolCallId(event: StreamEvent): string {
   return typeof meta?.tool_call_id === "string" ? meta.tool_call_id.trim() : "";
 }
 
-/**
- * Returns true when a stream contains an ask_user card that has not yet
- * emitted the matching ask_user_resolved progress event.
- */
-export function hasPendingAskUser(
+function pendingCards(
   events: StreamEvent[] | undefined,
-  turnId?: string | null,
-): boolean {
+  turnId: string | null | undefined,
+  includeMastery: boolean,
+): number {
   const pending = new Set<string>();
   let anonymousCount = 0;
 
@@ -46,9 +76,20 @@ export function hasPendingAskUser(
     if (!eventBelongsToTurn(event, turnId)) continue;
     const meta = asRecord(event.metadata);
 
-    if (event.type === "tool_result" && askUserPayloadFrom(event)) {
-      const toolCallId = askUserToolCallId(event);
-      pending.add(toolCallId ? `id:${toolCallId}` : `anon:${anonymousCount++}`);
+    if (event.type === "tool_result") {
+      const posed = readPosedQuestion(event);
+      if (posed) {
+        // A posed question waits on the learner, but not on this turn.
+        if (includeMastery) pending.add(`mastery:${posed.questionId}`);
+        continue;
+      }
+      const payload = askUserPayloadFrom(event);
+      if (payload && (includeMastery || !isLegacyMasteryCard(payload))) {
+        const toolCallId = askUserToolCallId(event);
+        pending.add(
+          toolCallId ? `id:${toolCallId}` : `anon:${anonymousCount++}`,
+        );
+      }
       continue;
     }
 
@@ -65,7 +106,21 @@ export function hasPendingAskUser(
     }
   }
 
-  return pending.size > 0;
+  return pending.size;
+}
+
+/**
+ * Returns true when a stream contains an ask_user card that has not yet
+ * emitted the matching ask_user_resolved progress event.
+ *
+ * This is the *pause* question: is the turn parked, waiting for a reply that
+ * belongs to it? Mastery cards are excluded — see `isLegacyMasteryCard`.
+ */
+export function hasPendingAskUser(
+  events: StreamEvent[] | undefined,
+  turnId?: string | null,
+): boolean {
+  return pendingCards(events, turnId, false) > 0;
 }
 
 export function hasPendingAskUserInMessages(
@@ -73,4 +128,19 @@ export function hasPendingAskUserInMessages(
   turnId?: string | null,
 ): boolean {
   return messages.some((message) => hasPendingAskUser(message.events, turnId));
+}
+
+/**
+ * Returns true when *any* card is still waiting on the user — a paused
+ * `ask_user` or a mastery question that ended its turn.
+ *
+ * For surfaces that only care that something on screen wants the user's
+ * attention (keeping it scrolled into view), not for anything that decides
+ * where their next message is sent.
+ */
+export function hasPendingUserCard(
+  events: StreamEvent[] | undefined,
+  turnId?: string | null,
+): boolean {
+  return pendingCards(events, turnId, true) > 0;
 }

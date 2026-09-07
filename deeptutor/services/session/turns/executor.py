@@ -42,6 +42,7 @@ from .._turn_runtime_shared import (
     _reading_references,
     _reading_viewport,
     _reading_workspace_id,
+    _repair_chinese_emphasis_for_persistence,
     _request_snapshot_metadata,
     _resolve_selection_tutor_context,
     _resolve_turn_outcome,
@@ -79,6 +80,22 @@ class TurnExecutor:
             event: StreamEvent,
         ) -> dict[str, Any]: ...
 
+        async def _grade_submitted_card_answer(
+            self,
+            execution: _TurnExecution,
+            *,
+            path_id: str,
+            answer: dict[str, Any],
+        ) -> dict[str, Any] | None: ...
+
+        async def _skip_card_question(
+            self,
+            execution: _TurnExecution,
+            *,
+            path_id: str,
+            skip: dict[str, Any],
+        ) -> dict[str, Any] | None: ...
+
         async def _publish_mastery_path_change(
             self,
             execution: _TurnExecution,
@@ -87,6 +104,14 @@ class TurnExecutor:
             started_on: str,
             ended_on: str,
             mastery_mode: bool = False,
+        ) -> None: ...
+
+        async def _publish_mastery_mode_change(
+            self,
+            execution: _TurnExecution,
+            *,
+            started_in: str,
+            ended_in: str,
         ) -> None: ...
 
         async def _flush_buffered_events(self, execution: _TurnExecution) -> None: ...
@@ -134,7 +159,7 @@ class TurnExecutor:
             # never be persisted as the user-facing answer.
             return _assemble_persisted_answer(content_segments, narration_call_ids)
 
-        # Files the model generated this turn (exec/code_execution artifacts),
+        # Files the model generated this turn (exec artifacts),
         # persisted as assistant-message attachments so the UI shows openable
         # cards. Deduped by URL across the turn's SOURCES events.
         generated_attachments: list[dict[str, Any]] = []
@@ -198,6 +223,7 @@ class TurnExecutor:
             )
             from deeptutor.services.notebook import get_notebook_manager
             from deeptutor.services.skill import get_skill_service
+            from deeptutor.services.workspace import get_content_workspace_service
 
             request_config = dict(payload.get("config", {}) or {})
             followup_question_context = _extract_followup_question_context(
@@ -620,6 +646,28 @@ class TurnExecutor:
                         _topic_material_manifest, topic_path_id
                     )
 
+            # A card answer rides in on this turn's message, because posing a
+            # question ends its turn. Rule on it before the tutor starts: the
+            # card is on screen showing only what the learner picked, and the
+            # verdict it is waiting for is already server-side.
+            mastery_card_grade: dict[str, Any] | None = None
+            mastery_card_skip: dict[str, Any] | None = None
+            if workspace_mode == WORKSPACE_MODE_MASTERY:
+                mastery_card_grade = await self._grade_submitted_card_answer(
+                    execution,
+                    path_id=_mastery_path_id(payload.get("mastery_path_id")),
+                    answer=payload.get("mastery_answer") or {},
+                )
+                # And its counterpart: a question the learner declined instead
+                # of answering. Dropped here for the same reason a card answer
+                # is graded here — the path must already be clear of it when
+                # the tutor reads its first mastery_status.
+                mastery_card_skip = await self._skip_card_question(
+                    execution,
+                    path_id=_mastery_path_id(payload.get("mastery_path_id")),
+                    skip=payload.get("mastery_skip") or {},
+                )
+
             # Agentic actions receive workspace behavior through loop
             # capabilities and tools. Standalone pipelines (Quiz, Research,
             # Visualize) cannot call those hooks, so give them a bounded,
@@ -713,6 +761,11 @@ class TurnExecutor:
                     turn_id=turn_id,
                     wait_for_user_reply=_wait_for_user_reply,
                     subagent_consult_budget=payload.get("subagent_consult_budget"),
+                    workspace=get_content_workspace_service().create_runtime_context(
+                        capability=capability_name,
+                        session_id=session_id,
+                        turn_id=turn_id,
+                    ),
                 ),
                 metadata={
                     "conversation_summary": history_result.conversation_summary,
@@ -733,6 +786,16 @@ class TurnExecutor:
                     "learner_profile_prompt": learner_profile_prompt,
                     "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
                     "mastery_mode": workspace_mode == WORKSPACE_MODE_MASTERY,
+                    # What this conversation is doing. It picks the tutor's
+                    # prompt block and decides which tools will run, so it has
+                    # to reach the turn context, not just the payload. Raw:
+                    # "never recorded" is a distinct state from any mode.
+                    "mastery_session_mode": payload.get("mastery_session_mode"),
+                    # The ruling this turn opened with, when it opened with one.
+                    # The tutor reads it as a seed rather than grading again.
+                    "mastery_card_grade": mastery_card_grade or {},
+                    # The question this turn opened by dropping, if it did.
+                    "mastery_card_skip": mastery_card_skip or {},
                     "mastery_path_lease_managed": mastery_lease_managed,
                     # Immersive reading: the open material activates the reading
                     # capability and binds its tools; the viewport tells the
@@ -828,6 +891,14 @@ class TurnExecutor:
                 ended_on=str(context.metadata.get("mastery_path_id") or ""),
                 mastery_mode=mastery_lease_managed,
             )
+            # …and it may have changed what the conversation is *doing*
+            # (``mastery_mode``). Same reason as the path above: the stored
+            # preference already followed it, the open client has not.
+            await self._publish_mastery_mode_change(
+                execution,
+                started_in=str(payload.get("mastery_session_mode") or ""),
+                ended_in=str(context.metadata.get("mastery_session_mode") or ""),
+            )
 
             # Office binaries the browser cannot render need their text pulled
             # out now, while the files are still on disk, or their preview card
@@ -836,8 +907,13 @@ class TurnExecutor:
             await fill_preview_text(generated_attachments)
 
             # The persisted answer is the captured content minus any narration
-            # rounds (their text stayed in the trace, never the answer).
-            assistant_content = _persisted_answer()
+            # rounds (their text stayed in the trace, never the answer). Apply
+            # the CJK Markdown repair only after every streamed segment has
+            # arrived, so no incomplete response is ever rewritten.
+            assistant_content = _repair_chinese_emphasis_for_persistence(
+                _persisted_answer(),
+                str(payload.get("language", "en") or "en"),
+            )
 
             # Assistant continues the same branch as the user message it
             # answers. If we just persisted a new user row we chain off
@@ -850,7 +926,7 @@ class TurnExecutor:
                     role="assistant",
                     content=assistant_content,
                     capability=capability_name,
-                    events=assistant_events,
+                    events=[],
                     attachments=generated_attachments or None,
                     parent_message_id=new_user_message_id,
                     metadata=assistant_provider_metadata,
@@ -861,7 +937,7 @@ class TurnExecutor:
                     role="assistant",
                     content=assistant_content,
                     capability=capability_name,
-                    events=assistant_events,
+                    events=[],
                     attachments=generated_attachments or None,
                     parent_message_id=branch_parent_id,
                     metadata=assistant_provider_metadata,
@@ -872,10 +948,11 @@ class TurnExecutor:
                     role="assistant",
                     content=assistant_content,
                     capability=capability_name,
-                    events=assistant_events,
+                    events=[],
                     attachments=generated_attachments or None,
                     metadata=assistant_provider_metadata,
                 )
+            await self.store.link_turn_message(turn_id, assistant_message_id)
             turn_status, turn_error = _resolve_turn_outcome(
                 assistant_events,
                 pending_done_event,
@@ -988,13 +1065,13 @@ class TurnExecutor:
             partial_content = _persisted_answer()
             if partial_content or generated_attachments or assistant_events:
                 with contextlib.suppress(Exception):
-                    await asyncio.shield(
+                    assistant_message_id = await asyncio.shield(
                         self.store.add_message(
                             session_id=session_id,
                             role="assistant",
                             content=partial_content,
                             capability=capability_name,
-                            events=assistant_events,
+                            events=[],
                             attachments=generated_attachments or None,
                             metadata=(
                                 {"provider_response_state": provider_response_state}
@@ -1003,6 +1080,10 @@ class TurnExecutor:
                             ),
                         )
                     )
+                    with contextlib.suppress(Exception):
+                        await asyncio.shield(
+                            self.store.link_turn_message(turn_id, assistant_message_id)
+                        )
             transitioned = False
             with contextlib.suppress(Exception):
                 transitioned = await self._transition_execution(

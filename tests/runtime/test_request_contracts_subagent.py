@@ -53,3 +53,30 @@ def test_explicit_quiz_routing_rules() -> None:
     assert route_explicit_quiz_request("Start a quiz", "chat", enabled=True) is None
     assert route_explicit_quiz_request("考考我", "chat", enabled=True) is None
     assert route_explicit_quiz_request("考考我", "deep_question", enabled=True) is None
+
+
+def test_a_workspace_turn_is_never_re_routed():
+    """A mastery turn keeps its tutor loop even when it sounds like a quiz ask."""
+    assert (
+        route_explicit_quiz_request(
+            "给我出几道测验题",
+            "chat",
+            enabled=True,
+            workspace_mode="mastery_path",
+        )
+        is None
+    )
+    assert (
+        route_explicit_quiz_request(
+            "generate quiz questions from this chapter",
+            "chat",
+            enabled=True,
+            workspace_mode="immersive_reading",
+        )
+        is None
+    )
+    # Ordinary chat is unaffected.
+    assert (
+        route_explicit_quiz_request("给我出几道测验题", "chat", enabled=True, workspace_mode="")
+        is not None
+    )

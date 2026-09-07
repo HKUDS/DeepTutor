@@ -778,6 +778,69 @@ async def test_apply_catalog_invalidates_runtime_caches(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_apply_catalog_service_only_promotes_the_selected_service_and_updates_saved_draft(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from deeptutor.services.config.settings_draft import SettingsDraftService
+
+    live = _build_catalog(
+        llm_model="gpt-live",
+        llm_base_url="https://llm.example/v1",
+        llm_api_key="llm-key",
+        embedding_model="text-embedding-live",
+        embedding_base_url="https://embedding.example/v1/embeddings",
+        embedding_api_key="embedding-key",
+    )
+    live["services"]["stt"] = {
+        "active_profile_id": "stt-profile",
+        "active_model_id": "stt-model",
+        "profiles": [
+            {
+                "id": "stt-profile",
+                "name": "Live STT",
+                "binding": "openai",
+                "base_url": "https://old-stt.example/v1",
+                "api_key": "old-stt-key",
+                "api_version": "",
+                "extra_headers": {},
+                "models": [{"id": "stt-model", "name": "Whisper", "model": "whisper-1"}],
+            }
+        ],
+    }
+    draft = deepcopy(live)
+    draft["services"]["stt"]["profiles"][0]["base_url"] = "https://new-stt.example/v1"
+    draft["services"]["stt"]["profiles"][0]["api_key"] = "new-stt-key"
+    draft["services"]["llm"]["profiles"][0]["name"] = "Unapplied LLM edit"
+
+    catalog_service = _FakeCatalogService(live)
+    draft_service = SettingsDraftService(tmp_path / "settings_draft.json")
+    draft_service.save({"catalog": draft, "extensions": {"network": {"backend_port": 9000}}})
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: catalog_service)
+    monkeypatch.setattr(settings_router, "get_settings_draft_service", lambda: draft_service)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+
+    response = await settings_router.apply_catalog_service(
+        settings_router.CatalogServicePayload(service="stt", config=draft["services"]["stt"])
+    )
+
+    applied = catalog_service.load()
+    assert applied["services"]["stt"]["profiles"][0]["base_url"] == ("https://new-stt.example/v1")
+    assert applied["services"]["stt"]["profiles"][0]["api_key"] == "new-stt-key"
+    assert applied["services"]["llm"]["profiles"][0]["name"] == ("Default LLM Endpoint")
+
+    remaining_draft = draft_service.load()
+    assert remaining_draft["catalog"]["services"]["stt"] == applied["services"]["stt"]
+    assert remaining_draft["catalog"]["services"]["llm"]["profiles"][0]["name"] == (
+        "Unapplied LLM edit"
+    )
+    assert remaining_draft["extensions"] == {"network": {"backend_port": 9000}}
+    assert response["draft"] is not None
+    assert response["catalog"]["services"]["stt"]["profiles"][0]["api_key"] == (
+        settings_router.CATALOG_SECRET_MASK
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_catalog_restores_masked_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     current = _build_catalog(
         llm_model="gpt-4o-mini",

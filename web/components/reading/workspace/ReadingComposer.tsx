@@ -13,13 +13,15 @@
  */
 
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 import StandaloneComposer, {
   type StandaloneComposerSubmission,
 } from "@/components/chat/home/StandaloneComposer";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
-import { hasPendingAskUser } from "@/lib/ask-user-state";
+import { hasPendingAskUser, REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
+import { notify } from "@/lib/notifications";
 import { setReadingViewport } from "@/lib/reading-turn-state";
 
 export function ReadingComposer({
@@ -52,6 +54,7 @@ export function ReadingComposer({
   } = useChatStateAdapter();
   const { capabilities, activeCapabilityValue, selectCapability } =
     useWorkspaceChatActions();
+  const { t } = useTranslation();
 
   const awaitingUserReply = hasPendingAskUser(
     state.messages[state.messages.length - 1]?.events,
@@ -63,7 +66,9 @@ export function ReadingComposer({
       // not a new message. See page.tsx's handleSend for the same routing.
       if (awaitingUserReply) {
         if (submission.content.trim()) {
-          submitUserReply({ text: submission.content });
+          void submitUserReply({ text: submission.content }).then((sent) => {
+            if (!sent) notify(t(REPLY_NOT_DELIVERED), { tone: "error" });
+          });
         }
         return;
       }
@@ -107,6 +112,7 @@ export function ReadingComposer({
       selection,
       sendMessage,
       submitUserReply,
+      t,
     ],
   );
 

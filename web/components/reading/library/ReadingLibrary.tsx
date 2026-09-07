@@ -22,6 +22,7 @@ import {
   type ReadingLibraryMaterial,
   type ReadingWorkspace,
 } from "@/lib/reading-workspace-api";
+import { readingFailureMessage } from "@/lib/reading-failure";
 
 import {
   CourseScopeChip,
@@ -385,9 +386,9 @@ function UnsettledRow({
         {failed
           ? t("{{title}} could not be prepared", { title: material.title })
           : t("Preparing {{title}}", { title: material.title })}
-        {failed && material.error_detail ? (
+        {failed && readingFailureMessage(material, t) ? (
           <span className="ml-1.5 text-[10.5px] text-[var(--muted-foreground)]">
-            {material.error_detail}
+            {readingFailureMessage(material, t)}
           </span>
         ) : null}
       </span>

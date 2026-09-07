@@ -15,6 +15,7 @@ import re
 import time
 from typing import Any
 
+from deeptutor.services.prompt.language import is_chinese as _is_zh
 from deeptutor.services.singleflight_cache import AsyncSingleFlightTTLCache
 
 logger = logging.getLogger(__name__)
@@ -229,10 +230,6 @@ _SYSTEM_ZH = """你要写出学习者在阅读时此刻会问导师的**一个�
 差：“你可以试着问这两个定义为什么不同？”
 差：“这两个定义不同，因为前者范围更大。”
 差：“这两个定义为什么不同？”（不是第一人称）"""
-
-
-def _is_zh(language: str) -> bool:
-    return str(language or "en").lower().startswith("zh")
 
 
 def _render(material: _Material, zh: bool) -> str:

@@ -114,6 +114,33 @@ def list_notes(manager: NotebookManager, material_id: str) -> list[dict[str, Any
     return notes
 
 
+def export_notes(manager: NotebookManager, material_id: str) -> str:
+    material = get_timed_media_store().get(material_id)
+    notes = list_notes(manager, material_id)
+    title = _clip_text(
+        str(material.get("metadata", {}).get("title") or "Timed media").strip() or "Timed media",
+        140,
+    )
+    lines = [f"# Video notes: {title}"]
+    if not notes:
+        lines.extend(["", "_No timestamped notes captured yet._"])
+        return "\n".join(lines).strip() + "\n"
+
+    for note in notes:
+        lines.extend(
+            (
+                "",
+                f"## {_format_time(note['time_seconds'])}",
+                "",
+                str(note.get("body") or "").strip(),
+            )
+        )
+        quote = _clip_text(note.get("quote"))
+        if quote:
+            lines.extend(("", f"> {quote}"))
+    return "\n".join(lines).strip() + "\n"
+
+
 def create_note(
     manager: NotebookManager, material_id: str, body: str, time_seconds: float
 ) -> dict[str, Any]:
@@ -199,6 +226,7 @@ __all__ = [
     "NOTEBOOK_NAME",
     "create_note",
     "delete_note",
+    "export_notes",
     "get_notebook_manager",
     "list_notes",
     "update_note",

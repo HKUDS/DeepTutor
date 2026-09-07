@@ -36,6 +36,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 import html
 import logging
+from pathlib import Path
 import re
 from typing import Any
 
@@ -46,6 +47,10 @@ from deeptutor.agents._shared.tool_composition import (
     default_optional_tools,
     user_has_memory,
     user_has_notebooks,
+)
+from deeptutor.agents._shared.tool_runtime import (
+    bind_workspace_tool_runtime,
+    fallback_task_dir_from_metadata,
 )
 from deeptutor.agents.research.data_structures import (
     DynamicTopicQueue,
@@ -82,7 +87,6 @@ from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import parse_language
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
-from deeptutor.services.path_service import get_path_service
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.services.sandbox import exec_capability_available
@@ -108,7 +112,17 @@ RESEARCH_OBSIDIAN_READ_TOOLS: tuple[str, ...] = (
     "obsidian_list",
 )
 RESEARCH_BLOCK_TOOL_ALLOWLIST: frozenset[str] = frozenset(
-    {"rag", "web_search", "paper_search", "code_execution", *RESEARCH_OBSIDIAN_READ_TOOLS}
+    {
+        "rag",
+        "web_search",
+        "paper_search",
+        "exec",
+        "workspace_list",
+        "workspace_read",
+        "workspace_search",
+        "workspace_present",
+        *RESEARCH_OBSIDIAN_READ_TOOLS,
+    }
 )
 
 # ---------------------------------------------------------------------------
@@ -210,7 +224,7 @@ CITABLE_TOOLS: frozenset[str] = frozenset(
         "rag",
         "web_search",
         "paper_search",
-        "code_execution",
+        "exec",
         *RESEARCH_OBSIDIAN_READ_TOOLS,
     }
 )
@@ -560,7 +574,12 @@ class ResearchPipeline:
             f"research_{context.session_id or 'adhoc'}",
             max_length=self.queue_max_length,
         )
-        citations = CitationManager(queue.research_id, cache_dir=None)
+        research_cache = (
+            Path(context.runtime.workspace.output_dir) / "research"
+            if context.runtime.workspace is not None
+            else None
+        )
+        citations = CitationManager(queue.research_id, cache_dir=research_cache)
         for sub in confirmed_outline:
             queue.add_block(sub.title, sub.overview)
 
@@ -881,6 +900,11 @@ class ResearchPipeline:
             kb_note=kb_note,
             tool_list=tool_list,
         )
+        from deeptutor.agents._shared.workspace_prompt import workspace_system_note
+
+        workspace_note = workspace_system_note(context, language=self.language)
+        if workspace_note:
+            system_prompt = f"{system_prompt}\n\n{workspace_note}"
         system_prompt = append_language_directive(system_prompt, self.language)
 
         sibling_topics = self._render_sibling_topics(queue, block)
@@ -1941,7 +1965,7 @@ class ResearchPipeline:
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
-                has_code=exec_capability_available(),
+                has_exec=exec_capability_available(),
             ),
         )
         names = [
@@ -1988,11 +2012,18 @@ class ResearchPipeline:
         args: dict[str, Any],
         context: UnifiedContext,
     ) -> dict[str, Any]:
-        kwargs = dict(args)
-        turn_id = str(context.metadata.get("turn_id", "") or "").strip()
-        task_dir = None
-        if turn_id:
-            task_dir = get_path_service().get_task_workspace("deep_research", turn_id)
+        workspace = context.runtime.workspace
+        task_dir = (
+            Path(workspace.output_dir)
+            if workspace is not None
+            else fallback_task_dir_from_metadata(context, feature="deep_research")
+        )
+        kwargs = bind_workspace_tool_runtime(
+            tool_name,
+            args,
+            context,
+            fallback_task_dir=task_dir,
+        )
         if tool_name == "rag":
             kwargs.setdefault("mode", "hybrid")
             if self.kb_name:
@@ -2002,16 +2033,6 @@ class ResearchPipeline:
                 # Server-owned: overwrite any model-supplied value so the path
                 # can't be forged to read outside the connected vault.
                 kwargs["_vault_path"] = self._vault_path
-        elif tool_name == "code_execution":
-            from deeptutor.services.sandbox import Mount
-
-            if task_dir is not None:
-                code_dir = task_dir / "code_runs"
-                code_dir.mkdir(parents=True, exist_ok=True)
-                kwargs["_sandbox_workdir"] = str(code_dir)
-                kwargs["_sandbox_mounts"] = (
-                    Mount(host_path=str(code_dir), sandbox_path=str(code_dir), read_only=False),
-                )
         elif tool_name == "web_search":
             kwargs.setdefault("query", context.user_message)
             if task_dir is not None:

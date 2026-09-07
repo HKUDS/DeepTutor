@@ -273,7 +273,9 @@ class TestSerializationRoundtrip:
 
         assert restored.pending_question is not None
         assert restored.pending_question.question_id == "question-1"
-        assert restored.pending_question.options == ["A: first", "B: second"]
+        # Registered in the flat ``"A: body"`` shape older versions wrote, and
+        # read back split — the migration runs on the way in, once.
+        assert restored.pending_question.choice_map == {"A": "first", "B": "second"}
         assert restored.pending_question.expected_answer == "B"
 
     def test_legacy_progress_roundtrip(self):

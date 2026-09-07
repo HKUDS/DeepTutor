@@ -8,6 +8,7 @@ import {
   useChatStateAdapter,
   type SessionConfiguration,
 } from "@/features/chat/ChatStateAdapter";
+import { MASTERY_CAPABILITY_VALUE } from "@/features/capabilities/presentation";
 import { useMasteryPathActivity } from "@/hooks/useMasteryPathActivity";
 import {
   fetchMasteryTopic,
@@ -19,6 +20,7 @@ import {
   type MasteryDraftRouteGuard,
 } from "@/lib/mastery-study-route";
 import { courseSessionConfiguration } from "@/lib/course-session-scope";
+import type { MasteryMode } from "@/lib/mastery-mode";
 import { MASTERY_WORKSPACE_MODE } from "@/lib/workspace-mode";
 
 /**
@@ -34,6 +36,13 @@ export function useMasteryStudySession(
   pathId: string,
   routeSessionId?: string,
   courseId = "",
+  /**
+   * What a conversation opened on this route is for. Only meaningful for a
+   * new one: an existing conversation's kind was decided when it was opened
+   * and is read back from the server, because letting a URL restate it would
+   * let a link hand a session tools its kind withholds.
+   */
+  requestedMode: MasteryMode = "study",
 ) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -92,11 +101,18 @@ export function useMasteryStudySession(
   const sessionConfiguration = useMemo<SessionConfiguration>(
     () => ({
       workspaceMode: MASTERY_WORKSPACE_MODE,
-      capability: null,
+      // Sent only when opening a new conversation; a route that names an
+      // existing one leaves the stored kind alone (see the parameter's note).
+      ...(routeSessionId ? {} : { masterySessionMode: requestedMode }),
+      // The study screen runs one action: the tutor loop. Stated here, at the
+      // session's source of truth, rather than only asserted by the composer —
+      // otherwise every configuration pass would reset it to chat and the
+      // composer would set it back, once per render.
+      capability: MASTERY_CAPABILITY_VALUE,
       masteryPathId: pathId,
       knowledgeBases,
     }),
-    [knowledgeBases, pathId],
+    [knowledgeBases, pathId, requestedMode, routeSessionId],
   );
 
   useEffect(() => {
@@ -213,5 +229,19 @@ export function useMasteryStudySession(
     routeSessionId && sessionResolution?.routeKey !== currentRouteKey,
   );
 
-  return { topic, topicError, knowledgeBases, sessionError, sessionLoading };
+  // The kind actually in force: what the server remembers for an existing
+  // conversation, and what this route asked for while a new one is still
+  // being created.
+  const sessionMode: MasteryMode =
+    (state.masterySessionMode as MasteryMode | null) ||
+    requestedMode;
+
+  return {
+    topic,
+    topicError,
+    knowledgeBases,
+    sessionError,
+    sessionLoading,
+    sessionMode,
+  };
 }

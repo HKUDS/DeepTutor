@@ -18,7 +18,7 @@ calling instead: a round that carries ``tool_calls`` is a tool round, a round
 without them finishes the turn, and no label is ever asked of the model.
 Reasoning the model writes into the *content* channel is recognised there
 only when tagged ``<think>``, which ``InlineThinkFilter`` in
-``deeptutor.agents.chat.agent_loop`` splits off at streaming time.
+``deeptutor.agents.loop.agent_loop`` splits off at streaming time.
 """
 
 from __future__ import annotations

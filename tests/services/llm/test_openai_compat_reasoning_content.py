@@ -87,27 +87,22 @@ def test_services_provider_minimal_reasoning_uses_extra_body_only() -> None:
     assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
-def test_services_deepseek_v4_flash_disables_thinking_by_default() -> None:
-    kwargs = _build_services_kwargs(
-        "deepseek",
-        None,
-        model="deepseek-v4-flash",
-    )
+@pytest.mark.parametrize("binding", ["deepseek", "openai"])
+def test_deepseek_v4_flash_is_left_to_its_own_default(binding: str) -> None:
+    """We no longer switch flash's thinking off, on any binding.
+
+    It used to be disabled to dodge the mid-conversation ``reasoning_content
+    must be passed back`` 400 (#1058). What actually fixes that is echoing the
+    previous round's reasoning on the assistant turn that issued the tool calls
+    — see ``test_assistant_message_with_tool_calls_replays_reasoning_content``, which is the
+    test that guards #1058. Disabling thinking as well bought nothing and cost
+    every flash user their whole reasoning stream, so the request now says
+    nothing about thinking and the provider applies its own default (on).
+    """
+    kwargs = _build_services_kwargs(binding, None, model="deepseek-v4-flash")
 
     assert "reasoning_effort" not in kwargs
-    assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
-
-
-def test_openai_binding_deepseek_v4_flash_disables_thinking_by_default() -> None:
-    """#1058: openai binding pointed at DeepSeek must still disable flash thinking."""
-    kwargs = _build_services_kwargs(
-        "openai",
-        None,
-        model="deepseek-v4-flash",
-    )
-
-    assert "reasoning_effort" not in kwargs
-    assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert "extra_body" not in kwargs
 
 
 def test_openai_binding_deepseek_v4_pro_enables_thinking_by_default() -> None:

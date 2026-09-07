@@ -4,7 +4,13 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useCardSubmission } from "@/hooks/use-card-submission";
+import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
 import { decodeEscapedUnicodeForDisplay } from "@/lib/markdown-display";
+import {
+  readPosedQuestion,
+  type MasteryQuestion,
+} from "@/lib/mastery-question";
 import {
   collectNarrationCallIds,
   shouldAppendEventContent,
@@ -62,6 +68,27 @@ export interface AskUserCardData {
   /** Present when the user has submitted; ``null`` while still pending. */
   answers: AskUserAnswer[] | null;
   resolved: boolean;
+  /**
+   * The model is still writing this call's arguments: the card is a preview
+   * built from partial JSON (``ask_user_draft`` events) and its options may
+   * still be half a word long. It renders read-only until the dispatched
+   * ``tool_result`` replaces it with the real payload — answering a question
+   * that is not finished being asked would submit against a card the backend
+   * has never seen.
+   */
+  streaming?: boolean;
+}
+
+/**
+ * A preview and its dispatched call agree on this identity. Responses-API
+ * calls are dispatched under ``"<call id>|<output item id>"`` while the
+ * argument deltas that built the preview only ever carry the call id, so the
+ * suffix is dropped on both sides.
+ */
+function askUserCallKey(id: string | null): string | null {
+  if (!id) return null;
+  const [callId] = id.split("|", 1);
+  return callId || null;
 }
 
 /**
@@ -80,14 +107,48 @@ export interface AskUserCardData {
  * every one would clutter chat history; the rest are visible in the
  * underlying tool-trace view anyway.)
  */
+/**
+ * The card preview an ``ask_user_draft`` event carries, if it has one.
+ *
+ * Emitted by the backend while the model writes the call's arguments, so the
+ * card can appear with its intro and grow its options in place rather than
+ * landing whole after a silent pause. Returns the payload plus the call it
+ * previews, so the dispatched result can replace the right card.
+ */
+function readAskUserDraft(
+  event: StreamEvent,
+): { payload: AskUserPayload; callKey: string | null } | null {
+  if (event.type !== "progress") return null;
+  const meta = (event.metadata ?? {}) as Record<string, unknown>;
+  const draft = meta.ask_user_draft;
+  if (!draft || typeof draft !== "object") return null;
+  const payload = normaliseAskUserPayload(draft, { allowNoQuestions: true });
+  if (!payload) return null;
+  return {
+    payload,
+    callKey: askUserCallKey(
+      typeof meta.draft_call_id === "string" ? meta.draft_call_id : null,
+    ),
+  };
+}
+
 export function extractAskUserPayload(
   events: StreamEvent[] | undefined,
+  /**
+   * ``streaming`` is the turn's state. A card the model was still writing is
+   * only offered while that turn is running: once it has settled, a preview
+   * that never became a dispatched call is a card nobody can answer. See
+   * ``extractMessageSegments``, which drops such a segment for the same
+   * reason.
+   */
+  { streaming = false }: { streaming?: boolean } = {},
 ): AskUserCardData | null {
   if (!events || events.length === 0) return null;
 
   let latest: {
     payload: AskUserPayload;
     toolCallId: string | null;
+    streaming?: boolean;
   } | null = null;
   let resolution: {
     toolCallId: string | null;
@@ -108,6 +169,18 @@ export function extractAskUserPayload(
         toolCallId:
           (event as { tool_call_id?: string }).tool_call_id ??
           (typeof meta.tool_call_id === "string" ? meta.tool_call_id : null),
+      };
+      resolution = null;
+      continue;
+    }
+    const draft = streaming ? readAskUserDraft(event) : null;
+    if (draft) {
+      // A preview only ever stands in for a card that has not been
+      // dispatched yet; the real result overwrites it above.
+      latest = {
+        payload: draft.payload,
+        toolCallId: draft.callKey,
+        streaming: true,
       };
       resolution = null;
       continue;
@@ -161,7 +234,12 @@ export function extractAskUserPayload(
     return { payload: latest.payload, answers, resolved: true };
   }
 
-  return { payload: latest.payload, answers: null, resolved: false };
+  return {
+    payload: latest.payload,
+    answers: null,
+    resolved: false,
+    streaming: latest.streaming ?? false,
+  };
 }
 
 /**
@@ -176,12 +254,36 @@ export function extractAskUserPayload(
  * resolution state — multiple ask_user calls in one turn render as
  * separate cards in stream order. Only the latest unresolved card is
  * interactive; resolved cards show their Q&A summary.
+ *
+ * The text comes from the ``content`` events while the turn streams. Once it
+ * has settled, the message keeps only a semantic preview of its trace — tool
+ * calls, cards, the terminal frame — and the session endpoint serves the same
+ * preview on reload, so there are no content events left to read. The answer
+ * itself still lives in ``answerContent``; pass it, and when the events carry
+ * no text the body is laid out from it instead, split around each card at the
+ * ``assistant_content_offset`` its resolution was stamped with. A card with no
+ * offset takes the whole remaining text above it, which is exact for a card
+ * that ended its turn (a mastery question) and the natural reading order for
+ * anything older that was never stamped.
  */
 export type MessageSegment =
   | { kind: "text"; text: string; key: string }
   | {
       kind: "ask_user";
       data: AskUserCardData;
+      toolCallId: string | null;
+      key: string;
+    }
+  /**
+   * A posed mastery question. Its own segment, not an `ask_user` one with a
+   * marker on it: the study card it renders needs the objective, the attempt
+   * and the verdict, and it is answered by the next message rather than by
+   * resolving this turn's pause. `lib/mastery-question` owns the shape; this
+   * layout only places it.
+   */
+  | {
+      kind: "mastery_question";
+      question: MasteryQuestion;
       toolCallId: string | null;
       key: string;
     }
@@ -197,15 +299,35 @@ export type MessageSegment =
 
 export function extractMessageSegments(
   events: StreamEvent[] | undefined,
+  answerContent = "",
+  /**
+   * ``streaming`` is the turn's own state, not a card's. A preview card is
+   * kept only while the turn that is writing it is still running: once the
+   * turn has settled, a preview that never became a dispatched call is a
+   * card nobody can answer, so it is dropped rather than left in history.
+   * (Previews are not part of a persisted turn's event preview either, so a
+   * reloaded message never has one to begin with.)
+   */
+  { streaming = false }: { streaming?: boolean } = {},
 ): MessageSegment[] {
   if (!events || events.length === 0) return [];
 
   const segments: MessageSegment[] = [];
+  // Where each card sits in the answer text, by segment index, when its
+  // events say so. Only needed for the settled layout below.
+  const answerOffsets = new Map<number, number>();
   // Index of each ask_user segment by tool_call_id so a later
   // ``progress`` event carrying ``ask_user_resolved`` can flip the
   // matching card to resolved mode without a second pass.
   const byToolCall = new Map<string, number>();
   const seenAskUserCards = new Set<string>();
+  // Preview cards, by the call they preview, so each successive draft
+  // updates its own card in place and the dispatched result later replaces
+  // that same segment — the card never unmounts and never duplicates.
+  const draftsByCall = new Map<string, number>();
+  // Where the preview whose call id never arrived lives, if any: a provider
+  // that streams arguments without a call id still gets one growing card.
+  let anonymousDraftIdx: number | null = null;
   let pendingTextIdx: number | null = null;
   let pendingTraceIdx: number | null = null;
   let sawAskUser = false;
@@ -251,6 +373,31 @@ export function extractMessageSegments(
     }
     const meta = (event.metadata ?? {}) as Record<string, unknown>;
     if (event.type === "tool_result") {
+      const posed = readPosedQuestion(event);
+      if (posed) {
+        const cardKey = `mastery:${posed.questionId}`;
+        if (seenAskUserCards.has(cardKey)) continue;
+        seenAskUserCards.add(cardKey);
+        // Same bookkeeping as a card below: close the text run so the round's
+        // remaining prose starts fresh underneath, and open the post-card
+        // trace region.
+        pendingTextIdx = null;
+        pendingTraceIdx = null;
+        sawAskUser = true;
+        const masteryIdx = segments.length;
+        segments.push({
+          kind: "mastery_question",
+          question: posed,
+          toolCallId:
+            (event as { tool_call_id?: string }).tool_call_id ??
+            (typeof meta.tool_call_id === "string" ? meta.tool_call_id : null),
+          key: `m${seq++}`,
+        });
+        if (typeof meta.assistant_content_offset === "number") {
+          answerOffsets.set(masteryIdx, meta.assistant_content_offset);
+        }
+        continue;
+      }
       const toolMetadata = meta.tool_metadata;
       const askUser =
         toolMetadata && typeof toolMetadata === "object"
@@ -275,6 +422,30 @@ export function extractMessageSegments(
       pendingTextIdx = null;
       pendingTraceIdx = null;
       sawAskUser = true;
+      // This call was previewed while it streamed: promote that card rather
+      // than appending a second one. Keeping the segment's key keeps the
+      // rendered card mounted, so the picked-option state and scroll
+      // position survive the swap from preview to answerable.
+      const callKey = askUserCallKey(toolCallId);
+      const draftIdx: number =
+        (callKey !== null ? draftsByCall.get(callKey) : undefined) ??
+        anonymousDraftIdx ??
+        -1;
+      const draftSegment = draftIdx >= 0 ? segments[draftIdx] : null;
+      if (draftSegment && draftSegment.kind === "ask_user") {
+        segments[draftIdx] = {
+          ...draftSegment,
+          data: { payload: normalised, answers: null, resolved: false },
+          toolCallId,
+        };
+        if (callKey !== null) draftsByCall.delete(callKey);
+        if (draftIdx === anonymousDraftIdx) anonymousDraftIdx = null;
+        if (toolCallId) byToolCall.set(toolCallId, draftIdx);
+        if (typeof meta.assistant_content_offset === "number") {
+          answerOffsets.set(draftIdx, meta.assistant_content_offset);
+        }
+        continue;
+      }
       const idx = segments.length;
       segments.push({
         kind: "ask_user",
@@ -283,6 +454,54 @@ export function extractMessageSegments(
         key: `a${seq++}`,
       });
       if (toolCallId) byToolCall.set(toolCallId, idx);
+      if (typeof meta.assistant_content_offset === "number") {
+        answerOffsets.set(idx, meta.assistant_content_offset);
+      }
+      continue;
+    }
+    const draft = readAskUserDraft(event);
+    if (draft) {
+      const existingIdx =
+        (draft.callKey !== null
+          ? draftsByCall.get(draft.callKey)
+          : undefined) ??
+        (draft.callKey === null ? (anonymousDraftIdx ?? undefined) : undefined);
+      if (existingIdx !== undefined) {
+        const existing = segments[existingIdx];
+        if (existing.kind === "ask_user") {
+          segments[existingIdx] = {
+            ...existing,
+            data: {
+              payload: draft.payload,
+              answers: null,
+              resolved: false,
+              streaming: true,
+            },
+          };
+        }
+        continue;
+      }
+      pendingTextIdx = null;
+      // Deliberately *not* setting ``sawAskUser``: the trace events that
+      // belong to this very call are still ahead of us in the stream, and
+      // ``leadingTraceEvents`` renders them above the bubble. Opening the
+      // post-card trace run here showed them a second time *below* the card
+      // — so the call's own "asking you" step read as happening after the
+      // question it produced. The dispatched result below owns that switch.
+      const idx = segments.length;
+      segments.push({
+        kind: "ask_user",
+        data: {
+          payload: draft.payload,
+          answers: null,
+          resolved: false,
+          streaming: true,
+        },
+        toolCallId: draft.callKey,
+        key: `a${seq++}`,
+      });
+      if (draft.callKey !== null) draftsByCall.set(draft.callKey, idx);
+      else anonymousDraftIdx = idx;
       continue;
     }
     if (event.type === "progress" && meta.ask_user_resolved) {
@@ -306,6 +525,9 @@ export function extractMessageSegments(
       if (targetIdx < 0) continue;
       const target = segments[targetIdx];
       if (target.kind !== "ask_user") continue;
+      if (typeof meta.assistant_content_offset === "number") {
+        answerOffsets.set(targetIdx, meta.assistant_content_offset);
+      }
       const answersRaw = Array.isArray(meta.answers)
         ? (meta.answers as unknown[])
         : [];
@@ -347,14 +569,114 @@ export function extractMessageSegments(
     appendTraceEvent(event);
   }
 
+  // The turn is over: a preview still marked streaming never became a
+  // dispatched call (a duplicate parallel ask_user, a guard that rejected the
+  // arguments), so there is nothing behind it to answer. Dropping it shifts
+  // the segment indices ``answerOffsets`` is keyed by, so both are rebuilt
+  // together.
+  let kept = segments;
+  let keptOffsets = answerOffsets;
+  if (!streaming && segments.some((s) => s.kind === "ask_user" && s.data.streaming)) {
+    kept = [];
+    keptOffsets = new Map<number, number>();
+    segments.forEach((segment, idx) => {
+      if (segment.kind === "ask_user" && segment.data.streaming) return;
+      const offset = answerOffsets.get(idx);
+      if (offset !== undefined) keptOffsets.set(kept.length, offset);
+      kept.push(segment);
+    });
+  }
+
+  const textFromEvents = kept.some(
+    (s) => s.kind === "text" && s.text.length > 0,
+  );
+  const laidOut =
+    !textFromEvents && sawAskUser && answerContent
+      ? layOutAnswerContent(kept, answerContent, keptOffsets)
+      : kept;
+
   // Drop empty trailing/leading text segments so the renderer doesn't
   // emit blank ``<AssistantResponse>`` nodes, and trace regions whose
   // events all turned out to be unrenderable.
-  return segments.filter((s) =>
+  return laidOut.filter((s) =>
     s.kind === "text"
       ? s.text.length > 0
       : s.kind !== "trace" || s.events.length > 0,
   );
+}
+
+/**
+ * Lay the persisted answer out around the cards of a settled message.
+ *
+ * Each card takes the text between the previous cut and its own offset; the
+ * text past the last cut trails after everything. Offsets are read in order
+ * and never move backwards, so a stray value cannot reorder the body.
+ */
+function layOutAnswerContent(
+  segments: MessageSegment[],
+  answerContent: string,
+  answerOffsets: Map<number, number>,
+): MessageSegment[] {
+  const laidOut: MessageSegment[] = [];
+  let cursor = 0;
+  let textKey = 0;
+  const pushText = (end: number) => {
+    if (end <= cursor) return;
+    laidOut.push({
+      kind: "text",
+      text: answerContent.slice(cursor, end),
+      key: `c${textKey++}`,
+    });
+    cursor = end;
+  };
+  segments.forEach((segment, idx) => {
+    if (segment.kind === "text") return;
+    if (segment.kind === "ask_user" || segment.kind === "mastery_question") {
+      const offset = answerOffsets.get(idx);
+      pushText(
+        offset === undefined
+          ? answerContent.length
+          : snapToLineStart(answerContent, Math.max(cursor, offset)),
+      );
+    }
+    laidOut.push(segment);
+  });
+  pushText(answerContent.length);
+  return laidOut;
+}
+
+/**
+ * The offset was measured on the answer as streamed; the stored text may have
+ * gained a few characters since (the CJK emphasis repair inserts spaces). A
+ * card follows a paragraph in practice, so a line start within a few
+ * characters is the boundary meant — anything farther is left alone.
+ */
+const OFFSET_SNAP_WINDOW = 8;
+
+function snapToLineStart(content: string, offset: number): number {
+  const clamped = Math.max(0, Math.min(offset, content.length));
+  if (
+    clamped === 0 ||
+    clamped === content.length ||
+    content[clamped - 1] === "\n"
+  ) {
+    return clamped;
+  }
+  let best = clamped;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const lo = Math.max(1, clamped - OFFSET_SNAP_WINDOW);
+  const hi = Math.min(content.length, clamped + OFFSET_SNAP_WINDOW);
+  for (let i = lo; i <= hi; i += 1) {
+    if (content[i - 1] !== "\n") continue;
+    const distance = Math.abs(i - clamped);
+    if (distance < bestDistance) {
+      best = i;
+      bestDistance = distance;
+    }
+  }
+  // A paragraph break is a run of newlines; the cut belongs after all of it.
+  while (best < content.length && content[best] === "\n") best += 1;
+  return best;
 }
 
 /**
@@ -405,7 +727,17 @@ function normaliseOption(raw: unknown): AskUserOption | null {
   return label ? { label, description: null } : null;
 }
 
-function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
+function normaliseAskUserPayload(
+  raw: unknown,
+  /**
+   * ``allowNoQuestions`` keeps a payload whose questions have not arrived
+   * yet. Only a streaming preview passes it: the intro is the first thing
+   * the model writes, so honouring it puts the card on screen while the
+   * options are still being typed into it. A dispatched call always has at
+   * least one question and is rejected without one, as before.
+   */
+  { allowNoQuestions = false }: { allowNoQuestions?: boolean } = {},
+): AskUserPayload | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
 
@@ -436,14 +768,12 @@ function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
             : null,
       });
     }
-    if (questions.length === 0) return null;
-    return {
-      intro:
-        typeof obj.intro === "string" && obj.intro.trim()
-          ? displayText((obj.intro as string).trim())
-          : null,
-      questions,
-    };
+    const intro =
+      typeof obj.intro === "string" && obj.intro.trim()
+        ? displayText((obj.intro as string).trim())
+        : null;
+    if (questions.length === 0 && !(allowNoQuestions && intro)) return null;
+    return { intro, questions };
   }
 
   // Legacy single-question shape from before the multi-question refactor.
@@ -486,10 +816,16 @@ export const AskUserOptions = memo(function AskUserOptions({
   defaultCollapsed,
 }: {
   data: AskUserCardData;
+  /**
+   * Deliver the answers. Resolving ``false`` means they never reached a turn
+   * that was waiting for them, and the card returns to editable so the
+   * learner can try again — a submission that cannot succeed must not look
+   * like one still in flight.
+   */
   onSubmit: (payload: {
     text?: string;
     answers?: Array<{ questionId: string; text: string }>;
-  }) => void;
+  }) => void | boolean | Promise<void | boolean>;
   /** When true, the resolved Q&A card renders with an inline toggle so
    * the user can hide / show the question + answer summary. Resolved cards
    * default to collapsible+collapsed (the Q&A history stays addressable
@@ -509,7 +845,13 @@ export const AskUserOptions = memo(function AskUserOptions({
       />
     );
   }
-  return <InteractiveAskUserCard payload={data.payload} onSubmit={onSubmit} />;
+  return (
+    <InteractiveAskUserCard
+      payload={data.payload}
+      onSubmit={onSubmit}
+      streaming={data.streaming ?? false}
+    />
+  );
 });
 AskUserOptions.displayName = "AskUserOptions";
 
@@ -518,12 +860,15 @@ AskUserOptions.displayName = "AskUserOptions";
 const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
   payload,
   onSubmit,
+  streaming = false,
 }: {
   payload: AskUserPayload;
   onSubmit: (payload: {
     text?: string;
     answers?: Array<{ questionId: string; text: string }>;
-  }) => void;
+  }) => void | boolean | Promise<void | boolean>;
+  /** The model is still writing this card; see ``AskUserCardData``. */
+  streaming?: boolean;
 }) {
   const { t } = useTranslation();
   const totalQuestions = payload.questions.length;
@@ -541,7 +886,15 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
     {},
   );
   const [activeIdx, setActiveIdx] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  // "In flight", not "done": the server may still decline these answers.
+  const {
+    sending: submitted,
+    failed: submitFailed,
+    submit,
+  } = useCardSubmission(onSubmit);
+  // Same lock, two reasons: answers are in flight, or the question is not
+  // finished being asked. Either way nothing on the card may be touched.
+  const locked = submitted || streaming;
 
   const activeQuestion = payload.questions[activeIdx] ?? payload.questions[0];
 
@@ -574,8 +927,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
   );
 
   const handleSubmit = useCallback(() => {
-    if (submitted) return;
-    setSubmitted(true);
+    if (locked) return;
     const list: Array<{ questionId: string; text: string }> =
       payload.questions.map((q) => ({
         questionId: q.id,
@@ -587,8 +939,8 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
       .map(({ text }) => text || "(skipped)")
       .filter((s) => s !== "(skipped)")
       .join(" | ");
-    onSubmit({ text: flat, answers: list });
-  }, [submitted, payload.questions, answers, onSubmit]);
+    void submit({ text: flat, answers: list });
+  }, [locked, payload.questions, answers, submit]);
 
   const pickOption = useCallback(
     (question: AskUserQuestion, label: string) => {
@@ -647,14 +999,25 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
           <div className="text-[13px] font-medium leading-snug text-[var(--foreground)]">
             {payload.intro || t("Please answer to continue.")}
           </div>
-          <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
-            {submitted
-              ? t("Sending your answers…")
-              : totalQuestions > 1
-                ? t("{{count}} questions — tap a tab to switch.", {
-                    count: totalQuestions,
-                  })
-                : t("Pick an option or type your own to continue.")}
+          <div
+            className={
+              "mt-0.5 text-[11px] " +
+              (submitFailed
+                ? "text-[var(--destructive)]"
+                : "text-[var(--muted-foreground)]")
+            }
+          >
+            {streaming
+              ? t("Writing the question…")
+              : submitted
+                ? t("Sending your answers…")
+                : submitFailed
+                  ? t(REPLY_NOT_DELIVERED)
+                  : totalQuestions > 1
+                    ? t("{{count}} questions — tap a tab to switch.", {
+                        count: totalQuestions,
+                      })
+                    : t("Pick an option or type your own to continue.")}
           </div>
         </div>
       </div>
@@ -669,7 +1032,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
                 key={q.id}
                 type="button"
                 onClick={() => setActiveIdx(idx)}
-                disabled={submitted}
+                disabled={locked}
                 className={
                   "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-all " +
                   (isActive
@@ -697,17 +1060,30 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
         </div>
       ) : null}
 
-      <QuestionBody
-        key={activeQuestion.id}
-        question={activeQuestion}
-        pickedLabels={picks[activeQuestion.id] ?? []}
-        customDraft={customText[activeQuestion.id] ?? ""}
-        customSelected={!!customSelected[activeQuestion.id]}
-        locked={submitted}
-        onPickOption={(label) => pickOption(activeQuestion, label)}
-        onSelectCustom={() => selectCustom(activeQuestion)}
-        onCustomTextChange={(text) => updateCustomText(activeQuestion.id, text)}
-      />
+      {activeQuestion ? (
+        <QuestionBody
+          key={activeQuestion.id}
+          question={activeQuestion}
+          pickedLabels={picks[activeQuestion.id] ?? []}
+          customDraft={customText[activeQuestion.id] ?? ""}
+          customSelected={!!customSelected[activeQuestion.id]}
+          locked={locked}
+          onPickOption={(label) => pickOption(activeQuestion, label)}
+          onSelectCustom={() => selectCustom(activeQuestion)}
+          onCustomTextChange={(text) =>
+            updateCustomText(activeQuestion.id, text)
+          }
+        />
+      ) : (
+        // A preview that has only its intro so far. Two muted bars stand in
+        // for the question and its first option, so the card takes its place
+        // in the thread at roughly the height it will settle at instead of
+        // pushing the conversation down as each option arrives.
+        <div className="mt-3 flex flex-col gap-2" aria-hidden>
+          <div className="h-4 w-2/3 animate-pulse rounded bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)]" />
+          <div className="h-9 w-full animate-pulse rounded-xl bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]" />
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--border)]/60 pt-3">
         <div className="flex min-w-0 flex-1 items-center">
@@ -715,7 +1091,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
             <button
               type="button"
               onClick={() => setActiveIdx((idx) => Math.max(0, idx - 1))}
-              disabled={submitted}
+              disabled={locked}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/30 hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft size={14} strokeWidth={2} />
@@ -723,9 +1099,11 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
             </button>
           ) : (
             <div className="text-[11.5px] text-[var(--muted-foreground)]">
-              {allAnswered
-                ? t("All questions answered.")
-                : t("Unanswered questions will be submitted as skipped.")}
+              {streaming
+                ? null
+                : allAnswered
+                  ? t("All questions answered.")
+                  : t("Unanswered questions will be submitted as skipped.")}
             </div>
           )}
         </div>
@@ -735,7 +1113,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
             onClick={() =>
               setActiveIdx((idx) => Math.min(totalQuestions - 1, idx + 1))
             }
-            disabled={submitted}
+            disabled={locked}
             className="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span>{t("Next question")}</span>
@@ -745,7 +1123,7 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={submitted}
+            disabled={locked}
             className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {totalQuestions > 1 ? t("Submit answers") : t("Submit")}

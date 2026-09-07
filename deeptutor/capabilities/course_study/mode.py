@@ -63,7 +63,7 @@ class CourseStudyCapability(TurnCapability):
             *COURSE_STUDY_TOOL_NAMES,
             "rag",
             "web_search",
-            "code_execution",
+            "exec",
             "reason",
         ],
         cli_aliases=["course"],

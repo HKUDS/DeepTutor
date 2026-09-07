@@ -16,6 +16,11 @@
 # Local LLM (LM Studio / Ollama / vLLM):
 #   Use "host.docker.internal" instead of "localhost" in provider base_url fields.
 #   Configure provider endpoints in data/user/settings/model_catalog.json or the UI.
+#
+# Content workspace:
+#   DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder python scripts/docker_compose.py up -d
+#   maps that folder to the stable in-container path /workspace. If omitted,
+#   ./data/user/workspace remains the default.
 # ============================================
 
 services:
@@ -90,6 +95,7 @@ services:
       # secrets. What it *does* carry for non-admin accounts is wider than
       # workspace subtrees — see the scope note on that service's own volumes.
       - ./data:/app/data
+      - "${DEEPTUTOR_WORKSPACE_HOST:-./data/user/workspace}:/workspace"
 
     environment:
       # Route untrusted shell exec to the runner sidecar (SYSTEM isolation).
@@ -99,6 +105,8 @@ services:
       # this unset: the app degrades to bwrap (Linux, if installed) or, only when
       # DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=1, a restricted subprocess.
       - DEEPTUTOR_SANDBOX_RUNNER_URL=http://sandbox-runner:8900
+      - DEEPTUTOR_WORKSPACE_ROOT=/workspace
+      - DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace
 
       # Optional dependencies, re-applied on every start (#762). Installing
       # these with `docker exec` does not survive `compose down`, so declare
@@ -145,32 +153,23 @@ services:
     container_name: deeptutor-sandbox-runner
     restart: unless-stopped
 
-    # Share the task workspaces at the SAME paths as the main app so the mount
-    # contract holds: a request with host_path == sandbox_path under
-    # /app/data/user/workspace (admin) or /app/data/users/<uid> (per-user)
-    # is already visible here, no per-command mounting needed.
-    # Scope note: every command in this container shares one filesystem view
-    # (per-command isolation is a roadmap item). The admin mount is narrowed to
-    # its workspace subtree, but the per-user mount is a whole user root, so for
-    # non-admin accounts it also carries data/users/<uid>/user/settings,
-    # user/chat_history.db, and knowledge_bases — every account's exec can read
-    # every other account's copy of those. That cross-user visibility is
-    # accepted for the invite-only trust posture and enforced no further.
-    # data/system is never mounted here, which is why credentials that authorize
-    # a person (Codex OAuth tokens) live under data/system/user-secrets/<owner>
-    # instead of inside a user root — and why installed CLI apps live in a third
-    # place, data/cli-apps, rather than in either: the runner has to *execute*
-    # them, so data/system is out; it must not be able to *modify* them, so a
-    # workspace subtree is out too.
+    # Share the content workspace at the SAME stable path as the main app.
+    # The whole tree is readable so workspace_list/read and shell tools can use
+    # user files. Only outputs/ is writable: a command cannot modify source
+    # material, user settings, or any other host path. The runner never sees
+    # data/system, data/users, or the rest of the application data tree.
     volumes:
-      - ./data/user/workspace:/app/data/user/workspace
-      - ./data/users:/app/data/users
+      - "${DEEPTUTOR_WORKSPACE_HOST:-./data/user/workspace}:/workspace:ro"
+      - "${DEEPTUTOR_WORKSPACE_HOST:-./data/user/workspace}/outputs:/workspace/outputs"
       # Installed CLI apps, READ-ONLY. This is the one directory the runner
       # executes code from that it did not receive in a request, so it must not
       # be writable here: an escaped command that could overwrite an app's entry
       # point would run as that app in every later turn, for every account.
       # Installing writes it from the main container instead (services/cli_apps).
       - ./data/cli-apps:/app/data/cli-apps:ro
+
+    environment:
+      - DEEPTUTOR_RUNNER_ALLOWED_WORKDIRS=/workspace/outputs
 
     # No `ports:` — intentionally not published to the host.
 

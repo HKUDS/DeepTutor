@@ -20,6 +20,7 @@ import {
 // pay the cost of loading the markdown / code-highlight chunks.
 const PdfPreview = dynamic(() => import("./previewers/PdfPreview"));
 const ImagePreview = dynamic(() => import("./previewers/ImagePreview"));
+const VideoPreview = dynamic(() => import("./previewers/VideoPreview"));
 const SvgPreview = dynamic(() => import("./previewers/SvgPreview"));
 const MarkdownPreview = dynamic(() => import("./previewers/MarkdownPreview"));
 const TextPreview = dynamic(() => import("./previewers/TextPreview"));
@@ -374,6 +375,8 @@ const PreviewBody = memo(function PreviewBody({
       return <XlsxPreview url={previewUrl} />;
     case "image":
       return <ImagePreview url={previewUrl} filename={filename} />;
+    case "video":
+      return <VideoPreview url={previewUrl} filename={filename} />;
     case "svg":
       return <SvgPreview url={previewUrl} filename={filename} />;
     case "markdown":

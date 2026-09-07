@@ -191,3 +191,24 @@ export async function requestBlob(
     );
   }
 }
+
+/**
+ * Parse a response, throwing FastAPI's ``detail`` as the message on failure.
+ *
+ * The status line alone ("500 Internal Server Error") tells a reader nothing;
+ * the backend's own detail is what names the actual problem. Callers wanting
+ * structured refusals (an error code, a log tail) parse the body themselves.
+ */
+export async function asJsonOrThrow(response: Response): Promise<any> {
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body?.detail) detail = String(body.detail);
+    } catch {
+      /* the body was not JSON; the status line is all we have */
+    }
+    throw new Error(detail);
+  }
+  return response.json();
+}

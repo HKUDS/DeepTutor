@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from deeptutor.reading import ingestion as ingestion_module
 from deeptutor.reading.catalog_models import IngestionStatus, SourceKind
 from deeptutor.reading.catalog_store import ReadingCatalogStore
 from deeptutor.reading.extract import (
@@ -412,10 +413,85 @@ async def test_local_video_keeps_playable_raw_and_transcribes_chunks(
 
 
 @pytest.mark.asyncio
+async def test_media_without_a_configured_provider_fails_before_running_ffmpeg(
+    stores, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Name the missing setting, and do not spend ffmpeg proving it is missing."""
+    reading, catalog = stores
+    source = tmp_path / "lecture.mp4"
+    source.write_bytes(b"video bytes")
+    ran = {"chunker": False}
+
+    async def chunker(_path: Path):
+        ran["chunker"] = True
+        return []
+
+    monkeypatch.setattr(
+        ingestion_module,
+        "_probe_stt_configuration",
+        lambda: "No active STT model is configured. Set it in Settings > Voice.",
+    )
+    service = ReadingIngestionService(reading, catalog, media_chunker=chunker)
+    service._probes_stt = True
+
+    queued = await service.queue_media(source, filename="lecture.mp4")
+    failed = await service.process_media(queued.material_id)
+
+    assert failed.status is IngestionStatus.FAILED
+    assert failed.error_code == "stt_not_configured"
+    assert "Settings > Voice" in failed.error_detail
+    assert ran["chunker"] is False
+    # The upload survives the failure, so configuring a provider and retrying
+    # is all the user has to do.
+    assert reading.raw_path(queued.material_id).read_bytes() == b"video bytes"
+
+
+@pytest.mark.asyncio
+async def test_media_retry_reruns_transcription_from_the_stored_original(
+    stores, tmp_path: Path
+) -> None:
+    """A failed transcription must not cost the user the upload.
+
+    The original is stored before speech-to-text is attempted, so retrying is
+    a server-side re-run — not "please find that two-gigabyte lecture again".
+    """
+    reading, catalog = stores
+    source = tmp_path / "lecture.mp4"
+    source.write_bytes(b"stable video bytes")
+    attempts = {"n": 0}
+
+    async def chunker(_path: Path):
+        return [(0.0, 600.0, b"audio-one")]
+
+    async def transcriber(_audio: bytes, **_kwargs):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("No endpoint URL configured for STT.")
+        return "the transcript, second time around"
+
+    service = ReadingIngestionService(
+        reading, catalog, media_chunker=chunker, transcriber=transcriber
+    )
+    queued = await service.queue_media(source, filename="lecture.mp4")
+    failed = await service.process_media(queued.material_id)
+
+    assert failed.status is IngestionStatus.FAILED
+    # Still playable while it is broken: the bytes never depended on the text.
+    assert reading.raw_path(queued.material_id).read_bytes() == b"stable video bytes"
+
+    recovered = await service.retry(queued.material_id)
+
+    assert recovered.status is IngestionStatus.READY
+    assert reading.unit_text(queued.material_id, 1) == "the transcript, second time around"
+    assert reading.raw_path(queued.material_id).read_bytes() == b"stable video bytes"
+
+
+@pytest.mark.asyncio
 async def test_media_ingestion_failure_is_logged_and_persisted(
     stores,
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reading, catalog = stores
     source = tmp_path / "broken.mp4"
@@ -424,6 +500,7 @@ async def test_media_ingestion_failure_is_logged_and_persisted(
     async def failing_chunker(_path: Path):
         raise RuntimeError("decoder crashed")
 
+    monkeypatch.setattr(ingestion_module, "_probe_stt_configuration", lambda: "")
     service = ReadingIngestionService(*stores, media_chunker=failing_chunker)
     with caplog.at_level(logging.ERROR, logger="deeptutor.reading.ingestion"):
         with pytest.raises(RuntimeError, match="decoder crashed"):

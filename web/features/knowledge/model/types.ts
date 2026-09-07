@@ -9,6 +9,7 @@ export type {
   ImaAccountConfig,
   ImaKnowledgeBasePage,
   ImaProbe,
+  IndexingLLMSelection,
   KnowledgeBaseFile,
   KnowledgeBaseSummary,
   KnowledgeTaskResponse,

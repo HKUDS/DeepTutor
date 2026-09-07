@@ -8,6 +8,7 @@ from pathlib import Path
 def extract_document_text(
     source_path: str,
     *,
+    filename_hint: str | None = None,
     max_bytes: int | None,
     max_chars: int | None,
 ) -> str:
@@ -15,6 +16,7 @@ def extract_document_text(
 
     return extract_text_from_path(
         source_path,
+        filename_hint=filename_hint,
         max_bytes=max_bytes,
         max_chars=max_chars,
     )

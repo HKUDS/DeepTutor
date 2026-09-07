@@ -172,9 +172,14 @@ services:
       # (data/partners), accounts/grants/audit (data/system),
       # knowledge bases, memory, logs. One tree to back up.
       - ./data:/app/data:U
+      # Stable content workspace shared by every installation path. Override
+      # the host side with DEEPTUTOR_WORKSPACE_HOST=/absolute/folder.
+      - ${DEEPTUTOR_WORKSPACE_HOST:-./data/user/workspace}:/workspace:U
     environment:
       # Time zone — picked up by Python (time.tzset) and Next.js at boot.
       - TZ=${TZ:-UTC}
+      - DEEPTUTOR_WORKSPACE_ROOT=/workspace
+      - DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace
       # Local LLM (LM Studio / Ollama / vLLM) base URLs in
       # data/user/settings/model_catalog.json should use
       # `http://host.containers.internal:PORT` (podman) — NOT localhost,
