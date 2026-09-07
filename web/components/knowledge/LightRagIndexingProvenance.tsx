@@ -94,11 +94,6 @@ export default function LightRagIndexingProvenance({
                 : t("Unknown")}
             {visionEnabled === true &&
               ` · ${t("Reasoning effort")}: ${vision?.descriptor?.reasoning_effort || t("Model default")}`}
-            {resolved.vlm_used === true
-              ? ` · ${t("used for this version")}`
-              : resolved.vlm_used === false
-                ? ` · ${t("not used for this version")}`
-                : ""}
           </ProvenanceField>
           <ProvenanceField label={t("Version source")}>
             {version?.version ||
