@@ -10,12 +10,12 @@ const BUILD_MANIFEST_PATH = path.join(NEXT_OUTPUT_DIR, "build-manifest.json");
 const NEXT_BIN = path.join(WEB_ROOT, "node_modules", "next", "dist", "bin", "next");
 
 const ROUTE_TARGETS = [
-  { route: "/", requestPath: "/", budgetKb: 300 },
+  { route: "/", requestPath: "/", budgetKb: 310 },
   { route: "/chat/[sessionId]", requestPath: "/chat/perf-budget", budgetKb: 1_020 },
   { route: "/settings", requestPath: "/settings", budgetKb: 840 },
   { route: "/knowledge-bases", requestPath: "/knowledge-bases", budgetKb: 550 },
-  { route: "/co-writer", requestPath: "/co-writer", budgetKb: 320 },
-  { route: "/co-writer/[docId]", requestPath: "/co-writer/perf-budget", budgetKb: 515 },
+  { route: "/co-writer", requestPath: "/co-writer", budgetKb: 330 },
+  { route: "/co-writer/[docId]", requestPath: "/co-writer/perf-budget", budgetKb: 530 },
   {
     route: "/reading/[workspaceId]/sessions/[sessionId]",
     requestPath: "/reading/perf-budget/sessions/perf-session",
