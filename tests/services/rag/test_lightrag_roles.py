@@ -879,6 +879,7 @@ def test_empty_existing_kb_ignores_old_pending_and_freezes_current_defaults(
 def test_task_publishes_actual_frozen_embedding_after_defaults_change(
     role_environment, tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(engine, "installed_version", lambda: engine.LIGHTRAG_VERSION)
     kb = tmp_path / "kb"
     accepted = policy.bind_target(policy.freeze_roles(), kb, protect_contents=True)
     role_environment["embedding"].model = "later-default"
@@ -980,6 +981,7 @@ def test_query_does_not_require_old_extract_or_vlm_access(role_environment, monk
 def test_embedding_adapter_calls_accepted_config_after_default_switch(
     role_environment, monkeypatch
 ):
+    pytest.importorskip("lightrag.utils", reason="requires the optional rag-lightrag extra")
     from deeptutor.services.rag.pipelines.lightrag.config import build_embedding_func
 
     accepted = policy.with_embedding(policy.freeze_roles())
