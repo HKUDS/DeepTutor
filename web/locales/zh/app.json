@@ -2951,6 +2951,7 @@
   "Selected text": "选中内容",
   "Ask anything about the selected text.": "可以针对这段选中内容继续提问。",
   "My courses": "我的课程",
+  "Courses could not load": "课程加载失败",
   "Create a course": "创建课程",
   "Create your first course": "创建第一门课程",
   "Course name": "课程名称",
@@ -3996,5 +3997,12 @@
   "readiness.detail.redis_available_but_memory_selected": "Redis 可用，可以把轮次协调切到它",
   "Index embedding": "索引使用的嵌入模型",
   "Current embedding": "当前嵌入模型",
-  "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents.": "当前嵌入配置与此索引不匹配。请恢复原配置，或使用当前嵌入模型重建后再查询或添加文档。"
+  "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents.": "当前嵌入配置与此索引不匹配。请恢复原配置，或使用当前嵌入模型重建后再查询或添加文档。",
+  "Could not copy": "复制失败",
+  "The clipboard is not available in this browser.": "当前浏览器环境无法使用剪贴板。",
+  "attachments": "附件",
+  "references": "引用",
+  "That question is no longer waiting for an answer, so this was sent as a new message.": "这道题已经不再等待作答，所以这条内容作为新消息发送了。",
+  "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "知识库名称不能包含 {{chars}} —— 这些字符会切断路径和 URL。",
+  "Select text in the document first.": "请先在文档中选中文字。"
 }

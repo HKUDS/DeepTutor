@@ -51,6 +51,7 @@ import {
   type RagProviderSummary,
 } from "@/features/knowledge/api/engines";
 import { canApplyGraphRagModelCandidate } from "@/lib/graphrag-model-compatibility";
+import { copyText } from "@/lib/clipboard";
 import {
   kbDocCount,
   kbProvider,
@@ -205,7 +206,7 @@ function Section({
 
 function CopyableCommand({ command }: { command: string }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const [outcome, setOutcome] = useState<"idle" | "copied" | "failed">("idle");
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-2">
       <code className="truncate font-mono text-[12px] text-[var(--foreground)]">
@@ -214,14 +215,28 @@ function CopyableCommand({ command }: { command: string }) {
       <button
         type="button"
         onClick={() => {
-          void navigator.clipboard?.writeText(command);
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1500);
+          // The write is awaited before the label changes. This used to be
+          // `void navigator.clipboard?.writeText(...)` followed by an
+          // unconditional `setCopied(true)` — where the `?.` meant a missing
+          // Clipboard API did not even throw, and the label said 已复制 anyway.
+          void copyText(command).then(
+            () => setOutcome("copied"),
+            () => setOutcome("failed"),
+          );
+          window.setTimeout(() => setOutcome("idle"), 1500);
         }}
         className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
       >
-        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        {copied ? t("Copied") : t("Copy")}
+        {outcome === "copied" ? (
+          <Check className="h-3 w-3" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+        {outcome === "copied"
+          ? t("Copied")
+          : outcome === "failed"
+            ? t("Could not copy")
+            : t("Copy")}
       </button>
     </div>
   );

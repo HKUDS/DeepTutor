@@ -2951,6 +2951,7 @@
   "Selected text": "Selected text",
   "Ask anything about the selected text.": "Ask anything about the selected text.",
   "My courses": "My courses",
+  "Courses could not load": "Courses could not load",
   "Create a course": "Create a course",
   "Create your first course": "Create your first course",
   "Course name": "Course name",
@@ -3996,5 +3997,12 @@
   "readiness.detail.redis_available_but_memory_selected": "Redis is reachable — coordination could be switched to it",
   "Index embedding": "Index embedding",
   "Current embedding": "Current embedding",
-  "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents.": "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents."
+  "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents.": "The current embedding configuration does not match this index. Restore the original configuration or rebuild with the current embedding before querying or adding documents.",
+  "Could not copy": "Could not copy",
+  "The clipboard is not available in this browser.": "The clipboard is not available in this browser.",
+  "attachments": "attachments",
+  "references": "references",
+  "That question is no longer waiting for an answer, so this was sent as a new message.": "That question is no longer waiting for an answer, so this was sent as a new message.",
+  "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.",
+  "Select text in the document first.": "Select text in the document first."
 }

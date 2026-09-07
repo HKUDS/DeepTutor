@@ -387,7 +387,7 @@ Zacznij od głównych powierzchni, których będziesz używać na co dzień: Cha
 Jeśli odpowiedź pomija wcześniejsze ograniczenie, przywołuje słabe dowody lub jest sprzeczna z wybranym materiałem, przed otwarciem issue zbierz dane diagnostyczne zgodnie z [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md).
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Strona główna DeepTutor — obszar roboczy Chat z każdą powierzchnią w pasku bocznym" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="Strona główna DeepTutor — obszar roboczy Chat z każdą powierzchnią w pasku bocznym" width="900">
 </div>
 
 <details>

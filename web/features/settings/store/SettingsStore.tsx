@@ -19,6 +19,7 @@ import {
   writeStoredCodeBlockShowLineNumbers,
   writeStoredCodeBlockTheme,
   writeStoredCodeBlockWrapLongLines,
+  hasStoredResponseLanguage,
   writeStoredLanguage,
   writeStoredResponseLanguage,
 } from "@/context/app-shell-storage";
@@ -848,7 +849,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       setTheme(payload.ui.theme);
       setLanguage(payload.ui.language);
-      setResponseLanguage(payload.ui.response_language ?? payload.ui.language);
+      const loadedResponseLanguage =
+        payload.ui.response_language ?? payload.ui.language;
+      setResponseLanguage(loadedResponseLanguage);
+      // Reconcile the browser's copy with the server's. Without this the two
+      // inherit differently and drift permanently: the server derives
+      // `response_language` from `language` on every read, while the browser
+      // inherits only when its own key is absent. Flipping the interface
+      // language alone therefore left the server (and this page) showing 中文
+      // while every turn still shipped the "en" the bootstrap had stamped —
+      // the "I set Chinese and it answers in English" report.
+      writeStoredLanguage(payload.ui.language);
+      writeStoredResponseLanguage(loadedResponseLanguage);
       // Writes the backend-loaded values into app-shell storage and dispatches
       // the code-block settings event; AppShellContext (the single source) picks
       // them up, so no separate copy needs seeding here.
@@ -963,11 +975,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     await persistUiSettingsPatch({ theme: next });
   }, []);
 
-  const updateLanguage = useCallback(async (next: UiSettings["language"]) => {
-    setLanguage(next);
-    writeStoredLanguage(next);
-    await persistUiSettingsPatch({ language: next });
-  }, []);
+  const updateLanguage = useCallback(
+    async (next: UiSettings["language"]) => {
+      setLanguage(next);
+      writeStoredLanguage(next);
+      // `PUT /ui` merges, so an account that never chose a model output
+      // language still has no stored `response_language` — and the server
+      // derives it from `language` on the next read. Mirror that here, or the
+      // page shows a value the browser will not send.
+      if (!hasStoredResponseLanguage()) {
+        setResponseLanguage(next);
+        writeStoredResponseLanguage(next);
+      }
+      await persistUiSettingsPatch({ language: next });
+    },
+    [],
+  );
 
   const updateResponseLanguage = useCallback(
     async (next: UiSettings["response_language"]) => {

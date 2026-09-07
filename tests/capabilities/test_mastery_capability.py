@@ -527,3 +527,65 @@ async def test_a_switch_and_a_build_in_one_round_land_on_the_switched_path(tmp_p
     assert [m.name for m in store.load("path-b").modules] == ["Rebuilt module"]
     # The path the turn started on is untouched.
     assert [m.name for m in store.load("path-a").modules] == ["Path A"]
+
+
+@pytest.mark.asyncio
+async def test_a_mode_switch_and_a_quiz_in_one_round_use_the_new_mode(tmp_path, monkeypatch):
+    """The regression behind "it asked a question, then answered it itself".
+
+    ``mastery_mode`` repoints the turn exactly the way ``mastery_switch`` does,
+    but it was not declared to the dispatcher as a rebinding tool — so it ran
+    in the concurrent batch and ``mastery_quiz`` kept the mode bound before the
+    switch. The prompt asks for precisely this round ("switch and get on with
+    it"), and "继续学" at the end of an outline sitting produces it, so the
+    quiz was refused for being in ``outline`` in the same round that left it.
+
+    The tutor had already streamed the lead-in, no card appeared, and the turn
+    carried on — which is one of the ways the question ends up answered in
+    prose next to no card at all.
+    """
+    from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
+
+    _use_store_root(monkeypatch, tmp_path)
+    LearningStore().save(_built_path("path-a"))
+
+    context = UnifiedContext(
+        user_message="let's start studying",
+        session_id="session-1",
+        metadata={
+            "mastery_mode": True,
+            "mastery_path_id": "path-a",
+            "mastery_session_mode": "outline",
+            "turn_id": "turn-1",
+        },
+    )
+    capability = MasteryLoopCapability()
+    pipeline = AgenticChatPipeline(language="en")
+
+    results = await dispatch_tool_calls(
+        tool_calls=[
+            {
+                "id": "c1",
+                "name": "mastery_quiz",
+                "arguments": json.dumps(
+                    {
+                        "knowledge_point_id": "path-a-kp1",
+                        "question": "What is slope?",
+                        "expected_answer": "rise over run",
+                    }
+                ),
+            },
+            {"id": "c2", "name": "mastery_mode", "arguments": '{"mode": "study"}'},
+        ],
+        context=context,
+        stream=StreamBus(),
+        source="chat",
+        stage="responding",
+        iteration_index=0,
+        kwarg_augmenter=pipeline._augment_tool_kwargs,
+        rebinding_tools=frozenset(capability.rebinding_tools),
+    )
+
+    quiz = next(message for message in results.tool_messages if message.get("tool_call_id") == "c1")
+    assert "belongs to the" not in str(quiz.get("content", "")), quiz
+    assert context.metadata["mastery_session_mode"] == "study"

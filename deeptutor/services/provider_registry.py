@@ -420,12 +420,14 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         # Moonshot's own recommendation. The tunable moonshot-v1-* series does
         # not contain "kimi" and keeps the caller's temperature. The Kimi
         # coding endpoint (api.kimi.com/coding/v1) addresses these models by
-        # bare ids ("k3", ...) without the "kimi-" prefix, so match those too.
+        # bare ids ("k3", "k3-256k", ...) without the "kimi-" prefix, so
+        # match those too.
         model_overrides=(
             ("kimi", {"temperature": None}),
             ("=k3", {"temperature": None}),
+            ("=k3-256k", {"temperature": None}),
         ),
-        exact_model_ids=("k3",),
+        exact_model_ids=("k3", "k3-256k"),
     ),
     # MiniMax runs two separate platforms: global (platform.minimax.io /
     # api.minimax.io) and mainland China (platform.minimaxi.com /

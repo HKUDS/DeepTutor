@@ -6,6 +6,8 @@
  * This utility converts between formats.
  */
 
+import { normalizeAtxHeadings } from "./markdown-display";
+
 // A single-dollar math span must be tight at both ends. This mirrors the
 // delimiter rule used by remark-math and avoids treating ordinary prices such
 // as "$5 and $10" as one formula. The body accepts escaped characters so an
@@ -73,10 +75,6 @@ export function convertLatexDelimiters(content: string): string {
   result = result.replace(/\n{3,}/g, "\n\n");
 
   return result;
-}
-
-function normalizeEditorMdHeadings(content: string): string {
-  return content.replace(/^(#{1,6})([^#\s])/gm, "$1 $2");
 }
 
 const LIKELY_LATEX_BLOCK_RE = /\\[A-Za-z]+|\\\\|[_^&]/;
@@ -390,7 +388,7 @@ export function processMarkdownContent(content: string): string {
   if (!content) return "";
 
   let result = String(content);
-  result = normalizeEditorMdHeadings(result);
+  result = normalizeAtxHeadings(result);
   result = normalizeEditorMdInlineMath(result);
   result = convertEditorMdFences(result);
   result = injectEditorMdTableOfContents(result);

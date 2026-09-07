@@ -8,6 +8,7 @@ that is exactly where the guarantee now is.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -397,16 +398,18 @@ async def test_a_built_goal_reports_its_identity_too(path_id):
 def _pack(language: str) -> dict:
     import yaml
 
-    return yaml.safe_load(
-        open(f"deeptutor/capabilities/mastery/prompts/{language}/mastery_loop.yaml")
-    )
+    prompts = Path(__file__).resolve().parents[2] / "capabilities" / "mastery" / "prompts"
+    return yaml.safe_load((prompts / language / "mastery_loop.yaml").read_text(encoding="utf-8"))
 
 
-def test_study_never_offers_to_do_the_reviewing_itself():
+def test_study_never_offers_to_do_the_reviewing_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The sentence this guards taught the tutor that due reviews are study's
     to handle, so "I want to review" was answered by quizzing a due item
     without leaving study — the learner asked for a mode and got a workaround.
     """
+    monkeypatch.chdir(tmp_path)
     for language in ("zh", "en"):
         study = _pack(language)["session"]["study"]
         assert "mastery_status" in study
@@ -416,7 +419,10 @@ def test_study_never_offers_to_do_the_reviewing_itself():
         assert "review" in study
 
 
-def test_naming_an_activity_is_documented_as_a_mode_request():
+def test_naming_an_activity_is_documented_as_a_mode_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     for language in ("zh", "en"):
         playbook = _pack(language)["playbook"]
         assert "mastery_mode" in playbook
@@ -424,9 +430,12 @@ def test_naming_an_activity_is_documented_as_a_mode_request():
         assert marker in playbook, language
 
 
-def test_the_outline_metaphor_is_gone_from_learner_facing_copy():
+def test_the_outline_metaphor_is_gone_from_learner_facing_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """'Map' was a metaphor the product does not use anywhere the learner can
     see; the word is 'outline'."""
+    monkeypatch.chdir(tmp_path)
     for language in ("zh", "en"):
         pack = _pack(language)
         blob = "\n".join(

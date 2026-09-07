@@ -16,6 +16,21 @@ import { toolResultPayload } from "@/lib/tool-event";
 export const REPLY_NOT_DELIVERED =
   "This question is no longer active, so your answer could not be sent. Send a new message to continue.";
 
+/**
+ * Shown when a composer's reply was refused and re-sent as a new message.
+ *
+ * The composers used to raise {@link REPLY_NOT_DELIVERED} instead and stop,
+ * which discarded what the user had typed — while telling them to do the one
+ * thing the composer was refusing to do. They now fall through to an ordinary
+ * message, so the honest report is that the text went somewhere, just not to
+ * the question.
+ *
+ * The card keeps {@link REPLY_NOT_DELIVERED}: its own Submit really has
+ * nowhere to send an answer, and it has no composer to fall through to.
+ */
+export const REPLY_SENT_AS_NEW_MESSAGE =
+  "That question is no longer waiting for an answer, so this was sent as a new message.";
+
 type MessageWithEvents = {
   events?: StreamEvent[];
 };

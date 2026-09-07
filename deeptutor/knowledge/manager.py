@@ -30,6 +30,7 @@ from deeptutor.knowledge.kb_types import (
     is_connected_kb,
 )
 from deeptutor.knowledge.manifest import iter_kb_documents
+from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
@@ -716,6 +717,7 @@ class KnowledgeBaseManager:
 
     def register_knowledge_base(self, name: str, description: str = "", set_default: bool = False):
         """Register a knowledge base"""
+        name = validate_knowledge_base_name(name)
         kb_dir = self.base_dir / name
         if not kb_dir.exists():
             raise ValueError(f"Knowledge base directory does not exist: {kb_dir}")
@@ -731,6 +733,32 @@ class KnowledgeBaseManager:
 
         self._save_config()
 
+    def register_connected_entry(self, name: str, entry: dict) -> bool:
+        """Adopt an already-built connected-KB entry under this manager.
+
+        Every other ``register_*`` method builds a pointer entry from user
+        input. This one takes an entry that already exists elsewhere: a
+        connected KB has no ``<kb>/`` tree under ``base_dir``, so handing one
+        to a partner workspace means copying its ``kb_config.json`` row rather
+        than the folder that provisioning copies for an indexed KB.
+
+        Returns ``False`` when the name is already registered here, leaving
+        the existing entry untouched, so callers can provision idempotently.
+        """
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Knowledge base name is required.")
+        if not is_connected_kb(entry):
+            raise ValueError(f"Not a connected knowledge base entry: {name}")
+
+        self.config = self._load_config()
+        knowledge_bases = self.config.setdefault("knowledge_bases", {})
+        if name in knowledge_bases:
+            return False
+        knowledge_bases[name] = dict(entry)
+        self._save_config()
+        return True
+
     def register_obsidian_vault(self, name: str, vault_path: str, description: str = "") -> dict:
         """Register a connected Obsidian vault as a pointer-type KB.
 
@@ -739,9 +767,7 @@ class KnowledgeBaseManager:
         user's existing vault directory, which the Obsidian capability reads
         live. Raises ``ValueError`` on a missing/invalid path or a name clash.
         """
-        name = (name or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
+        name = validate_knowledge_base_name(name)
         vault = Path(vault_path).expanduser()
         if not vault.is_dir():
             raise ValueError(f"Vault path is not a directory: {vault_path}")
@@ -784,9 +810,7 @@ class KnowledgeBaseManager:
         folder with the probe helper first; this only guards basic invariants.
         Raises ``ValueError`` on a missing/invalid path or a name clash.
         """
-        name = (name or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
+        name = validate_knowledge_base_name(name)
         provider = normalize_provider_name(provider)
         folder = Path(external_path).expanduser()
         if not folder.is_dir():
@@ -837,11 +861,9 @@ class KnowledgeBaseManager:
         capability drives the live agent; there is nothing on disk to retrieve or
         reconcile. Raises ``ValueError`` on a missing name/kind or a name clash.
         """
-        name = (name or "").strip()
+        name = validate_knowledge_base_name(name)
         agent_kind = (agent_kind or "").strip()
         partner_id = (partner_id or "").strip()
-        if not name:
-            raise ValueError("Connection name is required.")
         if not agent_kind:
             raise ValueError("agent_kind is required.")
         resolved_cwd = ""
@@ -891,10 +913,8 @@ class KnowledgeBaseManager:
         guards basic invariants. Raises ``ValueError`` on a missing name/URL or a
         name clash.
         """
-        name = (name or "").strip()
+        name = validate_knowledge_base_name(name)
         server_url = (server_url or "").strip().rstrip("/")
-        if not name:
-            raise ValueError("Knowledge base name is required.")
         if not server_url:
             raise ValueError("LightRAG server URL is required.")
 
@@ -940,9 +960,7 @@ class KnowledgeBaseManager:
         ``ValueError`` on a missing name, a name clash, or a store already
         claimed by another library.
         """
-        name = (name or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
+        name = validate_knowledge_base_name(name)
 
         self.config = self._load_config()
         knowledge_bases = self.config.setdefault("knowledge_bases", {})
@@ -1021,12 +1039,10 @@ class KnowledgeBaseManager:
         Raises ``ValueError`` on a missing field, a half-filled credential pair,
         or a name clash.
         """
-        name = (name or "").strip()
+        name = validate_knowledge_base_name(name)
         client_id = (client_id or "").strip()
         api_key = (api_key or "").strip()
         knowledge_base_id = (knowledge_base_id or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
         if bool(client_id) != bool(api_key):
             raise ValueError("IMA Client ID and API Key must be given together.")
         if not knowledge_base_id:
@@ -1066,12 +1082,10 @@ class KnowledgeBaseManager:
         description: str = "",
     ) -> dict:
         """Register a self-hosted WeKnora knowledge base as a pointer KB."""
-        name = (name or "").strip()
+        name = validate_knowledge_base_name(name)
         server_url = (server_url or "").strip().rstrip("/")
         api_key = (api_key or "").strip()
         knowledge_base_id = (knowledge_base_id or "").strip()
-        if not name:
-            raise ValueError("Knowledge base name is required.")
         if not server_url or not knowledge_base_id:
             raise ValueError("WeKnora server URL and knowledge base ID are required.")
         if not api_key:
