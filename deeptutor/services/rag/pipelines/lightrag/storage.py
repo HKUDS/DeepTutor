@@ -23,7 +23,11 @@ from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from deeptutor.services.embedding.config import EmbeddingConfig
+    from deeptutor.services.rag.index_versioning import EmbeddingSignature
 
 from deeptutor.services.file_io import atomic_write_json
 
@@ -232,7 +236,32 @@ def latest_published_root(kb_dir: Path) -> Path | None:
     return None
 
 
-def write_meta(root_dir: Path, *, indexing_policy: dict[str, Any] | None = None) -> None:
+def embedding_matches(root_dir: Path, signature: EmbeddingSignature | None) -> bool:
+    """Compare the published vector identity, never just its dimension."""
+    meta = _read_meta(root_dir) or {}
+    return signature is not None and meta.get("embedding_signature") == signature.hash()
+
+
+def require_compatible_embedding(root_dir: Path, config: EmbeddingConfig) -> None:
+    """Reject reads and appends when the published embedding identity differs."""
+    from deeptutor.services.rag.embedding_signature import signature_from_config
+
+    from .indexing_policy import EmbeddingMismatchError
+
+    if not embedding_matches(root_dir, signature_from_config(config)):
+        raise EmbeddingMismatchError(
+            "The current embedding configuration does not match this LightRAG index. "
+            "Restore the original embedding configuration or rebuild with the current embedding "
+            "before querying or adding documents."
+        )
+
+
+def write_meta(
+    root_dir: Path,
+    *,
+    indexing_policy: dict[str, Any] | None = None,
+    embedding_config: EmbeddingConfig | None = None,
+) -> None:
     """Write a flat-layout ``meta.json`` so the version lists as ready.
 
     Mirrors ``index_versioning.write_version_meta`` but carries a synthetic
@@ -241,13 +270,25 @@ def write_meta(root_dir: Path, *, indexing_policy: dict[str, Any] | None = None)
     embedding compatibility at connect time (LightRAG otherwise fails retrieval
     silently on a dimension mismatch).
     """
-    from deeptutor.services.rag.embedding_signature import embedding_meta_fields
+    from deeptutor.services.rag.embedding_signature import (
+        embedding_meta_fields,
+        signature_from_config,
+    )
 
     from .engine import installed_version, workspace_for
 
     target = Path(root_dir)
     previous = _read_meta(target) or {}
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+    if embedding_config is None:
+        embedding_fields = embedding_meta_fields()
+    else:
+        signature = signature_from_config(embedding_config)
+        embedding_fields = {
+            "embedding_signature": signature.hash(),
+            "embedding_model": signature.model,
+            "embedding_dim": signature.dimension,
+        }
     payload = {
         "version": target.name,
         "signature": PROVIDER,
@@ -264,7 +305,7 @@ def write_meta(root_dir: Path, *, indexing_policy: dict[str, Any] | None = None)
         "indexing_policy": indexing_policy
         or previous.get("indexing_policy")
         or {"policy": "legacy_unpinned"},
-        **embedding_meta_fields(),
+        **embedding_fields,
     }
     atomic_write_json(target / META_FILENAME, payload)
 

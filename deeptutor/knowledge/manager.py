@@ -156,9 +156,6 @@ def _reconcile_embedding_flags(knowledge_bases: dict, base_dir: Path | None = No
     signature = signature_from_embedding_config()
     changed = False
 
-    if signature is None and not fp:
-        return False
-
     for kb_name, kb_entry in knowledge_bases.items():
         if not isinstance(kb_entry, dict):
             continue
@@ -170,6 +167,34 @@ def _reconcile_embedding_flags(knowledge_bases: dict, base_dir: Path | None = No
             continue
 
         provider = normalize_provider_name(kb_entry.get("rag_provider"))
+        if provider == LIGHTRAG_PROVIDER and base_dir is not None:
+            from deeptutor.services.rag.pipelines.lightrag.storage import (
+                embedding_matches,
+                latest_published_root,
+            )
+
+            kb_dir = base_dir / kb_name
+            kb_entry["index_versions"] = inspect_kb_versions(kb_dir, provider)
+            published = latest_published_root(kb_dir)
+            lightrag_mismatch = published is not None and not embedding_matches(
+                published, signature
+            )
+            if lightrag_mismatch and not kb_entry.get("embedding_mismatch"):
+                kb_entry["embedding_mismatch"] = True
+                kb_entry["needs_reindex"] = True
+                changed = True
+            elif (
+                published is not None
+                and not lightrag_mismatch
+                and kb_entry.pop("embedding_mismatch", None)
+            ):
+                kb_entry["needs_reindex"] = False
+                changed = True
+            continue
+
+        if signature is None and not fp:
+            continue
+
         if not provider_uses_embedding_versions(provider):
             kb_dir = (base_dir / kb_name) if base_dir is not None else None
             if kb_dir is not None:
@@ -1405,6 +1430,21 @@ class KnowledgeBaseManager:
                     pending if isinstance(pending, dict) else {"policy": "legacy_unpinned"}
                 )
             metadata["indexing_policy"] = indexing_policy
+            if published_root is not None:
+                from deeptutor.services.rag.embedding_signature import (
+                    signature_from_embedding_config,
+                )
+
+                published = next(
+                    (v for v in index_versions if v.get("version") == published_root.name),
+                    {},
+                )
+                metadata["indexed_embedding_model"] = published.get("embedding_model")
+                metadata["indexed_embedding_dim"] = published.get("embedding_dim")
+                current_embedding = signature_from_embedding_config()
+                if current_embedding is not None:
+                    metadata["current_embedding_model"] = current_embedding.model
+                    metadata["current_embedding_dim"] = current_embedding.dimension
 
         metadata.update(self._embedding_fields(kb_config))
 

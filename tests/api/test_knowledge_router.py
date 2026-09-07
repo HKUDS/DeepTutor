@@ -1552,7 +1552,18 @@ def test_reindex_error_status_bypasses_existing_match_noop(monkeypatch, tmp_path
     assert manager.config["knowledge_bases"]["failed-kb"]["status"] == "initializing"
 
 
-def test_reindex_task_persists_completed_progress(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("embedding_changed", [False, True])
+def test_reindex_task_persists_completed_progress(
+    monkeypatch, tmp_path: Path, embedding_changed: bool
+) -> None:
+    from deeptutor.services.embedding.config import EmbeddingConfig
+    from deeptutor.services.rag.pipelines.lightrag import storage
+
+    embedding = EmbeddingConfig(model="original", dim=3, api_key="test-key")
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: embedding)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.engine.installed_version", lambda: "1.5.7rc2"
+    )
     base_dir = tmp_path / "knowledge_bases"
     raw_dir = base_dir / "kb" / "raw"
     raw_dir.mkdir(parents=True)
@@ -1580,6 +1591,14 @@ def test_reindex_task_persists_completed_progress(monkeypatch, tmp_path: Path) -
 
         async def initialize(self, *_args, **kwargs) -> bool:
             kwargs["progress_callback"](1, 1)
+            version = base_dir / "kb" / "version-1"
+            version.mkdir()
+            (version / "kv_store_doc_status.json").write_text(
+                json.dumps({"fixture": {"status": "processed"}}), encoding="utf-8"
+            )
+            storage.write_meta(version)
+            if embedding_changed:
+                embedding.model = "later-default"
             return True
 
     rag_service_module = importlib.import_module("deeptutor.services.rag.service")
@@ -1632,8 +1651,8 @@ def test_reindex_task_persists_completed_progress(monkeypatch, tmp_path: Path) -
     assert "progress" not in entry
     assert entry["last_indexed_count"] == 1
     assert entry["last_indexed_action"] == "reindex"
-    assert entry["needs_reindex"] is False
-    assert "embedding_mismatch" not in entry
+    assert bool(entry.get("needs_reindex")) is embedding_changed
+    assert bool(entry.get("embedding_mismatch")) is embedding_changed
 
 
 def test_reindex_task_preserves_prepublication_failure(monkeypatch, tmp_path: Path) -> None:

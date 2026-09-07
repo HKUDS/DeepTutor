@@ -89,6 +89,22 @@ def test_global_dedicated_selection_drives_query_roles_not_embedding(
     assert embedding_calls == [{}]
 
 
+def test_constructor_forwards_captured_embedding_config(monkeypatch, tmp_path: Path) -> None:
+    from deeptutor.services.embedding.config import EmbeddingConfig
+
+    _stub_build(monkeypatch)
+    captured = []
+    embedding = EmbeddingConfig(model="accepted", dim=3, api_key="test-key")
+
+    def build_embedding(**kwargs):
+        captured.append(kwargs)
+        return "embedding"
+
+    monkeypatch.setattr(engine, "build_embedding_func", build_embedding)
+    engine.build_rag(tmp_path, embedding_config=embedding)
+    assert captured == [{"embedding_config": embedding}]
+
+
 def test_vlm_role_is_only_configured_when_enabled(monkeypatch, tmp_path: Path) -> None:
     _stub_build(monkeypatch)
     monkeypatch.setattr(engine, "build_vision_model_func", lambda **_kwargs: "vision")

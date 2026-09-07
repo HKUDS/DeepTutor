@@ -172,6 +172,10 @@ export interface KnowledgeBase {
     embedding_model?: string;
     embedding_dim?: number;
     embedding_mismatch?: boolean;
+    indexed_embedding_model?: string;
+    indexed_embedding_dim?: number;
+    current_embedding_model?: string;
+    current_embedding_dim?: number;
     /** Connected-source kind (e.g. "obsidian", "subagent"); absent for ordinary indexed KBs. */
     type?: string;
     /** Absolute path of a connected Obsidian vault (when type === "obsidian"). */
@@ -421,7 +425,8 @@ export const kbRequiresLightRagRebuildBeforeAppend = (
   kb: KnowledgeBase,
 ): boolean =>
   kbProvider(kb) === "lightrag" &&
-  kb.metadata?.indexing_policy?.policy === "legacy_unpinned";
+  (kb.metadata?.indexing_policy?.policy === "legacy_unpinned" ||
+    Boolean(kb.metadata?.embedding_mismatch));
 
 export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
   resolveKbStatus(kb) === "ready" &&
