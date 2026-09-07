@@ -3488,9 +3488,14 @@ async def reindex_knowledge_base(
                 detail="Configure LightRAG models in Settings; per-knowledge-base overrides are no longer supported.",
             )
         if kb_provider == LIGHTRAG_PROVIDER:
+            if not config_fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Review the current rebuild configuration and confirm before rebuilding.",
+                )
             indexing_snapshot = _freeze_default_indexing_llm()
 
-        if indexing_snapshot is not None and config_fingerprint:
+        if indexing_snapshot is not None:
             from deeptutor.services.rag.pipelines.lightrag.indexing_policy import (
                 public_rebuild_config,
             )

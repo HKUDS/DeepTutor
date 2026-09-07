@@ -2453,10 +2453,15 @@ def test_reindex_passes_frozen_lightrag_snapshot_to_background_task(
         lambda: snapshot,
     )
     monkeypatch.setattr(knowledge_router_module, "run_reindex_task", capture_task)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.lightrag.indexing_policy.public_rebuild_config",
+        lambda accepted: {"fingerprint": "confirmed"} if accepted is snapshot else {},
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post(
             "/api/knowledge-bases/kb/reindex",
+            data={"config_fingerprint": "confirmed"},
         )
 
     assert response.status_code == 200

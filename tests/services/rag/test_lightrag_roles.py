@@ -901,15 +901,16 @@ def test_task_publishes_actual_frozen_embedding_after_defaults_change(
     assert "fake" not in json.dumps(meta)
 
 
+@pytest.mark.parametrize("status", ["ready", "error"])
 def test_rebuild_confirmation_rejects_changed_defaults_without_queueing(
-    role_environment, tmp_path, monkeypatch
+    role_environment, tmp_path, monkeypatch, status
 ):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
     from deeptutor.api.routers import knowledge
 
-    entry = {"rag_provider": "lightrag", "status": "ready"}
+    entry = {"rag_provider": "lightrag", "status": status}
     monkeypatch.setattr(knowledge, "_writable_kb", lambda _name: (object(), "kb", tmp_path))
     monkeypatch.setattr(knowledge, "_load_kb_entry_or_404", lambda *_a: entry)
     monkeypatch.setattr(knowledge, "_assert_provider_ready", lambda _provider: None)
@@ -926,6 +927,11 @@ def test_rebuild_confirmation_rejects_changed_defaults_without_queueing(
     app = FastAPI()
     app.include_router(knowledge.router, prefix="/api")
     with TestClient(app) as client:
+        for data in ({}, {"config_fingerprint": ""}):
+            response = client.post("/api/knowledge-bases/kb/reindex", data=data)
+            assert response.status_code == 409
+            assert "confirm" in response.json()["detail"]
+            assert not queued and not captured
         preview = client.get("/api/knowledge-bases/kb/reindex-config")
         assert preview.status_code == 200
         payload = preview.json()
