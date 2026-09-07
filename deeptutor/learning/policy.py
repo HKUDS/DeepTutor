@@ -231,7 +231,7 @@ def next_objective(
             gate=_gate_kind(kp) if kp else "",
             mastery=display_mastery(progress, kp) if kp else 0.0,
             threshold=gate_threshold(kp.type) if kp else 0.0,
-            reason="A posed question is awaiting the learner's answer; grade it with mastery_grade.",
+            reason="A question is open. Wait for its recorded answer, then use the objective's assessment gate.",
             pending_prompt=pending.prompt,
             pending_question=public_pending_question(pending),
             session_id=str(pending_session_id or ""),

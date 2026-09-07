@@ -37,9 +37,8 @@ class TestShortGrading:
     def test_short_exact_match(self):
         assert grade_answer("photosynthesis", "photosynthesis", "short") is True
 
-    def test_short_fuzzy_pass(self):
-        # "photosynthesi" vs "photosynthesis" — high similarity
-        assert grade_answer("photosynthesi", "photosynthesis", "short") is True
+    def test_short_typo_requires_an_explicit_answer(self):
+        assert grade_answer("photosynthesi", "photosynthesis", "short") is False
 
     def test_short_fuzzy_fail(self):
         assert grade_answer("completely different", "photosynthesis", "short") is False
@@ -48,6 +47,19 @@ class TestShortGrading:
         long_expected = "a" * 31  # >30 chars, no fuzzy
         assert grade_answer(long_expected, long_expected, "short") is True
         assert grade_answer("something else entirely", long_expected, "short") is False
+
+
+class TestShortAnswerContract:
+    def test_normalized_short_answer_type(self):
+        assert grade_answer("3", "3", "short_answer")
+
+    def test_numeric_equivalence(self):
+        assert grade_answer("3.0", "3", "short_answer")
+        assert grade_answer("5e-2", "0.05", "short")
+
+    def test_similar_but_wrong_answers(self):
+        for wrong, expected in [("0.05", "0.5"), ("dependent", "independent")]:
+            assert not grade_answer(wrong, expected, "short")
 
 
 class TestOpenGrading:

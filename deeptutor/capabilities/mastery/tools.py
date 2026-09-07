@@ -666,15 +666,11 @@ class MasteryStatusTool(BaseTool):
                 # key. Returning it lets a restart grade rather than ask twice.
                 pending_interaction["learner_answer"] = interaction.user_answer
             else:
-                # The card is not the only way in. A learner often answers the
-                # question in the composer — that reply never reaches the
-                # interaction, so without this the tutor re-posed the same
-                # question forever and the path stalled on answer_pending.
+                # Only the interaction runtime may commit learner evidence.
                 pending_interaction["instruction"] = (
-                    "A question is already open. If the learner has answered it "
-                    "anywhere in this conversation — on the card or in an ordinary "
-                    "message — call mastery_grade with their answer and this "
-                    "question_id. If they asked you something instead, answer that "
+                    "A question is already open but no learner answer is recorded. "
+                    "Do not grade or infer an answer from earlier conversation. "
+                    "If they asked you something instead, answer that "
                     "first and leave the question open; re-posing it over their "
                     "question is how the same card came back four times while it "
                     "went unanswered. Call mastery_quiz to put it back in front of "
@@ -693,7 +689,7 @@ class MasteryQuizTool(BaseTool):
         return ToolDefinition(
             name="mastery_quiz",
             description=(
-                "Pose a question for a MEMORY or PROCEDURE objective. This one "
+                "Pose an assessment question for any objective. This one "
                 "call registers the expected answer with the engine (so grading "
                 "is deterministic and you never re-state the answer later) AND "
                 "puts the question in front of the learner on its own answer "
@@ -701,8 +697,9 @@ class MasteryQuizTool(BaseTool):
                 "ask_user, this does not wait for a reply inside your turn, so "
                 "call it last and plan nothing after it. Their answer arrives as "
                 "the next message and you grade it on the next turn with "
-                "mastery_grade. For CONCEPT / DESIGN objectives use "
-                "mastery_assess instead."
+                "mastery_grade for MEMORY / PROCEDURE, or mastery_assess with "
+                "rubric feedback for CONCEPT / DESIGN. For explanations, use "
+                "short_answer and store the rubric as expected_answer."
             ),
             parameters=[
                 ToolParameter(
@@ -1118,7 +1115,9 @@ class MasteryAssessTool(BaseTool):
             name="mastery_assess",
             description=(
                 "Record your judgement of a CONCEPT or DESIGN objective after the "
-                "learner explains it in their own words (a Feynman-style check). "
+                "learner answers a registered mastery_quiz in their own words. "
+                "An answered interaction for this objective and rubric feedback "
+                "are required; prior chat or your own examples cannot earn credit. "
                 "Pass passed=true only when the explanation is correct and "
                 "complete enough to count as mastery — this is the gate for these "
                 "objective types. For MEMORY / PROCEDURE objectives use "
@@ -1138,8 +1137,7 @@ class MasteryAssessTool(BaseTool):
                 ToolParameter(
                     name="feedback",
                     type="string",
-                    description="Short note on what was strong or missing (stored as evidence).",
-                    required=False,
+                    description="Rubric feedback on the recorded learner answer (stored as evidence).",
                 ),
             ],
         )

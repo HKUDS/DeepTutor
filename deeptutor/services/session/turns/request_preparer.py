@@ -61,6 +61,10 @@ class TurnRequestPreparer:
             remembered_path_id: str,
         ) -> None: ...
 
+        async def _commit_mastery_choice_message(
+            self, *, path_id: str, session_id: str, turn_id: str, text: str
+        ) -> None: ...
+
         async def _commit_mastery_card_answer(
             self,
             *,
@@ -562,6 +566,13 @@ class TurnRequestPreparer:
                         turn_id=turn["id"],
                         question_id=str(card_answer.get("question_id") or ""),
                         answer=str(card_answer.get("text") or ""),
+                    )
+                else:
+                    await self._commit_mastery_choice_message(
+                        path_id=mastery_binding.path_id,
+                        session_id=session["id"],
+                        turn_id=turn["id"],
+                        text=str(payload.get("content") or ""),
                     )
             except Exception as exc:
                 async with self._lock:

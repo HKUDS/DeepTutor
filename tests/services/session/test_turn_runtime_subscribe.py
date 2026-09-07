@@ -654,7 +654,12 @@ async def test_card_answer_is_ruled_on_before_the_tutor_speaks(
         await hold.wait()
 
     monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
-    _, turn = await runtime.start_turn(_mastery_payload(session["id"], "shared"))
+    _, turn = await runtime.start_turn(
+        {
+            **_mastery_payload(session["id"], "shared"),
+            "mastery_answer": {"question_id": interaction.interaction_id, "text": "C"},
+        }
+    )
     execution = runtime._executions[turn["id"]]
 
     grade = await runtime._grade_submitted_card_answer(
@@ -1024,3 +1029,24 @@ async def test_no_path_push_when_the_turn_never_moved(tmp_path) -> None:
     )
 
     assert [event for event in execution.events if event["type"] == "session_meta"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text, recorded", [("C", True), ("Explain the question", False)])
+async def test_only_unambiguous_composer_choices_are_recorded(
+    monkeypatch, tmp_path, text, recorded
+):
+    """Composer text is learner evidence only when it identifies one choice."""
+    from deeptutor.learning.service import LearningService
+
+    _isolate_learning_store(monkeypatch, tmp_path)
+    _open_mastery_question("shared")
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "chat_history.db"))
+    await runtime._commit_mastery_choice_message(
+        path_id="shared",
+        session_id="session-1",
+        turn_id="turn-1",
+        text=text,
+    )
+    interaction = LearningService().store.get_active_interaction("shared")
+    assert bool(interaction.user_answer) is recorded

@@ -114,6 +114,29 @@ class LearningTurnAdapter:
                 exc_info=True,
             )
 
+    async def _commit_mastery_choice_message(
+        self, *, path_id: str, session_id: str, turn_id: str, text: str
+    ) -> None:
+        """Persist an unambiguous composer choice without treating questions as answers."""
+        from deeptutor.learning.pending import is_readable_choice_answer
+        from deeptutor.learning.service import LearningService
+
+        def _commit() -> None:
+            service = LearningService()
+            interaction = service.store.get_active_interaction(path_id)
+            if interaction is None or interaction.question.question_type != "choice":
+                return
+            if is_readable_choice_answer(text, interaction.question.choice_map):
+                service.record_question_answer(
+                    path_id,
+                    text,
+                    interaction_id=interaction.interaction_id,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+
+        await asyncio.to_thread(_commit)
+
     async def _grade_submitted_card_answer(
         self,
         execution: _TurnExecution,

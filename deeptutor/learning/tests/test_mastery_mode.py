@@ -175,21 +175,41 @@ async def test_review_may_re_examine_something_already_mastered_even_when_not_du
     something you have mastered is always allowed."""
     await _build(path_id)
     kp = f"{path_id}_m0_kp0"
+    await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        knowledge_point_id=kp,
+        question="Explain the concept",
+        expected_answer="Rubric",
+    )
+    from deeptutor.learning.service import LearningService
+
+    LearningService().record_question_answer(path_id, "My explanation")
     passed = await MasteryAssessTool().execute(
         _mastery_path_id=path_id,
         _mastery_session_mode=STUDY,
         knowledge_point_id=kp,
         passed=True,
-        explanation="解释得很清楚。",
+        feedback="解释得很清楚。",
     )
     assert json.loads(passed.content)["mastered"] is True
 
+    await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=REVIEW,
+        knowledge_point_id=kp,
+        question="Explain the concept",
+        expected_answer="Rubric",
+    )
+    from deeptutor.learning.service import LearningService
+
+    LearningService().record_question_answer(path_id, "My explanation")
     again = await MasteryAssessTool().execute(
         _mastery_path_id=path_id,
         _mastery_session_mode=REVIEW,
         knowledge_point_id=kp,
         passed=True,
-        explanation="复习时又讲了一遍。",
+        feedback="复习时又讲了一遍。",
     )
     assert again.success is True
 
@@ -395,10 +415,15 @@ async def test_a_built_goal_reports_its_identity_too(path_id):
 
 
 def _pack(language: str) -> dict:
+    from pathlib import Path
+
     import yaml
 
+    source = Path(__file__).resolve().parents[2]
     return yaml.safe_load(
-        open(f"deeptutor/capabilities/mastery/prompts/{language}/mastery_loop.yaml")
+        (
+            source / "capabilities" / "mastery" / "prompts" / language / "mastery_loop.yaml"
+        ).read_text()
     )
 
 

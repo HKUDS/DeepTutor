@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from difflib import SequenceMatcher
+from decimal import Decimal, InvalidOperation
 import re
 from typing import TYPE_CHECKING
 
@@ -16,7 +16,7 @@ def grade_answer(user_answer: str, expected_answer: str, question_type: str = "s
     Args:
         user_answer: The user's submitted answer.
         expected_answer: The stored expected answer.
-        question_type: One of "choice", "short", "open".
+        question_type: One of "choice", "short", "short_answer", "open".
 
     Returns:
         True if answer is correct.
@@ -32,12 +32,15 @@ def grade_answer(user_answer: str, expected_answer: str, question_type: str = "s
         expected_norm = expected.replace(" ", "")
         return user_norm == expected_norm
 
-    if question_type == "short":
+    if question_type in {"short", "short_answer"}:
         if user == expected:
             return True
-        if len(expected) <= 30:
-            return SequenceMatcher(None, user, expected).ratio() >= 0.85
-        return False
+        # Numeric equality accepts 3.0 == 3, but never fuzzy-matches 0.05 to 0.5.
+        try:
+            left, right = Decimal(user), Decimal(expected)
+            return left.is_finite() and right.is_finite() and left == right
+        except InvalidOperation:
+            return False
 
     if question_type == "open":
         keywords = [k.strip() for k in re.split(r"[,;，；。\n]+", expected) if k.strip()]

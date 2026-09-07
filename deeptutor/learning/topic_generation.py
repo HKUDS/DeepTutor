@@ -211,7 +211,9 @@ async def _ground_knowledge_base_source(
         from deeptutor.tools.rag_tool import rag_search
 
         result = await rag_search(query, grounded.source_id, top_k=4)
-        context = _retrieved_context(result if isinstance(result, dict) else {})
+        if not isinstance(result, dict) or result.get("needs_reindex") or result.get("error"):
+            raise ValueError("Knowledge base retrieval is unavailable")
+        context = _retrieved_context(result)
         if not context and not inventory[0]:
             raise ValueError("knowledge base returned no retrievable context")
         grounded.excerpt = context

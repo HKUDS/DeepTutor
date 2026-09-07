@@ -560,41 +560,44 @@ class LearningService:
             if interaction.status == InteractionStatus.ABANDONED:
                 raise NoPendingInteractionError("The question was abandoned")
 
+            if (
+                interaction.status != InteractionStatus.ANSWERED
+                or not str(interaction.user_answer or "").strip()
+            ):
+                raise MasteryInteractionError(
+                    "No learner answer is recorded. Present the registered question "
+                    "and wait for the next learner message; model-supplied answers cannot earn credit."
+                )
             pending = interaction.question
-            raw_answer = str(answer or "")
-            if interaction.status == InteractionStatus.ANSWERED:
-                stored = str(interaction.user_answer or "")
-                if pending.question_type == "choice":
-                    from deeptutor.learning.pending import (
-                        has_option_bodies,
-                        is_readable_choice_answer,
-                        resolve_choice_submission,
-                    )
+            from deeptutor.learning.policy import QUALITATIVE_TYPES, find_knowledge_point
 
-                    option_map = pending.choice_map
-                    if is_readable_choice_answer(stored, option_map):
-                        raw_answer = stored
-                    elif is_readable_choice_answer(raw_answer, option_map):
-                        # Prior commit was unreadable clarifying text (#1004) —
-                        # accept the fresh readable answer and rewrite storage.
-                        interaction.user_answer = raw_answer
-                    else:
-                        raw_answer = stored
-                    if has_option_bodies(option_map):
-                        graded_answer = (
-                            resolve_choice_submission(raw_answer, option_map) or raw_answer
-                        )
-                    else:
-                        # Legacy questions may need option bodies recovered by
-                        # the trusted tool adapter from the original turn.
-                        graded_answer = (
-                            raw_answer if answer_for_grading is None else answer_for_grading
-                        )
+            kp, _, _ = find_knowledge_point(tx.progress, pending.knowledge_point_id)
+            if kp is not None and kp.type in QUALITATIVE_TYPES:
+                raise MasteryInteractionError(
+                    "This explanation requires mastery_assess with rubric feedback; "
+                    "deterministic grading cannot assess conceptual understanding."
+                )
+            raw_answer = str(interaction.user_answer)
+            # Choice recovery may normalize a real answer, never replace it.
+            if pending.question_type == "choice":
+                from deeptutor.learning.pending import is_readable_choice_answer
+
+                if not is_readable_choice_answer(raw_answer, pending.choice_map):
+                    raise MasteryInteractionError(
+                        "The recorded learner answer is not a readable choice. "
+                        "Ask the learner to submit a choice before grading."
+                    )
+            if pending.question_type == "choice":
+                from deeptutor.learning.pending import has_option_bodies, resolve_choice_submission
+
+                option_map = pending.choice_map
+                if has_option_bodies(option_map):
+                    graded_answer = resolve_choice_submission(raw_answer, option_map) or raw_answer
                 else:
-                    raw_answer = stored
-                    graded_answer = raw_answer
+                    # The trusted adapter may recover legacy option bodies.
+                    graded_answer = raw_answer if answer_for_grading is None else answer_for_grading
             else:
-                graded_answer = raw_answer if answer_for_grading is None else answer_for_grading
+                graded_answer = raw_answer
             authoritative_answer = (
                 pending.expected_answer if expected_answer is None else expected_answer
             )
@@ -1007,12 +1010,41 @@ class LearningService:
                 raise MasteryInteractionError(
                     f"Objective {kp.name!r} must be graded with mastery_quiz + mastery_grade"
                 )
+            interaction = tx.active_interaction()
+            if (
+                interaction is None
+                or interaction.question.knowledge_point_id != kp_id
+                or interaction.status != InteractionStatus.ANSWERED
+                or not str(interaction.user_answer or "").strip()
+            ):
+                raise MasteryInteractionError(
+                    "Assessment requires a recorded learner answer for this objective. "
+                    "Register an explanation question with mastery_quiz, present it "
+                    "and wait for the learner before mastery_assess."
+                )
+            if not str(evidence or "").strip():
+                raise MasteryInteractionError("Assessment requires feedback against the rubric.")
+            recorded_evidence = (
+                f"Question: {interaction.question.prompt}\n"
+                f"Learner answer: {interaction.user_answer}\n"
+                f"Tutor feedback: {evidence}"
+            )
             self.record_qualitative_in_memory(
                 tx.progress,
                 kp_id,
                 passed=passed,
-                evidence=evidence,
+                evidence=recorded_evidence,
                 scheduler=scheduler,
+            )
+            interaction.status = InteractionStatus.GRADED
+            interaction.result = {"passed": bool(passed), "knowledge_point_id": kp_id}
+            tx.put_interaction(interaction)
+            tx.progress.pending_question = None
+            tx.emit(
+                "interaction.graded",
+                dict(interaction.result),
+                session_id=session_id,
+                turn_id=turn_id,
             )
             tx.touch()
             tx.emit(

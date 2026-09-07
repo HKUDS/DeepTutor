@@ -785,9 +785,11 @@ class TestDeleteProgress:
 
 class TestObjectiveReport:
     def test_report_joins_prompts_without_leaking_the_answer_key(self, client, app):
+        module = _module_payload()
+        module["knowledge_points"][0]["type"] = "procedure"
         client.post(
             "/api/mastery-paths/progress/report1/init-modules",
-            json={"modules": [_module_payload()]},
+            json={"modules": [module]},
         )
         store = LearningStore(root=app.state.learning_root)
         service = LearningService(store)
@@ -801,6 +803,7 @@ class TestObjectiveReport:
                 expected_answer="do-not-expose",
             ),
         )
+        service.record_question_answer("report1", "4", interaction_id="q1")
         service.grade_interaction("report1", answer="4", question_id="q1")
 
         resp = client.get("/api/mastery-paths/progress/report1/objectives/kp1")
@@ -808,7 +811,7 @@ class TestObjectiveReport:
         assert resp.status_code == 200
         objective = resp.json()["objective"]
         assert objective["name"] == "KP1"
-        assert objective["gate"] == "qualitative"  # concept type
+        assert objective["gate"] == "quantitative"  # procedure type
         assert [a["prompt"] for a in objective["attempts"]] == ["What is 2+2?"]
         assert objective["attempts"][0]["answer"] == "4"
         assert "do-not-expose" not in resp.text

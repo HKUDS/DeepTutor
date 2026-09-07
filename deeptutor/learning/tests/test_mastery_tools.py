@@ -10,6 +10,7 @@ import json
 import pytest
 
 from deeptutor.learning.models import InteractionStatus, PendingQuestion
+from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.tools.mastery_tool import (
@@ -23,6 +24,11 @@ from deeptutor.tools.mastery_tool import (
     MasteryStatusTool,
     MasterySwitchTool,
 )
+
+
+def _record_answer(path_id: str, answer: str) -> None:
+    """Model the runtime receiving a learner reply before the tool grades it."""
+    LearningService().record_question_answer(path_id, answer, session_id="learner-session")
 
 
 def tool_payload(result):
@@ -226,6 +232,7 @@ async def test_quiz_then_grade_drives_memory_gate(path_id):
             expected_answer="4",
             question_type="short",
         )
+        _record_answer(path_id, "4")
         result = json.loads((await grade.execute(_mastery_path_id=path_id, answer="4")).content)
         assert result["is_correct"] is True
         mastered = result["mastered"]
@@ -334,6 +341,7 @@ async def test_wrong_answer_does_not_master(path_id):
     await MasteryQuizTool().execute(
         _mastery_path_id=path_id, knowledge_point_id=kp_id, question="2+2?", expected_answer="4"
     )
+    _record_answer(path_id, "5")
     result = json.loads(
         (await MasteryGradeTool().execute(_mastery_path_id=path_id, answer="5")).content
     )
@@ -359,6 +367,7 @@ async def test_grade_syncs_mastery_attempt_to_question_bank(path_id, session_sto
         )
     )
 
+    _record_answer(path_id, "5")
     result = json.loads(
         (
             await MasteryGradeTool().execute(
@@ -659,6 +668,7 @@ async def test_choice_grade_reads_an_answer_typed_in_the_composer(path_id):
         ],
     )
 
+    _record_answer(path_id, "选C")
     grade = await MasteryGradeTool().execute(_mastery_path_id=path_id, answer="选C")
     assert grade.success is True
     assert json.loads(grade.content)["is_correct"] is True
@@ -711,6 +721,7 @@ async def test_choice_quiz_preserves_bodies_and_normalizes_answer(path_id, sessi
     )
     assert quiz.success is True
 
+    _record_answer(path_id, "C")
     grade = json.loads(
         (
             await MasteryGradeTool().execute(
@@ -796,6 +807,7 @@ async def test_choice_grade_accepts_unique_persisted_body(path_id):
         )
     )
 
+    _record_answer(path_id, "blue")
     grade = json.loads(
         (
             await MasteryGradeTool().execute(
@@ -850,6 +862,7 @@ async def test_choice_grade_keeps_legacy_bare_label_pending_compatible(path_id):
     )
     LearningStore().save(progress)
 
+    _record_answer(path_id, "B")
     grade = json.loads(
         (
             await MasteryGradeTool().execute(
@@ -959,6 +972,7 @@ async def test_duplicate_quiz_and_grade_are_idempotent(path_id):
     assert retry_quiz["pending_question"]["prompt"] == "2+2?"
     assert retry_quiz["status"] == "already_pending"
 
+    _record_answer(path_id, "4")
     first_grade = json.loads(
         (
             await MasteryGradeTool().execute(
@@ -1008,6 +1022,7 @@ async def test_new_quiz_repairs_stale_legacy_pending_after_grade(path_id):
             )
         )
     )
+    _record_answer(path_id, "yes")
     await MasteryGradeTool().execute(
         _mastery_path_id=path_id,
         question_id=first["question_id"],
@@ -1115,6 +1130,7 @@ async def test_grade_recovers_unreadable_choice_answer(path_id):
     assert blocked.success is False
     assert "NOT graded" in blocked.content
 
+    _record_answer(path_id, "A")
     recovered = json.loads(
         (
             await MasteryGradeTool().execute(
@@ -1144,6 +1160,7 @@ async def test_assess_passes_concept(path_id):
         await MasteryQuizTool().execute(
             _mastery_path_id=path_id, knowledge_point_id=mem_kp, question="q", expected_answer="a"
         )
+        _record_answer(path_id, "a")
         await MasteryGradeTool().execute(_mastery_path_id=path_id, answer="a")
 
     status2 = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
@@ -1151,6 +1168,13 @@ async def test_assess_passes_concept(path_id):
     assert status2["next"]["action"] == "probe"
     assert status2["next"]["knowledge_point_type"] == "concept"
 
+    await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=concept_kp,
+        question="Explain the concept",
+        expected_answer="A complete explanation",
+    )
+    _record_answer(path_id, "My explanation of the concept")
     result = json.loads(
         (
             await MasteryAssessTool().execute(
@@ -1372,6 +1396,7 @@ async def test_quiz_explanation_reaches_the_question_bank(path_id, session_store
     # Difficulty is shown, so it has to reach the card.
     assert posed_card(posed)["difficulty"] == "medium"
 
+    _record_answer(path_id, "1")
     await MasteryGradeTool().execute(
         _mastery_path_id=path_id,
         _session_id=session["id"],
@@ -1408,6 +1433,7 @@ async def test_unusable_difficulty_is_dropped_not_rejected(path_id, session_stor
     )
     assert quiz["status"] == "registered"
 
+    _record_answer(path_id, "5")
     await MasteryGradeTool().execute(
         _mastery_path_id=path_id,
         _session_id=session["id"],
@@ -1525,11 +1551,18 @@ async def test_revise_refuses_to_erase_a_mastered_waypoint(path_id):
     module = built["map"]["modules"][0]
     concept = module["knowledge_points"][1]
 
+    await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=concept["id"],
+        question="Explain XOR",
+        expected_answer="True exactly when inputs differ",
+    )
+    _record_answer(path_id, "XOR is true exactly when the inputs differ")
     assessed = await MasteryAssessTool().execute(
         _mastery_path_id=path_id,
         knowledge_point_id=concept["id"],
         passed=True,
-        explanation="学习者说清楚了 XOR 与等价的关系。",
+        feedback="学习者说清楚了 XOR 与等价的关系。",
     )
     assert json.loads(assessed.content)["mastered"] is True
 
