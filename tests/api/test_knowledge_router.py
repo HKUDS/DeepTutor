@@ -2760,3 +2760,77 @@ def test_lightrag_config_validates_dedicated_llm_selection(monkeypatch, tmp_path
         json={"llm_profile_id": "", "llm_model_id": ""},
     )
     assert cleared.status_code == 200
+
+
+def _index_asset_kb(tmp_path: Path) -> tuple["_FakeKBManager", Path]:
+    manager = _ready_kb_manager(tmp_path)
+    storage = manager.base_dir / "kb" / "version-1"
+    asset_dir = storage / "assets" / "paper.pdf"
+    asset_dir.mkdir(parents=True)
+    figure = asset_dir / "page-1.png"
+    figure.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8)
+    (storage / "assets" / "manifest.json").write_text("{}", encoding="utf-8")
+    (storage / "docstore.json").write_text("{}", encoding="utf-8")
+    return manager, figure
+
+
+def test_index_asset_route_serves_frozen_png(monkeypatch, tmp_path: Path) -> None:
+    manager, figure = _index_asset_kb(tmp_path)
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.index_versioning.resolve_storage_dir_for_read",
+        lambda *_args, **_kwargs: figure.parents[2],
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.embedding_signature.signature_from_embedding_config",
+        lambda: None,
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/knowledge-bases/kb/index-assets/paper.pdf/page-1.png")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/png")
+    assert response.content.startswith(b"\x89PNG")
+
+
+def test_index_asset_route_rejects_traversal(monkeypatch, tmp_path: Path) -> None:
+    manager, _figure = _index_asset_kb(tmp_path)
+    secret = manager.base_dir / "secret.png"
+    secret.write_bytes(b"\x89PNG\r\nsecret")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.index_versioning.resolve_storage_dir_for_read",
+        lambda *_args, **_kwargs: manager.base_dir / "kb" / "version-1",
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.embedding_signature.signature_from_embedding_config",
+        lambda: None,
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/knowledge-bases/kb/index-assets/%2E%2E/%2E%2E/secret.png")
+
+    assert response.status_code in {403, 404}
+
+
+def test_index_asset_route_rejects_non_image(monkeypatch, tmp_path: Path) -> None:
+    manager, figure = _index_asset_kb(tmp_path)
+    (figure.parent / "notes.txt").write_text("nope", encoding="utf-8")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(
+        "deeptutor.services.rag.index_versioning.resolve_storage_dir_for_read",
+        lambda *_args, **_kwargs: figure.parents[2],
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.rag.embedding_signature.signature_from_embedding_config",
+        lambda: None,
+    )
+
+    with TestClient(_build_app()) as client:
+        missing = client.get("/api/knowledge-bases/kb/index-assets/paper.pdf/missing.png")
+        text = client.get("/api/knowledge-bases/kb/index-assets/paper.pdf/notes.txt")
+
+    assert missing.status_code == 404
+    assert text.status_code == 404
+

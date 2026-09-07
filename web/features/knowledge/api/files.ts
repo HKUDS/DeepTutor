@@ -3,6 +3,7 @@ export {
   deleteKbFile,
   knowledgeBaseFilePath,
   knowledgeBaseFilePreviewTextPath,
+  knowledgeBaseIndexAssetPath,
   listKnowledgeBaseFiles,
   moveKbFile,
   uploadKnowledgeBaseFiles,

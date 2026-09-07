@@ -2194,6 +2194,8 @@
   "Server base URL": "服务器基础 URL",
   "Settings are written to data/user/settings/document_parsing.json.": "设置会写入 data/user/settings/document_parsing.json。",
   "The active engine handles all parsing. Text-only is built in and extracts plain text; markitdown is lightweight and optional; MinerU and Docling produce richer structure, while Tika provides broad remote text extraction.": "当前引擎负责所有解析。仅文本为内置引擎，只提取纯文本；markitdown 轻量且为可选依赖；MinerU 和 Docling 可生成更丰富的结构，而 Tika 提供广泛的远程文本提取。",
+  "To show figures from textbooks in LlamaIndex RAG answers, pick MinerU, PyMuPDF4LLM, or LiteParse with image extraction, then reindex the knowledge base. Text-only leaves images out of the index.": "若要在 LlamaIndex RAG 回答中展示教材插图，请选择 MinerU、PyMuPDF4LLM 或开启图片提取的 LiteParse，然后重新索引知识库。仅文本引擎不会把图片编入索引。",
+  "Retrieved figure": "检索到的图片",
   "Tika": "Tika",
   "0 = unlimited. Limit pages parsed per document.": "0 = 不限。限制每个文档的解析页数。",
   "Docling remote mode has no server URL configured.": "Docling 远程模式尚未配置服务器 URL。",

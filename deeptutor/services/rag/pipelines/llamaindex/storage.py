@@ -45,15 +45,18 @@ def _storage_path_from_version_entry(entry: dict[str, Any]) -> Path | None:
 
 
 def cleanup_failed_version_dir(storage_dir: Path) -> bool:
-    """Remove an empty flat version dir created by a failed indexing attempt."""
+    """Remove a flat version dir that never produced a usable index.
+
+    Freeze writes ``assets/`` before ``docstore.json`` exists, so a failed
+    run can leave a non-empty directory. Anything without ``docstore.json``
+    is still an unpublished attempt and is safe to drop.
+    """
     if not storage_dir.is_dir() or not storage_dir.name.startswith("version-"):
         return False
-    storage_empty = not any(child for child in storage_dir.iterdir() if child.name != "meta.json")
-    meta_path = storage_dir / "meta.json"
-    if storage_empty and not meta_path.exists():
-        shutil.rmtree(storage_dir, ignore_errors=True)
-        return True
-    return False
+    if (storage_dir / "docstore.json").exists():
+        return False
+    shutil.rmtree(storage_dir, ignore_errors=True)
+    return True
 
 
 def resolve_add_storage_plan(kb_dir: Path, signature: EmbeddingSignature | None) -> AddStoragePlan:

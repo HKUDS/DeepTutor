@@ -22,6 +22,11 @@ from deeptutor.services.rag.index_versioning import (
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
 from . import storage
+from .assets import (
+    attach_figure_fields,
+    freeze_image_assets,
+    load_asset_manifest,
+)
 from .config import default_top_k, should_show_progress
 from .document_loader import LlamaIndexDocumentLoader
 from .embedding_adapter import (
@@ -171,6 +176,8 @@ class LlamaIndexPipeline:
                 self.logger.error("No valid documents found")
                 return False
 
+            self._freeze_loaded_assets(storage_dir, documents)
+
             self.logger.info(
                 f"Creating VectorStoreIndex with {len(documents)} documents "
                 f"(chunking + embedding)..."
@@ -239,7 +246,9 @@ class LlamaIndexPipeline:
                 lambda: storage.retrieve_nodes(storage_dir, query, top_k=top_k),
             )
 
-            result = self._nodes_to_result(query, nodes)
+            result = self._nodes_to_result(
+                query, nodes, kb_name=kb_name, storage_dir=storage_dir
+            )
             if embedding_mismatch_warning:
                 result["warning"] = embedding_mismatch_warning
             return result
@@ -274,22 +283,51 @@ class LlamaIndexPipeline:
         except Exception:
             return ""
 
-    def _nodes_to_result(self, query: str, nodes: list[Any]) -> Dict[str, Any]:
+    def _freeze_loaded_assets(self, storage_dir: Path, documents: list[Any]) -> None:
+        taker = getattr(self.document_loader, "take_pending_image_sources", None)
+        if not callable(taker):
+            return
+        sources = taker()
+        if not sources:
+            return
+        try:
+            freeze_image_assets(storage_dir, sources, documents)
+        except OSError as exc:
+            self.logger.warning("Failed to freeze extracted figures into %s: %s", storage_dir, exc)
+
+    def _nodes_to_result(
+        self,
+        query: str,
+        nodes: list[Any],
+        *,
+        kb_name: str = "",
+        storage_dir: Path | None = None,
+    ) -> Dict[str, Any]:
         context_parts: list[str] = []
         sources: list[dict[str, Any]] = []
+        manifest = load_asset_manifest(storage_dir)
         for i, node in enumerate(nodes):
             context_parts.append(node.node.text)
             meta = node.node.metadata or {}
-            sources.append(
-                {
-                    "title": meta.get("file_name", meta.get("title", f"Document {i + 1}")),
-                    "content": node.node.text[:200],
-                    "source": meta.get("file_path", meta.get("file_name", "")),
-                    "page": meta.get("page_label", meta.get("page", "")),
-                    "chunk_id": node.node.node_id or str(i),
-                    "score": round(node.score, 4) if node.score is not None else "",
-                }
+            content_type = str(meta.get("content_type") or "text")
+            page = meta.get("page_label", meta.get("page", ""))
+            item: dict[str, Any] = {
+                "title": meta.get("file_name", meta.get("title", f"Document {i + 1}")),
+                "content": node.node.text[:200],
+                "source": meta.get("file_path", meta.get("file_name", "")),
+                "page": page,
+                "chunk_id": node.node.node_id or str(i),
+                "score": round(node.score, 4) if node.score is not None else "",
+                "content_type": content_type,
+            }
+            attach_figure_fields(
+                item,
+                meta=meta,
+                kb_name=kb_name,
+                manifest=manifest,
+                image_mimetype=str(getattr(node.node, "image_mimetype", "") or ""),
             )
+            sources.append(item)
 
         content = "\n\n".join(context_parts) if context_parts else ""
         return {
@@ -320,6 +358,8 @@ class LlamaIndexPipeline:
             if not documents:
                 self.logger.warning("No valid documents to add")
                 return False
+
+            self._freeze_loaded_assets(plan.storage_dir, documents)
 
             if plan.existing_storage is not None:
                 self.logger.info(f"Loading existing index from {plan.existing_storage}...")

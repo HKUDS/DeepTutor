@@ -69,7 +69,9 @@ def _rag_sources(result: dict[str, Any], *, query: str, kb_name: str) -> list[di
     """Citations for one ``rag`` call, from the retrieval's own provenance.
 
     Every pipeline normalises what it retrieved into ``result["sources"]``
-    (``{title, content, source, page, chunk_id, score}`` — see the GraphRAG and
+    (``{title, content, source, page, chunk_id, score}`` plus optional
+    ``content_type``, ``image_url``, ``image_description``, ``mime_type``,
+    and ``images`` for LlamaIndex figure hits — see the GraphRAG and
     LightRAG-server pipelines). Forward those so a grounded claim is traceable
     to the chunk / entity / report behind it; without this the tool reported
     only an echo of its own query (issue #694). ``type``/``kb_name`` are kept on

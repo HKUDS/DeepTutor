@@ -2641,6 +2641,75 @@ def _resolve_kb_raw_file_or_404(kb_name: str, filename: str) -> Path:
     return target
 
 
+def _resolve_kb_index_asset_or_404(kb_name: str, asset_path: str) -> Path:
+    """Resolve a LlamaIndex frozen figure while preventing traversal."""
+    from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+    from deeptutor.services.rag.index_versioning import resolve_storage_dir_for_read
+    from deeptutor.services.rag.pipelines.llamaindex.assets import (
+        assets_dir,
+        is_image_asset_filename,
+    )
+
+    manager = _overridden_kb_manager()
+    if manager is not None:
+        resolved_name = _resolve_registered_kb_name(manager, kb_name)
+    else:
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        resolved_name = resource.name
+
+    kb_entry = _load_kb_entry_or_404(manager, resolved_name)
+    provider = str(kb_entry.get("rag_provider") or DEFAULT_PROVIDER).strip().lower()
+    if provider != DEFAULT_PROVIDER:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    kb_dir = Path(manager.get_knowledge_base_path(resolved_name))
+    storage_dir = resolve_storage_dir_for_read(kb_dir, signature_from_embedding_config())
+    if storage_dir is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    root = assets_dir(storage_dir)
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    relative = Path(asset_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not is_image_asset_filename(relative.name):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    root_resolved = root.resolve()
+    target = (root / relative).resolve()
+    try:
+        target.relative_to(root_resolved)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return target
+
+
+@router.get("/knowledge-bases/{kb_name}/index-assets/{asset_path:path}")
+async def serve_kb_index_asset(kb_name: str, asset_path: str):
+    """Serve a figure frozen into the current LlamaIndex version's assets dir.
+
+    Resolution is sandboxed to ``version-N/assets/``; traversal and non-image
+    files yield 403/404. Used by chat RAG citations — never expose parse-cache
+    or raw filesystem paths to the browser.
+    """
+    target = _resolve_kb_index_asset_or_404(kb_name, asset_path)
+    media_type, _ = mimetypes.guess_type(target.name)
+    if not (media_type or "").startswith("image/"):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        target,
+        media_type=media_type,
+        filename=target.name,
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/knowledge-bases/{kb_name}/files")
 async def list_kb_raw_files(kb_name: str):
     """List raw documents under <kb>/raw/, recursing into folders.
