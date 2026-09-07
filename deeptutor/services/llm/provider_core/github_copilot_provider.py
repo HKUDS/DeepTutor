@@ -105,6 +105,39 @@ class GitHubCopilotProvider(OpenAICompatProvider):
                 return False
         return super()._should_use_responses_api(model, reasoning_effort, tools)
 
+    @staticmethod
+    def _normalize_responses_input(value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        normalized = []
+        for item in value:
+            if not isinstance(item, dict):
+                normalized.append(item)
+                continue
+            # Copilot rejects message/reasoning status, including the null
+            # added by SDK model_dump for reasoning. Function-call status is
+            # accepted; keep tool lifecycle fields and reasoning IDs intact.
+            excluded = set()
+            if item.get("type") == "reasoning":
+                excluded.add("status")
+            elif item.get("type") == "message" or ("type" not in item and "role" in item):
+                excluded.update(("status", "id"))
+            normalized.append({key: val for key, val in item.items() if key not in excluded})
+        return normalized
+
+    async def _create_with_key_rotation(self, create, kwargs: dict[str, Any]) -> Any:
+        if create == self._client.responses.create:
+            # Run after extra kwargs are merged in both streaming and ordinary
+            # requests. extra_body can override input again inside the SDK.
+            kwargs = {**kwargs, "input": self._normalize_responses_input(kwargs.get("input"))}
+            extra_body = kwargs.get("extra_body")
+            if isinstance(extra_body, dict) and "input" in extra_body:
+                kwargs["extra_body"] = {
+                    **extra_body,
+                    "input": self._normalize_responses_input(extra_body["input"]),
+                }
+        return await super()._create_with_key_rotation(create, kwargs)
+
     async def _chat_impl(
         self,
         stream: bool,

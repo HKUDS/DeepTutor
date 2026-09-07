@@ -925,6 +925,31 @@ authentication alone does not establish Copilot model access (the saved login is
 if validation fails). Runtime requests follow the API endpoint returned by token exchange,
 including refreshes, and respect each model's Responses/Chat Completions endpoint metadata.
 
+**Copilot Responses history compatibility:** Copilot rejects message and reasoning
+input `status` fields, even `null`. A live `gpt-5.6-sol-fast` replay reproduced
+`Unknown parameter: 'input[3].status'` on the third turn: the second reply contained
+encrypted reasoning without a wire `status`, but the OpenAI SDK's `model_dump()`
+added `status: null`. That state survives the response parser, agent loop,
+assistant metadata persistence, and context-history rebuild. A message-only
+cleanup therefore fixes ordinary greetings but not subsequent reasoning replies;
+missing message `type` is not the cause of this reproduced error.
+
+DeepTutor normalizes these fields only for Copilot, immediately before SDK dispatch
+(after request kwargs, including `extra_body.input` overrides). Message IDs are
+also omitted; reasoning IDs, encrypted content, summaries, message content/phase,
+and tool-call/result pairing remain intact. Function-call `status: completed`
+was accepted in a live isolated probe and is deliberately preserved, as are other
+tool lifecycle fields. Stored history and OpenAI/Codex requests are not rewritten.
+Regression coverage includes four-turn SQLite history and tool-state replay in
+both streaming and non-streaming modes; live four-turn checks also passed in
+both modes.
+
+An English-only answer is separate from this transport error: chat appends a strict
+language directive based on the turn's response-language setting. Select Chinese
+as the response language in Settings to use Chinese replies. Live checks with
+English and Chinese directives confirmed this distinction; no language defaults
+were changed.
+
 </details>
 
 <details>
