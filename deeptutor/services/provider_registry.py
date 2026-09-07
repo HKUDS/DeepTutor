@@ -338,6 +338,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="openai_compat",
         default_api_base="https://api.openai.com/v1",
         supports_max_completion_tokens=True,
+        model_id_families=("gpt-5.6-terra",),
     ),
     ProviderSpec(
         name="openai_codex",

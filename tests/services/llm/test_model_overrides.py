@@ -104,3 +104,15 @@ def test_the_k3_family_covers_its_variants_without_capturing_short_ids() -> None
     assert find_by_model("k3-256k") is moonshot
     assert find_by_model("k3-1m") is moonshot
     assert find_by_model("sk3") is None
+
+
+def test_gpt_5_6_terra_exact_model_matching() -> None:
+    """GPT-5.6-Terra requires max_completion_tokens; ensure it's properly
+    recognized and dispatches to OpenAI with supports_max_completion_tokens."""
+    openai = find_by_name("openai")
+    assert find_by_model("gpt-5.6-terra") is openai
+    # Verify that the built kwargs use max_completion_tokens, not max_tokens
+    payload = _payload("openai", "gpt-5.6-terra")
+    assert "max_completion_tokens" in payload
+    assert payload["max_completion_tokens"] == 256
+    assert "max_tokens" not in payload
