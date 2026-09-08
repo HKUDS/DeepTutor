@@ -102,6 +102,7 @@ test("isAuthExempt allows public static assets through the auth gate (issue #599
   assert.equal(isAuthExempt("/logo_black.png"), true);
   assert.equal(isAuthExempt("/apple-touch-icon.png"), true);
   assert.equal(isAuthExempt("/provider-icons/openai.svg"), true);
+  assert.equal(isAuthExempt("/pdfjs/wasm/openjpeg.wasm"), true);
 });
 
 test("isAuthExempt allows auth pages and Next internals", () => {

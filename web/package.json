@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
+    "predev": "node ./scripts/copy-pdfjs-assets.mjs",
     "dev:turbo": "node ./scripts/dev.mjs --turbopack",
+    "predev:turbo": "node ./scripts/copy-pdfjs-assets.mjs",
     "build": "node ./scripts/build.mjs",
     "start": "next start",
     "lint": "eslint .",
