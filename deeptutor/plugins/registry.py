@@ -18,7 +18,12 @@ from typing import Any
 from packaging.version import Version
 
 from deeptutor.__version__ import __version__
-from deeptutor.plugins.catalog import CATALOG_PATH, CatalogEntry, load_catalog
+from deeptutor.plugins.catalog import (
+    CATALOG_PATH,
+    CatalogEntry,
+    load_catalog,
+    resolve_catalog_entry,
+)
 from deeptutor.plugins.manifest import (
     MANIFEST_FILENAME,
     ManifestValidationError,
@@ -159,11 +164,19 @@ class PluginRegistry:
     def list_plugins(self, *, include_catalog: bool = True) -> list[PluginRecord]:
         records_by_id = {record.id: record for record in self._installed_records()}
         if include_catalog:
-            for entry in load_catalog(self.catalog_path or CATALOG_PATH):
-                if entry.id not in records_by_id:
+            catalog_path = self.catalog_path or CATALOG_PATH
+            catalog_ids = {entry.id for entry in load_catalog(catalog_path)}
+            for plugin_id in sorted(catalog_ids):
+                if plugin_id not in records_by_id:
+                    entry = resolve_catalog_entry(
+                        plugin_id,
+                        allow_deprecated=True,
+                        allow_prerelease=True,
+                        path=catalog_path,
+                    )
                     status = "deprecated" if entry.status == "deprecated" else "available"
-                    records_by_id[entry.id] = PluginRecord(
-                        id=entry.id,
+                    records_by_id[plugin_id] = PluginRecord(
+                        id=plugin_id,
                         status=status,
                         catalog_entry=entry,
                     )
@@ -265,9 +278,8 @@ class PluginRegistry:
 
         state = self._state()
         disabled = set(state.get("disabled", []))
-        catalog_entries = {
-            entry.id: entry for entry in load_catalog(self.catalog_path or CATALOG_PATH)
-        }
+        catalog_path = self.catalog_path or CATALOG_PATH
+        catalog_entries = {(entry.id, entry.version): entry for entry in load_catalog(catalog_path)}
         records: list[PluginRecord] = list(managed)
         for plugin_id, candidates in grouped.items():
             if len(candidates) > 1:
@@ -306,20 +318,27 @@ class PluginRegistry:
                     distribution=record.distribution,
                     error=record.error,
                 )
-            elif plugin_id in catalog_entries and catalog_entries[plugin_id].status == "deprecated":
-                record = PluginRecord(
-                    id=record.id,
-                    status="deprecated",
-                    manifest=record.manifest,
-                    distribution=record.distribution,
-                    error=record.error,
-                )
+            else:
+                installed_version = str(record.manifest.version) if record.manifest else ""
+                catalog_entry = catalog_entries.get((plugin_id, installed_version))
+                if catalog_entry is not None and catalog_entry.status == "deprecated":
+                    record = PluginRecord(
+                        id=record.id,
+                        status="deprecated",
+                        manifest=record.manifest,
+                        distribution=record.distribution,
+                        error=record.error,
+                    )
             records.append(record)
         return records + unkeyed
 
     def _managed_records(self) -> list[PluginRecord]:
         records: list[PluginRecord] = []
         state = self._state()
+        catalog_entries = {
+            (entry.id, entry.version): entry
+            for entry in load_catalog(self.catalog_path or CATALOG_PATH)
+        }
         for plugin_id, row in (state.get("plugins") or {}).items():
             manifest, parse_error = _parse_manifest(row.get("manifest"), "")
             if manifest is None:
@@ -378,6 +397,13 @@ class PluginRegistry:
                     status = "enabled"
             if status == "enabled" and plugin_id in state.get("disabled", []):
                 status = "disabled"
+            catalog_entry = catalog_entries.get((str(plugin_id), str(manifest.version)))
+            if (
+                catalog_entry is not None
+                and catalog_entry.status == "deprecated"
+                and status not in {"incompatible", "disabled"}
+            ):
+                status = "deprecated"
             records.append(
                 PluginRecord(
                     id=str(plugin_id),

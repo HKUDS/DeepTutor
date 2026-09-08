@@ -163,6 +163,80 @@ def test_plugin_install_reports_reviewed_wheel(monkeypatch) -> None:
     assert '"next_step": "review permissions' in result.output
 
 
+def test_plugin_install_uses_reviewed_catalog_pin(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeCatalogManager:
+        def install(
+            self,
+            plugin_id: str,
+            *,
+            version: str,
+            allow_deprecated: bool,
+            timeout_seconds: float,
+        ):
+            calls.append(
+                {
+                    "plugin_id": plugin_id,
+                    "version": version,
+                    "allow_deprecated": allow_deprecated,
+                    "timeout_seconds": timeout_seconds,
+                }
+            )
+            return SimpleNamespace(
+                artifact_url="https://artifacts.example.com/example-1.0.0.whl",
+                lifecycle=SimpleNamespace(
+                    plugin_id=plugin_id,
+                    version="1.0.0",
+                    action="installed",
+                    artifact_sha256="0" * 64,
+                    venv_path=Path("/tmp/plugins/org.author.example/versions/1.0/venv"),
+                ),
+            )
+
+    monkeypatch.setattr("deeptutor.plugins.distribution.CatalogInstallManager", FakeCatalogManager)
+    app = _plugin_cli(monkeypatch)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "org.author.example",
+            "--version",
+            "1.0.0",
+            "--allow-deprecated",
+            "--timeout",
+            "12",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        {
+            "plugin_id": "org.author.example",
+            "version": "1.0.0",
+            "allow_deprecated": True,
+            "timeout_seconds": 12.0,
+        }
+    ]
+    assert '"artifact_url"' in result.output
+    assert '"sha256": "' + "0" * 64 in result.output
+
+
+def test_plugin_catalog_install_rejects_local_digest_override(monkeypatch) -> None:
+    class UnexpectedManager:
+        def __init__(self) -> None:
+            raise AssertionError("remote catalog install must not accept a digest override")
+
+    monkeypatch.setattr("deeptutor.plugins.distribution.CatalogInstallManager", UnexpectedManager)
+    app = _plugin_cli(monkeypatch)
+
+    result = CliRunner().invoke(app, ["install", "org.author.example", "--sha256", "0" * 64])
+
+    assert result.exit_code == 1
+    assert "--sha256 is only valid for a local wheel" in result.output
+
+
 def test_plugin_rollback_and_uninstall_use_managed_lifecycle(monkeypatch) -> None:
     actions: list[str] = []
 

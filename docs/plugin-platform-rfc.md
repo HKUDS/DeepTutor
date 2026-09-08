@@ -1,4 +1,4 @@
-# DeepTutor Plugin Platform RFC (Phase C and Local E)
+# DeepTutor Plugin Platform RFC (Phase C and Catalog E)
 
 Status: accepted implementation slice
 Schema: `deeptutor.plugin/v1`
@@ -22,9 +22,9 @@ API.
 - No arbitrary Chrome CRX/extension loading. Chrome extensions assume browser
   APIs, extension process boundaries, and a browser permission model that do
   not map safely to a Python server process.
-- No automatic download or installation from the catalog. The catalog remains
-  metadata-only; `deeptutor plugin install` accepts only a local wheel that a
-  user or operator has already obtained and can review.
+- No arbitrary URL installation, background update check, or automatic upgrade.
+  Catalog installation is an explicit command that resolves a vendored,
+  reviewed artifact pin before downloading.
 - No claim that Python permission fields create an OS sandbox. They define the
   approval and runtime contract boundary. Managed Tool and Capability workers
   run in a separate Python process with a plugin-private environment, but that
@@ -192,27 +192,46 @@ disabled plugin.
 
 ## Official catalog
 
-The official catalog is a vendored, manually reviewed JSON snapshot. It is not
-a live third-party registry request:
+The official catalog is a vendored, manually reviewed JSON snapshot. Browsing
+and version resolution do not make a live third-party registry request:
 
-- entries are sorted by immutable plugin ID;
+- schema `deeptutor.plugin-catalog/v2` has one row per immutable
+  `(plugin ID, version)` pair; legacy v1 snapshots remain readable but cannot
+  be remote-install sources;
 - the package requirement is pinned;
-- the distribution artifact has a SHA-256 digest;
+- the distribution artifact has a direct immutable HTTPS wheel URL, SHA-256
+  digest, exact byte size, and non-empty platform tags;
 - compatibility and permissions are repeated from review-time metadata;
 - status is `available`, `deprecated`, or `hidden`;
-- malformed or duplicate rows are dropped without invalidating the catalog.
+- malformed or duplicate rows are dropped without invalidating the catalog;
+- `latest` resolves only the newest available non-prerelease version; exact
+  versions must match the catalog string, deprecated versions require an
+  explicit flag, and hidden rows are never returned.
 
 The initial snapshot is intentionally empty. DeepTutor maintainers must not
 invent third-party plugins to seed it. Real entries are added only with source
 review, artifact pinning, and recorded reviewers.
 
+## Catalog distribution
+
+`deeptutor plugin install <plugin-id>` resolves a row in the vendored catalog,
+downloads only that row's reviewed HTTPS URL, and then invokes the local
+lifecycle with the catalog digest. Redirects are rejected, the download has a
+timeout and bounded size, `Content-Length` must match the reviewed size, and
+the streamed bytes must match both size and SHA-256 before installation. A
+failed download removes its temporary wheel and never reaches pip or plugin
+state. The URL is review metadata, not a CLI input: there is no arbitrary URL
+install path and no automatic update check.
+
 ## Managed lifecycle
 
-`PluginLifecycleManager` installs only an existing local wheel. It reads and
-validates the root manifest directly from the zip archive before creating an
-environment or importing plugin code. An optional `--sha256` pin is checked
-before install. The reviewed artifact is copied under the plugin's managed
-root, and each plugin version receives its own virtual environment.
+`PluginLifecycleManager` installs only an existing local wheel. That wheel can
+come from the explicit local command or the verified catalog downloader. It
+reads and validates the root manifest directly from the zip archive before
+creating an environment or importing plugin code. An optional local `--sha256`
+pin and the mandatory catalog pin are checked before install. The reviewed
+artifact is copied under the plugin's managed root, and each plugin version
+receives its own virtual environment.
 
 Installation, upgrade, same-version reinstall, and rollback all clear the
 previous approval. This is deliberate: the user approved an exact permission,
@@ -264,11 +283,12 @@ those types are declaration-only in this slice.
 
 ## Trust and compatibility
 
-The v1 trust model is human curation plus pinned metadata. Catalog browsing is
-offline. Local installation accepts a wheel and verifies an optional artifact
-digest before invoking pip; remote pinned distribution download remains future
-work. Signing and a process/container security sandbox are separate future
-phases and must not be implied by this catalog format.
+The current trust model is human curation plus pinned metadata. Catalog
+browsing and version resolution remain offline. Local installation accepts a
+wheel and verifies an optional artifact digest before invoking pip; catalog
+installation additionally binds the download URL, size, and digest to the
+reviewed snapshot. Signing and a process/container security sandbox are
+separate future phases and must not be implied by this catalog format.
 
 Python permissions are disclosure and approval metadata in v1. Existing
 entry-point extensions still execute in the host Python process after approval.
@@ -308,8 +328,8 @@ Chrome-specific assets may ship as resources inside such a package.
    publishing workflow.
 
 This repository currently implements Phases A through C, plus the local-wheel
-installation, approval, Tool/Capability/HTTP worker, upgrade, rollback,
-uninstall, and managed introspection slice of Phase E. Remote marketplace
-distribution, frontend asset mounting, persistence migrations, app connector
-execution, visualizer packaging, signing, and a stronger sandbox remain future
-phases.
+and catalog-driven remote installation, approval, Tool/Capability/HTTP worker,
+upgrade, rollback, uninstall, and managed introspection slice of Phase E.
+Developer publishing automation, frontend asset mounting, persistence
+migrations, app connector execution, visualizer packaging, signing, and a
+stronger sandbox remain future phases.

@@ -179,3 +179,66 @@ def test_registry_migrates_legacy_state(tmp_path) -> None:
         "version": 1,
         "disabled": ["old"],
     }
+
+
+def test_registry_marks_managed_version_deprecated_from_catalog(tmp_path) -> None:
+    manifest = _manifest()
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "deeptutor.plugin-catalog/v2",
+                "meta": {
+                    "generated_at": "2026-09-08T00:00:00Z",
+                    "reviewed_at": "2026-09-08T00:00:00Z",
+                    "reviewers": ["maintainer"],
+                },
+                "entries": [
+                    {
+                        **{
+                            key: value
+                            for key, value in manifest.items()
+                            if key not in {"schema_version", "extensions"}
+                        },
+                        "status": "deprecated",
+                        "artifact": {
+                            "kind": "python-package",
+                            "requirement": "example-plugin==1.0.0",
+                            "sha256": "0" * 64,
+                            "url": "https://example.com/example-1.0.0.whl",
+                            "size_bytes": 128,
+                            "platform_tags": ["py3-none-any"],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "plugins.json"
+    registry = PluginRegistry(
+        state_path=state_path,
+        catalog_path=catalog_path,
+        installed_distributions=[],
+        deeptutor_version="1.6.0",
+    )
+    state = registry.state_snapshot()
+    state["plugins"]["org.author.example"] = {
+        "manifest": manifest,
+        "installation": {
+            "version": "1.0.0",
+            "artifact_path": str(tmp_path / "example.whl"),
+            "artifact_sha256": "0" * 64,
+            "venv_path": str(tmp_path / "venv"),
+            "python_path": str(tmp_path / "venv" / "bin" / "python"),
+            "installed_at": "2026-09-08T00:00:00Z",
+            "dependencies": [],
+        },
+        "history": [],
+    }
+    registry.replace_state(state)
+
+    record = registry.get_plugin("org.author.example")
+
+    assert record is not None
+    assert record.status == "deprecated"

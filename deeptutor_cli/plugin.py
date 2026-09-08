@@ -182,10 +182,19 @@ def register(app: typer.Typer) -> None:
 
     @app.command("install")
     def plugin_install(
-        artifact: Path = typer.Argument(..., help="Local reviewed plugin wheel."),
+        artifact: str = typer.Argument(
+            ..., help="Local reviewed wheel or reviewed catalog plugin ID."
+        ),
         sha256: str = typer.Option("", help="Expected artifact SHA-256."),
+        version: str = typer.Option(
+            "latest", help="Catalog version to install, or latest stable version."
+        ),
+        allow_deprecated: bool = typer.Option(
+            False, help="Allow an explicitly deprecated catalog version."
+        ),
+        timeout: float = typer.Option(60.0, help="Artifact download timeout in seconds."),
     ) -> None:
-        """Install a local wheel into its own dependency-isolated environment."""
+        """Install a local or catalog-pinned wheel in an isolated environment."""
         import json as json_module
 
         from deeptutor.plugins.lifecycle import (
@@ -193,8 +202,45 @@ def register(app: typer.Typer) -> None:
             PluginLifecycleManager,
         )
 
+        local_artifact = Path(artifact)
+        is_local_wheel = artifact.lower().endswith(".whl") or local_artifact.exists()
+        if not is_local_wheel:
+            from deeptutor.plugins.distribution import (
+                CatalogInstallManager,
+                PluginDistributionError,
+            )
+
+            if sha256:
+                console.print("[red]--sha256 is only valid for a local wheel.[/]")
+                raise typer.Exit(code=1)
+            try:
+                result = CatalogInstallManager().install(
+                    artifact,
+                    version=version,
+                    allow_deprecated=allow_deprecated,
+                    timeout_seconds=timeout,
+                )
+            except (PluginDistributionError, PluginLifecycleError) as exc:
+                console.print(f"[red]{exc}[/]")
+                raise typer.Exit(code=1) from None
+            console.print_json(
+                json_module.dumps(
+                    {
+                        "plugin": result.lifecycle.plugin_id,
+                        "version": result.lifecycle.version,
+                        "action": result.lifecycle.action,
+                        "artifact_url": result.artifact_url,
+                        "sha256": result.lifecycle.artifact_sha256,
+                        "venv": str(result.lifecycle.venv_path),
+                        "next_step": "review permissions, then run deeptutor plugin approve",
+                    },
+                    indent=2,
+                )
+            )
+            return
+
         try:
-            result = PluginLifecycleManager().install(artifact, expected_sha256=sha256)
+            result = PluginLifecycleManager().install(local_artifact, expected_sha256=sha256)
         except PluginLifecycleError as exc:
             console.print(f"[red]{exc}[/]")
             raise typer.Exit(code=1) from None
