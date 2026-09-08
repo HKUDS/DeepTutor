@@ -821,6 +821,8 @@
   "Select a knowledge base": "选择知识库",
   "No ready knowledge base is available for upload. Create a new KB or reindex legacy KBs first.": "没有可用于上传的就绪知识库。请先创建新知识库或重新索引旧知识库。",
   "Upload": "上传",
+  "Or paste a URL to import": "或粘贴 URL 导入",
+  "Import URL": "导入 URL",
   "Upload Process": "上传进度",
   "Knowledge bases": "知识库",
   "needs reindex": "需要重新索引",

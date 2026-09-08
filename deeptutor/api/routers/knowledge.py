@@ -16,6 +16,7 @@ import re
 import shutil
 import traceback
 from uuid import uuid4
+from urllib.parse import urlparse
 
 from fastapi import (
     APIRouter,
@@ -96,6 +97,7 @@ from deeptutor.utils.document_extractor import (
 )
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
+from deeptutor.tools.web_fetch import fetch_url_as_markdown
 
 # Initialize logger with config
 config = load_config_with_main("main.yaml", PROJECT_ROOT)
@@ -2595,6 +2597,86 @@ class CreateFolderPayload(BaseModel):
 class MoveFilePayload(BaseModel):
     source: str
     dest_folder: str = ""
+
+
+class ImportUrlPayload(BaseModel):
+    url: str = Field(..., min_length=1)
+    dest_subdir: str = Field("", max_length=200)
+
+
+@router.post("/knowledge-bases/{kb_name}/import-url")
+async def import_url_to_kb(
+    kb_name: str,
+    background_tasks: BackgroundTasks,
+    payload: ImportUrlPayload,
+):
+    """Fetch a web page and add its readable content to a knowledge base."""
+    try:
+        manager, kb_name, kb_base_dir = _writable_kb(kb_name)
+        kb_entry = _load_kb_entry_or_404(manager, kb_name)
+        _assert_kb_writable_or_409(kb_name, kb_entry)
+        kb_path = manager.get_knowledge_base_path(kb_name)
+        raw_dir = kb_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        outcome = await fetch_url_as_markdown(payload.url)
+        if not outcome.ok:
+            raise HTTPException(status_code=400, detail=outcome.error)
+        if not outcome.markdown.strip():
+            raise HTTPException(status_code=422, detail="URL returned empty or unreadable content")
+
+        parsed = urlparse(outcome.url)
+        stem = re.sub(
+            r"[^a-zA-Z0-9_-]+",
+            "_",
+            (parsed.path or "").rstrip("/").split("/")[-1]
+            or parsed.hostname or "imported_page",
+        ).strip("_")[:80] or "imported_page"
+        safe_name = f"{stem}.md"
+        dest_dir = raw_dir
+        if payload.dest_subdir:
+            safe_subdir = _sanitize_rel_subdir(payload.dest_subdir)
+            if safe_subdir:
+                dest_dir = raw_dir / safe_subdir
+                dest_dir.mkdir(parents=True, exist_ok=True)
+        file_path = dest_dir / safe_name
+        counter = 1
+        while file_path.exists():
+            file_path = dest_dir / f"{stem}_{counter}.md"
+            counter += 1
+        file_path.write_text(outcome.markdown, encoding="utf-8")
+
+        kb_provider = _validate_registered_provider(
+            kb_entry.get("rag_provider") or DEFAULT_PROVIDER
+        )
+        _assert_provider_ready(kb_provider)
+        task_id = _build_unique_task_id("kb_upload", kb_name)
+        get_task_stream_manager().ensure_task(task_id)
+        _mark_kb_queued_for_processing(
+            manager,
+            kb_name,
+            task_id,
+            f"Processing imported URL for KB '{kb_name}'...",
+        )
+        background_tasks.add_task(
+            run_upload_processing_task,
+            kb_name=kb_name,
+            base_dir=str(kb_base_dir),
+            uploaded_file_paths=[str(file_path)],
+            task_id=task_id,
+            rag_provider=kb_provider,
+        )
+        return {
+            "message": f"Imported URL content to {file_path.name}. Processing in background.",
+            "file": str(file_path.relative_to(kb_path)),
+            "task_id": task_id,
+        }
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=format_exception_message(e)) from e
 
 
 @router.post("/knowledge-bases/{kb_name}/folders")

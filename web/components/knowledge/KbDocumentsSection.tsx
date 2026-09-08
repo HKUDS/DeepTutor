@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderInput, Loader2, RefreshCw, Upload } from "lucide-react";
+import { FolderInput, Link2, Loader2, RefreshCw, Upload } from "lucide-react";
 import {
   listKnowledgeBaseFiles,
   type KnowledgeUploadPolicy,
+  importKbFromUrl,
 } from "@/features/knowledge/api/files";
 import {
   kbIsUploadable,
@@ -56,6 +57,8 @@ export default function KbDocumentsSection({
   // Existing folders in this KB, offered as a destination for the batch.
   const [folders, setFolders] = useState<string[]>([]);
   const [destSubdir, setDestSubdir] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [importingUrl, setImportingUrl] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,6 +132,19 @@ export default function KbDocumentsSection({
       setFiles([]);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const canImportUrl = canUpload && urlInput.trim().length > 0 && !importingUrl && !isUploadingHere;
+
+  const handleImportUrl = async () => {
+    if (!canImportUrl) return;
+    setImportingUrl(true);
+    try {
+      await importKbFromUrl(kb.name, urlInput.trim(), destSubdir || undefined);
+      setUrlInput("");
+    } finally {
+      setImportingUrl(false);
     }
   };
 
@@ -209,6 +225,30 @@ export default function KbDocumentsSection({
         uploadPolicy={policyForProvider}
         disabled={!canUpload || isUploadingHere}
       />
+
+      <div className="flex items-center gap-2">
+        <Link2 size={14} className="shrink-0 text-[var(--muted-foreground)]" />
+        <input
+          type="url"
+          value={urlInput}
+          onChange={(event) => setUrlInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void handleImportUrl();
+          }}
+          placeholder={t("Or paste a URL to import")}
+          disabled={!canUpload || isUploadingHere}
+          className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] disabled:opacity-40"
+        />
+        <button
+          type="button"
+          onClick={() => void handleImportUrl()}
+          disabled={!canImportUrl}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {importingUrl ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 size={13} />}
+          {t("Import URL")}
+        </button>
+      </div>
 
       {folders.length > 0 && files.length > 0 && (
         <label className="flex items-center gap-2 text-[12px] text-[var(--muted-foreground)]">

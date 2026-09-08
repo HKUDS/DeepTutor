@@ -1101,6 +1101,26 @@ export async function uploadKnowledgeBaseFiles(
   return (await res.json()) as KnowledgeTaskResponse;
 }
 
+export async function importKbFromUrl(
+  name: string,
+  url: string,
+  destSubdir?: string,
+): Promise<KnowledgeTaskResponse> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(name)}/import-url`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, dest_subdir: destSubdir ?? "" }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to import URL"));
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as KnowledgeTaskResponse;
+}
+
 export async function createKbFolder(
   name: string,
   path: string,

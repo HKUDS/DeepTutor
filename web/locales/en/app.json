@@ -821,6 +821,8 @@
   "Select a knowledge base": "Select a knowledge base",
   "No ready knowledge base is available for upload. Create a new KB or reindex legacy KBs first.": "No ready knowledge base is available for upload. Create a new KB or reindex legacy KBs first.",
   "Upload": "Upload",
+  "Or paste a URL to import": "Or paste a URL to import",
+  "Import URL": "Import URL",
   "Upload Process": "Upload Process",
   "Knowledge bases": "Knowledge bases",
   "needs reindex": "needs reindex",

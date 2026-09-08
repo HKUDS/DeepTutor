@@ -2440,3 +2440,83 @@ def test_lightrag_config_validates_dedicated_llm_selection(monkeypatch, tmp_path
         json={"llm_profile_id": "", "llm_model_id": ""},
     )
     assert cleared.status_code == 200
+
+
+def test_import_url_to_kb_saves_and_schedules_indexing(monkeypatch, tmp_path: Path) -> None:
+    from deeptutor.tools.web_fetch import FetchOutcome
+
+    kb_dir = tmp_path / "demo"
+    kb_dir.mkdir(parents=True)
+    (kb_dir / "raw").mkdir()
+    config = {"knowledge_bases": {"demo": {"path": "demo", "rag_provider": "llamaindex", "status": "ready"}}}
+
+    class _FakeManager:
+        base_dir = str(tmp_path)
+        def _load_config(self):
+            return config
+        def update_kb_status(self, name, status, progress=None):
+            pass
+        def list_knowledge_bases(self):
+            return ["demo"]
+        def get_knowledge_base_path(self, name):
+            return tmp_path / name
+    fake_mgr = _FakeManager()
+
+    def _fake_overridden():
+        return fake_mgr
+
+    async def _fake_fetch(url: str, **kwargs):
+        return FetchOutcome(ok=True, markdown="# Imported page\n\nSome content.", url=url, title="Imported page")
+
+    monkeypatch.setattr(knowledge_router_module, "_overridden_kb_manager", _fake_overridden)
+    monkeypatch.setattr(knowledge_router_module, "fetch_url_as_markdown", _fake_fetch)
+    monkeypatch.setattr(knowledge_router_module, "_assert_provider_ready", lambda _p: None)
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/knowledge-bases/demo/import-url",
+            json={"url": "https://example.com/article"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["task_id"]
+    imported = kb_dir / "raw" / "article.md"
+    assert imported.exists()
+    assert "# Imported page" in imported.read_text(encoding="utf-8")
+
+
+def test_import_url_to_kb_rejects_fetch_failure(monkeypatch, tmp_path: Path) -> None:
+    from deeptutor.tools.web_fetch import FetchOutcome
+
+    kb_dir = tmp_path / "demo"
+    kb_dir.mkdir(parents=True)
+    (kb_dir / "raw").mkdir()
+    config2 = {"knowledge_bases": {"demo": {"path": "demo", "rag_provider": "llamaindex", "status": "ready"}}}
+
+    class _FakeManager:
+        base_dir = str(tmp_path)
+        def _load_config(self):
+            return config2
+        def update_kb_status(self, name, status, progress=None):
+            pass
+        def list_knowledge_bases(self):
+            return ["demo"]
+        def get_knowledge_base_path(self, name):
+            return tmp_path / name
+    fake_mgr = _FakeManager()
+
+    async def _fake_fetch(url: str, **kwargs):
+        return FetchOutcome(ok=False, error="Connection refused")
+
+    monkeypatch.setattr(knowledge_router_module, "_overridden_kb_manager", lambda: fake_mgr)
+    monkeypatch.setattr(knowledge_router_module, "fetch_url_as_markdown", _fake_fetch)
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/knowledge-bases/demo/import-url",
+            json={"url": "https://example.com/broken"},
+        )
+
+    assert response.status_code == 400
+    assert "Connection refused" in response.json()["detail"]

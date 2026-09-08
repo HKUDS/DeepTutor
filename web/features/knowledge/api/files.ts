@@ -2,6 +2,7 @@ export {
   createKbFolder,
   deleteKbFile,
   getWebNavigation,
+  importKbFromUrl,
   knowledgeBaseFilePath,
   knowledgeBaseFilePreviewTextPath,
   listKnowledgeBaseFiles,
