@@ -23,6 +23,7 @@ import type {
 import { RESET_BOOK_PROGRESS, emptyBookProgress, reduceBookEvent } from '@/lib/book-progress'
 import { bookEventKind, bookEventPageId, useBookStream } from '@/lib/use-book-stream'
 
+import { PurchaseEntry } from '@/features/payment/PurchaseEntry'
 import BookChatPanel from './components/BookChatPanel'
 import BookCreator from './components/BookCreator'
 import BookHealthBanner from './components/BookHealthBanner'
@@ -1004,6 +1005,11 @@ function BookPageInner() {
               onNewBook={handleNewBook}
               onSelectBook={id => void handleSelectBook(id)}
               onDeleteBook={id => void handleDeleteBook(id)}
+              utilitySlot={
+                <PurchaseEntry
+                  onEntitlementChanged={() => void refreshBooks()}
+                />
+              }
             />
           )}
 
