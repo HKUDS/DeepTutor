@@ -129,6 +129,26 @@ def test_catalog_cache_round_trip(tmp_path: Path) -> None:
     }
 
 
+def test_client_version_history_is_partitioned_by_account(tmp_path: Path) -> None:
+    store = CodexCredentialStore(tmp_path)
+    account_a = "a" * 64
+    account_b = "b" * 64
+
+    store.record_client_version(
+        account_a,
+        "1.2.3",
+        expected_generation=0,
+    )
+    store.record_client_version(
+        account_b,
+        "4.5.6",
+        expected_generation=0,
+    )
+
+    assert store.load_client_version(account_a) == "1.2.3"
+    assert store.load_client_version(account_b) == "4.5.6"
+
+
 def test_existing_symlink_target_is_rejected(tmp_path: Path) -> None:
     store = CodexCredentialStore(tmp_path)
     store.root.mkdir(parents=True)

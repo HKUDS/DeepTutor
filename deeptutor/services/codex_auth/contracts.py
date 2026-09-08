@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 import json
 from typing import Any, Literal
 
+from .constants import CODEX_CLIENT_VERSION
+
 CatalogSource = Literal["live", "fresh-cache", "revalidated-cache", "stale-cache"]
 
 
@@ -200,6 +202,7 @@ class CatalogSnapshot:
     etag: str | None
     generation: int
     account_hash: str
+    client_version: str = CODEX_CLIENT_VERSION
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -209,6 +212,7 @@ class CatalogSnapshot:
             "etag": self.etag,
             "generation": self.generation,
             "account_hash": self.account_hash,
+            "client_version": self.client_version,
         }
 
     @classmethod
@@ -227,6 +231,11 @@ class CatalogSnapshot:
                 etag=str(payload["etag"]) if payload.get("etag") is not None else None,
                 generation=int(payload["generation"]),
                 account_hash=str(payload["account_hash"]),
+                client_version=(
+                    str(payload["client_version"])
+                    if payload.get("client_version") is not None
+                    else CODEX_CLIENT_VERSION
+                ),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise CodexAuthError(

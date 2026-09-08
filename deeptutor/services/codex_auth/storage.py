@@ -17,6 +17,8 @@ from typing import Any, BinaryIO
 from .contracts import CodexAuthError, CodexCredentials
 
 _SCHEMA_VERSION = 1
+_MAX_ACCOUNT_BINDING_LENGTH = 64
+_MAX_CLIENT_VERSION_LENGTH = 32
 
 
 def _is_reparse_point(path: Path) -> bool:
@@ -169,6 +171,19 @@ class CodexCredentialStore:
                 "Stored Codex authentication state is invalid.",
                 500,
             )
+        client_versions = state.get("client_versions", {})
+        if not isinstance(client_versions, dict) or not all(
+            isinstance(account_hash, str)
+            and 0 < len(account_hash) <= _MAX_ACCOUNT_BINDING_LENGTH
+            and isinstance(version, str)
+            and 0 < len(version) <= _MAX_CLIENT_VERSION_LENGTH
+            for account_hash, version in client_versions.items()
+        ):
+            raise CodexAuthError(
+                "state_corrupt",
+                "Stored Codex authentication state is invalid.",
+                500,
+            )
         return state
 
     @staticmethod
@@ -236,6 +251,7 @@ class CodexCredentialStore:
                     **state,
                     "schema_version": _SCHEMA_VERSION,
                     "generation": next_generation,
+                    "client_versions": {},
                 },
             )
             for path in (self.credentials_path, self.catalog_cache_path):
@@ -251,11 +267,65 @@ class CodexCredentialStore:
                 message="Stored Codex model data is invalid.",
             )
 
-    def save_catalog_cache(self, payload: Mapping[str, Any]) -> None:
+    def save_catalog_cache(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        expected_generation: int | None = None,
+    ) -> None:
         with self._locked():
+            if (
+                expected_generation is not None
+                and int(self._read_state_unlocked()["generation"]) != expected_generation
+            ):
+                raise self._generation_changed()
             _atomic_write_json(self.catalog_cache_path, payload)
 
-    def clear_catalog_cache(self) -> None:
+    def load_client_version(self, account_binding: str) -> str | None:
         with self._locked():
+            state = self._read_state_unlocked()
+            versions = state.get("client_versions", {})
+            if not isinstance(versions, dict):
+                return None
+            version = versions.get(account_binding)
+            return version if isinstance(version, str) and version else None
+
+    def record_client_version(
+        self,
+        account_binding: str,
+        version: str,
+        *,
+        expected_generation: int,
+    ) -> None:
+        if not account_binding or len(account_binding) > _MAX_ACCOUNT_BINDING_LENGTH:
+            raise CodexAuthError(
+                "state_corrupt",
+                "Stored Codex authentication state is invalid.",
+                500,
+            )
+        if not version or len(version) > _MAX_CLIENT_VERSION_LENGTH:
+            raise CodexAuthError(
+                "state_corrupt",
+                "Stored Codex authentication state is invalid.",
+                500,
+            )
+        with self._locked():
+            state = self._read_state_unlocked()
+            if int(state["generation"]) != expected_generation:
+                raise self._generation_changed()
+            versions = state.get("client_versions", {})
+            next_state = {
+                **state,
+                "client_versions": {**versions, account_binding: version},
+            }
+            _atomic_write_json(self.state_path, next_state)
+
+    def clear_catalog_cache(self, expected_generation: int | None = None) -> None:
+        with self._locked():
+            if (
+                expected_generation is not None
+                and int(self._read_state_unlocked()["generation"]) != expected_generation
+            ):
+                return
             _assert_safe_regular_path(self.catalog_cache_path)
             self.catalog_cache_path.unlink(missing_ok=True)

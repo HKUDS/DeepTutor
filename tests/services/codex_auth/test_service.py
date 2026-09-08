@@ -192,13 +192,14 @@ def _snapshot(
     source: str,
     *models: CodexModel,
 ) -> CatalogSnapshot:
+    account_id = source if source.startswith("account-") else "account-123"
     return CatalogSnapshot(
         models=models,
         source=source,  # type: ignore[arg-type]
         fetched_at=1_000,
         etag='"v1"',
         generation=1,
-        account_hash="account-hash",
+        account_hash=hashlib.sha256(account_id.encode()).hexdigest(),
     )
 
 
@@ -629,8 +630,9 @@ class FakeCatalog:
         self,
         credentials: CodexCredentials,
         force: bool,
+        client_version: str | None = None,
     ) -> CatalogSnapshot:
-        self.calls.append((credentials.generation, force))
+        self.calls.append((credentials.generation, force, client_version))
         if self.get_started is not None:
             self.get_started.set()
         if self.get_release is not None:

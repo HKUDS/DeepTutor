@@ -20,13 +20,18 @@ from .constants import (
 )
 from .contracts import CatalogSnapshot, CodexAuthError, CodexCredentials, CodexModel
 from .storage import CodexCredentialStore
+from .version import validate_stable_version
 
 
-def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
+def parse_models_response(
+    payload: Mapping[str, Any],
+    *,
+    incompatible_code: str = "catalog_invalid",
+) -> tuple[CodexModel, ...]:
     raw_models = payload.get("models")
     if not isinstance(raw_models, list):
         raise CodexAuthError(
-            "catalog_invalid",
+            incompatible_code,
             "Codex returned an invalid model catalog.",
             502,
         )
@@ -41,7 +46,7 @@ def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
     for raw_model in raw_models:
         if not isinstance(raw_model, dict):
             raise CodexAuthError(
-                "catalog_invalid",
+                incompatible_code,
                 "Codex returned an invalid model catalog.",
                 502,
             )
@@ -51,7 +56,7 @@ def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
         display_name = raw_model.get("display_name")
         if not isinstance(slug, str) or not slug:
             raise CodexAuthError(
-                "catalog_invalid",
+                incompatible_code,
                 "Codex returned an invalid model catalog.",
                 502,
             )
@@ -132,7 +137,9 @@ class CodexModelCatalog:
         self,
         credentials: CodexCredentials,
         force: bool,
+        client_version: str | None = None,
     ) -> CatalogSnapshot:
+        requested_version = validate_stable_version(client_version or CODEX_CLIENT_VERSION)
         now = int(self._clock())
         account_hash = hashlib.sha256(credentials.account_id.encode("utf-8")).hexdigest()
         cache = self._matching_cache(credentials, account_hash)
@@ -150,25 +157,37 @@ class CodexModelCatalog:
         try:
             response = await self._http.get(
                 CODEX_MODELS_URL,
-                params={"client_version": CODEX_CLIENT_VERSION},
+                params={"client_version": requested_version},
                 headers=headers,
             )
         except httpx.RequestError as exc:
             return self._stale_or_raise(cache, now, exc)
 
         if response.status_code == 401:
-            await self.invalidate()
+            await self.invalidate(expected_generation=credentials.generation)
             raise CodexAuthError(
                 "catalog_unauthorized",
                 "Codex authentication is no longer authorized.",
                 401,
             )
         if response.status_code == 403:
-            await self.invalidate()
+            await self.invalidate(expected_generation=credentials.generation)
             raise CodexAuthError(
                 "catalog_forbidden",
                 "This Codex account cannot access the model catalog.",
                 403,
+            )
+        if response.status_code == 429:
+            raise CodexAuthError(
+                "catalog_rate_limited",
+                "The Codex model catalog is temporarily rate limited.",
+                429,
+            )
+        if response.status_code in {400, 422}:
+            raise CodexAuthError(
+                "catalog_version_rejected",
+                "Codex rejected the requested model-catalog client version.",
+                response.status_code,
             )
         if response.status_code == 304:
             if cache is None:
@@ -178,7 +197,10 @@ class CodexModelCatalog:
                     502,
                 )
             snapshot = replace(cache, source="revalidated-cache", fetched_at=now)
-            self._store.save_catalog_cache(snapshot.to_dict())
+            self._store.save_catalog_cache(
+                snapshot.to_dict(),
+                expected_generation=credentials.generation,
+            )
             return snapshot
 
         try:
@@ -212,19 +234,34 @@ class CodexModelCatalog:
                 502,
             )
 
+        try:
+            models = parse_models_response(payload, incompatible_code="catalog_incompatible")
+        except CodexAuthError as exc:
+            if exc.code != "catalog_incompatible":
+                raise
+            raise CodexAuthError(
+                exc.code,
+                "The model catalog is incompatible with the requested client version.",
+                502,
+            ) from exc
+
         snapshot = CatalogSnapshot(
-            models=parse_models_response(payload),
+            models=models,
             source="live",
             fetched_at=now,
             etag=response.headers.get("etag"),
             generation=credentials.generation,
             account_hash=account_hash,
+            client_version=requested_version,
         )
-        self._store.save_catalog_cache(snapshot.to_dict())
+        self._store.save_catalog_cache(
+            snapshot.to_dict(),
+            expected_generation=credentials.generation,
+        )
         return snapshot
 
-    async def invalidate(self) -> None:
-        self._store.clear_catalog_cache()
+    async def invalidate(self, expected_generation: int | None = None) -> None:
+        self._store.clear_catalog_cache(expected_generation=expected_generation)
 
     def _matching_cache(
         self,
@@ -239,7 +276,7 @@ class CodexModelCatalog:
         except CodexAuthError as exc:
             if exc.code != "catalog_corrupt":
                 raise
-            self._store.clear_catalog_cache()
+            self._store.clear_catalog_cache(expected_generation=credentials.generation)
             return None
         if snapshot.generation != credentials.generation:
             return None

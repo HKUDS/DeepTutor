@@ -127,8 +127,11 @@ async def test_live_catalog_uses_account_headers_and_client_version(tmp_path: Pa
     queue = ResponseQueue(httpx.Response(200, json=_fixture(), headers={"ETag": '"catalog-v1"'}))
     clock = [1_000]
     catalog, http = _catalog(tmp_path, queue, clock)
+    credentials = CodexCredentialStore(tmp_path).commit_credentials(
+        _credentials(), expected_generation=0
+    )
     try:
-        snapshot = await catalog.get(_credentials(), force=True)
+        snapshot = await catalog.get(credentials, force=True)
     finally:
         await http.aclose()
 
@@ -148,8 +151,11 @@ async def test_fresh_cache_skips_network_and_etag_304_revalidates(tmp_path: Path
     )
     clock = [1_000]
     catalog, http = _catalog(tmp_path, queue, clock)
+    credentials = CodexCredentialStore(tmp_path).commit_credentials(
+        _credentials(), expected_generation=0
+    )
     try:
-        live = await catalog.get(_credentials(), force=True)
+        live = await catalog.get(credentials, force=True)
         clock[0] = 1_100
         fresh = await catalog.get(_credentials(), force=False)
         assert len(queue.requests) == 1
@@ -174,8 +180,11 @@ async def test_network_failure_uses_only_matching_stale_cache(tmp_path: Path) ->
     )
     clock = [1_000]
     catalog, http = _catalog(tmp_path, queue, clock)
+    credentials = CodexCredentialStore(tmp_path).commit_credentials(
+        _credentials(), expected_generation=0
+    )
     try:
-        await catalog.get(_credentials(), force=True)
+        await catalog.get(credentials, force=True)
         clock[0] = 1_301
         stale = await catalog.get(_credentials(), force=False)
         with pytest.raises(CodexAuthError) as wrong_generation:
@@ -195,8 +204,12 @@ async def test_cache_is_partitioned_by_account(tmp_path: Path) -> None:
     )
     clock = [1_000]
     catalog, http = _catalog(tmp_path, queue, clock)
+    credentials = CodexCredentialStore(tmp_path).commit_credentials(
+        _credentials(account_id="account-a"),
+        expected_generation=0,
+    )
     try:
-        await catalog.get(_credentials(account_id="account-a"), force=True)
+        await catalog.get(credentials, force=True)
         clock[0] = 1_301
         with pytest.raises(CodexAuthError) as exc_info:
             await catalog.get(
@@ -225,8 +238,11 @@ async def test_auth_errors_never_use_stale_cache(
     )
     clock = [1_000]
     catalog, http = _catalog(tmp_path, queue, clock)
+    credentials = CodexCredentialStore(tmp_path).commit_credentials(
+        _credentials(), expected_generation=0
+    )
     try:
-        await catalog.get(_credentials(), force=True)
+        await catalog.get(credentials, force=True)
         clock[0] = 1_301
         with pytest.raises(CodexAuthError) as exc_info:
             await catalog.get(_credentials(), force=True)

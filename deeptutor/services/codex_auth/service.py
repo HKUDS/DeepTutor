@@ -25,6 +25,7 @@ from .catalog import CodexModelCatalog
 from .constants import (
     CODEX_CALLBACK_PATH,
     CODEX_CALLBACK_PORTS,
+    CODEX_CLIENT_VERSION,
     CODEX_LOGIN_TIMEOUT_SECONDS,
 )
 from .contracts import (
@@ -45,6 +46,7 @@ from .oauth import (
     oauth_state_matches,
 )
 from .storage import CodexCredentialStore
+from .version import CodexClientVersionDiscovery
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +394,7 @@ class CodexOAuthService:
         callback_factory: Callable[[str], Awaitable[Any]] | None = None,
         clock: Callable[[], float] = time.time,
         callback_forward_port: int = 3782,
+        version_discovery: CodexClientVersionDiscovery | None = None,
     ) -> None:
         if (
             isinstance(callback_forward_port, bool)
@@ -408,6 +411,7 @@ class CodexOAuthService:
             self._owned_http = httpx.AsyncClient(timeout=30)
             oauth_client = CodexOAuthClient(self._owned_http)
         self._oauth = oauth_client
+        self._version_discovery = version_discovery or CodexClientVersionDiscovery()
         self._callback_factory = callback_factory or self._start_default_callback
         self._clock = clock
         self._operation: _LoginOperation | None = None
@@ -577,15 +581,16 @@ class CodexOAuthService:
                     remove_codex_catalog(self._model_catalog)
             operation.operation_state = "fetching_models"
             await self._catalog.invalidate()
-            snapshot = await self._catalog.get(committed, force=True)
-            async with self._catalog_sync_lock:
-                sync_result = sync_codex_catalog(
-                    self._model_catalog,
-                    snapshot,
-                    account_id=committed.account_id,
-                )
-            self._last_snapshot = snapshot
-            operation.activated = sync_result.activated
+            fetched = await self._fetch_catalog_snapshot(committed, discover=True)
+            if fetched is not None:
+                snapshot, _version = fetched
+                async with self._catalog_sync_lock:
+                    sync_result = await self._publish_catalog_snapshot(
+                        snapshot,
+                        account_id=committed.account_id,
+                    )
+                    if sync_result is not None:
+                        operation.activated = sync_result.activated
             operation.operation_state = "completed"
         except CodexAuthError as exc:
             operation.error_code = exc.code
@@ -651,14 +656,97 @@ class CodexOAuthService:
                     "Codex authentication changed before models could be refreshed.",
                     409,
                 )
-            snapshot = await self._catalog.get(credentials, force=True)
-            sync_codex_catalog(
-                self._model_catalog,
+            fetched = await self._fetch_catalog_snapshot(credentials, discover=True)
+            if fetched is None:
+                raise CodexAuthError(
+                    "authentication_changed",
+                    "Codex authentication changed before models could be refreshed.",
+                    409,
+                )
+            snapshot, _version = fetched
+            await self._publish_catalog_snapshot(
                 snapshot,
                 account_id=credentials.account_id,
             )
-            self._last_snapshot = snapshot
             return self.public_status()
+
+    async def _fetch_catalog_snapshot(
+        self,
+        credentials: CodexCredentials,
+        *,
+        discover: bool,
+    ) -> tuple[CatalogSnapshot, str] | None:
+        account_binding = _codex_account_binding(credentials.account_id)
+        discovered: str | None = None
+        if discover:
+            try:
+                discovered = await self._version_discovery.discover()
+            except CodexAuthError as exc:
+                # Discovery is an optimization. The public operation stays
+                # successful when npm is unavailable and the known version works.
+                logger.warning("Codex client-version discovery failed: %s", exc.code)
+            current = self._store.load_credentials()
+            if current is None or current.generation != credentials.generation:
+                return None
+
+        candidates: list[str] = []
+        for version in (
+            discovered,
+            self._store.load_client_version(account_binding),
+            CODEX_CLIENT_VERSION,
+        ):
+            if version is not None and version not in candidates:
+                candidates.append(version)
+        candidates = candidates[:2]
+
+        for attempt, version in enumerate(candidates):
+            try:
+                snapshot = await self._catalog.get(
+                    credentials,
+                    force=True,
+                    client_version=version,
+                )
+            except CodexAuthError as exc:
+                if exc.code == "generation_changed":
+                    return None
+                retryable = exc.code in {"catalog_version_rejected", "catalog_incompatible"}
+                if not retryable or attempt >= len(candidates) - 1:
+                    raise
+                continue
+            if version == discovered and snapshot.source == "live":
+                try:
+                    self._store.record_client_version(
+                        account_binding,
+                        version,
+                        expected_generation=credentials.generation,
+                    )
+                except CodexAuthError as exc:
+                    if exc.code == "generation_changed":
+                        return None
+                    raise
+            return snapshot, version
+        return None
+
+    async def _publish_catalog_snapshot(
+        self,
+        snapshot: CatalogSnapshot,
+        *,
+        account_id: str,
+    ) -> CatalogSyncResult | None:
+        credentials = self._store.load_credentials()
+        if (
+            credentials is None
+            or credentials.generation != snapshot.generation
+            or _codex_account_binding(credentials.account_id) != snapshot.account_hash
+        ):
+            return None
+        sync_result = sync_codex_catalog(
+            self._model_catalog,
+            snapshot,
+            account_id=account_id,
+        )
+        self._last_snapshot = snapshot
+        return sync_result
 
     async def get_token(self) -> CodexToken:
         async with self._refresh_lock:
