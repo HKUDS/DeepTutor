@@ -222,11 +222,6 @@ def get_plugin_frontend_asset(request: Request) -> FileResponse:
     return _frontend_file_response(path, asset=True)
 
 
-@router.api_route(
-    "/{plugin_id}/{plugin_path:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    dependencies=[Depends(_authenticate_plugin_route)],
-)
 async def dispatch_plugin_route(request: Request) -> Response:
     matched = getattr(request.state, "plugin_route", None)
     if matched is None:
@@ -273,6 +268,16 @@ async def dispatch_plugin_route(request: Request) -> Response:
         )
         raise HTTPException(status_code=500, detail="Plugin route failed") from exc
     return _http_response(result)
+
+
+for _method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+    router.add_api_route(
+        "/{plugin_id}/{plugin_path:path}",
+        dispatch_plugin_route,
+        methods=[_method],
+        operation_id=f"dispatch_plugin_route_{_method.lower()}",
+        dependencies=[Depends(_authenticate_plugin_route)],
+    )
 
 
 def _http_response(result: PluginHttpResponse) -> Response:
