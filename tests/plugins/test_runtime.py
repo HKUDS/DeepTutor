@@ -34,7 +34,10 @@ def _raw_manifest() -> dict:
         "license": "Apache-2.0",
         "homepage": "https://example.com",
         "source_url": "https://example.com/source",
-        "compatibility": {"deeptutor": ">=1.6,<3", "api": {"tool": "1", "capability": "1"}},
+        "compatibility": {
+            "deeptutor": ">=1.6,<3",
+            "api": {"tool": "1", "capability": "1", "http_route": "1"},
+        },
         "permissions": {"network": []},
         "dependencies": [],
         "extensions": [
@@ -43,6 +46,14 @@ def _raw_manifest() -> dict:
                 "type": "capability",
                 "id": "learning_echo_capability",
                 "entry_point": "learning_echo.worker",
+            },
+            {
+                "type": "http_route",
+                "id": "learning_echo_http",
+                "entry_point": "learning_echo.worker",
+                "path": "/echo",
+                "methods": ["POST"],
+                "auth": "public",
             },
         ],
     }
@@ -126,6 +137,88 @@ async def test_example_worker_tool_and_capability(tmp_path, monkeypatch) -> None
     assert events[0].content == "learning capability echo: hello"
 
 
+def test_example_worker_http_route(tmp_path, monkeypatch) -> None:
+    manifest = parse_manifest(_raw_manifest())
+    installation = _installation(tmp_path)
+    example_root = Path(__file__).parents[2] / "examples" / "plugins" / "learning_echo"
+    monkeypatch.setattr(
+        "deeptutor.plugins.runtime._clean_env",
+        lambda: {**dict(os.environ), "PYTHONPATH": str(example_root)},
+    )
+
+    route = runtime.PluginWorkerHttpRoute(
+        manifest=manifest,
+        installation=installation,
+        extension_id="learning_echo_http",
+    )
+    response = route.handle(
+        method="POST",
+        path="/echo",
+        query={"tags": ("math", "spaced-repetition")},
+        body={"message": "hello"},
+    )
+
+    assert response.status == 200
+    assert response.headers == {"Cache-Control": "no-store"}
+    assert response.body == {
+        "method": "POST",
+        "path": "/echo",
+        "message": "hello",
+        "auth": "public",
+    }
+
+
+def test_http_worker_response_status_and_headers_are_whitelisted(tmp_path, monkeypatch) -> None:
+    manifest = parse_manifest(_raw_manifest())
+    installation = _installation(tmp_path)
+
+    class FixedClient:
+        def __init__(self, response: dict) -> None:
+            self.response = response
+            self.payload: dict | None = None
+
+        def request(self, operation: str, payload: dict | None = None) -> dict:
+            assert operation == "handle_http"
+            assert payload is not None and payload["http"]["auth"] == "public"
+            self.payload = payload
+            return self.response
+
+    valid = runtime.PluginWorkerHttpRoute(
+        manifest=manifest,
+        installation=installation,
+        extension_id="learning_echo_http",
+    )
+    client = FixedClient({"http": {"status": 201, "headers": {"cache-control": "no-store"}}})
+    monkeypatch.setattr(valid, "_client", client)
+    assert valid.handle(method="POST", path="/echo", query={}).body is None
+    assert client.payload == {
+        "http": {
+            "method": "POST",
+            "path": "/echo",
+            "query": {},
+            "body": None,
+            "auth": "public",
+        }
+    }
+
+    invalid_cases = [
+        {"http": {"status": 301}},
+        {"http": {"status": 200, "headers": {"Set-Cookie": "session=secret"}}},
+        {"http": {"status": 200, "headers": {"Cache-Control": "public"}}},
+        {"http": {"status": 204, "body": {}}},
+        {"http": None},
+    ]
+    for response in invalid_cases:
+        rejected = runtime.PluginWorkerHttpRoute(
+            manifest=manifest,
+            installation=installation,
+            extension_id="learning_echo_http",
+        )
+        monkeypatch.setattr(rejected, "_client", FixedClient(response))
+        with pytest.raises(PluginRuntimeError, match="handle_http"):
+            rejected.handle(method="POST", path="/echo", query={})
+
+
 def test_worker_permission_declaration_cannot_exceed_manifest(tmp_path, monkeypatch) -> None:
     manifest = parse_manifest(_raw_manifest())
     client = runtime._WorkerClient(
@@ -158,9 +251,7 @@ def test_worker_error_response_is_rejected(tmp_path, monkeypatch) -> None:
         client.request("describe_tool")
 
 
-def test_one_failed_worker_does_not_block_other_managed_extensions(
-    tmp_path, monkeypatch
-) -> None:
+def test_one_failed_worker_does_not_block_other_managed_extensions(tmp_path, monkeypatch) -> None:
     registry = _registry(tmp_path)
     registry.approve("org.deeptutor.learning_echo")
 

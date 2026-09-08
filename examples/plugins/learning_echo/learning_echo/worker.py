@@ -22,6 +22,8 @@ def main() -> None:
         response = describe_capability()
     elif operation == "run_capability":
         response = run_capability(request.get("context") or {})
+    elif operation == "handle_http":
+        response = handle_http(request.get("http") or {})
     else:
         response = {"error": f"unknown operation: {operation}"}
     print(json.dumps(response, ensure_ascii=False))
@@ -74,6 +76,24 @@ def run_capability(context: dict[str, Any]) -> dict[str, Any]:
                 "content": f"learning capability echo: {message}",
             }
         ],
+    }
+
+
+def handle_http(http: dict[str, Any]) -> dict[str, Any]:
+    body = http.get("body")
+    message = str(body.get("message", "")) if isinstance(body, dict) else ""
+    return {
+        "permissions": {},
+        "http": {
+            "status": 200,
+            "headers": {"Cache-Control": "no-store"},
+            "body": {
+                "method": http.get("method"),
+                "path": http.get("path"),
+                "message": message,
+                "auth": http.get("auth"),
+            },
+        },
     }
 
 

@@ -55,6 +55,73 @@ def test_parse_manifest_normalizes_typed_extensions() -> None:
     assert manifest.dependencies == ("requests<3,>=2.32",)
 
 
+def test_parse_manifest_normalizes_web_and_app_extension_contracts() -> None:
+    raw = _manifest()
+    raw["compatibility"]["api"] = {
+        "app_connector": "1",
+        "frontend_page": "1",
+        "http_route": "1",
+        "persistence_schema": "1",
+    }
+    raw["extensions"] = [
+        {
+            "type": "http_route",
+            "id": "echo_route",
+            "entry_point": "example.worker",
+            "path": "/learning/echo",
+            "methods": ["GET", "POST"],
+            "auth": "authenticated",
+        },
+        {
+            "type": "frontend_page",
+            "id": "echo_page",
+            "path": "/echo",
+            "auth": "public",
+        },
+        {
+            "type": "persistence_schema",
+            "id": "echo_store",
+            "schema": "schemas/echo.json",
+            "operations": ["read", "write"],
+        },
+        {
+            "type": "app_connector",
+            "id": "echo_connector",
+            "operations": ["import-course"],
+        },
+    ]
+
+    manifest = parse_manifest(raw)
+
+    assert [extension.to_dict() for extension in manifest.extensions] == [
+        {
+            "type": "http_route",
+            "id": "echo_route",
+            "entry_point": "example.worker",
+            "path": "/learning/echo",
+            "methods": ["GET", "POST"],
+            "auth": "authenticated",
+        },
+        {
+            "type": "frontend_page",
+            "id": "echo_page",
+            "path": "/echo",
+            "auth": "public",
+        },
+        {
+            "type": "persistence_schema",
+            "id": "echo_store",
+            "schema": "schemas/echo.json",
+            "operations": ["read", "write"],
+        },
+        {
+            "type": "app_connector",
+            "id": "echo_connector",
+            "operations": ["import-course"],
+        },
+    ]
+
+
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [
@@ -70,6 +137,83 @@ def test_parse_manifest_normalizes_typed_extensions() -> None:
             "name-and-version",
         ),
         ({"dependencies": ["requests", "REQUESTS>=2"]}, "duplicate"),
+        (
+            {
+                "compatibility": {"deeptutor": ">=1.6.0,<2", "api": {}},
+                "extensions": [
+                    {
+                        "type": "http_route",
+                        "id": "echo",
+                        "entry_point": "example.worker",
+                        "path": "/../echo",
+                        "methods": ["GET"],
+                        "auth": "authenticated",
+                    }
+                ],
+            },
+            "static relative /path",
+        ),
+        (
+            {
+                "compatibility": {"deeptutor": ">=1.6.0,<2", "api": {}},
+                "extensions": [
+                    {
+                        "type": "http_route",
+                        "id": "echo",
+                        "entry_point": "example.worker",
+                        "path": "/echo",
+                        "methods": ["TRACE"],
+                        "auth": "authenticated",
+                    }
+                ],
+            },
+            "unsupported HTTP method",
+        ),
+        (
+            {
+                "compatibility": {"deeptutor": ">=1.6.0,<2", "api": {}},
+                "extensions": [
+                    {
+                        "type": "frontend_page",
+                        "id": "echo",
+                        "path": "/echo",
+                        "auth": "superuser",
+                    }
+                ],
+            },
+            "public, authenticated, or admin",
+        ),
+        (
+            {
+                "compatibility": {"deeptutor": ">=1.6.0,<2", "api": {}},
+                "extensions": [
+                    {
+                        "type": "persistence_schema",
+                        "id": "echo",
+                        "schema": "../schemas/echo.json",
+                        "operations": ["read"],
+                    }
+                ],
+            },
+            "traversal segments",
+        ),
+        (
+            {
+                "compatibility": {"deeptutor": ">=1.6.0,<2", "api": {}},
+                "extensions": [
+                    {
+                        "type": "http_route",
+                        "id": "echo",
+                        "entry_point": "example.worker",
+                        "path": "/echo",
+                        "methods": ["GET"],
+                        "auth": "authenticated",
+                        "schema": "schemas/echo.json",
+                    }
+                ],
+            },
+            "unknown fields: schema",
+        ),
     ],
 )
 def test_parse_manifest_rejects_invalid_contracts(mutation: dict, message: str) -> None:

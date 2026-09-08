@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import json
 import logging
 import os
 from pathlib import Path
 import re
 import subprocess
-from typing import Any
+from typing import Any, Mapping
 
 from deeptutor.core.capability_protocol import (
     CapabilityManifest,
@@ -36,6 +36,15 @@ class PluginRuntimeError(RuntimeError):
 
 _WORKER_MODULE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$")
 _PERMISSION_KEYS = {"reading", "learning_events", "network", "models", "storage", "ui"}
+_HTTP_STATUS_VALUES = frozenset({200, 201, 202, 204, 400, 404, 409, 422, 500})
+_HTTP_HEADER_VALUES = re.compile(r"^(?:no-store|no-cache|max-age=[0-9]{1,8})$")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginHttpResponse:
+    status: int
+    body: Any = None
+    headers: Mapping[str, str] | None = None
 
 
 class _WorkerClient:
@@ -134,6 +143,50 @@ class PluginWorkerTool(BaseTool):
             metadata=dict(result.get("metadata", {})),
             success=bool(result.get("success", True)),
         )
+
+
+class PluginWorkerHttpRoute:
+    def __init__(
+        self,
+        *,
+        manifest: PluginManifestData,
+        installation: PluginInstallation,
+        extension_id: str,
+    ) -> None:
+        extension = _extension(manifest, "http_route", extension_id)
+        self.extension = extension
+        self._client = _WorkerClient(
+            python_path=installation.python_path,
+            venv_path=installation.venv_path,
+            module=extension.entry_point,
+            permissions=dict(manifest.permissions.scopes),
+        )
+
+    def handle(
+        self,
+        *,
+        method: str,
+        path: str,
+        query: Mapping[str, tuple[str, ...] | list[str]],
+        body: Any = None,
+    ) -> PluginHttpResponse:
+        if method not in self.extension.methods:
+            raise PluginRuntimeError(f"HTTP method {method!r} is not declared")
+        if path != self.extension.path:
+            raise PluginRuntimeError("HTTP route path does not match its manifest")
+        response = self._client.request(
+            "handle_http",
+            {
+                "http": {
+                    "method": method,
+                    "path": path,
+                    "query": {name: list(values) for name, values in query.items()},
+                    "body": body,
+                    "auth": self.extension.auth,
+                }
+            },
+        )
+        return _http_response(response.get("http"))
 
 
 class PluginWorkerCapability(TurnCapability):
@@ -320,10 +373,35 @@ def _clean_env() -> dict[str, str]:
     return {key: os.environ[key] for key in keep if key in os.environ}
 
 
+def _http_response(raw: Any) -> PluginHttpResponse:
+    if not isinstance(raw, dict):
+        raise PluginRuntimeError("handle_http response requires an http object")
+    status = raw.get("status", 200)
+    if not isinstance(status, int) or isinstance(status, bool) or status not in _HTTP_STATUS_VALUES:
+        raise PluginRuntimeError("handle_http status is not allowed")
+    body = raw.get("body")
+    if status == 204 and body is not None:
+        raise PluginRuntimeError("handle_http 204 response cannot include a body")
+    raw_headers = raw.get("headers", {})
+    if not isinstance(raw_headers, dict):
+        raise PluginRuntimeError("handle_http headers must be an object")
+    headers: dict[str, str] = {}
+    for name, value in raw_headers.items():
+        canonical = str(name).lower()
+        if canonical != "cache-control":
+            raise PluginRuntimeError(f"handle_http response header {name!r} is not allowed")
+        if not isinstance(value, str) or _HTTP_HEADER_VALUES.fullmatch(value) is None:
+            raise PluginRuntimeError("handle_http Cache-Control value is not allowed")
+        headers["Cache-Control"] = value
+    return PluginHttpResponse(status=status, body=body, headers=headers)
+
+
 __all__ = [
     "PluginRuntimeError",
     "PluginWorkerCapability",
+    "PluginWorkerHttpRoute",
     "PluginWorkerTool",
+    "PluginHttpResponse",
     "entry_point_allowed",
     "load_enabled_capabilities",
     "load_enabled_tools",

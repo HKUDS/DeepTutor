@@ -75,6 +75,53 @@ def test_registry_reports_incompatible_and_broken_plugins(tmp_path) -> None:
     assert records["org.author.broken"].status == "broken"
 
 
+def test_registry_gates_web_and_app_extension_api_contracts(tmp_path) -> None:
+    raw = _manifest()
+    raw["compatibility"]["api"] = {
+        "http_route": "1",
+        "frontend_page": "1",
+        "persistence_schema": "1",
+        "app_connector": "1",
+    }
+    raw["extensions"] = [
+        {"type": extension_type, "id": f"example_{extension_type}", **declaration}
+        for extension_type, declaration in (
+            (
+                "http_route",
+                {
+                    "entry_point": "example.worker",
+                    "path": "/echo",
+                    "methods": ["GET"],
+                    "auth": "admin",
+                },
+            ),
+            ("frontend_page", {"path": "/page", "auth": "authenticated"}),
+            ("persistence_schema", {"schema": "schemas/example.json", "operations": ["read"]}),
+            ("app_connector", {"operations": ["import"]}),
+        )
+    ]
+    registry = PluginRegistry(
+        state_path=tmp_path / "plugins.json",
+        installed_distributions=[_dist(tmp_path, raw, "web-plugin")],
+        deeptutor_version="1.6.0",
+    )
+
+    record = registry.get_plugin("org.author.example")
+    assert record is not None
+    assert record.status == "approval-required"
+
+    raw["compatibility"]["api"]["http_route"] = "2"
+    registry = PluginRegistry(
+        state_path=tmp_path / "plugins.json",
+        installed_distributions=[_dist(tmp_path, raw, "web-plugin-v2")],
+        deeptutor_version="1.6.0",
+    )
+    record = registry.get_plugin("org.author.example")
+    assert record is not None
+    assert record.status == "incompatible"
+    assert record.error == "requires http_route API newer than this build"
+
+
 def test_approve_enable_disable_persists_local_state(tmp_path) -> None:
     state_path = tmp_path / "plugins.json"
     registry = PluginRegistry(

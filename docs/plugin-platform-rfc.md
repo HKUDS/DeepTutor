@@ -60,6 +60,10 @@ file is static JSON and must be readable without importing the plugin.
     "api": {
       "capability": "1",
       "loop_capability": "1",
+      "http_route": "1",
+      "frontend_page": "1",
+      "persistence_schema": "1",
+      "app_connector": "1",
       "tool": "1",
       "reading_extension": "1",
       "visualizer": "1"
@@ -84,6 +88,14 @@ file is static JSON and must be readable without importing the plugin.
       "type": "visualizer",
       "id": "fraction_tiles",
       "manifest": "visualizers/fraction_tiles/visualizer.json"
+    },
+    {
+      "type": "http_route",
+      "id": "study_summary",
+      "entry_point": "example_plugin.worker",
+      "path": "/study/summary",
+      "methods": ["GET", "POST"],
+      "auth": "authenticated"
     }
   ]
 }
@@ -102,11 +114,22 @@ would make plugin behavior depend on the DeepTutor release.
 | `tool` | Single-shot LLM tool | Existing entry points load only after manifest approval; managed workers load through the JSON subprocess adapter |
 | `reading_extension` | Reading toolbar/action extension | Existing entry point remains authoritative and loads only after manifest approval |
 | `visualizer` | Packaged visualizer asset bundle | Manifest declaration; bundle manifest is not eagerly read |
+| `http_route` | Managed JSON HTTP endpoint | Approved managed routes execute in the plugin venv worker |
+| `frontend_page` | Declared plugin page | Authenticated introspection only in this slice; page assets and mounting are future work |
+| `persistence_schema` | Declared plugin data schema | Authenticated introspection only; migrations and data access are future work |
+| `app_connector` | Declared downstream application adapter | Authenticated introspection only; adapter execution is future work |
 
 Each extension has one stable `id`. Python-backed extensions declare
 `entry_point`; visualizers declare their packaged bundle `manifest`. A root
 manifest may contain multiple extensions, but it does not grant a universal
 runtime API. Runtime code still binds each extension to its typed protocol.
+
+`http_route` and `frontend_page` declare static paths beginning with `/`.
+HTTP route methods are limited to `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`;
+authentication is exactly one of `public`, `authenticated`, or `admin`.
+Persistence schemas declare a packaged JSON file and named operations. App
+connectors declare named operations. Unknown fields remain invalid for every
+extension type.
 
 Built-in DeepTutor IDs always win. A plugin cannot replace a built-in
 capability, tool, Reading action, or visualizer by reusing its ID.
@@ -208,6 +231,37 @@ manifest. Existing Python entry-point extensions continue to load classes or
 factories in the host process, but only after the root-manifest gate accepts
 them.
 
+## Managed HTTP and introspection API
+
+Managed HTTP routes are always dispatched under
+`/api/plugins/{plugin-id}{path}`. They cannot override a built-in route and are
+resolved from plugin state once at the start of each request. Only an approved,
+compatible, enabled, managed installation with an installation record can
+expose a route.
+Unapproved, incompatible, broken, deprecated, disabled, external, and missing
+routes all return the same HTTP 404 response.
+
+The host performs route authentication before launching the worker. A public
+route has no host credential dependency; `authenticated` uses the normal
+session/bearer dependency; `admin` uses the host admin dependency. The worker
+request contains only the declared method and path, normalized query values,
+a JSON body no larger than 1 MiB, and the manifest's auth policy. Cookies,
+bearer tokens, and raw host request headers are never forwarded.
+
+Workers implement `handle_http` and return one JSON object containing a
+response `status`, JSON `body`, and optional headers. Allowed statuses are the
+normal application statuses the plugin can own (`200`, `201`, `202`, `204`,
+`400`, `404`, `409`, `422`, and `500`); authentication and redirect statuses
+belong to the host. `Cache-Control` is the only worker-provided response
+header, with values limited to `no-store`, `no-cache`, or `max-age=<seconds>`.
+The host always sets the JSON media type. Invalid worker output becomes a
+generic HTTP 500 response and affects only that plugin request.
+
+`GET /api/plugins/extensions` is authenticated and enumerates the extension
+declarations of approved, enabled, managed installations. It is the discovery
+surface for future frontend pages, persistence schemas, and app connectors;
+those types are declaration-only in this slice.
+
 ## Trust and compatibility
 
 The v1 trust model is human curation plus pinned metadata. Catalog browsing is
@@ -254,6 +308,8 @@ Chrome-specific assets may ship as resources inside such a package.
    publishing workflow.
 
 This repository currently implements Phases A through C, plus the local-wheel
-installation, approval, worker, upgrade, rollback, and uninstall slice of
-Phase E. Remote marketplace distribution, visualizer packaging, signing, and a
-stronger sandbox remain future phases.
+installation, approval, Tool/Capability/HTTP worker, upgrade, rollback,
+uninstall, and managed introspection slice of Phase E. Remote marketplace
+distribution, frontend asset mounting, persistence migrations, app connector
+execution, visualizer packaging, signing, and a stronger sandbox remain future
+phases.

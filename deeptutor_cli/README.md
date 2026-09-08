@@ -226,8 +226,10 @@ deeptutor plugin uninstall <plugin-id>           # 删除托管插件状态、ar
 
 `install` 只接受本地 wheel，不会从市场或远端索引自动下载。安装会先离线读取并校验
 `deeptutor.plugin.json`，再复制 artifact 并创建插件版本私有 venv。安装、升级和回滚都会
-清空旧审批；必须重新检查权限并运行 `approve` 后，Tool/Capability 才会加载。权限字段是
-审批与运行时合同边界，托管 worker 的子进程和 venv 提供依赖隔离，但不是强 OS 沙箱。
+清空旧审批；必须重新检查权限并运行 `approve` 后，Tool/Capability/HTTP route 才会加载。
+托管 HTTP route 固定挂在 `/api/plugins/<plugin-id>/...`，认证由宿主完成，worker 只收到
+方法、路径、查询、JSON body 和审批声明中的认证级别。权限字段是审批与运行时合同边界，
+托管 worker 的子进程和 venv 提供依赖隔离，但不是强 OS 沙箱。
 
 ### `config` — 配置
 

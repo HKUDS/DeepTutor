@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
+from pathlib import PurePosixPath
 import re
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -24,14 +25,20 @@ MANIFEST_FILENAME = "deeptutor.plugin.json"
 
 SUPPORTED_EXTENSION_TYPES = frozenset(
     {
+        "app_connector",
         "capability",
+        "frontend_page",
+        "http_route",
         "loop_capability",
+        "persistence_schema",
         "tool",
         "reading_extension",
         "visualizer",
     }
 )
 SUPPORTED_API_CONTRACTS = frozenset(SUPPORTED_EXTENSION_TYPES)
+SUPPORTED_HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
+SUPPORTED_PLUGIN_AUTH_POLICIES = frozenset({"public", "authenticated", "admin"})
 SUPPORTED_PERMISSION_SCOPES = frozenset(
     {
         "reading",
@@ -48,6 +55,8 @@ _EXTENSION_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _LANGUAGE = re.compile(r"^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$")
 _API_VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+)?$")
+_HTTP_PATH = re.compile(r"^/[A-Za-z0-9][A-Za-z0-9._~-]*(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)*$")
+_OPERATION_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 
 class ManifestValidationError(ValueError):
@@ -80,13 +89,28 @@ class PluginExtension:
     id: str
     entry_point: str = ""
     manifest: str = ""
+    path: str = ""
+    methods: tuple[str, ...] = ()
+    auth: str = ""
+    schema: str = ""
+    operations: tuple[str, ...] = ()
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         result = {"type": self.type, "id": self.id}
         if self.entry_point:
             result["entry_point"] = self.entry_point
         if self.manifest:
             result["manifest"] = self.manifest
+        if self.path:
+            result["path"] = self.path
+        if self.methods:
+            result["methods"] = list(self.methods)
+        if self.auth:
+            result["auth"] = self.auth
+        if self.schema:
+            result["schema"] = self.schema
+        if self.operations:
+            result["operations"] = list(self.operations)
         return result
 
 
@@ -293,14 +317,26 @@ def _dependencies(raw: list[Any]) -> tuple[str, ...]:
 def _extensions(raw: list[Any]) -> tuple[PluginExtension, ...]:
     extensions: list[PluginExtension] = []
     seen: set[str] = set()
+    seen_http_paths: set[str] = set()
+    allowed_fields = {
+        "capability": {"type", "id", "entry_point"},
+        "loop_capability": {"type", "id", "entry_point"},
+        "tool": {"type", "id", "entry_point"},
+        "reading_extension": {"type", "id", "entry_point"},
+        "visualizer": {"type", "id", "manifest"},
+        "http_route": {"type", "id", "entry_point", "path", "methods", "auth"},
+        "frontend_page": {"type", "id", "path", "auth"},
+        "persistence_schema": {"type", "id", "schema", "operations"},
+        "app_connector": {"type", "id", "operations"},
+    }
     for index, row in enumerate(raw):
         label = f"extensions[{index}]"
         if not isinstance(row, Mapping):
             raise ManifestValidationError(f"{label} must be an object")
-        _reject_unknown(label, row, {"type", "id", "entry_point", "manifest"})
         extension_type = _required_str(f"{label}.type", row.get("type"))
         if extension_type not in SUPPORTED_EXTENSION_TYPES:
             raise ManifestValidationError(f"{label}.type is not supported")
+        _reject_unknown(label, row, allowed_fields[extension_type])
         extension_id = _required_str(f"{label}.id", row.get("id"))
         if not _EXTENSION_ID.fullmatch(extension_id):
             raise ManifestValidationError(f"{label}.id is invalid")
@@ -310,11 +346,35 @@ def _extensions(raw: list[Any]) -> tuple[PluginExtension, ...]:
 
         entry_point = _optional_str(f"{label}.entry_point", row.get("entry_point"))
         manifest_path = _optional_str(f"{label}.manifest", row.get("manifest"))
+        path = ""
+        methods: tuple[str, ...] = ()
+        auth = ""
+        schema = ""
+        operations: tuple[str, ...] = ()
+
         if extension_type == "visualizer":
             if not manifest_path:
                 raise ManifestValidationError(f"{label}.manifest is required for visualizers")
-        elif not entry_point:
-            raise ManifestValidationError(f"{label}.entry_point is required")
+        elif extension_type in {"capability", "loop_capability", "tool", "reading_extension"}:
+            if not entry_point:
+                raise ManifestValidationError(f"{label}.entry_point is required")
+        elif extension_type == "http_route":
+            if not entry_point:
+                raise ManifestValidationError(f"{label}.entry_point is required")
+            path = _http_path(f"{label}.path", row.get("path"))
+            if path in seen_http_paths:
+                raise ManifestValidationError(f"{label}.path is declared by multiple routes")
+            seen_http_paths.add(path)
+            methods = _methods(f"{label}.methods", row.get("methods"))
+            auth = _auth_policy(f"{label}.auth", row.get("auth"))
+        elif extension_type == "frontend_page":
+            path = _http_path(f"{label}.path", row.get("path"))
+            auth = _auth_policy(f"{label}.auth", row.get("auth"))
+        elif extension_type == "persistence_schema":
+            schema = _package_path(f"{label}.schema", row.get("schema"))
+            operations = _operations(f"{label}.operations", row.get("operations"))
+        elif extension_type == "app_connector":
+            operations = _operations(f"{label}.operations", row.get("operations"))
 
         extensions.append(
             PluginExtension(
@@ -322,9 +382,64 @@ def _extensions(raw: list[Any]) -> tuple[PluginExtension, ...]:
                 id=extension_id,
                 entry_point=entry_point,
                 manifest=manifest_path,
+                path=path,
+                methods=methods,
+                auth=auth,
+                schema=schema,
+                operations=operations,
             )
         )
     return tuple(extensions)
+
+
+def _http_path(name: str, value: Any) -> str:
+    result = _required_str(name, value, max_length=512)
+    if _HTTP_PATH.fullmatch(result) is None:
+        raise ManifestValidationError(f"{name} must be a static relative /path")
+    return result
+
+
+def _methods(name: str, value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise ManifestValidationError(f"{name} must be a non-empty array")
+    result = tuple(_required_str(f"{name}[]", item, max_length=16) for item in value)
+    if len(set(result)) != len(result):
+        raise ManifestValidationError(f"{name} contains duplicate values")
+    if not set(result).issubset(SUPPORTED_HTTP_METHODS):
+        raise ManifestValidationError(f"{name} contains an unsupported HTTP method")
+    return result
+
+
+def _auth_policy(name: str, value: Any) -> str:
+    result = _required_str(name, value, max_length=32)
+    if result not in SUPPORTED_PLUGIN_AUTH_POLICIES:
+        raise ManifestValidationError(f"{name} must be public, authenticated, or admin")
+    return result
+
+
+def _package_path(name: str, value: Any) -> str:
+    result = _required_str(name, value, max_length=512)
+    if "\\" in result or "\x00" in result:
+        raise ManifestValidationError(f"{name} must be a POSIX package path")
+    path = PurePosixPath(result)
+    if path.is_absolute() or not path.parts or path.suffix != ".json":
+        raise ManifestValidationError(f"{name} must be a packaged JSON file path")
+    if any(part in {"", ".", ".."} for part in path.parts):
+        raise ManifestValidationError(f"{name} must not contain traversal segments")
+    return result
+
+
+def _operations(name: str, value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise ManifestValidationError(f"{name} must be a non-empty array")
+    if len(value) > 32:
+        raise ManifestValidationError(f"{name} supports at most 32 operations")
+    result = tuple(_required_str(f"{name}[]", item, max_length=64) for item in value)
+    if len(set(result)) != len(result):
+        raise ManifestValidationError(f"{name} contains duplicate values")
+    if any(_OPERATION_ID.fullmatch(item) is None for item in result):
+        raise ManifestValidationError(f"{name} contains an invalid operation id")
+    return result
 
 
 def _i18n(raw: Any, *, required_language: str) -> dict[str, str]:
@@ -391,6 +506,8 @@ __all__ = [
     "SCHEMA_VERSION",
     "SUPPORTED_API_CONTRACTS",
     "SUPPORTED_EXTENSION_TYPES",
+    "SUPPORTED_HTTP_METHODS",
+    "SUPPORTED_PLUGIN_AUTH_POLICIES",
     "SUPPORTED_PERMISSION_SCOPES",
     "ManifestValidationError",
     "PluginCompatibility",

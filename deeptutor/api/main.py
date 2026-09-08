@@ -497,6 +497,7 @@ from deeptutor.api.routers import (
     partner_groups,
     partners,
     personas,
+    plugins,
     question,
     question_notebook,
     quiz_judge,
@@ -656,6 +657,7 @@ app.include_router(
     subagents.router, prefix="/api/subagents", tags=["subagents"], dependencies=_auth
 )
 app.include_router(personas.router, prefix="/api", tags=["personas"], dependencies=_auth)
+app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
 app.include_router(tools_router.router, prefix="/api/tools", tags=["tools"], dependencies=_auth)
 app.include_router(system.router, prefix="/api/system", tags=["system"], dependencies=_auth)
 app.include_router(voice.router, prefix="/api/voice", tags=["voice"], dependencies=_auth)

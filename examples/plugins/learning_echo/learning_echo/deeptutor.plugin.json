@@ -15,7 +15,8 @@
     "deeptutor": ">=1.6.0,<3",
     "api": {
       "tool": "1",
-      "capability": "1"
+      "capability": "1",
+      "http_route": "1"
     }
   },
   "permissions": {
@@ -37,6 +38,14 @@
       "type": "capability",
       "id": "learning_echo_capability",
       "entry_point": "learning_echo.worker"
+    },
+    {
+      "type": "http_route",
+      "id": "learning_echo_http",
+      "entry_point": "learning_echo.worker",
+      "path": "/echo",
+      "methods": ["POST"],
+      "auth": "public"
     }
   ]
 }

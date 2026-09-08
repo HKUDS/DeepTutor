@@ -16,6 +16,8 @@ def test_only_canonical_transport_and_resource_routes_are_registered() -> None:
         "/api/mastery-paths/topics",
         "/api/notebooks",
         "/api/personas",
+        "/api/plugins/extensions",
+        "/api/plugins/{plugin_id}/{plugin_path:path}",
         "/api/sessions",
         "/api/system/runtime",
         "/files/attachments/{session_id}/{attachment_id}/{filename:path}",

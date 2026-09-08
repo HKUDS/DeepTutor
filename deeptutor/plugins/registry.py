@@ -35,8 +35,12 @@ logger = logging.getLogger(__name__)
 STATE_SCHEMA_VERSION = 2
 LEGACY_STATE_SCHEMA_VERSION = 1
 HOST_API_VERSIONS = {
+    "app_connector": Version("1"),
     "capability": Version("1"),
+    "frontend_page": Version("1"),
+    "http_route": Version("1"),
     "loop_capability": Version("1"),
+    "persistence_schema": Version("1"),
     "tool": Version("1"),
     "reading_extension": Version("1"),
     "visualizer": Version("1"),
