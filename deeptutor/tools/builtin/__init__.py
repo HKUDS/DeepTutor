@@ -221,6 +221,89 @@ def _kb_files_limit(raw: Any) -> int:
     return min(requested, KB_FILES_MAX_LIMIT)
 
 
+class KnowledgeFrontierTool(_PromptHintsMixin, BaseTool):
+    """Discover recent research that extends an attached knowledge base."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="knowledge_frontier",
+            description=(
+                "Summarize the themes and gaps in one attached knowledge base, "
+                "then search arXiv for recent work that may extend it. Use when "
+                "the learner asks for frontier papers, new research, or what to "
+                "study next; the tool recommends but never imports sources."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="kb_name",
+                    type="string",
+                    description="Knowledge base to inspect. Must be one of the attached knowledge bases.",
+                ),
+                ToolParameter(
+                    name="focus",
+                    type="string",
+                    description=(
+                        "Optional narrower research goal, method, or topic. "
+                        "Omit to cover the knowledge base broadly."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="max_papers",
+                    type="integer",
+                    description="Maximum recommendations to return (default 5, max 10).",
+                    required=False,
+                    default=5,
+                ),
+                ToolParameter(
+                    name="years_limit",
+                    type="integer",
+                    description="Only include preprints from the last N years (default 3, max 10).",
+                    required=False,
+                    default=3,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.multi_user.knowledge_access import resolve_kb_manifest
+        from deeptutor.tools.knowledge_frontier import discover_frontier
+
+        kb_name = str(kwargs.get("kb_name") or "").strip()
+        if not kb_name:
+            raise ValueError("knowledge_frontier requires an explicit kb_name.")
+
+        manifest = await asyncio.to_thread(resolve_kb_manifest, kb_name, limit=20)
+        if manifest is None:
+            raise ValueError(f"Knowledge base '{kb_name}' is not accessible.")
+
+        result = await discover_frontier(
+            kb_name=kb_name,
+            manifest=manifest,
+            focus=kwargs.get("focus", ""),
+            max_papers=kwargs.get("max_papers", 5),
+            years_limit=kwargs.get("years_limit", 3),
+            api_key=kwargs.get("api_key"),
+            base_url=kwargs.get("base_url"),
+            model=kwargs.get("model"),
+        )
+        paper_sources = [
+            {
+                "type": "paper",
+                "provider": "arxiv",
+                "url": paper.get("url", ""),
+                "title": paper.get("title", ""),
+                "arxiv_id": paper.get("arxiv_id", ""),
+            }
+            for paper in result["metadata"]["papers"]
+        ]
+        return ToolResult(
+            content=result["content"],
+            sources=[*result["kb_sources"], *paper_sources],
+            metadata=result["metadata"],
+        )
+
+
 class WebSearchTool(_PromptHintsMixin, BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -1535,6 +1618,7 @@ USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
 CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "rag",
     "kb_files",
+    "knowledge_frontier",
     "read_source",
     "read_memory",
     "write_memory",
@@ -1593,6 +1677,7 @@ __all__ = [
     "GithubTool",
     "KbFilesTool",
     "ImagegenTool",
+    "KnowledgeFrontierTool",
     "VideogenTool",
     "ListNotebookTool",
     "PaperSearchToolWrapper",
