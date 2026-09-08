@@ -22,7 +22,7 @@ export function AdminLink({ collapsed = false }: AdminLinkProps) {
   if (collapsed) {
     return (
       <Link
-        href="/admin/users"
+        href="/admin"
         className={`rounded-lg p-2 transition-colors
           ${
             active
@@ -30,7 +30,7 @@ export function AdminLink({ collapsed = false }: AdminLinkProps) {
               : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
           }`}
         aria-label={t("Admin")}
-        title={t("Admin — User Management")}
+        title={t("Admin console")}
       >
         <ShieldCheck size={16} strokeWidth={1.5} />
       </Link>
@@ -39,7 +39,7 @@ export function AdminLink({ collapsed = false }: AdminLinkProps) {
 
   return (
     <Link
-      href="/admin/users"
+      href="/admin"
       className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors
         ${
           active
