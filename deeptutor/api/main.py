@@ -496,6 +496,9 @@ from deeptutor.api.routers import (
     outputs,
     partner_groups,
     partners,
+    payment,
+    payment_admin,
+    payment_online,
     personas,
     question,
     question_notebook,
@@ -652,6 +655,28 @@ app.include_router(
     dependencies=_auth,
 )
 app.include_router(skills.router, prefix="/api/skills", tags=["skills"], dependencies=_auth)
+# Enterprise commerce — CDK redemption codes.  Admin endpoints inside the
+# router carry their own ``require_admin``; the redeem endpoint is reachable
+# by any authenticated account.
+app.include_router(payment.router, prefix="/api/payment", tags=["payment"], dependencies=_auth)
+# Online order + gateway-notify surface.  The notify/return callbacks are
+# public by design (gateways cannot carry a session JWT) so this router is
+# mounted WITHOUT the blanket ``_auth`` dependency — each learner-facing
+# route declares its own ``require_auth``.
+app.include_router(
+    payment_online.router,
+    prefix="/api/payment",
+    tags=["payment-online"],
+)
+# Enterprise commerce — admin configuration and ledger surface (gateways,
+# pricing plans, order audit).  Every route inside carries its own
+# ``require_admin``; mounted under the ``_auth`` prefix so unauthenticated
+# requests are already rejected before reaching the admin gates.
+app.include_router(
+    payment_admin.router,
+    prefix="/api/payment",
+    tags=["payment-admin"],
+)
 app.include_router(
     subagents.router, prefix="/api/subagents", tags=["subagents"], dependencies=_auth
 )
