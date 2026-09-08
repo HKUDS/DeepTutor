@@ -80,12 +80,8 @@ def _plugin_registry(tmp_path: Path, extensions: list[dict] | None = None) -> Pl
     package.mkdir()
     if extensions is not None:
         manifest["extensions"] = extensions
-        manifest["compatibility"]["api"] = {
-            extension["type"]: "1" for extension in extensions
-        }
-    package.joinpath("deeptutor.plugin.json").write_text(
-        json.dumps(manifest), encoding="utf-8"
-    )
+        manifest["compatibility"]["api"] = {extension["type"]: "1" for extension in extensions}
+    package.joinpath("deeptutor.plugin.json").write_text(json.dumps(manifest), encoding="utf-8")
     file_ref = SimpleNamespace(name="deeptutor.plugin.json", path="deeptutor.plugin.json")
     dist = SimpleNamespace(
         files=[file_ref],
@@ -101,9 +97,7 @@ def _plugin_registry(tmp_path: Path, extensions: list[dict] | None = None) -> Pl
 
 def _patch_plugin_registry(monkeypatch, registry: PluginRegistry) -> None:
     monkeypatch.setattr("deeptutor.plugins.registry.PluginRegistry", lambda: registry)
-    monkeypatch.setattr(
-        "deeptutor.plugins.runtime.load_enabled_tools", lambda _registry: ()
-    )
+    monkeypatch.setattr("deeptutor.plugins.runtime.load_enabled_tools", lambda _registry: ())
     monkeypatch.setattr(
         "deeptutor.plugins.runtime.load_enabled_capabilities",
         lambda _registry: (),
@@ -121,9 +115,7 @@ def _patch_entry_points(monkeypatch, expected_group: str, name: str, loaded) -> 
 def test_tool_entry_point_waits_for_approval(monkeypatch, tmp_path) -> None:
     registry = _plugin_registry(tmp_path)
     _patch_plugin_registry(monkeypatch, registry)
-    _patch_entry_points(
-        monkeypatch, "deeptutor.tools", "declared_tool", _EchoTool
-    )
+    _patch_entry_points(monkeypatch, "deeptutor.tools", "declared_tool", _EchoTool)
 
     blocked = ToolRegistry()
     blocked.load_plugins()
@@ -144,9 +136,7 @@ def test_tool_entry_point_waits_for_approval(monkeypatch, tmp_path) -> None:
 async def test_capability_entry_point_waits_for_approval(monkeypatch, tmp_path) -> None:
     registry = _plugin_registry(tmp_path)
     _patch_plugin_registry(monkeypatch, registry)
-    _patch_entry_points(
-        monkeypatch, "deeptutor.extensions", "declared_capability", _EchoCapability
-    )
+    _patch_entry_points(monkeypatch, "deeptutor.extensions", "declared_capability", _EchoCapability)
 
     blocked = CapabilityRegistry()
     blocked.load_plugins()
