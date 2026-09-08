@@ -91,6 +91,15 @@ interface ReaderAskDetail {
   unit?: string;
 }
 
+// Panel sizing constraints for the desktop three-column workspace. Every
+// column is user-resizable; these are the floors/ceilings the drag handlers
+// and the grid template honor, so the reader never drops below a usable
+// column no matter how wide the side panels get.
+const NAVIGATOR_MIN_WIDTH = 184;
+const NAVIGATOR_MAX_WIDTH = 400;
+const READER_MIN_WIDTH = 360;
+const COMPANION_MIN_WIDTH = 300;
+
 export function ReadingWorkspacePage() {
   const params = useParams<{ workspaceId: string }>();
   const workspaceId = params.workspaceId;
@@ -160,11 +169,26 @@ export function ReadingWorkspacePage() {
       const stored = Number(
         browserStorage.readRaw("local", "dt.reader.companionWidth"),
       );
-      return Number.isFinite(stored) && stored >= 300 && stored <= 1200
+      return Number.isFinite(stored) && stored >= 300 && stored <= 2400
         ? stored
         : 380;
     } catch {
       return 380;
+    }
+  });
+  const [navigatorWidth, setNavigatorWidth] = useState(() => {
+    if (typeof window === "undefined") return 210;
+    try {
+      const stored = Number(
+        browserStorage.readRaw("local", "dt.reader.navigatorWidth"),
+      );
+      return Number.isFinite(stored) &&
+        stored >= NAVIGATOR_MIN_WIDTH &&
+        stored <= NAVIGATOR_MAX_WIDTH
+        ? stored
+        : 210;
+    } catch {
+      return 210;
     }
   });
   const [isDesktopWide, setIsDesktopWide] = useState(false);
@@ -300,12 +324,13 @@ export function ReadingWorkspacePage() {
       event.preventDefault();
       const startX = event.clientX;
       const startWidth = companionWidth;
-      const reserved = navigatorCollapsed ? 420 : 650;
-      // The companion may claim up to half the window; the reader track keeps
-      // whatever remains (its own minmax(360px,1fr) floor still applies).
+      // The companion may grow until the reader — and the open navigator —
+      // are left at their minimum widths; nothing is otherwise capped.
       const max = Math.max(
-        300,
-        Math.min(window.innerWidth - reserved, Math.round(window.innerWidth / 2)),
+        COMPANION_MIN_WIDTH,
+        window.innerWidth -
+          (navigatorCollapsed ? 0 : navigatorWidth) -
+          READER_MIN_WIDTH,
       );
       const onMove = (moveEvent: PointerEvent) => {
         const next = startWidth + (startX - moveEvent.clientX);
@@ -330,7 +355,43 @@ export function ReadingWorkspacePage() {
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [companionWidth, navigatorCollapsed],
+    [companionWidth, navigatorCollapsed, navigatorWidth],
+  );
+
+  const startNavigatorResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = navigatorWidth;
+      const onMove = (moveEvent: PointerEvent) => {
+        const next = startWidth + (moveEvent.clientX - startX);
+        setNavigatorWidth(
+          Math.min(
+            NAVIGATOR_MAX_WIDTH,
+            Math.max(NAVIGATOR_MIN_WIDTH, Math.round(next)),
+          ),
+        );
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        setNavigatorWidth((current) => {
+          try {
+            browserStorage.writeRaw(
+              "local",
+              "dt.reader.navigatorWidth",
+              String(current),
+            );
+          } catch {
+            // A blocked or private store just resets to default next time.
+          }
+          return current;
+        });
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [navigatorWidth],
   );
 
   if (loading) {
@@ -378,13 +439,30 @@ export function ReadingWorkspacePage() {
   // in this case. Every other combination (companion closed, or too narrow
   // for a three-column layout) is exactly what the className already says.
   const showResizeHandle = isDesktopWide && companionOpen;
-  const gridStyle: React.CSSProperties | undefined = showResizeHandle
-    ? {
-        gridTemplateColumns: navigatorCollapsed
-          ? `minmax(360px,1fr) 5px ${companionWidth}px`
-          : `minmax(184px,230px) minmax(360px,1fr) 5px ${companionWidth}px`,
-      }
-    : undefined;
+  // The navigator track only exists while the navigator is not collapsed, so
+  // its own handle follows the same condition.
+  const showNavigatorHandle = showResizeHandle && !navigatorCollapsed;
+  let gridStyle: React.CSSProperties | undefined;
+  if (showResizeHandle) {
+    // Guard against a stored width that no longer fits (the window moved to
+    // a smaller screen since it was persisted): the reader always keeps its
+    // minimum, so clamp the companion to whatever the other tracks leave.
+    const ceiling = Math.max(
+      COMPANION_MIN_WIDTH,
+      window.innerWidth -
+        (navigatorCollapsed ? 0 : navigatorWidth) -
+        READER_MIN_WIDTH,
+    );
+    const width = Math.min(companionWidth, ceiling);
+    gridStyle = {
+      // Five tracks with the navigator open — panel, its divider, reader,
+      // companion divider, companion — so each drag handle owns a track and
+      // auto-placement lines the children up. Collapsed drops the first two.
+      gridTemplateColumns: navigatorCollapsed
+        ? `minmax(${READER_MIN_WIDTH}px,1fr) 5px ${width}px`
+        : `${navigatorWidth}px 5px minmax(${READER_MIN_WIDTH}px,1fr) 5px ${width}px`,
+    };
+  }
 
   return (
     <main className="reading-v2 flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)] dark:bg-[var(--background)] dark:text-[var(--foreground)]">
@@ -644,6 +722,18 @@ export function ReadingWorkspacePage() {
             }
           }}
         />
+
+        {showNavigatorHandle && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t("Resize contents navigator")}
+            onPointerDown={startNavigatorResize}
+            className="group/resize relative z-10 hidden cursor-col-resize xl:block"
+          >
+            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--border)] transition-colors group-hover/resize:bg-[var(--primary)] group-active/resize:bg-[var(--primary)]" />
+          </div>
+        )}
 
         <section className="relative min-h-0 min-w-0 overflow-hidden border-r border-[var(--border)] bg-[var(--secondary)] dark:border-[var(--border)] dark:bg-[var(--secondary)]">
           {!activeTab ? (
