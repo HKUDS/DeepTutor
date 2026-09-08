@@ -277,7 +277,6 @@ def test_placeholder_detection_uses_primary_key_of_list(monkeypatch) -> None:
         config_module.get_llm_config()
 
 
-
 def _catalog_with_profiles() -> dict:
     return {
         "services": {
@@ -315,7 +314,6 @@ def _patch_catalog(monkeypatch, catalog: dict | None) -> None:
             return catalog
 
     monkeypatch.setattr(mc_module, "get_model_catalog_service", lambda: _FakeService())
-
 
 
 def _resolved_for_selection(selection: dict | None) -> ResolvedLLMConfig:
