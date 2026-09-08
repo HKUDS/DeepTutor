@@ -3026,6 +3026,8 @@
   "Reading conversations": "阅读对话",
   "Jump to a question": "跳到某个提问",
   "Resize reading companion": "调整阅读伙伴宽度",
+  "Focus reading companion": "对话专注模式",
+  "Exit companion focus": "退出专注模式",
   "Delete “{{title}}”? The transcript cannot be recovered.": "删除「{{title}}」？对话记录将无法恢复。",
   "New reading conversation": "新建阅读对话",
   "Reading conversation": "阅读对话",

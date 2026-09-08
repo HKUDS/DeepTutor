@@ -18,6 +18,8 @@ import {
   History,
   Link2,
   Loader2,
+  Maximize2,
+  Minimize2,
   MoreHorizontal,
   NotebookPen,
   PanelLeftClose,
@@ -158,7 +160,7 @@ export function ReadingWorkspacePage() {
       const stored = Number(
         browserStorage.readRaw("local", "dt.reader.companionWidth"),
       );
-      return Number.isFinite(stored) && stored >= 300 && stored <= 640
+      return Number.isFinite(stored) && stored >= 300 && stored <= 1200
         ? stored
         : 380;
     } catch {
@@ -197,6 +199,43 @@ export function ReadingWorkspacePage() {
   const [companionOpen, setCompanionOpen] = useState(true);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false);
+  // One-click focus preset: collapse the contents navigator and widen the
+  // companion to half the window; exiting restores both. Ephemeral like
+  // navigatorCollapsed — only the width itself persists across sessions.
+  const [companionFocus, setCompanionFocus] = useState(false);
+  const preFocusWidthRef = useRef<number | null>(null);
+
+  const toggleCompanionFocus = useCallback(() => {
+    if (companionFocus) {
+      setCompanionFocus(false);
+      setNavigatorCollapsed(false);
+      const restore = preFocusWidthRef.current;
+      if (restore !== null) {
+        setCompanionWidth(restore);
+        try {
+          browserStorage.writeRaw(
+            "local",
+            "dt.reader.companionWidth",
+            String(restore),
+          );
+        } catch {
+          // A blocked or private store just resets to default next time.
+        }
+      }
+      preFocusWidthRef.current = null;
+      return;
+    }
+    preFocusWidthRef.current = companionWidth;
+    setCompanionFocus(true);
+    setNavigatorCollapsed(true);
+    const half = Math.max(300, Math.round(window.innerWidth / 2));
+    setCompanionWidth(half);
+    try {
+      browserStorage.writeRaw("local", "dt.reader.companionWidth", String(half));
+    } catch {
+      // A blocked or private store just resets to default next time.
+    }
+  }, [companionFocus, companionWidth]);
   const [documentJump, setDocumentJump] = useState<JumpRequest | null>(null);
   const [pageHeadings, setPageHeadings] = useState<ReaderHeading[]>([]);
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
@@ -262,7 +301,12 @@ export function ReadingWorkspacePage() {
       const startX = event.clientX;
       const startWidth = companionWidth;
       const reserved = navigatorCollapsed ? 420 : 650;
-      const max = Math.max(300, Math.min(640, window.innerWidth - reserved));
+      // The companion may claim up to half the window; the reader track keeps
+      // whatever remains (its own minmax(360px,1fr) floor still applies).
+      const max = Math.max(
+        300,
+        Math.min(window.innerWidth - reserved, Math.round(window.innerWidth / 2)),
+      );
       const onMove = (moveEvent: PointerEvent) => {
         const next = startWidth + (startX - moveEvent.clientX);
         setCompanionWidth(Math.min(max, Math.max(300, Math.round(next))));
@@ -488,6 +532,30 @@ export function ReadingWorkspacePage() {
               <PanelLeftClose size={14} />
             )}
           </button>
+          {isDesktopWide && companionOpen && (
+            <button
+              type="button"
+              onClick={toggleCompanionFocus}
+              className={`flex size-7 items-center justify-center rounded-md transition hover:bg-[var(--muted)] ${
+                companionFocus
+                  ? "text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--primary)]"
+              }`}
+              aria-label={
+                companionFocus
+                  ? t("Exit companion focus")
+                  : t("Focus reading companion")
+              }
+              aria-pressed={companionFocus}
+              title={
+                companionFocus
+                  ? t("Exit companion focus")
+                  : t("Focus reading companion")
+              }
+            >
+              {companionFocus ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
