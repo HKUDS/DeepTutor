@@ -683,7 +683,13 @@ class ContentWorkspaceService:
                 generated=relative.startswith("outputs/"),
             )
             manifest = manifests / f"{item_id}.json"
-            atomic_update(manifest, lambda _stored, payload=item.to_dict(): payload)
+
+            def replace_manifest(
+                _stored: dict[str, Any], payload: dict[str, Any] = item.to_dict()
+            ) -> dict[str, Any]:
+                return payload
+
+            atomic_update(manifest, replace_manifest)
             published.append(item)
         return published
 
