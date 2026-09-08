@@ -120,7 +120,7 @@ def load_catalog(path: Path = CATALOG_PATH) -> tuple[CatalogEntry, ...]:
         return ()
 
     entries: list[CatalogEntry] = []
-    seen: set[str] = set()
+    seen: set[str | tuple[str, str]] = set()
     for row in payload["entries"]:
         try:
             entry = parse_catalog_entry(row, schema_version=schema_version)

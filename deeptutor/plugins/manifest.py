@@ -96,7 +96,7 @@ class PluginExtension:
     operations: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        result = {"type": self.type, "id": self.id}
+        result: dict[str, Any] = {"type": self.type, "id": self.id}
         if self.entry_point:
             result["entry_point"] = self.entry_point
         if self.manifest:

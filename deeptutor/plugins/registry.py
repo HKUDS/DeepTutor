@@ -90,7 +90,7 @@ class PluginRecord:
         return source.get("en", "") if source else ""
 
     def to_dict(self) -> dict[str, Any]:
-        result = {
+        result: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "version": self.version,
@@ -591,7 +591,7 @@ def _manifest_files(dist: Distribution) -> list[tuple[Path, Any, str]]:
     for item in files:
         if item.name.lower() != MANIFEST_FILENAME:
             continue
-        path = dist.locate_file(item)
+        path = Path(str(dist.locate_file(item)))
         try:
             results.append((Path(path), json.loads(Path(path).read_text(encoding="utf-8")), ""))
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -615,7 +615,7 @@ def _raw_id(raw: Any) -> str:
 
 
 def _distribution_name(dist: Distribution) -> str:
-    return dist.metadata.get("Name", "") or dist.metadata.get("name", "") or "unknown"
+    return dist.metadata["Name"] or dist.metadata["name"] or "unknown"
 
 
 __all__ = [

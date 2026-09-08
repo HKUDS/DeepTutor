@@ -240,18 +240,21 @@ def register(app: typer.Typer) -> None:
             return
 
         try:
-            result = PluginLifecycleManager().install(local_artifact, expected_sha256=sha256)
+            lifecycle_result = PluginLifecycleManager().install(
+                local_artifact,
+                expected_sha256=sha256,
+            )
         except PluginLifecycleError as exc:
             console.print(f"[red]{exc}[/]")
             raise typer.Exit(code=1) from None
         console.print_json(
             json_module.dumps(
                 {
-                    "plugin": result.plugin_id,
-                    "version": result.version,
-                    "action": result.action,
-                    "sha256": result.artifact_sha256,
-                    "venv": str(result.venv_path),
+                    "plugin": lifecycle_result.plugin_id,
+                    "version": lifecycle_result.version,
+                    "action": lifecycle_result.action,
+                    "sha256": lifecycle_result.artifact_sha256,
+                    "venv": str(lifecycle_result.venv_path),
                     "next_step": "review permissions, then run deeptutor plugin approve",
                 },
                 indent=2,
