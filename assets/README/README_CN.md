@@ -390,6 +390,8 @@ DeepTutor 将已安装的代码、私有运行时主目录与可选的内容工�
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
 </div>
 
+> **截图状态：** 总览图已更新到 v1.6.5。下方功能截图仍是 v1.4.6 参考图，正在分批替换；请查看[截图清单](../../UI_SCREENSHOT_REFRESH.md)。它们适合说明工作流，不代表当前精确导航。
+
 <details>
 <summary><b>🏗️ 系统架构</b></summary>
 

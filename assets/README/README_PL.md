@@ -390,6 +390,8 @@ Jeśli odpowiedź pomija wcześniejsze ograniczenie, przywołuje słabe dowody l
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="Strona główna DeepTutor — obszar roboczy Chat z każdą powierzchnią w pasku bocznym" width="900">
 </div>
 
+> **Stan zrzutów ekranu:** widok ogólny jest aktualny dla wersji v1.6.5. Poniższe zrzuty powierzchni pozostają odniesieniami z wersji v1.4.6 w trakcie aktualizacji; zobacz [inwentarz zrzutów](../../UI_SCREENSHOT_REFRESH.md). Służą do zrozumienia przepływów, a nie jako dokładna bieżąca nawigacja.
+
 <details>
 <summary><b>🏗️ Architektura systemu</b></summary>
 
