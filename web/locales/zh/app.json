@@ -4006,5 +4006,8 @@
   "references": "引用",
   "That question is no longer waiting for an answer, so this was sent as a new message.": "这道题已经不再等待作答，所以这条内容作为新消息发送了。",
   "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "知识库名称不能包含 {{chars}} —— 这些字符会切断路径和 URL。",
-  "Select text in the document first.": "请先在文档中选中文字。"
+  "Select text in the document first.": "请先在文档中选中文字。",
+  "Couldn't load memory settings": "无法加载记忆设置",
+  "Assigned models": "已分配模型",
+  "No assigned models": "暂无已分配模型"
 }

@@ -403,6 +403,9 @@ async def require_admin(
 
 def _learning_surface_for_path(path: str) -> str:
     normalized = "/" + str(path or "").lstrip("/")
+    # Model selection belongs to chat. Keep all other settings routes denied.
+    if normalized == "/api/settings/llm-options":
+        return "chat"
     for root, surface in (
         ("/api/reading", "reading"),
         ("/api/courses", "reading"),
@@ -422,6 +425,12 @@ async def require_learning_surface(
 ) -> None:
     """Second-stage default-deny guard for configured learning accounts."""
     from deeptutor.multi_user.learning_access import assert_learning_surface
+
+    # The typed UISettingsUpdate body only changes the caller's presentation
+    # preferences. Keep appearance usable even for reading-only accounts,
+    # without opening any model, tool, or deployment configuration routes.
+    if request.method == "PUT" and request.url.path == "/api/settings/ui":
+        return
 
     try:
         assert_learning_surface(_learning_surface_for_path(request.url.path))

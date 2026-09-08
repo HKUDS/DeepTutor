@@ -11,21 +11,15 @@ import { ProfileLink } from "@/components/auth/ProfileLink";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import {
   deleteSession,
-  listSessions,
   updateSessionOrganization,
   updateSessionTitle,
   type SessionOrganizationPatch,
   type SessionSummary,
 } from "@/lib/session-api";
-import { listCourses, type StudyCourse } from "@/lib/courses-api";
-import {
-  fetchReadingCollectionIndex,
-  type ReadingCollectionLabel,
-} from "@/lib/reading-workspace-api";
-import {
-  fetchMasteryTopicIndex,
-  type MasteryTopicLabel,
-} from "@/lib/learning-api";
+import type { StudyCourse } from "@/lib/courses-api";
+import type { ReadingCollectionLabel } from "@/lib/reading-workspace-api";
+import type { MasteryTopicLabel } from "@/lib/learning-api";
+import { loadSidebarSummaries } from "@/lib/sidebar-summaries";
 import { sessionRoute } from "@/lib/mastery-session";
 import { subscribeSessionChanges } from "@/lib/session-events";
 
@@ -53,20 +47,11 @@ export default function WorkspaceSidebar() {
       setLoadingSessions(true);
     }
     try {
-      // Topic labels are only there to name a group heading, so a failure to
-      // load them must not cost the session list: the conversations then read
-      // as ungrouped rather than as missing.
-      const [nextSessions, nextCourses, nextTopics, nextCollections] =
-        await Promise.all([
-          listSessions(50, 0, { force: true }),
-          listCourses({ force: true }),
-          fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
-          fetchReadingCollectionIndex(),
-        ]);
-      setSessions(nextSessions);
-      setCourses(nextCourses);
-      setMasteryTopics(nextTopics);
-      setReadingCollections(nextCollections);
+      const next = await loadSidebarSummaries();
+      setSessions(next.sessions);
+      setCourses(next.courses);
+      setMasteryTopics(next.masteryTopics);
+      setReadingCollections(next.readingCollections);
       hasLoadedSessionsRef.current = true;
     } catch (error) {
       console.error("Failed to load sessions", error);
