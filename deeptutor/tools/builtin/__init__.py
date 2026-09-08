@@ -568,6 +568,11 @@ class PaperSearchToolWrapper(_PromptHintsMixin, BaseTool):
 class GeoGebraAnalysisTool(_PromptHintsMixin, BaseTool):
     """Analyze a math-problem image and generate GeoGebra visualization commands."""
 
+    # Ceiling on a single vision analysis call (see the timeout branch in
+    # ``execute``). Reasoning VL models legitimately take minutes on hard
+    # figures; this only guards against provider stalls.
+    _VISION_ANALYSIS_TIMEOUT_S = 240
+
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="geogebra_analysis",
@@ -623,9 +628,29 @@ class GeoGebraAnalysisTool(_PromptHintsMixin, BaseTool):
         )
 
         try:
-            result = await agent.process(
-                question_text=question,
-                image_base64=image_base64,
+            # Bound the vision call: reasoning models (e.g. Qwen3-VL-*-Thinking)
+            # can take minutes on hard figures, but an unbounded await would
+            # hang the whole turn if the provider stalls. 240s covers long
+            # thinking while still failing loudly instead of silently.
+            result = await asyncio.wait_for(
+                agent.process(
+                    question_text=question,
+                    image_base64=image_base64,
+                ),
+                timeout=self._VISION_ANALYSIS_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "geogebra analysis timed out after %ss",
+                self._VISION_ANALYSIS_TIMEOUT_S,
+            )
+            return ToolResult(
+                content=(
+                    f"Vision analysis timed out after {self._VISION_ANALYSIS_TIMEOUT_S}s "
+                    "(the multimodal model is slow or unresponsive). "
+                    "Tell the user to retry, or describe the figure in text."
+                ),
+                success=False,
             )
         except Exception as exc:
             logger.exception("GeoGebra analysis pipeline failed")
