@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from deeptutor.services.llm.config import LLMConfig
+from deeptutor.services.llm.exceptions import LLMAPIError
 from deeptutor.services.llm.factory import complete, complete_with_config, stream
 from deeptutor.services.llm.provider_core.base import LLMResponse
 
@@ -339,3 +340,50 @@ async def test_complete_passes_retry_delays(monkeypatch) -> None:
     await complete("hello", max_retries=3, retry_delay=0.5, exponential_backoff=True)
 
     assert provider.complete_kwargs["retry_delays"] == (0.5, 1.0, 2.0)
+
+
+@pytest.mark.asyncio
+async def test_stream_raises_when_provider_reports_error_before_any_output(monkeypatch) -> None:
+    """An error-shaped response must surface as an exception, not as answer text."""
+    cfg = _make_cfg()
+    provider = _FakeProvider(
+        stream_chunk="",
+        stream_response=LLMResponse(content="Error calling LLM: boom", finish_reason="error"),
+    )
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", lambda: cfg)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider",
+        lambda _config: provider,
+    )
+
+    chunks = []
+    with pytest.raises(LLMAPIError, match="boom"):
+        async for chunk in stream("hello"):
+            chunks.append(chunk)
+
+    assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_stream_keeps_delivered_output_when_provider_reports_error_late(
+    monkeypatch,
+) -> None:
+    """Text already streamed stays the answer; a late error neither replays nor crashes."""
+    cfg = _make_cfg()
+    provider = _FakeProvider(
+        stream_chunk="Hello",
+        stream_response=LLMResponse(content="Error calling LLM: boom", finish_reason="error"),
+    )
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", lambda: cfg)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider",
+        lambda _config: provider,
+    )
+
+    chunks = []
+    async for chunk in stream("hello"):
+        chunks.append(chunk)
+
+    assert chunks == ["Hello"]
