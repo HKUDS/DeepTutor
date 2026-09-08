@@ -576,7 +576,8 @@ class CodexOAuthService:
                 ):
                     remove_codex_catalog(self._model_catalog)
             operation.operation_state = "fetching_models"
-            await self._catalog.invalidate()
+            # Catalog reads reject another account or credential generation,
+            # while retaining this account's last successful client version.
             snapshot = await self._catalog.get(committed, force=True)
             async with self._catalog_sync_lock:
                 sync_result = sync_codex_catalog(
@@ -651,7 +652,12 @@ class CodexOAuthService:
                     "Codex authentication changed before models could be refreshed.",
                     409,
                 )
-            snapshot = await self._catalog.get(credentials, force=True)
+            try:
+                snapshot = await self._catalog.get(credentials, force=True)
+            except CodexAuthError as exc:
+                if exc.code in {"catalog_unauthorized", "catalog_forbidden"}:
+                    self._last_snapshot = None
+                raise
             sync_codex_catalog(
                 self._model_catalog,
                 snapshot,
@@ -744,7 +750,8 @@ class CodexOAuthService:
             refreshed,
             expected_generation=credentials.generation,
         )
-        await self._catalog.invalidate()
+        # Generation matching invalidates model data without discarding the
+        # same account's successful catalog client version.
         return committed
 
     async def recover_after_unauthorized(self, generation: int) -> None:
@@ -930,7 +937,7 @@ class CodexOAuthService:
             cached = CatalogSnapshot.from_dict(payload)
         except CodexAuthError:
             return None
-        if cached.generation != credentials.generation:
+        if not cached.models_valid or cached.generation != credentials.generation:
             return None
         return cached
 
