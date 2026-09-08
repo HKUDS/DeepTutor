@@ -203,6 +203,12 @@ def parse_manifest(raw: Mapping[str, Any] | None) -> PluginManifestData:
     if not isinstance(extensions_raw, list):
         raise ManifestValidationError("extensions must be an array")
     extensions = _extensions(extensions_raw)
+    if any(extension.type == "frontend_page" and extension.manifest for extension in extensions):
+        ui_scopes = permissions.scopes.get("ui", ())
+        if "sandboxed-iframe" not in ui_scopes:
+            raise ManifestValidationError(
+                "executable frontend_page requires permissions.ui sandboxed-iframe"
+            )
 
     return PluginManifestData(
         schema_version=schema_version,
@@ -325,7 +331,7 @@ def _extensions(raw: list[Any]) -> tuple[PluginExtension, ...]:
         "reading_extension": {"type", "id", "entry_point"},
         "visualizer": {"type", "id", "manifest"},
         "http_route": {"type", "id", "entry_point", "path", "methods", "auth"},
-        "frontend_page": {"type", "id", "path", "auth"},
+        "frontend_page": {"type", "id", "path", "auth", "manifest"},
         "persistence_schema": {"type", "id", "schema", "operations"},
         "app_connector": {"type", "id", "operations"},
     }
@@ -370,6 +376,8 @@ def _extensions(raw: list[Any]) -> tuple[PluginExtension, ...]:
         elif extension_type == "frontend_page":
             path = _http_path(f"{label}.path", row.get("path"))
             auth = _auth_policy(f"{label}.auth", row.get("auth"))
+            if manifest_path:
+                manifest_path = _package_path(f"{label}.manifest", manifest_path)
         elif extension_type == "persistence_schema":
             schema = _package_path(f"{label}.schema", row.get("schema"))
             operations = _operations(f"{label}.operations", row.get("operations"))

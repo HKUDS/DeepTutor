@@ -16,7 +16,8 @@
     "api": {
       "tool": "1",
       "capability": "1",
-      "http_route": "1"
+      "http_route": "1",
+      "frontend_page": "1"
     }
   },
   "permissions": {
@@ -25,7 +26,7 @@
     "network": [],
     "models": [],
     "storage": [],
-    "ui": []
+    "ui": ["sandboxed-iframe"]
   },
   "dependencies": [],
   "extensions": [
@@ -46,6 +47,13 @@
       "path": "/echo",
       "methods": ["POST"],
       "auth": "public"
+    },
+    {
+      "type": "frontend_page",
+      "id": "learning_echo_page",
+      "path": "/learning-echo",
+      "auth": "authenticated",
+      "manifest": "frontend/page.json"
     }
   ]
 }

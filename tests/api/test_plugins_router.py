@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from html.parser import HTMLParser
 import json
 from pathlib import Path
 import sys
 from typing import Any
+from urllib.parse import urljoin
 import zipfile
 
 import pytest
@@ -111,9 +113,64 @@ def _registry(tmp_path: Path, *, external: bool = False) -> PluginRegistry:
     return registry
 
 
+def _frontend_registry(tmp_path: Path, *, legacy_installation: bool = False) -> PluginRegistry:
+    raw = _raw_manifest()
+    raw["permissions"]["ui"] = ["sandboxed-iframe"]
+    raw["extensions"][1]["manifest"] = "frontend/page.json"
+    package_path = tmp_path / "package"
+    frontend_path = package_path / "frontend"
+    frontend_path.mkdir(parents=True)
+    (frontend_path / "page.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "deeptutor.plugin-frontend-page/v1",
+                "entry": "frontend/index.html",
+                "assets": ["frontend/app.js", "frontend/index.html"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (frontend_path / "index.html").write_text(
+        '<html><body>plugin page<script src="assets/frontend/app.js"></script></body></html>',
+        encoding="utf-8",
+    )
+    (frontend_path / "app.js").write_text("console.log('ready')", encoding="utf-8")
+    (package_path / "secret.txt").write_text("secret", encoding="utf-8")
+
+    manifest = parse_manifest(raw)
+    registry = PluginRegistry(
+        state_path=tmp_path / "plugins.json",
+        installed_distributions=[],
+        deeptutor_version="1.6.0",
+    )
+    installation = _installation(tmp_path)
+    if not legacy_installation:
+        installation = PluginInstallation(
+            **{**installation.to_dict(), "package_path": package_path}
+        )
+    state = registry.state_snapshot()
+    state["plugins"][manifest.id] = {
+        "manifest": manifest.to_dict(),
+        "installation": installation.to_dict(),
+        "history": [],
+    }
+    registry.replace_state(state)
+    return registry
+
+
 def _record_line(name: str, payload: bytes) -> str:
     digest = base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).rstrip(b"=")
     return f"{name},sha256={digest.decode('ascii')},{len(payload)}"
+
+
+class _ScriptSourceParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sources: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "script":
+            self.sources.extend(value for key, value in attrs if key == "src" and value)
 
 
 @pytest.fixture
@@ -166,6 +223,63 @@ def test_introspection_requires_authentication(
 
     monkeypatch.setattr(plugins, "require_auth", reject)
     assert client.get("/api/plugins/extensions").status_code == 401
+
+
+def test_managed_frontend_page_serves_only_declared_assets(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = _frontend_registry(tmp_path)
+    _use_registry(monkeypatch, registry)
+    base = "/api/plugins/org.deeptutor.learning_echo/pages/echo_page/"
+
+    assert client.get(base).status_code == 404
+
+    registry.approve("org.deeptutor.learning_echo")
+    redirect = client.get(base.rstrip("/"), follow_redirects=False)
+    extensions = client.get("/api/plugins/extensions").json()["plugins"][0]["extensions"]
+    page = client.get(base)
+    parser = _ScriptSourceParser()
+    parser.feed(page.text)
+    assert parser.sources == ["assets/frontend/app.js"]
+    asset = client.get(urljoin(str(page.url), parser.sources[0]))
+    secret = client.get(f"{base}/assets/secret.txt")
+
+    assert redirect.status_code == 307
+    assert redirect.headers["location"] == base
+    assert extensions[1]["entry_url"] == base
+    assert page.status_code == 200
+    assert "plugin page" in page.text
+    assert page.headers["content-type"].startswith("text/html")
+    assert "sandbox allow-scripts" in page.headers["content-security-policy"]
+    assert page.headers["x-content-type-options"] == "nosniff"
+    assert page.headers["cross-origin-resource-policy"] == "same-origin"
+    assert asset.status_code == 200
+    assert asset.text == "console.log('ready')"
+    assert asset.headers["cross-origin-resource-policy"] == "cross-origin"
+    assert secret.status_code == 404
+
+
+def test_frontend_page_host_auth_and_legacy_installation_boundary(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from deeptutor.api.routers import plugins
+
+    auth_registry = _frontend_registry(tmp_path / "auth")
+    legacy_registry = _frontend_registry(tmp_path / "legacy", legacy_installation=True)
+    auth_registry.approve("org.deeptutor.learning_echo")
+    legacy_registry.approve("org.deeptutor.learning_echo")
+    original_auth = plugins.require_auth
+    _use_registry(monkeypatch, auth_registry)
+
+    async def reject(*, authorization: str | None = None, dt_token: str | None = None) -> None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    monkeypatch.setattr(plugins, "require_auth", reject)
+    assert client.get("/api/plugins/org.deeptutor.learning_echo/pages/echo_page").status_code == 401
+
+    _use_registry(monkeypatch, legacy_registry)
+    monkeypatch.setattr(plugins, "require_auth", original_auth)
+    assert client.get("/api/plugins/org.deeptutor.learning_echo/pages/echo_page").status_code == 404
 
 
 @pytest.mark.asyncio
@@ -316,6 +430,8 @@ def test_real_wheel_http_flow_uses_managed_worker_subprocess(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     raw = _raw_manifest()
+    raw["permissions"]["ui"] = ["sandboxed-iframe"]
+    raw["extensions"][1]["manifest"] = "frontend/page.json"
     wheel_path = tmp_path / "learning_echo-1.0.0-py3-none-any.whl"
     source_root = Path(__file__).parents[2] / "examples" / "plugins" / "learning_echo"
     files = {
@@ -324,6 +440,15 @@ def test_real_wheel_http_flow_uses_managed_worker_subprocess(
             '"""Minimal dependency-free DeepTutor plugin worker."""\n'
         ).encode("utf-8"),
         "learning_echo/worker.py": (source_root / "learning_echo" / "worker.py").read_bytes(),
+        "learning_echo/frontend/page.json": (
+            source_root / "learning_echo" / "frontend" / "page.json"
+        ).read_bytes(),
+        "learning_echo/frontend/index.html": (
+            source_root / "learning_echo" / "frontend" / "index.html"
+        ).read_bytes(),
+        "learning_echo/frontend/app.js": (
+            source_root / "learning_echo" / "frontend" / "app.js"
+        ).read_bytes(),
         "learning_echo-1.0.0.dist-info/METADATA": ("Name: learning-echo\nVersion: 1.0.0\n").encode(
             "utf-8"
         ),
@@ -367,3 +492,15 @@ def test_real_wheel_http_flow_uses_managed_worker_subprocess(
         "message": "hello",
         "auth": "public",
     }
+
+    page = client.get("/api/plugins/org.deeptutor.learning_echo/pages/echo_page")
+    parser = _ScriptSourceParser()
+    parser.feed(page.text)
+    assert parser.sources == ["assets/frontend/app.js"]
+    asset = client.get(urljoin(str(page.url), parser.sources[0]))
+
+    assert page.status_code == 200
+    assert "Learning Echo" in page.text
+    assert "sandbox allow-scripts" in page.headers["content-security-policy"]
+    assert asset.status_code == 200
+    assert "restricted asset context" in asset.text

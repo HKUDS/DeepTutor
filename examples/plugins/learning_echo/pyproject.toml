@@ -13,4 +13,4 @@ dependencies = []
 packages = ["learning_echo"]
 
 [tool.setuptools.package-data]
-learning_echo = ["deeptutor.plugin.json"]
+learning_echo = ["deeptutor.plugin.json", "frontend/*"]

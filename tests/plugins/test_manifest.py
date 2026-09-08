@@ -77,6 +77,7 @@ def test_parse_manifest_normalizes_web_and_app_extension_contracts() -> None:
             "id": "echo_page",
             "path": "/echo",
             "auth": "public",
+            "manifest": "frontend/page.json",
         },
         {
             "type": "persistence_schema",
@@ -107,6 +108,7 @@ def test_parse_manifest_normalizes_web_and_app_extension_contracts() -> None:
             "id": "echo_page",
             "path": "/echo",
             "auth": "public",
+            "manifest": "frontend/page.json",
         },
         {
             "type": "persistence_schema",
@@ -120,6 +122,24 @@ def test_parse_manifest_normalizes_web_and_app_extension_contracts() -> None:
             "operations": ["import-course"],
         },
     ]
+
+
+def test_executable_frontend_page_requires_sandboxed_ui_permission() -> None:
+    raw = _manifest()
+    raw["compatibility"]["api"] = {"frontend_page": "1"}
+    raw["permissions"]["ui"] = []
+    raw["extensions"] = [
+        {
+            "type": "frontend_page",
+            "id": "echo_page",
+            "path": "/echo",
+            "auth": "authenticated",
+            "manifest": "frontend/page.json",
+        }
+    ]
+
+    with pytest.raises(ManifestValidationError, match="sandboxed-iframe"):
+        parse_manifest(raw)
 
 
 @pytest.mark.parametrize(

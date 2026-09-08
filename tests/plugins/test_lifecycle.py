@@ -58,6 +58,8 @@ def _manager(tmp_path: Path, *, fail_install: bool = False) -> PluginLifecycleMa
         if argv[1:3] == ["-m", "venv"]:
             root = Path(argv[-1])
             (root / "bin").mkdir(parents=True, exist_ok=True)
+            package_root = root / "lib" / "python3.13" / "site-packages" / "example_plugin"
+            package_root.mkdir(parents=True, exist_ok=True)
             python = root / "bin" / "python"
             python.write_text("#!python\n", encoding="utf-8")
             return 0, ""
@@ -81,6 +83,8 @@ def test_install_requires_permission_approval_and_isolates_dependencies(tmp_path
     assert record is not None
     assert record.status == "approval-required"
     assert record.installation is not None
+    assert record.installation.package_path is not None
+    assert record.installation.package_path.is_dir()
     assert record.installation.dependencies == ("helper==2.0",)
     assert record.installation.venv_path.is_dir()
     assert record.installation.artifact_path.is_file()

@@ -115,7 +115,7 @@ would make plugin behavior depend on the DeepTutor release.
 | `reading_extension` | Reading toolbar/action extension | Existing entry point remains authoritative and loads only after manifest approval |
 | `visualizer` | Packaged visualizer asset bundle | Manifest declaration; bundle manifest is not eagerly read |
 | `http_route` | Managed JSON HTTP endpoint | Approved managed routes execute in the plugin venv worker |
-| `frontend_page` | Declared plugin page | Authenticated introspection only in this slice; page assets and mounting are future work |
+| `frontend_page` | Declared plugin page | Packaged static pages are served through a host-gated asset route with an explicit asset closure and restrictive CSP |
 | `persistence_schema` | Declared plugin data schema | Authenticated introspection only; migrations and data access are future work |
 | `app_connector` | Declared downstream application adapter | Authenticated introspection only; adapter execution is future work |
 
@@ -189,6 +189,11 @@ operation commits.
 object. A change to any scope or value invalidates approval and returns the
 plugin to `approval-required`. Approval does not automatically enable a locally
 disabled plugin.
+
+Managed installation records also retain the installed package root. Records
+written before this field existed remain valid; executable frontend pages do
+not guess or scan for that root and return 404 until the plugin is reinstalled
+or upgraded.
 
 ## Official catalog
 
@@ -278,8 +283,31 @@ generic HTTP 500 response and affects only that plugin request.
 
 `GET /api/plugins/extensions` is authenticated and enumerates the extension
 declarations of approved, enabled, managed installations. It is the discovery
-surface for future frontend pages, persistence schemas, and app connectors;
-those types are declaration-only in this slice.
+surface for persistence schemas and app connectors. An executable
+`frontend_page` also includes `entry_url`.
+
+## Managed frontend pages
+
+A `frontend_page` that declares a packaged page manifest executes as static
+browser assets, not as host React or Next code. The page manifest is a separate
+JSON contract (`deeptutor.plugin-frontend-page/v1`) with one `entry` and an
+explicit `assets` closure. Paths are relative to the installed package root,
+must be regular files, cannot be symlinks, and are limited to small web asset
+types and aggregate sizes.
+
+The host serves the canonical page URL
+`/api/plugins/{plugin-id}/pages/{extension-id}/`; the non-slash form redirects
+to it so relative asset URLs resolve predictably. It serves declared asset
+paths only after registry gating and the manifest's host authentication
+policy. Responses are private and `nosniff`, and carry a restrictive CSP with
+`sandbox allow-scripts`,
+`connect-src 'none'`, no framing by third parties, and no plugin-controlled
+response headers. The entry document uses same-origin resource policy while
+declared assets use `Cross-Origin-Resource-Policy: cross-origin`; the sandboxed
+document has an opaque origin, so same-origin asset policy would block its own
+packaged scripts. This gives static plugin UI a browser execution context
+without injecting untrusted code into DeepTutor's frontend bundle. It is not a
+signature system and does not remove the need for plugin review.
 
 ## Trust and compatibility
 
@@ -302,7 +330,8 @@ manifest declaration.
 
 Visualizers that need untrusted HTML/UI execution use the existing sandboxed
 iframe model. Their packaged asset manifests and renderer contracts remain
-separate typed specs.
+separate typed specs. Managed frontend pages use their own explicit asset
+closure and CSP sandbox rather than the visualizer runtime.
 
 ## Chrome compatibility
 
@@ -330,6 +359,6 @@ Chrome-specific assets may ship as resources inside such a package.
 This repository currently implements Phases A through C, plus the local-wheel
 and catalog-driven remote installation, approval, Tool/Capability/HTTP worker,
 upgrade, rollback, uninstall, and managed introspection slice of Phase E.
-Developer publishing automation, frontend asset mounting, persistence
-migrations, app connector execution, visualizer packaging, signing, and a
-stronger sandbox remain future phases.
+Developer publishing automation, persistence migrations, app connector
+execution, visualizer packaging, signing, and a stronger sandbox remain future
+phases.

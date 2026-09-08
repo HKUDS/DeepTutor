@@ -121,9 +121,10 @@ class PluginInstallation:
     python_path: Path
     installed_at: str
     dependencies: tuple[str, ...] = field(default_factory=tuple)
+    package_path: Path | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "version": self.version,
             "artifact_path": str(self.artifact_path),
             "artifact_sha256": self.artifact_sha256,
@@ -132,6 +133,9 @@ class PluginInstallation:
             "installed_at": self.installed_at,
             "dependencies": list(self.dependencies),
         }
+        if self.package_path is not None:
+            result["package_path"] = str(self.package_path)
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -550,6 +554,11 @@ def _parse_installation(raw: Any) -> PluginInstallation | None:
         isinstance(item, str) for item in dependencies_raw
     ):
         return None
+    package_path_raw = raw.get("package_path")
+    if package_path_raw is not None and (
+        not isinstance(package_path_raw, str) or not package_path_raw
+    ):
+        return None
     return PluginInstallation(
         version=raw["version"],
         artifact_path=Path(raw["artifact_path"]),
@@ -558,6 +567,7 @@ def _parse_installation(raw: Any) -> PluginInstallation | None:
         python_path=Path(raw["python_path"]),
         installed_at=raw["installed_at"],
         dependencies=tuple(dependencies_raw),
+        package_path=Path(package_path_raw) if package_path_raw else None,
     )
 
 

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import sys
@@ -81,7 +81,7 @@ class PluginLifecycleManager:
         if expected_sha256 and digest != expected_sha256.lower():
             raise PluginLifecycleError("artifact SHA-256 does not match the reviewed pin")
 
-        manifest = _manifest_from_wheel(artifact)
+        manifest, package_root_in_wheel = _manifest_from_wheel(artifact)
         existing = self.registry.get_plugin(manifest.id)
         if existing is not None and existing.installation is not None:
             self._validate_transition(
@@ -129,6 +129,7 @@ class PluginLifecycleManager:
                 shutil.rmtree(backup, ignore_errors=True)
                 os.replace(venv_dir, backup)
             os.replace(staging_dir, venv_dir)
+            package_path = _installed_package_path(venv_dir, package_root_in_wheel)
             installation = PluginInstallation(
                 version=str(manifest.version),
                 artifact_path=durable_artifact,
@@ -137,6 +138,7 @@ class PluginLifecycleManager:
                 python_path=_venv_python(venv_dir),
                 installed_at=_timestamp(),
                 dependencies=manifest.dependencies,
+                package_path=package_path,
             )
             self._commit_installation(manifest, installation)
             if backup is not None:
@@ -180,6 +182,9 @@ class PluginLifecycleManager:
             python_path=Path(row["installation"]["python_path"]),
             installed_at=row["installation"]["installed_at"],
             dependencies=tuple(row["installation"].get("dependencies", [])),
+            package_path=Path(row["installation"]["package_path"])
+            if row["installation"].get("package_path")
+            else None,
         )
         row["installation"] = installation.to_dict()
         row["manifest"] = manifest.to_dict()
@@ -261,7 +266,7 @@ class PluginLifecycleManager:
         self.registry.replace_state(state)
 
 
-def _manifest_from_wheel(artifact: Path):
+def _manifest_from_wheel(artifact: Path) -> tuple[PluginManifestData, PurePosixPath]:
     try:
         with zipfile.ZipFile(artifact) as archive:
             names = [
@@ -272,7 +277,10 @@ def _manifest_from_wheel(artifact: Path):
             if len(names) != 1:
                 raise PluginLifecycleError(f"wheel must contain exactly one {MANIFEST_FILENAME}")
             raw = json.loads(archive.read(names[0]).decode("utf-8"))
-            return parse_manifest(raw)
+            source = PurePosixPath(names[0])
+            if source.is_absolute() or any(part in {"", ".", ".."} for part in source.parts):
+                raise PluginLifecycleError("artifact manifest has an invalid package path")
+            return parse_manifest(raw), source.parent
     except (
         OSError,
         zipfile.BadZipFile,
@@ -291,6 +299,22 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _installed_package_path(venv_root: Path, package_root: PurePosixPath) -> Path:
+    if sys.platform == "win32":
+        candidates = [venv_root / "Lib" / "site-packages"]
+    else:
+        candidates = sorted((venv_root / "lib").glob("python*/site-packages"))
+    for site_packages in candidates:
+        candidate = site_packages.joinpath(*package_root.parts)
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved.is_dir():
+            return resolved
+    raise PluginLifecycleError("installed plugin package root is missing")
 
 
 def _venv_python(root: Path) -> Path:
@@ -344,6 +368,11 @@ def _installation_from_history(raw: dict) -> PluginInstallation | None:
     )
     if not all(isinstance(installation_raw.get(name), str) for name in required):
         return None
+    package_path_raw = installation_raw.get("package_path")
+    if package_path_raw is not None and (
+        not isinstance(package_path_raw, str) or not package_path_raw
+    ):
+        return None
     return PluginInstallation(
         version=installation_raw["version"],
         artifact_path=Path(installation_raw["artifact_path"]),
@@ -352,6 +381,7 @@ def _installation_from_history(raw: dict) -> PluginInstallation | None:
         python_path=Path(installation_raw["python_path"]),
         installed_at=installation_raw["installed_at"],
         dependencies=tuple(item for item in dependencies if isinstance(item, str)),
+        package_path=Path(package_path_raw) if package_path_raw else None,
     )
 
 
