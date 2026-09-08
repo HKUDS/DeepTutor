@@ -16,7 +16,9 @@ from deeptutor.services.file_io import atomic_write_text
 from deeptutor.utils.secret_files import write_secret_text
 
 from .book_permission import (
+    BOOK_PERMISSION_LEVELS,
     BookPermission,
+    BookPermissionLevel,
     canonical_book_permission,
     normalize_book_permission,
     public_permission_dict,
@@ -330,6 +332,44 @@ def set_book_permission(username: str, permission: BookPermission) -> bool:
         if record is None:
             return False
         record["book_permission"] = public_permission_dict(permission)
+        _write_users(users)
+    return True
+
+
+def set_book_grant(username: str, book_id: str, level: BookPermissionLevel) -> bool:
+    """Merge one explicit book grant into a user's ACL, atomically.
+
+    Owner self-service sharing writes through the same ``book_permission``
+    record the admin uses; only the single ``books`` entry changes, so any
+    admin-set ``create``/``default`` fields survive untouched. ``level="none"``
+    revokes the entry.
+    """
+
+    if level not in BOOK_PERMISSION_LEVELS:
+        return False
+    book_id = str(book_id or "").strip()
+    if not book_id:
+        return False
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        record = users.get(username)
+        if record is None:
+            return False
+        permission = normalize_book_permission(record.get("book_permission"))
+        books = permission.books_dict()
+        if level == "none":
+            books.pop(book_id, None)
+        else:
+            books[book_id] = level
+        record["book_permission"] = public_permission_dict(
+            BookPermission(
+                create=permission.create,
+                default=permission.default,
+                books=tuple(books.items()),
+            )
+        )
         _write_users(users)
     return True
 

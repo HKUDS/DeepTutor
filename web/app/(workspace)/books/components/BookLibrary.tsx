@@ -11,6 +11,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Share2,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -75,6 +76,8 @@ export interface BookLibraryProps {
   onNewBook: () => void;
   onSelectBook: (id: string) => void;
   onDeleteBook: (id: string) => void;
+  /** Owner-only: opens the share dialog for a personal book. */
+  onShareBook?: (id: string) => void;
 }
 
 export default function BookLibrary({
@@ -84,6 +87,7 @@ export default function BookLibrary({
   onNewBook,
   onSelectBook,
   onDeleteBook,
+  onShareBook,
 }: BookLibraryProps) {
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
@@ -253,6 +257,22 @@ export default function BookLibrary({
                         style={{ width: `${book.reading?.percent ?? 0}%` }}
                       />
                     </div>
+                  )}
+
+                  {book.can_delete !== false && onShareBook && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onShareBook(book.id);
+                      }}
+                      title={t("Share book")}
+                      // Sits beside the delete control: own books only, and
+                      // visible without hover on touch, same as delete.
+                      className="absolute right-9 top-2 z-10 rounded-md p-1.5 text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] sm:opacity-0 sm:group-hover:opacity-100"
+                    >
+                      <Share2 size={13} />
+                    </button>
                   )}
 
                   {book.can_delete !== false && (

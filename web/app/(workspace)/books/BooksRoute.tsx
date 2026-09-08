@@ -27,6 +27,7 @@ import BookChatPanel from './components/BookChatPanel'
 import BookCreator from './components/BookCreator'
 import BookHealthBanner from './components/BookHealthBanner'
 import BookLibrary from './components/BookLibrary'
+import BookShareDialog from './components/BookShareDialog'
 import BookPausedBanner from './components/BookPausedBanner'
 import BookGenerationActivity from './components/BookGenerationActivity'
 import BookSidebar from './components/BookSidebar'
@@ -98,6 +99,7 @@ function BookPageInner() {
   const [books, setBooks] = useState<Book[]>([])
   const [canCreateBook, setCanCreateBook] = useState(true)
   const [loadingBooks, setLoadingBooks] = useState(false)
+  const [sharingBookId, setSharingBookId] = useState<string | null>(null)
   const [view, setView] = useState<View>('list')
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
@@ -1004,6 +1006,7 @@ function BookPageInner() {
               onNewBook={handleNewBook}
               onSelectBook={id => void handleSelectBook(id)}
               onDeleteBook={id => void handleDeleteBook(id)}
+              onShareBook={setSharingBookId}
             />
           )}
 
@@ -1176,6 +1179,14 @@ function BookPageInner() {
           />
         )}
       </main>
+
+      {sharingBookId && (
+        <BookShareDialog
+          bookId={sharingBookId}
+          bookTitle={books.find(book => book.id === sharingBookId)?.title || ''}
+          onClose={() => setSharingBookId(null)}
+        />
+      )}
     </div>
   )
 }

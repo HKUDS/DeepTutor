@@ -490,7 +490,41 @@ export const bookApi = {
         body: JSON.stringify(payload),
       },
     ),
+
+  listShares: (book_id: string) =>
+    request<BookShareState>(`/books/${encodeURIComponent(book_id)}/share`),
+
+  grantShare: (book_id: string, payload: { user_id: string; level: BookShareLevel }) =>
+    request<BookShareEntry>(`/books/${encodeURIComponent(book_id)}/share`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  revokeShare: (book_id: string, user_id: string) =>
+    request<{ revoked: boolean }>(
+      `/books/${encodeURIComponent(book_id)}/share/${encodeURIComponent(user_id)}`,
+      { method: "DELETE" },
+    ),
 };
+
+export type BookShareLevel = "read" | "edit";
+
+export interface BookShareEntry {
+  user_id: string;
+  username: string;
+  level: BookShareLevel;
+}
+
+export interface BookShareCandidate {
+  user_id: string;
+  username: string;
+}
+
+export interface BookShareState {
+  book_id: string;
+  shares: BookShareEntry[];
+  candidates: BookShareCandidate[];
+}
 
 // Re-exported so callers can keep importing the event type from book-api.
 export type { BookWsEvent } from "@/lib/book-ws-operation";
