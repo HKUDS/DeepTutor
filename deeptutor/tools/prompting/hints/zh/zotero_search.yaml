@@ -1,0 +1,6 @@
+short_description: "搜索用户的 Zotero 文献库获取学术引用。"
+when_to_use: "当用户需要在 Zotero 文献库中查找参考文献时使用。需要 Zotero 用户 ID。"
+input_format: "提供 `query`（关键词）、`user_id`（Zotero 数字 ID），可选 `api_key` 和 `max_results`。"
+guideline: "zotero_search 查询用户的个人或群组文献库。无结果时建议扩大关键词。如果用户尚未配置 Zotero ID，请说明如何在 Zotero 设置中查找。"
+note: "需要用户提供 Zotero 用户 ID；私有文献库需要 API Key。"
+phase: "expansion"

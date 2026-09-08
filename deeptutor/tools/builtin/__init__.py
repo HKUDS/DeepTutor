@@ -608,6 +608,89 @@ class PaperSearchToolWrapper(_PromptHintsMixin, BaseTool):
         )
 
 
+class ZoteroSearchToolWrapper(_PromptHintsMixin, BaseTool):
+    """Search a Zotero user or group library for references."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="zotero_search",
+            description=(
+                "Search a Zotero reference library by keyword. Requires a Zotero "
+                "user ID (found in zotero.org settings). An API key is needed "
+                "only for private libraries."
+            ),
+            parameters=[
+                ToolParameter(name="query", type="string", description="Search query."),
+                ToolParameter(name="user_id", type="string", description="Zotero user ID or group ID."),
+                ToolParameter(
+                    name="api_key",
+                    type="string",
+                    description="Zotero API key (required for private libraries).",
+                    required=False,
+                    default="",
+                ),
+                ToolParameter(
+                    name="max_results",
+                    type="integer",
+                    description="Maximum references to return (1-25).",
+                    required=False,
+                    default=5,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.tools.zotero_search import ZoteroSearchTool
+
+        try:
+            items = await ZoteroSearchTool().search(
+                query=kwargs.get("query", ""),
+                user_id=kwargs.get("user_id", ""),
+                api_key=kwargs.get("api_key", ""),
+                max_results=kwargs.get("max_results", 5),
+            )
+        except Exception:
+            return ToolResult(
+                content="Zotero search is temporarily unavailable. Check the user ID, API key, and network connection.",
+                sources=[],
+                metadata={"provider": "zotero", "items": [], "error": True},
+            )
+        if not items:
+            return ToolResult(
+                content="No Zotero references found for this query.",
+                sources=[],
+                metadata={"provider": "zotero", "items": []},
+            )
+
+        lines: list[str] = []
+        for item in items:
+            lines.append(f"**{item['title']}** ({item.get('year', '?')})")
+            if item.get("authors"):
+                lines.append(f"Authors: {', '.join(item['authors'])}")
+            if item.get("doi"):
+                lines.append(f"DOI: {item['doi']}")
+            if item.get("url"):
+                lines.append(f"URL: {item['url']}")
+            if item.get("abstract"):
+                lines.append(f"Abstract: {item['abstract'][:400]}")
+            lines.append("")
+
+        return ToolResult(
+            content="\n".join(lines),
+            sources=[
+                {
+                    "type": "reference",
+                    "provider": "zotero",
+                    "url": item.get("zotero_url") or item.get("url", ""),
+                    "title": item.get("title", ""),
+                    "doi": item.get("doi", ""),
+                }
+                for item in items
+            ],
+            metadata={"provider": "zotero", "items": items},
+        )
+
+
 class GeoGebraAnalysisTool(_PromptHintsMixin, BaseTool):
     """Analyze a math-problem image and generate GeoGebra visualization commands."""
 
@@ -1724,6 +1807,7 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     CodeExecutionTool,
     ReasonTool,
     PaperSearchToolWrapper,
+    ZoteroSearchToolWrapper,
     ReadSourceTool,
     ReadMemoryTool,
     WriteMemoryTool,
@@ -1810,6 +1894,7 @@ USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
     "brainstorm",
     "web_search",
     "paper_search",
+    "zotero_search",
     "reason",
     "geogebra_analysis",
     "imagegen",
@@ -1873,6 +1958,7 @@ __all__ = [
     "VideogenTool",
     "ListNotebookTool",
     "PaperSearchToolWrapper",
+    "ZoteroSearchToolWrapper",
     "QuestionBankTool",
     "PartnerMemorizeTool",
     "PartnerReadTool",

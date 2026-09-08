@@ -11,6 +11,7 @@ from deeptutor.utils.document_extractor import (
     extract_text_from_path,
 )
 from deeptutor.utils.document_validator import DocumentValidator
+from deeptutor.utils.bibtex_converter import bibtex_file_to_markdown
 
 from ...base import ReadinessReport
 from ...signature import ParserSignature
@@ -52,9 +53,12 @@ class TextOnlyParser:
             on_output(f"Extracting plain text from {Path(source_path).name}...")
 
         try:
-            text = extract_text_from_path(
-                source_path, max_bytes=DocumentValidator.MAX_FILE_SIZE, max_chars=None
-            )
+            if source_path.suffix.lower() == ".bib":
+                text = bibtex_file_to_markdown(source_path)
+            else:
+                text = extract_text_from_path(
+                    source_path, max_bytes=DocumentValidator.MAX_FILE_SIZE, max_chars=None
+                )
         except (DocumentExtractionError, OSError) as exc:
             raise ParserError(
                 f"text-only extraction failed for {Path(source_path).name}: {exc}"

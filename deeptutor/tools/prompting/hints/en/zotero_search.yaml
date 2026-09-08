@@ -1,0 +1,6 @@
+short_description: "Search a Zotero reference library for academic citations."
+when_to_use: "Use when the user asks to find references from their Zotero library, or when a specific citation from a known collection is needed. Requires a Zotero user ID."
+input_format: "Provide `query` (keywords), `user_id` (Zotero numeric ID), and optionally `api_key` and `max_results`."
+guideline: "zotero_search queries the user's personal or group library. On zero results, suggest broadening the query. If the user has not configured a Zotero ID, explain how to find it in Zotero settings."
+note: "Requires the user to provide their Zotero user ID; API key only needed for private libraries."
+phase: "expansion"
