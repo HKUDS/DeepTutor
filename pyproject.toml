@@ -30,6 +30,7 @@ dependencies = [
     "tenacity>=8.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "packaging>=24.2",
     "jsonschema>=4.20.0,<5.0.0",
     "aiosqlite>=0.19.0",
     "typer>=0.9.0",
@@ -101,6 +102,7 @@ translation = "deeptutor.reading.translation:TranslationExtension"
 # already included in the public `deeptutor` wheel; the local CLI-only project
 # under `packaging/deeptutor-cli` uses the same list without Web assets/server deps.
 cli = [
+    "packaging>=24.2",
     # LLM provider SDKs
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",

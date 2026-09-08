@@ -54,6 +54,7 @@ class CatalogEntry:
     source_url: str
     compatibility: PluginCompatibility
     permissions: PluginPermissions
+    dependencies: tuple[str, ...]
     artifact: CatalogArtifact
     status: str
 
@@ -69,6 +70,7 @@ class CatalogEntry:
             "source_url": self.source_url,
             "compatibility": self.compatibility.to_dict(),
             "permissions": self.permissions.to_dict(),
+            "dependencies": list(self.dependencies),
             "artifact": {
                 "kind": self.artifact.kind,
                 "requirement": self.artifact.requirement,
@@ -156,6 +158,7 @@ def parse_catalog_entry(raw: Any) -> CatalogEntry:
         "source_url",
         "compatibility",
         "permissions",
+        "dependencies",
         "status",
         "artifact",
     }
@@ -197,6 +200,7 @@ def parse_catalog_entry(raw: Any) -> CatalogEntry:
         source_url=manifest.source_url,
         compatibility=manifest.compatibility,
         permissions=manifest.permissions,
+        dependencies=manifest.dependencies,
         artifact=CatalogArtifact(
             kind=str(kind),
             requirement=requirement.strip(),

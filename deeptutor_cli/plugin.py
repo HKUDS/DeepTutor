@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import json
+from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
@@ -48,7 +49,9 @@ def register(app: typer.Typer) -> None:
         console.print(table)
 
     @app.command("info")
-    def plugin_info(name: str = typer.Argument(..., help="Tool, capability, or plugin ID.")) -> None:
+    def plugin_info(
+        name: str = typer.Argument(..., help="Tool, capability, or plugin ID."),
+    ) -> None:
         """Show details of a tool, capability, or plugin package."""
         from deeptutor.plugins.registry import get_plugin_registry
         from deeptutor.runtime.registry.capability_registry import get_capability_registry
@@ -164,6 +167,80 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]{exc}[/]")
             raise typer.Exit(code=1) from None
         console.print(f"[green]{record.id} is {record.status}.[/]")
+
+    @app.command("approve")
+    def plugin_approve(plugin_id: str = typer.Argument(..., help="Installed plugin ID.")) -> None:
+        """Approve the exact permissions declared by an installed plugin."""
+        from deeptutor.plugins.registry import PluginStateError, get_plugin_registry
+
+        try:
+            record = get_plugin_registry().approve(plugin_id)
+        except PluginStateError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from None
+        console.print(f"[green]{record.id} permissions approved; status is {record.status}.[/]")
+
+    @app.command("install")
+    def plugin_install(
+        artifact: Path = typer.Argument(..., help="Local reviewed plugin wheel."),
+        sha256: str = typer.Option("", help="Expected artifact SHA-256."),
+    ) -> None:
+        """Install a local wheel into its own dependency-isolated environment."""
+        import json as json_module
+
+        from deeptutor.plugins.lifecycle import (
+            PluginLifecycleError,
+            PluginLifecycleManager,
+        )
+
+        try:
+            result = PluginLifecycleManager().install(artifact, expected_sha256=sha256)
+        except PluginLifecycleError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from None
+        console.print_json(
+            json_module.dumps(
+                {
+                    "plugin": result.plugin_id,
+                    "version": result.version,
+                    "action": result.action,
+                    "sha256": result.artifact_sha256,
+                    "venv": str(result.venv_path),
+                    "next_step": "review permissions, then run deeptutor plugin approve",
+                },
+                indent=2,
+            )
+        )
+
+    @app.command("rollback")
+    def plugin_rollback(plugin_id: str = typer.Argument(..., help="Installed plugin ID.")) -> None:
+        """Restore the previous managed plugin version."""
+        from deeptutor.plugins.lifecycle import (
+            PluginLifecycleError,
+            PluginLifecycleManager,
+        )
+
+        try:
+            result = PluginLifecycleManager().rollback(plugin_id)
+        except PluginLifecycleError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from None
+        console.print(f"[green]{result.plugin_id} rolled back to {result.version}.[/]")
+
+    @app.command("uninstall")
+    def plugin_uninstall(plugin_id: str = typer.Argument(..., help="Installed plugin ID.")) -> None:
+        """Remove a managed plugin, its environments, artifacts, and state."""
+        from deeptutor.plugins.lifecycle import (
+            PluginLifecycleError,
+            PluginLifecycleManager,
+        )
+
+        try:
+            result = PluginLifecycleManager().uninstall(plugin_id)
+        except PluginLifecycleError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=1) from None
+        console.print(f"[green]{result.plugin_id} {result.version} removed.[/]")
 
     @app.command("disable")
     def plugin_disable(plugin_id: str = typer.Argument(..., help="Installed plugin ID.")) -> None:

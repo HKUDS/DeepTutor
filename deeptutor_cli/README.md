@@ -208,7 +208,7 @@ deeptutor memory show
 deeptutor memory clear --force
 ```
 
-### `plugin` — 插件信息
+### `plugin` — 插件状态与生命周期
 
 ```bash
 deeptutor plugin list                            # 查看所有工具和 capability
@@ -216,9 +216,18 @@ deeptutor plugin info <name>                     # 查看详情
 deeptutor plugin state                           # 查看插件包状态
 deeptutor plugin search [query]                  # 搜索官方插件索引
 deeptutor plugin show <plugin-id>                # 查看插件包元数据
-deeptutor plugin enable <plugin-id>              # 记录插件包为启用（运行时 gating 为下一阶段）
+deeptutor plugin install <wheel> [--sha256 <digest>]  # 安装本地 wheel 到插件私有 venv
+deeptutor plugin approve <plugin-id>             # 审批当前 manifest 的权限快照
+deeptutor plugin enable <plugin-id>              # 启用已审批插件
 deeptutor plugin disable <plugin-id>             # 记录插件包为停用
+deeptutor plugin rollback <plugin-id>            # 回滚到上一个托管版本
+deeptutor plugin uninstall <plugin-id>           # 删除托管插件状态、artifact 与 venv
 ```
+
+`install` 只接受本地 wheel，不会从市场或远端索引自动下载。安装会先离线读取并校验
+`deeptutor.plugin.json`，再复制 artifact 并创建插件版本私有 venv。安装、升级和回滚都会
+清空旧审批；必须重新检查权限并运行 `approve` 后，Tool/Capability 才会加载。权限字段是
+审批与运行时合同边界，托管 worker 的子进程和 venv 提供依赖隔离，但不是强 OS 沙箱。
 
 ### `config` — 配置
 

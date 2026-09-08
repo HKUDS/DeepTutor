@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import typer
@@ -106,3 +107,95 @@ def test_plugin_show_outputs_package_metadata(monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert '"schema_version": "deeptutor.plugin/v1"' in result.output
+
+
+def test_plugin_approve_writes_permission_state(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def approve(plugin_id: str):
+        calls.append(plugin_id)
+        return SimpleNamespace(id=plugin_id, status="enabled")
+
+    monkeypatch.setattr(
+        plugin_registry,
+        "get_plugin_registry",
+        lambda: SimpleNamespace(approve=approve),
+    )
+    app = _plugin_cli(monkeypatch)
+
+    result = CliRunner().invoke(app, ["approve", "org.author.example"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == ["org.author.example"]
+    assert "permissions approved" in result.output
+
+
+def test_plugin_install_reports_reviewed_wheel(monkeypatch) -> None:
+    calls: list[tuple[Path, str]] = []
+
+    class FakeManager:
+        def install(self, artifact: Path, *, expected_sha256: str):
+            calls.append((artifact, expected_sha256))
+            return SimpleNamespace(
+                plugin_id="org.author.example",
+                version="1.0.0",
+                action="installed",
+                artifact_sha256="0" * 64,
+                venv_path=Path("/tmp/plugins/org.author.example/versions/1.0.0/venv"),
+            )
+
+    monkeypatch.setattr("deeptutor.plugins.lifecycle.PluginLifecycleManager", FakeManager)
+    app = _plugin_cli(monkeypatch)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "/tmp/example-1.0.0.whl",
+            "--sha256",
+            "0" * 64,
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [(Path("/tmp/example-1.0.0.whl"), "0" * 64)]
+    assert '"plugin": "org.author.example"' in result.output
+    assert '"next_step": "review permissions' in result.output
+
+
+def test_plugin_rollback_and_uninstall_use_managed_lifecycle(monkeypatch) -> None:
+    actions: list[str] = []
+
+    class FakeManager:
+        def rollback(self, plugin_id: str):
+            actions.append(("rollback", plugin_id))
+            return SimpleNamespace(
+                plugin_id=plugin_id,
+                version="1.0.0",
+                artifact_sha256="0" * 64,
+                venv_path=Path("/tmp/plugins/org.author.example/versions/1.0.0/venv"),
+            )
+
+        def uninstall(self, plugin_id: str):
+            actions.append(("uninstall", plugin_id))
+            return SimpleNamespace(
+                plugin_id=plugin_id,
+                version="1.1.0",
+                artifact_sha256="0" * 64,
+                venv_path=Path("/tmp/plugins/org.author.example"),
+            )
+
+    monkeypatch.setattr("deeptutor.plugins.lifecycle.PluginLifecycleManager", FakeManager)
+    app = _plugin_cli(monkeypatch)
+
+    rollback = CliRunner().invoke(app, ["rollback", "org.author.example"])
+    uninstall = CliRunner().invoke(app, ["uninstall", "org.author.example"])
+
+    assert rollback.exit_code == 0, rollback.output
+    assert uninstall.exit_code == 0, uninstall.output
+    assert actions == [
+        ("rollback", "org.author.example"),
+        ("uninstall", "org.author.example"),
+    ]
+    assert "rolled back to 1.0.0" in rollback.output
+    assert "1.1.0 removed" in uninstall.output

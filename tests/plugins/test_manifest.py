@@ -30,6 +30,7 @@ def _manifest() -> dict:
             "storage": ["plugin-private"],
             "ui": ["sandboxed-iframe"],
         },
+        "dependencies": ["requests>=2.32,<3"],
         "extensions": [
             {"type": "reading_extension", "id": "translation", "entry_point": "translation"},
             {
@@ -51,6 +52,7 @@ def test_parse_manifest_normalizes_typed_extensions() -> None:
         "fraction_tiles",
     ]
     assert manifest.permissions.scopes["reading"] == ("selection", "visible_text")
+    assert manifest.dependencies == ("requests<3,>=2.32",)
 
 
 @pytest.mark.parametrize(
@@ -63,6 +65,11 @@ def test_parse_manifest_normalizes_typed_extensions() -> None:
             {"extensions": [{"type": "visualizer", "id": "broken"}]},
             "manifest is required for visualizers",
         ),
+        (
+            {"dependencies": ["requests>=2.32,<3; sys_platform == 'darwin'"]},
+            "name-and-version",
+        ),
+        ({"dependencies": ["requests", "REQUESTS>=2"]}, "duplicate"),
     ],
 )
 def test_parse_manifest_rejects_invalid_contracts(mutation: dict, message: str) -> None:

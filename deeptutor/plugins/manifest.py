@@ -9,10 +9,13 @@ dataclasses.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import hashlib
+import json
 import re
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
+from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
@@ -100,6 +103,7 @@ class PluginManifestData:
     source_url: str
     compatibility: PluginCompatibility
     permissions: PluginPermissions
+    dependencies: tuple[str, ...] = field(default_factory=tuple)
     extensions: tuple[PluginExtension, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
@@ -107,6 +111,7 @@ class PluginManifestData:
         result["version"] = str(self.version)
         result["compatibility"] = self.compatibility.to_dict()
         result["permissions"] = self.permissions.to_dict()
+        result["dependencies"] = list(self.dependencies)
         result["extensions"] = [extension.to_dict() for extension in self.extensions]
         return result
 
@@ -134,6 +139,7 @@ def parse_manifest(raw: Mapping[str, Any] | None) -> PluginManifestData:
         "source_url",
         "compatibility",
         "permissions",
+        "dependencies",
         "extensions",
     }
     _reject_unknown("manifest", raw, allowed)
@@ -164,6 +170,11 @@ def parse_manifest(raw: Mapping[str, Any] | None) -> PluginManifestData:
         raise ManifestValidationError("permissions must be an object")
     permissions = _permissions(permissions_raw)
 
+    dependencies_raw = raw.get("dependencies", [])
+    if not isinstance(dependencies_raw, list):
+        raise ManifestValidationError("dependencies must be an array")
+    dependencies = _dependencies(dependencies_raw)
+
     extensions_raw = raw.get("extensions")
     if not isinstance(extensions_raw, list):
         raise ManifestValidationError("extensions must be an array")
@@ -181,6 +192,7 @@ def parse_manifest(raw: Mapping[str, Any] | None) -> PluginManifestData:
         source_url=source_url,
         compatibility=compatibility,
         permissions=permissions,
+        dependencies=dependencies,
         extensions=extensions,
     )
 
@@ -197,6 +209,17 @@ def version_matches(version: Version, requirement: str | SpecifierSet) -> bool:
 
 def is_sha256(value: str) -> bool:
     return bool(_SHA256.fullmatch(value))
+
+
+def permission_digest(permissions: PluginPermissions) -> str:
+    """Return a stable digest of the exact permission grant a user approved."""
+    payload = json.dumps(
+        permissions.to_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _compatibility(raw: Mapping[str, Any]) -> PluginCompatibility:
@@ -236,6 +259,35 @@ def _permissions(raw: Mapping[str, Any]) -> PluginPermissions:
             raise ManifestValidationError(f"permissions.{name} contains duplicate values")
         scopes[name] = normalized
     return PluginPermissions(scopes=scopes)
+
+
+def _dependencies(raw: list[Any]) -> tuple[str, ...]:
+    if len(raw) > 50:
+        raise ManifestValidationError("dependencies supports at most 50 requirements")
+    dependencies: list[str] = []
+    seen: set[str] = set()
+    for index, value in enumerate(raw):
+        if not isinstance(value, str):
+            raise ManifestValidationError(f"dependencies[{index}] must be a string")
+        text = value.strip()
+        if not text:
+            raise ManifestValidationError(f"dependencies[{index}] is required")
+        try:
+            requirement = Requirement(text)
+        except InvalidRequirement as exc:
+            raise ManifestValidationError(
+                f"dependencies[{index}] is not a valid PEP 508 requirement"
+            ) from exc
+        if requirement.url or requirement.marker or requirement.extras:
+            raise ManifestValidationError(
+                f"dependencies[{index}] must be a name-and-version requirement"
+            )
+        canonical_name = str(getattr(requirement, "canonical_name", requirement.name)).casefold()
+        if canonical_name in seen:
+            raise ManifestValidationError(f"dependencies contains duplicate {requirement.name}")
+        seen.add(canonical_name)
+        dependencies.append(str(requirement))
+    return tuple(dependencies)
 
 
 def _extensions(raw: list[Any]) -> tuple[PluginExtension, ...]:
@@ -347,5 +399,6 @@ __all__ = [
     "PluginPermissions",
     "is_sha256",
     "parse_manifest",
+    "permission_digest",
     "version_matches",
 ]

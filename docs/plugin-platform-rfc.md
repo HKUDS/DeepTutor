@@ -1,8 +1,8 @@
-# DeepTutor Plugin Platform RFC (Phase A/B)
+# DeepTutor Plugin Platform RFC (Phase C and Local E)
 
 Status: accepted implementation slice
 Schema: `deeptutor.plugin/v1`
-Last reviewed: 2026-08-31
+Last reviewed: 2026-09-08
 
 ## Problem
 
@@ -22,14 +22,18 @@ API.
 - No arbitrary Chrome CRX/extension loading. Chrome extensions assume browser
   APIs, extension process boundaries, and a browser permission model that do
   not map safely to a Python server process.
-- No automatic `pip install` from the catalog. The catalog is metadata-only in
-  this phase.
-- No claim that Python permission fields create a hard sandbox. In v1 they are
-  review and user-facing disclosure metadata. The only hard UI sandbox claim is
-  the browser-enforced iframe boundary used by visualizers.
+- No automatic download or installation from the catalog. The catalog remains
+  metadata-only; `deeptutor plugin install` accepts only a local wheel that a
+  user or operator has already obtained and can review.
+- No claim that Python permission fields create an OS sandbox. They define the
+  approval and runtime contract boundary. Managed Tool and Capability workers
+  run in a separate Python process with a plugin-private environment, but that
+  process boundary is dependency isolation, not a hard security sandbox.
 - No replacement of the existing `deeptutor.plugins` capability loader,
   `deeptutor.loop_capabilities`, or `deeptutor.reading_extensions` entry-point
-  behavior.
+  behavior. Those loaders now honor an approved root manifest whenever a
+  package declares one; packages without a root manifest retain the migration
+  window.
 - Learning Experience widgets/events are intentionally deferred.
 
 ## Root manifest
@@ -69,6 +73,7 @@ file is static JSON and must be readable without importing the plugin.
     "storage": ["plugin-private"],
     "ui": ["sandboxed-iframe"]
   },
+  "dependencies": ["requests>=2.32,<3"],
   "extensions": [
     {
       "type": "reading_extension",
@@ -90,12 +95,12 @@ would make plugin behavior depend on the DeepTutor release.
 
 ### Extension types
 
-| Type | Meaning | Phase A/B behavior |
+| Type | Meaning | Current behavior |
 | --- | --- | --- |
-| `capability` | Legacy turn-owning capability | Manifest declaration and compatibility state only |
-| `loop_capability` | Chat-loop capability | Manifest declaration and compatibility state only |
-| `tool` | Single-shot LLM tool | Manifest declaration and compatibility state only |
-| `reading_extension` | Reading toolbar/action extension | Manifest declaration; existing entry point remains authoritative |
+| `capability` | Turn-owning capability | Existing entry points load only after manifest approval; managed workers load through the JSON subprocess adapter |
+| `loop_capability` | Chat-loop capability | Existing entry points load only after manifest approval |
+| `tool` | Single-shot LLM tool | Existing entry points load only after manifest approval; managed workers load through the JSON subprocess adapter |
+| `reading_extension` | Reading toolbar/action extension | Existing entry point remains authoritative and loads only after manifest approval |
 | `visualizer` | Packaged visualizer asset bundle | Manifest declaration; bundle manifest is not eagerly read |
 
 Each extension has one stable `id`. Python-backed extensions declare
@@ -106,6 +111,13 @@ runtime API. Runtime code still binds each extension to its typed protocol.
 Built-in DeepTutor IDs always win. A plugin cannot replace a built-in
 capability, tool, Reading action, or visualizer by reusing its ID.
 
+`dependencies` is an explicit, ordered closure. Requirements must be PEP 508
+name-and-version constraints; direct URLs, environment markers, extras, and
+duplicate canonical names are rejected. Managed installation passes every
+requirement plus the plugin wheel to the plugin-private interpreter with
+`pip install --no-deps`, so pip cannot mutate the host environment or discover
+a different transitive graph at install time.
+
 ## Registry states
 
 `PluginRegistry` reads installed distribution files and the vendored catalog.
@@ -114,6 +126,7 @@ It never calls `entry_point.load()` and never imports third-party code.
 | State | Meaning |
 | --- | --- |
 | `available` | Catalog entry is not installed |
+| `approval-required` | Installed and compatible, but its exact permission snapshot has not been approved |
 | `enabled` | Installed, compatible, and not locally disabled |
 | `disabled` | Installed and locally disabled |
 | `incompatible` | Installed, but its DeepTutor or API contract is not supported |
@@ -128,15 +141,31 @@ Local enablement is persisted as:
 
 ```json
 {
-  "version": 1,
-  "disabled": ["org.author.example"]
+  "version": 2,
+  "disabled": [],
+  "plugins": {
+    "org.author.example": {
+      "manifest": {},
+      "installation": null,
+      "history": [],
+      "approval": {
+        "digest": "sha256-of-the-permission-snapshot",
+        "approved_at": "2026-09-08T00:00:00Z"
+      }
+    }
+  }
 }
 ```
 
 The file is written atomically under `data/user/settings/plugins.json`. The
-current slice exposes state and review visibility; runtime registries continue
-to use their existing loaders. Gating those loaders on this state is the next
-integration step.
+legacy version 1 `{version, disabled}` shape is read as version 2 with no
+plugin rows; the legacy file itself is not rewritten until another plugin state
+operation commits.
+
+`approval.digest` is a stable SHA-256 over the normalized manifest permission
+object. A change to any scope or value invalidates approval and returns the
+plugin to `approval-required`. Approval does not automatically enable a locally
+disabled plugin.
 
 ## Official catalog
 
@@ -154,18 +183,44 @@ The initial snapshot is intentionally empty. DeepTutor maintainers must not
 invent third-party plugins to seed it. Real entries are added only with source
 review, artifact pinning, and recorded reviewers.
 
+## Managed lifecycle
+
+`PluginLifecycleManager` installs only an existing local wheel. It reads and
+validates the root manifest directly from the zip archive before creating an
+environment or importing plugin code. An optional `--sha256` pin is checked
+before install. The reviewed artifact is copied under the plugin's managed
+root, and each plugin version receives its own virtual environment.
+
+Installation, upgrade, same-version reinstall, and rollback all clear the
+previous approval. This is deliberate: the user approved an exact permission,
+artifact, and manifest snapshot, not an implicit trust transfer to another
+version. Failed dependency installation leaves the current version, approval,
+and environment unchanged. A successful upgrade keeps the prior version
+directory and environment for rollback; rollback moves the current version to
+history and restores the prior environment. Uninstall removes the managed state,
+artifacts, environments, and local enable/disable entry for that plugin.
+
+Managed Tool and Capability extensions use a worker module entry point such as
+`learning_echo.worker`. DeepTutor launches that module with the plugin venv
+interpreter, exchanges one JSON request and response over stdin/stdout, and
+rejects worker declarations whose permission snapshot exceeds the approved
+manifest. Existing Python entry-point extensions continue to load classes or
+factories in the host process, but only after the root-manifest gate accepts
+them.
+
 ## Trust and compatibility
 
 The v1 trust model is human curation plus pinned metadata. Catalog browsing is
-offline. Installation, once added in a later phase, must resolve exactly the
-pinned artifact and verify its digest before invoking pip. Signing and a
-process/container sandbox are separate future phases and must not be implied by
-this catalog format.
+offline. Local installation accepts a wheel and verifies an optional artifact
+digest before invoking pip; remote pinned distribution download remains future
+work. Signing and a process/container security sandbox are separate future
+phases and must not be implied by this catalog format.
 
-Python permissions are disclosure metadata in v1. A plugin that declares only
-plugin-private storage still executes in the host Python process. Reviewers and
-users need that fact to be visible; enforcement belongs to a later runtime
-isolation design.
+Python permissions are disclosure and approval metadata in v1. Existing
+entry-point extensions still execute in the host Python process after approval.
+Managed worker extensions execute outside the host process but retain host
+operating-system access. Reviewers and users need that fact to be visible; OS
+scope enforcement belongs to a later isolation design.
 
 Reading extensions continue to use the server-verified Reading context and
 restricted result types. A plugin cannot widen its context by changing its
@@ -198,4 +253,7 @@ Chrome-specific assets may ship as resources inside such a package.
 6. **Phase F - sandbox/signing**: stronger isolation, signatures, and developer
    publishing workflow.
 
-This repository currently implements Phases A and B.
+This repository currently implements Phases A through C, plus the local-wheel
+installation, approval, worker, upgrade, rollback, and uninstall slice of
+Phase E. Remote marketplace distribution, visualizer packaging, signing, and a
+stronger sandbox remain future phases.

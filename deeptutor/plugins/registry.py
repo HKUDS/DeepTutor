@@ -7,7 +7,8 @@ remains in :mod:`deeptutor.plugins.loader`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from importlib.metadata import Distribution, distributions
 import json
 import logging
@@ -23,6 +24,7 @@ from deeptutor.plugins.manifest import (
     ManifestValidationError,
     PluginManifestData,
     parse_manifest,
+    permission_digest,
     version_matches,
 )
 from deeptutor.services.file_io import atomic_write_json
@@ -30,7 +32,8 @@ from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
 
-STATE_SCHEMA_VERSION = 1
+STATE_SCHEMA_VERSION = 2
+LEGACY_STATE_SCHEMA_VERSION = 1
 HOST_API_VERSIONS = {
     "capability": Version("1"),
     "loop_capability": Version("1"),
@@ -51,6 +54,7 @@ class PluginRecord:
     manifest: PluginManifestData | None = None
     distribution: str = ""
     catalog_entry: CatalogEntry | None = None
+    installation: "PluginInstallation | None" = None
     error: str = ""
 
     @property
@@ -90,9 +94,46 @@ class PluginRecord:
             result["manifest"] = self.manifest.to_dict()
         if self.catalog_entry is not None:
             result["catalog"] = self.catalog_entry.to_dict()
+        if self.installation is not None:
+            result["installation"] = self.installation.to_dict()
         if self.error:
             result["error"] = self.error
         return result
+
+
+@dataclass(frozen=True, slots=True)
+class PluginInstallation:
+    """A managed, dependency-isolated plugin installation."""
+
+    version: str
+    artifact_path: Path
+    artifact_sha256: str
+    venv_path: Path
+    python_path: Path
+    installed_at: str
+    dependencies: tuple[str, ...] = field(default_factory=tuple)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "artifact_path": str(self.artifact_path),
+            "artifact_sha256": self.artifact_sha256,
+            "venv_path": str(self.venv_path),
+            "python_path": str(self.python_path),
+            "installed_at": self.installed_at,
+            "dependencies": list(self.dependencies),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PluginApproval:
+    """The exact permission snapshot accepted by a user."""
+
+    digest: str
+    approved_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"digest": self.digest, "approved_at": self.approved_at}
 
 
 class PluginRegistry:
@@ -151,13 +192,48 @@ class PluginRegistry:
         assert updated is not None
         return updated
 
+    def approve(self, plugin_id: str) -> PluginRecord:
+        """Persist approval for the installed manifest's exact permission grant."""
+        record = self.get_plugin(plugin_id)
+        if record is None:
+            raise PluginStateError(f"unknown plugin {plugin_id!r}")
+        if record.status == "enabled":
+            return record
+        if record.status != "approval-required" or record.manifest is None:
+            raise PluginStateError(f"plugin {plugin_id!r} is {record.status}")
+
+        state = self._state()
+        row = _managed_row(state, plugin_id)
+        if row is None:
+            row = _external_row(state, plugin_id, record)
+        row["approval"] = PluginApproval(
+            digest=permission_digest(record.manifest.permissions),
+            approved_at=_now(),
+        ).to_dict()
+        atomic_write_json(self.state_path, state)
+        updated = self.get_plugin(plugin_id)
+        assert updated is not None
+        return updated
+
+    def state_snapshot(self) -> dict[str, Any]:
+        """Return the validated state document for lifecycle transactions."""
+        return self._state()
+
+    def replace_state(self, state: dict[str, Any]) -> None:
+        """Atomically replace plugin state after a lifecycle transaction."""
+        atomic_write_json(self.state_path, _validate_state(state))
+
     def _installed_records(self) -> list[PluginRecord]:
         grouped: dict[str, list[PluginRecord]] = {}
         unkeyed: list[PluginRecord] = []
+        managed = self._managed_records()
+        managed_ids = {record.id for record in managed}
         for dist in self._distributions():
             for path, raw, read_error in _manifest_files(dist):
                 manifest, parse_error = _parse_manifest(raw, read_error)
                 plugin_id = manifest.id if manifest is not None else _raw_id(raw)
+                if plugin_id in managed_ids:
+                    continue
                 distribution = _distribution_name(dist)
                 if manifest is None or not plugin_id:
                     record = PluginRecord(
@@ -173,7 +249,7 @@ class PluginRegistry:
                     continue
 
                 compatible, compatibility_error = self._compatible(manifest)
-                status = "enabled" if compatible else "incompatible"
+                status = "incompatible" if not compatible else "approval-required"
                 record = PluginRecord(
                     id=plugin_id,
                     status=status,
@@ -183,11 +259,12 @@ class PluginRegistry:
                 )
                 grouped.setdefault(plugin_id, []).append(record)
 
-        disabled = set(self._state().get("disabled", []))
+        state = self._state()
+        disabled = set(state.get("disabled", []))
         catalog_entries = {
             entry.id: entry for entry in load_catalog(self.catalog_path or CATALOG_PATH)
         }
-        records: list[PluginRecord] = []
+        records: list[PluginRecord] = list(managed)
         for plugin_id, candidates in grouped.items():
             if len(candidates) > 1:
                 records.append(
@@ -200,6 +277,23 @@ class PluginRegistry:
                 )
                 continue
             record = candidates[0]
+            if record.status == "approval-required" and record.manifest is not None:
+                approval = _parse_approval(
+                    (state.get("plugins") or {}).get(plugin_id, {}).get("approval")
+                    if isinstance((state.get("plugins") or {}).get(plugin_id), dict)
+                    else None
+                )
+                if approval is not None and approval.digest == permission_digest(
+                    record.manifest.permissions
+                ):
+                    record = PluginRecord(
+                        id=record.id,
+                        status="enabled",
+                        manifest=record.manifest,
+                        distribution=record.distribution,
+                        error=record.error,
+                    )
+                del approval
             if record.status != "incompatible" and plugin_id in disabled:
                 record = PluginRecord(
                     id=record.id,
@@ -219,6 +313,79 @@ class PluginRegistry:
             records.append(record)
         return records + unkeyed
 
+    def _managed_records(self) -> list[PluginRecord]:
+        records: list[PluginRecord] = []
+        state = self._state()
+        for plugin_id, row in (state.get("plugins") or {}).items():
+            manifest, parse_error = _parse_manifest(row.get("manifest"), "")
+            if manifest is None:
+                records.append(
+                    PluginRecord(
+                        id=str(plugin_id),
+                        status="broken",
+                        distribution="managed",
+                        error=parse_error or "managed manifest is missing",
+                    )
+                )
+                continue
+
+            installation = _parse_installation(row.get("installation"))
+            if row.get("installation") is None:
+                compatible, compatibility_error = self._compatible(manifest)
+                status = "incompatible" if not compatible else "approval-required"
+                approval = _parse_approval(row.get("approval"))
+                if (
+                    status != "incompatible"
+                    and approval is not None
+                    and approval.digest == permission_digest(manifest.permissions)
+                ):
+                    status = "enabled"
+                if status == "enabled" and plugin_id in state.get("disabled", []):
+                    status = "disabled"
+                records.append(
+                    PluginRecord(
+                        id=str(plugin_id),
+                        status=status,
+                        manifest=manifest,
+                        distribution="external",
+                        error=compatibility_error,
+                    )
+                )
+                continue
+            if installation is None:
+                records.append(
+                    PluginRecord(
+                        id=str(plugin_id),
+                        status="broken",
+                        distribution="managed",
+                        manifest=manifest,
+                        error="managed installation record is invalid",
+                    )
+                )
+                continue
+
+            compatible, compatibility_error = self._compatible(manifest)
+            status = "incompatible" if not compatible else "approval-required"
+            if status != "incompatible":
+                approval = _parse_approval(row.get("approval"))
+                if approval is not None and approval.digest == permission_digest(
+                    manifest.permissions
+                ):
+                    status = "enabled"
+            if status == "enabled" and plugin_id in state.get("disabled", []):
+                status = "disabled"
+            records.append(
+                PluginRecord(
+                    id=str(plugin_id),
+                    status=status,
+                    manifest=manifest,
+                    distribution="managed",
+                    installation=installation,
+                    error=compatibility_error,
+                )
+            )
+        return records
+
     def _compatible(self, manifest: PluginManifestData) -> tuple[bool, str]:
         if not version_matches(self.deeptutor_version, manifest.compatibility.deeptutor):
             return False, f"requires DeepTutor {manifest.compatibility.deeptutor}"
@@ -233,18 +400,22 @@ class PluginRegistry:
         try:
             payload = json.loads(self.state_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return {"version": STATE_SCHEMA_VERSION, "disabled": []}
+            return _empty_state()
         except (OSError, json.JSONDecodeError):
             logger.warning("Ignoring unreadable plugin state at %s", self.state_path)
-            return {"version": STATE_SCHEMA_VERSION, "disabled": []}
+            return _empty_state()
 
-        if not isinstance(payload, dict) or payload.get("version") != STATE_SCHEMA_VERSION:
+        if not isinstance(payload, dict) or payload.get("version") not in {
+            STATE_SCHEMA_VERSION,
+            LEGACY_STATE_SCHEMA_VERSION,
+        }:
             logger.warning("Ignoring unsupported plugin state at %s", self.state_path)
-            return {"version": STATE_SCHEMA_VERSION, "disabled": []}
-        disabled = payload.get("disabled", [])
-        if not isinstance(disabled, list) or not all(isinstance(item, str) for item in disabled):
-            return {"version": STATE_SCHEMA_VERSION, "disabled": []}
-        return {"version": STATE_SCHEMA_VERSION, "disabled": sorted(set(disabled))}
+            return _empty_state()
+        try:
+            return _validate_state(payload)
+        except (ValueError, ManifestValidationError):
+            logger.warning("Ignoring malformed plugin state at %s", self.state_path)
+            return _empty_state()
 
     def _distributions(self):
         if self._installed_distributions is not None:
@@ -265,6 +436,113 @@ def get_plugin_registry() -> PluginRegistry:
 def reset_plugin_registry_cache() -> None:
     global _default_registry
     _default_registry = None
+
+
+def _empty_state() -> dict[str, Any]:
+    return {"version": STATE_SCHEMA_VERSION, "disabled": [], "plugins": {}}
+
+
+def _validate_state(payload: dict[str, Any]) -> dict[str, Any]:
+    disabled = payload.get("disabled", [])
+    plugins = payload.get("plugins", {})
+    if not isinstance(disabled, list) or not all(isinstance(item, str) for item in disabled):
+        raise ValueError("disabled must be an array of plugin IDs")
+    if not isinstance(plugins, dict):
+        raise ValueError("plugins must be an object")
+
+    normalized = _empty_state()
+    normalized["disabled"] = sorted(set(disabled))
+    for plugin_id, row in plugins.items():
+        if not isinstance(plugin_id, str) or not plugin_id.strip():
+            raise ValueError("plugin state IDs must be non-empty strings")
+        if not isinstance(row, dict):
+            raise ValueError(f"plugin state for {plugin_id!r} must be an object")
+        copied = dict(row)
+        if copied.get("manifest") is not None:
+            parse_manifest(copied["manifest"])
+        if (
+            copied.get("installation") is not None
+            and _parse_installation(copied["installation"]) is None
+        ):
+            raise ValueError(f"plugin installation for {plugin_id!r} is invalid")
+        if copied.get("approval") is not None and _parse_approval(copied["approval"]) is None:
+            raise ValueError(f"plugin approval for {plugin_id!r} is invalid")
+        history = copied.get("history", [])
+        if not isinstance(history, list) or not all(
+            isinstance(item, dict)
+            and isinstance(item.get("version"), str)
+            and isinstance(item.get("manifest"), dict)
+            and isinstance(item.get("installation"), dict)
+            for item in history
+        ):
+            raise ValueError(f"plugin history for {plugin_id!r} is invalid")
+        copied["history"] = history
+        normalized["plugins"][plugin_id] = copied
+    return normalized
+
+
+def _managed_row(state: dict[str, Any], plugin_id: str) -> dict[str, Any] | None:
+    row = state.get("plugins", {}).get(plugin_id)
+    return row if isinstance(row, dict) else None
+
+
+def _external_row(
+    state: dict[str, Any],
+    plugin_id: str,
+    record: PluginRecord,
+) -> dict[str, Any]:
+    if record.manifest is None:
+        raise PluginStateError(f"plugin {plugin_id!r} has no valid manifest")
+    row = {
+        "manifest": record.manifest.to_dict(),
+        "installation": record.installation.to_dict() if record.installation else None,
+        "history": [],
+    }
+    state.setdefault("plugins", {})[plugin_id] = row
+    return row
+
+
+def _parse_installation(raw: Any) -> PluginInstallation | None:
+    if not isinstance(raw, dict):
+        return None
+    required_strings = (
+        "version",
+        "artifact_path",
+        "artifact_sha256",
+        "venv_path",
+        "python_path",
+        "installed_at",
+    )
+    if not all(isinstance(raw.get(name), str) and raw[name] for name in required_strings):
+        return None
+    dependencies_raw = raw.get("dependencies", [])
+    if not isinstance(dependencies_raw, list) or not all(
+        isinstance(item, str) for item in dependencies_raw
+    ):
+        return None
+    return PluginInstallation(
+        version=raw["version"],
+        artifact_path=Path(raw["artifact_path"]),
+        artifact_sha256=raw["artifact_sha256"],
+        venv_path=Path(raw["venv_path"]),
+        python_path=Path(raw["python_path"]),
+        installed_at=raw["installed_at"],
+        dependencies=tuple(dependencies_raw),
+    )
+
+
+def _parse_approval(raw: Any) -> PluginApproval | None:
+    if not isinstance(raw, dict):
+        return None
+    digest = raw.get("digest")
+    approved_at = raw.get("approved_at")
+    if not isinstance(digest, str) or not isinstance(approved_at, str):
+        return None
+    return PluginApproval(digest=digest, approved_at=approved_at)
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _manifest_files(dist: Distribution) -> list[tuple[Path, Any, str]]:
@@ -302,6 +580,8 @@ def _distribution_name(dist: Distribution) -> str:
 
 __all__ = [
     "HOST_API_VERSIONS",
+    "PluginApproval",
+    "PluginInstallation",
     "PluginRecord",
     "PluginRegistry",
     "PluginStateError",

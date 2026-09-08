@@ -21,6 +21,7 @@ def _entry(plugin_id: str = "org.author.example") -> dict:
         "source_url": "https://github.com/author/example",
         "compatibility": {"deeptutor": ">=1.6.0,<2", "api": {"tool": "1"}},
         "permissions": {"network": ["https://api.example.com"]},
+        "dependencies": ["helper==2.0"],
         "artifact": {
             "kind": "python-package",
             "requirement": "example-plugin==1.0.0",
@@ -35,6 +36,7 @@ def test_catalog_entry_requires_pinned_python_artifact() -> None:
     assert entry.id == "org.author.example"
     assert entry.artifact.requirement == "example-plugin==1.0.0"
     assert entry.artifact.sha256 == "0" * 64
+    assert entry.to_dict()["dependencies"] == ["helper==2.0"]
 
 
 def test_catalog_entry_rejects_unpinned_requirement() -> None:

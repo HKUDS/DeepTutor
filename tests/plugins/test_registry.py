@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from deeptutor.plugins.manifest import permission_digest
 from deeptutor.plugins.registry import PluginRegistry
 
 
@@ -49,7 +50,7 @@ def test_registry_reads_manifest_without_importing_plugin(tmp_path) -> None:
     records = registry.list_plugins(include_catalog=False)
 
     assert [record.id for record in records] == ["org.author.example"]
-    assert records[0].status == "enabled"
+    assert records[0].status == "approval-required"
     assert records[0].manifest is not None
     assert records[0].manifest.extensions[0].id == "example_tool"
 
@@ -74,20 +75,60 @@ def test_registry_reports_incompatible_and_broken_plugins(tmp_path) -> None:
     assert records["org.author.broken"].status == "broken"
 
 
-def test_enable_disable_persists_local_state(tmp_path) -> None:
+def test_approve_enable_disable_persists_local_state(tmp_path) -> None:
     state_path = tmp_path / "plugins.json"
     registry = PluginRegistry(
         state_path=state_path,
         installed_distributions=[_dist(tmp_path)],
         deeptutor_version="1.6.0",
     )
+    record = registry.get_plugin("org.author.example")
+    assert record is not None and record.manifest is not None
 
+    approved = registry.approve("org.author.example")
     disabled = registry.set_enabled("org.author.example", False)
     enabled = registry.set_enabled("org.author.example", True)
 
+    assert approved.status == "enabled"
     assert disabled.status == "disabled"
     assert enabled.status == "enabled"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state == {
+        "version": 2,
+        "disabled": [],
+        "plugins": {
+            "org.author.example": {
+                "manifest": record.manifest.to_dict(),
+                "installation": None,
+                "history": [],
+                "approval": {
+                    "digest": permission_digest(record.manifest.permissions),
+                    "approved_at": state["plugins"]["org.author.example"]["approval"][
+                        "approved_at"
+                    ],
+                },
+            }
+        },
+    }
+
+
+def test_registry_migrates_legacy_state(tmp_path) -> None:
+    state_path = tmp_path / "plugins.json"
+    state_path.write_text(json.dumps({"version": 1, "disabled": ["old"]}), encoding="utf-8")
+    registry = PluginRegistry(
+        state_path=state_path,
+        installed_distributions=[],
+        deeptutor_version="1.6.0",
+    )
+
+    migrated = registry.state_snapshot()
+
+    assert migrated == {
+        "version": 2,
+        "disabled": ["old"],
+        "plugins": {},
+    }
     assert json.loads(state_path.read_text(encoding="utf-8")) == {
         "version": 1,
-        "disabled": [],
+        "disabled": ["old"],
     }
