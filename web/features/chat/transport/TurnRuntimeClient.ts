@@ -56,6 +56,28 @@ const ACKNOWLEDGED_COMMAND_TYPES = new Set([
   "user_input",
 ]);
 
+/**
+ * Generates a command id for acknowledged commands.
+ *
+ * `crypto.randomUUID()` is only available in secure contexts (HTTPS). When
+ * DeepTutor is served over plain HTTP (e.g. a LAN or VPS deployment) it is
+ * undefined, and submitting an acknowledged command (`submit_user_reply`,
+ * `cancel_turn`, `user_input`) would throw inside `prepareCommand` before the
+ * command is ever enqueued, so the answer never reaches the server and the UI
+ * reports the reply as "not delivered". Fall back to an RFC 4122 v4-style
+ * UUID in that case.
+ */
+function createCommandId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function prepareCommand(command: ClientCommand): {
   command: ClientCommand;
   commandId: string | null;
@@ -68,7 +90,7 @@ function prepareCommand(command: ClientCommand): {
   const record = command as unknown as Record<string, unknown>;
   const existing =
     typeof record.command_id === "string" ? record.command_id.trim() : "";
-  const commandId = existing || globalThis.crypto.randomUUID();
+  const commandId = existing || createCommandId();
   return {
     command: { ...command, command_id: commandId } as ClientCommand,
     commandId,
