@@ -210,6 +210,20 @@ export function ReadingWorkspacePage() {
   const [showSessions, setShowSessions] = useState(false);
   const [showLinker, setShowLinker] = useState(false);
   const [showNotebook, setShowNotebook] = useState(false);
+  // Live width of the three-column grid container. The app sidebar sits
+  // outside this grid, so innerWidth overstates the space the panels share;
+  // the drag ceiling and the render-time clamp both key off the measured
+  // container instead.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [gridWidth, setGridWidth] = useState(0);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    setGridWidth(el.clientWidth);
+    const observer = new ResizeObserver(() => setGridWidth(el.clientWidth));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const [showAddSource, setShowAddSource] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showRename, setShowRename] = useState(false);
@@ -252,14 +266,17 @@ export function ReadingWorkspacePage() {
     preFocusWidthRef.current = companionWidth;
     setCompanionFocus(true);
     setNavigatorCollapsed(true);
-    const half = Math.max(300, Math.round(window.innerWidth / 2));
+    const half = Math.max(
+      COMPANION_MIN_WIDTH,
+      Math.round((gridWidth || window.innerWidth) / 2),
+    );
     setCompanionWidth(half);
     try {
       browserStorage.writeRaw("local", "dt.reader.companionWidth", String(half));
     } catch {
       // A blocked or private store just resets to default next time.
     }
-  }, [companionFocus, companionWidth]);
+  }, [companionFocus, companionWidth, gridWidth]);
   const [documentJump, setDocumentJump] = useState<JumpRequest | null>(null);
   const [pageHeadings, setPageHeadings] = useState<ReaderHeading[]>([]);
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
@@ -326,10 +343,12 @@ export function ReadingWorkspacePage() {
       const startWidth = companionWidth;
       // The companion may grow until the reader — and the open navigator —
       // are left at their minimum widths; nothing is otherwise capped.
+      const frame = gridRef.current?.clientWidth ?? window.innerWidth;
       const max = Math.max(
         COMPANION_MIN_WIDTH,
-        window.innerWidth -
+        frame -
           (navigatorCollapsed ? 0 : navigatorWidth) -
+          (navigatorCollapsed ? 5 : 10) -
           READER_MIN_WIDTH,
       );
       const onMove = (moveEvent: PointerEvent) => {
@@ -447,10 +466,12 @@ export function ReadingWorkspacePage() {
     // Guard against a stored width that no longer fits (the window moved to
     // a smaller screen since it was persisted): the reader always keeps its
     // minimum, so clamp the companion to whatever the other tracks leave.
+    const frame = gridWidth || window.innerWidth;
     const ceiling = Math.max(
       COMPANION_MIN_WIDTH,
-      window.innerWidth -
+      frame -
         (navigatorCollapsed ? 0 : navigatorWidth) -
+        (navigatorCollapsed ? 5 : 10) -
         READER_MIN_WIDTH,
     );
     const width = Math.min(companionWidth, ceiling);
@@ -658,6 +679,7 @@ export function ReadingWorkspacePage() {
       </header>
 
       <div
+        ref={gridRef}
         className={`relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden ${
           companionOpen
             ? navigatorCollapsed
