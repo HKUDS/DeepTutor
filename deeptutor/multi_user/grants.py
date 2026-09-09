@@ -19,6 +19,34 @@ LEARNING_PERSONAS = {"teacher"}
 LEARNING_SURFACES = {"chat", "reading"}
 _EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
+# The admin-workspace KB id prefix (same literal as knowledge_access.ADMIN_PREFIX;
+# duplicated here because knowledge_access imports this module, not the other way).
+_ADMIN_KB_PREFIX = "admin:kb:"
+
+
+def _canonical_kb_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Canonicalize one ``knowledge_bases`` entry to ``{resource_id, name}``.
+
+    Grant editors have historically written the KB under different keys —
+    ``kb_id`` (the admin API/UI), ``resource_id``/``id`` (canonical), or a bare
+    ``name`` — and the consumers only read the canonical ones, so a perfectly
+    well-configured grant silently matched nothing and the KB 404'd at
+    retrieval time. Normalizing on load collapses every spelling to both keys;
+    unknown extra keys (``needs_admin_reindex`` etc.) pass through untouched.
+    """
+    resource_id = str(item.get("resource_id") or item.get("kb_id") or item.get("id") or "").strip()
+    name = str(item.get("name") or item.get("kb_name") or "").strip()
+    if not resource_id and name:
+        resource_id = f"{_ADMIN_KB_PREFIX}{name}"
+    if resource_id.startswith(_ADMIN_KB_PREFIX) and not name:
+        name = resource_id[len(_ADMIN_KB_PREFIX) :]
+    canonical = dict(item)
+    if resource_id:
+        canonical["resource_id"] = resource_id
+    if name:
+        canonical["name"] = name
+    return canonical
+
 
 def empty_grant(user_id: str) -> dict[str, Any]:
     return {
@@ -125,6 +153,7 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
         raw = payload.get(key)
         values = raw if isinstance(raw, list) else []
         base[key] = [dict(item) for item in values if isinstance(item, dict)]
+    base["knowledge_bases"] = [_canonical_kb_item(item) for item in base["knowledge_bases"]]
     for key in ("enabled_tools", "mcp_tools", "cli_apps"):
         base[key] = _normalize_tool_list(payload.get(key))
     exec_enabled = payload.get("exec_enabled")

@@ -10,6 +10,7 @@ import {
   PenLine,
   Route,
   Settings,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -93,6 +94,15 @@ export const PRIMARY_NAV: NavEntry[] = [
     label: "Learning Space",
     icon: LayoutGrid,
     tooltipKey: "Space tooltip",
+  },
+  {
+    // 家长专属：家庭学情视图（我的孩子）。K12 家长是 sidebar 上的 learner
+    // 视图，/family 页面此前没有任何入口可达，这里补上唯一的导航挂点。
+    href: "/family",
+    label: "My Children",
+    icon: Users,
+    tooltipKey: "Family tooltip",
+    roles: ["parent"],
   },
 ];
 

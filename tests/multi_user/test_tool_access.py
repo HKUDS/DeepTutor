@@ -42,7 +42,9 @@ def test_normalize_migrates_v1_to_v2():
     assert grant["version"] == 2
     assert grant["models"] == {"llm": [{"profile_id": "p", "model_ids": ["m"]}]}
     assert "spaces" not in grant
-    assert grant["knowledge_bases"] == [{"resource_id": "admin:kb:demo"}]
+    # KB entries canonicalize on load: the v1 spelling gains the derived
+    # ``name`` next to ``resource_id`` (and ``kb_id``-shaped grants gain both).
+    assert grant["knowledge_bases"] == [{"resource_id": "admin:kb:demo", "name": "demo"}]
     assert grant["skills"] == [{"skill_id": "writer"}]
     # Absent v2 fields default to unrestricted.
     assert grant["enabled_tools"] is None

@@ -47,7 +47,7 @@ from deeptutor.multi_user.identity import (
     set_password,
 )
 from deeptutor.multi_user.knowledge_access import admin_kb_base_dir
-from deeptutor.multi_user.model_access import is_owner_bound
+from deeptutor.multi_user.model_access import is_owner_bound, validate_llm_grant_items
 from deeptutor.multi_user.paths import (
     get_admin_path_service,
     get_path_service_for_scope,
@@ -741,6 +741,9 @@ async def put_user_grants(
             and grant.get("learning_policy") is None
         ):
             raise ValueError("Learner accounts must retain a learning policy.")
+        # Fail loudly on LLM assignments that could never resolve — missing or
+        # unknown model ids used to save fine and silently match zero models.
+        validate_llm_grant_items(grant.get("models", {}).get("llm", []) or [])
         validate_grant(grant)
         _validate_reading_policy(grant)
         _stage_assigned_materials(user_id, grant)
