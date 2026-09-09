@@ -582,14 +582,6 @@ class QuestionPipeline:
                     client=client,
                 )
 
-            if not plan.templates:
-                await stream.progress(
-                    self._t("notices.plan_count_mismatch", got=0, requested=num_questions),
-                    source=SOURCE,
-                    stage=STAGE_PLANNING,
-                    metadata={"trace_kind": "warning"},
-                )
-
         # ----- Phase 3: Quiz (per-question) -----
         qa_pairs: list[QuizPair] = []
         async with stream.stage(STAGE_QUIZZING, source=SOURCE):
@@ -791,7 +783,16 @@ class QuestionPipeline:
             allowed_types=allowed_types,
             target_difficulty=difficulty,
         )
-        if len(plan.templates) != num_questions:
+        if not plan.templates:
+            # The retry above already gave a starved planner its second pass.
+            # Still nothing means phase 3 would iterate an empty list and ship
+            # a quiz of zero questions with no error anywhere — the shape
+            # #1318 took. Fail where the cause is still legible.
+            raise RuntimeError(self._t("notices.plan_unusable"))
+        if len(plan.templates) < num_questions:
+            # Fewer than asked is a smaller quiz, not a broken one: the
+            # learner would rather answer three real questions than read a
+            # failure. `_parse_plan` already caps the other direction.
             await stream.progress(
                 self._t(
                     "notices.plan_count_mismatch",
