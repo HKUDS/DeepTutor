@@ -62,3 +62,24 @@ def test_pdf_alias_is_augmented_as_read_source() -> None:
     )
 
     assert prepared == [("call-1", "pdf", {"source_index": source_index})]
+
+
+def test_alias_defaults_survive_canonical_argument_augmentation() -> None:
+    def augment(
+        tool_name: str,
+        args: dict[str, object],
+        _context: UnifiedContext,
+    ) -> dict[str, object]:
+        augmented = dict(args)
+        if tool_name == "rag":
+            augmented.setdefault("mode", "hybrid")
+        return augmented
+
+    prepared, _ = _prepare_tool_args(
+        [{"id": "call-1", "name": "rag_naive", "arguments": "{}"}],
+        UnifiedContext(),
+        augment,
+        registry=_registry(),
+    )
+
+    assert prepared == [("call-1", "rag_naive", {"mode": "naive"})]
