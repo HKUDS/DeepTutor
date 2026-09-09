@@ -75,6 +75,7 @@ DEFAULT_AGENTS_SETTINGS = {
         "question": {"temperature": 0.7, "max_tokens": 4096},
         "co_writer": {"temperature": 0.7, "max_tokens": 4096},
         "visualize": {"temperature": 0.4, "max_tokens": 16384},
+        "book": {"temperature": 0.5, "max_tokens": 4096},
         "chat": {
             "temperature": 0.2,
             "responding": {"max_tokens": 8000},

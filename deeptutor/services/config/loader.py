@@ -236,6 +236,7 @@ def get_agent_params(module_name: str) -> dict:
         "question": ("capabilities", "question"),
         "co_writer": ("capabilities", "co_writer"),
         "visualize": ("capabilities", "visualize"),
+        "book": ("capabilities", "book"),
         "brainstorm": ("tools", "brainstorm"),
         "vision_solver": ("plugins", "vision_solver"),
         "math_animator": ("plugins", "math_animator"),
