@@ -45,6 +45,7 @@ from deeptutor.multi_user.identity import (
     list_user_info,
     set_book_permission,
     set_password,
+    set_preset,
 )
 from deeptutor.multi_user.knowledge_access import admin_kb_base_dir
 from deeptutor.multi_user.model_access import is_owner_bound
@@ -660,6 +661,16 @@ async def put_guardian_restrictions(
         )
     grant = deepcopy(_restriction_grant(learner_user_id, learner_record))
     policy = grant.get("learning_policy")
+    if not isinstance(policy, dict):
+        # Assigning guardian restrictions is what makes an account a learning
+        # account. Seed the default learning policy and flip the preset to
+        # "learner" so the frontend renders the scoped learner shell instead
+        # of the full app (a `standard` preset + `learning_policy` mix makes
+        # the client load admin surfaces that all default-deny to 403, #1222).
+        grant = deepcopy(learner_grant(learner_user_id))
+        policy = grant.get("learning_policy")
+        if isinstance(policy, dict) and _learner_username:
+            set_preset(_learner_username, "learner")
     if not isinstance(policy, dict):
         raise HTTPException(status_code=409, detail="Learner account has no learning policy")
     reading = policy.get("reading")
