@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from deeptutor.services.codex_auth import service as service_module
+from deeptutor.services.codex_auth.constants import CODEX_CLIENT_VERSION
 from deeptutor.services.codex_auth.contracts import (
     CatalogSnapshot,
     CodexAuthError,
@@ -613,6 +614,11 @@ class FakeOAuthClient:
             raise self.revoke_error
 
 
+class FakeVersionDiscovery:
+    async def discover(self) -> str:
+        return CODEX_CLIENT_VERSION
+
+
 class FakeCatalog:
     def __init__(
         self,
@@ -693,6 +699,7 @@ async def _oauth_service(
         catalog,
         model_catalog,
         oauth_client=oauth,
+        version_discovery=FakeVersionDiscovery(),
         callback_factory=callback_factory,
         clock=(lambda: (clock or [1_000])[0]),
         callback_forward_port=callback_forward_port,
