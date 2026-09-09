@@ -77,6 +77,50 @@ def token_counts(
     }
 
 
+def usage_breakdown(
+    payload: Any,
+    *,
+    prompt: str = "prompt_tokens",
+    completion: str = "completion_tokens",
+    total: str = "total_tokens",
+) -> dict[str, int]:
+    """Return canonical token counts plus an optional reasoning-token count.
+
+    OpenAI-compatible chat completions put the reasoning count under
+    ``completion_tokens_details`` while Responses API payloads use
+    ``output_tokens_details``.  Keeping the detail in this small normalized
+    frame lets diagnostics distinguish a response that spent its budget on
+    reasoning from one that generated visible output, without changing the
+    accounting contract of :func:`token_counts`.
+    """
+    counts = token_counts(payload, prompt=prompt, completion=completion, total=total)
+    if not counts:
+        return {}
+
+    frame = usage_mapping(
+        payload,
+        keys=(
+            prompt,
+            completion,
+            total,
+            "reasoning_tokens",
+            "completion_tokens_details",
+            "output_tokens_details",
+        ),
+    )
+    reasoning = frame.get("reasoning_tokens")
+    if reasoning is None:
+        for key in ("completion_tokens_details", "output_tokens_details"):
+            details = usage_mapping(frame.get(key), keys=("reasoning_tokens",))
+            if details.get("reasoning_tokens") is not None:
+                reasoning = details.get("reasoning_tokens")
+                break
+    reasoning_tokens = _as_int(reasoning)
+    if reasoning is not None:
+        counts["reasoning_tokens"] = reasoning_tokens
+    return counts
+
+
 def _as_int(value: Any) -> int:
     try:
         return int(value or 0)
@@ -84,4 +128,4 @@ def _as_int(value: Any) -> int:
         return 0
 
 
-__all__ = ["CANONICAL_KEYS", "token_counts", "usage_mapping"]
+__all__ = ["CANONICAL_KEYS", "token_counts", "usage_breakdown", "usage_mapping"]

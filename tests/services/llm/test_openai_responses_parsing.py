@@ -141,6 +141,121 @@ async def test_sdk_preserves_deepseek_reasoning_text_for_next_tool_round() -> No
     ]
 
 
+@pytest.mark.asyncio
+async def test_sdk_incomplete_maps_to_length_and_keeps_reasoning_usage() -> None:
+    events = [
+        SimpleNamespace(type="response.reasoning_text.delta", delta="thinking only"),
+        SimpleNamespace(
+            type="response.incomplete",
+            response=SimpleNamespace(
+                status="incomplete",
+                incomplete_details=SimpleNamespace(reason="max_output_tokens"),
+                usage=SimpleNamespace(
+                    input_tokens=100,
+                    output_tokens=8000,
+                    output_tokens_details=SimpleNamespace(reasoning_tokens=8000),
+                ),
+            ),
+        ),
+    ]
+
+    content, tool_calls, finish_reason, usage, reasoning = await consume_sdk_stream(
+        _sdk_events(events)
+    )
+
+    assert content == ""
+    assert tool_calls == []
+    assert finish_reason == "length"
+    assert usage == {
+        "prompt_tokens": 100,
+        "completion_tokens": 8000,
+        "total_tokens": 8100,
+        "reasoning_tokens": 8000,
+    }
+    assert reasoning == "thinking only"
+
+
+@pytest.mark.asyncio
+async def test_sse_incomplete_maps_to_length_and_reports_usage() -> None:
+    provider_events: list[tuple[str, dict]] = []
+    response = _SSEFixture(
+        [
+            {
+                "type": "response.incomplete",
+                "response": {
+                    "status": "incomplete",
+                    "incomplete_details": {"reason": "max_output_tokens"},
+                    "usage": {
+                        "input_tokens": 4,
+                        "output_tokens": 9,
+                        "output_tokens_details": {"reasoning_tokens": 9},
+                    },
+                },
+            }
+        ]
+    )
+
+    _content, _tool_calls, finish_reason = await consume_sse(
+        response,
+        on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
+    )
+
+    assert finish_reason == "length"
+    assert provider_events == [
+        (
+            "usage",
+            {
+                "prompt_tokens": 4,
+                "completion_tokens": 9,
+                "total_tokens": 13,
+                "reasoning_tokens": 9,
+            },
+        )
+    ]
+
+
+def test_incomplete_content_filter_is_not_treated_as_token_truncation() -> None:
+    result = parse_response_output(
+        {
+            "status": "incomplete",
+            "incomplete_details": {"reason": "content_filter"},
+            "output": [],
+        }
+    )
+
+    assert result.finish_reason == "content_filter"
+
+
+def test_nonstream_incomplete_maps_usage_and_reasoning_tokens() -> None:
+    result = parse_response_output(
+        {
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "output": [
+                {
+                    "type": "reasoning",
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "thinking"}],
+                }
+            ],
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 8000,
+                "output_tokens_details": {"reasoning_tokens": 8000},
+            },
+        }
+    )
+
+    assert result.finish_reason == "length"
+    assert result.usage == {
+        "prompt_tokens": 100,
+        "completion_tokens": 8000,
+        "total_tokens": 8100,
+        "reasoning_tokens": 8000,
+    }
+    assert result.reasoning_content == "thinking"
+
+
 def test_nonstream_response_preserves_deepseek_reasoning_text_and_native_items() -> None:
     reasoning_item = {
         "type": "reasoning",
@@ -171,6 +286,23 @@ def test_nonstream_response_preserves_deepseek_reasoning_text_and_native_items()
         reasoning_item,
         message_item,
     ]
+
+
+@pytest.mark.asyncio
+async def test_sdk_failed_terminal_event_is_not_misreported_as_stop() -> None:
+    with pytest.raises(RuntimeError, match="Response failed"):
+        await consume_sdk_stream(
+            _sdk_events(
+                [
+                    SimpleNamespace(
+                        type="response.failed",
+                        response=SimpleNamespace(
+                            error=SimpleNamespace(message="provider rejected the request")
+                        ),
+                    )
+                ]
+            )
+        )
 
 
 @pytest.mark.asyncio

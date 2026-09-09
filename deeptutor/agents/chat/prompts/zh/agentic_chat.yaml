@@ -108,6 +108,8 @@ notices:
   image_fallback: "当前模型不支持图片输入；将去除图片后重试。"
   empty_final_response: "未能从模型输出中得到有效回答。请重试或缩小问题范围。"
   empty_finish_nudged: "模型这一轮只有内部推理，已提示其继续执行。"
+  reasoning_progress: "模型仍在进行内部推理，尚未生成回答或执行工具。"
+  reasoning_budget_exhausted: "模型连续两轮将输出预算耗尽在内部推理中，未生成回答或执行工具。请重试、降低推理强度，或将任务拆分成更小的步骤。"
 
 empty:
   empty_reply: "（空回复）"

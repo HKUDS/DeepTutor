@@ -83,6 +83,7 @@ from .exceptions import (
     LLMProviderError,
     LLMProviderTransportError,
     LLMRateLimitError,
+    LLMReasoningBudgetExhausted,
     LLMTimeoutError,
 )
 from .factory import (
@@ -138,6 +139,7 @@ __all__ = [
     "LLMConfigError",
     "LLMProviderError",
     "LLMProviderTransportError",
+    "LLMReasoningBudgetExhausted",
     "LLMAPIError",
     "LLMTimeoutError",
     "LLMRateLimitError",

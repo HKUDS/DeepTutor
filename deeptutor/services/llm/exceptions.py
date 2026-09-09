@@ -41,6 +41,17 @@ class LLMProviderError(LLMError):
     pass
 
 
+class LLMReasoningBudgetExhausted(LLMProviderError):
+    """The model exhausted its output budget while producing only reasoning."""
+
+    error_code = "reasoning_budget_exhausted"
+    retryable = True
+
+    def __init__(self, message: str, *, diagnostics: dict[str, object] | None = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
+
+
 class LLMProviderTransportError(LLMProviderError):
     """A retryable provider connection or response-stream failure."""
 
@@ -160,6 +171,7 @@ __all__ = [
     "LLMConfigError",
     "LLMProviderError",
     "LLMProviderTransportError",
+    "LLMReasoningBudgetExhausted",
     "LLMCircuitBreakerError",
     "LLMAPIError",
     "LLMTimeoutError",

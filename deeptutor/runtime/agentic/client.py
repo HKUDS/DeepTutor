@@ -440,6 +440,8 @@ class _ProviderOpenAIAdapter:
                             _openai_tool_call(tool_call, index=index)
                             for index, tool_call in enumerate(response.tool_calls or [])
                         ],
+                        reasoning_content=response.reasoning_content,
+                        thinking_blocks=response.thinking_blocks,
                         provider_specific_fields=response.provider_specific_fields,
                     ),
                     finish_reason=(

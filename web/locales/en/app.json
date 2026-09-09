@@ -2044,6 +2044,7 @@
   "Failed turns are not retried.": "Failed turns are not retried.",
   "The primary model answers every turn; if it fails outright, the turn is retried once on the backup.": "The primary model answers every turn; if it fails outright, the turn is retried once on the backup.",
   "{{name}} Reasoning…": "{{name}} Reasoning…",
+  "Still reasoning before acting…": "Still reasoning before acting…",
   "{{name}} Planning…": "{{name}} Planning…",
   "{{name}} Exploring…": "{{name}} Exploring…",
   "{{name}} Quizzing…": "{{name}} Quizzing…",
