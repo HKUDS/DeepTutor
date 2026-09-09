@@ -278,8 +278,8 @@ def test_build_rag_keeps_indexing_snapshot_out_of_embedding_kwargs(
 
 
 @REQUIRES_LIGHTRAG
-def test_distribution_identity_is_exact_rc2() -> None:
-    assert engine.installed_version() == "1.5.7rc2"
+def test_distribution_identity_is_exact_stable() -> None:
+    assert engine.installed_version() == "1.5.7"
     assert engine.LIGHTRAG_DISTRIBUTION == "lightrag-hku"
 
 
@@ -293,7 +293,7 @@ def test_preflight_rejects_a_different_installed_lightrag_version(monkeypatch) -
     report = preflight._lightrag_preflight()
     package = next(check for check in report["checks"] if check["key"] == "package")
     assert package["ok"] is False
-    assert package["detail"] == "Found 1.5.8; required 1.5.7rc2."
+    assert package["detail"] == "Found 1.5.8; required 1.5.7."
 
 
 def test_workspace_is_stable_and_version_specific(tmp_path: Path) -> None:
@@ -603,7 +603,7 @@ def test_storage_publishes_schema_two_metadata(tmp_path: Path, monkeypatch) -> N
     meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))
     assert meta["state"] == "published"
     assert meta["lightrag_adapter_schema"] == 2
-    assert meta["lightrag_package_version"] == "1.5.7rc2"
+    assert meta["lightrag_package_version"] == "1.5.7"
     assert meta["parser_inputs"] == []
     assert storage.meta_is_native_published(tmp_path) is True
 

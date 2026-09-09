@@ -110,6 +110,17 @@ class LabeledStepResult:
     # escape hatch, but exposes that fact so strict callers can retry rather
     # than treating the partial text as complete.
     stream_idle_timeout: bool = False
+    # The round's own reasoning, kept so the caller can echo it back on the
+    # assistant turn it rebuilds. It used to be streamed to the trace UI and
+    # then dropped, which is fine for a single call and fatal for a loop:
+    # DeepSeek's thinking models reject a continuation whose history is missing
+    # the previous assistant turn's reasoning ("the reasoning_content in the
+    # thinking mode must be passed back to the API"), and quiz, research and
+    # explore_context are all multi-round.
+    reasoning_content: str = ""
+    # Anthropic's signed thinking blocks, which must be replayed verbatim and
+    # cannot be reconstructed from text.
+    thinking_blocks: tuple[dict[str, Any], ...] = ()
 
 
 async def run_labeled_step(
@@ -187,6 +198,9 @@ async def run_labeled_step(
     # prelude state machine below; this splitter covers the post-label body.
     post_label_think = InlineThinkFilter()
     tc_acc = ToolCallAccumulator()
+    # Kept for replay on the next round's assistant message, not for display.
+    reasoning_acc: list[str] = []
+    thinking_blocks: list[dict[str, Any]] = []
     usage_seen: Any = None
     output_chars_seen = 0
     finish_reason_seen: str | None = None
@@ -498,6 +512,16 @@ async def run_labeled_step(
             choice = choices[0]
             if getattr(choice, "finish_reason", None):
                 finish_reason_seen = str(choice.finish_reason)
+            # Anthropic's signed thinking blocks arrive here rather than on the
+            # delta, and they cannot be rebuilt from text — the signature is
+            # what makes them replayable.
+            provider_fields = getattr(choice, "provider_specific_fields", None)
+            if isinstance(provider_fields, dict):
+                signed_blocks = provider_fields.get("thinking_blocks")
+                if isinstance(signed_blocks, list) and signed_blocks:
+                    thinking_blocks = [
+                        dict(block) for block in signed_blocks if isinstance(block, dict)
+                    ]
             delta = choice.delta
             if delta is None:
                 continue
@@ -516,6 +540,11 @@ async def run_labeled_step(
             reasoning_text = getattr(delta, "reasoning_content", None) or getattr(
                 delta, "reasoning", None
             )
+            # Accumulated for every label, not only the pre-label prelude: the
+            # provider wants the whole round's reasoning back, and whether the
+            # trace UI showed it is a display question.
+            if reasoning_text:
+                reasoning_acc.append(str(reasoning_text))
             if reasoning_text and label is None:
                 output_chars_seen += len(reasoning_text)
                 saw_pre_label_think = True
@@ -604,4 +633,6 @@ async def run_labeled_step(
         tool_calls=ordered_tool_calls,
         finish_reason=finish_reason_seen,
         stream_idle_timeout=stream_idle_timeout,
+        reasoning_content="".join(reasoning_acc),
+        thinking_blocks=tuple(thinking_blocks),
     )

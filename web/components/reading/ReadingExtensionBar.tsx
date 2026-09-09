@@ -32,11 +32,20 @@ type TranslationResult = {
 export function ReadingExtensionBar({
   materialId,
   locator,
+  selectionLocator,
   selection,
   onError,
 }: {
   materialId: string;
   locator: number;
+  /**
+   * The unit the selection was made in, when there is one.
+   *
+   * `locator` is the *viewport* locator and drifts as the reader scrolls. The
+   * server verifies the quote against the text of the unit it is told about
+   * and 400s when they disagree, so a selection has to travel with its own.
+   */
+  selectionLocator?: number;
   selection?: string;
   onError: (message: string) => void;
 }) {
@@ -66,8 +75,17 @@ export function ReadingExtensionBar({
     };
   }, [onError]);
 
+  // Two effects, because the two things they clean up move on different
+  // clocks. A result belongs to the document: keyed on `locator` as well, an
+  // ordinary scroll erased a card the reader was still reading, since
+  // `locator` is the scroll-derived *viewport* locator.
   useEffect(() => {
     setResult(null);
+  }, [materialId]);
+
+  // Speech, on the other hand, must stop the moment the reader navigates
+  // away from the passage being read aloud — so this one keeps both keys.
+  useEffect(() => {
     return () => {
       window.speechSynthesis?.cancel();
       setSpeaking(false);
@@ -94,7 +112,7 @@ export function ReadingExtensionBar({
         extension.id,
         action.id,
         {
-          locator,
+          locator: selection?.trim() ? (selectionLocator ?? locator) : locator,
           selection: selection || "",
           locale: i18n.language,
         },
@@ -127,15 +145,23 @@ export function ReadingExtensionBar({
       <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2">
         {actions.map(({ extension, action }) => {
           const key = `${extension.id}:${action.id}`;
-          const disabled =
-            Boolean(busy) ||
-            (action.requires.includes("selection") && !selection?.trim());
+          const needsSelection =
+            action.requires.includes("selection") && !selection?.trim();
+          // `busy === key`, not `Boolean(busy)`: an action can take the full
+          // 30s server timeout, and disabling all six meanwhile is
+          // indistinguishable from the toolbar being broken.
+          const disabled = busy === key || needsSelection;
           const builtInLabel = builtInActionLabel(extension.id, action.id);
           return (
             <button
               key={key}
               type="button"
               disabled={disabled}
+              title={
+                needsSelection
+                  ? t("Select text in the document first.")
+                  : undefined
+              }
               onClick={() => void run(extension, action)}
               className="inline-flex h-8 min-w-[88px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:opacity-50"
             >

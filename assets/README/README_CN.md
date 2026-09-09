@@ -387,7 +387,7 @@ DeepTutor 将已安装的代码、私有运行时主目录与可选的内容工�
 如果回答遗漏了先前的约束、引用了薄弱证据，或与选定素材不一致，请先按照 [`REASONING_SAFETY_CHECKLIST.md`](./REASONING_SAFETY_CHECKLIST.md) 收集诊断信息，再提交 Issue。
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor 主页 — 带有侧边栏所有入口的 Chat 工作区" width="900">
 </div>
 
 <details>

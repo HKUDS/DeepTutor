@@ -387,7 +387,7 @@ Comece pelas superfícies principais que usará no dia a dia: Chat, Partners, Me
 Se uma resposta perder uma restrição anterior, citar evidências fracas ou discordar do material selecionado, recolha os diagnósticos em [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md) antes de abrir uma issue.
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Página inicial do DeepTutor — o espaço de trabalho Chat com todas as superfícies na barra lateral" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="Página inicial do DeepTutor — o espaço de trabalho Chat com todas as superfícies na barra lateral" width="900">
 </div>
 
 <details>

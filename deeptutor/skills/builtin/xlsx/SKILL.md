@@ -107,6 +107,7 @@ wb.save("out.xlsx")
 check = load_workbook("out.xlsx", data_only=False)
 assert check.sheetnames, "generated workbook has no worksheets"
 import zipfile
+
 with zipfile.ZipFile("out.xlsx") as package:
     assert package.testzip() is None, "generated XLSX has a corrupt ZIP member"
 ```

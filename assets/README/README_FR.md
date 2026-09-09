@@ -397,7 +397,7 @@ Commencez par les surfaces principales que vous utiliserez au quotidien : Chat, 
 Si une réponse perd une contrainte antérieure, cite des preuves faibles ou contredit les supports sélectionnés, rassemblez les diagnostics dans [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md) avant d'ouvrir une issue.
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Accueil DeepTutor — l'espace de travail Chat avec chaque surface dans la barre latérale" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="Accueil DeepTutor — l'espace de travail Chat avec chaque surface dans la barre latérale" width="900">
 </div>
 
 <details>

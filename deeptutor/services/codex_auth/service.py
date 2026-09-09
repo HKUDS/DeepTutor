@@ -14,6 +14,7 @@ import secrets
 import shutil
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -71,6 +72,56 @@ class _LoginOperation:
     error_code: str | None = None
     activated: bool = False
     task: asyncio.Task[None] | None = None
+
+
+def parse_oauth_callback_url(
+    raw: str, expected_redirect_uri: str
+) -> tuple[str | None, str | None, str | None]:
+    """Read ``code`` / ``state`` / ``error`` out of a pasted callback address.
+
+    The browser lands on the loopback listener's address. Under Docker that
+    listener is inside the container and the standard compose file publishes
+    only the Web and API ports, so the user can read the address off their
+    address bar while the process never receives it (#1252). Pasting it back
+    is the recovery path — which makes this string untrusted input that is
+    parsed and then dropped. Nothing here fetches the address, stores it, or
+    puts it in a reply.
+
+    It must be *this* login's callback address: same scheme, host, port and
+    path as the redirect URI this process registered with the provider, so a
+    pasted address cannot redirect the exchange anywhere else. A parameter
+    given twice is ambiguous rather than merely untidy, and is refused instead
+    of silently resolved to one of the two.
+    """
+
+    def _fail(message: str) -> CodexAuthError:
+        return CodexAuthError("callback_url_invalid", message, 400)
+
+    try:
+        pasted = urlsplit(raw.strip())
+        expected = urlsplit(expected_redirect_uri)
+    except ValueError as exc:
+        raise _fail("That does not look like a callback address.") from exc
+    if not pasted.scheme or not pasted.netloc:
+        raise _fail("Paste the whole address, including http://.")
+    same_target = (
+        pasted.scheme.lower() == expected.scheme.lower()
+        and (pasted.hostname or "").lower() == (expected.hostname or "").lower()
+        and pasted.port == expected.port
+        and pasted.path.rstrip("/") == expected.path.rstrip("/")
+    )
+    if not same_target:
+        raise _fail("That address is not the callback this sign-in is waiting for.")
+
+    params = parse_qs(pasted.query, keep_blank_values=True)
+    if any(len(values) > 1 for values in params.values()):
+        raise _fail("That address repeats an OAuth parameter.")
+    code = (params.get("code") or [None])[0]
+    state = (params.get("state") or [None])[0]
+    error = (params.get("error") or [None])[0]
+    if not code and not error:
+        raise _fail("That address carries no authorization result.")
+    return code, state, error
 
 
 def ssh_forward_command(callback_port: int, forward_port: int) -> str:
@@ -467,6 +518,29 @@ class CodexOAuthService:
                     400,
                 )
             operation.callback.submit(OAuthCallbackResult(code=code, state=state, error=error))
+
+    async def complete_login_with_callback_url(self, callback_url: str) -> dict[str, Any]:
+        """Finish a waiting login from the callback address the user pasted.
+
+        The loopback listener is the normal delivery route; this is the one
+        for deployments where the browser can reach the callback address and
+        this process cannot. It resolves against *this* account's operation
+        rather than every login in the process — the request arrives
+        authenticated on the Web origin, so the caller's own pending sign-in
+        is the only one they may finish. ``receive_callback`` then applies the
+        same state check and hands the code to the same exchange, so PKCE, the
+        registered redirect URI and owner binding are unchanged.
+        """
+        operation = self._operation
+        if operation is None or not self._operation_is_active():
+            raise CodexAuthError(
+                "login_not_active",
+                "Codex sign-in is not waiting for a callback.",
+                409,
+            )
+        code, state, error = parse_oauth_callback_url(callback_url, operation.redirect_uri)
+        await self.receive_callback(code, state, error)
+        return self.public_status()
 
     async def _run_login(self, operation: _LoginOperation) -> None:
         try:

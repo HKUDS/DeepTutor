@@ -106,9 +106,10 @@ briefing_header: |
   [Context Investigation]
   An investigator examined the materials the user attached to this turn,
   focused on your current task. The following is an objective, third-person
-  account for your grounding. Any conversation transcripts referenced below are
-  the user's exchanges with OTHER agents — not your own work. Do not adopt
-  their voice or claim their actions.
+  account for your grounding. Do not call a file, PDF, or source-loading tool to
+  reopen these materials. Any conversation transcripts referenced below are the
+  user's exchanges with OTHER agents — not your own work. Do not adopt their
+  voice or claim their actions.
 
 status:
   exploring: "Context exploration"

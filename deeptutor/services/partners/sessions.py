@@ -25,6 +25,27 @@ _HISTORY_MAX_CHARS = 24_000
 _ARCHIVE_PREFIX = "_archived_"
 
 
+# Each chat platform names its own conversation kinds, and the channels
+# already carry that word inbound: Feishu sends ``chat_type`` ("group" /
+# "p2p"), Slack and Mattermost send ``channel_type`` ("im"; "D" / "O" / "P" /
+# "G"). This is the one place those vocabularies become the two words a
+# reader of the conversation list cares about. A value not listed here — a
+# channel that says nothing, or says something new — yields "", and the list
+# stays silent rather than guessing.
+_CONVERSATION_SCOPES: dict[str, dict[str, str]] = {
+    "feishu": {"group": "group", "p2p": "direct"},
+    "slack": {"im": "direct", "channel": "group", "group": "group", "mpim": "group"},
+    "mattermost": {"d": "direct", "o": "group", "p": "group", "g": "group"},
+}
+
+
+def conversation_scope(channel: str, chat_type: str) -> str:
+    """Whether a conversation is a ``group`` chat, a ``direct`` one, or unknown."""
+    return _CONVERSATION_SCOPES.get(channel.strip().lower(), {}).get(
+        str(chat_type or "").strip().lower(), ""
+    )
+
+
 class PartnerSessionStore:
     """Append-only JSONL persistence for one partner's conversations."""
 
@@ -144,6 +165,8 @@ class PartnerSessionStore:
         *,
         channel: str = "",
         sender_id: str = "",
+        chat_id: str = "",
+        scope: str = "",
         metadata: dict[str, Any] | None = None,
         attachments: list[dict[str, Any]] | None = None,
         events: list[dict[str, Any]] | None = None,
@@ -157,6 +180,14 @@ class PartnerSessionStore:
             record["channel"] = channel
         if sender_id:
             record["sender_id"] = sender_id
+        # Which conversation on the platform this turn came from. Written here
+        # because the channel knows it authoritatively at delivery time and
+        # nothing downstream can recover it: the conversation list showed every
+        # Feishu group exactly like a DM (#1229).
+        if chat_id:
+            record["chat_id"] = chat_id
+        if scope:
+            record["scope"] = scope
         if metadata:
             record["metadata"] = metadata
         if attachments:
@@ -288,7 +319,24 @@ class PartnerSessionStore:
             "updated_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
             "last_message": str(last.get("content", ""))[:200],
             "archived": archived,
+            **self._origin(records),
         }
+
+    @staticmethod
+    def _origin(records: list[dict[str, Any]]) -> dict[str, str]:
+        """Where this conversation happens, from the first turn that recorded it.
+
+        Sessions that predate the origin being written carry none, so the keys
+        are omitted rather than emitted empty — the list then renders exactly
+        as it did before instead of labelling everything "unknown".
+        """
+        for record in records:
+            chat_id = str(record.get("chat_id") or "")
+            if not chat_id:
+                continue
+            scope = str(record.get("scope") or "")
+            return {"chat_id": chat_id, **({"scope": scope} if scope else {})}
+        return {}
 
     @staticmethod
     def _derive_title(records: list[dict[str, Any]]) -> str:

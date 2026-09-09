@@ -2300,6 +2300,38 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/knowledge-bases/delete": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Delete Knowledge Base By Name
+     * @description Delete a knowledge base named in the body rather than in the path.
+     *
+     *     The path route below cannot reach every registered name. A name is a
+     *     ``kb_config.json`` key, and until the ``register_*`` methods validated it
+     *     the connect-* endpoints wrote whatever the user typed — including a ``/``.
+     *     uvicorn percent-decodes the path before routing, so ``%2F`` becomes a real
+     *     separator and ``{kb_name}`` (compiled to ``[^/]+``) cannot span it: every
+     *     per-KB route 404s and the KB is visible in the list but unreachable.
+     *
+     *     A body is never split into path segments, so this reaches those entries.
+     *     Widening the path route to ``{kb_name:path}`` would not do — it is
+     *     declared ahead of the DELETE routes for linked folders, GitHub sources and
+     *     web sources, and a greedy converter would silently swallow all three.
+     */
+    readonly post: operations["delete_knowledge_base_by_name_api_knowledge_bases_delete_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/knowledge-bases/health": {
     readonly parameters: {
       readonly query?: never;
@@ -7126,6 +7158,33 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/settings/providers/openai-codex/oauth/complete": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Complete Openai Codex Oauth
+     * @description Finish a waiting Codex login from a callback address the user pasted.
+     *
+     *     The provider redirects the browser to a loopback listener. In Docker that
+     *     listener lives in the container and the published ports do not include it,
+     *     so the browser shows a failed page while the sign-in waits forever
+     *     (#1252). This is the way back in without a tunnel: the address is parsed
+     *     for its OAuth result and discarded, and the exchange is the same one the
+     *     listener would have driven.
+     */
+    readonly post: operations["complete_openai_codex_oauth_api_settings_providers_openai_codex_oauth_complete_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/settings/providers/openai-codex/oauth/logout": {
     readonly parameters: {
       readonly query?: never;
@@ -9665,6 +9724,11 @@ export interface components {
       /** Trace Count */
       readonly trace_count: number;
     };
+    /** CodexOAuthCallbackPayload */
+    readonly CodexOAuthCallbackPayload: {
+      /** Callback Url */
+      readonly callback_url: string;
+    };
     /** CodexReasoningEffortUpdate */
     readonly CodexReasoningEffortUpdate: {
       /** Model */
@@ -10161,6 +10225,11 @@ export interface components {
       readonly expected_revision?: number | null;
       /** Page Id */
       readonly page_id: string;
+    };
+    /** DeleteKnowledgeBaseRequest */
+    readonly DeleteKnowledgeBaseRequest: {
+      /** Name */
+      readonly name: string;
     };
     /**
      * DeviceCredentialCreateRequest
@@ -13536,6 +13605,8 @@ export type SchemaChatResponseTimeoutUpdate =
   components["schemas"]["ChatResponseTimeoutUpdate"];
 export type SchemaChatStarterSettingsUpdate =
   components["schemas"]["ChatStarterSettingsUpdate"];
+export type SchemaCodexOAuthCallbackPayload =
+  components["schemas"]["CodexOAuthCallbackPayload"];
 export type SchemaCodexReasoningEffortUpdate =
   components["schemas"]["CodexReasoningEffortUpdate"];
 export type SchemaCompilePageRequest =
@@ -13593,6 +13664,8 @@ export type SchemaDeeptutorApiRoutersVideoLearningProgressRequest =
   components["schemas"]["deeptutor__api__routers__video_learning__ProgressRequest"];
 export type SchemaDeleteBlockRequest =
   components["schemas"]["DeleteBlockRequest"];
+export type SchemaDeleteKnowledgeBaseRequest =
+  components["schemas"]["DeleteKnowledgeBaseRequest"];
 export type SchemaDeviceCredentialCreateRequest =
   components["schemas"]["DeviceCredentialCreateRequest"];
 export type SchemaDeviceInfo = components["schemas"]["DeviceInfo"];
@@ -18773,6 +18846,43 @@ export interface operations {
       };
     };
     readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly delete_knowledge_base_by_name_api_knowledge_bases_delete_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["DeleteKnowledgeBaseRequest"];
+      };
+    };
     readonly responses: {
       /** @description Successful Response */
       readonly 200: {
@@ -30077,6 +30187,45 @@ export interface operations {
       };
     };
     readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly complete_openai_codex_oauth_api_settings_providers_openai_codex_oauth_complete_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["CodexOAuthCallbackPayload"];
+      };
+    };
     readonly responses: {
       /** @description Successful Response */
       readonly 200: {

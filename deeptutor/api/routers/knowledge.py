@@ -2814,20 +2814,52 @@ async def delete_kb_file(kb_name: str, filename: str):
     }
 
 
-@router.delete("/knowledge-bases/{kb_name}")
-async def delete_knowledge_base(kb_name: str):
-    """Delete a knowledge base."""
+def _delete_kb(kb_name: str) -> dict[str, str]:
+    """Delete ``kb_name``, whichever route addressed it."""
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
         success = manager.delete_knowledge_base(resolved_name, confirm=True)
-        if not success:
-            raise HTTPException(status_code=400, detail="Failed to delete knowledge base")
-        logger.info(f"KB '{kb_name}' deleted")
-        return {"message": f"Knowledge base '{kb_name}' deleted successfully"}
+    except HTTPException:
+        # Re-raised before the catch-all below, which used to turn a 404 from
+        # ``_writable_kb`` into a 500 whose detail read "404: ... not found".
+        raise
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to delete knowledge base")
+    logger.info(f"KB '{kb_name}' deleted")
+    return {"message": f"Knowledge base '{kb_name}' deleted successfully"}
+
+
+class DeleteKnowledgeBaseRequest(BaseModel):
+    name: str
+
+
+@router.post("/knowledge-bases/delete")
+async def delete_knowledge_base_by_name(payload: DeleteKnowledgeBaseRequest):
+    """Delete a knowledge base named in the body rather than in the path.
+
+    The path route below cannot reach every registered name. A name is a
+    ``kb_config.json`` key, and until the ``register_*`` methods validated it
+    the connect-* endpoints wrote whatever the user typed — including a ``/``.
+    uvicorn percent-decodes the path before routing, so ``%2F`` becomes a real
+    separator and ``{kb_name}`` (compiled to ``[^/]+``) cannot span it: every
+    per-KB route 404s and the KB is visible in the list but unreachable.
+
+    A body is never split into path segments, so this reaches those entries.
+    Widening the path route to ``{kb_name:path}`` would not do — it is
+    declared ahead of the DELETE routes for linked folders, GitHub sources and
+    web sources, and a greedy converter would silently swallow all three.
+    """
+    return _delete_kb(payload.name)
+
+
+@router.delete("/knowledge-bases/{kb_name}")
+async def delete_knowledge_base(kb_name: str):
+    """Delete a knowledge base."""
+    return _delete_kb(kb_name)
 
 
 @router.get("/knowledge-bases/tasks/{task_id}/stream")

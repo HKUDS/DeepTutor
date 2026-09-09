@@ -44,6 +44,7 @@ import {
   uploadPolicyForProvider,
   validateFiles,
 } from "@/lib/knowledge-helpers";
+import { forbiddenKbNameChars, isValidKbName } from "@/lib/kb-name";
 import FileDropZone from "./FileDropZone";
 import ImaConnectionFields from "./ImaConnectionFields";
 import KnowledgeEngineIcon from "./KnowledgeEngineIcon";
@@ -374,9 +375,15 @@ export default function CreateKbModal({
 
   const trimmedServerUrl = serverUrl.trim();
 
+  // Mirrors the backend rule so the name is rejected under the field rather
+  // than as an English 400 after Create. The connect-* paths give no error at
+  // all today, which is how a "/" name got registered in the first place.
+  const nameProblems = forbiddenKbNameChars(trimmed);
+
   const canSubmit = (() => {
     if (submitting) return false;
     if (!trimmed) return false;
+    if (!isValidKbName(trimmed)) return false;
     if (mode === "new") {
       if (isLightRagServer) {
         // The connection must pass the test before a KB is bound to it.
@@ -589,8 +596,17 @@ export default function CreateKbModal({
             autoFocus
             disabled={submitting}
             placeholder={t("e.g. project-papers")}
+            aria-invalid={nameProblems.length > 0}
             className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
           />
+          {nameProblems.length > 0 && (
+            <p className="mt-1 text-[11px] text-[var(--destructive)]">
+              {t(
+                "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.",
+                { chars: nameProblems.join(" ") },
+              )}
+            </p>
+          )}
         </div>
 
         {mode === "new" ? (

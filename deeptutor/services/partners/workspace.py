@@ -19,7 +19,9 @@ copied into the partner scope as plain files. All three asset classes are
 self-contained on disk, so a copy is a complete transfer:
 
 * KB: the whole ``<kb>/`` tree (raw + LlamaIndex ``version-N`` dirs); the
-  partner-side ``KnowledgeBaseManager`` auto-registers it on first list.
+  partner-side ``KnowledgeBaseManager`` auto-registers it on first list. A
+  connected/pointer KB (Obsidian, ``linked``, ...) has no such tree, so its
+  ``kb_config.json`` entry is registered directly instead of copied.
 * Skill: the whole ``<name>/`` dir (SKILL.md + references).
 * Notebook: ``<id>.json`` plus its ``notebooks_index.json`` entry.
 """
@@ -156,19 +158,63 @@ def provision_assets(
     return {"copied": copied, "errors": errors}
 
 
+def _partner_kb_config(partner_root: Path) -> dict[str, dict[str, Any]]:
+    """The partner's own ``kb_config.json`` entries, or ``{}``."""
+    config_file = partner_root / "knowledge_bases" / "kb_config.json"
+    if not config_file.exists():
+        return {}
+    try:
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.warning("Unreadable partner kb_config at %s", config_file, exc_info=True)
+        return {}
+    entries = config.get("knowledge_bases")
+    return entries if isinstance(entries, dict) else {}
+
+
 def _err(exc: Exception) -> str:
     detail = getattr(exc, "detail", None)
     return str(detail) if detail else f"{type(exc).__name__}: {exc}"
 
 
 def _copy_knowledge_base(kb_ref: str, partner_root: Path) -> str:
+    from deeptutor.knowledge.kb_types import NON_RETRIEVABLE_KB_TYPES, is_connected_kb
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
     from deeptutor.multi_user.knowledge_access import resolve_kb
 
     resource = resolve_kb(kb_ref)
+    dst_root = partner_root / "knowledge_bases"
+    entry = KnowledgeBaseManager(base_dir=str(resource.base_dir)).get_kb_entry(resource.name)
+
+    kind = entry.get("type") if isinstance(entry, dict) else None
+    if kind in NON_RETRIEVABLE_KB_TYPES:
+        # Obsidian, MarginNote and subagent KBs are each driven by an
+        # *exclusive* ``KnowledgeCapability``: when one is in the turn's KB
+        # selection it replaces the whole tool surface. A partner passes ALL of
+        # its knowledge bases as that selection on every turn, so one assigned
+        # vault would silently seize every partner turn, and a ``subagent``
+        # entry would let the partner consult another partner — or itself.
+        #
+        # Before pointer KBs were provisioned at all this was unreachable: the
+        # copy simply failed for want of a folder. It became reachable the
+        # moment the branch below started registering pointer entries, so the
+        # refusal has to be explicit.
+        raise ValueError(
+            f"A {kind} knowledge base cannot be assigned to a partner: "
+            "it takes over the whole conversation when selected."
+        )
+
+    if is_connected_kb(entry):
+        # Pointer KB: no on-disk tree to copy, so hand over the config row.
+        # ``register_connected_entry`` is a no-op when the partner already has
+        # it, which keeps provisioning idempotent like the copytree branch.
+        KnowledgeBaseManager(base_dir=str(dst_root)).register_connected_entry(resource.name, entry)
+        return resource.name
+
     src = Path(resource.base_dir) / resource.name
     if not src.is_dir():
         raise FileNotFoundError(f"Knowledge base directory missing: {resource.name}")
-    dst = partner_root / "knowledge_bases" / resource.name
+    dst = dst_root / resource.name
     if dst.exists():
         return resource.name  # already provisioned
     shutil.copytree(src, dst)
@@ -291,6 +337,14 @@ def list_assets(partner_id: str) -> dict[str, list[dict[str, Any]]]:
             if entry.is_dir() and not entry.name.startswith((".", "_")):
                 raw_count = sum(1 for f in (entry / "raw").glob("*") if f.is_file())
                 kbs.append({"name": entry.name, "documents": raw_count})
+    # A pointer KB is a config row and nothing else, so a directory scan alone
+    # cannot see one. Left out, an assigned WeKnora or linked KB was invisible
+    # in the partner's library AND never excluded from the picker, so the user
+    # kept assigning it and kept seeing nothing happen.
+    for name, config_entry in sorted(_partner_kb_config(root).items()):
+        if any(row["name"] == name for row in kbs):
+            continue
+        kbs.append({"name": name, "documents": 0, "type": config_entry.get("type", "")})
 
     skills: list[dict[str, Any]] = []
     skills_root = service.get_workspace_dir() / "skills"
@@ -325,10 +379,15 @@ def remove_asset(partner_id: str, asset_type: str, name: str) -> bool:
         raise ValueError("Invalid asset name")
 
     if asset_type == "knowledge_base":
+        # The two halves are independent: an ordinary KB has both a folder and
+        # (sometimes) a config row, a pointer KB has only the row. Returning
+        # early on a missing folder made an assigned pointer KB un-removable —
+        # the router turns False into a 404.
+        removed = False
         target = root / "knowledge_bases" / name
-        if not target.is_dir():
-            return False
-        shutil.rmtree(target)
+        if target.is_dir():
+            shutil.rmtree(target)
+            removed = True
         config_file = root / "knowledge_bases" / "kb_config.json"
         if config_file.exists():
             try:
@@ -338,9 +397,10 @@ def remove_asset(partner_id: str, asset_type: str, name: str) -> bool:
                     config_file.write_text(
                         json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
+                    removed = True
             except (OSError, json.JSONDecodeError):
                 logger.warning("Could not prune kb_config entry for %s", name, exc_info=True)
-        return True
+        return removed
 
     if asset_type == "skill":
         target = service.get_workspace_dir() / "skills" / name

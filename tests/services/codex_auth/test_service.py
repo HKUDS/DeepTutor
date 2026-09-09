@@ -23,6 +23,7 @@ from deeptutor.services.codex_auth.service import (
     MANAGED_BY,
     CodexOAuthService,
     codex_model_id,
+    parse_oauth_callback_url,
     remove_codex_catalog,
     ssh_forward_command,
     sync_codex_catalog,
@@ -1545,3 +1546,98 @@ async def test_recover_after_unauthorized_forces_refresh_for_next_request(
 
     assert oauth.refresh_calls == 1
     assert store.load_credentials().access_token == "refreshed-access"  # type: ignore[union-attr]
+
+
+_REDIRECT_URI = "http://localhost:1455/auth/callback"
+
+
+@pytest.mark.parametrize(
+    "pasted",
+    [
+        "http://localhost:1455/auth/callback?code=c&state=s&code=c2",
+        "http://localhost:1455/auth/callback?state=s",
+        "http://localhost:9999/auth/callback?code=c&state=s",
+        "http://evil.example/auth/callback?code=c&state=s",
+        "http://localhost:1455/somewhere-else?code=c&state=s",
+        "localhost:1455/auth/callback?code=c&state=s",
+        "not a url at all",
+    ],
+)
+def test_a_pasted_address_that_is_not_this_logins_callback_is_refused(pasted: str) -> None:
+    """The recovery form takes a string off the user's clipboard.
+
+    Anything that is not the callback this process registered — another host,
+    another port, another path, a repeated OAuth parameter, or no result at
+    all — is refused before the code reaches the exchange.
+    """
+    with pytest.raises(CodexAuthError) as exc_info:
+        parse_oauth_callback_url(pasted, _REDIRECT_URI)
+
+    assert exc_info.value.code == "callback_url_invalid"
+    assert exc_info.value.http_status == 400
+
+
+def test_a_pasted_callback_yields_its_oauth_result() -> None:
+    assert parse_oauth_callback_url(
+        f"  {_REDIRECT_URI}?code=the-code&state=the-state  ", _REDIRECT_URI
+    ) == ("the-code", "the-state", None)
+    assert parse_oauth_callback_url(f"{_REDIRECT_URI}?error=access_denied", _REDIRECT_URI) == (
+        None,
+        None,
+        "access_denied",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_docker_user_finishes_a_login_by_pasting_the_callback_address(
+    tmp_path: Path,
+) -> None:
+    """#1252: the browser reaches the callback address, the container does not.
+
+    The loopback listener runs inside the container and the standard compose
+    file does not publish its port, so the redirect dead-ends in the browser
+    and the sign-in waits until it expires. Pasting the address back finishes
+    the same exchange, with the same state check.
+    """
+    service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
+    started = await service.start_login()
+    state = parse_qs(urlsplit(started["authorize_url"]).query)["state"][0]
+
+    await service.complete_login_with_callback_url(
+        f"{started['redirect_uri']}?code=authorization-code&state={state}"
+    )
+
+    assert (await _wait_until_terminal(service))["operation_state"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_a_callback_for_someone_elses_login_does_not_complete_this_one(
+    tmp_path: Path,
+) -> None:
+    """The endpoint is authenticated, so it finishes the caller's own sign-in.
+
+    A state minted for another account's login is not a credential this
+    account may spend, and the address is not fetched to find out whose it is.
+    """
+    service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
+    started = await service.start_login()
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        await service.complete_login_with_callback_url(
+            f"{started['redirect_uri']}?code=authorization-code&state=another-accounts-state"
+        )
+
+    assert exc_info.value.code == "state_mismatch"
+    assert service.public_status()["operation_state"] == "waiting"
+    await service.cancel_login()
+
+
+@pytest.mark.asyncio
+async def test_pasting_a_callback_with_no_login_waiting_is_a_conflict(tmp_path: Path) -> None:
+    service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        await service.complete_login_with_callback_url(f"{_REDIRECT_URI}?code=c&state=s")
+
+    assert exc_info.value.code == "login_not_active"
+    assert exc_info.value.http_status == 409
