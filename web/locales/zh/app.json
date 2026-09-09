@@ -2044,6 +2044,7 @@
   "Failed turns are not retried.": "失败的轮次不会重试。",
   "The primary model answers every turn; if it fails outright, the turn is retried once on the backup.": "主模型负责每一轮回答；当它彻底失败时，会用备用模型重试一次。",
   "{{name}} Reasoning…": "{{name}} 推理中…",
+  "Still reasoning before acting…": "仍在推理，尚未开始回答或执行工具…",
   "{{name}} Planning…": "{{name}} 规划中…",
   "{{name}} Exploring…": "{{name}} 探索中…",
   "{{name}} Quizzing…": "{{name}} 出题中…",

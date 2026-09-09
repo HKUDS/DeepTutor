@@ -12,7 +12,7 @@ import json_repair
 from loguru import logger
 
 from deeptutor.services.llm.provider_core.base import LLMResponse, ToolCallRequest
-from deeptutor.services.llm.usage_frame import token_counts
+from deeptutor.services.llm.usage_frame import usage_breakdown
 
 FINISH_REASON_MAP = {
     "completed": "stop",
@@ -84,8 +84,43 @@ def _citations_from_content_blocks(blocks: Any) -> list[dict[str, str]]:
     return citations
 
 
-def map_finish_reason(status: str | None) -> str:
-    return FINISH_REASON_MAP.get(status or "completed", "stop")
+def map_finish_reason(
+    status: str | None,
+    incomplete_reason: str | None = None,
+) -> str:
+    """Map a Responses terminal status to the chat-completions vocabulary.
+
+    ``response.incomplete`` is not always a token-limit event: DeepSeek also
+    uses it for content filtering.  The nested reason is therefore part of the
+    mapping instead of treating every incomplete response as ``length``.
+    """
+    normalized_status = str(status or "completed").strip().lower()
+    normalized_reason = str(incomplete_reason or "").strip().lower()
+    if normalized_status == "incomplete":
+        if normalized_reason == "content_filter":
+            return "content_filter"
+        return "length"
+    return FINISH_REASON_MAP.get(normalized_status, "stop")
+
+
+def _response_field(response: Any, key: str) -> Any:
+    if isinstance(response, dict):
+        return response.get(key)
+    return getattr(response, key, None)
+
+
+def _incomplete_reason(response: Any) -> str | None:
+    details = _response_field(response, "incomplete_details")
+    reason = _response_field(details, "reason")
+    return str(reason) if reason is not None else None
+
+
+def _response_usage(response: Any) -> dict[str, int]:
+    return usage_breakdown(
+        _response_field(response, "usage"),
+        prompt="input_tokens",
+        completion="output_tokens",
+    )
 
 
 @dataclass(slots=True)
@@ -401,9 +436,17 @@ async def consume_sse(
                         arguments=(buf.arguments if buf else "") or item.get("arguments") or "{}",
                     )
                 )
-        elif event_type == "response.completed":
-            status = (event.get("response") or {}).get("status")
-            finish_reason = map_finish_reason(status)
+        elif event_type in {"response.completed", "response.incomplete"}:
+            # The documented shape nests the terminal payload under
+            # ``response``; a few gateways flatten it onto the event itself.
+            response = event.get("response") or event
+            status = _response_field(response, "status") or (
+                "incomplete" if event_type == "response.incomplete" else "completed"
+            )
+            finish_reason = map_finish_reason(status, _incomplete_reason(response))
+            usage = _response_usage(response)
+            if usage and on_provider_event:
+                on_provider_event("usage", usage)
         elif event_type in {"error", "response.failed"}:
             raise RuntimeError(f"Response failed: {_response_error_detail(event)[:500]}")
 
@@ -474,9 +517,12 @@ def parse_response_output(response: Any) -> LLMResponse:
             )
 
     # The Responses API names its counters input_/output_tokens.
-    usage = token_counts(response.get("usage"), prompt="input_tokens", completion="output_tokens")
+    usage = _response_usage(response)
 
-    finish_reason = map_finish_reason(response.get("status"))
+    finish_reason = map_finish_reason(
+        response.get("status"),
+        _incomplete_reason(response),
+    )
     if not any(item.get("type") == "reasoning" for item in native_output_items):
         # Preserve the established metadata contract for ordinary native web
         # search responses. Message/function-call items only need verbatim
@@ -597,14 +643,20 @@ async def consume_sdk_stream(
             reasoning_content = (reasoning_content or "") + delta_text
             if on_reasoning_delta and delta_text:
                 await on_reasoning_delta(delta_text)
-        elif event_type == "response.completed":
-            response = getattr(event, "response", None)
-            status = getattr(response, "status", None) if response is not None else None
-            usage_obj = getattr(response, "usage", None) if response is not None else None
-            finish_reason = map_finish_reason(status)
-            usage = (
-                token_counts(usage_obj, prompt="input_tokens", completion="output_tokens") or usage
-            )
+        elif event_type in {"response.completed", "response.incomplete"}:
+            response = getattr(event, "response", None) or event
+            status = _response_field(response, "status")
+            usage_obj = _response_field(response, "usage")
+            if status is None and event_type == "response.incomplete":
+                status = "incomplete"
+            finish_reason = map_finish_reason(status, _incomplete_reason(response))
+            usage = usage_breakdown(
+                usage_obj,
+                prompt="input_tokens",
+                completion="output_tokens",
+            ) or usage
+            if usage and on_provider_event:
+                on_provider_event("usage", usage)
         elif event_type in {"error", "response.failed"}:
             raise RuntimeError(f"Response failed: {_response_error_detail(event)[:500]}")
 

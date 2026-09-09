@@ -131,6 +131,7 @@ class ChatOrchestrator:
 
         async def _run() -> None:
             status = "completed"
+            terminal_error_metadata: dict[str, Any] = {}
             try:
                 await capability.run(context, bus)
             except Exception as exc:
@@ -149,6 +150,11 @@ class ChatOrchestrator:
                 partial_response = getattr(exc, "partial_response", None)
                 if isinstance(partial_response, bool):
                     error_metadata["partial_response"] = partial_response
+                terminal_error_metadata = {
+                    key: error_metadata[key]
+                    for key in ("error_code", "retryable", "partial_response")
+                    if key in error_metadata
+                }
                 await bus.error(
                     str(exc),
                     source=cap_name,
@@ -159,7 +165,7 @@ class ChatOrchestrator:
                     StreamEvent(
                         type=StreamEventType.DONE,
                         source=cap_name,
-                        metadata={"status": status},
+                        metadata={"status": status, **terminal_error_metadata},
                     )
                 )
                 await bus.close()

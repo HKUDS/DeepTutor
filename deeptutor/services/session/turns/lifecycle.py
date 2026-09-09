@@ -17,6 +17,7 @@ from deeptutor.services.session.protocol import SessionStoreProtocol
 from deeptutor.services.session.scope import store_scope
 
 from .._turn_runtime_shared import (
+    _coerce_bool,
     _LiveSubscriber,
     _TurnExecution,
 )
@@ -458,6 +459,11 @@ class TurnLifecycle:
         metadata: dict[str, Any] = {"status": status, "synthesized": True}
         if error:
             metadata["error"] = error
+        failure_code = str((turn or {}).get("failure_code") or "")
+        if failure_code:
+            metadata["error_code"] = failure_code
+        if _coerce_bool((turn or {}).get("retryable"), False):
+            metadata["retryable"] = True
         return {
             "type": "done",
             "source": "turn_runtime",
@@ -490,6 +496,8 @@ class TurnLifecycle:
                 "status": "failed",
                 "synthesized": True,
                 "turn_terminal": True,
+                "error_code": str((turn or {}).get("failure_code") or ""),
+                "retryable": _coerce_bool((turn or {}).get("retryable"), False),
             },
             "session_id": str((turn or {}).get("session_id") or ""),
             "turn_id": turn_id,

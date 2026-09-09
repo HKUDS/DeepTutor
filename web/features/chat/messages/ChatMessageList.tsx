@@ -1730,14 +1730,26 @@ export const ChatMessageList = memo(function ChatMessageList({
           isStreaming && i === lastRenderedAssistantIndex;
         const msgDone = !isActiveAssistant;
         const showActions = msgDone && hasVisibleMarkdownContent(msg.content);
+        const terminalError = (msg.events ?? []).find(
+          (e) =>
+            e.type === "error" &&
+            Boolean(
+              (e.metadata as { turn_terminal?: boolean } | undefined)
+                ?.turn_terminal,
+            ),
+        );
+        const terminalErrorRetryable = Boolean(
+          (terminalError?.metadata as { retryable?: boolean } | undefined)
+            ?.retryable,
+        );
         const isLastAssistant = i === lastRenderedAssistantIndex;
         const showRegenerate =
-          showActions &&
           !isStreaming &&
           isLastAssistant &&
           Boolean(pairedUserMessage) &&
           (!pairedUserMessage?.capability ||
-            pairedUserMessage?.capability === "chat");
+            pairedUserMessage?.capability === "chat") &&
+          (showActions || terminalErrorRetryable);
         const deletableTurnUserId =
           msgDone && pairedUserMessage?.id != null && onDeleteTurn
             ? pairedUserMessage.id
@@ -1808,14 +1820,6 @@ export const ChatMessageList = memo(function ChatMessageList({
               // with a turn_terminal error event. Surface it as an error
               // card with an inline retry instead of leaving a bare trace.
               if (isActiveAssistant) return null;
-              const terminalError = (msg.events ?? []).find(
-                (e) =>
-                  e.type === "error" &&
-                  Boolean(
-                    (e.metadata as { turn_terminal?: boolean } | undefined)
-                      ?.turn_terminal,
-                  ),
-              );
               if (!terminalError) return null;
               return (
                 <div className="mt-3 flex w-full max-w-[min(520px,90%)] items-center gap-2 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/5 px-3 py-2">

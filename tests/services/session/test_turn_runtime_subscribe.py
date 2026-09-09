@@ -9,6 +9,7 @@ import pytest
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.learning.storage import LearningStore
 from deeptutor.services.courses import CourseService
+from deeptutor.services.session._turn_runtime_shared import _resolve_turn_failure_metadata
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import (
     TurnRuntimeManager,
@@ -87,6 +88,25 @@ def test_non_terminal_error_keeps_completed_done_status() -> None:
 
     assert status == "completed"
     assert error == ""
+
+
+def test_terminal_error_metadata_resolves_retry_contract() -> None:
+    code, retryable = _resolve_turn_failure_metadata(
+        [
+            {
+                "type": "error",
+                "content": "The model exhausted its output budget.",
+                "metadata": {
+                    "turn_terminal": True,
+                    "error_code": "reasoning_budget_exhausted",
+                    "retryable": True,
+                },
+            }
+        ]
+    )
+
+    assert code == "reasoning_budget_exhausted"
+    assert retryable is True
 
 
 @pytest.mark.asyncio
@@ -240,14 +260,27 @@ async def test_subscribe_failed_turn_synthesizes_ordered_error_and_done(tmp_path
     runtime = TurnRuntimeManager(store)
     session = await store.ensure_session(None)
     turn = await store.create_turn(session["id"], capability="chat")
-    assert await store.update_turn_status(turn["id"], "failed", "provider failed") is True
+    assert (
+        await store.transition_turn(
+            turn["id"],
+            "failed",
+            error="provider failed",
+            failure_code="reasoning_budget_exhausted",
+            retryable=True,
+        )
+        is True
+    )
 
     events = [event async for event in runtime.subscribe_turn(turn["id"], after_seq=0)]
 
     assert [event["type"] for event in events] == ["error", "done"]
     assert [event["seq"] for event in events] == [1, 2]
     assert events[0]["metadata"]["turn_terminal"] is True
+    assert events[0]["metadata"]["error_code"] == "reasoning_budget_exhausted"
+    assert events[0]["metadata"]["retryable"] is True
     assert events[1]["metadata"]["status"] == "failed"
+    assert events[1]["metadata"]["error_code"] == "reasoning_budget_exhausted"
+    assert events[1]["metadata"]["retryable"] is True
 
 
 @pytest.mark.asyncio

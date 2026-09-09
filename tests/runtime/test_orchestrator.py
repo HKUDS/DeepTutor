@@ -198,6 +198,13 @@ class TestOrchestratorErrorHandling:
             "retryable": True,
             "partial_response": False,
         }
+        done = next(event for event in events if event.type == StreamEventType.DONE)
+        assert done.metadata == {
+            "status": "failed",
+            "error_code": "provider_transport",
+            "retryable": True,
+            "partial_response": False,
+        }
 
 
 # ---------------------------------------------------------------------------
