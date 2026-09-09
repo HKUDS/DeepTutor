@@ -333,6 +333,12 @@ celerybeat.pid
 # Desktop packaging sidecars (generated locally / CI)
 # ============================================
 packaging/node-runtime/win-x64/
+packaging/node-runtime/win-arm64/
+packaging/node-runtime/linux-x64/
+packaging/node-runtime/linux-arm64/
+packaging/node-runtime/macos-x64/
+packaging/node-runtime/macos-arm64/
 packaging/node-runtime/win-unpacked/
 packaging/node-runtime/node-runtime-bundle/
+packaging/node-runtime/_extract_tmp/
 packaging/python-runtime/

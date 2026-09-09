@@ -76,30 +76,37 @@ jobs:
             os: windows-latest
             arch: x64
             target: win
+            native_sidecar: true
             zip_cmd: powershell -Command "Compress-Archive -Path dist/electron_ui/win-unpacked -DestinationPath dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-win-x64.zip"
           - platform: Windows
             os: windows-latest
             arch: arm64
             target: win
-            zip_cmd: powershell -Command "Compress-Archive -Path dist/electron_ui/win-unpacked -DestinationPath dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-win-arm64.zip"
+            # PyInstaller cannot cross-compile; ship Electron arm64 without frozen sidecars.
+            native_sidecar: false
+            zip_cmd: powershell -Command "Compress-Archive -Path dist/electron_ui/win-arm64-unpacked -DestinationPath dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-win-arm64.zip"
           - platform: Linux
             os: ubuntu-latest
             arch: x64
             target: linux
+            native_sidecar: true
             zip_cmd: tar czf dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-linux-x64.tar.gz -C dist/electron_ui linux-unpacked
           - platform: Linux
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             arch: arm64
             target: linux
-            zip_cmd: tar czf dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-linux-arm64.tar.gz -C dist/electron_ui linux-unpacked
+            native_sidecar: true
+            zip_cmd: tar czf dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-linux-arm64.tar.gz -C dist/electron_ui linux-arm64-unpacked
           - platform: macOS
-            os: macos-latest
+            os: macos-13
             arch: x64
             target: mac
+            native_sidecar: true
           - platform: macOS
             os: macos-latest
             arch: arm64
             target: mac
+            native_sidecar: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -132,6 +139,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .[all]
+          pip install "pyinstaller>=6.0,<7"
       - name: Set up Node.js (web)
         uses: actions/setup-node@v4
         with:
@@ -155,22 +163,23 @@ jobs:
       - name: Build TypeScript
         working-directory: electron_ui
         run: npm run build
-      - name: Prepare Node runtime (Windows x64)
-        if: matrix.platform == 'Windows' && matrix.arch == 'x64'
-        shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File packaging/node-runtime/prepare.ps1
-      - name: Build Python backend with PyInstaller (Windows x64)
-        if: matrix.platform == 'Windows' && matrix.arch == 'x64'
-        shell: pwsh
+      - name: Prepare Node + PyInstaller sidecars
+        if: matrix.native_sidecar
         run: |
-          python -m pip install "pyinstaller>=6.0,<7"
-          powershell -ExecutionPolicy Bypass -File packaging/pyinstaller/build.ps1 -Python (Get-Command python).Source -SkipSmoke
-      - name: Ensure Windows sidecar dirs exist
-        if: matrix.platform == 'Windows'
-        shell: pwsh
+          python packaging/node-runtime/prepare.py
+          python packaging/pyinstaller/build.py --python "$(python -c 'import sys; print(sys.executable)')" --skip-smoke
+      - name: Ensure packaging-sidecar dirs exist
+        shell: python
         run: |
-          New-Item -ItemType Directory -Force -Path dist/pyinstaller/win-x64/deeptutor | Out-Null
-          New-Item -ItemType Directory -Force -Path packaging/node-runtime/win-x64 | Out-Null
+          from pathlib import Path
+          for p in (
+              Path("dist/packaging-sidecar/python-backend"),
+              Path("dist/packaging-sidecar/node-runtime"),
+          ):
+              p.mkdir(parents=True, exist_ok=True)
+              marker = p / ".keep"
+              if not any(p.iterdir()):
+                  marker.write_text("placeholder\n", encoding="utf-8")
       - name: Build ${{matrix.platform}} package
         working-directory: electron_ui
         run: npx electron-builder --${{matrix.target}} --${{matrix.arch}} --config electron-builder.yml

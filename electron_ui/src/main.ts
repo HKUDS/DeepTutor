@@ -57,13 +57,17 @@ interface BackendLaunch {
 }
 
 function resolvePackagedBackendExe(): string | null {
-  const candidates = [
-    // extraFiles `to: python-backend` → next to resources/ (same level as exe)
-    path.join(process.resourcesPath, '..', 'python-backend', 'deeptutor.exe'),
-    path.join(process.resourcesPath, 'python-backend', 'deeptutor.exe'),
+  const names = process.platform === 'win32' ? ['deeptutor.exe', 'deeptutor'] : ['deeptutor'];
+  const dirs = [
+    // extraFiles `to: python-backend` → app root (win/linux) or Contents/ (mac)
+    path.join(process.resourcesPath, '..', 'python-backend'),
+    path.join(process.resourcesPath, 'python-backend'),
   ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
+  for (const dir of dirs) {
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(candidate)) return candidate;
+    }
   }
   return null;
 }
@@ -83,9 +87,15 @@ function resolveWebDir(): string | null {
 }
 
 function resolveNodeBinDir(): string | null {
+  const nodeName = process.platform === 'win32' ? 'node.exe' : 'node';
   const candidates = isDev
     ? [
         path.join(APP_ROOT, 'packaging', 'node-runtime', 'win-x64'),
+        path.join(APP_ROOT, 'packaging', 'node-runtime', 'linux-x64'),
+        path.join(APP_ROOT, 'packaging', 'node-runtime', 'linux-arm64'),
+        path.join(APP_ROOT, 'packaging', 'node-runtime', 'macos-arm64'),
+        path.join(APP_ROOT, 'packaging', 'node-runtime', 'macos-x64'),
+        path.join(APP_ROOT, 'dist', 'packaging-sidecar', 'node-runtime'),
         path.join(APP_ROOT, 'packaging', 'node-runtime', 'node-runtime-bundle', 'bin'),
         path.join(APP_ROOT, 'packaging', 'node-runtime', 'bin'),
       ]
@@ -96,8 +106,7 @@ function resolveNodeBinDir(): string | null {
         path.join(process.resourcesPath, 'node-runtime', 'bin'),
       ];
   for (const candidate of candidates) {
-    const exe = path.join(candidate, process.platform === 'win32' ? 'node.exe' : 'node');
-    if (fs.existsSync(exe)) return candidate;
+    if (fs.existsSync(path.join(candidate, nodeName))) return candidate;
   }
   return null;
 }

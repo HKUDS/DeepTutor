@@ -5,8 +5,7 @@ directories:
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
 extraFiles:
-# Source packages: used in dev-style packaged runs and non-Windows until
-# those platforms have their own frozen backends.
+# Source packages remain as a fallback when frozen sidecars are absent.
 - from: ../deeptutor
   to: resources/app/deeptutor
 - from: ../deeptutor_cli
@@ -27,18 +26,19 @@ nsis:
   oneClick: false
   shortcutName: DeepTutor
 productName: DeepTutor
+# Frozen Python + Node sidecars staged by packaging/*/build|prepare.py into
+# dist/packaging-sidecar/. Same paths for win / linux / mac so CI only needs
+# to prepare the runner-native arch.
 win:
   artifactName: ${productName}-Setup-${version}-win-${arch}.${ext}
   icon: logo.png
   signAndEditExecutable: false
   signDlls: false
   signingHashAlgorithms: []
-  # Self-contained Windows sidecars (x64 PyInstaller + Node). Arm64 CI may
-  # ship empty placeholder dirs; main.ts then falls back to system python/node.
   extraFiles:
-  - from: ../dist/pyinstaller/win-x64/deeptutor
+  - from: ../dist/packaging-sidecar/python-backend
     to: python-backend
-  - from: ../packaging/node-runtime/win-x64
+  - from: ../dist/packaging-sidecar/node-runtime
     to: node-runtime
   target:
   - arch:
@@ -57,6 +57,11 @@ linux:
   artifactName: ${productName}-${version}-linux-${arch}.${ext}
   icon: logo.png
   maintainer: promoteAI <1035959050@qq.com>
+  extraFiles:
+  - from: ../dist/packaging-sidecar/python-backend
+    to: python-backend
+  - from: ../dist/packaging-sidecar/node-runtime
+    to: node-runtime
   target:
     - arch: x64
       target: AppImage
@@ -70,6 +75,11 @@ mac:
   artifactName: ${productName}-${version}-macos-${arch}.${ext}
   icon: logo.png
   category: public.app-category.education
+  extraFiles:
+  - from: ../dist/packaging-sidecar/python-backend
+    to: python-backend
+  - from: ../dist/packaging-sidecar/node-runtime
+    to: node-runtime
   target:
     - arch: x64
       target: dmg

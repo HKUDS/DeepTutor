@@ -1,13 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for the DeepTutor Windows x64 onedir backend.
+"""PyInstaller spec for the DeepTutor onedir backend (all platforms).
 
 Build (from repo root)::
 
-    powershell -File packaging/pyinstaller/build.ps1
+    python packaging/pyinstaller/build.py
 
 Output::
 
-    dist/pyinstaller/win-x64/deeptutor/deeptutor.exe
+    dist/pyinstaller/<plat-arch>/deeptutor/deeptutor[.exe]
+    dist/packaging-sidecar/python-backend/
 """
 
 from __future__ import annotations

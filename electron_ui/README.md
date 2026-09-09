@@ -16,7 +16,7 @@ Electron wrapper for DeepTutor — spawns the Python launcher and embeds the Web
 
 ### Prerequisites
 
-1. Install Python dependencies (for local/dev runs):
+1. Install Python dependencies:
    ```bash
    pip install -e .
    ```
@@ -26,60 +26,40 @@ Electron wrapper for DeepTutor — spawns the Python launcher and embeds the Web
    python scripts/prepare_web_package.py
    ```
 
-3. Build the frozen Python backend (Windows x64 onedir):
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File packaging/pyinstaller/build.ps1
-   ```
-   Output: `dist/pyinstaller/win-x64/deeptutor/deeptutor.exe`
-
-4. Prepare the bundled Node runtime (Windows x64):
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File packaging/node-runtime/prepare.ps1
-   ```
-
-5. Install Electron dependencies:
+3. Build the frozen Python backend (**same OS/arch as the Electron target**):
    ```bash
-   cd electron_ui && npm install
+   python packaging/pyinstaller/build.py
    ```
+   Stages: `dist/packaging-sidecar/python-backend/`
 
-6. Compile TypeScript:
+4. Prepare the bundled Node runtime:
    ```bash
-   npx tsc --project tsconfig.json
+   python packaging/node-runtime/prepare.py
+   ```
+   Stages: `dist/packaging-sidecar/node-runtime/`
+
+5. Install Electron dependencies and compile:
+   ```bash
+   cd electron_ui && npm install && npx tsc --project tsconfig.json
    ```
 
 ### Platform-specific builds
 
-All platforms support `x64` (Intel/AMD) and `arm64` (Apple Silicon / ARM Windows):
-
 ```bash
 # Windows x64
 npx electron-builder --win --x64
-# Output: ../dist/electron_ui/DeepTutor-Setup-{version}-win-x64.exe
-
-# Windows arm64
-npx electron-builder --win --arm64
-# Output: ../dist/electron_ui/DeepTutor-Setup-{version}-win-arm64.exe
 
 # Linux x64
 npx electron-builder --linux --x64
-# Output: ../dist/electron_ui/DeepTutor-{version}-linux-x64.AppImage
-#         ../dist/electron_ui/DeepTutor-{version}-linux-x64.deb
-
-# Linux arm64
-npx electron-builder --linux --arm64
-# Output: ../dist/electron_ui/DeepTutor-{version}-linux-arm64.AppImage
-#         ../dist/electron_ui/DeepTutor-{version}-linux-arm64.deb
-
-# macOS x64 (Intel)
-npx electron-builder --mac --x64
-# Output: ../dist/electron_ui/DeepTutor-{version}-macos-x64.dmg
-#         ../dist/electron_ui/DeepTutor-{version}-macos-x64.zip
 
 # macOS arm64 (Apple Silicon)
 npx electron-builder --mac --arm64
-# Output: ../dist/electron_ui/DeepTutor-{version}-macos-arm64.dmg
-#         ../dist/electron_ui/DeepTutor-{version}-macos-arm64.zip
+
+# macOS x64 (Intel) — build on an Intel Mac (or macos-13 CI)
+npx electron-builder --mac --x64
 ```
+
+Sidecars are read from `dist/packaging-sidecar/` on every platform.
 
 ## Run in Development
 
@@ -87,13 +67,13 @@ npx electron-builder --mac --arm64
 cd electron_ui && npx electron .
 ```
 
-Dev mode still uses system `python -m deeptutor_cli.main start`. Packaged builds prefer the bundled `python-backend/deeptutor.exe`.
+Dev mode uses system `python -m deeptutor_cli.main start`. Packaged builds prefer
+`python-backend/deeptutor[.exe]`.
 
 ## Key Design Decisions
 
-- **Launch model (dev)**: Electron spawns `python -m deeptutor_cli.main start --no-browser`
-- **Launch model (packaged)**: Electron spawns `python-backend/deeptutor.exe start --home … --no-browser`
-- **Web assets**: `DEEPTUTOR_WEB_DIR` points at the `deeptutor_web` folder shipped next to the exe
-- **URL detection**: Matches launcher stdout lines containing the frontend port (e.g. `:3782`)
-- **User data**: Stored in `%APPDATA%/DeepTutor` (written by launcher, not Electron)
-- **Tray icon**: Uses `assets/figs/logo/logo.png` with Show/Hide/Restart/Quit menu
+- **Launch model (dev)**: `python -m deeptutor_cli.main start --no-browser`
+- **Launch model (packaged)**: `python-backend/deeptutor[.exe] start --home … --no-browser`
+- **Web assets**: `DEEPTUTOR_WEB_DIR` → packaged `deeptutor_web`
+- **Node**: bundled `node-runtime` prepended to `PATH`
+- **User data**: `%APPDATA%/DeepTutor`, `~/Library/Application Support/DeepTutor`, or `~/.config/DeepTutor`

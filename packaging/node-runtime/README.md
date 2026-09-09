@@ -1,24 +1,33 @@
-# Bundled Node.js for DeepTutor Electron (Windows x64)
+# Bundled Node.js for DeepTutor Electron
 
 Electron’s launcher needs `node` to run the packaged Next.js `server.js`.
 This folder holds a portable Node 22 distribution shipped as `node-runtime/`
-next to `DeepTutor.exe`.
+beside the app (win/linux) or under `Contents/` (mac).
 
 ## Prepare
 
-```powershell
-powershell -ExecutionPolicy Bypass -File packaging/node-runtime/prepare.ps1
+```bash
+# Linux / macOS / Windows
+python packaging/node-runtime/prepare.py
 ```
 
-Uses the cached zip at `node-runtime-bundle/node-v22.23.2-win-x64.zip` and
-writes `win-x64/node.exe`.
+Wrappers:
+
+```bash
+bash packaging/node-runtime/prepare.sh
+powershell -File packaging/node-runtime/prepare.ps1
+```
+
+Downloads Node **v22.23.2** for the current platform into
+`packaging/node-runtime/<plat-arch>/` and stages
+`dist/packaging-sidecar/node-runtime/` for electron-builder.
 
 ## Layout after prepare
 
 ```text
+packaging/node-runtime/linux-x64/node
+packaging/node-runtime/macos-arm64/node
 packaging/node-runtime/win-x64/node.exe
-packaging/node-runtime/win-x64/npm.cmd
-...
+…
+dist/packaging-sidecar/node-runtime/   # copy used by electron-builder
 ```
-
-`electron-builder.yml` copies `win-x64` → `node-runtime` in the app package.
