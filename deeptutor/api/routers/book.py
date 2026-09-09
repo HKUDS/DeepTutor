@@ -29,6 +29,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_admin_or_teacher
@@ -948,6 +949,31 @@ async def get_book(book_id: str, include_blocks: bool = True) -> dict[str, Any]:
     }
 
 
+@router.get("/books/{book_id}/assets/{asset_path:path}")
+async def get_book_asset(book_id: str, asset_path: str) -> FileResponse:
+    """Serve a file from the book's ``assets/`` dir (figure backfill, P5).
+
+    Mirrors the visualizer-asset route's hardening: ids are validated, the
+    resolved path must stay inside the book root, and responses are nosniffed.
+    """
+    try:
+        root = get_book_storage().book_root(book_id) / "assets"
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    target = (root / asset_path).resolve()
+    if not str(target).startswith(str(root.resolve()) + "/"):
+        raise HTTPException(status_code=400, detail="invalid asset path")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(
+        target,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("/books/{book_id}/spine")
 async def get_spine(book_id: str) -> dict[str, Any]:
     engine = _resolve_book_or_404(book_id).engine
@@ -1030,7 +1056,13 @@ async def _import_pages_into_chapter(
     endpoint. Blocks go through ``insert_block(compile_now=False)``, so
     verbatim generators (reading / user_note) materialize immediately and the
     compiler is never invoked.
+
+    P5: reading bodies pass through ``delimit_bare_latex`` first so the bare
+    LaTeX fragments MinerU leaves in Chinese prose render on the frontend
+    KaTeX chain instead of leaking as raw text.
     """
+    from deeptutor.book.latex_delimit import delimit_bare_latex
+
     created: list[Page] = []
     for spec in specs:
         page = Page(
@@ -1046,11 +1078,16 @@ async def _import_pages_into_chapter(
         engine.storage.save_spine(spine)
         all_ready = True
         for blk in spec.blocks:
+            params = dict(blk.get("params") or {})
+            if str(blk.get("block_type") or "") == "reading" and isinstance(
+                params.get("body"), str
+            ):
+                params["body"] = delimit_bare_latex(params["body"])
             block = await engine.insert_block(
                 book_id=book_id,
                 page_id=page.id,
                 block_type=_coerce_block_type(str(blk.get("block_type") or "")),
-                params=blk.get("params") or {},
+                params=params,
                 compile_now=False,
             )
             if block is None:
