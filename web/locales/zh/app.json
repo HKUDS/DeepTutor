@@ -4017,5 +4017,18 @@
   "references": "引用",
   "That question is no longer waiting for an answer, so this was sent as a new message.": "这道题已经不再等待作答，所以这条内容作为新消息发送了。",
   "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "知识库名称不能包含 {{chars}} —— 这些字符会切断路径和 URL。",
-  "Select text in the document first.": "请先在文档中选中文字。"
+  "Select text in the document first.": "请先在文档中选中文字。",
+  "Learning goals": "学习目标",
+  "Textbook progress": "教材进度",
+  "Start from your textbook": "从你的教材开始",
+  "Pick a textbook — its own chapter tree becomes your first mastery path, no goal writing needed.": "选一本教材——它自己的章节树会变成你的第一条精通路径，无需先写学习目标。",
+  "Your books already carry a full chapter tree — start a path from one of them, or tell DeepTutor what you want to learn instead.": "你的书架里已经有完整的章节树——从一本书开始一条路径，或者直接告诉 DeepTutor 你想学什么。",
+  "{{count}} objectives": "{{count}} 个目标",
+  "{{mastery}}% mastered": "已掌握 {{mastery}}%",
+  "Diagnosing": "诊断中",
+  "Learning": "学习中",
+  "Explaining": "讲解自测中",
+  "Practicing": "练习中",
+  "Error review": "错因复盘",
+  "Reviewing": "复习中"
 }

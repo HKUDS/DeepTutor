@@ -5,13 +5,14 @@ import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   ArrowRight,
+  BookOpen,
   Compass,
   Plus,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
 
-import type { MasteryTopic } from "@/lib/learning-api";
+import type { MasteryTopic, ProgressSummary } from "@/lib/learning-api";
 import {
   MASTERY_OPENING_SCOPE,
   masteryOpeningMessage,
@@ -22,6 +23,61 @@ import { setPendingPrompt } from "@/lib/pending-prompt";
 import { topicDisplayName, type Translate } from "./format";
 import { TopicMapCard } from "./TopicMapCard";
 
+/** progress summaries' current_stage → the card's badge label. */
+const BOOK_STAGE_LABELS: Record<string, string> = {
+  diagnostic: "Diagnosing",
+  explain: "Learning",
+  feynman_check: "Explaining",
+  practice: "Practicing",
+  error_diagnosis: "Error review",
+  review: "Reviewing",
+  completed: "Completed",
+};
+
+function BookPathCard({ summary }: { summary: ProgressSummary }) {
+  const { t } = useTranslation();
+  const stage = BOOK_STAGE_LABELS[summary.current_stage];
+  return (
+    <Link
+      href={`/mastery/${encodeURIComponent(summary.book_id)}`}
+      className="group flex min-h-24 flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 transition hover:border-[var(--primary)]/50 hover:bg-[var(--accent)]/40"
+    >
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--muted-foreground)]/10 text-[var(--muted-foreground)]">
+          <BookOpen className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-[var(--foreground)]">
+            {summary.name || summary.book_id}
+          </div>
+          <div className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+            {t("{{count}} modules", { count: summary.modules_count })} ·{" "}
+            {t("{{count}} objectives", { count: summary.kp_count })}
+          </div>
+        </div>
+        {stage && (
+          <span className="shrink-0 rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] text-[var(--muted-foreground)]">
+            {t(stage)}
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--muted)]">
+          <div
+            className="h-full rounded-full bg-[var(--mastery-route)]"
+            style={{ width: `${Math.round(summary.avg_mastery_pct)}%` }}
+          />
+        </div>
+        <span className="shrink-0 text-xs tabular-nums text-[var(--muted-foreground)]">
+          {t("{{mastery}}% mastered", {
+            mastery: Math.round(summary.avg_mastery_pct),
+          })}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
 export function TopicAtlas({
   topics,
   loading,
@@ -29,6 +85,12 @@ export function TopicAtlas({
   onCreate,
   onRetry,
   scopeChip,
+  stages = {},
+  onTopicDeleted,
+  onTopicImported,
+  bookPaths = [],
+  canStartFromBook = false,
+  onStartFromBook,
 }: {
   topics: MasteryTopic[];
   loading: boolean;
@@ -37,11 +99,26 @@ export function TopicAtlas({
   onRetry: () => void;
   /** Rendered beside the eyebrow when this visit belongs to one course. */
   scopeChip?: React.ReactNode;
+  /** path_id → current_stage from the progress summaries. */
+  stages?: Record<string, string>;
+  onTopicDeleted: (pathId: string) => void;
+  onTopicImported: (pathId: string, moduleCount: number) => void;
+  /** Progress summaries that no topic card covers — book-type paths. */
+  bookPaths?: ProgressSummary[];
+  /** The learner has books on the shelf, so the empty state can offer one. */
+  canStartFromBook?: boolean;
+  onStartFromBook?: (trigger: HTMLButtonElement) => void;
 }) {
   const { t } = useTranslation();
-  const activeTopics = topics.filter(
-    (topic) => topic.metadata.status === "active",
-  );
+  const activeTopics = topics
+    .filter((topic) => topic.metadata.status === "active")
+    // Empty topics have no route to work through yet — keep them behind the
+    // actionable maps so the first screen is always the learner's next step.
+    // The sort is stable, so server order is preserved within each group.
+    .sort(
+      (a, b) =>
+        (a.map.modules.length > 0 ? 0 : 1) - (b.map.modules.length > 0 ? 0 : 1),
+    );
   const dueCount = activeTopics.reduce(
     (count, topic) =>
       count + topic.reviews.filter((review) => review.due).length,
@@ -51,6 +128,9 @@ export function TopicAtlas({
     topic.reviews.some((review) => review.due),
   );
   const firstDueTopic = dueTopics[0];
+  // The two group headers only earn their place when both kinds of path are
+  // on screen — a lone group is labeled by the page around it.
+  const showGroupLabels = activeTopics.length > 0 && bookPaths.length > 0;
 
   return (
     <main className="mastery-shell h-full overflow-y-auto [scrollbar-gutter:stable]">
@@ -153,15 +233,49 @@ export function TopicAtlas({
               />
             ))}
           </div>
-        ) : activeTopics.length > 0 ? (
-          <section
-            aria-label={t("Active learning topics")}
-            className="mt-9 grid gap-6 md:grid-cols-2 xl:grid-cols-3"
-          >
-            {activeTopics.map((topic) => (
-              <TopicMapCard key={topic.path_id} topic={topic} />
-            ))}
-          </section>
+        ) : activeTopics.length > 0 || bookPaths.length > 0 ? (
+          <>
+            {activeTopics.length > 0 && (
+              <section
+                aria-label={t("Active learning topics")}
+                className="mt-9"
+              >
+                {showGroupLabels && (
+                  <h2 className="mb-4 text-xs font-medium uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                    {t("Learning goals")}
+                  </h2>
+                )}
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {activeTopics.map((topic) => (
+                    <TopicMapCard
+                      key={topic.path_id}
+                      topic={topic}
+                      stage={stages[topic.path_id]}
+                      onDeleted={onTopicDeleted}
+                      onImported={onTopicImported}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+            {bookPaths.length > 0 && (
+              <section
+                aria-label={t("Textbook progress")}
+                className={activeTopics.length > 0 ? "mt-12" : "mt-9"}
+              >
+                {showGroupLabels && (
+                  <h2 className="mb-4 text-xs font-medium uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                    {t("Textbook progress")}
+                  </h2>
+                )}
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {bookPaths.map((summary) => (
+                    <BookPathCard key={summary.book_id} summary={summary} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         ) : !error ? (
           <section className="mastery-map-paper relative mx-auto mt-12 max-w-3xl overflow-hidden rounded-xl border border-[var(--border)] px-6 py-16 text-center sm:px-12">
             <svg
@@ -188,18 +302,43 @@ export function TopicAtlas({
               {t("Your atlas is still uncharted")}
             </h2>
             <p className="relative z-[1] mx-auto mt-3 max-w-lg text-sm leading-6 opacity-70">
-              {t(
-                "Tell DeepTutor what you want to learn, mix in your books, notes, and knowledge bases, and it will draft the first outline.",
-              )}
+              {canStartFromBook
+                ? t(
+                    "Your books already carry a full chapter tree — start a path from one of them, or tell DeepTutor what you want to learn instead.",
+                  )
+                : t(
+                    "Tell DeepTutor what you want to learn, mix in your books, notes, and knowledge bases, and it will draft the first outline.",
+                  )}
             </p>
-            <button
-              type="button"
-              onClick={(event) => onCreate(event.currentTarget)}
-              className="relative z-[1] mt-7 inline-flex h-9 items-center gap-2 rounded-xl bg-[var(--mastery-ink)] px-5 text-sm font-medium text-[var(--mastery-paper-raised)] transition hover:opacity-90"
-            >
-              <Plus className="h-4 w-4" />
-              {t("Chart the first map")}
-            </button>
+            {canStartFromBook && onStartFromBook ? (
+              <div className="relative z-[1] mt-7 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                <button
+                  type="button"
+                  onClick={(event) => onStartFromBook(event.currentTarget)}
+                  className="inline-flex h-9 items-center gap-2 rounded-xl bg-[var(--mastery-ink)] px-5 text-sm font-medium text-[var(--mastery-paper-raised)] transition hover:opacity-90"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  {t("Start from your textbook")}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => onCreate(event.currentTarget)}
+                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] px-5 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--accent)]/60"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t("Chart the first map")}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={(event) => onCreate(event.currentTarget)}
+                className="relative z-[1] mt-7 inline-flex h-9 items-center gap-2 rounded-xl bg-[var(--mastery-ink)] px-5 text-sm font-medium text-[var(--mastery-paper-raised)] transition hover:opacity-90"
+              >
+                <Plus className="h-4 w-4" />
+                {t("Chart the first map")}
+              </button>
+            )}
           </section>
         ) : null}
       </div>

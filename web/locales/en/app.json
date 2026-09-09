@@ -4018,5 +4018,18 @@
   "references": "references",
   "That question is no longer waiting for an answer, so this was sent as a new message.": "That question is no longer waiting for an answer, so this was sent as a new message.",
   "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.": "A knowledge base name cannot contain {{chars}} — these separate paths and URLs.",
-  "Select text in the document first.": "Select text in the document first."
+  "Select text in the document first.": "Select text in the document first.",
+  "Learning goals": "Learning goals",
+  "Textbook progress": "Textbook progress",
+  "Start from your textbook": "Start from your textbook",
+  "Pick a textbook — its own chapter tree becomes your first mastery path, no goal writing needed.": "Pick a textbook — its own chapter tree becomes your first mastery path, no goal writing needed.",
+  "Your books already carry a full chapter tree — start a path from one of them, or tell DeepTutor what you want to learn instead.": "Your books already carry a full chapter tree — start a path from one of them, or tell DeepTutor what you want to learn instead.",
+  "{{count}} objectives": "{{count}} objectives",
+  "{{mastery}}% mastered": "{{mastery}}% mastered",
+  "Diagnosing": "Diagnosing",
+  "Learning": "Learning",
+  "Explaining": "Explaining",
+  "Practicing": "Practicing",
+  "Error review": "Error review",
+  "Reviewing": "Reviewing"
 }

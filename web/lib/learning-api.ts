@@ -351,6 +351,30 @@ export async function importFromBook(
   return res.json();
 }
 
+/**
+ * One-click book-type path from a textbook's canonical KP tree — the
+ * server converts the parsed book manifest into chapters and modules
+ * itself, so the caller only picks the book. Idempotent: a path that
+ * already has modules is returned as-is unless `force`.
+ */
+export async function importFromKpTree(
+  bookId: string,
+  force = false,
+): Promise<{ status: string; idempotent?: boolean; module_count: number }> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/mastery-paths/progress/${encodeURIComponent(bookId)}/import-from-kp-tree`,
+    ),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force }),
+    },
+  );
+  if (!res.ok) throw new Error(`Failed to import from book: ${res.status}`);
+  return res.json();
+}
+
 export async function generateModulesFromNotebook(
   bookId: string,
   notebookId: string,
