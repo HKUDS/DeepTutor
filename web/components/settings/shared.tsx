@@ -4,6 +4,7 @@ import type {
   CatalogProfile,
   ServiceName,
 } from "@/features/settings/store/SettingsStore";
+import type { AppLanguage } from "@/i18n/init";
 
 export const fieldControlClass =
   "w-full rounded-lg border border-[var(--border)] px-3 py-2 text-[14px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)]";
@@ -63,7 +64,7 @@ export function formatContextWindowSource(
 
 export function formatContextWindowUpdatedAt(
   value: string | undefined,
-  language: "en" | "zh",
+  language: AppLanguage,
 ): string {
   if (!value) return "";
   const parsed = new Date(value);
@@ -98,7 +99,7 @@ export function activeModelDetail(
 // CJK glyphs are already square blocks so we drop both and bump size a hair.
 export function labelClass(
   size: "sm" | "md" | "lg",
-  language: "en" | "zh",
+  language: AppLanguage,
 ): string {
   if (language === "zh") {
     if (size === "sm") return "text-[10.5px] font-medium";

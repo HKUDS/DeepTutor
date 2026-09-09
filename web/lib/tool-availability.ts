@@ -1,4 +1,4 @@
-export type ToolAvailabilityLanguage = "en" | "zh";
+export type ToolAvailabilityLanguage = "en" | "zh" | "uk";
 
 export type ToolAvailabilityCopy = {
   badge: string;
