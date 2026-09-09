@@ -1820,6 +1820,7 @@
   "Verify the backend is running and NEXT_PUBLIC_API_BASE points to a reachable host. For Docker, see data/user/settings/system.json.": "Verify the backend is running and NEXT_PUBLIC_API_BASE points to a reachable host. For Docker, see data/user/settings/system.json.",
   "Delete this turn?": "Delete this turn?",
   "Failed to load GeoGebra": "Failed to load GeoGebra",
+  "GeoGebra rejected {{count}} command(s)": "GeoGebra rejected {{count}} command(s)",
   "Loading GeoGebra...": "Loading GeoGebra...",
   "HTML visualization": "HTML visualization",
   "SVG visualization": "SVG visualization",
