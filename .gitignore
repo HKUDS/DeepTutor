@@ -328,3 +328,11 @@ celerybeat.pid
 *.wav
 *.ogg
 !demo/*.mp4
+
+# ============================================
+# Desktop packaging sidecars (generated locally / CI)
+# ============================================
+packaging/node-runtime/win-x64/
+packaging/node-runtime/win-unpacked/
+packaging/node-runtime/node-runtime-bundle/
+packaging/python-runtime/

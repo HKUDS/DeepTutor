@@ -49,6 +49,94 @@ function resolveIconPath(name: string): string {
   return asarPath;
 }
 
+interface BackendLaunch {
+  command: string;
+  args: string[];
+  /** True when command is a frozen deeptutor.exe (not a Python interpreter). */
+  frozen: boolean;
+}
+
+function resolvePackagedBackendExe(): string | null {
+  const candidates = [
+    // extraFiles `to: python-backend` → next to resources/ (same level as exe)
+    path.join(process.resourcesPath, '..', 'python-backend', 'deeptutor.exe'),
+    path.join(process.resourcesPath, 'python-backend', 'deeptutor.exe'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function resolveWebDir(): string | null {
+  const candidates = isDev
+    ? [path.join(APP_ROOT, 'deeptutor_web')]
+    : [
+        path.join(process.resourcesPath, '..', 'deeptutor_web'),
+        path.join(process.resourcesPath, 'app', 'deeptutor_web'),
+        path.join(process.resourcesPath, 'deeptutor_web'),
+      ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'server.js'))) return candidate;
+  }
+  return null;
+}
+
+function resolveNodeBinDir(): string | null {
+  const candidates = isDev
+    ? [
+        path.join(APP_ROOT, 'packaging', 'node-runtime', 'win-x64'),
+        path.join(APP_ROOT, 'packaging', 'node-runtime', 'node-runtime-bundle', 'bin'),
+        path.join(APP_ROOT, 'packaging', 'node-runtime', 'bin'),
+      ]
+    : [
+        path.join(process.resourcesPath, '..', 'node-runtime'),
+        path.join(process.resourcesPath, 'node-runtime'),
+        path.join(process.resourcesPath, '..', 'node-runtime', 'bin'),
+        path.join(process.resourcesPath, 'node-runtime', 'bin'),
+      ];
+  for (const candidate of candidates) {
+    const exe = path.join(candidate, process.platform === 'win32' ? 'node.exe' : 'node');
+    if (fs.existsSync(exe)) return candidate;
+  }
+  return null;
+}
+
+function resolveBackend(runtimeHome: string): BackendLaunch {
+  const custom = process.env.DEEPTUTOR_PYTHON;
+  if (custom) {
+    const base = path.basename(custom).toLowerCase();
+    const frozen = base === 'deeptutor.exe' || base === 'deeptutor';
+    if (frozen) {
+      return {
+        command: custom,
+        args: ['start', '--home', runtimeHome, '--no-browser'],
+        frozen: true,
+      };
+    }
+    return {
+      command: custom,
+      args: ['-m', 'deeptutor_cli.main', 'start', '--home', runtimeHome, '--no-browser'],
+      frozen: false,
+    };
+  }
+  if (!isDev) {
+    const bundled = resolvePackagedBackendExe();
+    if (bundled) {
+      return {
+        command: bundled,
+        args: ['start', '--home', runtimeHome, '--no-browser'],
+        frozen: true,
+      };
+    }
+  }
+  return {
+    command: 'python',
+    args: ['-m', 'deeptutor_cli.main', 'start', '--home', runtimeHome, '--no-browser'],
+    frozen: false,
+  };
+}
+
 function prepareSettings(runtimeHome: string, backendPort: number, frontendPort: number): void {
   const settingsDir = path.join(runtimeHome, SETTINGS_DIR);
   fs.mkdirSync(settingsDir, { recursive: true });
@@ -88,12 +176,6 @@ async function findFreePort(preferred: number, taken: Set<number> = new Set()): 
     if (!(await isPortInUse(p))) return p;
   }
   return preferred;
-}
-
-function resolvePython(): string {
-  const custom = process.env.DEEPTUTOR_PYTHON;
-  if (custom) return custom;
-  return 'python';
 }
 
 // ---------------------------------------------------------------------------
@@ -165,10 +247,6 @@ let launcher: LauncherState | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
-function buildLauncherArgs(runtimeHome: string): string[] {
-  return ['-m', 'deeptutor_cli.main', 'start', '--home', runtimeHome, '--no-browser'];
-}
-
 // Poll a URL until it responds, so we can wait for the backend/frontend to be
 // ready instead of relying only on stdout parsing (mirrors a retry + health
 // check).
@@ -203,19 +281,28 @@ async function startLauncher(): Promise<LauncherState> {
     console.log('[Electron] Port conflict resolved: backend=' + backendPort + ', frontend=' + frontendPort);
   }
   prepareSettings(runtimeHome, backendPort, frontendPort);
-  const python = resolvePython();
-  const args = buildLauncherArgs(runtimeHome);
-  const env = {
+  const backend = resolveBackend(runtimeHome);
+  const webDir = resolveWebDir();
+  const nodeBin = resolveNodeBinDir();
+  const pathParts = [nodeBin, process.env.PATH].filter(Boolean) as string[];
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     DEEPTUTOR_HOME: runtimeHome,
     PYTHONIOENCODING: 'utf-8',
     PYTHONUTF8: '1',
     PYTHONUNBUFFERED: '1',
-    PYTHONPATH: APP_ROOT,
-    PROJECT_ROOT: APP_ROOT,
+    PATH: pathParts.join(path.delimiter),
   };
-  console.log('[Electron] Spawning launcher: ' + python + ' ' + args.join(' '));
-  const proc = childProcess.spawn(python, args, {
+  if (webDir) {
+    env.DEEPTUTOR_WEB_DIR = webDir;
+  }
+  // Source / interpreter mode still needs the checkout on PYTHONPATH.
+  if (!backend.frozen) {
+    env.PYTHONPATH = APP_ROOT;
+    env.PROJECT_ROOT = APP_ROOT;
+  }
+  console.log('[Electron] Spawning launcher: ' + backend.command + ' ' + backend.args.join(' '));
+  const proc = childProcess.spawn(backend.command, backend.args, {
     env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, cwd: APP_ROOT,
   });
   const state: LauncherState = {

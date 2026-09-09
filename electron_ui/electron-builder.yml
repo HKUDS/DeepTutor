@@ -5,12 +5,14 @@ directories:
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
 extraFiles:
+# Source packages: used in dev-style packaged runs and non-Windows until
+# those platforms have their own frozen backends.
 - from: ../deeptutor
   to: resources/app/deeptutor
 - from: ../deeptutor_cli
   to: resources/app/deeptutor_cli
 - from: ../deeptutor_web
-  to: resources/app/deeptutor_web
+  to: deeptutor_web
 - from: ../assets/figs/logo/logo.png
   to: assets/figs/logo/logo.png
 files:
@@ -31,6 +33,13 @@ win:
   signAndEditExecutable: false
   signDlls: false
   signingHashAlgorithms: []
+  # Self-contained Windows sidecars (x64 PyInstaller + Node). Arm64 CI may
+  # ship empty placeholder dirs; main.ts then falls back to system python/node.
+  extraFiles:
+  - from: ../dist/pyinstaller/win-x64/deeptutor
+    to: python-backend
+  - from: ../packaging/node-runtime/win-x64
+    to: node-runtime
   target:
   - arch:
     - x64

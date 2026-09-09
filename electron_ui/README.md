@@ -16,22 +16,33 @@ Electron wrapper for DeepTutor — spawns the Python launcher and embeds the Web
 
 ### Prerequisites
 
-1. Install Python dependencies:
+1. Install Python dependencies (for local/dev runs):
    ```bash
    pip install -e .
    ```
 
 2. Build the web frontend and prepare the packaged bundle:
    ```bash
-   python scripts/prepare_web_package.py --skip-build
+   python scripts/prepare_web_package.py
    ```
 
-3. Install Electron dependencies:
+3. Build the frozen Python backend (Windows x64 onedir):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File packaging/pyinstaller/build.ps1
+   ```
+   Output: `dist/pyinstaller/win-x64/deeptutor/deeptutor.exe`
+
+4. Prepare the bundled Node runtime (Windows x64):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File packaging/node-runtime/prepare.ps1
+   ```
+
+5. Install Electron dependencies:
    ```bash
    cd electron_ui && npm install
    ```
 
-4. Compile TypeScript:
+6. Compile TypeScript:
    ```bash
    npx tsc --project tsconfig.json
    ```
@@ -76,10 +87,13 @@ npx electron-builder --mac --arm64
 cd electron_ui && npx electron .
 ```
 
+Dev mode still uses system `python -m deeptutor_cli.main start`. Packaged builds prefer the bundled `python-backend/deeptutor.exe`.
+
 ## Key Design Decisions
 
-- **Launch model**: Electron spawns `python -m deeptutor_cli.main start --no-browser`
+- **Launch model (dev)**: Electron spawns `python -m deeptutor_cli.main start --no-browser`
+- **Launch model (packaged)**: Electron spawns `python-backend/deeptutor.exe start --home … --no-browser`
+- **Web assets**: `DEEPTUTOR_WEB_DIR` points at the `deeptutor_web` folder shipped next to the exe
 - **URL detection**: Matches launcher stdout lines containing the frontend port (e.g. `:3782`)
 - **User data**: Stored in `%APPDATA%/DeepTutor` (written by launcher, not Electron)
-- **Packaged mode**: Launcher auto-detects `deeptutor_web` package and skips rebuild
 - **Tray icon**: Uses `assets/figs/logo/logo.png` with Show/Hide/Restart/Quit menu
