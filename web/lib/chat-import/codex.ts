@@ -56,6 +56,32 @@ function eventMessage(line: CodexLine): NormalizedMessage | null {
   return { role, content, created_at: created || undefined };
 }
 
+function responseItemMessage(line: CodexLine): NormalizedMessage | null {
+  if (line.type !== "response_item") return null;
+  const p = line.payload ?? {};
+  if (p.type !== "message" || (p.role !== "user" && p.role !== "assistant")) {
+    return null;
+  }
+  if (!Array.isArray(p.content)) return null;
+
+  const parts = p.content.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const block = item as Record<string, unknown>;
+    if (block.type !== "input_text" && block.type !== "output_text") return [];
+    return typeof block.text === "string" ? [block.text] : [];
+  });
+  const content = cleanText(parts.join("\n\n"));
+  if (!content) return null;
+  const created = isoToEpochSeconds(line.timestamp, 0);
+  return { role: p.role, content, created_at: created || undefined };
+}
+
+function preferredMessages(lines: CodexLine[]): NormalizedMessage[] {
+  const legacy = lines.map(eventMessage).filter((message) => message !== null);
+  if (legacy.length) return legacy;
+  return lines.map(responseItemMessage).filter((message) => message !== null);
+}
+
 /** A scanned file plus the `YYYY-MM-DD` recovered from its directory trail. */
 interface CodexFile {
   handle: FileSystemFileHandle;
@@ -106,7 +132,7 @@ export async function scanCodex(
     const meta = readMeta(head);
     if (meta.isSubagent) continue;
     const cwd = meta.cwd || "(unknown)";
-    const firstUser = head.map(eventMessage).find((m) => m?.role === "user");
+    const firstUser = preferredMessages(head).find((m) => m.role === "user");
     const ref: SessionRef = {
       externalId: meta.id || handle.name.replace(/\.jsonl$/, ""),
       provisionalTitle: firstUser ? deriveTitle(firstUser.content) : "",
@@ -137,7 +163,8 @@ export async function parseCodexSession(
   ref: SessionRef,
 ): Promise<NormalizedSession | null> {
   const file = await ref.handle.getFile();
-  const messages: NormalizedMessage[] = [];
+  const legacyMessages: NormalizedMessage[] = [];
+  const responseItemMessages: NormalizedMessage[] = [];
   let cwd = ref.cwd;
   let isSubagent = false;
 
@@ -154,10 +181,13 @@ export async function parseCodexSession(
       if (p.thread_source === "subagent") isSubagent = true;
       continue;
     }
-    const msg = eventMessage(rec);
-    if (msg) messages.push(msg);
+    const legacyMessage = eventMessage(rec);
+    if (legacyMessage) legacyMessages.push(legacyMessage);
+    const responseItem = responseItemMessage(rec);
+    if (responseItem) responseItemMessages.push(responseItem);
   }
 
+  const messages = legacyMessages.length ? legacyMessages : responseItemMessages;
   if (isSubagent || !messages.length) return null;
   const fallbackTs = file.lastModified / 1000;
   const firstTs = messages.find((m) => m.created_at)?.created_at ?? fallbackTs;
