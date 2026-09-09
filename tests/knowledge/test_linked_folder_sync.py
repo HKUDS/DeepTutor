@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from deeptutor.api.routers.knowledge import LinkedFolderInfo
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 
 
@@ -48,6 +49,9 @@ def test_update_folder_sync_state_persists_to_disk(tmp_path: Path) -> None:
     folder = reloaded.get_linked_folders("kb")[0]
     assert "last_sync" in folder
     assert str(doc) in folder["synced_files"]
+
+    info = LinkedFolderInfo(**folder)
+    assert info.last_sync == folder["last_sync"]
 
 
 def test_update_folder_sync_state_unknown_folder_writes_nothing(tmp_path: Path) -> None:

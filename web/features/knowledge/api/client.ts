@@ -838,6 +838,98 @@ export async function connectLinkedFolder(payload: {
   };
 }
 
+export interface LinkedFolderInfo {
+  id: string;
+  path: string;
+  added_at: string;
+  file_count: number;
+  /** Server timestamp of the last completed sync; null before the first sync. */
+  last_sync?: string | null;
+}
+
+export interface FolderSyncResult {
+  message: string;
+  folder_path?: string;
+  new_files?: number;
+  modified_files?: number;
+  file_count: number;
+  task_id?: string;
+}
+
+export async function listLinkedFolders(
+  kbName: string,
+): Promise<LinkedFolderInfo[]> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders`),
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(
+        res,
+        `Failed to list linked folders (${res.status})`,
+      ),
+    );
+  }
+  return (await res.json()) as LinkedFolderInfo[];
+}
+
+export async function linkFolder(
+  kbName: string,
+  folderPath: string,
+): Promise<LinkedFolderInfo> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/link-folder`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_path: folderPath }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to link folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as LinkedFolderInfo;
+}
+
+export async function unlinkFolder(
+  kbName: string,
+  folderId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to unlink folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+}
+
+export async function syncLinkedFolder(
+  kbName: string,
+  folderId: string,
+): Promise<FolderSyncResult> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/sync-folder/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Folder sync failed (${res.status})`),
+    );
+  }
+  return (await res.json()) as FolderSyncResult;
+}
+
 export interface LightRagServerProbe {
   /** Reachable, a LightRAG server, and (if required) the API key is accepted. */
   ok: boolean;
