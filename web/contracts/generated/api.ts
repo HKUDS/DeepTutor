@@ -13056,7 +13056,23 @@ export interface components {
       /** Language */
       readonly language?: ("zh" | "en") | null;
       /** Response Language */
-      readonly response_language?: ("zh" | "en") | null;
+      readonly response_language?:
+        | (
+            | "en"
+            | "zh"
+            | "zh-tw"
+            | "ja"
+            | "ko"
+            | "es"
+            | "fr"
+            | "de"
+            | "ru"
+            | "pt"
+            | "it"
+            | "ar"
+            | "pl"
+          )
+        | null;
       /** Sidebar Description */
       readonly sidebar_description?: string | null;
       readonly sidebar_nav_order?:

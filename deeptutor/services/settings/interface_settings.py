@@ -16,6 +16,7 @@ import threading
 from typing import Any
 
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.prompt.language import SUPPORTED_RESPONSE_LANGUAGES
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 DEFAULT_UI_SETTINGS: dict[str, Any] = {
@@ -28,6 +29,23 @@ DEFAULT_UI_SETTINGS: dict[str, Any] = {
 
 _LOCKS_GUARD = threading.Lock()
 _LOCKS: dict[str, threading.Lock] = {}
+
+_RESPONSE_LANGUAGE_ALIASES: dict[str, str] = {
+    "english": "en",
+    "chinese": "zh",
+    "simplified chinese": "zh",
+    "traditional chinese": "zh-tw",
+    "japanese": "ja",
+    "korean": "ko",
+    "spanish": "es",
+    "french": "fr",
+    "german": "de",
+    "russian": "ru",
+    "portuguese": "pt",
+    "italian": "it",
+    "arabic": "ar",
+    "polish": "pl",
+}
 
 
 def _settings_lock(path: Path) -> threading.Lock:
@@ -75,6 +93,33 @@ def _normalize_language(language: Any, default: str = "en") -> str:
     return "en"
 
 
+def _normalize_response_language(language: Any, default: str = "en") -> str:
+    """Normalize only the wider model-output-language domain.
+
+    Interface language remains en/zh. This function accepts the labels a user
+    may have copied from an issue or another deployment, then maps region
+    variants to their supported prompt-language base.
+    """
+    fallback = default if isinstance(default, str) and default.strip() else "en"
+    fallback = _normalize_response_language(fallback, "en") if fallback != "en" else "en"
+
+    if language is None or str(language).strip() == "":
+        language = fallback
+
+    if not isinstance(language, str):
+        return fallback
+
+    code = language.strip().lower().replace("_", "-")
+    code = _RESPONSE_LANGUAGE_ALIASES.get(code, code)
+    if code == "zh-cn":
+        code = "zh"
+    elif code.startswith("pt-"):
+        code = "pt"
+    if code in SUPPORTED_RESPONSE_LANGUAGES:
+        return code
+    return fallback
+
+
 def resolve_languages(saved: Mapping[str, Any]) -> dict[str, str]:
     """Normalize the two language fields out of a raw ``interface.json`` dict.
 
@@ -93,7 +138,7 @@ def resolve_languages(saved: Mapping[str, Any]) -> dict[str, str]:
     language = _normalize_language(saved.get("language"), DEFAULT_UI_SETTINGS["language"])
     return {
         "language": language,
-        "response_language": _normalize_language(saved.get("response_language"), language),
+        "response_language": _normalize_response_language(saved.get("response_language"), language),
     }
 
 
@@ -243,4 +288,4 @@ def get_ui_language(default: str = "en") -> str:
 def get_response_language(default: str = "en") -> str:
     """Get the preferred reader-facing model output language."""
     settings = get_ui_settings()
-    return _normalize_language(settings.get("response_language"), default)
+    return _normalize_response_language(settings.get("response_language"), default)

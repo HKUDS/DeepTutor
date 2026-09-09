@@ -7,14 +7,21 @@ import { useTranslation } from "react-i18next";
 import { apiFetch, apiUrl } from "@/lib/api";
 import SettingsReadinessPanel from "@/components/settings/SettingsReadinessPanel";
 import SettingsStatusPanel from "@/components/settings/SettingsStatusPanel";
-import { SettingRow, SettingSection } from "@/components/settings/shared";
+import {
+  selectClass,
+  SettingRow,
+  SettingSection,
+} from "@/components/settings/shared";
 import { setPendingPrompt } from "@/lib/pending-prompt";
 import {
   settingsAnchorHref,
   type Lang,
 } from "@/features/settings/navigation/settings-nav";
 import { useSettings } from "@/features/settings/store/SettingsStore";
-import { useUiSettings } from "@/features/settings/store";
+import {
+  RESPONSE_LANGUAGE_OPTIONS,
+  useUiSettings,
+} from "@/features/settings/store";
 
 /** The en/zh segmented control both language rows use. */
 function LanguageToggle({
@@ -142,10 +149,21 @@ export default function SettingsOverview() {
               "Sets the default language for chat and capability responses.",
             )}
             control={
-              <LanguageToggle
+              <select
                 value={responseLanguage}
-                onChange={updateResponseLanguage}
-              />
+                onChange={(event) =>
+                  void updateResponseLanguage(
+                    event.target.value as typeof responseLanguage,
+                  )
+                }
+                className={`${selectClass} min-w-[160px] pr-8`}
+              >
+                {RESPONSE_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             }
           />
         </SettingSection>

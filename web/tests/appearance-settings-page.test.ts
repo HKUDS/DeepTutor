@@ -39,6 +39,21 @@ test("settings source contract: language settings live on Overview instead of Ap
   assert.match(overview, /updateResponseLanguage/);
 });
 
+test("settings source contract: model output language offers the extended registry", () => {
+  const overview = readOverviewPage();
+
+  assert.match(overview, /RESPONSE_LANGUAGE_OPTIONS\.map/);
+  const responseRow = overview.indexOf('t("Model output language")');
+  const responseControl = overview.indexOf("<select", responseRow);
+  const responseHandler = overview.indexOf(
+    "updateResponseLanguage",
+    responseControl,
+  );
+  assert.notEqual(responseRow, -1);
+  assert.notEqual(responseControl, -1);
+  assert.notEqual(responseHandler, -1);
+});
+
 test("appearance source contract: code blocks section follows the theme section", () => {
   const source = readAppearancePage();
 
