@@ -211,6 +211,7 @@ def get_agent_params(module_name: str) -> dict:
             - "solve": Solve module agents
             - "research": Research module agents
             - "question": Question module agents
+            - "book": Book module agents
             - "brainstorm": Brainstorm tool settings
             - "co_writer": CoWriter module agents
             - "narrator": Narrator agent (independent, for TTS)
@@ -236,6 +237,7 @@ def get_agent_params(module_name: str) -> dict:
         "question": ("capabilities", "question"),
         "co_writer": ("capabilities", "co_writer"),
         "visualize": ("capabilities", "visualize"),
+        "book": ("capabilities", "book"),
         "brainstorm": ("tools", "brainstorm"),
         "vision_solver": ("plugins", "vision_solver"),
         "math_animator": ("plugins", "math_animator"),
