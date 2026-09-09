@@ -92,13 +92,13 @@ jobs:
             native_sidecar: true
             zip_cmd: tar czf dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-linux-x64.tar.gz -C dist/electron_ui linux-unpacked
           - platform: Linux
-            os: ubuntu-24.04-arm
+            os: ubuntu-latest
             arch: arm64
             target: linux
             native_sidecar: true
             zip_cmd: tar czf dist/electron_ui/DeepTutor-${{needs.verify-version.outputs.version}}-linux-arm64.tar.gz -C dist/electron_ui linux-arm64-unpacked
           - platform: macOS
-            os: macos-13
+            os: macos-latest
             arch: x64
             target: mac
             native_sidecar: true
