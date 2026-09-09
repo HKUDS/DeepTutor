@@ -323,6 +323,12 @@ async def _build_impl(
     from graphrag.api import build_index
     from graphrag.config.enums import IndexingMethod
 
+    # Configure pandas environment to prevent extension type conflicts on Windows
+    # where multiprocessing spawn mode can trigger "pandas.period already defined" errors
+    from .pandas_compat import configure_pandas_for_graphrag
+
+    configure_pandas_for_graphrag()
+
     config = _load_config(root_dir)
     if preflight_embedding_model:
         logger.info("GraphRAG: validating the active embedding model before indexing")
@@ -355,6 +361,11 @@ async def _resolve_outputs(config, names: list[str], optional: list[str]) -> dic
     from graphrag.data_model.data_reader import DataReader
     from graphrag_storage import create_storage
     from graphrag_storage.tables.table_provider_factory import create_table_provider
+
+    # Configure pandas environment before loading parquet files to prevent extension conflicts
+    from .pandas_compat import configure_pandas_for_graphrag
+
+    configure_pandas_for_graphrag()
 
     storage_obj = create_storage(config.output_storage)
     table_provider = create_table_provider(config.table_provider, storage=storage_obj)
