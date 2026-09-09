@@ -848,7 +848,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       setTheme(payload.ui.theme);
       setLanguage(payload.ui.language);
-      setResponseLanguage(payload.ui.response_language ?? payload.ui.language);
+      const loadedResponseLanguage =
+        payload.ui.response_language ?? payload.ui.language;
+      setResponseLanguage(loadedResponseLanguage);
+      // Chat reads this cache, not SettingsStore's displayed selection.
+      writeStoredResponseLanguage(loadedResponseLanguage);
       // Writes the backend-loaded values into app-shell storage and dispatches
       // the code-block settings event; AppShellContext (the single source) picks
       // them up, so no separate copy needs seeding here.

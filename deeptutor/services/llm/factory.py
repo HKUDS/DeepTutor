@@ -709,6 +709,11 @@ async def fetch_models(
     api_key: str | None = None,
     api_format: str = "auto",
 ) -> list[str]:
+    if canonical_provider_name(binding) == "github_copilot":
+        from deeptutor.services.github_copilot_auth import list_github_copilot_models
+
+        return await list_github_copilot_models()
+
     if canonical_provider_name(binding) == "codebuddy":
         from .provider_core.codebuddy_models import fetch_codebuddy_models
 

@@ -14,6 +14,12 @@ from deeptutor.services.session.provider_response_state import normalize_provide
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
 
+@pytest.mark.parametrize("model", ["gpt-6-astra", "github-copilot/gpt-6-astra", "GPT-6-ASTRA"])
+@pytest.mark.parametrize("effort", [None, "none", "high"])
+def test_astra_never_supports_temperature(model, effort):
+    assert module.GitHubCopilotProvider._supports_temperature(model, effort) is False
+
+
 @pytest.mark.asyncio
 async def test_provider_exchanges_stored_token_before_every_uncached_request(
     monkeypatch: pytest.MonkeyPatch,
@@ -89,10 +95,77 @@ async def _provider_with_transport(monkeypatch, handler, catalog):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-5.6-sol-fast"])
+@pytest.mark.parametrize("language", ["zh", "en"])
+@pytest.mark.parametrize("stream", [False, True])
+async def test_responses_wire_keeps_language_before_conversation_summary(
+    monkeypatch, model, language, stream
+):
+    from deeptutor.services.prompt.language import append_language_directive
+
+    system = append_language_directive("You are DeepTutor.", language)
+    summary = "[Conversation summary]\nEarlier replies were in English."
+    calls = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        calls.append(body)
+        assert request.url.path == "/responses"
+        assert body["instructions"] == f"{system}\n\n{summary}"
+        if stream:
+            events = [
+                {"type": "response.output_text.delta", "delta": "OK"},
+                {
+                    "type": "response.completed",
+                    "response": {"id": "resp_1", "status": "completed", "output": []},
+                },
+            ]
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text="".join(f"data: {json.dumps(event)}\n\n" for event in events)
+                + "data: [DONE]\n\n",
+            )
+        return httpx.Response(
+            200,
+            json={
+                "id": "resp_1",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "OK"}],
+                    }
+                ],
+            },
+        )
+
+    provider = await _provider_with_transport(
+        monkeypatch, handler, [module.CopilotModel(model, supported_endpoints=("/responses",))]
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "system", "content": summary},
+        {"role": "user", "content": "Continue"},
+    ]
+    try:
+        method = provider.chat_stream if stream else provider.chat
+        response = await method(messages=messages, model=f"github-copilot/{model}")
+        assert response.finish_reason != "error", response.content
+        assert response.content == "OK"
+        assert len(calls) == 1
+    finally:
+        await provider.aclose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize(
     "model,endpoints,path",
     [
+        ("gpt-6-astra", ("/responses",), "/responses"),
+        ("gpt-6-astra", ("/chat/completions",), "/chat/completions"),
         ("claude-sonnet", ("/responses",), "/responses"),
         ("gpt-5-chat-only", ("/chat/completions",), "/chat/completions"),
         ("gpt-5", ("/responses", "/chat/completions"), "/responses"),
@@ -111,6 +184,10 @@ async def test_model_protocol_metadata_routes_actual_sdk_requests(
         assert request.headers["authorization"] == "Bearer copilot-access"
         body = json.loads(request.content)
         assert body["model"] == model
+        if model == "gpt-6-astra":
+            assert "temperature" not in body
+        elif model.startswith("claude"):
+            assert body["temperature"] == 0.7
         if stream:
             if path == "/responses":
                 events = [

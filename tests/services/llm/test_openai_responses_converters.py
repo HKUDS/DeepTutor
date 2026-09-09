@@ -57,6 +57,32 @@ class TestAdaptChatKwargsToResponses:
 
 
 class TestConvertMessages:
+    def test_preserves_all_system_messages_in_order(self) -> None:
+        instructions, items = convert_messages(
+            [
+                {"role": "system", "content": "Use the selected output language."},
+                {"role": "system", "content": "[Conversation summary]\nEarlier discussion."},
+                {"role": "user", "content": "Continue"},
+                {"role": "system", "content": "[Context checkpoint]\nTool findings."},
+            ]
+        )
+        assert instructions == (
+            "Use the selected output language.\n\n"
+            "[Conversation summary]\nEarlier discussion.\n\n"
+            "[Context checkpoint]\nTool findings."
+        )
+        assert items == [{"role": "user", "content": [{"type": "input_text", "text": "Continue"}]}]
+
+    def test_empty_system_messages_do_not_erase_instructions(self) -> None:
+        instructions, _items = convert_messages(
+            [
+                {"role": "system", "content": "Keep this instruction."},
+                {"role": "system", "content": None},
+                {"role": "system", "content": ""},
+            ]
+        )
+        assert instructions == "Keep this instruction."
+
     def test_replays_persisted_native_output_items(self) -> None:
         native_items = [
             {

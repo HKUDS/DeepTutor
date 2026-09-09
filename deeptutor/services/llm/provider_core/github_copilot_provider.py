@@ -87,6 +87,15 @@ class GitHubCopilotProvider(OpenAICompatProvider):
         self.api_key = token
         self._client.api_key = token
 
+    @staticmethod
+    def _supports_temperature(
+        model_name: str,
+        reasoning_effort: str | None = None,
+    ) -> bool:
+        if model_name.lower().split("/")[-1] == "gpt-6-astra":
+            return False
+        return OpenAICompatProvider._supports_temperature(model_name, reasoning_effort)
+
     def _should_use_responses_api(
         self,
         model: str | None,

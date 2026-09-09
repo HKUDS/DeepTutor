@@ -25,12 +25,10 @@ function asTheme(value: unknown): Theme | null {
 /**
  * Re-read UI preferences after the assistant changes them from within chat.
  *
- * The browser is the source of truth for language and theme: the app shell
- * reads them from localStorage and only consults the server when localStorage
- * holds nothing at all (see `AppShellContext`). That is right for a person
- * switching languages in one tab, but it means a change the assistant makes
- * on the server is invisible here — the user is told "done" while the
- * interface stays exactly as it was, which reads as a broken promise.
+ * The app shell keeps the browser's interface locale and refreshes the output
+ * language on mount. Changes the assistant makes later on the server still
+ * need to invalidate those caches, or the user is told "done" while the
+ * interface and following turns keep their old preferences.
  *
  * So the backend's `apply_setting` tags its result with `setup_applied`, and
  * this hook treats that tag as "your cached copy is stale": it re-reads the
