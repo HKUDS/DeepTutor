@@ -308,7 +308,7 @@ notices:
   max_iterations_reached: "已达迭代上限。基于当前已有内容产出输出。"
   context_window_guard: "为了保持在模型上下文窗口内，裁剪了较早的工具结果。"
   final_protocol_failed: "最终化提示之后模型仍未给出有效的 FINISH 回复。"
-  plan_count_mismatch: "规划返回了 {got} 个 template（要求 {requested} 个），按实际数量继续。"
+  plan_count_mismatch: "出题规划只返回了 {got} 个有效题目模板，未达到请求的 {requested} 个。请重试或减少题目数量。"
   repair_attempted: "上一轮题目载荷不合法；做一次 schema 修复。"
   repair_failed: "修复未能完全修正题目；使用尽力版本输出。"
   tool_summarizer_failed: "工具结果概括失败；将把原始工具结果传给下一轮。"

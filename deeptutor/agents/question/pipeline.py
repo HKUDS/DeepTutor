@@ -572,14 +572,6 @@ class QuestionPipeline:
                     client=client,
                 )
 
-            if not plan.templates:
-                await stream.progress(
-                    self._t("notices.plan_count_mismatch", got=0, requested=num_questions),
-                    source=SOURCE,
-                    stage=STAGE_PLANNING,
-                    metadata={"trace_kind": "warning"},
-                )
-
         # ----- Phase 3: Quiz (per-question) -----
         qa_pairs: list[QuizPair] = []
         async with stream.stage(STAGE_QUIZZING, source=SOURCE):
@@ -752,15 +744,12 @@ class QuestionPipeline:
             target_difficulty=difficulty,
         )
         if len(plan.templates) != num_questions:
-            await stream.progress(
+            raise RuntimeError(
                 self._t(
                     "notices.plan_count_mismatch",
                     got=len(plan.templates),
                     requested=num_questions,
-                ),
-                source=SOURCE,
-                stage=STAGE_PLANNING,
-                metadata={"trace_kind": "warning"},
+                )
             )
         return plan
 

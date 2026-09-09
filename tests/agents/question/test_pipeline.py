@@ -1,9 +1,8 @@
 """Unit tests for the new QuestionPipeline primitives.
 
 These tests cover the pure helpers (plan parsing, payload normalization,
-issue collection) and the structured per-question emission. End-to-end
-flow (loop driving + LLM streaming) is exercised by integration tests
-that mock the LLM client; out of scope here.
+issue collection), structured per-question emission, and pipeline control
+flow with stubbed LLM calls and a real StreamBus.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -24,17 +23,24 @@ from deeptutor.agents.question.pipeline import (
     QuizPlan,
     QuizTemplate,
 )
+from deeptutor.services.llm.config import LLMConfig
 
 # ---------------------------------------------------------------------------
 # Test helpers
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _stub_llm_config(monkeypatch) -> None:
+    """Pipeline unit tests must not depend on a configured model catalog."""
+    monkeypatch.setattr(
+        "deeptutor.agents.question.pipeline.get_llm_config",
+        lambda: LLMConfig(model="test-model", api_key="test-key"),
+    )
+
+
 def _make_pipeline(language: str = "en") -> QuestionPipeline:
-    """Build a pipeline without hitting the network for LLM config."""
-    # Tests don't drive ``run`` — they only exercise pure helpers and the
-    # YAML-driven trace metadata builders. So the LLM config can be the
-    # production one (env-based) without making any actual API calls.
+    """Build a pipeline with the stubbed LLM configuration."""
     return QuestionPipeline(language=language)
 
 
@@ -90,6 +96,94 @@ class _StubStreamBus:
         self.error_events.append(
             {"message": message, "source": source, "stage": stage, "metadata": metadata or {}}
         )
+
+
+# ---------------------------------------------------------------------------
+# Plan completeness
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+@pytest.mark.parametrize(
+    ("raw", "valid_count"),
+    [
+        pytest.param("", 0, id="empty-response"),
+        pytest.param('{"templates": [', 0, id="truncated-json"),
+        pytest.param('{"templates": [{"topic": "Algebra"}]}', 1, id="partial-plan"),
+        pytest.param(
+            '{"templates": [{"topic": "Algebra"}, {"topic": "algebra"}]}',
+            1,
+            id="duplicate-topics",
+        ),
+        pytest.param(
+            '{"templates": [{"topic": "Algebra"}, {"topic": "Geometry"}]}',
+            2,
+            id="complete-plan",
+        ),
+    ],
+)
+def test_run_requires_complete_plan(monkeypatch, language: str, raw: str, valid_count: int) -> None:
+    """An unusable plan must produce a visible failure, never a partial quiz result."""
+    from deeptutor.core.context import UnifiedContext
+    from deeptutor.core.stream import StreamEventType
+    from deeptutor.runtime.agentic import LabeledStepResult
+    from deeptutor.runtime.stream_bus import StreamBus
+
+    pipeline = _make_pipeline(language)
+    bus = StreamBus()
+    context = UnifiedContext(user_message="quiz me", session_id="plan-test")
+    monkeypatch.setattr(
+        "deeptutor.agents.question.pipeline.build_openai_client", lambda config: object()
+    )
+    monkeypatch.setattr(pipeline, "_prepare_pageindex_tools", AsyncMock())
+    monkeypatch.setattr(pipeline, "_explore", AsyncMock(return_value=("", "exploration")))
+    monkeypatch.setattr(
+        pipeline,
+        "_run_labeled_step",
+        AsyncMock(return_value=LabeledStepResult(label="PLAN", text=raw)),
+    )
+
+    async def quiz_one(*, template: QuizTemplate, **kwargs: Any) -> QuizPair:
+        return QuizPair(
+            question_id=template.question_id,
+            question=template.topic,
+            question_type=template.question_type,
+            correct_answer="42",
+            explanation="A test answer.",
+        )
+
+    quiz = AsyncMock(side_effect=quiz_one)
+    monkeypatch.setattr(pipeline, "_quiz_one", quiz)
+
+    async def run():
+        kwargs = dict(context=context, user_message="quiz me", num_questions=2, stream=bus)
+        if valid_count < 2:
+            with pytest.raises(RuntimeError) as exc:
+                await pipeline.run(**kwargs)
+            message = str(exc.value)
+            assert str(valid_count) in message
+            assert "2" in message
+            assert ("retry" if language == "en" else "重试") in message
+        else:
+            payload = await pipeline.run(**kwargs)
+            assert payload["summary"]["success"] is True
+            assert payload["summary"]["requested"] == 2
+        await bus.close()
+        return [event async for event in bus.subscribe()]
+
+    events = asyncio.run(run())
+    if valid_count < 2:
+        quiz.assert_not_awaited()
+        assert any(event.type == StreamEventType.ERROR for event in events)
+        assert any(
+            event.type == StreamEventType.CONTENT
+            and ("retry" if language == "en" else "重试") in event.content
+            for event in events
+        )
+        assert not any(event.type == StreamEventType.RESULT for event in events)
+    else:
+        assert quiz.await_count == 2
+        assert any(event.type == StreamEventType.RESULT for event in events)
 
 
 # ---------------------------------------------------------------------------
