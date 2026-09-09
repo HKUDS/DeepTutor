@@ -37,6 +37,7 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.book import progress as progress_ops
 from deeptutor.book.backfill import (
     BackfillJob,
+    fail_backfill_job,
     get_backfill_job,
     plan_backfill,
     run_backfill,
@@ -1897,13 +1898,16 @@ async def _backfill_worker(book_id: str, task_id: str, req: BackfillBlocksReques
             limit_page=req.limit_page,
             task_id=task_id,
         )
-        if job.stage == "error":
+        if job.stage in ("error", "failed"):
             task_manager.update_task_status(task_id, "error", error=job.error)
         else:
             task_manager.update_task_status(task_id, "completed")
     except Exception as exc:  # noqa: BLE001 — 后台任务异常落在任务状态里
         logger.error(f"backfill_blocks task {task_id} failed: {exc}", exc_info=True)
         task_manager.update_task_status(task_id, "error", error=str(exc))
+        # P4-B：线程外崩溃也必须把内存 job 拉离 running——否则同书互斥检查
+        # 永远命中 409，这本书被锁死，且状态端点对停摆毫无提示。
+        fail_backfill_job(book_id, str(exc))
 
 
 @router.post("/books/{book_id}/backfill-blocks")
@@ -1929,9 +1933,18 @@ async def backfill_book_blocks(
 
     existing = get_backfill_job(book_id)
     if existing is not None and existing.stage == "running":
+        # P4-B：互斥语义要明确——返回在跑任务的 task_id 与实时状态，
+        # 不让调用方误以为新任务已 started。
+        snapshot = existing.snapshot()
         raise HTTPException(
             status_code=409,
-            detail={"code": "backfill_running", "message": "该书已有补缺任务在运行"},
+            detail={
+                "code": "backfill_running",
+                "message": "该书已有补缺任务在运行，请稍后或查询状态端点",
+                "task_id": existing.task_id,
+                "task_status": snapshot.get("task_status"),
+                "job": snapshot,
+            },
         )
     task_manager = TaskIDManager.get_instance()
     # task_key 带随机后缀：同一本书的每次补产都是独立任务，不与历史任务撞 id。
