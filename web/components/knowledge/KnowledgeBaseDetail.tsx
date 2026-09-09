@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Database,
   FileText,
+  FolderSync,
   Github,
   Globe,
   Layers,
@@ -18,7 +19,9 @@ import {
 } from "lucide-react";
 import type {
   IndexingLLMSelection,
+  LinkedFolderInfo,
   KnowledgeUploadPolicy,
+  SyncFolderResponse,
 } from "@/features/knowledge/model/types";
 import {
   formatKnowledgeTimestamp,
@@ -39,6 +42,7 @@ import KbIndexVersionsSection from "./KbIndexVersionsSection";
 import KbSettingsSection from "./KbSettingsSection";
 import KbGitHubSourcesSection from "./KbGitHubSourcesSection";
 import KbWebSourcesSection from "./KbWebSourcesSection";
+import KbLinkedFoldersSection from "./KbLinkedFoldersSection";
 import KbMarginNoteDevicesSection from "./KbMarginNoteDevicesSection";
 import KnowledgeEngineIcon, {
   knowledgeSourceIconId,
@@ -55,6 +59,15 @@ interface KnowledgeBaseDetailProps {
     files: File[],
     destSubdir?: string,
   ) => Promise<void>;
+  onLinkFolder: (
+    kbName: string,
+    folderPath: string,
+  ) => Promise<LinkedFolderInfo>;
+  onUnlinkFolder: (kbName: string, folderId: string) => Promise<void>;
+  onSyncFolder: (
+    kbName: string,
+    folderId: string,
+  ) => Promise<SyncFolderResponse>;
   onReindex: (
     kbName: string,
     indexingLLM?: IndexingLLMSelection,
@@ -76,6 +89,7 @@ const SECTION_CHROME: Record<
 > = {
   files: { label: "Files", Icon: FileText },
   add: { label: "Add documents", Icon: Upload },
+  folders: { label: "Linked folders", Icon: FolderSync },
   github: { label: "GitHub", Icon: Github },
   web: { label: "Web", Icon: Globe },
   versions: { label: "Index versions", Icon: Layers },
@@ -93,6 +107,9 @@ export default function KnowledgeBaseDetail({
   history,
   onCreate,
   onUpload,
+  onLinkFolder,
+  onUnlinkFolder,
+  onSyncFolder,
   onReindex,
   onUpdatePendingIndexingPolicy,
   onRetry,
@@ -294,6 +311,18 @@ export default function KnowledgeBaseDetail({
                       ? Promise.resolve()
                       : onUpload(kb.name, files, destSubdir)
                   }
+                />
+              )}
+              {activeSection === "folders" && (
+                <KbLinkedFoldersSection
+                  key={kb.name}
+                  kb={kb}
+                  task={task}
+                  onLinkFolder={async (folderPath) => {
+                    await onLinkFolder(kb.name, folderPath);
+                  }}
+                  onUnlinkFolder={(folderId) => onUnlinkFolder(kb.name, folderId)}
+                  onSyncFolder={(folderId) => onSyncFolder(kb.name, folderId)}
                 />
               )}
               {activeSection === "versions" && (

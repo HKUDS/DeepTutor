@@ -10957,6 +10957,8 @@ export interface components {
       readonly file_count: number;
       /** Id */
       readonly id: string;
+      /** Last Sync */
+      readonly last_sync?: string | null;
       /** Path */
       readonly path: string;
     };
@@ -12477,6 +12479,26 @@ export interface components {
       /** Topics */
       readonly topics?: readonly string[];
     };
+    /**
+     * SyncFolderResponse
+     * @description Response model for a linked-folder sync request.
+     */
+    readonly SyncFolderResponse: {
+      /** File Count */
+      readonly file_count: number;
+      /** Files */
+      readonly files: readonly string[];
+      /** Folder Path */
+      readonly folder_path?: string | null;
+      /** Message */
+      readonly message: string;
+      /** Modified Files */
+      readonly modified_files: number;
+      /** New Files */
+      readonly new_files: number;
+      /** Task Id */
+      readonly task_id: string | null;
+    };
     /** SyncObjectIn */
     readonly SyncObjectIn: {
       /** Color */
@@ -13905,6 +13927,8 @@ export type SchemaSupportedFileTypesInfo =
 export type SchemaSupportedFormats = components["schemas"]["SupportedFormats"];
 export type SchemaSyllabusUnitRequest =
   components["schemas"]["SyllabusUnitRequest"];
+export type SchemaSyncFolderResponse =
+  components["schemas"]["SyncFolderResponse"];
 export type SchemaSyncObjectIn = components["schemas"]["SyncObjectIn"];
 export type SchemaSyncRequest = components["schemas"]["SyncRequest"];
 export type SchemaSyncResponse = components["schemas"]["SyncResponse"];
@@ -18278,7 +18302,7 @@ export interface operations {
           readonly [name: string]: unknown;
         };
         content: {
-          readonly "application/json": unknown;
+          readonly "application/json": components["schemas"]["SyncFolderResponse"];
         };
       };
       /** @description Validation Error */

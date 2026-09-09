@@ -18,10 +18,10 @@ interface ModalProps {
 }
 
 const widthClasses = {
-  sm: "w-[400px]",
-  md: "w-[500px]",
-  lg: "w-[600px]",
-  xl: "w-[800px]",
+  sm: "w-[400px] max-w-[calc(100vw-2rem)]",
+  md: "w-[500px] max-w-[calc(100vw-2rem)]",
+  lg: "w-[600px] max-w-[calc(100vw-2rem)]",
+  xl: "w-[800px] max-w-[calc(100vw-2rem)]",
 };
 
 const FOCUSABLE_SELECTOR =
@@ -157,7 +157,7 @@ export default function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label={t("Close")}
-                className="p-1 hover:bg-[var(--muted)] rounded-lg transition-colors"
+                className="flex h-9 w-9 items-center justify-center rounded-lg p-1 transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 <X className="w-5 h-5 text-[var(--muted-foreground)]" />
               </button>
