@@ -26,6 +26,7 @@ const SOURCE_LABELS: Record<NotebookEntry["source"], string> = {
   mastery_path: "Mastery Path",
   immersive_reading: "Immersive Reading",
   book: "Book",
+  partner_chat: "Partner Chat",
 };
 
 const TREND_LABELS: Record<NotebookEntry["score_trend"], string> = {

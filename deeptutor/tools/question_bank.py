@@ -1,4 +1,4 @@
-"""Read and organise the learner's question bank from the chat agent.
+"""Read, organise, and record the learner's question bank from the chat agent.
 
 The question bank is the ``notebook_entries`` table behind
 ``/space/questions``: every quiz question the learner has answered, in
@@ -9,7 +9,7 @@ correct answer. Before this tool existed the agent had no way to touch
 the bank, so "file my wrong answers into my new question set" landed in
 a notebook instead: the only writable surface it could see.
 
-One tool, five actions, because the useful sequence is short and always
+One tool, six actions, because the useful sequence is short and always
 the same — look, then file:
 
 * ``overview``  — counts + the existing category names (one call, no ids
@@ -22,6 +22,11 @@ the same — look, then file:
   create-then-file is one more place for the model to drop the ball.
 * ``unfile``    — take entries back out of a category.
 * ``bookmark``  — star / unstar entries for later review.
+* ``record``    — write one wrong question the learner just owned up to
+  in conversation (source ``partner_chat``). Partner turns are the main
+  caller (#1244): the tutor coaches a photographed homework mistake and
+  the question lands in the bank the family reviews, instead of dying
+  in the chat transcript.
 
 Every action is dependency-injected with ``store`` so tests never touch
 a real database, and every failure returns ``ok=False`` with a sentence
@@ -31,12 +36,13 @@ the model can act on rather than raising.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-ACTIONS = ("overview", "list", "organize", "unfile", "bookmark")
+ACTIONS = ("overview", "list", "organize", "unfile", "bookmark", "record")
 
 FILTERS = ("all", "wrong", "bookmarked", "uncategorized")
 
@@ -118,9 +124,35 @@ def _render_categories(categories: list[dict[str, Any]]) -> str:
 async def _resolve_store(store: Any) -> Any:
     if store is not None:
         return store
+    target_paths = _partner_bank_paths()
+    if target_paths is not None:
+        from deeptutor.services.session import get_sqlite_session_store_for
+
+        return get_sqlite_session_store_for(target_paths)
     from deeptutor.services.session import get_sqlite_session_store
 
     return get_sqlite_session_store()
+
+
+def _partner_bank_paths() -> Any | None:
+    """Path service of the bank a partner turn should read and record into.
+
+    Partner turns execute inside the partner's synthetic user scope, where the
+    default store would be the partner's own — a bank nobody can see in the
+    web UI. The partner turn context exposes the scope the family actually
+    browses (the admin's for IM/admin turns, the assigned learner's own for
+    assigned ones); ``None`` outside partner turns, so product chat keeps
+    resolving the current user's store.
+    """
+    try:
+        from deeptutor.services.partners.interaction import get_partner_turn_context
+
+        context = get_partner_turn_context()
+    except Exception:
+        return None
+    if context is None:
+        return None
+    return context.shared_memory
 
 
 async def _overview(store: Any) -> QuestionBankOutcome:
@@ -328,6 +360,115 @@ async def _bookmark(store: Any, *, entry_ids: Any, bookmarked: bool) -> Question
     )
 
 
+MAX_RECORD_QUESTION = 4000
+MAX_RECORD_FIELD = 2000
+
+
+def _record_question_id(question: str) -> str:
+    """Stable content hash so re-recording the same mistake updates the row
+    (the store dedups on ``session_id + turn_id + question_id``) instead of
+    piling up duplicates each time the learner revisits it."""
+    normalized = " ".join(question.split()).casefold()
+    return "pq_" + hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _partner_record_session() -> tuple[str, str]:
+    """Stable ``(session_id, title)`` naming one partner pairing's mistakes.
+
+    Deterministic per partner + partner-of pairing so every recorded mistake
+    lands in the same notebook session the family can review as one list.
+    """
+    partner_id = ""
+    actor_id = ""
+    name = ""
+    try:
+        from deeptutor.services.partners.interaction import get_partner_turn_context
+
+        context = get_partner_turn_context()
+    except Exception:
+        context = None
+    if context is not None:
+        partner_id = str(getattr(context, "partner_id", "") or "")
+        actor_id = str(getattr(context, "actor_id", "") or "")
+        name = str(getattr(context, "partner_name", "") or "").strip()
+    session_id = f"partner-notebook:{partner_id or 'unknown'}:{actor_id or 'admin'}"
+    if name:
+        title = f"{name} (Partner)"
+    elif partner_id:
+        title = f"Partner {partner_id} notebook"
+    else:
+        title = "Partner notebook"
+    return session_id, title
+
+
+async def _record(
+    store: Any,
+    *,
+    question: str,
+    user_answer: str,
+    correct_answer: str,
+    explanation: str,
+    question_type: str,
+    is_correct: bool,
+    category: str,
+) -> QuestionBankOutcome:
+    text = " ".join(str(question or "").split())
+    if not text:
+        return QuestionBankOutcome(
+            ok=False,
+            action="record",
+            error="`question` is required — the problem as the learner wrote or photographed it.",
+        )
+    session_id, session_title = _partner_record_session()
+    try:
+        await store.ensure_notebook_session(session_id, session_title)
+    except Exception:
+        logger.warning("question_bank: could not ensure a notebook session", exc_info=True)
+        return QuestionBankOutcome(
+            ok=False,
+            action="record",
+            error="The question bank is not available in this conversation; nothing was recorded.",
+        )
+    item = {
+        "question_id": _record_question_id(text),
+        "question": text[:MAX_RECORD_QUESTION],
+        "question_type": str(question_type or "").strip()[:100],
+        "correct_answer": _truncate(correct_answer, MAX_RECORD_FIELD),
+        "explanation": _truncate(explanation, MAX_RECORD_FIELD),
+        "user_answer": _truncate(user_answer, MAX_RECORD_FIELD),
+        "source": "partner_chat",
+        "is_correct": bool(is_correct),
+    }
+    upserted = await store.upsert_notebook_entries(session_id, [item])
+    if not upserted:
+        return QuestionBankOutcome(
+            ok=False,
+            action="record",
+            error="The bank rejected the entry; nothing was recorded.",
+        )
+    parts = [f"Recorded 1 wrong question into the bank ({session_title})."]
+    summary: dict[str, Any] = {
+        "session_id": session_id,
+        "question_id": item["question_id"],
+        "source": "partner_chat",
+    }
+    name = (category or "").strip()[:MAX_CATEGORY_NAME]
+    if name:
+        entry = await store.find_notebook_entry(session_id, item["question_id"])
+        entry_id = int(entry["id"]) if entry and entry.get("id") is not None else None
+        if entry_id is None:
+            parts.append("Could not file it into a category (entry not found after recording).")
+        else:
+            category_row, created = await _resolve_or_create_category(store, name)
+            await store.link_entries_to_category([entry_id], int(category_row["id"]), link=True)
+            parts.append(f"Filed under '{category_row['name']}'.")
+            if created:
+                parts.append("The category did not exist and was created.")
+            summary["category"] = category_row["name"]
+    parts.append("The learner sees it immediately under Learning Space → Question Bank.")
+    return QuestionBankOutcome(ok=True, action="record", text=" ".join(parts), summary=summary)
+
+
 async def run_question_bank(
     *,
     action: str = "overview",
@@ -337,6 +478,12 @@ async def run_question_bank(
     entry_ids: Any = None,
     bookmarked: bool = True,
     limit: int = DEFAULT_LIST_LIMIT,
+    question: str = "",
+    user_answer: str = "",
+    correct_answer: str = "",
+    explanation: str = "",
+    question_type: str = "",
+    is_correct: bool = False,
     store: Any = None,
 ) -> QuestionBankOutcome:
     """Run one question-bank action. Never raises — errors come back typed."""
@@ -365,6 +512,17 @@ async def run_question_bank(
                 entry_ids=entry_ids,
                 category=category,
                 link=verb == "organize",
+            )
+        if verb == "record":
+            return await _record(
+                resolved,
+                question=question,
+                user_answer=user_answer,
+                correct_answer=correct_answer,
+                explanation=explanation,
+                question_type=question_type,
+                is_correct=is_correct,
+                category=category,
             )
         return await _bookmark(resolved, entry_ids=entry_ids, bookmarked=bookmarked)
     except Exception as exc:

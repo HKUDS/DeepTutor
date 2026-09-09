@@ -31,6 +31,7 @@ from deeptutor.agents._shared.tool_composition import (
     ToolMountFlags,
     compose_enabled_tools,
     default_optional_tools,
+    partner_can_record_questions,
     user_has_mastery_topics,
     user_has_memory,
     user_has_notebooks,
@@ -698,7 +699,11 @@ class AgenticLoopPipeline:
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
-                has_question_bank=user_has_question_bank(),
+                # A partner turn mounts the bank even when it is still empty:
+                # the tool's record action must be available to file the FIRST
+                # wrong question the learner owns up to (#1244). Product chat
+                # keeps the entries-exist gate.
+                has_question_bank=user_has_question_bank() or partner_can_record_questions(),
                 has_skills=bool(context.skills_manifest),
                 has_deferred_tools=getattr(self, "_deferred_loader", None) is not None,
                 has_exec=getattr(self, "_exec_enabled", False),
