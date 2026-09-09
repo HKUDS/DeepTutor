@@ -38,8 +38,10 @@ export function useCardSubmission(onSubmit: SubmitUserReply) {
       // ``undefined`` is a host that does not report a verdict; only an
       // explicit ``false`` reopens the card. The picked answers survive in the
       // caller's state, so retrying is one click.
+      // Clear ``sending`` unconditionally: truthy or undefined both mean the
+      // host accepted the payload and the loading state must end immediately.
+      setSending(false);
       if (accepted === false) {
-        setSending(false);
         setFailed(true);
       }
     },
