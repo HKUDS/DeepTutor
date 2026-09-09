@@ -19,7 +19,7 @@ from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.tool_protocol import ToolResult
 from deeptutor.core.trace import ANSWER_BEARING_CALL_KINDS
 from deeptutor.runtime.stream_bus import StreamBus
-from deeptutor.services.llm import LLMProviderTransportError
+from deeptutor.services.llm import LLMProviderTransportError, LLMReasoningBudgetExhausted
 
 
 async def _collect_bus_events(bus: StreamBus) -> tuple[list[StreamEvent], asyncio.Task[Any]]:
@@ -1123,6 +1123,199 @@ async def test_truncated_pure_reasoning_round_is_told_to_act_not_continue(
     assert "没有「中断处」可以续" in instruction
     assert "从中断处继续" not in instruction
     assert _answer_text(events) == "答案是 42。"
+
+
+@pytest.mark.asyncio
+async def test_truncated_reasoning_round_replays_state_and_keeps_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one reasoning-budget recovery keeps provider state and tools."""
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    reasoning_content="I have enough context to act.",
+                    finish_reason="length",
+                )
+            ],
+            [_llm_chunk(content="Implemented the requested change.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Implement it", enabled_tools=["web_search"]),
+    )
+
+    assert client.call_count == 2
+    second_round = client.calls[1]["messages"]
+    assert "tools" in client.calls[1]
+    assert any(
+        message.get("role") == "assistant"
+        and message.get("reasoning_content") == "I have enough context to act."
+        for message in second_round
+    )
+    assert "Act now" in str(second_round[-1]["content"])
+    first_complete = next(
+        event
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and event.metadata.get("trace_kind") == "call_status"
+        and event.metadata.get("call_state") == "complete"
+        and event.metadata.get("finish_reason") == "length"
+    )
+    assert first_complete.metadata["requested_max_tokens"] == 8000
+    assert first_complete.metadata["usage_reported"] is False
+    assert first_complete.metadata["completion_tokens"] == "unavailable"
+    assert first_complete.metadata["reasoning_chars"] > 0
+    assert first_complete.metadata["content_chars"] == 0
+    assert first_complete.metadata["tool_call_count"] == 0
+    assert _answer_text(events) == "Implemented the requested change."
+
+
+@pytest.mark.asyncio
+async def test_repeated_reasoning_budget_exhaustion_is_retryable_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second pure-reasoning truncation stops after the single recovery."""
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(reasoning_content="first pass", finish_reason="length")],
+            [_llm_chunk(reasoning_content="second pass", finish_reason="length")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    with pytest.raises(LLMReasoningBudgetExhausted) as raised:
+        await pipeline.run(
+            UnifiedContext(session_id="s1", user_message="Implement it", enabled_tools=["web_search"]),
+            StreamBus(),
+        )
+
+    assert client.call_count == 2
+    assert raised.value.error_code == "reasoning_budget_exhausted"
+    assert raised.value.retryable is True
+    assert "useful response" not in str(raised.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_reasoning_progress_is_throttled_and_contains_no_reasoning_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reasoning-only streams emit opaque 15-second progress markers."""
+    clock = iter([0.0, 16.0, 20.0, 31.0, 40.0])
+    monkeypatch.setattr(agent_loop_mod, "monotonic", lambda: next(clock, 40.0))
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(reasoning_content="private one"),
+                _llm_chunk(reasoning_content="private two"),
+                _llm_chunk(reasoning_content="private three"),
+            ],
+            [_llm_chunk(content="Now acting.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Do it"))
+
+    progress = [
+        event
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and event.metadata.get("trace_kind") == "reasoning_progress"
+    ]
+    assert len(progress) == 2
+    assert [event.metadata["reasoning_chars"] for event in progress] == [11, 35]
+    assert [event.metadata["elapsed_s"] for event in progress] == [16.0, 31.0]
+    assert all(event.metadata.get("call_id") for event in progress)
+    assert all("private" not in event.content for event in progress)
+    assert _answer_text(events) == "Now acting."
+
+
+@pytest.mark.asyncio
+async def test_reasoning_progress_stops_after_visible_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = iter([0.0, 16.0, 20.0, 31.0])
+    monkeypatch.setattr(agent_loop_mod, "monotonic", lambda: next(clock, 31.0))
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(reasoning_content="private"),
+                _llm_chunk(content="Started acting."),
+                _llm_chunk(reasoning_content="late private"),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Do it"))
+
+    progress = [
+        event
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and event.metadata.get("trace_kind") == "reasoning_progress"
+    ]
+    assert len(progress) == 1
+    assert _answer_text(events) == "Started acting."
+
+
+@pytest.mark.asyncio
+async def test_forced_finish_reasoning_budget_exhaustion_is_not_empty_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tool-less hard finish has the same dedicated failure boundary."""
+    registry = _Registry()
+    tool_rounds = [
+        [
+            _llm_chunk(
+                tool_calls=[
+                    {
+                        "id": f"call-{index}",
+                        "name": "web_search",
+                        "arguments": json.dumps({"query": f"step {index}"}),
+                    }
+                ]
+            )
+        ]
+        for index in range(4)
+    ]
+    client = _ScriptedChatClient(
+        [
+            *tool_rounds,
+            [_llm_chunk(reasoning_content="still thinking", finish_reason="length")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    pipeline._max_rounds = 1
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    with pytest.raises(LLMReasoningBudgetExhausted) as raised:
+        await pipeline.run(
+            UnifiedContext(session_id="s1", user_message="Research", enabled_tools=["web_search"]),
+            StreamBus(),
+        )
+
+    assert client.call_count == 5
+    assert raised.value.error_code == "reasoning_budget_exhausted"
+    assert raised.value.retryable is True
 
 
 @pytest.mark.asyncio
