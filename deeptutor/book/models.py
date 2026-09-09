@@ -236,6 +236,9 @@ class Chapter(BaseModel):
     source_anchors: list[SourceAnchor] = Field(default_factory=list)
     prerequisites: list[str] = Field(default_factory=list)  # other chapter ids
     page_ids: list[str] = Field(default_factory=list)
+    # P6 节级目录: canonical_kp_tree 的节节点挂页写回（{"title", "page_ids"}），
+    # 无节匹配的页保持章直挂（page_ids）。生成书流程不产出，默认空。
+    children: list[dict[str, Any]] = Field(default_factory=list)
     summary: str = ""
     order: int = 0
 
@@ -454,6 +457,9 @@ class Page(BaseModel):
     book_id: str = ""
     chapter_id: str = ""
     title: str = ""
+    # P6 页标题语义化: 从页 prose 首部提取的节/章标题（同节多页带"（1/3）"
+    # 序号）。空 = 无匹配，渲染侧栏回落到 title（"页N"）。
+    display_title: str = ""
     learning_objectives: list[str] = Field(default_factory=list)
     content_type: ContentType = ContentType.THEORY
     status: PageStatus = PageStatus.PENDING

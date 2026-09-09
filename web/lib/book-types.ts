@@ -105,6 +105,9 @@ export interface Page {
   order: number;
   /** Empty when the page was fetched via a summary (`include_blocks=false`). */
   blocks: Block[];
+  /** P6 页标题语义化: prose 首部提取的节/章标题（同节多页带"（1/3）"序号）；
+   *  空 = 无匹配，侧栏回落到 title（"页N"）。 */
+  display_title?: string;
   /** Present on summaries so callers can show a count without the payloads. */
   block_count?: number;
   links: Array<{ target_page_id: string; relation: string; label: string }>;
@@ -128,6 +131,13 @@ export interface Chapter {
   auto_overview?: boolean;
   /** Spawned by a deep dive; lives outside the book's chapter structure. */
   deep_dive?: boolean;
+  /** P6 节级目录: canonical_kp_tree 节节点挂页写回（节标题 + 节下页 id）。 */
+  children?: ChapterSectionChild[];
+}
+
+export interface ChapterSectionChild {
+  title: string;
+  page_ids: string[];
 }
 
 export interface Spine {

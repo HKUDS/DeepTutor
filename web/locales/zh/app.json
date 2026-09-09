@@ -1265,6 +1265,7 @@
   "Total books": "书籍总数",
   "In progress": "学习中",
   "Chapters": "章节",
+  "Guide": "导览",
   "My library": "我的书库",
   "{{shown}} of {{total}} books": "共 {{total}} 本，显示 {{shown}} 本",
   "matching “{{query}}”": "匹配“{{query}}”",

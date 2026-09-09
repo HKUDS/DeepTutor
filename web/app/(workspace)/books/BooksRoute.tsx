@@ -962,6 +962,7 @@ function BookPageInner() {
           book={detail?.book || pendingBook || null}
           onBackToLibrary={() => void handleSelectBook(null)}
           pages={detail?.pages || []}
+          spine={detail?.spine || null}
           selectedPageId={selectedPageId}
           onSelectPage={handleSelectPage}
           onRebuild={detail && canEditBook ? () => void handleRebuildBook() : undefined}

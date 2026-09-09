@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Compass,
@@ -14,7 +15,7 @@ import { bookApi } from "@/lib/book-api";
 import { useTranslation } from "react-i18next";
 import { ActivityMark } from "@/components/activity";
 import type { ActivityState, MarkTone } from "@/components/activity";
-import type { Book, Page } from "@/lib/book-types";
+import type { Book, Page, Spine } from "@/lib/book-types";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Queued",
@@ -50,10 +51,74 @@ const PAGE_MARK: Record<string, { state: ActivityState; tone: MarkTone }> = {
 
 const RESTING_MARK = { state: "done", tone: "muted" } as const;
 
+/** Sentinel key for the 导览 group (overview pages, pages outside the spine). */
+const GUIDE_KEY = "__guide__";
+
+interface SectionGroup {
+  key: string;
+  title: string;
+  pageIds: string[];
+}
+
+interface ChapterGroup {
+  key: string;
+  title: string;
+  sections: SectionGroup[];
+  /** Pages of this chapter that no 节 claimed (章直挂). */
+  pageIds: string[];
+}
+
+/**
+ * P6 sidebar grouping. Pages aggregate under their spine chapter (P6-a);
+ * when the spine carries 节级 children (P6-b) each chapter renders its
+ * sections between the chapter and its pages. Overview pages and pages no
+ * spine chapter claims fall into the 导览 group, which sorts first.
+ */
+function buildGroups(pages: Page[], spine: Spine | null | undefined): ChapterGroup[] {
+  const chapters = spine?.chapters ?? [];
+  const pageById = new Map(pages.map((p) => [p.id, p]));
+  const chapterById = new Map(chapters.map((c) => [c.id, c]));
+  const groups = new Map<string, ChapterGroup>();
+  const guide: ChapterGroup = { key: GUIDE_KEY, title: "", sections: [], pageIds: [] };
+  for (const chapter of chapters) {
+    groups.set(chapter.id, { key: chapter.id, title: chapter.title, sections: [], pageIds: [] });
+  }
+
+  for (const page of pages) {
+    const isGuide = page.content_type === "overview" || !chapterById.has(page.chapter_id);
+    (isGuide ? guide : groups.get(page.chapter_id)!).pageIds.push(page.id);
+  }
+
+  // P6-b: 节层 claims its pages out of the chapter's direct list.
+  const inSection = new Set<string>();
+  for (const chapter of chapters) {
+    const group = groups.get(chapter.id);
+    if (!group) continue;
+    for (const child of chapter.children ?? []) {
+      const pageIds = (child.page_ids ?? []).filter((id) => pageById.has(id));
+      if (pageIds.length === 0) continue;
+      pageIds.forEach((id) => inSection.add(id));
+      group.sections.push({ key: `${chapter.id}:${child.title}`, title: child.title, pageIds });
+    }
+    group.pageIds = group.pageIds.filter((id) => !inSection.has(id));
+  }
+
+  const ordered = [guide, ...groups.values()].filter(
+    (g) => g.pageIds.length > 0 || g.sections.length > 0,
+  );
+  // A generated book has one page per chapter — grouping would just repeat
+  // every chapter title above its own page. Only textbook-style books
+  // (multi-page chapters or 节层) get the grouped tree.
+  const multiPage = ordered.some((g) => g.sections.length > 0 || g.pageIds.length > 1);
+  return multiPage ? ordered : [];
+}
+
 export interface BookSidebarProps {
   book: Book | null;
   onBackToLibrary: () => void;
   pages?: Page[];
+  /** P6: chapter/节 grouping source; absent or page-per-chapter → flat list. */
+  spine?: Spine | null;
   selectedPageId?: string | null;
   onSelectPage?: (id: string) => void;
   onRebuild?: () => void;
@@ -66,6 +131,7 @@ export default function BookSidebar({
   book,
   onBackToLibrary,
   pages = [],
+  spine = null,
   selectedPageId = null,
   onSelectPage,
   onRebuild,
@@ -76,6 +142,13 @@ export default function BookSidebar({
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const [confirmRebuild, setConfirmRebuild] = useState(false);
+  // Collapsed group keys; everything starts expanded so a fresh open shows
+  // the whole reading structure at once.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const groups = useMemo(() => buildGroups(pages, spine), [pages, spine]);
+  const grouped = groups.length > 0;
+  const pageById = useMemo(() => new Map(pages.map((p) => [p.id, p])), [pages]);
 
   // Destructive controls forget: an armed state that outlives the interaction
   // turns the next stray click into an unconfirmed rebuild.
@@ -84,6 +157,18 @@ export default function BookSidebar({
     const timer = setTimeout(() => setConfirmRebuild(false), 3500);
     return () => clearTimeout(timer);
   }, [confirmRebuild]);
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   if (collapsed) {
     return (
@@ -110,7 +195,7 @@ export default function BookSidebar({
               <button
                 key={page.id}
                 onClick={() => onSelectPage?.(page.id)}
-                title={page.title || t("Untitled")}
+                title={page.display_title || page.title || t("Untitled")}
                 className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-[11px] font-semibold ${
                   active
                     ? "bg-[var(--primary)]/15 text-[var(--foreground)]"
@@ -129,6 +214,48 @@ export default function BookSidebar({
       </aside>
     );
   }
+
+  const renderPageRow = (page: Page, indentClass: string) => {
+    const active = page.id === selectedPageId;
+    const isOverview = page.content_type === "overview";
+    return (
+      <button
+        onClick={() => onSelectPage?.(page.id)}
+        className={`flex w-full items-start justify-between gap-2 rounded-md py-1.5 pr-2 text-left text-xs ${indentClass} ${
+          active
+            ? "bg-[var(--primary)]/15 text-[var(--foreground)]"
+            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+        } ${isOverview ? "border border-dashed border-[var(--border)]" : ""}`}
+      >
+        <span className="flex min-w-0 items-start gap-1.5">
+          {isOverview && (
+            <Compass className="mt-[1px] h-3 w-3 shrink-0 text-[var(--primary)]" />
+          )}
+          <span className="line-clamp-2">{page.display_title || page.title || t("Untitled")}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {bookmarkedPageIds?.includes(page.id) && (
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
+              title={t("Bookmarked")}
+            />
+          )}
+          {/* The status word survives as the tooltip:
+              available when wanted, not shouted on every row.
+              A chapter already read keeps the blue dot but
+              dimmed — one mark, two facts. */}
+          <span
+            title={t(STATUS_LABEL[page.status] || page.status)}
+            className={`inline-flex items-center ${
+              page.status === "ready" && visitedPageIds?.includes(page.id) ? "opacity-45" : ""
+            }`}
+          >
+            <ActivityMark {...(PAGE_MARK[page.status] || RESTING_MARK)} className="mt-[1px]" />
+          </span>
+        </span>
+      </button>
+    );
+  };
 
   return (
     <aside className="flex h-full w-[232px] flex-col gap-3 border-r border-[var(--border)] bg-[var(--card)]/40 px-3 py-4">
@@ -223,69 +350,69 @@ export default function BookSidebar({
           <div className="rounded-md border border-dashed border-[var(--border)] px-2 py-3 text-xs text-[var(--muted-foreground)]">
             {t("Pages will appear here once the spine is confirmed.")}
           </div>
+        ) : grouped ? (
+          <>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
+              {t("Chapters")}
+            </div>
+            <div className="space-y-1">
+              {groups.map((group) => {
+                const isGuide = group.key === GUIDE_KEY;
+                const collapsedGroup = collapsedGroups.has(group.key);
+                const guideLabel = t("Guide");
+                return (
+                  <div key={group.key}>
+                    <button
+                      onClick={() => toggleGroup(group.key)}
+                      className={`flex w-full items-center gap-1 rounded-md px-1 py-1 text-left text-[11px] font-semibold text-[var(--foreground)] ${
+                        isGuide ? "text-[var(--muted-foreground)]" : ""
+                      }`}
+                    >
+                      {collapsedGroup ? (
+                        <ChevronRight className="h-3 w-3 shrink-0" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3 shrink-0" />
+                      )}
+                      <span className="truncate" title={isGuide ? guideLabel : group.title}>
+                        {isGuide ? guideLabel : group.title}
+                      </span>
+                    </button>
+                    {!collapsedGroup && (
+                      <div className="space-y-1">
+                        {group.sections.map((section) => (
+                          <div key={section.key}>
+                            <div
+                              className="truncate pl-5 pr-2 pt-1 text-[11px] font-medium text-[var(--muted-foreground)]"
+                              title={section.title}
+                            >
+                              {section.title}
+                            </div>
+                            {section.pageIds.map((pageId) => {
+                              const page = pageById.get(pageId);
+                              return page ? renderPageRow(page, "pl-7") : null;
+                            })}
+                          </div>
+                        ))}
+                        {group.pageIds.map((pageId) => {
+                          const page = pageById.get(pageId);
+                          return page ? renderPageRow(page, page.parent_page_id ? "pl-5" : "pl-3") : null;
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <>
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
               {t("Chapters")}
             </div>
             <ul className="space-y-1">
-              {pages.map((page) => {
-                const active = page.id === selectedPageId;
-                const isOverview = page.content_type === "overview";
-                return (
-                  <li key={page.id}>
-                    <button
-                      onClick={() => onSelectPage?.(page.id)}
-                      className={`flex w-full items-start justify-between gap-2 rounded-md py-1.5 pr-2 text-left text-xs ${
-                        page.parent_page_id ? "pl-5" : "pl-2"
-                      } ${
-                        active
-                          ? "bg-[var(--primary)]/15 text-[var(--foreground)]"
-                          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
-                      } ${
-                        isOverview
-                          ? "border border-dashed border-[var(--border)]"
-                          : ""
-                      }`}
-                    >
-                      <span className="flex min-w-0 items-start gap-1.5">
-                        {isOverview && (
-                          <Compass className="mt-[1px] h-3 w-3 shrink-0 text-[var(--primary)]" />
-                        )}
-                        <span className="line-clamp-2">
-                          {page.title || t("Untitled")}
-                        </span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-1.5">
-                        {bookmarkedPageIds?.includes(page.id) && (
-                          <span
-                            className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
-                            title={t("Bookmarked")}
-                          />
-                        )}
-                        {/* The status word survives as the tooltip:
-                            available when wanted, not shouted on every row.
-                            A chapter already read keeps the blue dot but
-                            dimmed — one mark, two facts. */}
-                        <span
-                          title={t(STATUS_LABEL[page.status] || page.status)}
-                          className={`inline-flex items-center ${
-                            page.status === "ready" &&
-                            visitedPageIds?.includes(page.id)
-                              ? "opacity-45"
-                              : ""
-                          }`}
-                        >
-                          <ActivityMark
-                            {...(PAGE_MARK[page.status] || RESTING_MARK)}
-                            className="mt-[1px]"
-                          />
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+              {pages.map((page) => (
+                <li key={page.id}>{renderPageRow(page, page.parent_page_id ? "pl-5" : "pl-2")}</li>
+              ))}
             </ul>
           </>
         )}
