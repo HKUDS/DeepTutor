@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
-  Check,
   Download,
   Loader2,
   NotebookPen,
@@ -24,7 +23,10 @@ import NotebookRecordRow from "@/components/notebook/NotebookRecordRow";
 import { useNotebookLibrary } from "@/components/notebook/useNotebookLibrary";
 import { attachCourseResource } from "@/lib/courses-api";
 import { notify } from "@/lib/notifications";
-import { exportNotebookMarkdown } from "@/lib/notebook-api";
+import {
+  exportNotebookMarkdown,
+  type NotebookSummary,
+} from "@/lib/notebook-api";
 import { notebookRoute } from "@/lib/resource-routes";
 
 const SWATCHES = [
@@ -73,7 +75,9 @@ export default function NotebookConsole({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [editingMeta, setEditingMeta] = useState(false);
+  const [editingNotebookId, setEditingNotebookId] = useState<string | null>(
+    null,
+  );
   const [metaName, setMetaName] = useState("");
   const [metaDescription, setMetaDescription] = useState("");
   const [metaColor, setMetaColor] = useState(SWATCHES[0]);
@@ -172,27 +176,26 @@ export default function NotebookConsole({
     router,
   ]);
 
-  const beginMetaEdit = useCallback(() => {
-    if (!selected) return;
-    setMetaName(selected.name);
-    setMetaDescription(selected.description ?? "");
-    setMetaColor(selected.color ?? SWATCHES[0]);
-    setEditingMeta(true);
-  }, [selected]);
+  const beginNotebookEdit = useCallback((notebook: NotebookSummary) => {
+    setMetaName(notebook.name);
+    setMetaDescription(notebook.description ?? "");
+    setMetaColor(notebook.color ?? SWATCHES[0]);
+    setEditingNotebookId(notebook.id);
+  }, []);
 
   const saveMeta = useCallback(async () => {
-    if (!selectedId || !metaName.trim()) return;
+    if (!editingNotebookId || !metaName.trim()) return;
     try {
-      await library.rename(selectedId, {
+      await library.rename(editingNotebookId, {
         name: metaName.trim(),
         description: metaDescription.trim(),
         color: metaColor,
       });
-      setEditingMeta(false);
+      setEditingNotebookId(null);
     } catch (err) {
       setBanner(err instanceof Error ? err.message : String(err));
     }
-  }, [library, selectedId, metaName, metaDescription, metaColor]);
+  }, [editingNotebookId, library, metaName, metaDescription, metaColor]);
 
   const handleDeleteNotebook = useCallback(async () => {
     if (!selected) return;
@@ -203,6 +206,7 @@ export default function NotebookConsole({
       router.replace(notebookRoute(null, courseId));
       notify(t('Deleted "{{name}}"', { name }), { tone: "success" });
       setConfirmingDelete(false);
+      setEditingNotebookId(null);
     } catch (err) {
       setBanner(err instanceof Error ? err.message : String(err));
     } finally {
@@ -361,15 +365,77 @@ export default function NotebookConsole({
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
           {visibleNotebooks.map((notebook) => {
             const active = selectedId === notebook.id;
+            if (editingNotebookId === notebook.id) {
+              return (
+                <form
+                  key={notebook.id}
+                  aria-label={t("Edit notebook")}
+                  className="mb-0.5 flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveMeta();
+                  }}
+                >
+                  <input
+                    autoFocus
+                    aria-label={t("Notebook name")}
+                    value={metaName}
+                    onChange={(e) => setMetaName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditingNotebookId(null);
+                    }}
+                    placeholder={t("Notebook name")}
+                    className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
+                  />
+                  <input
+                    aria-label={t("Description (optional)")}
+                    value={metaDescription}
+                    onChange={(e) => setMetaDescription(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditingNotebookId(null);
+                    }}
+                    placeholder={t("Description (optional)")}
+                    className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
+                      {SWATCHES.map((swatch) => (
+                        <button
+                          key={swatch}
+                          type="button"
+                          onClick={() => setMetaColor(swatch)}
+                          aria-label={swatch}
+                          className={`h-3.5 w-3.5 rounded-full transition-transform ${
+                            metaColor === swatch
+                              ? "ring-2 ring-[var(--foreground)]/40 ring-offset-1 ring-offset-[var(--card)]"
+                              : "hover:scale-110"
+                          }`}
+                          style={{ backgroundColor: swatch }}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingNotebookId(null)}
+                      className="ml-auto rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    >
+                      {t("Cancel")}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!metaName.trim()}
+                      className="rounded-md bg-[var(--primary)] px-2 py-1 text-[11px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
+                    >
+                      {t("Save")}
+                    </button>
+                  </div>
+                </form>
+              );
+            }
+
             return (
-              <button
+              <div
                 key={notebook.id}
-                type="button"
-                onClick={() => {
-                  library.select(notebook.id);
-                  router.push(notebookRoute(notebook.id, courseId));
-                }}
-                aria-current={active ? "true" : undefined}
                 className={`group/nb relative mb-0.5 flex w-full items-start gap-2 rounded-lg py-2 pl-3 pr-2 text-left transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
                   active
                     ? "bg-[var(--primary)]/10"
@@ -389,34 +455,53 @@ export default function NotebookConsole({
                   className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
                   style={{ backgroundColor: notebook.color || "#6366F1" }}
                 />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? "font-semibold text-[var(--foreground)]" : "font-medium text-[var(--foreground)]/85"}`}
-                    >
-                      {notebook.name}
+                <button
+                  type="button"
+                  onClick={() => {
+                    library.select(notebook.id);
+                    router.push(notebookRoute(notebook.id, courseId));
+                  }}
+                  aria-current={active ? "true" : undefined}
+                  className="flex min-w-0 flex-1 items-start gap-2 text-left focus-visible:outline-none"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? "font-semibold text-[var(--foreground)]" : "font-medium text-[var(--foreground)]/85"}`}
+                      >
+                        {notebook.name}
+                      </span>
+                      {notebook.unreadable ? (
+                        <AlertTriangle
+                          size={11}
+                          className="shrink-0 text-[var(--destructive)]"
+                        />
+                      ) : (
+                        <span className="shrink-0 text-[10.5px] tabular-nums text-[var(--muted-foreground)]">
+                          {notebook.record_count ?? 0}
+                        </span>
+                      )}
                     </span>
-                    {notebook.unreadable ? (
-                      <AlertTriangle
-                        size={11}
-                        className="shrink-0 text-[var(--destructive)]"
-                      />
-                    ) : (
-                      <span className="shrink-0 text-[10.5px] tabular-nums text-[var(--muted-foreground)]">
-                        {notebook.record_count ?? 0}
+                    {notebook.description && (
+                      <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
+                        {notebook.description}
                       </span>
                     )}
                   </span>
-                  {notebook.description && (
-                    <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
-                      {notebook.description}
-                    </span>
-                  )}
-                </span>
-              </button>
+                </button>
+                <Tooltip label={t("Edit notebook")} side="bottom">
+                  <button
+                    type="button"
+                    aria-label={t("Edit notebook")}
+                    onClick={() => beginNotebookEdit(notebook)}
+                    className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-60 transition-[background-color,color,opacity,transform] duration-150 active:scale-[0.97] hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:bg-[var(--muted)] focus-visible:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </Tooltip>
+              </div>
             );
           })}
-
           {!visibleNotebooks.length && (
             <p
               data-test="notebooks-empty"
@@ -484,102 +569,41 @@ export default function NotebookConsole({
         ) : (
           <>
             <header className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-4 py-3">
-              {editingMeta ? (
-                <div className="flex flex-col gap-2">
-                  <input
-                    autoFocus
-                    value={metaName}
-                    onChange={(e) => setMetaName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void saveMeta();
-                      if (e.key === "Escape") setEditingMeta(false);
-                    }}
-                    placeholder={t("Notebook name")}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[14px] font-semibold text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-                  />
-                  <input
-                    value={metaDescription}
-                    onChange={(e) => setMetaDescription(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void saveMeta();
-                      if (e.key === "Escape") setEditingMeta(false);
-                    }}
-                    placeholder={t("Description (optional)")}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-                  />
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      {SWATCHES.map((swatch) => (
-                        <button
-                          key={swatch}
-                          type="button"
-                          onClick={() => setMetaColor(swatch)}
-                          aria-label={swatch}
-                          className={`h-4 w-4 rounded-full transition-transform ${metaColor === swatch ? "ring-2 ring-[var(--foreground)]/40 ring-offset-1 ring-offset-[var(--background)]" : "hover:scale-110"}`}
-                          style={{ backgroundColor: swatch }}
-                        />
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void saveMeta()}
-                      disabled={!metaName.trim()}
-                      className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
-                    >
-                      <Check size={12} />
-                      {t("Save")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingMeta(false)}
-                      className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                    >
-                      {t("Cancel")}
-                    </button>
-                  </div>
+              <div className="flex items-center gap-2.5">
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: selected?.color || "#6366F1" }}
+                />
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-[14.5px] font-semibold tracking-tight text-[var(--foreground)]">
+                    {selected?.name}
+                  </h2>
+                  {selected?.description && (
+                    <p className="truncate text-[11.5px] text-[var(--muted-foreground)]">
+                      {selected.description}
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2.5">
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: selected?.color || "#6366F1" }}
+                <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
+                  {selected?.records.length ?? 0} {t("records")}
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <HeaderAction
+                    label={t("Export as Markdown")}
+                    icon={Download}
+                    onClick={() => void handleExport()}
                   />
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-[14.5px] font-semibold tracking-tight text-[var(--foreground)]">
-                      {selected?.name}
-                    </h2>
-                    {selected?.description && (
-                      <p className="truncate text-[11.5px] text-[var(--muted-foreground)]">
-                        {selected.description}
-                      </p>
-                    )}
-                  </div>
-                  <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
-                    {selected?.records.length ?? 0} {t("records")}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <HeaderAction
-                      label={t("Edit notebook")}
-                      icon={Pencil}
-                      onClick={beginMetaEdit}
-                    />
-                    <HeaderAction
-                      label={t("Export as Markdown")}
-                      icon={Download}
-                      onClick={() => void handleExport()}
-                    />
-                    <HeaderAction
-                      label={t("Delete notebook")}
-                      icon={Trash2}
-                      tone="danger"
-                      onClick={() => setConfirmingDelete(true)}
-                    />
-                  </div>
+                  <HeaderAction
+                    label={t("Delete notebook")}
+                    icon={Trash2}
+                    tone="danger"
+                    onClick={() => setConfirmingDelete(true)}
+                  />
                 </div>
-              )}
+              </div>
 
-              {(selected?.records.length ?? 0) > 8 && !editingMeta && (
+              {(selected?.records.length ?? 0) > 8 && (
                 <div className="relative">
                   <Search
                     size={12}
