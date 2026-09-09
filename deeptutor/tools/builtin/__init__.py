@@ -524,18 +524,21 @@ class ReadSourceTool(_PromptHintsMixin, BaseTool):
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        source_id = str(kwargs.get("source_id") or "").strip()
-        if not source_id:
-            return ToolResult(
-                content="Error: source_id is required.",
-                success=False,
-            )
         source_index = kwargs.get("source_index")
         if not isinstance(source_index, dict) or not source_index:
             return ToolResult(
                 content=("Error: no attached sources are available for this turn."),
                 success=False,
             )
+        source_id = str(kwargs.get("source_id") or "").strip()
+        if not source_id:
+            if len(source_index) == 1:
+                source_id = next(iter(source_index))
+            else:
+                return ToolResult(
+                    content="Error: source_id is required when multiple sources are available.",
+                    success=False,
+                )
         full_text = source_index.get(source_id)
         if not full_text:
             available = ", ".join(sorted(source_index.keys()))
