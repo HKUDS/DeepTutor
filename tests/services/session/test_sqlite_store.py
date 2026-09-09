@@ -378,6 +378,69 @@ def test_upsert_notebook_entries_updates_on_conflict(store: SQLiteSessionStore) 
     assert result["items"][0]["user_answer"] == "B"
 
 
+def test_upsert_notebook_entries_with_answer_images(store: SQLiteSessionStore) -> None:
+    """#1245 — INSERT with user_answer_images must include every schema column.
+
+    The ``notebook_entries`` schema has more columns than the INSERT listed
+    historically (notably ``ai_judgment``, added by migration on legacy
+    databases). Skipping one produced ``OperationalError: 22 values for 23
+    columns`` at the call site. Cover both INSERT branches: a fresh entry
+    carrying images, and a re-upsert that only changes ``is_correct`` while
+    keeping the stored images.
+    """
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+    images = [
+        {
+            "id": "img-1",
+            "url": "/files/attachments/img-1/answer.png",
+            "filename": "answer.png",
+            "mime_type": "image/png",
+        }
+    ]
+
+    asyncio.run(
+        store.upsert_notebook_entries(
+            sid,
+            [
+                {
+                    "question_id": "q1",
+                    "question": "Identify the diagram.",
+                    "user_answer": "B",
+                    "is_correct": False,
+                    "user_answer_images": images,
+                }
+            ],
+        )
+    )
+    stored = asyncio.run(store.list_notebook_entries())
+    assert stored["total"] == 1
+    assert stored["items"][0]["user_answer_images"] == images
+
+    # Re-upsert the same key without sending images — stored images must
+    # survive (no-images branch must not clobber user_answer_images_json).
+    asyncio.run(
+        store.upsert_notebook_entries(
+            sid,
+            [
+                {
+                    "question_id": "q1",
+                    "question": "Identify the diagram.",
+                    "user_answer": "A",
+                    "is_correct": True,
+                }
+            ],
+        )
+    )
+    after = asyncio.run(store.list_notebook_entries())["items"][0]
+    assert after["is_correct"] is True
+    assert after["user_answer"] == "A"
+    assert after["user_answer_images"] == images
+    # The new column defaults are exposed by _serialize_notebook_entry.
+    assert after["bookmarked"] is False
+    assert after["followup_session_id"] == ""
+
+
 def test_upsert_skips_blank_questions(store: SQLiteSessionStore) -> None:
     session = asyncio.run(store.create_session())
     items = [

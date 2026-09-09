@@ -796,6 +796,30 @@ async def get_openai_codex_oauth_status() -> dict[str, Any]:
         raise _codex_http_exception(exc) from None
 
 
+class CodexOAuthCallbackPayload(BaseModel):
+    callback_url: str
+
+
+@router.post("/providers/openai-codex/oauth/complete")
+async def complete_openai_codex_oauth(payload: CodexOAuthCallbackPayload) -> dict[str, Any]:
+    """Finish a waiting Codex login from a callback address the user pasted.
+
+    The provider redirects the browser to a loopback listener. In Docker that
+    listener lives in the container and the published ports do not include it,
+    so the browser shows a failed page while the sign-in waits forever
+    (#1252). This is the way back in without a tunnel: the address is parsed
+    for its OAuth result and discarded, and the exchange is the same one the
+    listener would have driven.
+    """
+    _require_codex_oauth_actor()
+    try:
+        return await get_codex_oauth_service().complete_login_with_callback_url(
+            payload.callback_url
+        )
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
 @router.post("/providers/openai-codex/oauth/cancel")
 async def cancel_openai_codex_oauth() -> dict[str, Any]:
     _require_codex_oauth_actor()

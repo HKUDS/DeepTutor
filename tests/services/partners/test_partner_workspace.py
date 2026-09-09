@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from deeptutor.services.partners.workspace import (
     ensure_partner_workspace,
     list_assets,
@@ -50,6 +52,25 @@ def _seed_admin_skill(admin_root, name="research-mode"):
     (skill / "references").mkdir()
     (skill / "references" / "ref.md").write_text("ref", encoding="utf-8")
     return skill
+
+
+def _seed_admin_connected_kb(admin_root, name="wiki", kb_type="weknora", **fields):
+    """Register a pointer KB with no folder on disk — the connected shape.
+
+    Defaults to ``weknora`` rather than ``obsidian`` on purpose: obsidian,
+    marginnote4 and subagent KBs are refused for partners (see
+    ``test_exclusive_capability_kinds_are_refused``), so they cannot stand in
+    for the ordinary connected case.
+    """
+    entry = {"type": kb_type, "server_url": "http://localhost:8080", "knowledge_base_id": "kb-1"}
+    entry.update(fields)
+    config_path = admin_root / "knowledge_bases" / "kb_config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps({"knowledge_bases": {name: entry}}),
+        encoding="utf-8",
+    )
+    return entry
 
 
 def _seed_admin_notebook(admin_root, notebook_id="nb1"):
@@ -141,6 +162,78 @@ class TestProvisioning:
         report = provision_assets("ada", knowledge_bases=["physics"])
         assert report["errors"] == []
         assert report["copied"]["knowledge_bases"] == ["physics"]
+
+    def test_connected_kb_is_registered_not_copied(self, partners_root):
+        # A connected/pointer KB (Obsidian vault, linked index, ...) has no
+        # `<kb>/` folder on disk by design, so provisioning it must not
+        # attempt a copytree. Regression for #1259.
+        from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+        admin_root = partners_root.parent
+        _seed_admin_connected_kb(admin_root)
+
+        report = provision_assets("ada", knowledge_bases=["wiki"])
+        assert report["errors"] == []
+        assert report["copied"]["knowledge_bases"] == ["wiki"]
+
+        partner_kb_dir = partners_root / "ada" / "workspace" / "knowledge_bases"
+        assert not (partner_kb_dir / "wiki").exists()
+        manager = KnowledgeBaseManager(base_dir=str(partner_kb_dir))
+        assert manager.get_kb_entry("wiki") == {
+            "type": "weknora",
+            "server_url": "http://localhost:8080",
+            "knowledge_base_id": "kb-1",
+        }
+
+    def test_connected_kb_provisioning_is_idempotent(self, partners_root):
+        admin_root = partners_root.parent
+        _seed_admin_connected_kb(admin_root)
+        provision_assets("ada", knowledge_bases=["wiki"])
+        report = provision_assets("ada", knowledge_bases=["wiki"])
+        assert report["errors"] == []
+        assert report["copied"]["knowledge_bases"] == ["wiki"]
+
+    @pytest.mark.parametrize("kb_type", ["obsidian", "marginnote4", "subagent"])
+    def test_exclusive_capability_kinds_are_refused(self, partners_root, kb_type):
+        """These three take over the turn, so a partner must not hold one.
+
+        Each is driven by an exclusive ``KnowledgeCapability`` whose
+        ``is_active`` keys purely off the turn's KB selection — and a partner
+        passes ALL of its knowledge bases as that selection, every turn. One
+        assigned vault would seize every partner turn; a ``subagent`` entry
+        would let a partner consult another partner, or itself.
+
+        Unreachable while pointer KBs failed to provision at all; reachable the
+        moment they started succeeding.
+        """
+        admin_root = partners_root.parent
+        _seed_admin_connected_kb(admin_root, name="taken", kb_type=kb_type)
+
+        report = provision_assets("ada", knowledge_bases=["taken"])
+
+        assert report["copied"]["knowledge_bases"] == []
+        assert len(report["errors"]) == 1
+        assert "cannot be assigned to a partner" in report["errors"][0]["error"]
+
+    def test_a_connected_kb_can_be_listed_and_removed(self, partners_root):
+        """It has no folder, so both halves used to miss it entirely.
+
+        ``list_assets`` scanned directories only, so an assigned pointer KB was
+        invisible in the partner's library — and never excluded from the
+        picker, so the user kept re-assigning it. ``remove_asset`` returned
+        False for a missing folder, which the router turns into a 404.
+        """
+        admin_root = partners_root.parent
+        _seed_admin_connected_kb(admin_root)
+        provision_assets("ada", knowledge_bases=["wiki"])
+
+        listed = list_assets("ada")["knowledge_bases"]
+        assert [kb["name"] for kb in listed] == ["wiki"]
+        assert listed[0]["type"] == "weknora"
+
+        assert remove_asset("ada", "knowledge_base", "wiki") is True
+        assert list_assets("ada")["knowledge_bases"] == []
+        assert remove_asset("ada", "knowledge_base", "wiki") is False
 
 
 class TestInventoryAndRemoval:

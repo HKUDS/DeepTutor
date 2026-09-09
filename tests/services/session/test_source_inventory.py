@@ -161,6 +161,24 @@ def test_render_manifest_distinguishes_fresh_vs_historical() -> None:
     assert idx["at-old"] == "x" * 5000
 
 
+def test_render_manifest_does_not_advertise_answer_loop_source_tools() -> None:
+    inv = SourceInventory()
+    inv.add(
+        SourceEntry(
+            sid="at-old",
+            kind="attachment",
+            name="homework.pdf",
+            full_text="PDF body",
+            fresh=False,
+            first_seen_turn=1,
+        )
+    )
+    text, _ = render_manifest(inv)
+    assert "Context Investigator" in text
+    assert "call a file/PDF tool" in text
+    assert "loaded on demand" not in text
+
+
 # ---------------------------------------------------------------------------
 # build_inventory
 # ---------------------------------------------------------------------------

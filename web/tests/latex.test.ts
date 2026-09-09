@@ -110,6 +110,34 @@ test("headings: does not split 7+ consecutive hashes", () => {
   assert.equal(result.trim(), "#######");
 });
 
+test("headings: leaves heading-like fenced code verbatim", () => {
+  const input = [
+    "```c",
+    "##define FEATURE",
+    "```",
+    "",
+    "~~~text",
+    "###literal",
+    "~~~",
+  ].join("\n");
+
+  assert.equal(processMarkdownContent(input), input);
+});
+
+test("headings: leaves raw HTML code blocks verbatim", () => {
+  const input = [
+    "<pre>",
+    "###literal",
+    "</pre>",
+    "",
+    "<code>",
+    "##define FEATURE",
+    "</code>",
+  ].join("\n");
+
+  assert.equal(processMarkdownContent(input), input);
+});
+
 // ---------------------------------------------------------------------------
 // processMarkdownContent — inline math normalisation ($$...$$ → $...$)
 // ---------------------------------------------------------------------------

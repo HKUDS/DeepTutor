@@ -2,8 +2,18 @@ import { resolveBackendApiBase } from "./backend-runtime-config";
 
 // HTTP/1.1 hop-by-hop headers describe one transport connection and must not
 // be replayed on the independent frontend -> backend connection.
+//
+// ``expect`` belongs here too: Node's server already answered the client's
+// ``100-continue`` before this handler ever ran, so the negotiation is over.
+// Replaying it is not merely redundant — undici rejects any request carrying
+// the header ("expect header not supported"), which fails the forward *mid
+// upload*. The browser, still writing the body, never reads that 500 and
+// reports a bare "Failed to fetch". Only clients that add the header for
+// large bodies are affected (curl past 1KB, and TUN/HTTP proxies in front of
+// the browser), which is why the breakage looks size-dependent.
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
+  "expect",
   "keep-alive",
   "proxy-authenticate",
   "proxy-authorization",

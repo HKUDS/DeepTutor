@@ -158,6 +158,28 @@ export function ReaderPane({
     null,
   );
   const [selection, setSelection] = useState<SelectionPayload | null>(null);
+  // Whether the annotation popover is showing, kept apart from whether there
+  // IS a selection. They used to be the same flag, and the popover dismisses
+  // itself on a document-level, capture-phase `pointerdown` — so pressing a
+  // toolbar button cleared `selection` before the click could land, React
+  // re-rendered the button as `disabled` (all four selection-gated actions
+  // declare `requires: ["selection"]`), and the browser then refused to
+  // dispatch the rest of the activation sequence to a disabled control. No
+  // fetch, no spinner, no error: 引导我 / 翻译成英文 / 翻译成中文 / 解释词汇
+  // have been unreachable by pointer since the toolbar shipped.
+  const [popoverOpen, setPopoverOpen] = useState(false);
+
+  /** One place to open a selection, so the popover cannot drift out of step. */
+  const openSelection = useCallback((payload: SelectionPayload | null) => {
+    setSelection(payload);
+    setPopoverOpen(payload !== null);
+  }, []);
+
+  /** Drop the selection entirely — it is stale, not merely unfocused. */
+  const clearSelection = useCallback(() => {
+    setSelection(null);
+    setPopoverOpen(false);
+  }, []);
   const [jump, setJump] = useState<JumpRequest | null>(null);
   // `null` = follow the document: show the panel once there is something in it.
   // An empty panel is a whole column of nothing next to the page, which reads as
@@ -645,10 +667,10 @@ export function ReaderPane({
           updated_at: now,
         },
       );
-      setSelection(null);
+      clearSelection();
       window.getSelection()?.removeAllRanges();
     },
-    [selection, material, saveMark],
+    [selection, material, saveMark, clearSelection],
   );
 
   const askAboutSelection = useCallback(() => {
@@ -662,9 +684,9 @@ export function ReaderPane({
         },
       }),
     );
-    setSelection(null);
+    clearSelection();
     window.getSelection()?.removeAllRanges();
-  }, [selection, material]);
+  }, [selection, material, clearSelection]);
 
   // -- export --------------------------------------------------------------
 
@@ -869,6 +891,7 @@ export function ReaderPane({
         <ReadingExtensionBar
           materialId={material.material_id}
           locator={currentLocator}
+          selectionLocator={selection?.locator}
           selection={selection?.quote}
           onError={setError}
         />
@@ -903,7 +926,7 @@ export function ReaderPane({
               annotations={annotations}
               jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={openSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
@@ -920,7 +943,7 @@ export function ReaderPane({
               annotations={annotations}
               jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={openSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
@@ -936,7 +959,7 @@ export function ReaderPane({
               annotations={annotations}
               jump={materialJump}
               highlightedAnnotationId={activeAnnotationId}
-              onSelection={setSelection}
+              onSelection={openSelection}
               onAnnotationClick={(annotation) =>
                 setActiveAnnotationId(annotation.annotation_id)
               }
@@ -964,7 +987,10 @@ export function ReaderPane({
         )}
       </div>
 
-      {selection && material && (
+      {/* `popoverOpen` and not just `selection`: dismissal now leaves the
+          selection in place for the toolbar, so gating the mount on the
+          selection alone would make Escape and outside-click stop working. */}
+      {popoverOpen && selection && material && (
         <AnnotationPopover
           anchor={selection.anchor}
           quote={selection.quote}
@@ -973,7 +999,9 @@ export function ReaderPane({
           onNote={(note, color) => commitSelection("note", color, note)}
           onCitation={(color) => commitSelection("citation", color)}
           onAsk={askAboutSelection}
-          onDismiss={() => setSelection(null)}
+          // Closes the popover WITHOUT dropping the selection, so the
+          // toolbar's selection-gated actions stay reachable.
+          onDismiss={() => setPopoverOpen(false)}
         />
       )}
     </div>

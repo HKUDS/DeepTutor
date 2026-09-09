@@ -83,6 +83,7 @@ doc.save("out.docx")
 check = Document("out.docx")
 assert check.paragraphs, "generated DOCX has no paragraphs"
 import zipfile
+
 with zipfile.ZipFile("out.docx") as package:
     assert package.testzip() is None, "generated DOCX has a corrupt ZIP member"
 ```

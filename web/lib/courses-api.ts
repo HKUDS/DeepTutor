@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import { ApiError } from "@/shared/api/errors";
 
 /**
  * Kinds of resource a course may reference.
@@ -128,8 +129,24 @@ export const DEFAULT_COURSE_COLORS = [
 ];
 
 async function expectJson<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-  return response.json() as Promise<T>;
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === "object"
+        ? String((payload as { detail?: unknown }).detail ?? "").trim()
+        : "";
+    throw new ApiError({
+      code: `http_${response.status}`,
+      message: detail || `Request failed (${response.status})`,
+      retryable:
+        response.status === 408 ||
+        response.status === 429 ||
+        response.status >= 500,
+      scope: "network",
+      status: response.status,
+    });
+  }
+  return payload as T;
 }
 
 /** Fill in fields absent from courses created before the container existed. */

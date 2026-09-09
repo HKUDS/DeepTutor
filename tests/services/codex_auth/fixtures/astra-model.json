@@ -1,0 +1,39 @@
+{
+  "slug": "gpt-6-astra",
+  "display_name": "GPT-6-Astra",
+  "visibility": "list",
+  "priority": 1,
+  "default_reasoning_level": "medium",
+  "supported_reasoning_levels": [
+    {
+      "effort": "low",
+      "description": "Fast responses with lighter reasoning"
+    },
+    {
+      "effort": "medium",
+      "description": "Balances speed and reasoning depth for everyday tasks"
+    },
+    {
+      "effort": "high",
+      "description": "Greater reasoning depth for complex problems"
+    },
+    {
+      "effort": "xhigh",
+      "description": "Extra high reasoning depth for complex problems"
+    },
+    {
+      "effort": "max",
+      "description": "Maximum reasoning depth for the hardest problems"
+    },
+    {
+      "effort": "ultra",
+      "description": "Maximum reasoning with automatic task delegation"
+    }
+  ],
+  "supports_reasoning_summary_parameter": true,
+  "supports_reasoning_summaries": true,
+  "supports_parallel_tool_calls": true,
+  "use_responses_lite": true,
+  "context_window": 272000,
+  "max_context_window": 872000
+}

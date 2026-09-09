@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+import base64
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,9 +19,9 @@ from deeptutor.services.rag.pipelines.lightrag import engine, ingress, storage
 
 
 async def _fake_llm(_prompt, **_kwargs) -> str:
-    # This superset satisfies rc2's table/equation analysis schemas. Entity
-    # extraction may validly produce zero records; the document still reaches
-    # PROCESSED with real parser, chunk, storage and embedding code.
+    # This superset satisfies the stable SDK's table/equation analysis schemas.
+    # Entity extraction may validly produce zero records; the document still
+    # reaches PROCESSED with real parser, chunk, storage and embedding code.
     return '{"name":"fixture","description":"fixture analysis","equation":"x^2","type":"Other"}'
 
 
@@ -27,7 +29,7 @@ async def _fake_embedding(texts: list[str]) -> np.ndarray:
     return np.ones((len(texts), 32), dtype=float)
 
 
-def _configure_real_sdk(monkeypatch, llm=_fake_llm) -> None:
+def _configure_real_sdk(monkeypatch, llm=_fake_llm, vision=None) -> None:
     monkeypatch.setattr(engine, "build_llm_model_func", lambda **_kwargs: llm)
     monkeypatch.setattr(
         engine,
@@ -44,10 +46,22 @@ def _configure_real_sdk(monkeypatch, llm=_fake_llm) -> None:
     monkeypatch.setattr(
         engine, "constructor_kwargs_from_settings", lambda: {"entity_extract_max_gleaning": 0}
     )
+    if vision is not None:
+        monkeypatch.setattr(engine, "build_vision_model_func", lambda **_kwargs: vision)
 
 
-async def _process(working_dir: Path, staged: ingress.StagedDocument) -> dict:
-    rag = engine.build_rag(working_dir, enable_vlm=False)
+async def _process(
+    working_dir: Path,
+    staged: ingress.StagedDocument,
+    *,
+    enable_vlm: bool = False,
+    indexing_snapshot=None,
+) -> dict:
+    rag = engine.build_rag(
+        working_dir,
+        enable_vlm=enable_vlm,
+        indexing_snapshot=indexing_snapshot,
+    )
     await engine.initialize(rag)
     failed = True
     try:
@@ -60,7 +74,7 @@ async def _process(working_dir: Path, staged: ingress.StagedDocument) -> dict:
         await engine.finalize(rag, cancel_pending=failed)
 
 
-def test_real_rc2_raw_bridge_reaches_processed(monkeypatch, tmp_path: Path) -> None:
+def test_real_stable_raw_bridge_reaches_processed(monkeypatch, tmp_path: Path) -> None:
     _configure_real_sdk(monkeypatch)
     working = tmp_path / "version-1"
     working.mkdir()
@@ -95,8 +109,14 @@ def test_real_rc2_raw_bridge_reaches_processed(monkeypatch, tmp_path: Path) -> N
     assert meta["parser_inputs"] == [{"engine": "text_only", "parser_signature": "fixture-parser"}]
 
 
-def test_real_rc2_sidecar_bridge_reaches_processed(monkeypatch, tmp_path: Path) -> None:
-    _configure_real_sdk(monkeypatch)
+def test_real_stable_sidecar_bridge_reaches_processed(monkeypatch, tmp_path: Path) -> None:
+    vision_calls: list[tuple[str, dict]] = []
+
+    async def fake_vision(prompt, **kwargs) -> str:
+        vision_calls.append((prompt, kwargs))
+        return '{"name":"fixture image","description":"synthetic fixture","type":"Other"}'
+
+    _configure_real_sdk(monkeypatch, vision=fake_vision)
     working = tmp_path / "version-1"
     working.mkdir()
     source = tmp_path / "paper.pdf"
@@ -126,11 +146,20 @@ def test_real_rc2_sidecar_bridge_reaches_processed(monkeypatch, tmp_path: Path) 
             parser_signature="fixture-parser",
         ),
     )
-    # The image asset still passes through the real Sidecar writer; disabling
-    # i only avoids requiring a vision call in this deterministic offline test.
-    staged = replace(staged, process_options=staged.process_options.replace("i", ""))
-
-    rows = asyncio.run(_process(working, staged))
+    snapshot = SimpleNamespace(
+        config=SimpleNamespace(binding="offline"),
+        owner=object(),
+        descriptor={"endpoint": "offline://fixture"},
+        fingerprint="fixture-indexing-model",
+    )
+    rows = asyncio.run(
+        _process(
+            working,
+            staged,
+            enable_vlm=True,
+            indexing_snapshot=snapshot,
+        )
+    )
 
     assert len(rows) == 1
     row = next(iter(rows.values()))
@@ -138,9 +167,24 @@ def test_real_rc2_sidecar_bridge_reaches_processed(monkeypatch, tmp_path: Path) 
     assert row.file_path == "paper.pdf"
     assert storage.has_output(working) is True
     assert list((ingress.pending_root(working) / "__parsed__").glob("paper.pdf"))
+    drawings_path = next(
+        (ingress.pending_root(working) / "__parsed__").glob("paper.pdf.parsed/*.drawings.json")
+    )
+    drawings = json.loads(drawings_path.read_text(encoding="utf-8"))["drawings"]
+    assert [item["llm_analyze_result"]["status"] for item in drawings.values()] == ["success"]
+    assert len(vision_calls) == 1
+    prompt, kwargs = vision_calls[0]
+    assert prompt.startswith("You are an expert image analyzer.")
+    assert kwargs["stream"] is False
+    assert kwargs["response_format"] == {"type": "json_object"}
+    assert len(kwargs["image_inputs"]) == 1
+    image = kwargs["image_inputs"][0]
+    assert base64.b64decode(image["base64"]) == b"fixture image"
+    assert image["mime_type"] == "image/png"
+    assert image["modality"] == "image"
 
 
-def test_real_rc2_append_uses_only_new_doc_and_links_existing_entity(
+def test_real_stable_append_uses_only_new_doc_and_links_existing_entity(
     monkeypatch, tmp_path: Path
 ) -> None:
     async def entity_llm(prompt, **_kwargs) -> str:

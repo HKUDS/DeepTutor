@@ -2354,7 +2354,7 @@ class SQLiteSessionStore:
                             material_title, section_id, section_title, score_trend,
                             is_correct, resolved, bookmarked, followup_session_id,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
                         ON CONFLICT(session_id, turn_id, question_id) DO UPDATE SET
                             question = excluded.question,
                             question_type = excluded.question_type,

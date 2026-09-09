@@ -28,7 +28,10 @@ import { MASTERY_CAPABILITY_VALUE } from "@/features/capabilities/presentation";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import { useContextBudget } from "@/hooks/useContextBudget";
 import { useWorkspaceChatActions } from "@/hooks/useWorkspaceChatActions";
-import { hasPendingAskUser, REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
+import {
+  hasPendingAskUser,
+  REPLY_SENT_AS_NEW_MESSAGE,
+} from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
 
 export function MasteryComposer({
@@ -74,36 +77,40 @@ export function MasteryComposer({
   const handleSubmit = useCallback(
     (submission: StandaloneComposerSubmission) => {
       if (disabled) return;
-      // A turn paused on a question: what the user typed is their answer,
-      // not a new message. See page.tsx's handleSend for the same routing.
-      if (awaitingUserReply) {
-        if (submission.content.trim()) {
-          void submitUserReply({ text: submission.content }).then((sent) => {
-            // The composer already cleared what they typed, so a silent drop
-            // would look like the tutor simply never replied.
-            if (!sent) notify(t(REPLY_NOT_DELIVERED), { tone: "error" });
-          });
-        }
+      const sendAsNewMessage = () =>
+        sendMessage(
+          submission.content,
+          submission.attachments,
+          // How many times the tutor may consult the selected agent this turn.
+          // Absent when no agent is picked, which is the ordinary case.
+          submission.subagentBudget
+            ? {
+                ...(submission.config ?? {}),
+                subagent_consult_budget: submission.subagentBudget,
+              }
+            : submission.config,
+          submission.notebookReferences,
+          submission.historyReferences,
+          { bookReferences: submission.bookReferences },
+          submission.questionNotebookReferences,
+          submission.persona ?? undefined,
+          submission.memoryReferences,
+        );
+
+      // A turn paused on a question: what the learner typed is their answer,
+      // not a new message. See ChatWorkspace's handleSend for the same routing
+      // — including the fall-through, which is the part that matters: the
+      // composer has already cleared the box, so stopping on a refusal
+      // discarded what they wrote.
+      if (awaitingUserReply && submission.content.trim()) {
+        void submitUserReply({ text: submission.content }).then((sent) => {
+          if (sent) return;
+          notify(t(REPLY_SENT_AS_NEW_MESSAGE));
+          sendAsNewMessage();
+        });
         return;
       }
-      sendMessage(
-        submission.content,
-        submission.attachments,
-        // How many times the tutor may consult the selected agent this turn.
-        // Absent when no agent is picked, which is the ordinary case.
-        submission.subagentBudget
-          ? {
-              ...(submission.config ?? {}),
-              subagent_consult_budget: submission.subagentBudget,
-            }
-          : submission.config,
-        submission.notebookReferences,
-        submission.historyReferences,
-        { bookReferences: submission.bookReferences },
-        submission.questionNotebookReferences,
-        submission.persona ?? undefined,
-        submission.memoryReferences,
-      );
+      sendAsNewMessage();
     },
     [awaitingUserReply, disabled, sendMessage, submitUserReply, t],
   );

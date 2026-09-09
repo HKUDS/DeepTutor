@@ -1526,6 +1526,19 @@
         "title": "ChatStarterSettingsUpdate",
         "type": "object"
       },
+      "CodexOAuthCallbackPayload": {
+        "properties": {
+          "callback_url": {
+            "title": "Callback Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "callback_url"
+        ],
+        "title": "CodexOAuthCallbackPayload",
+        "type": "object"
+      },
       "CodexReasoningEffortUpdate": {
         "properties": {
           "model": {
@@ -2652,6 +2665,19 @@
           "block_id"
         ],
         "title": "DeleteBlockRequest",
+        "type": "object"
+      },
+      "DeleteKnowledgeBaseRequest": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DeleteKnowledgeBaseRequest",
         "type": "object"
       },
       "DeviceCredentialCreateRequest": {
@@ -17767,6 +17793,80 @@
           }
         },
         "summary": "Set Default Kb",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/api/knowledge-bases/delete": {
+      "post": {
+        "description": "Delete a knowledge base named in the body rather than in the path.\n\nThe path route below cannot reach every registered name. A name is a\n``kb_config.json`` key, and until the ``register_*`` methods validated it\nthe connect-* endpoints wrote whatever the user typed — including a ``/``.\nuvicorn percent-decodes the path before routing, so ``%2F`` becomes a real\nseparator and ``{kb_name}`` (compiled to ``[^/]+``) cannot span it: every\nper-KB route 404s and the KB is visible in the list but unreachable.\n\nA body is never split into path segments, so this reaches those entries.\nWidening the path route to ``{kb_name:path}`` would not do — it is\ndeclared ahead of the DELETE routes for linked folders, GitHub sources and\nweb sources, and a greedy converter would silently swallow all three.",
+        "operationId": "delete_knowledge_base_by_name_api_knowledge_bases_delete_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteKnowledgeBaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Knowledge Base By Name",
         "tags": [
           "knowledge-bases"
         ]
@@ -43735,6 +43835,84 @@
           }
         },
         "summary": "Cancel Openai Codex Oauth",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/providers/openai-codex/oauth/complete": {
+      "post": {
+        "description": "Finish a waiting Codex login from a callback address the user pasted.\n\nThe provider redirects the browser to a loopback listener. In Docker that\nlistener lives in the container and the published ports do not include it,\nso the browser shows a failed page while the sign-in waits forever\n(#1252). This is the way back in without a tunnel: the address is parsed\nfor its OAuth result and discarded, and the exchange is the same one the\nlistener would have driven.",
+        "operationId": "complete_openai_codex_oauth_api_settings_providers_openai_codex_oauth_complete_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodexOAuthCallbackPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Openai Codex Oauth Api Settings Providers Openai Codex Oauth Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Openai Codex Oauth",
         "tags": [
           "settings"
         ]

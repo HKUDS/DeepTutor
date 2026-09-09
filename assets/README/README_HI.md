@@ -387,7 +387,7 @@ DeepTutor अपने installed code, private runtime home, और optional Con
 अगर कोई answer पहले का constraint खो दे, weak evidence cite करे, या selected material से disagree करे, तो issue खोलने से पहले [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md) में diagnostics collect करें।
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutor होम — sidebar में हर surface के साथ Chat workspace" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor होम — sidebar में हर surface के साथ Chat workspace" width="900">
 </div>
 
 <details>
