@@ -77,6 +77,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [notesExportBusy, setNotesExportBusy] = useState(false)
   const [notesCopied, setNotesCopied] = useState(false)
   const [noteSaveSuccess, setNoteSaveSuccess] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const notesExportRequestRef = useRef(0)
   const notesLoadRequestRef = useRef(0)
@@ -311,6 +312,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     const requestedMaterialId = material.material_id
     setNoteBusy(true)
     setNotesError(null)
+    setDeleteError(null)
     try {
       await deleteVideoNote(requestedMaterialId, pendingDeleteId)
       if (activeMaterialIdRef.current !== requestedMaterialId) return
@@ -323,7 +325,7 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       setNotesCopied(false)
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return
-      setNotesError(caught instanceof Error ? caught.message : t('Note was not deleted.'))
+      setDeleteError(caught instanceof Error ? caught.message : t('Note was not deleted.'))
     } finally {
       setNoteBusy(false)
     }
@@ -959,6 +961,11 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         onCancel={() => setPendingDeleteId(null)}
       >
         {t('This note will be removed from Video Learning.')}
+        {deleteError && (
+          <p role="alert" className="mt-2 text-sm text-[var(--destructive)]">
+            {deleteError}
+          </p>
+        )}
       </ConfirmDialog>
     </section>
   )
