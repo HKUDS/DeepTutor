@@ -1,7 +1,12 @@
 import type { MathAnimatorResult } from "@/lib/math-animator-types";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 
-export type VisualizeTextRenderType = "svg" | "chartjs" | "mermaid" | "html";
+export type VisualizeTextRenderType =
+  | "svg"
+  | "chartjs"
+  | "mermaid"
+  | "mindmap"
+  | "html";
 export type VisualizeManimRenderType = "manim_video" | "manim_image";
 export type VisualizeRenderType = string;
 export type VisualizeRenderMode = "auto" | (string & {});
@@ -33,6 +38,7 @@ const VISUALIZE_RENDER_LABELS: Record<string, string> = {
   chartjs: "Chart.js",
   svg: "SVG",
   mermaid: "Mermaid",
+  mindmap: "Mind map",
   html: "HTML",
   geogebra: "GeoGebra",
   manim_video: "Animation",
@@ -166,10 +172,13 @@ export function extractVisualizeResult(
   const inferredRenderer =
     renderType === "svg" ||
     renderType === "mermaid" ||
+    renderType === "mindmap" ||
     renderType === "chartjs" ||
     renderType === "html" ||
     renderType === "geogebra"
-      ? renderType
+      ? renderType === "mindmap"
+        ? "mermaid"
+        : renderType
       : "";
 
   return {

@@ -49,7 +49,7 @@ class AnalysisAgent(BaseAgent):
                 rationale=f"User selected {render_mode} explicitly.",
             )
 
-        if render_mode in ("svg", "chartjs", "mermaid", "html"):
+        if render_mode in ("svg", "chartjs", "mermaid", "mindmap", "html"):
             system_prompt = self.get_prompt("system_fixed")
             user_template = self.get_prompt("user_template_fixed")
         elif render_mode == "figure":
@@ -67,7 +67,7 @@ class AnalysisAgent(BaseAgent):
             "user_input": user_input.strip(),
             "history_context": history_context.strip() or "(none)",
         }
-        if render_mode in ("svg", "chartjs", "mermaid", "html"):
+        if render_mode in ("svg", "chartjs", "mermaid", "mindmap", "html"):
             format_kwargs["render_type"] = render_mode
 
         user_prompt = user_template.format(**format_kwargs)
@@ -90,7 +90,7 @@ class AnalysisAgent(BaseAgent):
             ),
         )
         result = VisualizationAnalysis.model_validate(extract_json_object(raw))
-        if render_mode in ("svg", "chartjs", "mermaid", "html"):
+        if render_mode in ("svg", "chartjs", "mermaid", "mindmap", "html"):
             result.render_type = render_mode  # type: ignore[assignment]
         elif render_mode == "figure" and result.render_type not in (
             "svg",
