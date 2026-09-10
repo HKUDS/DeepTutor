@@ -9,6 +9,11 @@ _THINKING_STYLE_MAP = {
     "enable_thinking": lambda enabled: {"enable_thinking": enabled},
     "reasoning_split": lambda enabled: {"reasoning_split": enabled},
 }
+# These values are used by callers that need a guaranteed reader-facing
+# response.  ``minimal``/``minimum`` are retained as off sentinels for
+# provider-native thinking controls for backwards compatibility; OpenRouter
+# receives the canonical ``none`` value below.
+_THINKING_OFF_EFFORTS = frozenset({"none", "minimal", "minimum"})
 _PROVIDER_THINKING_STYLES = {
     "deepseek": "thinking_type",
     "volcengine": "thinking_type",
@@ -153,15 +158,30 @@ def build_openai_compatible_reasoning_kwargs(
             semantic_effort = "minimal"
 
     kwargs: dict[str, Any] = {}
+    # OpenRouter exposes a provider-neutral reasoning object.  Keep the
+    # explicit off request and exclude any reasoning trace from the response;
+    # this is important for models whose gateway response otherwise uses the
+    # ``reasoning`` field alongside ``content``.
+    if provider_name == "openrouter" and semantic_effort == "none":
+        kwargs["extra_body"] = {
+            "reasoning": {"effort": "none", "exclude": True},
+        }
     if resolved_effort:
         suppress_top_level = bool(
-            thinking_style and (semantic_effort == "minimal" or thinking_style == "enable_thinking")
+            thinking_style
+            and (semantic_effort in _THINKING_OFF_EFFORTS or thinking_style == "enable_thinking")
         )
-        if not suppress_top_level:
+        if not suppress_top_level and not (
+            provider_name == "openrouter" and semantic_effort == "none"
+        ):
             kwargs["reasoning_effort"] = resolved_effort
 
-    if thinking_style and resolved_effort is not None:
-        thinking_enabled = semantic_effort != "minimal"
+    if (
+        thinking_style
+        and resolved_effort is not None
+        and not (provider_name == "openrouter" and semantic_effort == "none")
+    ):
+        thinking_enabled = semantic_effort not in _THINKING_OFF_EFFORTS
         extra = _THINKING_STYLE_MAP.get(thinking_style, lambda _enabled: None)(thinking_enabled)
         if extra:
             kwargs.setdefault("extra_body", {}).update(extra)

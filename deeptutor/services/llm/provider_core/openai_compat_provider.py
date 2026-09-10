@@ -816,8 +816,6 @@ class OpenAICompatProvider(LLMProvider):
                     finish_reason = ch.finish_reason
             if not content and m.content:
                 content = m.content
-            if not content and getattr(m, "reasoning", None):
-                content = m.reasoning
 
         tool_calls = []
         for tc in raw_tool_calls:
@@ -839,6 +837,12 @@ class OpenAICompatProvider(LLMProvider):
         reasoning_content = getattr(msg, "reasoning_content", None) or None
         if not reasoning_content and getattr(msg, "reasoning", None):
             reasoning_content = msg.reasoning
+
+        # ``reasoning`` is a private trace on gateways such as OpenRouter.  It
+        # must never be promoted to visible content when the provider omits a
+        # final answer (the old fallback here leaked untagged scratchpads).
+        if content and reasoning_content and content == reasoning_content:
+            content = None
 
         usage = self._extract_usage(response)
 

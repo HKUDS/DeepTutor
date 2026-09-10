@@ -221,6 +221,25 @@ async def test_stream_does_not_replay_reasoning_as_final_content(monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_complete_does_not_return_duplicated_reasoning_as_content(monkeypatch) -> None:
+    cfg = _make_cfg()
+    provider = _FakeProvider(
+        complete_response=LLMResponse(
+            content="Let me draft ~320 words.",
+            reasoning_content="Let me draft ~320 words.",
+        )
+    )
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", lambda: cfg)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider",
+        lambda _config: provider,
+    )
+
+    assert await complete("hello") == ""
+
+
+@pytest.mark.asyncio
 async def test_complete_injects_openai_image_parts(monkeypatch) -> None:
     cfg = _make_cfg(model="gpt-4o-mini", binding="openai", provider_name="openai")
     provider = _FakeProvider()

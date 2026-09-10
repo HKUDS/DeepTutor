@@ -43,6 +43,7 @@ class FlashCardsGenerator(BlockGenerator):
             temperature=0.4,
             language=ctx.language,
             expected_key="cards",
+            reasoning_effort="none",
         )
         cards_raw = data.get("cards") if isinstance(data, dict) else None
         cards: list[dict[str, str]] = []

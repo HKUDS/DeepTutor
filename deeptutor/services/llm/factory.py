@@ -398,6 +398,12 @@ async def _complete_with_resolved_config(
         raise map_error(
             RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
         )
+    # Provider adapters keep hidden reasoning in ``reasoning_content``.  A
+    # few gateways duplicate that field into ``content`` when no visible
+    # answer is present; never let that duplicate become user-facing text.
+    if response.content and response.reasoning_content:
+        if response.content == response.reasoning_content:
+            return ""
     return response.content or ""
 
 
