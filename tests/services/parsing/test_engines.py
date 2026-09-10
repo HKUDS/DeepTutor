@@ -78,6 +78,30 @@ def test_text_only_parser_extracts_docx_text(tmp_path) -> None:
     assert (workdir / "lesson.md").read_text(encoding="utf-8") == "Hello DeepTutor"
 
 
+def test_text_only_parser_converts_bibtex_to_structured_markdown(tmp_path) -> None:
+    parser = factory.get_parser("text_only")
+    source = tmp_path / "references.bib"
+    source.write_text(
+        "@article{sample2020,\n"
+        "  author = {Doe, Jane},\n"
+        "  title = {Readable References},\n"
+        "  year = {2020},\n"
+        "  abstract = {A clean summary.}\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    workdir = tmp_path / "parsed"
+    workdir.mkdir()
+
+    parser.parse(source, workdir, config={})
+
+    markdown = (workdir / "references.md").read_text(encoding="utf-8")
+    assert "## 1. Readable References" in markdown
+    assert "**Authors:** Jane Doe" in markdown
+    assert "A clean summary." in markdown
+    assert "@article" not in markdown
+
+
 def test_mineru_signature_distinguishes_local_and_cloud() -> None:
     parser = factory.get_parser("mineru")
     from deeptutor.services.parsing.engines.mineru.config import MinerUConfig
