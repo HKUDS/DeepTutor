@@ -180,13 +180,23 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     const list = transcriptListRef.current
     const activeRow = list?.querySelector<HTMLButtonElement>('[data-active-cue="true"]')
     if (!list || !activeRow) return
-    const rowTop =
+    const rowCenter =
       activeRow.getBoundingClientRect().top -
       list.getBoundingClientRect().top +
       list.scrollTop -
       list.clientHeight / 2 +
       activeRow.clientHeight / 2
-    list.scrollTo({ top: Math.max(0, rowTop), behavior: 'smooth' })
+    // Clamp the active row's centre to the middle 50% of the viewport so it
+    // sits near the caption overlay without jumping to the exact midpoint.
+    const upperMargin = list.clientHeight * 0.25
+    const lowerMargin = list.clientHeight * 0.75
+    const clampedTop = Math.min(Math.max(0, rowCenter - upperMargin), list.scrollHeight - list.clientHeight)
+    const targetTop = Math.max(0, Math.min(clampedTop, rowCenter - lowerMargin))
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    list.scrollTo({
+      top: targetTop,
+      behavior: prefersReducedMotion ? 'instant' : 'smooth',
+    })
   }, [cue, followTranscript, tab])
 
   const submit = async (providerOverride?: 'youtube') => {
