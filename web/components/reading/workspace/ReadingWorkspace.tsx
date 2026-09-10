@@ -596,6 +596,7 @@ export function ReadingWorkspacePage() {
               material={activeTab.material}
               title={activeTab.material.title}
               refs={material?.unit_refs ?? []}
+              transcript={material?.unit === "segment" ? transcript : []}
               transcriptUnavailable={transcriptUnavailable}
               chaptersOnly={chaptersOnly}
               activeLocator={activeLocator}

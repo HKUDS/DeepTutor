@@ -28,9 +28,13 @@ type BrowserView = "feed" | "playlists" | "search" | "playlist";
 export function WatchingBrowser({
   onDismiss,
   canDismiss,
+  selectionMode = false,
+  onSelectUrl,
 }: {
   onDismiss(): void;
   canDismiss: boolean;
+  selectionMode?: boolean;
+  onSelectUrl?(url: string): void;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -179,23 +183,28 @@ export function WatchingBrowser({
   }
   function select(url: string) {
     remember(scroll.current?.scrollTop || 0);
-    router.push(`/watching?video=${encodeURIComponent(url)}`);
+    if (onSelectUrl) onSelectUrl(url);
+    else router.push(`/watching?video=${encodeURIComponent(url)}`);
     onDismiss();
   }
   return (
     <section className="watching-browser" aria-label={t("Browse videos")}>
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] p-5">
         <div>
-          <h1 className="text-xl font-semibold">{t("Immersive Watching")}</h1>
+          <h1 className="text-xl font-semibold">
+            {selectionMode ? t("Browse Invidious") : t("Immersive Watching")}
+          </h1>
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            {t("Your videos, with room to learn.")}
+            {selectionMode
+              ? t("Choose a video to add to this collection.")
+              : t("Your videos, with room to learn.")}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           {canDismiss && (
             <button className="watching-browser-button" onClick={onDismiss}>
               <ArrowLeft size={16} />
-              {t("Back to video")}
+              {selectionMode ? t("Close") : t("Back to video")}
             </button>
           )}
           <button
