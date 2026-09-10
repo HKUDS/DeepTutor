@@ -18,6 +18,9 @@ vi.mock("@/context/AppShellContext", () => ({
 vi.mock("@/components/layout/AppShell", () => ({
   useSidebarDrawer: () => ({ close: fixture.close }),
 }));
+vi.mock("@/hooks/useAuthStatus", () => ({
+  useAuthStatus: () => ({ enabled: false }),
+}));
 vi.mock("@/hooks/useDevice", () => ({
   useDevice: () => ({ isMobile: false }),
 }));
