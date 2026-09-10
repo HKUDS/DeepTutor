@@ -2848,6 +2848,8 @@
   "Select text in the document to save a citation.": "Select text in the document to save a citation.",
   "Select text in the document to highlight it or attach a note.": "Select text in the document to highlight it or attach a note.",
   "Delete annotation": "Delete annotation",
+  "Not found": "Not found",
+  "Ambiguous": "Ambiguous",
   "{{count}} annotations": "{{count}} annotations",
   "AI": "AI",
   "Page": "Page",

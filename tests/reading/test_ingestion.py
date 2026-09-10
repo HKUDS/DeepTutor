@@ -24,7 +24,12 @@ from deeptutor.reading.ingestion import (
     parse_bilibili_url,
     parse_youtube_url,
 )
-from deeptutor.reading.models import ReadingError
+from deeptutor.reading.models import (
+    Annotation,
+    ReadingError,
+    TextPositionSelector,
+    TextQuoteSelector,
+)
 from deeptutor.reading.store import ReadingStore
 from deeptutor.services.web_source.snapshot_assets import SnapshotAsset
 from deeptutor.tools.web_fetch import FetchOutcome, _extract_readable
@@ -116,6 +121,156 @@ async def test_web_import_is_rich_localizes_images_and_preserves_old_revision(st
     revisions = reading.revisions(ready.material_id)
     assert [row.revision for row in revisions] == [1]
     assert "# Old snapshot" in reading.revision_unit_text(ready.material_id, 1, 1)
+
+
+def test_revision_migration_reanchors_reliable_quote(stores) -> None:
+    reading, _catalog = stores
+    material_id = "abcdef0123456789"
+
+    reading.ingest_units(
+        material_id,
+        filename="article.md",
+        units=["# First section\n\nThe quick brown fox jumps over the lazy dog."],
+        source_type="url_snapshot",
+    )
+    annotation = reading.save_annotation(
+        material_id,
+        Annotation(
+            annotation_id="test001",
+            locator=1,
+            quote="quick brown fox",
+            selectors=(
+                TextQuoteSelector(
+                    exact="quick brown fox",
+                    prefix="The ",
+                    suffix=" jumps",
+                ),
+                TextPositionSelector(start=21, end=36),
+            ),
+        ),
+    )
+    assert annotation.material_revision == 1
+
+    reading.ingest_units(
+        material_id,
+        filename="article-v2.md",
+        units=["# Revised\n\nIntro. The quick brown fox jumps over the lazy dog. End."],
+        source_type="url_snapshot",
+    )
+    stored = reading.annotations(material_id)
+    assert len(stored) == 1
+    migrated = stored[0]
+    assert migrated.resolution == "resolved"
+    assert migrated.material_revision == 2
+    assert "quick brown fox" in migrated.quote
+    quote_selector = next(s for s in migrated.selectors if isinstance(s, TextQuoteSelector))
+    position_selector = next(s for s in migrated.selectors if isinstance(s, TextPositionSelector))
+    unit_text = reading.unit_text(material_id, migrated.locator)
+    assert unit_text[position_selector.start : position_selector.end] == quote_selector.exact
+
+
+def test_revision_migration_marks_gone_quote_unresolved(stores) -> None:
+    reading, _catalog = stores
+    material_id = "abcdef0123456789"
+
+    reading.ingest_units(
+        material_id,
+        filename="article.md",
+        units=["# Section\n\nThe unique phrase is here."],
+        source_type="url_snapshot",
+    )
+    reading.save_annotation(
+        material_id,
+        Annotation(
+            annotation_id="test002",
+            locator=1,
+            quote="unique phrase",
+            selectors=(TextQuoteSelector(exact="unique phrase", prefix="The ", suffix=" is"),),
+        ),
+    )
+
+    reading.ingest_units(
+        material_id,
+        filename="article-v2.md",
+        units=["# Rewritten\n\nEntirely different content."],
+        source_type="url_snapshot",
+    )
+    stored = reading.annotations(material_id)
+    assert len(stored) == 1
+    assert stored[0].resolution == "unresolved"
+    assert stored[0].material_revision == 1  # kept pinned to old revision
+    assert stored[0].quote == "unique phrase"
+
+
+def test_revision_migration_marks_repeated_quote_ambiguous(stores) -> None:
+    reading, _catalog = stores
+    material_id = "abcdef0123456789"
+
+    reading.ingest_units(
+        material_id,
+        filename="article.md",
+        units=["# Section\n\nA key claim with unique context."],
+        source_type="url_snapshot",
+    )
+    reading.save_annotation(
+        material_id,
+        Annotation(
+            annotation_id="test003",
+            locator=1,
+            quote="key claim",
+            selectors=(TextQuoteSelector(exact="key claim", prefix="A ", suffix=" with"),),
+        ),
+    )
+
+    reading.ingest_units(
+        material_id,
+        filename="article-v2.md",
+        units=["# Duplicated\n\nA key claim here.\n\nAnother key claim there."],
+        source_type="url_snapshot",
+    )
+    stored = reading.annotations(material_id)
+    assert len(stored) == 1
+    assert stored[0].resolution == "ambiguous"
+    assert stored[0].material_revision == 1
+
+
+def test_revision_migration_preserves_old_annotations_for_audit(stores) -> None:
+    reading, _catalog = stores
+    material_id = "abcdef0123456789"
+
+    reading.ingest_units(
+        material_id,
+        filename="article.md",
+        units=["# Section\n\nThe original phrase."],
+        source_type="url_snapshot",
+    )
+    reading.save_annotation(
+        material_id,
+        Annotation(
+            annotation_id="test004",
+            locator=1,
+            quote="original phrase",
+            selectors=(TextQuoteSelector(exact="original phrase"),),
+        ),
+    )
+
+    reading.ingest_units(
+        material_id,
+        filename="article-v2.md",
+        units=["# Changed\n\nA new phrase entirely."],
+        source_type="url_snapshot",
+    )
+
+    revision_dir = reading._dir(material_id) / "revisions" / "000001"
+    assert revision_dir.is_dir()
+    saved_annotations = revision_dir / "annotations" / f"{material_id}.json"
+    assert saved_annotations.is_file()
+    import json
+
+    saved_rows = json.loads(saved_annotations.read_text(encoding="utf-8"))
+    assert len(saved_rows) == 1
+    assert saved_rows[0]["quote"] == "original phrase"
+    assert saved_rows[0]["resolution"] == "resolved"
 
 
 @pytest.mark.asyncio
