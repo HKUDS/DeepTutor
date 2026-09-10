@@ -252,6 +252,7 @@ class TurnLifecycle:
                         )
                         if not delivered:
                             turn = await self.store.get_turn(execution.turn_id)
+                            persisted_status = str((turn or {}).get("status") or "")
                             logger.warning(
                                 "submit_user_reply command %s for turn %s was "
                                 "accepted (lease owner=%s) but not delivered: no "
@@ -259,8 +260,19 @@ class TurnLifecycle:
                                 command.command_id,
                                 execution.turn_id,
                                 lease.owner_id,
-                                turn.get("status") if turn else "unknown",
+                                persisted_status or "unknown",
                             )
+                            if persisted_status == "waiting_input":
+                                # The owner lease is alive, but the execution
+                                # that owned the ask_user waiter is not. A
+                                # queued command can never reach a queue that
+                                # no longer exists, so the false-positive ACK
+                                # must be followed by a terminal stream; the
+                                # cancellation path persists error+done and
+                                # frees the session for the next turn.
+                                if execution.task is not None and not execution.task.done():
+                                    execution.task.cancel()
+                                return
                     elif command.kind == "user_input":
                         from deeptutor.runtime.stream_bus import get_bus
 
