@@ -131,20 +131,19 @@ class TestGraphRAGEngineWithPandasCompat:
     """Integration tests for GraphRAG engine with pandas compatibility."""
 
     async def test_build_impl_calls_configure_pandas(self):
-        """Test that _build_impl configures pandas before indexing."""
+        """Test that _build_impl calls configure_pandas_for_graphrag before indexing."""
         from deeptutor.services.rag.pipelines.graphrag import engine
 
-        # Mock the build_index to avoid actual indexing
+        # Mock the configure function and build_index to avoid actual operations
         with (
+            patch(
+                "deeptutor.services.rag.pipelines.graphrag.engine.configure_pandas_for_graphrag"
+            ) as mock_configure,
             patch("deeptutor.services.rag.pipelines.graphrag.engine._load_config"),
             patch("deeptutor.services.rag.pipelines.graphrag.engine._probe_embedding_model_impl"),
             patch("graphrag.api.build_index") as mock_build_index,
         ):
             mock_build_index.return_value = []
-
-            # Clear env vars to verify they get set
-            for key in ["NUMEXPR_MAX_THREADS", "OMP_NUM_THREADS"]:
-                os.environ.pop(key, None)
 
             try:
                 from pathlib import Path
@@ -155,29 +154,24 @@ class TestGraphRAGEngineWithPandasCompat:
                         Path(temp_dir), is_update=False, preflight_embedding_model=False
                     )
             except Exception:
-                # Expected to fail without proper setup, but env vars should be set
+                # Expected to fail without proper setup, but configure should have been called
                 pass
 
             # Verify pandas configuration was called
-            assert os.environ.get("NUMEXPR_MAX_THREADS") == "1"
+            mock_configure.assert_called_once()
 
     async def test_resolve_outputs_calls_configure_pandas(self):
-        """Test that _resolve_outputs configures pandas before loading parquet."""
+        """Test that _resolve_outputs calls configure_pandas_for_graphrag before loading parquet."""
         from deeptutor.services.rag.pipelines.graphrag import engine
 
-        # Clear env vars to verify they get set
-        for key in ["NUMEXPR_MAX_THREADS", "OMP_NUM_THREADS"]:
-            os.environ.pop(key, None)
-
-        # Mock the entire chain to avoid actual file operations
+        # Mock the configure function and the entire storage chain to avoid actual file operations
         with (
             patch(
-                "deeptutor.services.rag.pipelines.graphrag.engine.create_storage"
-            ) as mock_storage,
-            patch(
-                "deeptutor.services.rag.pipelines.graphrag.engine.create_table_provider"
-            ) as mock_table_provider,
-            patch("deeptutor.services.rag.pipelines.graphrag.engine.DataReader") as mock_reader,
+                "deeptutor.services.rag.pipelines.graphrag.engine.configure_pandas_for_graphrag"
+            ) as mock_configure,
+            patch("graphrag_storage.create_storage") as mock_storage,
+            patch("graphrag_storage.tables.table_provider_factory.create_table_provider") as mock_table_provider,
+            patch("graphrag.data_model.data_reader.DataReader") as mock_reader,
         ):
             mock_config = MagicMock()
             mock_config.output_storage = MagicMock()
@@ -189,8 +183,8 @@ class TestGraphRAGEngineWithPandasCompat:
             try:
                 await engine._resolve_outputs(mock_config, [], [])
             except Exception:
-                # Expected to fail without proper setup, but env vars should be set
+                # Expected to fail without proper setup, but configure should have been called
                 pass
 
             # Verify pandas configuration was called
-            assert os.environ.get("NUMEXPR_MAX_THREADS") == "1"
+            mock_configure.assert_called_once()
