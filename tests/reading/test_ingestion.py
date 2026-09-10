@@ -28,6 +28,7 @@ from deeptutor.reading.models import ReadingError
 from deeptutor.reading.store import ReadingStore
 from deeptutor.services.web_source.snapshot_assets import SnapshotAsset
 from deeptutor.tools.web_fetch import FetchOutcome, _extract_readable
+from deeptutor.video_learning import service as video_learning_service
 
 _ARTICLE_FIXTURE = Path(__file__).parents[1] / "fixtures" / "web" / "vector_article.html"
 
@@ -220,6 +221,113 @@ async def test_youtube_import_prefers_timed_captions(stores) -> None:
     assert reading.manifest(ready.material_id).unit == "segment"
     assert reading.manifest(ready.material_id).render_mode == "video"
     assert reading.unit_references(ready.material_id)[1].source_href == "#t=12"
+
+
+@pytest.mark.asyncio
+async def test_youtube_ingestion_default_uses_native_provider(
+    stores, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reading, catalog = stores
+    monkeypatch.setattr(
+        video_learning_service,
+        "load_video_learning_settings",
+        lambda: video_learning_service.DEFAULT_VIDEO_LEARNING_SETTINGS,
+    )
+
+    async def metadata(_request):
+        return {"title": "Native lecture", "thumbnail_url": "https://img/native.jpg"}
+
+    async def transcript(_video_id, _language):
+        return (
+            [{"start": 0, "end": 14, "text": "Native caption."}],
+            "en",
+            "youtube_transcript_api",
+        )
+
+    monkeypatch.setattr(video_learning_service, "_youtube_metadata", metadata)
+    monkeypatch.setattr(video_learning_service, "_youtube_transcript", transcript)
+
+    service = ReadingIngestionService(reading, catalog)
+    queued = service.queue_url("https://youtu.be/abc123xyz00")
+    ready = await service.process_url(queued.material_id)
+    manifest = reading.manifest(ready.material_id)
+
+    assert ready.status is IngestionStatus.READY
+    assert manifest.title == "Native lecture"
+    assert ready.cover_url == "https://img/native.jpg"
+    assert manifest.extractor == "youtube-captions"
+    assert reading.unit_text(ready.material_id, 1) == "Native caption."
+
+
+@pytest.mark.asyncio
+async def test_youtube_ingestion_uses_configured_invidious_captions(
+    stores, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reading, catalog = stores
+    monkeypatch.setattr(
+        video_learning_service,
+        "load_video_learning_settings",
+        lambda: {
+            "version": 1,
+            "default_provider": "invidious",
+            "youtube": {"transcript_provider": "youtube_transcript_api"},
+            "invidious": {"api_base_url": "http://localhost:3000", "public_base_url": ""},
+        },
+    )
+
+    async def metadata(_client, _base, _video_id):
+        return {
+            "title": "Mirrored lecture",
+            "thumbnail_url": "https://img/mirror.jpg",
+            "captions": [{"label": "English", "languageCode": "en"}],
+        }
+
+    async def transcript(_client, _base, _video_id, _captions, _language, **_kwargs):
+        assert _language == ["zh-CN", "zh", "en"]
+        return ([{"start": 0, "end": 14, "text": "Mirrored caption."}], "en", "invidious")
+
+    monkeypatch.setattr(video_learning_service, "_invidious_metadata", metadata)
+    monkeypatch.setattr(video_learning_service, "_invidious_transcript", transcript)
+
+    service = ReadingIngestionService(reading, catalog)
+    queued = service.queue_url("https://youtu.be/abc123xyz00")
+    ready = await service.process_url(queued.material_id)
+    manifest = reading.manifest(ready.material_id)
+
+    assert ready.status is IngestionStatus.READY
+    assert manifest.title == "Mirrored lecture"
+    assert ready.cover_url == "https://img/mirror.jpg"
+    assert manifest.extractor == "youtube-captions"
+    assert reading.unit_text(ready.material_id, 1) == "Mirrored caption."
+
+
+@pytest.mark.asyncio
+async def test_youtube_ingestion_reports_invidious_provider_failure(
+    stores, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reading, catalog = stores
+    monkeypatch.setattr(
+        video_learning_service,
+        "load_video_learning_settings",
+        lambda: {
+            "version": 1,
+            "default_provider": "invidious",
+            "youtube": {"transcript_provider": "youtube_transcript_api"},
+            "invidious": {"api_base_url": "http://localhost:3000", "public_base_url": ""},
+        },
+    )
+
+    async def metadata(_client, _base, _video_id):
+        raise video_learning_service.TimedMediaError("Invidious request failed with HTTP 503.")
+
+    monkeypatch.setattr(video_learning_service, "_invidious_metadata", metadata)
+    service = ReadingIngestionService(_reading, catalog)
+    queued = service.queue_url("https://youtu.be/abc123xyz00")
+    failed = await service.process_url(queued.material_id)
+
+    assert failed.status is IngestionStatus.FAILED
+    assert failed.error_code == "youtube_transcript_failed"
+    assert "HTTP 503" in failed.error_detail
 
 
 @pytest.mark.parametrize(
