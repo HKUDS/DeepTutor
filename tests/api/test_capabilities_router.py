@@ -63,6 +63,37 @@ def test_a_stock_install_reports_whisper_missing(client) -> None:
     assert "whisper_trainee" not in names
 
 
+def test_resource_provider_endpoints_roundtrip(client) -> None:
+    """State can be read and toggled through the capabilities surface."""
+    name = "reference-offline-dictionary"
+    listed = client.get("/api/capabilities/resource-providers").json()["providers"]
+    assert any(row["name"] == name and row["enabled"] is True for row in listed)
+
+    disabled = client.put(
+        f"/api/capabilities/resource-providers/{name}/state", json={"enabled": False}
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["enabled"] is False
+
+    enabled = client.put(
+        f"/api/capabilities/resource-providers/{name}/state", json={"enabled": True}
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["enabled"] is True
+
+
+def test_resource_provider_state_rejects_unknown_and_bad_body(client) -> None:
+    unknown = client.put(
+        "/api/capabilities/resource-providers/missing/state", json={"enabled": True}
+    )
+    assert unknown.status_code == 404
+    bad_body = client.put(
+        "/api/capabilities/resource-providers/reference-offline-dictionary/state",
+        json={"enabled": "yes"},
+    )
+    assert bad_body.status_code == 422
+
+
 def test_plugin_capabilities_are_reported(client, monkeypatch) -> None:
     """A registered plugin capability is visible, which is what un-gates a page."""
     from deeptutor.runtime.registry import capability_registry as registry_module

@@ -21,6 +21,37 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
+@router.get("/resource-providers")
+async def list_resource_providers() -> dict[str, list[dict[str, object]]]:
+    """Describe every registered resource provider plus its live state."""
+    from deeptutor.services.resource_providers import get_resource_provider_registry
+
+    return {"providers": get_resource_provider_registry().descriptions()}
+
+
+@router.put("/resource-providers/{name}/state")
+async def set_resource_provider_state(name: str, body: dict[str, object]) -> dict[str, object]:
+    """Persist one resource provider's enable/disable state."""
+    from fastapi import HTTPException
+
+    from deeptutor.services.resource_providers import (
+        get_resource_provider_registry,
+        set_provider_enabled,
+    )
+
+    registry = get_resource_provider_registry()
+    if registry.get(name) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown resource provider: {name}")
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=422, detail="Body must contain boolean 'enabled'")
+    set_provider_enabled(name, enabled)
+    row = next(
+        item for item in registry.descriptions() if str(item.get("name")) == name
+    )
+    return row
+
+
 @router.get("/registered")
 async def list_registered_capabilities() -> dict[str, list[dict[str, object]]]:
     """Describe every turn capability the deployment can execute."""
