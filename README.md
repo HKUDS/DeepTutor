@@ -647,7 +647,7 @@ The loop is deliberately simple: the model thinks in rounds, calls tools when us
 <img src="assets/figs/system/chat-agent-loop.png" alt="DeepTutor chat agent loop" width="900">
 </div>
 
-User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, and `geogebra_analysis` — plus `imagegen` and `videogen` once you configure the matching generation model. Contextual tools such as `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present`, and `workspace_export` mount automatically when the turn has the right context.
+User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `reason`, and `geogebra_analysis` — plus `imagegen` and `videogen` once you configure the matching generation model. Contextual tools such as `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present`, and `workspace_export` mount automatically when the turn has the right context.
 
 Context comes in two kinds: **sticky session context** (capability, workspace or course, tools, knowledge bases, persona, model, and Reading / Mastery state) persists across turns; **one-time references** (files, chat history, books, reading sections, notebooks, question bank, imported agents) come from the `+` menu for a single turn. The voice button only transcribes the current message.
 
@@ -866,6 +866,7 @@ One `deeptutor` binary, two ways in: an interactive **REPL** for people who live
 deeptutor chat                                              # interactive REPL
 deeptutor chat --capability deep_solve --kb my-kb --tool rag
 deeptutor run chat "Explain the Fourier transform" --tool rag --kb textbook
+deeptutor run chat "Find recent work beyond this material" --kb textbook --tool knowledge_frontier
 deeptutor run deep_research "Survey 2026 papers on RAG" \
   --config mode=report --config depth=standard
 ```

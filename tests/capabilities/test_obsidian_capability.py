@@ -215,8 +215,8 @@ async def test_read_note_with_date_frontmatter(tmp_path: Path) -> None:
 def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
     # Issue #650: an exclusive capability drops chat built-ins / composer
     # toggles, but the KB built-ins coexist when has_kb is set — co-selected
-    # LlamaIndex KBs the capability does not own stay both searchable (rag) and
-    # enumerable (kb_files). Other flags (code/memory) stay dropped.
+    # LlamaIndex KBs the capability does not own stay searchable, enumerable,
+    # and frontier-expandable. Other flags (code/memory) stay dropped.
     composed = compose_enabled_tools(
         registry=get_tool_registry(),
         requested_tools=["web_search", "reason"],
@@ -234,6 +234,7 @@ def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
         "obsidian_read",
         "rag",
         "kb_files",
+        "knowledge_frontier",
         "ask_user",
     }
 
