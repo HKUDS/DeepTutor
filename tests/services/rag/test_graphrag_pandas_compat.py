@@ -28,7 +28,12 @@ class TestPandasCompatGuard:
         )
 
         # Clear any existing env vars
-        for key in ["NUMEXPR_MAX_THREADS", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"]:
+        for key in [
+            "NUMEXPR_MAX_THREADS",
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+        ]:
             os.environ.pop(key, None)
 
         configure_pandas_for_graphrag()
@@ -130,9 +135,11 @@ class TestGraphRAGEngineWithPandasCompat:
         from deeptutor.services.rag.pipelines.graphrag import engine
 
         # Mock the build_index to avoid actual indexing
-        with patch("deeptutor.services.rag.pipelines.graphrag.engine._load_config"), patch(
-            "deeptutor.services.rag.pipelines.graphrag.engine._probe_embedding_model_impl"
-        ), patch("graphrag.api.build_index") as mock_build_index:
+        with (
+            patch("deeptutor.services.rag.pipelines.graphrag.engine._load_config"),
+            patch("deeptutor.services.rag.pipelines.graphrag.engine._probe_embedding_model_impl"),
+            patch("graphrag.api.build_index") as mock_build_index,
+        ):
             mock_build_index.return_value = []
 
             # Clear env vars to verify they get set
@@ -163,13 +170,15 @@ class TestGraphRAGEngineWithPandasCompat:
             os.environ.pop(key, None)
 
         # Mock the entire chain to avoid actual file operations
-        with patch(
-            "deeptutor.services.rag.pipelines.graphrag.engine.create_storage"
-        ) as mock_storage, patch(
-            "deeptutor.services.rag.pipelines.graphrag.engine.create_table_provider"
-        ) as mock_table_provider, patch(
-            "deeptutor.services.rag.pipelines.graphrag.engine.DataReader"
-        ) as mock_reader:
+        with (
+            patch(
+                "deeptutor.services.rag.pipelines.graphrag.engine.create_storage"
+            ) as mock_storage,
+            patch(
+                "deeptutor.services.rag.pipelines.graphrag.engine.create_table_provider"
+            ) as mock_table_provider,
+            patch("deeptutor.services.rag.pipelines.graphrag.engine.DataReader") as mock_reader,
+        ):
             mock_config = MagicMock()
             mock_config.output_storage = MagicMock()
             mock_config.table_provider = MagicMock()

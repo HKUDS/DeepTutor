@@ -11,10 +11,9 @@ The issue primarily affects Windows systems where multiprocessing uses 'spawn' m
 from __future__ import annotations
 
 import os
-import sys
 import threading
-import warnings
 from typing import Any
+import warnings
 
 # Global lock to prevent concurrent pandas extension registration
 _pandas_init_lock = threading.Lock()
