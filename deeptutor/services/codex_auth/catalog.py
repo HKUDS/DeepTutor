@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 import hashlib
+import ssl
 import time
 from typing import Any
 
 import httpx
 
+from .client_version import latest_client_version
 from .constants import (
     CODEX_CLIENT_VERSION,
     CODEX_FRESH_CACHE_SECONDS,
@@ -122,10 +124,12 @@ class CodexModelCatalog:
         store: CodexCredentialStore,
         *,
         http: httpx.AsyncClient,
+        version_http: httpx.AsyncClient | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._store = store
         self._http = http
+        self._version_http = version_http
         self._clock = clock
 
     async def get(
@@ -133,58 +137,126 @@ class CodexModelCatalog:
         credentials: CodexCredentials,
         force: bool,
     ) -> CatalogSnapshot:
+        """Read the account catalog; discover CLI metadata only on explicit refresh."""
         now = int(self._clock())
         account_hash = hashlib.sha256(credentials.account_id.encode("utf-8")).hexdigest()
-        cache = self._matching_cache(credentials, account_hash)
+        account_cache = self._matching_cache(account_hash)
+        previous_version = (
+            account_cache.client_version if account_cache else None
+        ) or CODEX_CLIENT_VERSION
+        # A credential rotation preserves only the account's successful version,
+        # never its previous generation's model data, freshness or validator.
+        cache = (
+            account_cache
+            if account_cache is not None
+            and account_cache.models_valid
+            and account_cache.generation == credentials.generation
+            else None
+        )
+        client_version = previous_version
+        if force:
+            client_version = await latest_client_version(self._version_http) or client_version
         if cache is not None and not force and self._age(cache, now) <= CODEX_FRESH_CACHE_SECONDS:
             return replace(cache, source="fresh-cache")
 
+        try:
+            return await self._fetch(credentials, cache, now, account_hash, client_version, force)
+        except CodexAuthError as exc:
+            # Only explicit version rejection or incompatible catalog structure
+            # can justify a single retry. Auth, rate limits and transport/security
+            # failures must retain their own meaning.
+            if client_version == previous_version or exc.code not in {
+                "catalog_version_unsupported",
+                "catalog_invalid",
+            }:
+                raise
+            return await self._fetch(credentials, cache, now, account_hash, previous_version, force)
+
+    async def _fetch(
+        self,
+        credentials: CodexCredentials,
+        cache: CatalogSnapshot | None,
+        now: int,
+        account_hash: str,
+        client_version: str,
+        force: bool,
+    ) -> CatalogSnapshot:
         headers = {
             "Authorization": f"Bearer {credentials.access_token}",
             "Accept": "application/json",
             "chatgpt-account-id": credentials.account_id,
         }
-        if cache is not None and cache.etag:
+        if cache is not None and cache.client_version == client_version and cache.etag:
             headers["If-None-Match"] = cache.etag
 
         try:
             response = await self._http.get(
                 CODEX_MODELS_URL,
-                params={"client_version": CODEX_CLIENT_VERSION},
+                params={"client_version": client_version},
                 headers=headers,
             )
         except httpx.RequestError as exc:
-            return self._stale_or_raise(cache, now, exc)
+            cause: BaseException | None = exc
+            while cause is not None:
+                if isinstance(cause, ssl.SSLError):
+                    raise CodexAuthError(
+                        "catalog_tls_error",
+                        "The secure connection to the Codex model catalog failed.",
+                        502,
+                    ) from exc
+                cause = cause.__cause__ or cause.__context__
+            return self._stale_or_raise(None if force else cache, now, exc)
 
         if response.status_code == 401:
-            await self.invalidate()
+            self._store.invalidate_catalog_models(account_hash, generation=credentials.generation)
             raise CodexAuthError(
                 "catalog_unauthorized",
                 "Codex authentication is no longer authorized.",
                 401,
             )
         if response.status_code == 403:
-            await self.invalidate()
+            self._store.invalidate_catalog_models(account_hash, generation=credentials.generation)
             raise CodexAuthError(
                 "catalog_forbidden",
                 "This Codex account cannot access the model catalog.",
                 403,
             )
         if response.status_code == 304:
-            if cache is None:
+            if cache is None or cache.client_version != client_version:
                 raise CodexAuthError(
-                    "catalog_invalid",
+                    "catalog_invalid_response",
                     "Codex returned an invalid model catalog response.",
                     502,
                 )
             snapshot = replace(cache, source="revalidated-cache", fetched_at=now)
-            self._store.save_catalog_cache(snapshot.to_dict())
+            self._store.commit_catalog_cache(snapshot)
             return snapshot
 
+        if response.status_code == 429:
+            raise CodexAuthError(
+                "catalog_rate_limited",
+                "Codex model catalog requests are rate limited. Try again later.",
+                429,
+            )
+        if response.status_code in {400, 422}:
+            try:
+                error_payload = response.json()
+            except ValueError:
+                error_payload = None
+            error = error_payload.get("error") if isinstance(error_payload, dict) else None
+            if isinstance(error, dict) and error.get("code") in {
+                "unsupported_client_version",
+                "client_version_unsupported",
+            }:
+                raise CodexAuthError(
+                    "catalog_version_unsupported",
+                    "Codex rejected the model catalog client version.",
+                    502,
+                )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            return self._stale_or_raise(cache, now, exc)
+            return self._stale_or_raise(None if force else cache, now, exc)
 
         content_length = response.headers.get("content-length")
         if (
@@ -201,7 +273,7 @@ class CodexModelCatalog:
             payload = response.json()
         except ValueError as exc:
             raise CodexAuthError(
-                "catalog_invalid",
+                "catalog_invalid_response",
                 "Codex returned an invalid model catalog.",
                 502,
             ) from exc
@@ -219,8 +291,9 @@ class CodexModelCatalog:
             etag=response.headers.get("etag"),
             generation=credentials.generation,
             account_hash=account_hash,
+            client_version=client_version,
         )
-        self._store.save_catalog_cache(snapshot.to_dict())
+        self._store.commit_catalog_cache(snapshot)
         return snapshot
 
     async def invalidate(self) -> None:
@@ -228,7 +301,6 @@ class CodexModelCatalog:
 
     def _matching_cache(
         self,
-        credentials: CodexCredentials,
         account_hash: str,
     ) -> CatalogSnapshot | None:
         try:
@@ -240,8 +312,6 @@ class CodexModelCatalog:
             if exc.code != "catalog_corrupt":
                 raise
             self._store.clear_catalog_cache()
-            return None
-        if snapshot.generation != credentials.generation:
             return None
         if snapshot.account_hash != account_hash:
             return None

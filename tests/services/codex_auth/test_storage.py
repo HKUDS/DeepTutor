@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+import hashlib
 import os
 from pathlib import Path
 import stat
+import threading
 
 import pytest
 
-from deeptutor.services.codex_auth.contracts import CodexAuthError, CodexCredentials
+from deeptutor.services.codex_auth.contracts import (
+    CatalogSnapshot,
+    CodexAuthError,
+    CodexCredentials,
+)
 from deeptutor.services.codex_auth.storage import CodexCredentialStore
 
 
@@ -127,6 +134,136 @@ def test_catalog_cache_round_trip(tmp_path: Path) -> None:
         "etag": '"v1"',
         "models": [{"slug": "gpt-5.6-sol"}],
     }
+
+
+@pytest.mark.parametrize(
+    "invalid_owner", ["missing_credentials", "wrong_account", "old_generation"]
+)
+def test_catalog_publication_requires_current_credentials(
+    tmp_path: Path, invalid_owner: str
+) -> None:
+    store = CodexCredentialStore(tmp_path)
+    current = store.commit_credentials(_credentials("one"), expected_generation=0)
+    snapshot = CatalogSnapshot(
+        models=(),
+        source="live",
+        fetched_at=1_000,
+        etag='"v1"',
+        generation=current.generation,
+        account_hash=hashlib.sha256(current.account_id.encode()).hexdigest(),
+        client_version="1.2.3",
+    )
+    store.commit_catalog_cache(snapshot)
+    if invalid_owner == "missing_credentials":
+        # Even a missing credential file without a generation bump must fail closed.
+        store.credentials_path.unlink()
+    elif invalid_owner == "wrong_account":
+        snapshot = replace(snapshot, account_hash="different-account")
+    else:
+        snapshot = replace(snapshot, generation=current.generation - 1)
+    before = store.load_catalog_cache()
+
+    with pytest.raises(CodexAuthError) as error:
+        store.commit_catalog_cache(snapshot)
+
+    assert error.value.code == "generation_changed"
+    assert store.load_catalog_cache() == before
+
+
+def test_concurrent_logout_and_catalog_publication_cannot_restore_history(tmp_path: Path) -> None:
+    store = CodexCredentialStore(tmp_path)
+    other_process_store = CodexCredentialStore(tmp_path)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for _ in range(20):
+            credentials = store.commit_credentials(
+                _credentials("one"), expected_generation=store.current_generation()
+            )
+            snapshot = CatalogSnapshot(
+                models=(),
+                source="live",
+                fetched_at=1_000,
+                etag='"v1"',
+                generation=credentials.generation,
+                account_hash=hashlib.sha256(credentials.account_id.encode()).hexdigest(),
+                client_version="1.2.3",
+            )
+            barrier = threading.Barrier(2)
+
+            def publish() -> None:
+                barrier.wait(timeout=5)
+                try:
+                    other_process_store.commit_catalog_cache(snapshot)
+                except CodexAuthError as exc:
+                    assert exc.code == "generation_changed"
+
+            def logout() -> None:
+                barrier.wait(timeout=5)
+                store.clear_credentials(expected_generation=credentials.generation)
+
+            published = pool.submit(publish)
+            logged_out = pool.submit(logout)
+            published.result(timeout=5)
+            logged_out.result(timeout=5)
+            assert store.load_credentials() is None
+            assert store.load_catalog_cache() is None
+
+
+def test_catalog_invalidation_does_not_touch_another_account_or_generation(tmp_path: Path) -> None:
+    store = CodexCredentialStore(tmp_path)
+    snapshot = CatalogSnapshot(
+        models=(),
+        source="live",
+        fetched_at=1_000,
+        etag='"v1"',
+        generation=1,
+        account_hash="account-hash",
+        client_version="1.2.3",
+    )
+    store.save_catalog_cache(snapshot.to_dict())
+    store.invalidate_catalog_models("other-account", generation=1)
+    store.invalidate_catalog_models("account-hash", generation=2)
+    assert store.load_catalog_cache() == snapshot.to_dict()
+    store.invalidate_catalog_models("account-hash", generation=1)
+    assert store.load_catalog_cache()["models_valid"] is False
+    assert store.load_catalog_cache()["client_version"] == "1.2.3"
+    assert store.load_catalog_cache()["etag"] is None
+
+
+def test_concurrent_logout_and_catalog_invalidation_cannot_restore_history(tmp_path: Path) -> None:
+    store = CodexCredentialStore(tmp_path)
+    other_process_store = CodexCredentialStore(tmp_path)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for _ in range(20):
+            credentials = store.commit_credentials(
+                _credentials("one"), expected_generation=store.current_generation()
+            )
+            snapshot = CatalogSnapshot(
+                models=(),
+                source="live",
+                fetched_at=1_000,
+                etag='"v1"',
+                generation=credentials.generation,
+                account_hash="account-hash",
+                client_version="1.2.3",
+            )
+            store.save_catalog_cache(snapshot.to_dict())
+            barrier = threading.Barrier(2)
+
+            def invalidate() -> None:
+                barrier.wait(timeout=5)
+                other_process_store.invalidate_catalog_models(
+                    "account-hash", generation=credentials.generation
+                )
+
+            def logout() -> None:
+                barrier.wait(timeout=5)
+                store.clear_credentials(expected_generation=credentials.generation)
+
+            invalidated = pool.submit(invalidate)
+            logged_out = pool.submit(logout)
+            invalidated.result(timeout=5)
+            logged_out.result(timeout=5)
+            assert store.load_catalog_cache() is None
 
 
 def test_existing_symlink_target_is_rejected(tmp_path: Path) -> None:
