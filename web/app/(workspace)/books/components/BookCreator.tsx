@@ -60,6 +60,7 @@ const BOOK_LANGUAGES: Array<{ code: string; label: string }> = [
   { code: "es", label: "Español" },
   { code: "fr", label: "Français" },
   { code: "de", label: "Deutsch" },
+  { code: "uk", label: "Українська" },
   { code: "ru", label: "Русский" },
   { code: "pt", label: "Português" },
   { code: "it", label: "Italiano" },

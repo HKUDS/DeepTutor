@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
+import { APP_LANGUAGES, type AppLanguage } from "@/i18n/init";
+
 import { apiFetch, apiUrl } from "@/lib/api";
 import SettingsReadinessPanel from "@/components/settings/SettingsReadinessPanel";
 import SettingsStatusPanel from "@/components/settings/SettingsStatusPanel";
@@ -22,22 +24,22 @@ function LanguageToggle({
   onChange,
 }: {
   value: string;
-  onChange: (next: "en" | "zh") => void;
+  onChange: (next: AppLanguage) => void;
 }) {
   const { t } = useTranslation();
   return (
     <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-      {(["en", "zh"] as const).map((option) => (
+      {APP_LANGUAGES.map(({ code, labelKey }) => (
         <button
-          key={option}
-          onClick={() => onChange(option)}
+          key={code}
+          onClick={() => onChange(code)}
           className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-            value === option
+            value === code
               ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
               : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
           }`}
         >
-          {option === "en" ? t("language.english") : t("language.chinese")}
+          {t(labelKey)}
         </button>
       ))}
     </div>

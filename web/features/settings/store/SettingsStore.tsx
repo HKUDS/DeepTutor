@@ -30,6 +30,7 @@ import { setModelReasoningEffort } from "@/lib/reasoning-effort";
 import { applyExtensionPayload } from "@/lib/settings-extensions";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 import { browserStorage } from "@/shared/storage";
+import type { AppLanguage } from "@/i18n/init";
 
 // ─── Domain types ─────────────────────────────────────────────────────────
 
@@ -187,8 +188,8 @@ export type Catalog = {
 
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
-  language: "en" | "zh";
-  response_language: "en" | "zh";
+  language: AppLanguage;
+  response_language: AppLanguage;
   code_block_theme: string;
   code_block_show_line_numbers: boolean;
   code_block_wrap_long_lines: boolean;

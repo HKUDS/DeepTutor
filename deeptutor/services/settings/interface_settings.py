@@ -58,6 +58,11 @@ def _normalize_language(language: Any, default: str = "en") -> str:
     Normalize language codes:
     - en/english -> en
     - zh/chinese/cn -> zh
+    - uk/ukrainian/ua -> uk
+
+    An unknown code falls back to ``default`` rather than raising, so this is
+    also the gate that decides which languages exist at all: a locale shipped
+    in ``web/locales/`` but missing here is silently served as English.
     """
     if language is None or language == "":
         language = default
@@ -68,6 +73,8 @@ def _normalize_language(language: Any, default: str = "en") -> str:
             return "en"
         if s in {"zh", "chinese", "cn"}:
             return "zh"
+        if s in {"uk", "ukrainian", "ua"}:
+            return "uk"
 
     # Fall back to default
     if isinstance(default, str):
