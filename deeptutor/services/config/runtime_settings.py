@@ -114,6 +114,16 @@ DEFAULT_INTEGRATIONS_SETTINGS: dict[str, Any] = {
 DOCUMENT_PARSING_SETTINGS_NAME = "document_parsing"
 _LEGACY_DOCUMENT_PARSING_SETTINGS_NAME = "mineru"
 
+# Pluggable learning-resource providers (#961 foundation). The file maps
+# provider names to their enable/disable state; manifests themselves stay in
+# process, so installs do not require settings edits and disabling preserves
+# configuration across restarts.
+RESOURCE_PROVIDER_SETTINGS_NAME = "resource_providers"
+DEFAULT_RESOURCE_PROVIDER_SETTINGS: dict[str, Any] = {
+    "version": 1,
+    "providers": {},
+}
+
 MINERU_MODE_LOCAL = "local"
 MINERU_MODE_CLOUD = "cloud"
 _MINERU_MODES = frozenset({MINERU_MODE_LOCAL, MINERU_MODE_CLOUD})
@@ -536,6 +546,21 @@ class RuntimeSettingsService:
             {**DEFAULT_DOCUMENT_PARSING_SETTINGS, **settings}
         )
         _atomic_write_json(self.path_for(DOCUMENT_PARSING_SETTINGS_NAME), payload)
+        return payload
+
+    def load_resource_providers(self) -> dict[str, Any]:
+        """Return provider enable/disable state (no process overrides)."""
+        return self._load_or_create(
+            RESOURCE_PROVIDER_SETTINGS_NAME,
+            DEFAULT_RESOURCE_PROVIDER_SETTINGS,
+            self._normalize_resource_providers,
+        )
+
+    def save_resource_providers(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = self._normalize_resource_providers(
+            {**DEFAULT_RESOURCE_PROVIDER_SETTINGS, **settings}
+        )
+        _atomic_write_json(self.path_for(RESOURCE_PROVIDER_SETTINGS_NAME), payload)
         return payload
 
     def load_mineru(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
@@ -1230,6 +1255,17 @@ class RuntimeSettingsService:
             },
         }
 
+    def _normalize_resource_providers(self, settings: dict[str, Any]) -> dict[str, Any]:
+        raw_providers = settings.get("providers")
+        providers = raw_providers if isinstance(raw_providers, dict) else {}
+        normalized: dict[str, dict[str, bool]] = {}
+        for name, state in providers.items():
+            if not isinstance(name, str) or not name.strip():
+                continue
+            enabled = bool(state.get("enabled", True)) if isinstance(state, dict) else True
+            normalized[name] = {"enabled": enabled}
+        return {"version": 1, "providers": normalized}
+
 
 def _bool_env(value: Any) -> str:
     return "true" if _coerce_bool(value, False) else "false"
@@ -1361,6 +1397,10 @@ def load_document_parsing_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_document_parsing()
 
 
+def load_resource_provider_settings() -> dict[str, Any]:
+    return get_runtime_settings_service().load_resource_providers()
+
+
 def export_runtime_settings_to_env(*, overwrite: bool = True) -> dict[str, str]:
     return get_runtime_settings_service().export_environment(overwrite=overwrite)
 
@@ -1379,6 +1419,7 @@ __all__ = [
     "DEFAULT_LLAMAINDEX_SETTINGS",
     "DEFAULT_MINERU_SETTINGS",
     "DEFAULT_PAGEINDEX_SETTINGS",
+    "DEFAULT_RESOURCE_PROVIDER_SETTINGS",
     "DEFAULT_SYSTEM_SETTINGS",
     "DOCUMENT_PARSING_ENGINE_DOCLING",
     "DOCUMENT_PARSING_ENGINE_LITEPARSE",
@@ -1402,6 +1443,7 @@ __all__ = [
     "get_ws_max_size",
     "load_auth_settings",
     "load_document_parsing_settings",
+    "load_resource_provider_settings",
     "load_graphrag_settings",
     "load_integrations_settings",
     "load_lightrag_settings",

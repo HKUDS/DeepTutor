@@ -26,6 +26,10 @@ const AttachmentSettingsPage = dynamic(
   () => import("./AttachmentsSettingsSection"),
   { loading },
 );
+const ResourceProvidersSettingsPage = dynamic(
+  () => import("./ResourceProvidersSettingsSection"),
+  { loading },
+);
 
 const CHAT_SECTIONS = [
   { key: "video-learning", Component: VideoLearningSettingsPage },
@@ -33,6 +37,10 @@ const CHAT_SECTIONS = [
   { key: "capabilities", Component: CapabilitiesSettingsPage },
   { key: "starters", Component: StarterSettingsPage },
   { key: "attachments", Component: AttachmentSettingsPage },
+  {
+    key: "resource-providers",
+    Component: ResourceProvidersSettingsPage,
+  },
 ] as const;
 
 /**
