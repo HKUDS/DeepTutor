@@ -27,6 +27,9 @@ ContentFormat = Literal["plain_text", "web_markdown"]
 
 AnnotationKind = Literal["highlight", "underline", "note", "citation"]
 TextSelectorType = Literal["TextQuoteSelector", "TextPositionSelector"]
+
+AnnotationResolution = Literal["resolved", "unresolved", "ambiguous"]
+
 MAX_TEXT_SELECTOR_CHARS = 2000
 
 # Palette offered by the reader toolbar. Kept server-side too so an annotation
@@ -357,6 +360,12 @@ class Annotation:
     # Portable W3C selectors for reflowing text. Existing annotations omit
     # them and continue to resolve through ``quote`` and/or ``rects``.
     selectors: tuple[TextSelector, ...] = ()
+    # Selector validity against the current content revision. Legacy rows
+    # predate this field and default to ``resolved`` so they are not hidden
+    # from readers who already had them visible. Revision migration flips
+    # rows to ``unresolved`` or ``ambiguous`` when the stored quote no longer
+    # identifies exactly one passage in the new unit text.
+    resolution: AnnotationResolution = "resolved"
     author: str = "user"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -376,6 +385,7 @@ class Annotation:
             "rects": [r.to_list() for r in self.rects],
             "source_anchor": self.source_anchor,
             "selectors": [selector.to_dict() for selector in self.selectors],
+            "resolution": self.resolution,
             "author": self.author,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -401,6 +411,11 @@ class Annotation:
             rects=rects,
             source_anchor=str(data.get("source_anchor") or ""),
             selectors=parse_text_selectors(data.get("selectors")),
+            resolution=(
+                data["resolution"]
+                if data.get("resolution") in ("resolved", "unresolved", "ambiguous")
+                else "resolved"
+            ),
             author=str(data.get("author") or "user"),
             created_at=float(data.get("created_at") or 0.0),
             updated_at=float(data.get("updated_at") or 0.0),
@@ -482,6 +497,7 @@ __all__ = [
     "DEFAULT_ANNOTATION_COLOR",
     "Annotation",
     "AnnotationKind",
+    "AnnotationResolution",
     "ContentFormat",
     "MaterialManifest",
     "MaterialNotFound",

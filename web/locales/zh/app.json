@@ -2848,6 +2848,8 @@
   "Select text in the document to save a citation.": "在文档里选中文字即可保存引用。",
   "Select text in the document to highlight it or attach a note.": "在文档里选中文字即可高亮或添加批注。",
   "Delete annotation": "删除标注",
+  "Not found": "未找到",
+  "Ambiguous": "位置不明",
   "{{count}} annotations": "{{count}} 条标注",
   "AI": "AI",
   "Page": "页",

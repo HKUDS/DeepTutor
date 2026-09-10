@@ -121,6 +121,24 @@ def _quote_context_matches(
     )
 
 
+def _find_all_quote_spans(text: str, selector: TextQuoteSelector) -> list[tuple[int, int]]:
+    """All spans matching the quote, preferring context-filtered matches.
+
+    When the quote occurs multiple times but only once carries the stored
+    prefix/suffix context, only the contextual hit is returned — the other
+    occurrences are coincidence. When context eliminates everything (the
+    surrounding text shifted), the raw occurrences are returned so the caller
+    can still distinguish a unique reflow from true ambiguity.
+    """
+    words = re.findall(r"\S+", selector.exact)
+    if not words:
+        return []
+    pattern = re.compile(r"\s+".join(re.escape(word) for word in words))
+    all_spans = [match.span() for match in pattern.finditer(text)]
+    contextual = [span for span in all_spans if _quote_context_matches(text, span, selector)]
+    return contextual if contextual else all_spans
+
+
 def _read_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -485,6 +503,11 @@ class ReadingStore:
                         source_dir = material_dir / dirname
                         if source_dir.is_dir():
                             shutil.copytree(source_dir, revision_dir / dirname)
+                    # Preserve the pre-migration annotations alongside the
+                    # old revision so the previous state survives for audit.
+                    annotations_state = material_dir / ANNOTATIONS_DIR
+                    if annotations_state.is_dir():
+                        shutil.copytree(annotations_state, revision_dir / ANNOTATIONS_DIR)
             for state_name in (ANNOTATIONS_NAME, POSITION_NAME):
                 source_state = material_dir / state_name
                 if source_state.is_file():
@@ -497,6 +520,11 @@ class ReadingStore:
                         stage_dir / state_dir,
                         dirs_exist_ok=True,
                     )
+            # Re-anchor selectors against the new revision's text while the
+            # material directory is still staged. A failure here leaves the
+            # original annotations untouched and the swap still proceeds.
+            if existing is not None:
+                self._reanchor_annotations(stage_dir, manifest.revision)
             try:
                 if material_dir.exists():
                     os.replace(material_dir, backup_dir)
@@ -846,6 +874,97 @@ class ReadingStore:
             if isinstance(row, dict) and row.get("annotation_id")
         ]
         return sorted(parsed, key=lambda a: (a.locator, a.created_at))
+
+    def _reanchor_annotations(
+        self,
+        stage_dir: Path,
+        new_revision: int,
+    ) -> None:
+        """Re-anchor selectors after a revision upgrade.
+
+        Called while the new material directory is still staged, before the
+        atomic swap. Reads the annotations that were just copied forward and
+        re-resolves each quote against the new unit texts. Reliable matches
+        are migrated (locator, selectors, and revision bumped); ambiguous or
+        vanished quotes keep their original locator and revision but are
+        marked so the reader can show an explicit review state instead of
+        painting the wrong passage.
+        """
+        annotation_files = list((stage_dir / ANNOTATIONS_DIR).glob("*.json"))
+        if not annotation_files:
+            return
+        annotations_path = annotation_files[0]
+        rows_data = _read_json(annotations_path)
+        if not isinstance(rows_data, list) or not rows_data:
+            return
+        rows = [
+            Annotation.from_dict(row)
+            for row in rows_data
+            if isinstance(row, dict) and row.get("annotation_id")
+        ]
+        if not rows:
+            return
+
+        new_unit_texts: dict[int, str] = {}
+        units_dir = stage_dir / UNITS_DIR
+        if units_dir.is_dir():
+            for unit_file in sorted(units_dir.iterdir()):
+                if unit_file.suffix == ".txt":
+                    locator = int(unit_file.stem)
+                    new_unit_texts[locator] = unit_file.read_text(encoding="utf-8")
+
+        changed = False
+        migrated: list[Annotation] = []
+        for row in rows:
+            quote_selectors = [s for s in row.selectors if isinstance(s, TextQuoteSelector)]
+            if not quote_selectors:
+                migrated.append(row)
+                continue
+            quote_selector = quote_selectors[0]
+            matches: list[tuple[int, tuple[int, int]]] = []
+            for locator, text in sorted(new_unit_texts.items()):
+                for span in _find_all_quote_spans(text, quote_selector):
+                    matches.append((locator, span))
+            if len(matches) == 1:
+                locator, (start, end) = matches[0]
+                unit_text = new_unit_texts[locator]
+                canonical_exact = unit_text[start:end]
+                new_quote = dataclass_replace(quote_selector, exact=canonical_exact)
+                new_selectors = []
+                for s in row.selectors:
+                    if s is quote_selector:
+                        new_selectors.append(new_quote)
+                    elif isinstance(s, TextPositionSelector):
+                        new_selectors.append(TextPositionSelector(start=start, end=end))
+                    else:
+                        new_selectors.append(s)
+                migrated.append(
+                    dataclass_replace(
+                        row,
+                        locator=locator,
+                        quote=canonical_exact,
+                        selectors=tuple(new_selectors),
+                        material_revision=new_revision,
+                        resolution="resolved",
+                    )
+                )
+                changed = True
+            elif len(matches) > 1:
+                migrated.append(dataclass_replace(row, resolution="ambiguous"))
+                changed = True
+            else:
+                migrated.append(dataclass_replace(row, resolution="unresolved"))
+                changed = True
+
+        if changed:
+            _atomic_write(
+                annotations_path,
+                json.dumps(
+                    [row.to_dict() for row in migrated],
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
 
     def _write_annotations(self, material_id: str, rows: Sequence[Annotation]) -> None:
         _atomic_write(
