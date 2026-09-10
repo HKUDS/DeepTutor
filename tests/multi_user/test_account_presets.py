@@ -196,6 +196,60 @@ def test_auth_status_returns_the_effective_learning_policy(preset_client):
     assert response.json()["learning_policy"]["default_capability"] == ("immersive_reading")
 
 
+@pytest.mark.parametrize("preset", ["standard", "custom"])
+def test_auth_status_derives_learner_from_an_active_policy(preset_client, preset):
+    from deeptutor.services.auth import TokenPayload
+
+    client, _admin, tokens = preset_client
+    username = f"policy-{preset}"
+    created = client.post(
+        "/api/auth/users",
+        headers={"Authorization": "Bearer admin-token"},
+        json={
+            "username": username,
+            "password": "reading-password-1",
+            "preset": preset,
+        },
+    ).json()
+    tokens["learner-token"] = TokenPayload(
+        username=username, role="user", user_id=created["user_id"]
+    )
+    response = client.put(
+        f"/api/multi-user/users/{created['user_id']}/grants",
+        headers={"Authorization": "Bearer admin-token"},
+        json={
+            "grant": {
+                "enabled_tools": [],
+                "mcp_tools": [],
+                "cli_apps": [],
+                "exec_enabled": False,
+                "learning_policy": {
+                    "age_band": "9-12",
+                    "locked_persona": "teacher",
+                    "allowed_capabilities": ["chat", "immersive_reading"],
+                    "default_capability": "immersive_reading",
+                    "allowed_surfaces": ["chat", "reading"],
+                    "reading": {
+                        "allow_upload": False,
+                        "material_ids": [],
+                        "extensions": [],
+                    },
+                },
+            }
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    status = client.get(
+        "/api/auth/status",
+        headers={"Authorization": "Bearer learner-token"},
+    )
+
+    assert status.status_code == 200
+    assert status.json()["preset"] == "learner"
+    assert status.json()["learning_policy"]["default_capability"] == "immersive_reading"
+
+
 def test_assigning_a_material_copies_the_admin_material_once(
     preset_client, as_user, seed_user, tmp_path
 ):
