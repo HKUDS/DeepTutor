@@ -101,8 +101,19 @@ class CapabilityRegistry:
 
     def load_plugins(self) -> None:
         """Load the canonical extension group, then the one-version legacy group."""
+        from deeptutor.plugins.registry import PluginRegistry
+        from deeptutor.plugins.runtime import entry_point_allowed, load_enabled_capabilities
+
+        plugin_registry = PluginRegistry()
 
         def _accept(ep_name: str, loaded: object) -> str | None:
+            if not entry_point_allowed(
+                plugin_registry,
+                extension_type="capability",
+                entry_point=ep_name,
+            ):
+                logger.warning("Turn extension %r is disabled or unapproved; ignoring", ep_name)
+                return None
             resolved = _turn_factory(loaded)
             if resolved is None:
                 return None
@@ -114,6 +125,10 @@ class CapabilityRegistry:
             return instance.name
 
         load_entry_point_group(EXTENSIONS_GROUP, _accept, log=logger)
+
+        for capability in load_enabled_capabilities(plugin_registry):
+            if self.catalog.get("turn", capability.name) is None:
+                self.register(capability)
 
         try:
             module = importlib.import_module("deeptutor.plugins.loader")

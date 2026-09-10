@@ -11,7 +11,9 @@ data/
 run_code_workspace/
 deeptutor/agents/question/reference_papers/
 deeptutor/services/rag/eg_only_for_analysis/
-/docs/
+/docs/*
+!/docs/
+!/docs/plugin-platform-rfc.md
 /site/
 .claude
 .agents/
