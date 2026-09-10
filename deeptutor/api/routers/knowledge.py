@@ -195,6 +195,7 @@ class LinkedFolderInfo(BaseModel):
     path: str
     added_at: str
     file_count: int
+    last_sync: str | None = None
 
 
 class SupportedFileTypesInfo(BaseModel):
