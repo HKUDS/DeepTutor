@@ -346,7 +346,7 @@ export function ReadingWorkspacePage() {
   const gridStyle: React.CSSProperties | undefined = showResizeHandle
     ? {
         gridTemplateColumns: navigatorOpen
-          ? `minmax(360px,1fr) 5px ${companionWidth}px`
+          ? `minmax(184px,230px) minmax(360px,1fr) 5px ${companionWidth}px`
           : `minmax(184px,230px) minmax(360px,1fr) 5px ${companionWidth}px`,
       }
     : undefined;
@@ -485,7 +485,7 @@ export function ReadingWorkspacePage() {
         className={`relative grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden ${
           companionOpen
             ? navigatorOpen
-              ? "grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(360px,1fr)_minmax(330px,420px)]"
+              ? "grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(184px,230px)_minmax(360px,1fr)] xl:grid-cols-[minmax(184px,230px)_minmax(360px,1fr)_5px_minmax(330px,420px)]"
               : "grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(184px,230px)_minmax(360px,1fr)] xl:grid-cols-[minmax(184px,230px)_minmax(360px,1fr)_minmax(330px,420px)]"
             : navigatorOpen
               ? "grid-cols-[minmax(0,1fr)]"
