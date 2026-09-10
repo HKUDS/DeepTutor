@@ -49,6 +49,11 @@ from deeptutor.services.config.settings_draft import (
     merge_draft_secrets,
     redact_draft,
 )
+from deeptutor.services.config.settings_profile import (
+    SettingsProfileError,
+    export_settings_profile,
+    review_settings_profile_import,
+)
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
@@ -222,6 +227,13 @@ class SettingsDraftPayload(BaseModel):
     catalog: dict[str, Any] | None = None
     # Opaque per-page state, keyed by the string the page registers with.
     extensions: dict[str, Any] = Field(default_factory=dict)
+
+
+class SettingsProfileImportPayload(BaseModel):
+    """An exported value-free settings profile submitted for review only."""
+
+    schema_version: str
+    profile: dict[str, Any]
 
 
 class CodexReasoningEffortUpdate(BaseModel):
@@ -1133,6 +1145,25 @@ async def get_settings_readiness():
     from deeptutor.services.config.readiness import build_settings_readiness
 
     return await build_settings_readiness()
+
+
+@router.get("/profile")
+async def get_settings_profile():
+    """Export effective settings with credentials and deployment values removed."""
+
+    _require_settings_admin()
+    return export_settings_profile()
+
+
+@router.post("/profile/diff")
+async def diff_settings_profile(payload: SettingsProfileImportPayload):
+    """Review an imported profile without changing effective settings."""
+
+    _require_settings_admin()
+    try:
+        return review_settings_profile_import(payload.model_dump())
+    except SettingsProfileError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
 
 
 @router.put("/document-parsing")
