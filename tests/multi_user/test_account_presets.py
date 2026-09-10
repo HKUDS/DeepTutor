@@ -239,3 +239,9 @@ def test_assigning_a_material_copies_the_admin_material_once(
     ).get_workspace_feature_dir("reading")
     staged = user_root / material.material_id
     assert staged.is_dir()
+    from deeptutor.reading import ReadingCatalogStore
+
+    workspace = ReadingCatalogStore(user_root).create_workspace(
+        "Assigned", [material.material_id]
+    )
+    assert workspace.active_material_id == material.material_id
