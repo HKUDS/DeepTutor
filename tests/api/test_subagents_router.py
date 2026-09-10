@@ -68,7 +68,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(
         subagents_module,
         "list_backend_kinds",
-        lambda: ["claude_code", "codex", "hermes_remote", "partner"],
+        lambda: ["claude_code", "codex", "grok", "hermes_remote", "partner"],
     )
     monkeypatch.setattr(subagents_module, "assert_path_allowed", lambda p: Path(p))
     # Isolate settings persistence to a temp file — the PUT path otherwise
@@ -128,6 +128,26 @@ def test_connect_rejects_unknown_kind(client):
         json={"name": "X", "agent_kind": "bogus"},
     )
     assert res.status_code == 400
+
+
+def test_grok_connection_and_settings_roundtrip(client):
+    created = client.post(
+        "/api/subagents/connections",
+        json={"name": "MyGrok", "agent_kind": "grok", "cwd": "/tmp"},
+    )
+    assert created.status_code == 200
+    assert created.json()["agent_kind"] == "grok"
+    saved = client.put(
+        "/api/subagents/settings",
+        json={"backends": {"grok": {"model": "custom-model", "effort": "high"}}},
+    )
+    assert saved.status_code == 200
+    config = client.get("/api/subagents/settings").json()["backends"]["grok"]
+    assert config["permission_mode"] == "dontAsk"
+    assert config["model"] == "custom-model" and config["effort"] == "high"
+    assert client.get("/api/subagents/connections").json()["connections"][0]["agent_kind"] == "grok"
+    assert client.delete("/api/subagents/connections/MyGrok").status_code == 200
+    assert client.get("/api/subagents/connections").json()["connections"] == []
 
 
 def test_connect_remote_backend_does_not_persist_a_local_cwd(client):

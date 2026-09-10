@@ -935,6 +935,7 @@ async def test_detect_all_excludes_partner_backend() -> None:
     assert kinds <= {
         "claude_code",
         "codex",
+        "grok",
         "antigravity",
         "kimi",
         "opencode",

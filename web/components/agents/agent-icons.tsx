@@ -72,6 +72,28 @@ export function CodexGlyph({ size = 16, ...props }: GlyphProps) {
   );
 }
 
+// A neutral terminal glyph for Grok CLI, not an unofficial reproduction of a
+// brand mark. It stays readable in both light and dark agent menus.
+export function GrokGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...props}
+    >
+      <rect x="2" y="3" width="20" height="18" rx="4" />
+      <path d="m7 8 4 4-4 4m7 0h3" />
+    </svg>
+  );
+}
+
 // Gemini's four-point spark, in the brand blue→violet gradient.
 export function GeminiGlyph({ size = 16, ...props }: GlyphProps) {
   const gradientId = useId();
@@ -205,6 +227,7 @@ export type AgentGlyph = ComponentType<GlyphProps>;
 export function agentGlyph(kind: string | undefined): AgentGlyph | null {
   if (kind === "claude_code") return ClaudeGlyph;
   if (kind === "codex") return CodexGlyph;
+  if (kind === "grok") return GrokGlyph;
   // Antigravity uses Google's Gemini mark, but Gemini CLI itself is retired.
   if (kind === "antigravity") return GeminiGlyph;
   if (kind === "kimi") return KimiGlyph;

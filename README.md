@@ -225,7 +225,7 @@ DeepTutor is an agent-native learning workspace that connects tutoring, problem 
 - **One runtime for every mode** — Chat, Ask Questions, Quiz, Research, Visualize, Solve, Course Study, Mastery Path, Immersive Reading, and Immersive Watching share one capability runtime and session context while keeping purpose-built loops and pipelines.
 - **Connected learning context** — Knowledge bases, books, Co-Writer drafts, notebooks, question banks, personas, and Memory can be reused across the workflows that support them, subject to account grants and learning policies.
 - **Immersive video learning** — paste a YouTube link for privacy-enhanced native playback, synchronized captions, timestamp-grounded tutoring, and resumable progress; administrators can switch playback to a self-hosted Invidious instance without rebuilding materials.
-- **Subagents and Partners** — from Chat, consult a live agent harness (Claude Code, Codex, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw, or DeepSeek) or a Partner, import past conversations, and run persistent IM companions on the same brain.
+- **Subagents and Partners** — from Chat, consult a live agent harness (Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo, Hermes, OpenClaw, or DeepSeek) or a Partner, import past conversations, and run persistent IM companions on the same brain.
 - **Multi-engine knowledge** — versioned RAG libraries across LlamaIndex, PageIndex, GraphRAG, LightRAG, a remote LightRAG Server, a self-hosted WeKnora knowledge base, a Tencent IMA or MarginNote 4 library, or a linked Obsidian vault, with pluggable document parsing.
 - **Extensible tools and skills** — built-in tools, MCP servers, CLI apps, image / video / voice generation models, and installable community skills from EduHub.
 - **Inspectable memory** — L1 traces, L2 surface summaries, and L3 synthesis make personalization visible and editable; the Memory Graph links L2 facts to L1 evidence and L3 synthesis to contributing surfaces.
@@ -683,7 +683,32 @@ For faster setup, the Partner channel page can create a Feishu/Lark app or WeCom
 <img src="assets/figs/web-1.4.6+/myagents/00-overview.png" alt="DeepTutor My Agents workspace" width="900">
 </div>
 
-My Agents turns other agents into context for DeepTutor, and does two distinct things. **Connect a live agent** — Claude Code, Codex, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, or DeepSeek Harness on your machine, or one of your Partners — and consult it from inside a chat turn: DeepTutor actually *runs* the other agent and streams its work into the Activity panel via the `consult_subagent` tool. Select it and its round limit with the Agent chip, or filter the same connected-agent list with `@`; the choice stays attached to the session.
+My Agents turns other agents into context for DeepTutor, and does two distinct things. **Connect a live agent** — Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, or DeepSeek Harness on your machine, or one of your Partners — and consult it from inside a chat turn: DeepTutor actually *runs* the other agent and streams its work into the Activity panel via the `consult_subagent` tool. Select it and its round limit with the Agent chip, or filter the same connected-agent list with `@`; the choice stays attached to the session.
+
+**Connect Grok CLI.** Install xAI's Grok CLI on the machine running the DeepTutor
+backend, run `grok login` there, and verify that `grok --help` lists
+`--output-format streaming-json`. Then open **My Agents → Connect**, select
+**Grok CLI**, and choose a working directory. Detection checks the executable's
+protocol support; it does not verify login or model access. The connector has
+been exercised with Grok CLI 1.0.3; unrelated third-party commands also named
+`grok` are not supported.
+
+In **Settings → Partners & Agents → Grok CLI**, leave model and reasoning effort
+empty to use the CLI defaults, or enter values supported by your account's
+`grok models` output. System instructions are passed through `--rules`. The
+default permission mode is `dontAsk`: Grok uses its existing rules and built-in
+read-only handling, and denies operations that need approval. This is a CLI
+permission policy, not a filesystem sandbox. Broader modes can be selected
+explicitly in settings; advanced CLI flags remain available through
+`backends.grok.extra_args` in the subagent settings API.
+
+Grok uses its own authentication and session storage; DeepTutor does not copy
+its credentials. Follow-up consults resume the connection's session in the same
+working directory. Text and tool activity stream live; private thought payloads
+are omitted. Cross-session Grok memory is disabled by default. This connector
+supports text questions and CLI tools, not image forwarding or importing past
+Grok conversations. In Docker, install and authenticate Grok inside the backend
+container; a CLI installed only on the browser's computer is not reachable.
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Consulting a Claude Code subagent live" width="900">
