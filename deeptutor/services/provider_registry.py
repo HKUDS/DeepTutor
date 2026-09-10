@@ -329,6 +329,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="anthropic",
         default_api_base="https://api.anthropic.com/v1",
         supports_prompt_caching=True,
+        # Claude Sonnet 5 and Opus 4.8 reject an explicit `temperature`
+        # outright ("`temperature` is deprecated for this model."), where
+        # earlier Claude models still accept it. Dropping the parameter
+        # (value None) lets the API apply its own default. Like the Kimi
+        # case below, the limit is the vendor API's, not the route's, so it
+        # must live here to survive binding="openai" through a gateway.
+        model_overrides=(
+            ("claude-sonnet-5", {"temperature": None}),
+            ("claude-opus-4-8", {"temperature": None}),
+        ),
     ),
     ProviderSpec(
         name="openai",
