@@ -170,7 +170,9 @@ class TestGraphRAGEngineWithPandasCompat:
                 "deeptutor.services.rag.pipelines.graphrag.engine.configure_pandas_for_graphrag"
             ) as mock_configure,
             patch("graphrag_storage.create_storage") as mock_storage,
-            patch("graphrag_storage.tables.table_provider_factory.create_table_provider") as mock_table_provider,
+            patch(
+                "graphrag_storage.tables.table_provider_factory.create_table_provider"
+            ) as mock_table_provider,
             patch("graphrag.data_model.data_reader.DataReader") as mock_reader,
         ):
             mock_config = MagicMock()
