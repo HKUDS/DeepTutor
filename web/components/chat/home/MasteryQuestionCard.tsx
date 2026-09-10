@@ -131,7 +131,8 @@ export const MasteryQuestionCard = memo(function MasteryQuestionCard({
   }, [freeSelected]);
 
   const hasChoices = question.options.length > 0;
-  const answer = freeSelected ? freeText.trim() : picked;
+  const usesFreeText = freeSelected || !hasChoices;
+  const answer = usesFreeText ? freeText.trim() : picked;
   // Skipping settles the card exactly as answering does: the engine closed the
   // question, so there is nothing left on it to send.
   const settled = answered || skipped === true;

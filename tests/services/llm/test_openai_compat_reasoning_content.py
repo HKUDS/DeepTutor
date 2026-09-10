@@ -36,6 +36,19 @@ def _reasoning_only_chunk():
     )
 
 
+def _response_with_reasoning_alias(alias: str):
+    message = SimpleNamespace(
+        content=None,
+        reasoning_content=None,
+        reasoning=None,
+        tool_calls=None,
+    )
+    setattr(message, alias, "Let me draft ~320 words.\nWord budget matters.")
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=message, finish_reason="stop")],
+    )
+
+
 @pytest.mark.parametrize(
     "provider_cls",
     [ServicesOpenAICompatProvider],
@@ -47,6 +60,48 @@ def test_parse_keeps_reasoning_content_out_of_visible_content(provider_cls) -> N
 
     assert response.content is None
     assert response.reasoning_content == "internal reasoning"
+
+
+@pytest.mark.parametrize("alias", ["reasoning", "reasoning_content"])
+def test_parse_never_promotes_untagged_reasoning_to_content(alias: str) -> None:
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+
+    response = provider._parse(_response_with_reasoning_alias(alias))
+
+    assert response.content is None
+    assert response.reasoning_content == "Let me draft ~320 words.\nWord budget matters."
+
+
+def test_parse_keeps_visible_content_separate_from_reasoning() -> None:
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    message = SimpleNamespace(
+        content="Polished reader paragraph.",
+        reasoning="Let me draft ~320 words.",
+        reasoning_content=None,
+        tool_calls=None,
+    )
+    response = provider._parse(
+        SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")])
+    )
+
+    assert response.content == "Polished reader paragraph."
+    assert response.reasoning_content == "Let me draft ~320 words."
+
+
+def test_parse_drops_content_when_gateway_duplicates_reasoning() -> None:
+    provider = ServicesOpenAICompatProvider.__new__(ServicesOpenAICompatProvider)
+    message = SimpleNamespace(
+        content="Let me draft ~320 words.",
+        reasoning="Let me draft ~320 words.",
+        reasoning_content=None,
+        tool_calls=None,
+    )
+    response = provider._parse(
+        SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="stop")])
+    )
+
+    assert response.content is None
+    assert response.reasoning_content == "Let me draft ~320 words."
 
 
 @pytest.mark.parametrize(
@@ -85,6 +140,36 @@ def test_services_provider_minimal_reasoning_uses_extra_body_only() -> None:
 
     assert "reasoning_effort" not in kwargs
     assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_openrouter_none_reasoning_is_excluded_from_response() -> None:
+    kwargs = _build_services_kwargs(
+        "openrouter",
+        "none",
+        model="z-ai/glm-4.5-air",
+    )
+
+    assert "reasoning_effort" not in kwargs
+    assert kwargs["extra_body"] == {
+        "reasoning": {"effort": "none", "exclude": True},
+    }
+
+    qwen_kwargs = _build_services_kwargs("openrouter", "none", model="qwen/qwen3-30b-a3b")
+    assert qwen_kwargs["extra_body"] == {
+        "reasoning": {"effort": "none", "exclude": True},
+    }
+
+
+@pytest.mark.parametrize("provider", ["deepseek", "dashscope"])
+@pytest.mark.parametrize("effort", ["none", "minimal", "minimum"])
+def test_provider_native_off_reasoning_disables_thinking(provider: str, effort: str) -> None:
+    kwargs = _build_services_kwargs(provider, effort)
+
+    assert "reasoning_effort" not in kwargs
+    if provider == "deepseek":
+        assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+    else:
+        assert kwargs["extra_body"] == {"enable_thinking": False}
 
 
 @pytest.mark.parametrize("binding", ["deepseek", "openai"])

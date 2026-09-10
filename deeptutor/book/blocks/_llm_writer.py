@@ -139,6 +139,7 @@ async def llm_json(
     temperature: float = 0.4,
     language: str | None = None,
     expected_key: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Run a structured JSON LLM call with robust parsing and one safe retry.
 
@@ -146,8 +147,9 @@ async def llm_json(
     tokens and leave the visible JSON object empty. For structured book blocks
     we first honor the configured reasoning mode, then retry once with low
     reasoning effort if parsing fails or the expected top-level key is missing.
-    ("low" rather than "minimal": local/Qwen models served via vLLM reject
-    "minimal", and "minimal" disables thinking entirely.)
+    When a caller explicitly supplies an effort (book reader-facing blocks use
+    ``"none"``), the same value is used for the retry so it cannot silently
+    re-enable reasoning.
 
     Also strips thinking/reasoning preamble text (common with local models)
     before JSON parsing.
@@ -175,13 +177,14 @@ async def llm_json(
         recovered = parse_json_response(raw, fallback={})
         return _normalize_json_payload(recovered, expected_key=expected_key)
 
-    data = await _once(None)
+    data = await _once(reasoning_effort)
     if _json_has_expected(data, expected_key):
         return data
 
-    retry_data = await _once("low")
+    retry_effort = "low" if reasoning_effort is None else reasoning_effort
+    retry_data = await _once(retry_effort)
     if _json_has_expected(retry_data, expected_key):
-        retry_data.setdefault("_metadata", {})["reasoning_retry"] = "low"
+        retry_data.setdefault("_metadata", {})["reasoning_retry"] = retry_effort
         return retry_data
     return data or retry_data
 

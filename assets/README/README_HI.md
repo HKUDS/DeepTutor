@@ -390,6 +390,8 @@ DeepTutor अपने installed code, private runtime home, और optional Con
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor होम — sidebar में हर surface के साथ Chat workspace" width="900">
 </div>
 
+> **Screenshot स्थिति:** overview v1.6.5 के लिए current है। नीचे दी गई surface screenshots अभी v1.4.6 references हैं और versioned refresh जारी है; [screenshot inventory](../../UI_SCREENSHOT_REFRESH.md) देखें। इन्हें workflows समझने के लिए उपयोग करें, current exact navigation के रूप में नहीं।
+
 <details>
 <summary><b>🏗️ System architecture</b></summary>
 

@@ -396,6 +396,22 @@ class ResearchPipeline:
             key="max_iterations",
             default=DEFAULT_BLOCK_MAX_ITERATIONS,
         )
+        self.tool_timeout = max(
+            1,
+            _read_int(
+                researching,
+                key="tool_timeout",
+                default=60,
+            ),
+        )
+        self.tool_max_retries = max(
+            0,
+            _read_int(
+                researching,
+                key="tool_max_retries",
+                default=3,
+            ),
+        )
         self.max_parallel_topics = max(
             1,
             _read_int(
@@ -2582,6 +2598,8 @@ class _BlockLoopHost:
                 default=f"Error executing {tn}.",
             ),
             trace_id_prefix=f"research-{self._block.block_id}-iter",
+            tool_timeout=self._pipeline.tool_timeout,
+            tool_max_retries=self._pipeline.tool_max_retries,
         )
         pageindex_sources = [
             source for source in outcome.sources if source.get("type") == "pageindex"

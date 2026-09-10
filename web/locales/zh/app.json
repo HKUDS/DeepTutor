@@ -1820,6 +1820,7 @@
   "Verify the backend is running and NEXT_PUBLIC_API_BASE points to a reachable host. For Docker, see data/user/settings/system.json.": "请确认后端正在运行，且 NEXT_PUBLIC_API_BASE 指向可访问的主机。Docker 部署请参考 data/user/settings/system.json。",
   "Delete this turn?": "删除此轮对话？",
   "Failed to load GeoGebra": "加载 GeoGebra 失败",
+  "GeoGebra rejected {{count}} command(s)": "GeoGebra 拒绝了 {{count}} 条命令",
   "Loading GeoGebra...": "正在加载 GeoGebra...",
   "HTML visualization": "HTML 可视化",
   "SVG visualization": "SVG 可视化",

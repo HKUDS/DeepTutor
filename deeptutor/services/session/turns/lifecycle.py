@@ -229,11 +229,22 @@ class TurnLifecycle:
                             execution.task.cancel()
                         return
                     if command.kind == "submit_user_reply":
-                        await self.submit_user_reply(
+                        delivered = await self.submit_user_reply(
                             execution.turn_id,
                             text=command.payload.get("text"),
                             answers=command.payload.get("answers"),
                         )
+                        if not delivered:
+                            turn = await self.store.get_turn(execution.turn_id)
+                            logger.warning(
+                                "submit_user_reply command %s for turn %s was "
+                                "accepted (lease owner=%s) but not delivered: no "
+                                "waiter is registered (persisted status=%s)",
+                                command.command_id,
+                                execution.turn_id,
+                                lease.owner_id,
+                                turn.get("status") if turn else "unknown",
+                            )
                     elif command.kind == "user_input":
                         from deeptutor.runtime.stream_bus import get_bus
 

@@ -201,7 +201,11 @@ def _get_llm_config_from_resolver() -> LLMConfig:
         raise LLMConfigError(
             "No effective LLM endpoint resolved. Please configure base_url or provider defaults."
         )
-    is_placeholder_key = resolved.api_key in {"", "no-key", "sk-no-key-required"}
+    # api_key may be a list (key pool); only the resolved primary key counts
+    # for the placeholder check — set membership on the raw list raises
+    # TypeError for unhashable list (PR #962 semantics).
+    primary_key = primary_api_key(resolved.api_key)
+    is_placeholder_key = primary_key in {None, "", "no-key", "sk-no-key-required"}
     if (
         resolved.provider_name == "openai"
         and resolved.provider_mode == "standard"

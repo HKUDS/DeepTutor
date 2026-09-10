@@ -390,6 +390,8 @@ Se uma resposta perder uma restrição anterior, citar evidências fracas ou dis
 <img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="Página inicial do DeepTutor — o espaço de trabalho Chat com todas as superfícies na barra lateral" width="900">
 </div>
 
+> **Estado das capturas:** a visão geral está atualizada para a v1.6.5. As capturas de superfícies abaixo continuam referências da v1.4.6 durante a atualização; veja o [inventário de capturas](../../UI_SCREENSHOT_REFRESH.md). Use-as para entender os fluxos, não como navegação exata atual.
+
 <details>
 <summary><b>🏗️ Arquitetura do sistema</b></summary>
 

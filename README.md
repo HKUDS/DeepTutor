@@ -619,6 +619,8 @@ If an answer loses an earlier constraint, cites weak evidence, or disagrees with
 <img src="assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutor home — the Chat workspace with every surface in the sidebar" width="900">
 </div>
 
+> **Screenshot status:** The overview is current for v1.6.5. The surface screenshots below remain v1.4.6 references while a versioned refresh is in progress; see the [screenshot inventory](./UI_SCREENSHOT_REFRESH.md). Use them to understand workflows, not as exact navigation.
+
 <details>
 <summary><b>🏗️ System architecture</b></summary>
 
