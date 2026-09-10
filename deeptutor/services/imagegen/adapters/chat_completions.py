@@ -49,13 +49,24 @@ class ChatCompletionsImagegenAdapter(BaseImagegenAdapter):
         payload: dict[str, Any] = {
             "model": config.model,
             "messages": [{"role": "user", "content": prompt}],
-            "modalities": ["image", "text"],
         }
 
         logger.debug("imagegen(chat) url=%s model=%s", url, config.model)
         try:
             async with httpx.AsyncClient(timeout=config.request_timeout) as client:
-                resp = await client.post(url, headers=headers, json=payload)
+                modalities_attempts: list[list[str]] = [["image", "text"], ["image"]]
+                resp: httpx.Response | None = None
+                last_404: httpx.Response | None = None
+                for modalities in modalities_attempts:
+                    attempt_payload = {**payload, "modalities": modalities}
+                    resp = await client.post(url, headers=headers, json=attempt_payload)
+                    if resp.status_code == 404 and "modalit" in resp.text.lower():
+                        last_404 = resp
+                        continue
+                    break
+                if resp is None:
+                    resp = last_404
+                assert resp is not None
                 raise_for_provider(resp, "Image generation")
                 images = [
                     await self._materialize(client, src) for src in self._extract_sources(resp)
