@@ -1575,6 +1575,8 @@ CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "read_source",
     "read_memory",
     "write_memory",
+    "learning_status",
+    "learning_update",
     "read_skill",
     "list_notebook",
     "write_note",

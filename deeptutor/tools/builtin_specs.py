@@ -68,6 +68,13 @@ BUILTIN_TOOL_SPECS: tuple[BuiltinToolSpec, ...] = (
             ("geogebra_analysis", "GeoGebraAnalysisTool"),
         ),
     ),
+    *_specs(
+        "deeptutor.tools.learning_journal_tools",
+        (
+            ("learning_status", "LearningStatusTool"),
+            ("learning_update", "LearningUpdateTool"),
+        ),
+    ),
     BuiltinToolSpec("exec", "deeptutor.tools.exec_tool:ExecTool"),
     *_specs(
         "deeptutor.tools.workspace",
