@@ -18,11 +18,10 @@ from deeptutor.services.llm import (
 from deeptutor.services.llm import (
     complete as llm_complete,
 )
-from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.utils.json_parser import parse_json_response
 
-from ..json_retry import json_payload_is_usable
+from ..json_retry import RETRY_REASONING_EFFORT, json_payload_is_usable
 
 
 async def llm_text(
@@ -133,7 +132,6 @@ async def llm_json(
     temperature: float = 0.4,
     language: str | None = None,
     expected_key: str | None = None,
-    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Run a structured JSON LLM call with robust parsing and one safe retry.
 
@@ -143,10 +141,6 @@ async def llm_json(
     reasoning effort if parsing fails or the expected top-level key is missing
     — the same rule the Book pipeline agents apply via
     :func:`deeptutor.book.json_retry.json_with_reasoning_retry`.
-
-    A caller that supplies an effort of its own (book reader-facing blocks pass
-    ``"none"``) keeps that value on the retry, so a round that was deliberately
-    run without thinking cannot silently re-enable it.
 
     Also strips thinking/reasoning preamble text (common with local models)
     before JSON parsing.
@@ -174,14 +168,13 @@ async def llm_json(
         recovered = parse_json_response(raw, fallback={})
         return _normalize_json_payload(recovered, expected_key=expected_key)
 
-    data = await _once(reasoning_effort)
+    data = await _once(None)
     if json_payload_is_usable(data, expected_key):
         return data
 
-    retry_effort = RETRY_REASONING_EFFORT if reasoning_effort is None else reasoning_effort
-    retry_data = await _once(retry_effort)
+    retry_data = await _once(RETRY_REASONING_EFFORT)
     if json_payload_is_usable(retry_data, expected_key):
-        retry_data.setdefault("_metadata", {})["reasoning_retry"] = retry_effort
+        retry_data.setdefault("_metadata", {})["reasoning_retry"] = RETRY_REASONING_EFFORT
         return retry_data
     return data or retry_data
 
