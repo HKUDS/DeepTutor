@@ -259,8 +259,28 @@ def test_probe_llm_uses_max_completion_tokens_for_gpt5(monkeypatch) -> None:
     assert ok is True
     assert error == ""
     body = _FakeClient.captured[0]["json"]
-    assert body["max_completion_tokens"] == 1
+    # Reasoning models burn hidden thinking tokens first, so a 1-token cap
+    # makes OpenAI answer HTTP 400 ("max_tokens ... reached") instead of a 200.
+    assert body["max_completion_tokens"] == init_wizard.PROBE_REASONING_MAX_TOKENS
+    assert body["max_completion_tokens"] > 1
     assert "max_tokens" not in body
+
+
+def test_probe_llm_gives_gpt56_room_for_a_reasoning_pass(monkeypatch) -> None:
+    from deeptutor_cli import init_wizard
+
+    _FakeClient.captured = []
+    monkeypatch.setattr(init_wizard.httpx, "Client", _FakeClient)
+
+    init_wizard.probe_llm(
+        base_url="https://example.test/v1",
+        api_key="sk-test",
+        binding="openai",
+        model="gpt-5.6-terra",
+    )
+
+    body = _FakeClient.captured[0]["json"]
+    assert body["max_completion_tokens"] == init_wizard.PROBE_REASONING_MAX_TOKENS
 
 
 def test_probe_llm_keeps_max_tokens_for_legacy_chat_models(monkeypatch) -> None:
