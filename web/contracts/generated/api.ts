@@ -7039,6 +7039,46 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/settings/presets": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Get Settings Presets
+     * @description List value-free starting points for a reviewable draft.
+     */
+    readonly get: operations["get_settings_presets_api_settings_presets_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/settings/presets/{preset_id}/draft": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Stage Settings Preset
+     * @description Load a named preset into the existing draft for review.
+     */
+    readonly post: operations["stage_settings_preset_api_settings_presets__preset_id__draft_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/settings/providers/codebuddy/auth/cancel": {
     readonly parameters: {
       readonly query?: never;
@@ -12352,6 +12392,20 @@ export interface components {
         readonly [key: string]: unknown;
       };
     };
+    /**
+     * SettingsPresetDraftRequest
+     * @description The current draft envelope submitted alongside a named preset.
+     */
+    readonly SettingsPresetDraftRequest: {
+      /** Catalog */
+      readonly catalog?: {
+        readonly [key: string]: unknown;
+      } | null;
+      /** Extensions */
+      readonly extensions?: {
+        readonly [key: string]: unknown;
+      };
+    };
     /** SidebarDescriptionUpdate */
     readonly SidebarDescriptionUpdate: {
       /** Description */
@@ -13898,6 +13952,8 @@ export type SchemaSetSyllabusRequest =
   components["schemas"]["SetSyllabusRequest"];
 export type SchemaSettingsDraftPayload =
   components["schemas"]["SettingsDraftPayload"];
+export type SchemaSettingsPresetDraftRequest =
+  components["schemas"]["SettingsPresetDraftRequest"];
 export type SchemaSidebarDescriptionUpdate =
   components["schemas"]["SidebarDescriptionUpdate"];
 export type SchemaSidebarNavOrder = components["schemas"]["SidebarNavOrder"];
@@ -29965,6 +30021,80 @@ export interface operations {
         };
         content: {
           readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_settings_presets_api_settings_presets_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly stage_settings_preset_api_settings_presets__preset_id__draft_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly preset_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["SettingsPresetDraftRequest"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
         };
       };
       /** @description Validation Error */

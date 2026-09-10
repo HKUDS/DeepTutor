@@ -7165,6 +7165,30 @@
         "title": "SettingsDraftPayload",
         "type": "object"
       },
+      "SettingsPresetDraftRequest": {
+        "description": "The current draft envelope submitted alongside a named preset.",
+        "properties": {
+          "catalog": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog"
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "title": "Extensions",
+            "type": "object"
+          }
+        },
+        "title": "SettingsPresetDraftRequest",
+        "type": "object"
+      },
       "SidebarDescriptionUpdate": {
         "properties": {
           "description": {
@@ -43361,6 +43385,157 @@
         ]
       }
     },
+    "/api/settings/presets": {
+      "get": {
+        "description": "List value-free starting points for a reviewable draft.",
+        "operationId": "get_settings_presets_api_settings_presets_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Settings Presets",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/presets/{preset_id}/draft": {
+      "post": {
+        "description": "Load a named preset into the existing draft for review.",
+        "operationId": "stage_settings_preset_api_settings_presets__preset_id__draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "required": true,
+            "schema": {
+              "title": "Preset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPresetDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Stage Settings Preset Api Settings Presets  Preset Id  Draft Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stage Settings Preset",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/settings/providers/codebuddy/auth/cancel": {
       "post": {
         "operationId": "cancel_codebuddy_auth_api_settings_providers_codebuddy_auth_cancel_post",
@@ -49642,7 +49817,9 @@
           }
         },
         "summary": "Browse Invidious",
-        "tags": ["video-learning"]
+        "tags": [
+          "video-learning"
+        ]
       }
     },
     "/api/video-learning/materials/resolve": {
