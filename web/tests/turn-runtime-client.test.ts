@@ -387,3 +387,34 @@ test("stopping releases waiters that will never be acknowledged", async () => {
 
   assert.equal(await verdict, false);
 });
+
+
+test("acknowledged commands get a generated command_id when crypto.randomUUID is unavailable", () => {
+  const original = globalThis.crypto?.randomUUID;
+  const cryptoObject = globalThis.crypto as {
+    randomUUID?: typeof globalThis.crypto.randomUUID;
+  };
+  if (cryptoObject) cryptoObject.randomUUID = undefined;
+  try {
+    const { client, sockets } = harness();
+    client.connect();
+    sockets[0].open();
+    client.send(
+      buildSubmitUserReply({
+        turnId: "turn-1",
+        text: "A",
+        answers: [{ questionId: "q", text: "B" }],
+      }),
+    );
+    const sent = sockets[0].sent.find(
+      (item) => item.type === "submit_user_reply",
+    ) as Record<string, unknown>;
+    assert.ok(sent, "submit_user_reply should be sent");
+    assert.match(
+      String(sent.command_id),
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  } finally {
+    if (cryptoObject) cryptoObject.randomUUID = original;
+  }
+});

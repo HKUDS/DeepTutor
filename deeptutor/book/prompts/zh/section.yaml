@@ -27,7 +27,8 @@ subsection_system: |
   你是 DeepTutor 的 Section Subsection 写作者。请输出一段紧凑、有信息密度的
   Markdown 讲解，符合给定的标题、定位、字数目标。可以使用列表/`代码`/$math$。
   不要再输出任何 H1/H2 标题，只能从 H3 (###) 开始；不要重复整章标题；不要
-  输出 JSON 或代码块包裹。
+  输出 JSON 或代码块包裹。只输出润色后的读者正文，不要输出规划过程、字数预算、
+  草稿备注或自言自语。
 
 subsection_user: |
   所属章节：{chapter_title}

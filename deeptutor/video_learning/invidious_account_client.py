@@ -62,3 +62,24 @@ __all__ = [
     "request_preferences",
     "revoke_token",
 ]
+
+
+async def request_catalog(*, api_base_url: str, path: str, params: dict, token: dict | None) -> Any:
+    headers = {"Authorization": f"Bearer {bearer_token(token)}"} if token else {}
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
+            response = await client.get(f"{api_base_url}{path}", params=params, headers=headers)
+        if response.status_code in (401, 403):
+            raise TimedMediaError("Reconnect your Invidious account to browse your videos.")
+        if response.status_code != 200:
+            raise TimedMediaError(
+                "Invidious could not load videos. Please retry or check the instance."
+            )
+        data = response.json()
+        if not isinstance(data, (dict, list)):
+            raise ValueError("Invalid catalog")
+        return data
+    except (httpx.HTTPError, ValueError) as exc:
+        raise TimedMediaError(
+            "Invidious could not load videos. Please retry or check the instance."
+        ) from exc

@@ -387,8 +387,10 @@ DeepTutorは、インストールされたコード、プライベートなラ�
 回答が以前の制約を失ったり、弱い根拠を引用したり、選択した資料と矛盾したりする場合は、Issueを開く前に[`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md)に診断情報をまとめてください。
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="DeepTutorホーム — サイドバーにすべてのサーフェスを含むチャットワークスペース" width="900">
 </div>
+
+> **スクリーンショットの状態:** 全体表示は v1.6.5 向けに更新済みです。以下の画面スクリーンショットは、刷新中のため引き続き v1.4.6 の参考画像です。[スクリーンショット一覧](../../UI_SCREENSHOT_REFRESH.md)を参照してください。操作の流れの理解には使えますが、現在の正確なナビゲーションとしては扱わないでください。
 
 <details>
 <summary><b>🏗️ システムアーキテクチャ</b></summary>

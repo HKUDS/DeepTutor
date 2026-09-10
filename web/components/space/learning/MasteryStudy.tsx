@@ -40,6 +40,7 @@ import {
   type MasteryTopic,
 } from "@/lib/learning-api";
 import { notify } from "@/lib/notifications";
+import { copyText } from "@/lib/clipboard";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
@@ -536,9 +537,10 @@ export function MasteryStudy({
     [pathId, setMasterySessionMode, state.sessionId, t],
   );
 
-  const copyAssistantMessage = useCallback(async (content: string) => {
-    if (content.trim()) await navigator.clipboard.writeText(content);
-  }, []);
+  const copyAssistantMessage = useCallback(
+    (content: string) => copyText(content),
+    [],
+  );
 
   if (!topic && !topicError) {
     return (

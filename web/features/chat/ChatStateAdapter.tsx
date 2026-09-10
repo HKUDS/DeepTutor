@@ -88,12 +88,7 @@ import {
 } from "@/lib/reading-references";
 
 type SessionRuntimeStatus =
-  | "idle"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "rejected";
+  "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
 
 interface OutgoingAttachment {
   type: string;
@@ -143,6 +138,7 @@ export interface ChatState {
   activeCapability: string | null;
   /** Stable product surface; per-turn capability selection is orthogonal. */
   workspaceMode: WorkspaceMode | null;
+  timedMediaId: string | null;
   knowledgeBases: string[];
   llmSelection: LLMSelection | null;
   /** Persistent mastery state associated with this conversation. */
@@ -171,6 +167,7 @@ export interface ChatState {
 export interface SessionConfiguration {
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
+  timedMediaId?: string | null;
   knowledgeBases?: string[];
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
@@ -285,6 +282,7 @@ interface SessionSnapshot {
   tools?: string[];
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
+  timedMediaId?: string | null;
   knowledgeBases?: string[];
   llmSelection?: LLMSelection | null;
   masteryPathId?: string | null;
@@ -394,6 +392,7 @@ function createSessionEntry(
     enabledTools: [],
     activeCapability: null,
     workspaceMode: null,
+    timedMediaId: null,
     knowledgeBases: [],
     llmSelection: null,
     masteryPathId: null,
@@ -448,6 +447,10 @@ function applySessionConfiguration(
       configuration.capability !== undefined
         ? configuration.capability
         : session.activeCapability,
+    timedMediaId:
+      configuration.timedMediaId !== undefined
+        ? configuration.timedMediaId
+        : session.timedMediaId,
     workspaceMode:
       configuration.workspaceMode !== undefined
         ? configuration.workspaceMode
@@ -800,6 +803,13 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         messages[messages.length - 1] = { ...last, content: repaired };
         return messages;
       })();
+      const endedTurnId = action.turnId || ending?.activeTurnId || null;
+      // A completed turn can still own an unanswered card (for example, a
+      // replay/sentinel race). Keep its address so submit_user_reply can
+      // reach the backend waiter instead of failing the visible card.
+      const pendingAskUser =
+        action.status === "completed" &&
+        hasPendingAskUserInMessages(settled, endedTurnId);
       return {
         ...state,
         sessions: {
@@ -811,7 +821,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             currentStage: "",
             status: action.status ?? "completed",
             activeTurnId:
-              action.status === "running"
+              action.status === "running" || pendingAskUser
                 ? action.turnId ||
                   state.sessions[action.key]?.activeTurnId ||
                   null
@@ -886,6 +896,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.capability !== undefined
                 ? action.capability
                 : existing.activeCapability,
+            timedMediaId:
+              action.timedMediaId !== undefined
+                ? action.timedMediaId
+                : existing.timedMediaId,
             workspaceMode:
               action.workspaceMode !== undefined
                 ? action.workspaceMode
@@ -1980,10 +1994,18 @@ export function ChatStateAdapterProvider({
         // promoted to a workspace mode, that value means the default Chat
         // action rather than a hidden legacy entry in the action picker.
         capability:
-          session.preferences?.capability === loadedWorkspaceMode
+          session.preferences?.capability === loadedWorkspaceMode &&
+          loadedWorkspaceMode !== "immersive_watching"
             ? null
             : session.preferences?.capability || null,
         workspaceMode: loadedWorkspaceMode,
+        timedMediaId:
+          session.preferences?.timed_media_id ||
+          [...messages]
+            .reverse()
+            .find((message) => message.requestSnapshot?.timedMediaId)
+            ?.requestSnapshot?.timedMediaId ||
+          null,
         knowledgeBases: Array.isArray(session.preferences?.knowledge_bases)
           ? session.preferences.knowledge_bases
           : [],
@@ -2490,6 +2512,7 @@ export function ChatStateAdapterProvider({
       enabledTools: current.enabledTools,
       activeCapability: current.activeCapability,
       workspaceMode: current.workspaceMode,
+      timedMediaId: current.timedMediaId,
       knowledgeBases: current.knowledgeBases,
       llmSelection: current.llmSelection,
       masteryPathId: current.masteryPathId,

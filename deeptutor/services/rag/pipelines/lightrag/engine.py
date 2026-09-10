@@ -25,7 +25,7 @@ from .ingress import IngressError, StagedDocument, pending_root
 from .worker import OwnerLoopBridge
 
 LIGHTRAG_DISTRIBUTION = "lightrag-hku"
-LIGHTRAG_VERSION = "1.5.7rc2"
+LIGHTRAG_VERSION = "1.5.7"
 PARSER_ENGINE = "deeptutor"
 
 

@@ -855,15 +855,23 @@ export function RoughActionButton({
   );
 }
 
+/**
+ * ``Promise<void>`` and not ``void | Promise<void>``: this button reports
+ * success to the user, so it needs a handler that can tell it about failure.
+ * A synchronously-void handler has no way to, which is how a swallowed
+ * clipboard error came to be rendered as 已复制.
+ */
+type CopyHandler = (content: string) => Promise<void>;
+
 export function CopyActionButton({
   content,
   onCopy,
 }: {
   content: string;
-  onCopy: (content: string) => void | Promise<void>;
+  onCopy: CopyHandler;
 }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const [outcome, setOutcome] = useState<"idle" | "copied" | "failed">("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -873,28 +881,49 @@ export function CopyActionButton({
   }, []);
 
   const handleClick = useCallback(() => {
-    void Promise.resolve(onCopy(content)).then(() => {
-      setCopied(true);
+    const settle = (next: "copied" | "failed") => {
+      setOutcome(next);
       if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setCopied(false), 1600);
-    });
+      timerRef.current = setTimeout(() => setOutcome("idle"), 1600);
+    };
+    // `Promise.resolve().then(() => onCopy(...))` rather than
+    // `Promise.resolve(onCopy(...))`: the latter runs the handler outside the
+    // chain, so a *synchronous* throw — which is exactly what reading
+    // `navigator.clipboard.writeText` on an insecure origin does — escapes it.
+    void Promise.resolve()
+      .then(() => onCopy(content))
+      .then(
+        () => settle("copied"),
+        () => settle("failed"),
+      );
   }, [content, onCopy]);
 
+  const label =
+    outcome === "copied"
+      ? t("Copied")
+      : outcome === "failed"
+        ? t("Could not copy")
+        : t("Copy");
+
   return (
-    <Tooltip label={copied ? t("Copied") : t("Copy")} side="top">
+    <Tooltip label={label} side="top">
       <button
         type="button"
         onClick={handleClick}
         aria-live="polite"
-        aria-label={copied ? t("Copied") : t("Copy")}
+        aria-label={label}
         className={`inline-flex items-center justify-center rounded-md p-1 transition-colors ${
-          copied
+          outcome === "copied"
             ? "text-[var(--primary)]"
-            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
+            : outcome === "failed"
+              ? "text-[var(--destructive)]"
+              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
         }`}
       >
-        {copied ? (
+        {outcome === "copied" ? (
           <Check size={15} strokeWidth={2} />
+        ) : outcome === "failed" ? (
+          <X size={15} strokeWidth={2} />
         ) : (
           <Copy size={15} strokeWidth={1.5} />
         )}
@@ -1150,7 +1179,7 @@ export const UserMessage = memo(function UserMessage({
   msg: ChatMessageItem;
   index: number;
   onPreviewAttachment?: (attachment: MessageAttachment) => void;
-  onCopy?: (content: string) => void | Promise<void>;
+  onCopy?: CopyHandler;
   onEdit?: (messageId: number, newContent: string) => void;
   editDisabled?: boolean;
   siblingInfo?: SiblingInfo;
@@ -1440,7 +1469,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   isStreaming: boolean;
   sessionId?: string | null;
   language?: string;
-  onCopyAssistantMessage: (content: string) => void | Promise<void>;
+  onCopyAssistantMessage: CopyHandler;
   onRegenerateMessage: () => void;
   onConfirmOutline?: (
     outline: Array<{ title: string; overview: string }>,

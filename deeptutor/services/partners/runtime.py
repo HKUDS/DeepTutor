@@ -47,7 +47,7 @@ from deeptutor.services.partners.interaction import (
 )
 from deeptutor.services.partners.links import linked_user_id
 from deeptutor.services.partners.scope import partner_user
-from deeptutor.services.partners.sessions import PartnerSessionStore
+from deeptutor.services.partners.sessions import PartnerSessionStore, conversation_scope
 from deeptutor.services.partners.workspace import ensure_partner_workspace, read_soul
 
 logger = logging.getLogger(__name__)
@@ -301,14 +301,22 @@ class PartnerRunner:
             if options.persist:
                 activity_id = str((msg.metadata or {}).get("_web_activity_id") or "").strip()
                 activity_meta = {"activity_id": activity_id} if activity_id else None
+                inbound_meta = msg.metadata or {}
                 store.append(
                     session_key,
                     "user",
                     msg.content,
                     channel=msg.channel,
                     sender_id=msg.sender_id,
+                    chat_id=msg.chat_id,
+                    scope=conversation_scope(
+                        msg.channel,
+                        str(
+                            inbound_meta.get("chat_type") or inbound_meta.get("channel_type") or ""
+                        ),
+                    ),
                     metadata=activity_meta,
-                    attachments=list((msg.metadata or {}).get("_attachment_records") or []),
+                    attachments=list(inbound_meta.get("_attachment_records") or []),
                 )
                 if final:
                     store.append(

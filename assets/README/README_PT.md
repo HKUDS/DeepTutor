@@ -387,8 +387,10 @@ Comece pelas superfícies principais que usará no dia a dia: Chat, Partners, Me
 Se uma resposta perder uma restrição anterior, citar evidências fracas ou discordar do material selecionado, recolha os diagnósticos em [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md) antes de abrir uma issue.
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="Página inicial do DeepTutor — o espaço de trabalho Chat com todas as superfícies na barra lateral" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="Página inicial do DeepTutor — o espaço de trabalho Chat com todas as superfícies na barra lateral" width="900">
 </div>
+
+> **Estado das capturas:** a visão geral está atualizada para a v1.6.5. As capturas de superfícies abaixo continuam referências da v1.4.6 durante a atualização; veja o [inventário de capturas](../../UI_SCREENSHOT_REFRESH.md). Use-as para entender os fluxos, não como navegação exata atual.
 
 <details>
 <summary><b>🏗️ Arquitetura do sistema</b></summary>

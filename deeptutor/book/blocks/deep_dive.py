@@ -41,6 +41,7 @@ class DeepDiveGenerator(BlockGenerator):
             temperature=0.4,
             language=ctx.language,
             expected_key="suggestions",
+            reasoning_effort="none",
         )
         suggestions_raw = data.get("suggestions") if isinstance(data, dict) else None
         suggestions: list[dict[str, str]] = []

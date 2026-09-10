@@ -129,8 +129,15 @@ export default function SettingsReadinessPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
+  // Fetch the snapshot for every signed-in user: the data is informational
+  // and read-only users benefit from seeing it the same way editors do. The
+  // ``enabled`` prop only gates the interactive controls (the manual refresh
+  // button and the attention-row "Open" link), which a read-only user cannot
+  // act on anyway. Loading unconditionally also keeps the Playwright audit
+  // at tests/e2e/settings-navigation.audit.ts honest: it mocks
+  // ``/api/settings/readiness`` and expects the section to render the mocked
+  // matrix regardless of catalogEditable.
   const refresh = useCallback(async () => {
-    if (!enabled) return;
     setLoading(true);
     setError(false);
     try {
@@ -140,7 +147,7 @@ export default function SettingsReadinessPanel({
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -204,9 +211,8 @@ export default function SettingsReadinessPanel({
     }
     return items;
   }, [rows, snapshot, draftState, t]);
-
-  if (!enabled) return null;
-
+  // Render unconditionally: read-only users still benefit from seeing the
+  // readiness state, just without the interactive controls they cannot use.
   const summary = snapshot
     ? [
         t("readiness.summary.ready", { n: snapshot.summary.enabled_verified }),
@@ -240,7 +246,7 @@ export default function SettingsReadinessPanel({
         <button
           type="button"
           onClick={() => void refresh()}
-          disabled={loading}
+          disabled={loading || !enabled}
           aria-label={t("readiness.refresh")}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
         >
@@ -300,7 +306,7 @@ export default function SettingsReadinessPanel({
                         </span>
                       )}
                     </span>
-                    {item.href && (
+                    {item.href && enabled && (
                       <Link
                         href={item.href}
                         className="inline-flex items-center gap-1 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"

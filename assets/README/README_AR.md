@@ -387,8 +387,10 @@ deeptutor config show
 إذا فقدت إجابة قيداً سابقاً، أو استشهدت بدليل ضعيف، أو خالفت المادة المحددة، فاجمع بيانات التشخيص في [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md) قبل فتح مشكلة.
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="الصفحة الرئيسية لـ DeepTutor — مساحة عمل Chat مع كل الأسطح في الشريط الجانبي" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="الصفحة الرئيسية لـ DeepTutor — مساحة عمل Chat مع كل الأسطح في الشريط الجانبي" width="900">
 </div>
+
+> **حالة لقطات الشاشة:** الصورة العامة محدثة لـ v1.6.5. لقطات الواجهات أدناه لا تزال مراجع من v1.4.6 أثناء تحديثها؛ راجع [جرد لقطات الشاشة](../../UI_SCREENSHOT_REFRESH.md). استخدمها لفهم سير العمل، لا كملاحة دقيقة للواجهة الحالية.
 
 <details>
 <summary><b>🏗️ معمارية النظام</b></summary>

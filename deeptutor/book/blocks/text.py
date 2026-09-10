@@ -14,7 +14,7 @@ from ..models import BlockType, SourceAnchor
 from ._llm_writer import llm_text
 from ._prompts import get_book_prompt, load_book_prompts
 from ._rag_helpers import optional_rag_lookup
-from .base import BlockContext, BlockGenerator
+from .base import BlockContext, BlockGenerator, GenerationFailure
 
 _NONE_LABEL = {"zh": "(无)", "en": "(none)"}
 
@@ -67,7 +67,10 @@ class TextGenerator(BlockGenerator):
             max_tokens=1400,
             temperature=0.45,
             language=ctx.language,
+            reasoning_effort="none",
         )
+        if not body.strip():
+            raise GenerationFailure("LLM returned no visible text content.")
 
         return (
             {
@@ -106,6 +109,7 @@ async def generate_bridge_text(
         max_tokens=300,
         temperature=0.5,
         language=language,
+        reasoning_effort="none",
     )
     return body.strip()
 

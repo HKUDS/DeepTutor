@@ -61,6 +61,7 @@ from deeptutor.services.llm.request_compat import (
     is_transient_transport_error,
     logged_error_text,
 )
+from deeptutor.services.llm.utils import unreachable_endpoint_hint
 from deeptutor.services.session.provider_response_state import (
     normalize_provider_response_state,
 )
@@ -1039,6 +1040,16 @@ class AgentLoop:
                         else "Unable to reach the model provider. Please retry."
                     ),
                 )
+                if not partial_response:
+                    # "Please retry" is the whole story for a cloud endpoint and
+                    # none of it for a self-hosted one, where the connection was
+                    # refused because nothing is listening — or because the
+                    # container's own ``localhost`` is not the host running
+                    # Ollama. Say which, instead of leaving the reader a bare
+                    # ``ConnectError`` in the server log.
+                    hint = unreachable_endpoint_hint(self.pipeline.base_url)
+                    if hint:
+                        message = f"{message} {hint}"
                 raise LLMProviderTransportError(
                     message,
                     partial_response=partial_response,

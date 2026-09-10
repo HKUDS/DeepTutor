@@ -136,18 +136,34 @@ class VisionSolverAgent(BaseAgent):
             messages=messages,
             temperature=temperature,
             model=self.vision_model or self.get_model(),
-            verbose=False,
         ):
             chunks.append(chunk)
         return "".join(chunks)
 
     @staticmethod
     def _extract_json(response: str) -> dict[str, Any]:
-        """Pull the JSON object out of an LLM response (markdown-fenced or raw)."""
-        matches = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", response)
-        json_str = matches[0] if matches else response
+        """Pull the JSON object out of an LLM response.
+
+        Handles the shapes real models produce:
+          * a ```json fenced block (possibly after a ``<think>`` preamble);
+          * bare JSON in the tail of a reasoning-model answer (``<think>``
+            blocks are stripped first — e.g. Qwen3-VL-*-Thinking emits a long
+            thinking preamble before the final JSON object);
+          * prose appended after the object (start at the first object brace
+            and drop everything after the final closing brace);
+          * inline comments and trailing commas, common model slips.
+        """
+        text = re.sub(r"<think>[\s\S]*?</think>", "", response)
+        matches = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+        json_str = matches[-1] if matches else text
         json_str = re.sub(r"//.*?$", "", json_str, flags=re.MULTILINE)
         json_str = re.sub(r"/\*.*?\*/", "", json_str, flags=re.DOTALL)
+        start = json_str.find("{")
+        if start > 0:
+            json_str = json_str[start:]
+        end = json_str.rfind("}")
+        if end >= 0 and end < len(json_str) - 1:
+            json_str = json_str[: end + 1]
         try:
             return json.loads(json_str)
         except json.JSONDecodeError:

@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  WatchingSessionBridge,
+  WatchingSurface,
+} from "@/components/watching/WatchingWorkspace";
+
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   type KeyboardEvent,
@@ -55,10 +61,7 @@ import {
 } from "@/features/chat/ChatStateAdapter";
 import { useAppShell } from "@/context/AppShellContext";
 
-import {
-  WATCHING_ASK_EVENT,
-  WatchingPane,
-} from "@/components/watching/WatchingPane";
+import { WATCHING_ASK_EVENT } from "@/components/watching/WatchingPane";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
 import {
@@ -75,9 +78,10 @@ import { useAttachmentLimits } from "@/lib/attachment-limits";
 import {
   hasPendingAskUser,
   hasPendingUserCard,
-  REPLY_NOT_DELIVERED,
+  REPLY_SENT_AS_NEW_MESSAGE,
 } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
+import { copyText } from "@/lib/clipboard";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useContextBudget } from "@/hooks/useContextBudget";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
@@ -238,8 +242,13 @@ interface KnowledgeBase {
 /*  Chat page                                                         */
 /* ------------------------------------------------------------------ */
 
-export default function ChatWorkspace() {
+export default function ChatWorkspace({
+  watching = false,
+}: {
+  watching?: boolean;
+}) {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
+  const searchParams = useSearchParams();
   const { t } = useTranslation();
   const {
     capabilities,
@@ -252,6 +261,7 @@ export default function ChatWorkspace() {
     state,
     setTools,
     setCapability,
+    configureSession,
     setKBs,
     setLLMSelection,
     setPersonaSelection,
@@ -270,6 +280,8 @@ export default function ChatWorkspace() {
     renameSessionTitle,
     setCourseId,
   } = useChatStateAdapter();
+
+  const entrySessionId = useRef(state.sessionId);
 
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
@@ -607,7 +619,19 @@ export default function ChatWorkspace() {
   const isQuizMode = activeCap.value === "deep_question";
   const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
-  const isWatchingMode = activeCap.value === "immersive_watching";
+  const isWatchingMode = watching;
+  useEffect(() => {
+    if (!sessionIdParam || state.sessionId !== sessionIdParam) return;
+    if (!watching && state.workspaceMode === "immersive_watching") {
+      router.replace(`/watching/${encodeURIComponent(sessionIdParam)}`, {
+        scroll: false,
+      });
+    } else if (watching && state.workspaceMode !== "immersive_watching") {
+      router.replace(`/chat/${encodeURIComponent(sessionIdParam)}`, {
+        scroll: false,
+      });
+    }
+  }, [watching, state.workspaceMode, state.sessionId, sessionIdParam, router]);
   const capabilityNeedsConfig = isQuizMode || isVisualizeMode || isResearchMode;
   const returnedResearchTurnRef = useRef<string | null>(null);
 
@@ -998,19 +1022,18 @@ export default function ChatWorkspace() {
     return () => cancelAnimationFrame(frame);
   }, [awaitingUserCard, scrollToBottom, shouldAutoScrollRef]);
 
-  const copyAssistantMessage = useCallback(async (content: string) => {
-    if (!content.trim()) return;
-    try {
-      await navigator.clipboard.writeText(content);
-    } catch (error) {
-      console.error("Failed to copy assistant message:", error);
-    }
-  }, []);
+  // Deliberately does not catch. `CopyActionButton` renders 已复制 off this
+  // promise resolving, so swallowing the failure here is what made the button
+  // announce a success that never happened — to screen readers included.
+  const copyAssistantMessage = useCallback(
+    (content: string) => copyText(content),
+    [],
+  );
   /* ---- URL-driven session loading ---- */
 
   const navigateToHome = useCallback(() => {
-    router.replace("/chat", { scroll: false });
-  }, [router]);
+    router.replace(watching ? "/watching" : "/chat", { scroll: false });
+  }, [router, watching]);
 
   /** Abort in-flight load + navigate home. */
   const cancelSessionLoad = useCallback(() => {
@@ -1115,7 +1138,14 @@ export default function ChatWorkspace() {
     if (sessionIdParam) {
       startSessionLoad(sessionIdParam);
     } else {
-      newSession();
+      newSession(
+        watching
+          ? {
+              capability: "immersive_watching",
+              workspaceMode: "immersive_watching",
+            }
+          : undefined,
+      );
     }
     return () => {
       initialLoadRef.current = false;
@@ -1138,18 +1168,31 @@ export default function ChatWorkspace() {
       }
       startSessionLoad(sessionIdParam);
     } else {
-      newSession();
+      newSession(
+        watching
+          ? {
+              capability: "immersive_watching",
+              workspaceMode: "immersive_watching",
+            }
+          : undefined,
+      );
       setSessionLoading(false);
       setSessionLoadFailed(false);
     }
-  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId]);
+  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId, watching]);
 
   // When a new session_id is assigned by the server, update the URL
   useEffect(() => {
-    if (state.sessionId && !sessionIdParam) {
-      router.replace(`/chat/${state.sessionId}`, { scroll: false });
+    if (
+      state.sessionId &&
+      !sessionIdParam &&
+      state.sessionId !== entrySessionId.current
+    ) {
+      router.replace(`${watching ? "/watching" : "/chat"}/${state.sessionId}`, {
+        scroll: false,
+      });
     }
-  }, [state.sessionId, sessionIdParam, router]);
+  }, [state.sessionId, sessionIdParam, router, watching]);
 
   useEffect(() => {
     setActiveSessionId(state.sessionId || sessionIdParam || null);
@@ -1366,6 +1409,11 @@ export default function ChatWorkspace() {
 
   const handleSelectCapability = useCallback(
     (value: string) => {
+      if (value === "immersive_watching" && !watching) {
+        router.push("/watching");
+        return;
+      }
+      if (watching && value !== "immersive_watching") return;
       const cap =
         capabilities.find((capability) => capability.value === value) ??
         capabilities[0] ??
@@ -1385,7 +1433,7 @@ export default function ChatWorkspace() {
       setCapabilityConfigConfirmed(false);
       setCapMenuOpen(false);
     },
-    [capabilities, setCapability, setTools, userEnabledTools],
+    [capabilities, setCapability, setTools, userEnabledTools, watching, router],
   );
 
   const fileToAttachment = fileToPendingAttachment;
@@ -1772,13 +1820,14 @@ export default function ChatWorkspace() {
       // not the only one — and a card that never rendered no longer strands
       // the learner with a turn they can only cancel.
       if (awaitingUserReplyRef.current) {
-        if (content.trim()) {
-          const sent = await submitUserReply({ text: content });
-          // The composer already cleared what they typed, so a silent drop
-          // would look like the assistant simply never replied.
-          if (!sent) notify(t(REPLY_NOT_DELIVERED), { tone: "error" });
-        }
-        return;
+        if (!content.trim()) return;
+        if (await submitUserReply({ text: content })) return;
+        // Refused: the turn that asked is gone. Do NOT stop here. The
+        // composer has already cleared the box, so returning discarded what
+        // they typed — while the error told them to "send a new message",
+        // which is exactly what this branch was preventing them from doing.
+        // Fall through and send it as one.
+        notify(t(REPLY_SENT_AS_NEW_MESSAGE));
       }
       if (
         (!content &&
@@ -2246,20 +2295,21 @@ export default function ChatWorkspace() {
           messages={state.messages}
           viewerPanelRef={viewerPanelRef}
         />
-        <div className="relative h-full overflow-hidden">
-          {/* The video panel slides in from the left and the chat column shrinks to
-            make room. Rendered as a sibling with its own transform rather than
-            wrapping the chat, so switching modes never remounts the chat tree —
-            a remount would refetch every piece of session metadata and stall the
-            UI for seconds (the regression behind the slow session-open bug). */}
-          <div
-            data-watching-open={isWatchingMode ? "true" : "false"}
-            className="dt-watching-shell"
-          >
-            {isWatchingMode && (
-              <WatchingPane onClose={() => setCapability("")} />
+        <div
+          className="relative h-full overflow-hidden"
+          data-watching-workspace={watching ? "true" : undefined}
+        >
+          {watching &&
+            state.workspaceMode === "immersive_watching" &&
+            (!sessionIdParam || state.sessionId === sessionIdParam) && (
+              <WatchingSessionBridge
+                sessionKey={state.sessionId || "draft"}
+                sourceUrl={!sessionIdParam ? searchParams.get("video") : null}
+                materialId={state.timedMediaId}
+                onMaterial={configureSession}
+              />
             )}
-          </div>
+          {watching && <WatchingSurface />}
           <div
             // When the preview drawer is open AND the viewport is wide enough,
             // push the chat content to the left by the drawer's width so the two
@@ -2532,7 +2582,13 @@ export default function ChatWorkspace() {
                 capabilityNeedsConfig={capabilityNeedsConfig}
                 capabilityConfigConfirmed={capabilityConfigConfirmed}
                 onRequestConfigConfirm={ensureActivityPanelOpen}
-                capabilities={visibleCapabilities}
+                capabilities={
+                  watching
+                    ? visibleCapabilities.filter(
+                        (cap) => cap.value === "immersive_watching",
+                      )
+                    : visibleCapabilities
+                }
                 onSetCapMenuOpen={setCapMenuOpen}
                 onSetSpaceMenuOpen={setSpaceMenuOpen}
                 onToggleKB={handleToggleKB}

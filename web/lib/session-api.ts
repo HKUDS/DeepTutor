@@ -63,8 +63,10 @@ export interface MessageTracePage {
 
 export interface SessionPreferences {
   capability?: string;
+  timed_media_id?: string;
   /** Stable learning surface, independent of the action used for a turn. */
-  workspace_mode?: "immersive_reading" | "mastery_path" | "";
+  workspace_mode?:
+    "immersive_reading" | "mastery_path" | "immersive_watching" | "";
   tools?: string[];
   knowledge_bases?: string[];
   language?: string;
@@ -101,12 +103,7 @@ export interface SessionSummary {
   message_count: number;
   last_message: string;
   status?:
-    | "idle"
-    | "running"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "rejected";
+    "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
   active_turn_id?: string;
   preferences?: SessionPreferences;
 }
@@ -131,12 +128,7 @@ export interface SessionDetail {
   created_at: number;
   updated_at: number;
   status?:
-    | "idle"
-    | "running"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "rejected";
+    "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
   active_turn_id?: string;
   compressed_summary?: string;
   summary_up_to_msg_id?: number;
@@ -232,7 +224,10 @@ export async function fetchSessionAskHint(
   try {
     const response = await apiFetch(
       apiUrl(`/api/sessions/${sessionId}/ask-hint`),
-      { cache: "no-store", ...init },
+      {
+        cache: "no-store",
+        ...init,
+      },
     );
     const result = await expectJson<{ hint?: string }>(response);
     return typeof result.hint === "string" ? result.hint : "";
@@ -326,7 +321,9 @@ export async function deleteMessage(
 ): Promise<void> {
   const response = await apiFetch(
     apiUrl(`/api/sessions/${sessionId}/messages/${messageId}`),
-    { method: "DELETE" },
+    {
+      method: "DELETE",
+    },
   );
   await expectJson<{ deleted: boolean }>(response);
 }

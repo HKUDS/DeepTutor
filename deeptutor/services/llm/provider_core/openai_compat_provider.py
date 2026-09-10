@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 import hashlib
+import re
 import secrets
 import string
+import sys
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -71,6 +73,8 @@ _INTERNAL_RESPONSE_STATE_KEYS = frozenset({"_provider_response_state", "_respons
 
 _RESPONSES_FAILURE_THRESHOLD = 2
 _RESPONSES_PROBE_INTERVAL_S = 300.0
+_INPUT_ITEM_STATUS_PARAM = re.compile(r"^input\[(0|[1-9][0-9]*)\]\.status$")
+_MAX_INPUT_ITEM_INDEX_DIGITS = len(str(sys.maxsize))
 
 
 def _short_tool_id() -> str:
@@ -215,6 +219,7 @@ class OpenAICompatProvider(LLMProvider):
         )
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}
+        self._responses_without_message_status_models: set[str] = set()
 
     @staticmethod
     def _status_code(exc: Exception) -> int | None:
@@ -316,7 +321,6 @@ class OpenAICompatProvider(LLMProvider):
         messages: list[dict[str, Any]],
         *,
         responses_api: bool = False,
-        model: str | None = None,
     ) -> list[dict[str, Any]]:
         prepared: list[dict[str, Any]] = []
         for message in messages:
@@ -333,15 +337,24 @@ class OpenAICompatProvider(LLMProvider):
                 if output_items:
                     clean["_provider_response_state"] = {"responses_output_items": output_items}
             else:
+                # Replay the round's own reasoning on the assistant turn that
+                # produced it. A thinking model's provider rejects a history
+                # that lost it ("the reasoning_content in the thinking mode
+                # must be passed back to the API"), and only a provider that
+                # SENT ``reasoning_content``/``reasoning`` can have put it in
+                # this state — so replaying it is symmetric, never additive.
+                #
+                # This used to be gated on ``"deepseek" in model``, which is
+                # not how a model announces the dialect: Volcengine Ark takes
+                # an endpoint id (``ep-…``) as the model name, and Doubao /
+                # GLM / Qwen / Kimi thinking models speak the same field under
+                # their own names. Every one of them lost its reasoning the
+                # moment a turn replayed history, while the *same* round
+                # inside one turn kept it (the loop sets the field directly).
                 state = normalize_provider_response_state(message.get("_provider_response_state"))
                 reasoning_content = state.get("reasoning_content") if state is not None else None
-                if (
-                    isinstance(reasoning_content, str)
-                    and reasoning_content
-                    and model
-                    and "deepseek" in model.lower()
-                ):
-                    clean["reasoning_content"] = reasoning_content
+                if isinstance(reasoning_content, str) and reasoning_content:
+                    clean.setdefault("reasoning_content", reasoning_content)
             prepared.append(clean)
 
         sanitized = LLMProvider._sanitize_request_messages(prepared, _ALLOWED_MSG_KEYS)
@@ -410,9 +423,7 @@ class OpenAICompatProvider(LLMProvider):
 
         kwargs: dict[str, Any] = {
             "model": model_name,
-            "messages": self._sanitize_messages(
-                self._sanitize_empty_content(messages), model=model_name
-            ),
+            "messages": self._sanitize_messages(self._sanitize_empty_content(messages)),
         }
 
         if self._supports_temperature(model_name, reasoning_effort):
@@ -519,6 +530,89 @@ class OpenAICompatProvider(LLMProvider):
         circuit_key = _responses_circuit_key(model, self.default_model, reasoning_effort)
         self._responses_failures.pop(circuit_key, None)
         self._responses_tripped_at.pop(circuit_key, None)
+
+    @staticmethod
+    def _input_item_status_index(fields: Any) -> int | None:
+        parameter = _get(fields, "param")
+        match = (
+            _INPUT_ITEM_STATUS_PARAM.fullmatch(parameter)
+            if _get(fields, "code") == "unknown_parameter" and isinstance(parameter, str)
+            else None
+        )
+        if match is None:
+            return None
+        index_text = match.group(1)
+        if len(index_text) > _MAX_INPUT_ITEM_INDEX_DIGITS:
+            return None
+        try:
+            item_index = int(index_text)
+        except ValueError:
+            return None
+        return item_index if item_index <= sys.maxsize else None
+
+    @classmethod
+    def _rejected_input_item_status_index(cls, exc: Exception) -> int | None:
+        if cls._status_code(exc) not in {400, 422}:
+            return None
+        for body in (getattr(exc, "body", None), getattr(exc, "doc", None)):
+            if not isinstance(body, dict):
+                continue
+            error = body.get("error")
+            fields: dict[str, Any] = error if isinstance(error, dict) else body
+            if (item_index := cls._input_item_status_index(fields)) is not None:
+                return item_index
+        return None
+
+    @staticmethod
+    def _responses_body_without_input_message_status(
+        body: dict[str, Any], item_index: int | None = None
+    ) -> dict[str, Any] | None:
+        input_items = body.get("input")
+        if not isinstance(input_items, list):
+            return None
+
+        if item_index is not None:
+            if item_index >= len(input_items):
+                return None
+            rejected_item = input_items[item_index]
+            if (
+                not isinstance(rejected_item, dict)
+                or rejected_item.get("type") != "message"
+                or "status" not in rejected_item
+            ):
+                return None
+
+        sanitized_items: list[Any] = []
+        has_status = False
+        for item in input_items:
+            if isinstance(item, dict) and item.get("type") == "message" and "status" in item:
+                sanitized_items.append(
+                    {key: value for key, value in item.items() if key != "status"}
+                )
+                has_status = True
+            else:
+                sanitized_items.append(item)
+        return {**body, "input": sanitized_items} if has_status else None
+
+    async def _create_responses_with_status_retry(
+        self,
+        body: dict[str, Any],
+    ) -> Any:
+        model_name = str(body.get("model") or self.default_model).strip().lower()
+        request_body = body
+        if model_name in self._responses_without_message_status_models:
+            request_body = self._responses_body_without_input_message_status(body) or body
+        try:
+            return await self._create_with_key_rotation(self._client.responses.create, request_body)
+        except Exception as exc:
+            item_index = self._rejected_input_item_status_index(exc)
+            if item_index is None:
+                raise
+            retry_body = self._responses_body_without_input_message_status(request_body, item_index)
+            if retry_body is None:
+                raise
+            self._responses_without_message_status_models.add(model_name)
+            return await self._create_with_key_rotation(self._client.responses.create, retry_body)
 
     @staticmethod
     def _should_fallback_from_responses_error(exc: Exception) -> bool:
@@ -631,9 +725,7 @@ class OpenAICompatProvider(LLMProvider):
             model_name = model_name.split("/")[-1]
 
         instructions, input_items = convert_messages(
-            self._sanitize_messages(
-                self._sanitize_empty_content(messages), responses_api=True, model=model_name
-            )
+            self._sanitize_messages(self._sanitize_empty_content(messages), responses_api=True)
         )
         body: dict[str, Any] = {
             "model": model_name,
@@ -728,8 +820,6 @@ class OpenAICompatProvider(LLMProvider):
                     finish_reason = ch.finish_reason
             if not content and m.content:
                 content = m.content
-            if not content and getattr(m, "reasoning", None):
-                content = m.reasoning
 
         tool_calls = []
         for tc in raw_tool_calls:
@@ -751,6 +841,12 @@ class OpenAICompatProvider(LLMProvider):
         reasoning_content = getattr(msg, "reasoning_content", None) or None
         if not reasoning_content and getattr(msg, "reasoning", None):
             reasoning_content = msg.reasoning
+
+        # ``reasoning`` is a private trace on gateways such as OpenRouter.  It
+        # must never be promoted to visible content when the provider omits a
+        # final answer (the old fallback here leaked untagged scratchpads).
+        if content and reasoning_content and content == reasoning_content:
+            content = None
 
         usage = self._extract_usage(response)
 
@@ -905,7 +1001,7 @@ class OpenAICompatProvider(LLMProvider):
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
                     result = parse_response_output(
-                        await self._create_with_key_rotation(self._client.responses.create, body)
+                        await self._create_responses_with_status_retry(body)
                     )
                     self._record_responses_success(model, reasoning_effort)
                     return result
@@ -1017,9 +1113,7 @@ class OpenAICompatProvider(LLMProvider):
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
                     body["stream"] = True
-                    stream = await self._create_with_key_rotation(
-                        self._client.responses.create, body
-                    )
+                    stream = await self._create_responses_with_status_retry(body)
 
                     async def _timed_stream():
                         stream_iter = stream.__aiter__()

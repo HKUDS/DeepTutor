@@ -145,6 +145,72 @@ test("normalizeMarkdownForDisplay removes empty details blocks", () => {
   assert.equal(normalizeMarkdownForDisplay(input), "Before\n\nAfter");
 });
 
+test("normalizeMarkdownForDisplay repairs missing ATX heading separators", () => {
+  const input = ["##Title", "###第一部分", "# Already spaced", "#######"].join(
+    "\n",
+  );
+  const expected = [
+    "## Title",
+    "### 第一部分",
+    "# Already spaced",
+    "#######",
+  ].join("\n");
+
+  assert.equal(normalizeMarkdownForDisplay(input), expected);
+  assert.equal(normalizeMarkdownForDisplay(expected), expected);
+});
+
+test("normalizeMarkdownForDisplay leaves heading-like fenced code verbatim", () => {
+  const input = [
+    "```c",
+    "##define FEATURE",
+    "```",
+    "",
+    "~~~text",
+    "###literal",
+    "~~~",
+    "",
+    "```python",
+    "##unfinished",
+  ].join("\n");
+
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay leaves raw HTML code blocks verbatim", () => {
+  const input = [
+    "<pre",
+    '  class="example">',
+    "###literal",
+    "</pre>",
+    "",
+    "<code>",
+    "##define FEATURE",
+    "</code>",
+    "",
+    "###Heading",
+  ].join("\n");
+  const expected = input.replace("###Heading", "### Heading");
+
+  assert.equal(normalizeMarkdownForDisplay(input), expected);
+});
+
+test("normalizeMarkdownForDisplay does not mistake code-like prose for HTML blocks", () => {
+  const inputs = [
+    "`<pre>`\n###Heading",
+    String.raw`\<pre>` + "\n###Heading",
+    "<!-- example: <pre> -->\n###Heading",
+    "<code@example.com>\n###Heading",
+  ];
+
+  for (const input of inputs) {
+    assert.equal(
+      normalizeMarkdownForDisplay(input),
+      input.replace("###Heading", "### Heading"),
+    );
+  }
+});
+
 test("normalizeMarkdownForDisplay decodes dense non-ASCII JSON escapes", () => {
   const input = "\\u300c\\u6570\\u5236\\u8f6c\\u6362\\u300d";
   assert.equal(normalizeMarkdownForDisplay(input), "「数制转换」");

@@ -205,8 +205,6 @@ export function useKnowledgeBases() {
             progress_percent: 0,
           },
         });
-      } else {
-        progress.subscribeWs(params.name);
       }
       await load({ force: true, showSpinner: false });
       return result;

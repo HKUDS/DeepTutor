@@ -36,8 +36,8 @@ from typing import Any
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import UnifiedContext
 from deeptutor.runtime.stream_bus import StreamBus
-from deeptutor.utils.json_parser import parse_json_response
 
+from ..json_retry import json_with_reasoning_retry
 from ..models import (
     BookInputs,
     BookProposal,
@@ -297,23 +297,28 @@ class SourceExplorer(BaseAgent):
             extra_context=extra_context,
         )
 
-        try:
+        async def _run(reasoning_effort: str | None) -> str:
             chunks: list[str] = []
             async for piece in self.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage="explore_queries",
+                reasoning_effort=reasoning_effort,
             ):
                 chunks.append(piece)
-            raw = "".join(chunks)
+            return "".join(chunks)
+
+        try:
+            payload = await json_with_reasoning_retry(
+                _run,
+                expected_key="queries",
+                logger_instance=self.logger,
+            )
         except Exception as exc:
             logger.warning(f"SourceExplorer query LLM failed: {exc}")
             return []
 
-        payload = parse_json_response(raw, logger_instance=self.logger, fallback={})
-        if not isinstance(payload, dict):
-            return []
         queries_raw = payload.get("queries")
         if not isinstance(queries_raw, list):
             return []
@@ -681,22 +686,26 @@ class SourceExplorer(BaseAgent):
             chunks_block=chunks_block,
         )
 
-        try:
+        async def _run(reasoning_effort: str | None) -> str:
             buf: list[str] = []
             async for piece in self.stream_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage="explore_summary",
+                reasoning_effort=reasoning_effort,
             ):
                 buf.append(piece)
-            raw = "".join(buf)
+            return "".join(buf)
+
+        try:
+            payload = await json_with_reasoning_retry(
+                _run,
+                expected_key="summary",
+                logger_instance=self.logger,
+            )
         except Exception as exc:
             logger.warning(f"SourceExplorer summary LLM failed: {exc}")
-            return ("", [], [])
-
-        payload = parse_json_response(raw, logger_instance=self.logger, fallback={})
-        if not isinstance(payload, dict):
             return ("", [], [])
 
         summary = _clip(str(payload.get("summary") or ""), 2400)

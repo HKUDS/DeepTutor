@@ -404,8 +404,10 @@ DeepTutor แยกโค้ดที่ติดตั้ง, runtime home ส�
 หากคำตอบทำข้อกำหนดก่อนหน้าหลุดหาย, อ้างหลักฐานที่อ่อน หรือไม่สอดคล้องกับสื่อที่เลือก ให้รวบรวมข้อมูลวินิจฉัยตาม [`REASONING_SAFETY_CHECKLIST.md`](../../REASONING_SAFETY_CHECKLIST.md) ก่อนเปิด issue
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.0/OVERVIEW.png" alt="หน้าแรก DeepTutor — workspace Chat พร้อมทุกส่วนในแถบด้านข้าง" width="900">
+<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="หน้าแรก DeepTutor — workspace Chat พร้อมทุกส่วนในแถบด้านข้าง" width="900">
 </div>
+
+> **สถานะภาพหน้าจอ:** ภาพภาพรวมเป็นเวอร์ชัน v1.6.5 ส่วนภาพหน้าจอรายการด้านล่างยังเป็นข้อมูลอ้างอิง v1.4.6 ระหว่างการอัปเดต ดู [รายการภาพหน้าจอ](../../UI_SCREENSHOT_REFRESH.md) ใช้เพื่อทำความเข้าใจขั้นตอนการใช้งาน ไม่ใช่การนำทางปัจจุบันแบบเป๊ะ
 
 <details>
 <summary><b>🏗️ สถาปัตยกรรมระบบ</b></summary>

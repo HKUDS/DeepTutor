@@ -208,6 +208,7 @@ class SectionGenerator(BlockGenerator):
                 temperature=0.4,
                 language=ctx.language,
                 expected_key="subsections",
+                reasoning_effort="none",
             )
         except Exception as exc:
             logger.warning(f"SectionGenerator outline LLM failed: {exc}")
@@ -307,11 +308,14 @@ class SectionGenerator(BlockGenerator):
                 max_tokens=_subsection_token_budget(target_words),
                 temperature=0.5,
                 language=ctx.language,
+                reasoning_effort="none",
             )
         except Exception as exc:
             logger.warning(f"SectionGenerator subsection LLM failed: {exc}")
-            return f"### {heading}\n\n_(generation failed: {exc})_"
+            raise GenerationFailure("LLM failed to generate visible subsection content.") from exc
         body = body.strip()
+        if not body:
+            raise GenerationFailure("LLM returned no visible subsection content.")
         if not body.startswith("###"):
             body = f"### {heading}\n\n{body}"
         return body
