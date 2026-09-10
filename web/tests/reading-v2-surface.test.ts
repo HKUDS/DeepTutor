@@ -121,18 +121,23 @@ test("media relies on native player controls and PDF navigation is honest", () =
   assert.match(navigator, /material\?\.render_mode === "pdf"/);
   assert.match(navigator, /synthesised/);
   assert.match(navigator, /Page \{\{page\}\}/);
-  assert.match(navigator, /aria-label=\{t\("Collapse contents"\)\}/);
+  assert.match(
+    page,
+    /navigatorOpen \? t\("Collapse contents"\) : t\("Expand contents"\)/,
+  );
   assert.match(page, /externalJump=\{documentJump\}/);
   assert.match(reader, /requestJump\(externalJump\.locator/);
 });
 
 test("narrow reading workspaces keep the source primary and use dismissible panels", () => {
   const page = source(`${WORKSPACE_DIR}/ReadingWorkspace.tsx`);
+  const navigator = source(`${WORKSPACE_DIR}/SourceNavigator.tsx`);
   const workspace = workspaceSurface();
 
   assert.match(page, /min-width: 1280px/);
   assert.match(page, /xl:grid-cols-/);
-  assert.match(workspace, /mobileOpen/);
+  assert.match(page, /open=\{navigatorOpen\}/);
+  assert.match(navigator, /onClose: \(\) => void/);
   // The companion is its own module now (`ReadingCompanion.tsx`), so these
   // two hold over the surface rather than over the shell — exactly the case
   // `workspaceSurface` exists for.
