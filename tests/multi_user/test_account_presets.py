@@ -37,6 +37,8 @@ def test_learning_surface_routing_matches_complete_path_segments():
 
     assert _learning_surface_for_path("/api/reading/materials") == "reading"
     assert _learning_surface_for_path("/api/courses/course/state") == "reading"
+    assert _learning_surface_for_path("/api/mastery-paths/reading/records") == "reading"
+    assert _learning_surface_for_path("/api/mastery-paths/topics") == ""
     assert _learning_surface_for_path("/api/question-notebook/entries") == "chat"
     assert _learning_surface_for_path("/api/reading-private") == ""
     assert _learning_surface_for_path("/api/questions") == ""
