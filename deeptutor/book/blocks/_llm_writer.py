@@ -18,8 +18,11 @@ from deeptutor.services.llm import (
 from deeptutor.services.llm import (
     complete as llm_complete,
 )
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.utils.json_parser import parse_json_response
+
+from ..json_retry import json_payload_is_usable
 
 
 async def llm_text(
@@ -81,15 +84,6 @@ def _normalize_json_payload(data: Any, expected_key: str | None = None) -> dict[
     return {}
 
 
-def _json_has_expected(data: dict[str, Any], expected_key: str | None) -> bool:
-    if not data:
-        return False
-    if expected_key is None:
-        return True
-    value = data.get(expected_key)
-    return bool(value)
-
-
 def _strip_thinking_preamble(text: str) -> str:
     """Strip model thinking/reasoning preamble before JSON output.
 
@@ -139,15 +133,20 @@ async def llm_json(
     temperature: float = 0.4,
     language: str | None = None,
     expected_key: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Run a structured JSON LLM call with robust parsing and one safe retry.
 
     Reasoning models can spend the whole response budget on hidden/scratchpad
     tokens and leave the visible JSON object empty. For structured book blocks
     we first honor the configured reasoning mode, then retry once with low
-    reasoning effort if parsing fails or the expected top-level key is missing.
-    ("low" rather than "minimal": local/Qwen models served via vLLM reject
-    "minimal", and "minimal" disables thinking entirely.)
+    reasoning effort if parsing fails or the expected top-level key is missing
+    — the same rule the Book pipeline agents apply via
+    :func:`deeptutor.book.json_retry.json_with_reasoning_retry`.
+
+    A caller that supplies an effort of its own (book reader-facing blocks pass
+    ``"none"``) keeps that value on the retry, so a round that was deliberately
+    run without thinking cannot silently re-enable it.
 
     Also strips thinking/reasoning preamble text (common with local models)
     before JSON parsing.
@@ -175,13 +174,14 @@ async def llm_json(
         recovered = parse_json_response(raw, fallback={})
         return _normalize_json_payload(recovered, expected_key=expected_key)
 
-    data = await _once(None)
-    if _json_has_expected(data, expected_key):
+    data = await _once(reasoning_effort)
+    if json_payload_is_usable(data, expected_key):
         return data
 
-    retry_data = await _once("low")
-    if _json_has_expected(retry_data, expected_key):
-        retry_data.setdefault("_metadata", {})["reasoning_retry"] = "low"
+    retry_effort = RETRY_REASONING_EFFORT if reasoning_effort is None else reasoning_effort
+    retry_data = await _once(retry_effort)
+    if json_payload_is_usable(retry_data, expected_key):
+        retry_data.setdefault("_metadata", {})["reasoning_retry"] = retry_effort
         return retry_data
     return data or retry_data
 

@@ -60,3 +60,90 @@ async def test_call_json_returns_an_empty_payload_when_the_call_fails(
     )
 
     assert payload == {}
+
+
+@pytest.mark.asyncio
+async def test_call_json_retries_at_low_effort_when_reasoning_ate_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A thinking-only first response must not settle the spine.
+
+    A reasoning model pays for its hidden tokens out of the same ``max_tokens``
+    as its answer; on the spine prompt it can spend the lot and return nothing
+    to parse. That used to reach ``_materialise`` as ``{}`` and collapse a
+    whole book into one placeholder "Overview" chapter (#1316). The second
+    attempt asks for the same JSON with thinking turned down.
+    """
+    efforts: list[str | None] = []
+
+    async def _call_llm(self: BaseAgent, **kwargs: Any) -> str:
+        efforts.append(kwargs.get("reasoning_effort"))
+        if len(efforts) == 1:
+            return ""
+        return json.dumps({"chapters": [{"title": "Vectors"}, {"title": "Matrices"}]})
+
+    monkeypatch.setattr(BaseAgent, "call_llm", _call_llm)
+
+    payload = await SpineSynthesizer()._call_json(
+        system_prompt="Design a spine.",
+        user_prompt="About linear algebra.",
+        stage="spine_draft",
+        expected_key="chapters",
+    )
+
+    assert efforts == [None, "low"]
+    assert len(payload["chapters"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_call_json_retries_when_the_payload_lost_its_chapters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """json-repair closing a truncated object is not a usable spine.
+
+    A budget that runs out mid-JSON leaves a repairable fragment, so parsing
+    succeeds and hands back an object whose ``chapters`` never arrived — the
+    shape behind "the spine has chapters but every learning objective and
+    summary is empty".
+    """
+    calls: list[str | None] = []
+
+    async def _call_llm(self: BaseAgent, **kwargs: Any) -> str:
+        calls.append(kwargs.get("reasoning_effort"))
+        if len(calls) == 1:
+            return json.dumps({"concept_graph": {"nodes": [], "edges": []}})
+        return json.dumps({"chapters": [{"title": "Vectors"}]})
+
+    monkeypatch.setattr(BaseAgent, "call_llm", _call_llm)
+
+    payload = await SpineSynthesizer()._call_json(
+        system_prompt="Design a spine.",
+        user_prompt="About linear algebra.",
+        stage="spine_draft",
+        expected_key="chapters",
+    )
+
+    assert calls == [None, "low"]
+    assert payload["chapters"] == [{"title": "Vectors"}]
+
+
+@pytest.mark.asyncio
+async def test_call_json_does_not_retry_a_good_first_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str | None] = []
+
+    async def _call_llm(self: BaseAgent, **kwargs: Any) -> str:
+        calls.append(kwargs.get("reasoning_effort"))
+        return json.dumps({"chapters": [{"title": "Vectors"}]})
+
+    monkeypatch.setattr(BaseAgent, "call_llm", _call_llm)
+
+    await SpineSynthesizer()._call_json(
+        system_prompt="Design a spine.",
+        user_prompt="About linear algebra.",
+        stage="spine_draft",
+        expected_key="chapters",
+    )
+
+    assert calls == [None]

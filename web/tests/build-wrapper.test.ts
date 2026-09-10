@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 const webRoot = process.cwd();
@@ -13,6 +14,45 @@ test("npm build routes through the generated-file wrapper", () => {
     string
   >;
   assert.equal(scripts.build, "node ./scripts/build.mjs");
+});
+
+test("the build publishes PDF.js decoder assets for standalone deployments", () => {
+  const scripts = JSON.parse(read("package.json")).scripts as Record<
+    string,
+    string
+  >;
+  assert.equal(scripts.predev, "node ./scripts/copy-pdfjs-assets.mjs");
+  assert.equal(scripts["predev:turbo"], "node ./scripts/copy-pdfjs-assets.mjs");
+
+  const source = read("scripts", "copy-pdfjs-assets.mjs");
+  assert.match(source, /node_modules.*pdfjs-dist.*wasm/);
+  assert.match(source, /public.*pdfjs.*wasm/);
+  assert.match(source, /cpSync\(sourceDir, targetDir, \{ recursive: true \}\)/);
+
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/copy-pdfjs-assets.mjs"],
+    { cwd: webRoot, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  for (const name of [
+    "openjpeg.wasm",
+    "openjpeg_nowasm_fallback.js",
+    "jbig2.wasm",
+    "qcms_bg.wasm",
+  ]) {
+    assert.ok(
+      existsSync(path.join(webRoot, "public", "pdfjs", "wasm", name)),
+      name,
+    );
+  }
+});
+
+test("the reader gives PDF.js an absolute same-origin decoder URL", () => {
+  const loader = read("lib", "pdfjs-loader.ts");
+  const reader = read("components", "reading", "PdfDocumentView.tsx");
+  assert.match(loader, /new URL\(PDFJS_WASM_PATH, window\.location\.origin\)/);
+  assert.match(reader, /wasmUrl:\s*pdfjsWasmUrl\(\)/);
 });
 
 test("the build wrapper restores every generated checked-in input", () => {

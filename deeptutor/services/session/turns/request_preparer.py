@@ -14,6 +14,7 @@ from deeptutor.runtime.capability_routing import route_explicit_quiz_request
 from deeptutor.services.session.workspace_preferences import (
     WORKSPACE_MODE_MASTERY,
     WORKSPACE_MODE_READING,
+    WORKSPACE_MODE_WATCHING,
 )
 
 from .._turn_runtime_shared import (
@@ -169,6 +170,16 @@ class TurnRequestPreparer:
         except PermissionError as exc:
             raise RuntimeError(str(exc)) from exc
 
+        if workspace_mode == WORKSPACE_MODE_WATCHING:
+            from deeptutor.video_learning import get_timed_media_store
+
+            media_id = _timed_media_id(payload.get("timed_media_id"))
+            if media_id:
+                # Resolve only in the authenticated owner's store before saving the binding.
+                get_timed_media_store().get(media_id)
+        else:
+            payload.pop("timed_media_id", None)
+            payload.pop("timed_media_viewport", None)
         try:
             from deeptutor.runtime.request_contracts import validate_capability_config
 
@@ -426,6 +437,8 @@ class TurnRequestPreparer:
         # non-empty legacy capability is persisted as part of migration.
         if workspace_mode_explicit or workspace_mode:
             preference_update["workspace_mode"] = workspace_mode
+        if workspace_mode == "immersive_watching":
+            preference_update["timed_media_id"] = _timed_media_id(payload.get("timed_media_id"))
         if course_id_explicit:
             preference_update["course_id"] = requested_course_id
 

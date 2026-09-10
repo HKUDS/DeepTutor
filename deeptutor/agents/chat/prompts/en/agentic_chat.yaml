@@ -127,7 +127,7 @@ notices:
   tool_result_snipped: "[earlier tool result snipped to stay within context window; call the same tool again if the content is still needed]"
   ask_user_resolved_directive: "[ask_user resolved. Continue the user's original request using these answers. Do not stop with an acknowledgement.]"
   too_many_tool_calls: "The model requested {requested} tools. At most {limit} can run in parallel in one round, so the list was truncated."
-  tool_unknown_error: "An unknown error occurred while executing {tool}."
+  tool_error: "{tool} failed: {error}"
   tool_not_available: "This tool is not available in this conversation. Only the tools listed in the prompt can be called."
   start_retrieval: "Starting retrieval"
   empty_tool_result: "The tool completed without returning text output."

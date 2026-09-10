@@ -31,3 +31,97 @@ def test_timed_media_id_is_saved_for_regenerate() -> None:
     snapshot = metadata["request_snapshot"]
     assert snapshot["timedMediaId"] == "0123456789abcdef"
     assert "timedMediaViewport" not in snapshot
+
+
+def test_watching_workspace_migrates_legacy_preferences() -> None:
+    from deeptutor.services.session._turn_runtime_shared import _workspace_mode
+    from deeptutor.services.session.workspace_preferences import upgrade_workspace_preferences
+
+    assert upgrade_workspace_preferences({"capability": "immersive_watching"}) == {
+        "capability": "immersive_watching",
+        "workspace_mode": "immersive_watching",
+    }
+    assert _workspace_mode("immersive_watching") == "immersive_watching"
+    assert upgrade_workspace_preferences({"capability": "chat", "timed_media_id": "stale"}) == {
+        "capability": "chat",
+        "timed_media_id": "stale",
+    }
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_watching_turn_persists_owner_validated_binding(tmp_path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+    from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+
+    store = SQLiteSessionStore(tmp_path / "sessions.db")
+    runtime = TurnRuntimeManager(store)
+    seen = []
+    monkeypatch.setattr(
+        "deeptutor.video_learning.get_timed_media_store",
+        lambda: SimpleNamespace(get=lambda value: seen.append(value)),
+    )
+
+    async def no_execution(execution):
+        pass
+
+    monkeypatch.setattr(runtime, "_run_turn", no_execution)
+    session, turn = await runtime.start_turn(
+        {
+            "content": "Explain here",
+            "capability": "immersive_watching",
+            "workspace_mode": "immersive_watching",
+            "timed_media_id": "0123456789abcdef",
+            "language": "en",
+        }
+    )
+    await runtime._executions[turn["id"]].task
+    loaded = await store.get_session(session["id"])
+    assert loaded["preferences"]["workspace_mode"] == "immersive_watching"
+    assert loaded["preferences"]["timed_media_id"] == "0123456789abcdef"
+    assert seen == ["0123456789abcdef"]
+
+
+@pytest.mark.asyncio
+async def test_watching_turn_rejects_another_owners_material(tmp_path, monkeypatch) -> None:
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+    from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+    from deeptutor.video_learning import TimedMediaNotFound
+
+    class PrivateStore:
+        def get(self, material_id):
+            raise TimedMediaNotFound("Video not found")
+
+    monkeypatch.setattr("deeptutor.video_learning.get_timed_media_store", PrivateStore)
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "sessions.db"))
+    with pytest.raises(TimedMediaNotFound):
+        await runtime.start_turn(
+            {
+                "content": "Explain here",
+                "capability": "immersive_watching",
+                "timed_media_id": "0123456789abcdef",
+                "language": "en",
+            }
+        )
+
+
+@pytest.mark.parametrize("origin", ["http://100.64.0.1:3000", "http://100.127.255.254:3000"])
+def test_private_overlay_invidious_origins(origin):
+    from deeptutor.video_learning.service import _validate_origin
+
+    assert _validate_origin(origin) == origin
+
+
+@pytest.mark.parametrize(
+    "origin", ["http://100.63.255.255:3000", "http://100.128.0.1:3000", "http://8.8.8.8:3000"]
+)
+def test_public_invidious_origins_still_require_https(origin):
+    from deeptutor.video_learning import TimedMediaError
+    from deeptutor.video_learning.service import _validate_origin
+
+    with pytest.raises(TimedMediaError, match="HTTPS"):
+        _validate_origin(origin)

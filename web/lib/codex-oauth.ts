@@ -180,6 +180,23 @@ export function cancelCodexLogin(): Promise<CodexOAuthStatus> {
   return requestCodex<CodexOAuthStatus>("/oauth/cancel", "POST");
 }
 
+/**
+ * Finish a waiting login from the callback address the browser landed on.
+ *
+ * The loopback listener normally receives it. Under Docker that listener is
+ * inside the container and its port is not published, so the browser reaches
+ * an address this process never hears about (#1252). The address is sent once
+ * and parsed server-side; it is never stored here.
+ */
+export function completeCodexLogin(
+  callbackUrl: string,
+  fetchImpl: typeof apiFetch = apiFetch,
+): Promise<CodexOAuthStatus> {
+  return requestCodex<CodexOAuthStatus>("/oauth/complete", "POST", fetchImpl, {
+    callback_url: callbackUrl,
+  });
+}
+
 export function refreshCodexModels(): Promise<CodexOAuthStatus> {
   return requestCodex<CodexOAuthStatus>("/models/refresh", "POST");
 }
@@ -219,6 +236,9 @@ export function codexErrorMessageKey(code: string | null): string {
   if (code === "login_timeout") return "codex.oauth.callbackMissing";
   if (code === "callback_unavailable") {
     return "codex.oauth.callbackUnavailable";
+  }
+  if (code === "callback_url_invalid") {
+    return "codex.oauth.callbackUrlInvalid";
   }
   if (code === "invalid_response") return "codex.oauth.invalidResponse";
   if (code === "reasoning_effort_unsupported") {

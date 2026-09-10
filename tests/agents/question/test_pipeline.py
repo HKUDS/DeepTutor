@@ -24,6 +24,8 @@ from deeptutor.agents.question.pipeline import (
     QuizPlan,
     QuizTemplate,
 )
+from deeptutor.runtime.agentic import LabeledStepResult
+from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 
 # ---------------------------------------------------------------------------
 # Test helpers
@@ -1028,3 +1030,103 @@ def test_parse_quiz_payload_tolerates_trailing_brace_prose() -> None:
     assert parsed["question"] == "What is 2+2?"
     assert parsed["correct_answer"] == "4"
     assert parsed["explanation"] == "basic arithmetic"
+
+
+# ---------------------------------------------------------------------------
+# plan starvation (#1318)
+# ---------------------------------------------------------------------------
+
+
+async def _plan_with_steps(
+    steps: list[LabeledStepResult],
+) -> tuple[QuizPlan, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Drive ``_plan`` against scripted labeled-step outcomes.
+
+    Returns the plan, the bus's progress events, and the kwargs each
+    ``_run_labeled_step`` call was made with.
+    """
+    pipeline = _make_pipeline()
+    bus = _StubStreamBus()
+    calls: list[dict[str, Any]] = []
+    remaining = list(steps)
+
+    async def _fake_step(**kwargs: Any) -> LabeledStepResult:
+        calls.append(kwargs)
+        return remaining.pop(0)
+
+    with patch.object(QuestionPipeline, "_run_labeled_step", side_effect=_fake_step):
+        plan = await pipeline._plan(
+            user_message="quiz me on gradients",
+            exploration_trace="",
+            num_questions=2,
+            difficulty="medium",
+            allowed_types=[],
+            per_type_counts={},
+            stream=bus,
+            client=object(),
+        )
+    return plan, bus.progress_events, calls
+
+
+_PLAN_JSON = json.dumps(
+    {
+        "analysis": "two ideas",
+        "templates": [
+            {"question_id": "q1", "topic": "chain rule", "question_type": "short_answer"},
+            {"question_id": "q2", "topic": "gradients", "question_type": "short_answer"},
+        ],
+    }
+)
+
+
+def test_plan_starved_by_reasoning_is_asked_again_with_less_thinking() -> None:
+    """The reporter's quiz: round one is all scratchpad, so no quiz shipped.
+
+    ``text=""`` alone could not justify a retry — it is also what a model
+    with nothing to say returns — so the plan step degraded to zero templates
+    and phase 3, which iterates them, emitted no questions at all.
+    """
+    plan, progress, calls = asyncio.run(
+        _plan_with_steps(
+            [
+                LabeledStepResult(label="UNKNOWN", text="", reasoning_only=True),
+                LabeledStepResult(label="FINISH", text=_PLAN_JSON),
+            ]
+        )
+    )
+
+    assert [t.topic for t in plan.templates] == ["chain rule", "gradients"]
+    assert len(calls) == 2
+    assert calls[0].get("reasoning_effort") is None
+    assert calls[1]["reasoning_effort"] == RETRY_REASONING_EFFORT
+    assert any("reasoning" in event["message"].lower() for event in progress)
+
+
+def test_plan_that_answers_first_time_is_not_asked_twice() -> None:
+    """The retry costs a whole LLM round; a healthy plan must not pay it."""
+    plan, _progress, calls = asyncio.run(
+        _plan_with_steps([LabeledStepResult(label="FINISH", text=_PLAN_JSON)])
+    )
+
+    assert len(plan.templates) == 2
+    assert len(calls) == 1
+
+
+def test_plan_still_empty_after_the_retry_keeps_the_existing_behaviour() -> None:
+    """Two starved rounds change nothing about what ``_plan`` returns.
+
+    Whether an under-filled plan should warn or fail is a separate product
+    question (#1325); this pins that the retry did not quietly answer it.
+    """
+    plan, progress, calls = asyncio.run(
+        _plan_with_steps(
+            [
+                LabeledStepResult(label="UNKNOWN", text="", reasoning_only=True),
+                LabeledStepResult(label="UNKNOWN", text="", reasoning_only=True),
+            ]
+        )
+    )
+
+    assert plan.templates == []
+    assert len(calls) == 2
+    assert any("2" in event["message"] or "0" in event["message"] for event in progress)

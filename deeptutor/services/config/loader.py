@@ -213,6 +213,7 @@ def get_agent_params(module_name: str) -> dict:
             - "question": Question module agents
             - "brainstorm": Brainstorm tool settings
             - "co_writer": CoWriter module agents
+            - "book": Book module agents (ideation / explore / spine / page plan)
             - "narrator": Narrator agent (independent, for TTS)
             - "llm_probe": Settings → LLM diagnostic probe
 
@@ -236,6 +237,12 @@ def get_agent_params(module_name: str) -> dict:
         "question": ("capabilities", "question"),
         "co_writer": ("capabilities", "co_writer"),
         "visualize": ("capabilities", "visualize"),
+        # Book was missing here, so ``get_agent_params("book")`` returned the
+        # 4096 global fallback *before* ever opening agents.yaml — a budget no
+        # user could raise, and one a reasoning model spends entirely on hidden
+        # tokens, leaving the spine stage an empty response and the book a
+        # single "Overview" chapter (#1316).
+        "book": ("capabilities", "book"),
         "brainstorm": ("tools", "brainstorm"),
         "vision_solver": ("plugins", "vision_solver"),
         "math_animator": ("plugins", "math_animator"),

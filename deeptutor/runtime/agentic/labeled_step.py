@@ -121,6 +121,19 @@ class LabeledStepResult:
     # Anthropic's signed thinking blocks, which must be replayed verbatim and
     # cannot be reconstructed from text.
     thinking_blocks: tuple[dict[str, Any], ...] = ()
+    # The round was all thinking and no answer: no label was ever emitted,
+    # ``text`` came back empty, and the model *did* reason (inline ``<think>``
+    # or the provider's own reasoning channel). A reasoning model pays for its
+    # hidden tokens out of the same ``max_tokens`` as its answer, so a long
+    # enough deliberation ends the stream before the label.
+    #
+    # Callers need this because ``text == ""`` cannot say which happened: the
+    # scratchpad is stripped on the way out precisely so a truncated one never
+    # reaches a reader, which leaves "starved mid-thought" and "the model
+    # genuinely said nothing" byte-identical. Only the first is worth asking
+    # again with thinking turned down. Quiz's plan step read the empty string
+    # as a plan of zero questions and emitted no quiz at all (#1318).
+    reasoning_only: bool = False
 
 
 async def run_labeled_step(
@@ -191,6 +204,9 @@ async def run_labeled_step(
     # existing behavior; we always force the cleanup when a prelude was
     # detected so the synthetic markers we recorded don't leak out.
     saw_pre_label_think = False
+    # No label ever arrived, so ``LABEL_UNKNOWN`` below is our word rather
+    # than the model's. Half of ``reasoning_only``; see the field's docstring.
+    never_labelled = False
     sub_trace_opened = False
     content_acc: list[str] = []
     # A reasoning model may open a ``<think>`` block *after* the protocol
@@ -593,6 +609,7 @@ async def run_labeled_step(
             await _emit_text(after_label)
         if label is None:
             label = LABEL_UNKNOWN
+            never_labelled = True
         if label_buf:
             await _emit_text(label_buf)
             label_buf = ""
@@ -627,12 +644,22 @@ async def run_labeled_step(
         text = clean_thinking_tags(text, binding, model)
     ordered_tool_calls = tc_acc.ordered()
     ordered_tool_calls = [tc for tc in ordered_tool_calls if tc.get("name")]
+    reasoning_acc_text = "".join(reasoning_acc)
     return LabeledStepResult(
         label=label,
         text=text,
         tool_calls=ordered_tool_calls,
         finish_reason=finish_reason_seen,
         stream_idle_timeout=stream_idle_timeout,
-        reasoning_content="".join(reasoning_acc),
+        reasoning_content=reasoning_acc_text,
         thinking_blocks=tuple(thinking_blocks),
+        # Tool calls count as reaching the answer: the round acted, it just
+        # did not narrate. Only a round that produced nothing but thinking
+        # is worth asking again.
+        reasoning_only=(
+            never_labelled
+            and not text
+            and not ordered_tool_calls
+            and bool(reasoning_acc_text or saw_pre_label_think)
+        ),
     )

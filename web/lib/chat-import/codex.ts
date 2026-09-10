@@ -2,9 +2,11 @@
  * Codex adapter. Sessions live at
  * `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl`, partitioned by date
  * rather than project, so we read each file's `session_meta.cwd` and group by
- * it ourselves. We use the clean `event_msg` layer (user_message / agent_message)
- * for the transcript and skip the lower-level response items, reasoning, and
- * sub-agent (`thread_source: "subagent"`) sessions.
+ * it ourselves. Older files carry the transcript on the clean `event_msg`
+ * layer (user_message / agent_message) and are read from there; current ones
+ * put it in `response_item` messages, whose user side also carries the
+ * harness's own injected context (see `isHarnessInjectedTurn`). Reasoning and
+ * sub-agent (`thread_source: "subagent"`) sessions are skipped either way.
  */
 
 import { iterLines, parseJsonl, readHead } from "./streaming";
@@ -54,6 +56,77 @@ function eventMessage(line: CodexLine): NormalizedMessage | null {
   if (!content) return null;
   const created = isoToEpochSeconds(line.timestamp, 0);
   return { role, content, created_at: created || undefined };
+}
+
+/** Opening tag of a top-level element, capturing its name. */
+const OPEN_TAG_RE = /^<([a-z][a-z0-9_-]*)(\s[^>]*)?>/;
+
+/**
+ * Whether a user turn was written by the harness rather than the person.
+ *
+ * Codex delivers its own context to the model as `role: "user"` items —
+ * `<environment_context>`, `<recommended_plugins>`, `<skill>`, `<task>`,
+ * `<heartbeat>`, `<turn_aborted>`, `<codex_internal_context>` and more; ten
+ * distinct tags across 631 local rollouts, about a third of every user turn
+ * on disk. Imported as-is they become the learner's own words, and the first
+ * one becomes the session title.
+ *
+ * The tag name is not the test — that list only grows, and a new one would
+ * walk straight through. What every injected turn shares is that it is
+ * *nothing but* markup: one or more balanced top-level elements with no prose
+ * of the person's own around them. So: consume top-level elements, and if a
+ * single character of anything else remains, this is a person's message.
+ *
+ * That is the safe direction, and it is doing real work. Codex prefixes an
+ * attachment turn with `<image name=[Image #1]></image>` and then the actual
+ * question — 76 such turns here, every one kept, because the question sits
+ * outside the element. Anything ambiguous (a same-named nested tag, an
+ * unclosed one, an attribute holding a `>`) falls out of the loop unmatched
+ * and is likewise kept. Losing a title to a block we failed to recognise is
+ * a blemish; eating the sentence someone actually typed is not.
+ */
+function isHarnessInjectedTurn(text: string): boolean {
+  let rest = text.trim();
+  let sawElement = false;
+  while (rest) {
+    const open = OPEN_TAG_RE.exec(rest);
+    if (!open) return false;
+    const closing = `</${open[1]}>`;
+    const end = rest.indexOf(closing, open[0].length);
+    if (end === -1) return false;
+    rest = rest.slice(end + closing.length).trim();
+    sawElement = true;
+  }
+  return sawElement;
+}
+
+function responseItemMessage(line: CodexLine): NormalizedMessage | null {
+  if (line.type !== "response_item") return null;
+  const p = line.payload ?? {};
+  if (p.type !== "message" || (p.role !== "user" && p.role !== "assistant")) {
+    return null;
+  }
+  if (!Array.isArray(p.content)) return null;
+
+  const parts = p.content.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const block = item as Record<string, unknown>;
+    if (block.type !== "input_text" && block.type !== "output_text") return [];
+    return typeof block.text === "string" ? [block.text] : [];
+  });
+  const content = cleanText(parts.join("\n\n"));
+  if (!content) return null;
+  // Only the user side: an assistant turn is the model's answer either way,
+  // and it does not carry these blocks.
+  if (p.role === "user" && isHarnessInjectedTurn(content)) return null;
+  const created = isoToEpochSeconds(line.timestamp, 0);
+  return { role: p.role, content, created_at: created || undefined };
+}
+
+function preferredMessages(lines: CodexLine[]): NormalizedMessage[] {
+  const legacy = lines.map(eventMessage).filter((message) => message !== null);
+  if (legacy.length) return legacy;
+  return lines.map(responseItemMessage).filter((message) => message !== null);
 }
 
 /** A scanned file plus the `YYYY-MM-DD` recovered from its directory trail. */
@@ -106,7 +179,7 @@ export async function scanCodex(
     const meta = readMeta(head);
     if (meta.isSubagent) continue;
     const cwd = meta.cwd || "(unknown)";
-    const firstUser = head.map(eventMessage).find((m) => m?.role === "user");
+    const firstUser = preferredMessages(head).find((m) => m.role === "user");
     const ref: SessionRef = {
       externalId: meta.id || handle.name.replace(/\.jsonl$/, ""),
       provisionalTitle: firstUser ? deriveTitle(firstUser.content) : "",
@@ -137,7 +210,8 @@ export async function parseCodexSession(
   ref: SessionRef,
 ): Promise<NormalizedSession | null> {
   const file = await ref.handle.getFile();
-  const messages: NormalizedMessage[] = [];
+  const legacyMessages: NormalizedMessage[] = [];
+  const responseItemMessages: NormalizedMessage[] = [];
   let cwd = ref.cwd;
   let isSubagent = false;
 
@@ -154,10 +228,13 @@ export async function parseCodexSession(
       if (p.thread_source === "subagent") isSubagent = true;
       continue;
     }
-    const msg = eventMessage(rec);
-    if (msg) messages.push(msg);
+    const legacyMessage = eventMessage(rec);
+    if (legacyMessage) legacyMessages.push(legacyMessage);
+    const responseItem = responseItemMessage(rec);
+    if (responseItem) responseItemMessages.push(responseItem);
   }
 
+  const messages = legacyMessages.length ? legacyMessages : responseItemMessages;
   if (isSubagent || !messages.length) return null;
   const fallbackTs = file.lastModified / 1000;
   const firstTs = messages.find((m) => m.created_at)?.created_at ?? fallbackTs;
