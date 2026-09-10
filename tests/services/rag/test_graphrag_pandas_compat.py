@@ -137,7 +137,7 @@ class TestGraphRAGEngineWithPandasCompat:
         # Mock the configure function and build_index to avoid actual operations
         with (
             patch(
-                "deeptutor.services.rag.pipelines.graphrag.engine.configure_pandas_for_graphrag"
+                "deeptutor.services.rag.pipelines.graphrag.pandas_compat.configure_pandas_for_graphrag"
             ) as mock_configure,
             patch("deeptutor.services.rag.pipelines.graphrag.engine._load_config"),
             patch("deeptutor.services.rag.pipelines.graphrag.engine._probe_embedding_model_impl"),
@@ -167,7 +167,7 @@ class TestGraphRAGEngineWithPandasCompat:
         # Mock the configure function and the entire storage chain to avoid actual file operations
         with (
             patch(
-                "deeptutor.services.rag.pipelines.graphrag.engine.configure_pandas_for_graphrag"
+                "deeptutor.services.rag.pipelines.graphrag.pandas_compat.configure_pandas_for_graphrag"
             ) as mock_configure,
             patch("graphrag_storage.create_storage") as mock_storage,
             patch(
