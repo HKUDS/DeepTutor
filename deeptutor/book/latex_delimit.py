@@ -551,6 +551,32 @@ def _apply_block_layers(block: Any, layers: list[str]) -> None:
     block.updated_at = time()
 
 
+def _resolve_write_storage(book_id: str) -> Any:
+    """Pick the storage layer the page API will actually serve *book_id* from.
+
+    ``resolve_book`` (multi_user/book_access) serves shared books from the
+    admin workspace; the admin + student views of a production shared textbook
+    all read that layer. A CLI run's ``get_book_storage()`` follows the
+    *current user*, so ``-u deeptutor`` against a shared book wrote (a copy
+    in) the user workspace the API never read — the 09-27 double-workspace
+    miss. Probe the admin layer first (a book living there is a shared
+    textbook, and that is the layer every reader hits), then fall back to the
+    current user's own workspace; when neither has the book, return own so the
+    familiar not-found error still surfaces.
+    """
+    from deeptutor.multi_user.paths import get_admin_path_service
+
+    from .storage import BookStorage, get_book_storage
+
+    admin = BookStorage(path_service=get_admin_path_service())
+    if admin.load_book(book_id) is not None:
+        return admin
+    own = get_book_storage()
+    if own.load_book(book_id) is not None:
+        return own
+    return own
+
+
 def fix_book(book_id: str, *, dry_run: bool = False, storage: Any = None) -> dict[str, Any]:
     """Walk an existing book's reading blocks, delimiting bare LaTeX in place.
 
@@ -560,13 +586,15 @@ def fix_book(book_id: str, *, dry_run: bool = False, storage: Any = None) -> dic
     makes the fix API-visible. Returns a summary; with ``dry_run`` nothing is
     persisted. Mutating runs bump the book ``revision`` so optimistic editors
     notice the rewrite.
+
+    Without an injected ``storage`` the write layer is resolved against where
+    the book actually lives (admin shared layer when the book is there, else
+    the current user's own workspace) — see :func:`_resolve_write_storage`.
     """
     from .engine import BookEngine
 
     if storage is None:
-        from .storage import get_book_storage
-
-        storage = get_book_storage()
+        storage = _resolve_write_storage(book_id)
     engine = BookEngine(storage=storage)
     book = engine.load_book(book_id)
     if book is None:

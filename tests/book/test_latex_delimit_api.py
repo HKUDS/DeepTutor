@@ -140,3 +140,175 @@ def test_fix_book_makes_delimited_formula_visible_through_page_api(api_env) -> N
     assert "$\\overrightarrow{OC}$" in after_body
     # 幂等：再跑一遍不产生新改动。
     assert fix_book(BOOK_ID, storage=admin_storage)["blocks_fixed"] == 0
+
+
+def _teacher_user_context():
+    """把 CLI 侧当前用户设为 teacher1——模拟 ``-u <user>`` 跑批形态。
+
+    生产 09-27 铁证：``fix_book -u deeptutor`` 的写层跟着当前用户走，
+    共享书却躺在 admin 层，写进用户工作区 = API 永远读不到。这里让
+    ``get_book_storage()`` 解析到 teacher1 自己的工作区来复刻该形态。
+    """
+
+    from contextlib import contextmanager
+
+    from deeptutor.multi_user.context import reset_current_user, set_current_user
+    from deeptutor.multi_user.identity import get_user
+    from deeptutor.multi_user.models import CurrentUser
+    from deeptutor.multi_user.paths import scope_for_user
+
+    @contextmanager
+    def ctx():
+        raw = get_user("teacher1")
+        user = CurrentUser(
+            id=raw["id"],
+            username="teacher1",
+            role=raw["role"],
+            scope=scope_for_user(raw["id"], is_admin=False),
+        )
+        token = set_current_user(user)
+        try:
+            yield user
+        finally:
+            reset_current_user(token)
+
+    return ctx()
+
+
+def test_fix_book_without_storage_writes_admin_layer_for_shared_book(api_env) -> None:
+    """场景 A（生产形态）：书只在 admin 层、无 storage 注入——必须写 admin 层。
+
+    修复前教师视角 API 裸着；不带 storage 参数跑 fix_book（当前用户是
+    teacher1，其工作区没有这本书）后，同一请求必须看见定界公式。
+    """
+    from deeptutor.book.storage import BookStorage, get_book_storage
+    from deeptutor.multi_user.paths import (
+        get_admin_path_service,
+        get_path_service_for_scope,
+    )
+
+    client, admin_storage = api_env
+    before = client.get(f"/api/books/{BOOK_ID}/pages/{PAGE_ID}", headers=_headers())
+    assert before.status_code == 200
+    assert "$\\overrightarrow{OA}$" not in before.json()["page"]["blocks"][0]["payload"]["body"]
+
+    with _teacher_user_context() as teacher:
+        own_storage = get_book_storage()
+        # 前置自证：当前用户工作区确实没有这本书（09-27 的双工作区形态）。
+        assert own_storage.book_exists(BOOK_ID) is False
+        assert own_storage.path_service.workspace_root != (
+            admin_storage.path_service.workspace_root
+        )
+
+        summary = fix_book(BOOK_ID)
+
+        assert summary["blocks_fixed"] == 1
+        # 写进去的是 admin 层；用户工作区不得多出这本书的任何文件。
+        assert BookStorage(path_service=get_admin_path_service()).book_exists(BOOK_ID)
+        assert (
+            BookStorage(path_service=get_path_service_for_scope(teacher.scope)).book_exists(BOOK_ID)
+            is False
+        )
+
+    after = client.get(f"/api/books/{BOOK_ID}/pages/{PAGE_ID}", headers=_headers())
+    assert after.status_code == 200
+    assert "$\\overrightarrow{OA}$" in after.json()["page"]["blocks"][0]["payload"]["body"]
+    # 幂等：同形态再跑一遍，admin 层无新改动。
+    with _teacher_user_context():
+        assert fix_book(BOOK_ID)["blocks_fixed"] == 0
+
+
+def test_fix_book_without_storage_writes_own_layer_for_own_book(api_env) -> None:
+    """场景 B（回归）：书只在当前用户自己的工作区——own 写路径不变。
+
+    own 层的书 resolve_book 走 own-first，API 读的就是用户工作区这份；
+    fix_book 不带 storage 也必须落在这里并让 API 可见。
+    """
+    from deeptutor.book.models import (
+        Block,
+        BlockStatus,
+        BlockType,
+        Page,
+        PageStatus,
+    )
+    from deeptutor.book.storage import get_book_storage
+
+    client, _admin_storage = api_env
+    own_book_id = "bk_own_math"
+    own_page = Page(
+        id="pg_own1",
+        book_id=own_book_id,
+        title="页8-own",
+        status=PageStatus.READY,
+        blocks=[
+            Block(
+                type=BlockType.READING,
+                status=BlockStatus.READY,
+                params={"body": PAGE8_BODY, "variant": "prose"},
+                payload={"body": PAGE8_BODY, "format": "markdown"},
+            )
+        ],
+    )
+    with _teacher_user_context():
+        own_storage = get_book_storage()
+        own_storage.save_book(Book(id=own_book_id, title="我自己的书"))
+        own_storage.save_page(own_page)
+
+        before = client.get(f"/api/books/{own_book_id}/pages/pg_own1", headers=_headers())
+        assert before.status_code == 200
+        assert "$\\overrightarrow{OA}$" not in before.json()["page"]["blocks"][0]["payload"]["body"]
+
+        summary = fix_book(own_book_id)
+
+        assert summary["blocks_fixed"] == 1
+        assert own_storage.load_page(own_book_id, "pg_own1") is not None
+
+    after = client.get(f"/api/books/{own_book_id}/pages/pg_own1", headers=_headers())
+    assert after.status_code == 200
+    assert "$\\overrightarrow{OA}$" in after.json()["page"]["blocks"][0]["payload"]["body"]
+
+
+def test_fix_book_prefers_admin_layer_when_book_exists_in_both(api_env) -> None:
+    """生产 09-27 原始形态：同一本书在用户工作区与 admin 层各有一份。
+
+    ``-u deeptutor`` 跑批时用户工作区里有副本，API 的 admin/学生视角读的
+    却始终是 admin 层——探测必须 admin 层优先，否则修的仍是 API 读不到的
+    那份。断言 admin 层 payload 被修、用户自己的副本不被顺手改写。
+    """
+    from deeptutor.book.models import (
+        Block,
+        BlockStatus,
+        BlockType,
+        Page,
+        PageStatus,
+    )
+    from deeptutor.book.storage import BookStorage, get_book_storage
+    from deeptutor.multi_user.paths import get_admin_path_service
+
+    _client, admin_storage = api_env
+    stale_own_copy = Page(
+        id=PAGE_ID,
+        book_id=BOOK_ID,
+        title="页8-own-copy",
+        status=PageStatus.READY,
+        blocks=[
+            Block(
+                type=BlockType.READING,
+                status=BlockStatus.READY,
+                params={"body": PAGE8_BODY, "variant": "prose"},
+                payload={"body": PAGE8_BODY, "format": "markdown"},
+            )
+        ],
+    )
+    with _teacher_user_context():
+        own_storage = get_book_storage()
+        own_storage.save_book(Book(id=BOOK_ID, title="用户工作区里的副本"))
+        own_storage.save_page(stale_own_copy)
+
+        assert fix_book(BOOK_ID)["blocks_fixed"] == 1
+
+        # admin 层（API 服务层）被修到；用户工作区副本原样保留。
+        admin_after = BookStorage(path_service=get_admin_path_service()).load_page(BOOK_ID, PAGE_ID)
+        assert "$\\overrightarrow{OA}$" in admin_after.blocks[0].payload["body"]
+        own_after = own_storage.load_page(BOOK_ID, PAGE_ID)
+        assert "$\\overrightarrow{OA}$" not in own_after.blocks[0].payload["body"]
