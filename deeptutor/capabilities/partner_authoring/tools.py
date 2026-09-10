@@ -38,7 +38,7 @@ class ProposePartnerTool(BaseTool):
                     },
                     "language": {
                         "type": "string",
-                        "description": "Preferred response language, normally en or zh.",
+                        "description": "Preferred response language as a BCP-47 code (en, zh, ja, pl, …).",
                     },
                     "emoji": {"type": "string", "description": "One representative emoji."},
                     "color": {

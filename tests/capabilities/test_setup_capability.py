@@ -181,6 +181,32 @@ async def test_apply_rejects_a_value_outside_the_offered_choices(
 
 
 @pytest.mark.asyncio
+async def test_apply_accepts_an_unlisted_reply_language(
+    isolated_settings: Path,
+) -> None:
+    from deeptutor.services.settings.interface_settings import get_response_language
+
+    outcome = await apply_setting("interface.response_language", "pl")
+
+    assert outcome.ok
+    assert outcome.value == "pl"
+    assert get_response_language() == "pl"
+
+
+@pytest.mark.asyncio
+async def test_apply_rejects_a_free_form_reply_language(
+    isolated_settings: Path,
+) -> None:
+    from deeptutor.services.settings.interface_settings import get_response_language
+
+    outcome = await apply_setting("interface.response_language", "klingon")
+
+    assert not outcome.ok
+    assert "BCP-47" in outcome.error
+    assert get_response_language() == "en"
+
+
+@pytest.mark.asyncio
 async def test_apply_rejects_an_unknown_key(isolated_settings: Path) -> None:
     outcome = await apply_setting("nope.nope", "x")
 

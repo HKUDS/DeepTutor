@@ -52,6 +52,46 @@ def test_agentic_chat_final_prompt_uses_selected_language(
     assert "You are DeepTutor" in en_prompt
 
 
+def test_agentic_chat_prompt_keeps_japanese_as_reply_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeRegistry:
+        def build_prompt_text(self, *_args, **_kwargs) -> str:
+            return "- tool"
+
+    monkeypatch.setattr(
+        "deeptutor.agents.loop.pipeline.get_tool_registry",
+        lambda: FakeRegistry(),
+    )
+
+    from deeptutor.core.context import UnifiedContext
+
+    ctx = UnifiedContext()
+    ja_prompt = AgenticChatPipeline(language="ja")._build_system_prompt([], ctx)
+
+    # The saved reply language reaches the directive verbatim instead of
+    # collapsing to English, while the en/zh prompt pack is still selected by
+    # the locale derived from it (English here, since there is no "ja" pack).
+    assert "Write ALL reader-facing text strictly in 日本語" in ja_prompt
+    assert "Write ALL reader-facing text (titles, prose" not in ja_prompt
+    assert "You are DeepTutor" in ja_prompt
+
+
+def test_chat_assembler_keeps_requested_reply_language_for_directive() -> None:
+    from deeptutor.capabilities.protocol import PromptBlock
+
+    assembler = ChatPromptAssembler(
+        prompts={"general": "You are DeepTutor"},
+        language="ja",
+    )
+
+    prompt = assembler.render([PromptBlock("general", "You are DeepTutor")])
+
+    assert "Write ALL reader-facing text strictly in 日本語" in prompt
+    assert "请严格使用中文" not in prompt
+    assert "Write ALL reader-facing text (titles, prose" not in prompt
+
+
 def test_mastery_plugin_system_prompt_uses_localized_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
