@@ -239,7 +239,8 @@ export type AssessmentSource =
   | "deep_question"
   | "mastery_path"
   | "immersive_reading"
-  | "book";
+  | "book"
+  | "partner_chat";
 
 export type ScoreTrend = "new" | "improved" | "declined" | "unchanged";
 

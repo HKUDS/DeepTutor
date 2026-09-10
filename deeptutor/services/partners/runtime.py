@@ -457,6 +457,7 @@ class PartnerRunner:
                     msg.actor,
                     store,
                     legacy_own_memory=get_current_path_service(),
+                    partner_name=self.config.name,
                 )
                 with partner_turn_context(turn_context):
                     event_stream = get_turn_engine().execute(context)

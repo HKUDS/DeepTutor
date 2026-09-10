@@ -96,7 +96,9 @@ def _json_loads(value: str | None, default: Any) -> Any:
 # this id prefix as their discriminator (see ``SQLiteSessionStore._WHERE_*``).
 _IMPORTED_ID_PREFIX = "imported_"
 _ID_SAFE = re.compile(r"[^A-Za-z0-9_-]")
-ASSESSMENT_SOURCES = frozenset({"deep_question", "mastery_path", "immersive_reading", "book"})
+ASSESSMENT_SOURCES = frozenset(
+    {"deep_question", "mastery_path", "immersive_reading", "book", "partner_chat"}
+)
 SCORE_TRENDS = frozenset({"new", "improved", "declined", "unchanged"})
 ACTIVE_TURN_STATUSES = frozenset({"queued", "running", "waiting_input"})
 TERMINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled"})
@@ -736,6 +738,33 @@ class SQLiteSessionStore:
         session_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._run(self._create_session_sync, title, session_id)
+
+    async def ensure_notebook_session(self, session_id: str, title: str) -> bool:
+        """Insert a placeholder session row so notebook-only sources can file
+        entries against it (partner chat has no rows in this store otherwise).
+
+        Returns ``True`` when a row was created, ``False`` when it existed.
+        """
+        return await self._run(self._ensure_notebook_session_sync, session_id, title)
+
+    def _ensure_notebook_session_sync(self, session_id: str, title: str) -> bool:
+        resolved_id = (session_id or "").strip()
+        if not resolved_id:
+            raise ValueError("ensure_notebook_session requires a session_id")
+        now = time.time()
+        with self._connect() as conn:
+            exists = conn.execute("SELECT id FROM sessions WHERE id = ?", (resolved_id,)).fetchone()
+            if exists is not None:
+                return False
+            conn.execute(
+                """
+                INSERT INTO sessions (id, title, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (resolved_id, (title or "New conversation").strip()[:100], now, now),
+            )
+            conn.commit()
+        return True
 
     def _get_session_sync(self, session_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
@@ -3050,9 +3079,24 @@ def get_sqlite_session_store() -> SQLiteSessionStore:
     return _instances[key]
 
 
+def get_sqlite_session_store_for(path_service: Any) -> SQLiteSessionStore:
+    """Store for an explicit path service (a scope other than the current one).
+
+    Partner turns run inside the partner's synthetic scope but record question
+    bank entries into the learner-facing bank; the target scope's path service
+    resolves its chat-history db, and instances stay cached per resolved path.
+    """
+    db_path = path_service.get_chat_history_db().resolve()
+    key = str(db_path)
+    if key not in _instances:
+        _instances[key] = SQLiteSessionStore(db_path=db_path)
+    return _instances[key]
+
+
 __all__ = [
     "QuestionBankQuery",
     "SQLiteSessionStore",
     "get_sqlite_session_store",
+    "get_sqlite_session_store_for",
     "make_imported_session_id",
 ]

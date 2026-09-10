@@ -352,6 +352,23 @@ def user_has_question_bank() -> bool:
         return False
 
 
+def partner_can_record_questions() -> bool:
+    """Whether this turn runs inside a partner conversation.
+
+    Partner turns mount ``question_bank`` even when the bank is still empty:
+    recording the first wrong question is exactly the point (#1244) — the
+    tool's ``record`` action files the mistake the learner just owned up to
+    into the bank their family reviews. The partner context is read lazily
+    (import-time this would be a cycle through the partners package).
+    """
+    try:
+        from deeptutor.services.partners.interaction import get_partner_turn_context
+
+        return get_partner_turn_context() is not None
+    except Exception:
+        return False
+
+
 __all__ = [
     "AUTO_MOUNTED_TOOLS",
     "ToolMountFlags",
@@ -359,6 +376,7 @@ __all__ = [
     "admin_enabled_optional_tools",
     "compose_enabled_tools",
     "default_optional_tools",
+    "partner_can_record_questions",
     "user_has_mastery_topics",
     "user_has_memory",
     "user_has_notebooks",
