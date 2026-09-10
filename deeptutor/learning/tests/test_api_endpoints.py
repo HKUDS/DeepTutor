@@ -63,7 +63,7 @@ class TestReadingLearningRecords:
             result_type="card",
         )
 
-        response = client.get("/api/v1/learning/reading/records")
+        response = client.get("/api/mastery-paths/reading/records")
 
         assert response.status_code == 200, response.text
         data = response.json()

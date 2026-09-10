@@ -416,8 +416,8 @@ class LearnerProfile(BaseModel):
                 self.notes.strip(),
             )
         )
- 
- 
+
+
 ReadingExtensionResultType = Literal[
     "card",
     "quiz",

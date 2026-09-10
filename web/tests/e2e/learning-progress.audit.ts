@@ -5,14 +5,14 @@ test("learning progress uses the account reading records contract", async ({
 }, testInfo) => {
   const requestedPaths: string[] = [];
 
-  await page.route("**/api/v1/**", async (route) => {
+  await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     requestedPaths.push(path);
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });
 
-    if (path === "/api/v1/auth/status") {
+    if (path === "/api/auth/status") {
       return json({
         enabled: false,
         authenticated: true,
@@ -20,8 +20,8 @@ test("learning progress uses the account reading records contract", async ({
         is_admin: true,
       });
     }
-    if (path === "/api/v1/settings/ui") return json({ language: "en" });
-    if (path === "/api/v1/settings") {
+    if (path === "/api/settings/ui") return json({ language: "en" });
+    if (path === "/api/settings") {
       return json({
         ui: { theme: "system", language: "en", response_language: "en" },
         catalog: {
@@ -52,7 +52,7 @@ test("learning progress uses the account reading records contract", async ({
         },
       });
     }
-    if (path === "/api/v1/learning/reading/records") {
+    if (path === "/api/mastery-paths/reading/records") {
       return json({
         progress: [
           {
@@ -109,6 +109,6 @@ test("learning progress uses the account reading records contract", async ({
     fullPage: true,
   });
 
-  expect(requestedPaths).toContain("/api/v1/learning/reading/records");
+  expect(requestedPaths).toContain("/api/mastery-paths/reading/records");
   expect(requestedPaths).not.toContain("/api/v1/learning/records");
 });

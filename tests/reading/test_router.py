@@ -357,7 +357,7 @@ def test_epub_contract_exposes_source_refs_original_and_position(client: TestCli
 
 def test_saved_reading_position_updates_account_learning_record(client: TestClient) -> None:
     material = _upload(client)
-    base = f"/api/v1/reading/materials/{material['material_id']}/position"
+    base = f"/api/reading/materials/{material['material_id']}/position"
 
     assert client.put(base, json={"locator": 1, "percentage": 0.2}).status_code == 200
     assert client.put(base, json={"locator": 2, "percentage": 0.7}).status_code == 200

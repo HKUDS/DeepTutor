@@ -21,7 +21,7 @@ test("learning records request the account reading summary", async () => {
 
   try {
     const records = await listLearningRecords();
-    assert.equal(requestedUrl, "/api/v1/learning/reading/records");
+    assert.equal(requestedUrl, "/api/mastery-paths/reading/records");
     assert.equal(requestedInit?.method, undefined);
     assert.deepEqual(requestedInit?.credentials, "include");
     assert.deepEqual(records, { progress: [], activities: [] });
