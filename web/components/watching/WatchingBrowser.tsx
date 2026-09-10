@@ -24,6 +24,8 @@ import {
   type InvidiousPlaylist,
 } from "@/lib/video-learning-api";
 
+/* eslint-disable @next/next/no-img-element -- Invidious thumbnails come from arbitrary user instances. */
+
 type BrowserView =
   "feed" | "playlists" | "search" | "playlist" | "popular" | "trending";
 export function WatchingBrowser({

@@ -1179,7 +1179,7 @@ export default function ChatWorkspace({
       setSessionLoading(false);
       setSessionLoadFailed(false);
     }
-  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId]);
+  }, [sessionIdParam, startSessionLoad, newSession, state.sessionId, watching]);
 
   // When a new session_id is assigned by the server, update the URL
   useEffect(() => {

@@ -1001,6 +1001,8 @@
   "Initial documents": "Initial documents",
   "e.g. project-papers": "e.g. project-papers",
   "Processing…": "Processing…",
+  "Ready · {{count}} doc": "Ready · {{count}} doc",
+  "Ready · {{count}} docs": "Ready · {{count}} docs",
   "Dismiss": "Dismiss",
   "Files": "Files",
   "Add documents": "Add documents",
