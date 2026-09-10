@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
+  normalizeLanguage,
   resolveResponseLanguage,
   writeStoredLanguage,
   writeStoredResponseLanguage,
@@ -64,14 +65,15 @@ export function useSetupSync(
           theme?: unknown;
         };
         if (cancelled) return;
-        if (payload.language === "zh" || payload.language === "en") {
-          writeStoredLanguage(payload.language);
+        if (typeof payload.language === "string") {
+          const language = normalizeLanguage(payload.language);
+          writeStoredLanguage(language);
           writeStoredResponseLanguage(
             resolveResponseLanguage(
               typeof payload.response_language === "string"
                 ? payload.response_language
                 : null,
-              payload.language,
+              language,
             ),
           );
         }
