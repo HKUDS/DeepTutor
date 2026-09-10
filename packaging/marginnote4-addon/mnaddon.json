@@ -1,0 +1,8 @@
+{
+  "addonid": "marginnote.extension.deeptutor-sync-native",
+  "author": "Constallan",
+  "title": "DeepTutor Sync",
+  "version": "1.1.2",
+  "marginnote_version_min": "3.7.21",
+  "cert_key": ""
+}
