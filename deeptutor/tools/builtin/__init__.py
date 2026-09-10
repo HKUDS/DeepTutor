@@ -379,6 +379,129 @@ class PaperSearchToolWrapper(_PromptHintsMixin, BaseTool):
         )
 
 
+class ZoteroSearchToolWrapper(_PromptHintsMixin, BaseTool):
+    """Search the user-supplied Zotero library through the public Web API."""
+
+    _ERROR_MESSAGES = {
+        "invalid_api_key": "The Zotero API key is invalid or cannot access this private library.",
+        "library_not_found": "No Zotero library was found for that user ID.",
+        "rate_limited": "Zotero rate-limited the search. Please try again later.",
+        "network_unavailable": "Zotero is temporarily unavailable. Check the network and try again.",
+        "invalid_response": "Zotero returned an unexpected response.",
+    }
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="zotero_search",
+            description=(
+                "Search a Zotero user library by title, creator, or year. Requires the "
+                "numeric Zotero user ID; an API key is needed only for private libraries."
+            ),
+            parameters=[
+                ToolParameter(name="query", type="string", description="Search query."),
+                ToolParameter(
+                    name="user_id",
+                    type="string",
+                    description="Numeric Zotero user ID from the Zotero account settings page.",
+                ),
+                ToolParameter(
+                    name="api_key",
+                    type="string",
+                    description="Zotero API key, required only for a private library.",
+                    required=False,
+                    default="",
+                    sensitive=True,
+                ),
+                ToolParameter(
+                    name="max_results",
+                    type="integer",
+                    description="Maximum references to return (1-25).",
+                    required=False,
+                    default=5,
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.tools.zotero_search import ZoteroSearchClient, ZoteroSearchError
+
+        query = str(kwargs.get("query") or "").strip()
+        user_id = str(kwargs.get("user_id") or "").strip()
+        if not query:
+            return ToolResult(content="Error: query is required.", success=False)
+        if not user_id:
+            return ToolResult(
+                content="Error: user_id is required. It is available in Zotero account settings.",
+                success=False,
+            )
+
+        try:
+            items = await ZoteroSearchClient().search(
+                query=query,
+                user_id=user_id,
+                api_key=str(kwargs.get("api_key") or ""),
+                max_results=kwargs.get("max_results", 5),
+            )
+        except ZoteroSearchError as exc:
+            message = self._ERROR_MESSAGES.get(
+                exc.code, "Zotero search failed. Check the user ID and try again."
+            )
+            return ToolResult(
+                content=message,
+                sources=[],
+                metadata={
+                    "provider": "zotero",
+                    "items": [],
+                    "error": exc.code,
+                    "status_code": exc.status_code,
+                },
+                success=False,
+            )
+        except ValueError:
+            return ToolResult(
+                content="Error: Zotero user_id and max_results are invalid.",
+                success=False,
+                metadata={"provider": "zotero", "items": []},
+            )
+
+        if not items:
+            return ToolResult(
+                content="No Zotero references matched this query.",
+                sources=[],
+                metadata={"provider": "zotero", "items": []},
+            )
+
+        lines: list[str] = []
+        for item in items:
+            year = item.get("year") or "undated"
+            lines.append(f"**{item['title']}** ({year})")
+            if item.get("authors"):
+                lines.append(f"Authors: {', '.join(item['authors'])}")
+            if item.get("doi"):
+                lines.append(f"DOI: {item['doi']}")
+            if item.get("url"):
+                lines.append(f"URL: {item['url']}")
+            if item.get("abstract"):
+                lines.append(f"Abstract: {item['abstract'][:400]}")
+            lines.append("")
+
+        return ToolResult(
+            content="\n".join(lines),
+            sources=[
+                {
+                    "type": "reference",
+                    "provider": "zotero",
+                    "title": item.get("title", ""),
+                    "url": item.get("zotero_url") or item.get("url", ""),
+                    "doi": item.get("doi", ""),
+                    "zotero_key": item.get("zotero_key", ""),
+                }
+                for item in items
+            ],
+            metadata={"provider": "zotero", "items": items},
+        )
+
+
 class GeoGebraAnalysisTool(_PromptHintsMixin, BaseTool):
     """Analyze a math-problem image and generate GeoGebra visualization commands."""
 
@@ -1549,6 +1672,7 @@ USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
     "brainstorm",
     "web_search",
     "paper_search",
+    "zotero_search",
     "reason",
     "geogebra_analysis",
     "imagegen",
@@ -1634,6 +1758,7 @@ __all__ = [
     "ListNotebookTool",
     "PaperSearchToolWrapper",
     "QuestionBankTool",
+    "ZoteroSearchToolWrapper",
     "PartnerMemorizeTool",
     "PartnerReadTool",
     "PartnerSearchTool",
