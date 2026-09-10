@@ -195,6 +195,19 @@ class LinkedFolderInfo(BaseModel):
     path: str
     added_at: str
     file_count: int
+    last_sync: str | None = None
+
+
+class SyncFolderResponse(BaseModel):
+    """Response model for a linked-folder sync request."""
+
+    message: str
+    folder_path: str | None = None
+    files: list[str]
+    new_files: int
+    modified_files: int
+    file_count: int
+    task_id: str | None
 
 
 class SupportedFileTypesInfo(BaseModel):
@@ -1089,6 +1102,17 @@ async def run_upload_processing_task(
 
             if not staged_files:
                 _task_log(task_id, "No new files to process (all duplicates or invalid)")
+                if folder_id:
+                    try:
+                        manager = get_kb_manager()
+                        manager.update_folder_sync_state(kb_name, folder_id, uploaded_file_paths)
+                        _task_log(task_id, f"Updated folder sync state: {folder_id}")
+                    except Exception as sync_err:
+                        _task_log(
+                            task_id,
+                            f"Folder sync state update failed: {sync_err}",
+                            level="warning",
+                        )
                 progress_tracker.update(
                     ProgressStage.COMPLETED,
                     message_key="No new files to process (all duplicates or invalid)",
@@ -1102,7 +1126,6 @@ async def run_upload_processing_task(
                 return
 
             index_result = await adder.process_new_documents(staged_files)
-            processed_files = index_result.processed_files
             _task_log(task_id, f"Indexed {index_result.processed_count} file(s)")
 
             if index_result.has_failures:
@@ -1151,12 +1174,14 @@ async def run_upload_processing_task(
             )
             adder.update_metadata(index_result.processed_count)
 
-            if folder_id and processed_files:
+            if folder_id:
                 try:
                     manager = get_kb_manager()
-                    manager.update_folder_sync_state(
-                        kb_name, folder_id, [str(f) for f in processed_files]
-                    )
+                    # Indexed paths are the staged copies under raw/.
+                    # Folder change detection keys state by the original
+                    # source paths, so persist the complete successful input
+                    # batch instead of the internal staging paths.
+                    manager.update_folder_sync_state(kb_name, folder_id, uploaded_file_paths)
                     _task_log(task_id, f"Updated folder sync state: {folder_id}")
                 except Exception as sync_err:
                     _task_log(
@@ -3917,6 +3942,7 @@ async def unlink_folder(kb_name: str, folder_id: str):
     """Unlink a folder from a knowledge base."""
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
+        _assert_not_connected_kb(resolved_name, _load_kb_entry_or_404(manager, resolved_name))
         success = manager.unlink_folder(resolved_name, folder_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"Folder '{folder_id}' not found")
@@ -3930,7 +3956,10 @@ async def unlink_folder(kb_name: str, folder_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/knowledge-bases/{kb_name}/sync-folder/{folder_id}")
+@router.post(
+    "/knowledge-bases/{kb_name}/sync-folder/{folder_id}",
+    response_model=SyncFolderResponse,
+)
 async def sync_folder(kb_name: str, folder_id: str, background_tasks: BackgroundTasks):
     """
     Sync files from a linked folder to the knowledge base.
@@ -3960,7 +3989,19 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         files_to_process = changes["new_files"] + changes["modified_files"]
 
         if not files_to_process:
-            return {"message": "No new or modified files to sync", "files": [], "file_count": 0}
+            # A completed scan is a successful sync even when it found no work.
+            # Persisting this timestamp makes the UI's "last successful sync"
+            # truthful for empty and already-current folders as well.
+            manager.update_folder_sync_state(kb_name, folder_id, [])
+            return SyncFolderResponse(
+                message="No new or modified files to sync",
+                folder_path=folder_path,
+                files=[],
+                new_files=0,
+                modified_files=0,
+                file_count=0,
+                task_id=None,
+            )
 
         logger.info(
             f"Syncing {len(files_to_process)} files from folder '{folder_path}' to KB '{kb_name}'"
@@ -3992,14 +4033,15 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
             owner=get_current_user(),
         )
 
-        return {
-            "message": f"Syncing {len(files_to_process)} files from linked folder",
-            "folder_path": folder_path,
-            "new_files": changes["new_count"],
-            "modified_files": changes["modified_count"],
-            "file_count": len(files_to_process),
-            "task_id": task_id,
-        }
+        return SyncFolderResponse(
+            message=f"Syncing {len(files_to_process)} files from linked folder",
+            folder_path=folder_path,
+            files=files_to_process,
+            new_files=changes["new_count"],
+            modified_files=changes["modified_count"],
+            file_count=len(files_to_process),
+            task_id=task_id,
+        )
     except HTTPException:
         raise
     except ValueError:

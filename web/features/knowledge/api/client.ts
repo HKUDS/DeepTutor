@@ -787,6 +787,24 @@ export interface LinkedFolderProbe {
   error: string | null;
 }
 
+export interface LinkedFolderInfo {
+  id: string;
+  path: string;
+  added_at: string;
+  file_count: number;
+  last_sync: string | null;
+}
+
+export interface SyncFolderResponse {
+  message: string;
+  folder_path?: string | null;
+  files: string[];
+  new_files: number;
+  modified_files: number;
+  file_count: number;
+  task_id: string | null;
+}
+
 export async function probeLinkedFolder(payload: {
   folderPath: string;
   provider: string;
@@ -836,6 +854,85 @@ export async function connectLinkedFolder(payload: {
     rag_provider: string;
     warnings: string[];
   };
+}
+
+// ── Linked document folders ──────────────────────────────────────────
+
+export async function listLinkedFolders(
+  kbName: string,
+  options?: { signal?: AbortSignal },
+): Promise<LinkedFolderInfo[]> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders`),
+    { signal: options?.signal },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(
+        res,
+        `Failed to list linked folders (${res.status})`,
+      ),
+    );
+  }
+  return (await res.json()) as LinkedFolderInfo[];
+}
+
+export async function linkFolder(
+  kbName: string,
+  folderPath: string,
+): Promise<LinkedFolderInfo> {
+  const res = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/link-folder`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_path: folderPath }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to link folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as LinkedFolderInfo;
+}
+
+export async function unlinkFolder(
+  kbName: string,
+  folderId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/linked-folders/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to unlink folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+}
+
+export async function syncLinkedFolder(
+  kbName: string,
+  folderId: string,
+): Promise<SyncFolderResponse> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/knowledge-bases/${encodeURIComponent(kbName)}/sync-folder/${encodeURIComponent(folderId)}`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to sync linked folder (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as SyncFolderResponse;
 }
 
 export interface LightRagServerProbe {

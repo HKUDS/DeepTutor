@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   History,
+  FolderSync,
   RefreshCw,
   Trash2,
   Upload,
@@ -130,6 +131,8 @@ function iconForKind(kind: HistoryEntry["kind"]) {
   switch (kind) {
     case "upload":
       return Upload;
+    case "sync":
+      return FolderSync;
     case "reindex":
       return RefreshCw;
     case "create":
