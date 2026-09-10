@@ -3687,6 +3687,8 @@
   "Notes could not be loaded.": "无法加载笔记。",
   "Notes could not be copied.": "无法复制笔记。",
   "Note was not saved.": "笔记未保存。",
+  "Retry": "重试",
+  "Note saved.": "笔记已保存。",
   "Note was not deleted.": "笔记未删除。",
   "Video learning panels": "视频学习面板",
   "Stopped": "已停止",

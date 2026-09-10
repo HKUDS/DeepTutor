@@ -76,8 +76,10 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [noteBusy, setNoteBusy] = useState(false)
   const [notesExportBusy, setNotesExportBusy] = useState(false)
   const [notesCopied, setNotesCopied] = useState(false)
+  const [noteSaveSuccess, setNoteSaveSuccess] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const notesExportRequestRef = useRef(0)
+  const noteSubmitGuardRef = useRef(false)
   const [followTranscript, setFollowTranscript] = useState(true)
   const [transcriptQuery, setTranscriptQuery] = useState('')
   const [selectedTranscriptMatch, setSelectedTranscriptMatch] = useState(-1)
@@ -255,10 +257,13 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
 
   const addNote = async () => {
     if (!material || !noteDraft.trim() || noteBusy) return
+    if (noteSubmitGuardRef.current) return
+    noteSubmitGuardRef.current = true
     const requestedMaterialId = material.material_id
     const anchorTime = noteAnchorTime ?? time
     setNoteBusy(true)
     setNotesError(null)
+    setNoteSaveSuccess(false)
     try {
       const saved = await createVideoNote(requestedMaterialId, noteDraft.trim(), anchorTime)
       if (activeMaterialIdRef.current !== requestedMaterialId) return
@@ -266,11 +271,13 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       setNoteDraft('')
       setNoteAnchorTime(null)
       setNotesCopied(false)
+      setNoteSaveSuccess(true)
     } catch (caught) {
       if (activeMaterialIdRef.current !== requestedMaterialId) return
       setNotesError(caught instanceof Error ? caught.message : t('Note was not saved.'))
     } finally {
       setNoteBusy(false)
+      noteSubmitGuardRef.current = false
     }
   }
 
@@ -816,11 +823,26 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                 </form>
 
                 {notesError && (
-                  <p
+                  <div
                     role="alert"
-                    className="rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm text-[var(--destructive)]"
+                    className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm text-[var(--destructive)]"
                   >
-                    {notesError}
+                    <span className="flex-1">{notesError}</span>
+                    <button
+                      type="button"
+                      onClick={() => void addNote()}
+                      disabled={noteBusy || !noteDraft.trim()}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+                    >
+                      {noteBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                      {t('Retry')}
+                    </button>
+                  </div>
+                )}
+
+                {noteSaveSuccess && !notesError && (
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {t('Note saved.')}
                   </p>
                 )}
 
